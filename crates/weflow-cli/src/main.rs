@@ -4023,9 +4023,6 @@ fn print_response(response: &weflow_core::output::CliResponse<Value>, summary: O
         Some(text) => print!("{text}"),
         None => print!("{}", weflow_core::render::render(&data)),
     }
-    if let Some(meta) = value.get("meta") {
-        print!("\n{}", weflow_core::render::render(meta));
-    }
 }
 
 /// `key db` / `key image` print the keys under the names `config set` expects, so they can be copied over.

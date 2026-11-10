@@ -962,27 +962,6 @@ impl NativeAccount {
         }
         Ok(out)
     }
-
-    // ── small diagnostics ──
-
-    /// `["<path to message_N.db>", ...]`.
-    pub fn list_message_dbs(&self) -> Value {
-        Value::Array(
-            self.message_dbs()
-                .iter()
-                .map(|p| json!(p.to_string_lossy()))
-                .collect(),
-        )
-    }
-
-    pub fn list_media_dbs(&self) -> Value {
-        Value::Array(
-            self.media_dbs()
-                .iter()
-                .map(|p| json!(p.to_string_lossy()))
-                .collect(),
-        )
-    }
 }
 
 #[cfg(test)]
@@ -1574,12 +1553,5 @@ mod tests {
             "store captions prefer Chinese"
         );
         assert_eq!(all.get("ffffffffffffffffffffffffffffffff"), None);
-    }
-
-    #[test]
-    fn diagnostics_list_shards() {
-        let a = account("diag");
-        assert_eq!(a.list_message_dbs().as_array().unwrap().len(), 2);
-        assert_eq!(a.list_media_dbs().as_array().unwrap().len(), 1);
     }
 }

@@ -17,7 +17,7 @@ fn sessions_are_filtered_and_named() {
 #[test]
 fn contacts_are_classified() {
     let (hub, _root) = common::mock_hub("contacts-list");
-    let contacts = hub.chat_contacts_list().unwrap();
+    let contacts = hub.chat_contacts_parsed().unwrap();
     let find = |u: &str| contacts.iter().find(|c| c.username == u);
     assert_eq!(find("wxid_bob").unwrap().kind, ContactKind::Friend);
     assert_eq!(find("gh_news").unwrap().kind, ContactKind::Official);

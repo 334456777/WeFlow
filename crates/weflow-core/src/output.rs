@@ -11,8 +11,6 @@ pub enum CliResponse<T: Serialize> {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         data: Option<T>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        meta: Option<Value>,
     },
     Failure {
         success: bool,
@@ -24,23 +22,6 @@ pub fn success<T: Serialize>(data: T) -> CliResponse<T> {
     CliResponse::Success {
         success: true,
         data: Some(data),
-        meta: None,
-    }
-}
-
-pub fn success_with_meta<T: Serialize>(data: T, meta: Value) -> CliResponse<T> {
-    CliResponse::Success {
-        success: true,
-        data: Some(data),
-        meta: Some(meta),
-    }
-}
-
-pub fn ok() -> CliResponse<Value> {
-    CliResponse::Success {
-        success: true,
-        data: Some(serde_json::json!({ "ok": true })),
-        meta: None,
     }
 }
 

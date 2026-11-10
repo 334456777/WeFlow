@@ -47,10 +47,6 @@ impl AppContext {
     pub fn cache_dir(&self) -> PathBuf {
         self.home_dir.join("cache")
     }
-
-    pub fn logs_dir(&self) -> PathBuf {
-        self.home_dir.join("logs")
-    }
 }
 
 /// WeFlow's config file (`config list`): the profiles and the settings shared by all of them.

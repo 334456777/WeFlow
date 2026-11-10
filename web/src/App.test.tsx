@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, onTestFinished, vi } from '#test';
 import { App } from './App';
 import { setToken } from './api/client';
@@ -47,6 +47,9 @@ async function renderWith(health: object | null) {
   render(<App />);
   await act(async () => {});
 }
+
+/** Lets what a timer of the page does within `ms` happen inside act(), not at some later point of the test. */
+const settle = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 const HEALTH = { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: '5.0.0', data: 'a' };
@@ -301,6 +304,8 @@ describe('App', () => {
     await act(async () => {});
     expect(started).toEqual([{ url: '/export/contacts?return=file', body: { format: 'excel', parsed: true, kind: ['friend', 'group'] } }]);
     expect(document.querySelector('.jobs .task strong')?.textContent).toBe('导出通讯录 · 好友、群聊 · Excel');
+    // the list of jobs is read again 300 ms after one starts
+    await settle(350);
 
     // the conversation with them
     fireEvent.click(within(card).getByRole('button', { name: '查看聊天记录' }));
@@ -354,10 +359,13 @@ describe('App', () => {
     expect(started[0].body).toEqual({ 'session-id': 'wxid_a', format: ['html', 'excel'], 'display-name': 'remark', 'excel-compact': true, zip: true });
     expect(screen.getByText('已加入 2 个导出任务，在任务中心查看进度和下载文件。')).toBeTruthy();
     expect(Array.from(document.querySelectorAll('.jobs .task strong'), n => n.textContent)).toEqual(['导出 家人群 · HTML、Excel', '导出 林沐 · HTML、Excel']);
+    // the list of jobs is read again 300 ms after one starts
+    await settle(350);
     // the list of the conversations picked
     fireEvent.click(document.querySelector<HTMLButtonElement>('[data-card="sessions-export"] .secondary-button')!);
     await act(async () => {});
     expect(started[2]).toEqual({ url: '/export/sessions?return=file', body: { session: ['wxid_a', 'g@chatroom'] } });
+    await settle(350);
   });
 
   it('follows the reduce-motion switch on the root element', async () => {
@@ -439,6 +447,8 @@ describe('App', () => {
     newest += 1;
     await act(async () => { stream.emit('message.new', { sessionId: 'wxid_a' }); await new Promise(resolve => setTimeout(resolve, 20)); });
     expect(texts()).toEqual(['m0', 'm1', 'm2', 'm3']);
+    // the list is read again 500 ms after the message
+    await settle(600);
 
     // turned off: the state alone, from /health/events
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
@@ -686,7 +696,8 @@ describe('App', () => {
     render(<App />);
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', { name: '我的足迹' }));
-    fireEvent.click(await vi.waitFor(() => screen.getByRole('button', { name: /^打开和.*的这段聊天$/ })));
+    // the testing library's waitFor, not vi's: it lets the page and its report settle inside act()
+    fireEvent.click(await waitFor(() => screen.getByRole('button', { name: /^打开和.*的这段聊天$/ })));
     await act(async () => {});
     await act(async () => {});
     // turning to the chat page does not let go of the lookup: the conversation opens around the message

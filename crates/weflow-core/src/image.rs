@@ -317,24 +317,60 @@ pub fn mime_from_extension(ext: &str) -> Option<&'static str> {
     }
 }
 
+/// The four picture formats WeChat's files, its servers and WeFlow's caches hold, told by a file's first bytes.
+/// Every place that names or serves a picture by its content asks here, then adds what only it knows (WXGF, BMP,
+/// HEIF, the extension it falls back on).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageFormat {
+    Gif,
+    Png,
+    Jpeg,
+    Webp,
+}
+
+impl ImageFormat {
+    /// The format `bytes` start as: `GIF`, `\x89PNG`, `FF D8 FF`, or `RIFF` with `WEBP` at byte 8.
+    pub fn of(bytes: &[u8]) -> Option<Self> {
+        if bytes.starts_with(b"GIF") {
+            Some(Self::Gif)
+        } else if bytes.starts_with(b"\x89PNG") {
+            Some(Self::Png)
+        } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+            Some(Self::Jpeg)
+        } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()) {
+            Some(Self::Webp)
+        } else {
+            None
+        }
+    }
+
+    /// The file extension, with its dot.
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Gif => ".gif",
+            Self::Png => ".png",
+            Self::Jpeg => ".jpg",
+            Self::Webp => ".webp",
+        }
+    }
+
+    /// The content type.
+    pub fn mime(self) -> &'static str {
+        match self {
+            Self::Gif => "image/gif",
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+            Self::Webp => "image/webp",
+        }
+    }
+}
+
 /// `detectImageExtension` of the service (needs 12 bytes, knows four formats).
 pub fn detect_image_extension(b: &[u8]) -> Option<&'static str> {
     if b.len() < 12 {
         return None;
     }
-    if b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46 {
-        return Some(".gif");
-    }
-    if b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4e && b[3] == 0x47 {
-        return Some(".png");
-    }
-    if b[0] == 0xff && b[1] == 0xd8 && b[2] == 0xff {
-        return Some(".jpg");
-    }
-    if &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP" {
-        return Some(".webp");
-    }
-    None
+    ImageFormat::of(b).map(ImageFormat::extension)
 }
 
 // ───────────────────────── JPEG sanity ─────────────────────────
@@ -663,6 +699,26 @@ mod tests {
         webp.push(0);
         assert_eq!(detect_image_extension(&webp), Some(".webp"));
         assert_eq!(detect_image_extension(b"wxgf\0\0\0\0\0\0\0\0"), None);
+    }
+
+    #[test]
+    fn formats_are_told_by_their_first_bytes() {
+        let told = |bytes: &[u8]| ImageFormat::of(bytes).map(|f| (f.extension(), f.mime()));
+        assert_eq!(told(b"GIF89a"), Some((".gif", "image/gif")));
+        assert_eq!(told(b"\x89PNG\r\n\x1a\n"), Some((".png", "image/png")));
+        assert_eq!(told(&[0xff, 0xd8, 0xff]), Some((".jpg", "image/jpeg")));
+        assert_eq!(told(b"RIFF\0\0\0\0WEBPVP8 "), Some((".webp", "image/webp")));
+        // a RIFF file that is no WebP, a start cut short, and no picture at all
+        for other in [
+            b"RIFF\0\0\0\0WAVEfmt ".as_slice(),
+            b"RIFF\0\0\0\0WEB",
+            &[0xff, 0xd8],
+            b"wxgf",
+            b"BM",
+            b"",
+        ] {
+            assert_eq!(told(other), None, "{other:?}");
+        }
     }
 
     #[test]

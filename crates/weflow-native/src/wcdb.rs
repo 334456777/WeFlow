@@ -2,9 +2,8 @@
 //!
 //! Everything is served by the pure-Rust backend in [`crate::native_db`]/[`crate::native_msg`]; there is
 //! no dependency on the closed-source `wcdb_api` library. Calls that have not been ported yet return a
-//! clear "not implemented" error instead of touching anything native.
-// Pending stubs keep their historical signatures; drop this once they are all ported.
-#![allow(unused_variables)]
+//! clear "not implemented" error instead of touching anything native. The calls refused by design keep the
+//! arguments they have always taken, unused.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -346,7 +345,7 @@ impl Wcdb {
         self.pending(name)
     }
 
-    // ── not ported yet ──
+    // ── search, contacts, groups, statistics, Moments and media ──
 
     /// The messages whose text holds `keyword`, newest first, each hit with its conversation (see
     /// [`NativeAccount::search_messages`]).
@@ -466,7 +465,7 @@ impl Wcdb {
         self.read_only("sns_block_delete_uninstall")
     }
 
-    pub fn sns_delete_post(&self, post_id: &str) -> Result<Value> {
+    pub fn sns_delete_post(&self, _post_id: &str) -> Result<Value> {
         self.read_only("sns_delete_post")
     }
 
@@ -476,33 +475,33 @@ impl Wcdb {
 
     pub fn update_message(
         &self,
-        session_id: &str,
-        local_id: i64,
-        create_time: i32,
-        content: &str,
+        _session_id: &str,
+        _local_id: i64,
+        _create_time: i32,
+        _content: &str,
     ) -> Result<Value> {
         self.read_only("update_message")
     }
 
     pub fn delete_message(
         &self,
-        session_id: &str,
-        local_id: i64,
-        create_time: i32,
-        db_path_hint: Option<&str>,
+        _session_id: &str,
+        _local_id: i64,
+        _create_time: i32,
+        _db_path_hint: Option<&str>,
     ) -> Result<Value> {
         self.read_only("delete_message")
     }
 
-    pub fn anti_revoke_check(&self, session_id: &str) -> Result<Value> {
+    pub fn anti_revoke_check(&self, _session_id: &str) -> Result<Value> {
         self.read_only("anti_revoke_check")
     }
 
-    pub fn anti_revoke_install(&self, session_id: &str) -> Result<Value> {
+    pub fn anti_revoke_install(&self, _session_id: &str) -> Result<Value> {
         self.read_only("anti_revoke_install")
     }
 
-    pub fn anti_revoke_uninstall(&self, session_id: &str) -> Result<Value> {
+    pub fn anti_revoke_uninstall(&self, _session_id: &str) -> Result<Value> {
         self.read_only("anti_revoke_uninstall")
     }
 
@@ -547,16 +546,6 @@ impl Wcdb {
             ))
     }
 
-    pub fn message_meta(
-        &self,
-        db_path: &str,
-        table: &str,
-        limit: i32,
-        offset: i32,
-    ) -> Result<Value> {
-        self.account()?.message_meta(db_path, table, limit, offset)
-    }
-
     pub fn contact_status(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
             .contact_status(&crate::native_contact::usernames_from_json(usernames_json))
@@ -592,7 +581,7 @@ impl Wcdb {
         )
     }
 
-    pub fn emoticon_cdn_url(&self, db_path: &str, md5: &str) -> Result<String> {
+    pub fn emoticon_cdn_url(&self, _db_path: &str, md5: &str) -> Result<String> {
         self.account()?.emoticon_cdn_url(md5)
     }
 
@@ -601,21 +590,9 @@ impl Wcdb {
         self.account()?.emoticon_captions()
     }
 
-    pub fn list_message_dbs(&self) -> Result<Value> {
-        Ok(self.account()?.list_message_dbs())
-    }
-
-    pub fn list_media_dbs(&self) -> Result<Value> {
-        Ok(self.account()?.list_media_dbs())
-    }
-
-    pub fn db_status(&self) -> Result<Value> {
-        self.account()?.db_status()
-    }
-
     pub fn voice_data(
         &self,
-        session_id: &str,
+        _session_id: &str,
         create_time: i32,
         local_id: i32,
         svr_id: i64,
@@ -634,10 +611,6 @@ impl Wcdb {
             .voice_data_batch(&serde_json::from_str(requests_json).unwrap_or_default())
     }
 
-    pub fn media_schema_summary(&self, db_path: &str) -> Result<Value> {
-        self.account()?.media_schema_summary(db_path)
-    }
-
     pub fn session_message_type_stats_batch(
         &self,
         session_ids_json: &str,
@@ -646,55 +619,6 @@ impl Wcdb {
         self.account()?.session_message_type_stats_batch(
             &crate::native_contact::usernames_from_json(session_ids_json),
             &serde_json::from_str(options_json).unwrap_or_default(),
-        )
-    }
-
-    pub fn head_image_buffers(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?
-            .head_image_buffers(&crate::native_contact::usernames_from_json(usernames_json))
-    }
-
-    pub fn message_table_columns(&self, db_path: &str, table: &str) -> Result<Value> {
-        self.account()?.message_table_columns(db_path, table)
-    }
-
-    pub fn list_tables(&self, kind: &str, db_path: &str) -> Result<Value> {
-        self.account()?.list_tables(kind, Some(db_path))
-    }
-
-    pub fn table_schema(&self, kind: &str, db_path: &str, table: &str) -> Result<Value> {
-        self.account()?.table_schema(kind, Some(db_path), table)
-    }
-
-    pub fn export_table_snapshot(
-        &self,
-        kind: &str,
-        db_path: &str,
-        table: &str,
-        output_path: &str,
-    ) -> Result<Value> {
-        self.account()?
-            .export_table_snapshot(kind, Some(db_path), table, output_path)
-    }
-
-    pub fn import_table_snapshot(
-        &self,
-        kind: &str,
-        db_path: &str,
-        table: &str,
-        input_path: &str,
-    ) -> Result<Value> {
-        self.read_only("import_table_snapshot")
-    }
-
-    pub fn resolve_image_hardlink_batch(&self, requests_json: &str) -> Result<Value> {
-        self.account()?
-            .resolve_image_hardlink_batch(&serde_json::from_str(requests_json).unwrap_or_default())
-    }
-
-    pub fn resolve_video_hardlink_md5_batch(&self, requests_json: &str) -> Result<Value> {
-        self.account()?.resolve_video_hardlink_md5_batch(
-            &serde_json::from_str(requests_json).unwrap_or_default(),
         )
     }
 }

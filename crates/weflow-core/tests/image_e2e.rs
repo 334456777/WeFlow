@@ -166,8 +166,8 @@ fn decrypts_the_hd_variant_and_caches_it() {
     assert_eq!(batch["rows"][0], batch["rows"][1]);
     assert_eq!(batch["rows"][2]["success"], false);
 
-    let cleared = hub.image_clear_cache();
-    assert_eq!(cleared["success"], true);
+    let cleared = hub.cache_clear(&[weflow_core::services::CachePart::Images]);
+    assert!(cleared.warnings.is_empty(), "{:?}", cleared.warnings);
     assert!(!std::path::Path::new(&path).exists());
     let _ = std::fs::remove_dir_all(root);
 }

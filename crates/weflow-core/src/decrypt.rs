@@ -2,7 +2,6 @@ use std::path::Path;
 
 use aes::cipher::{BlockModeDecrypt, KeyInit};
 use anyhow::{anyhow, Result};
-use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
 
@@ -30,33 +29,18 @@ pub fn detect_dat_version(data: &[u8]) -> u8 {
     0
 }
 
-pub fn detect_image_extension(data: &[u8]) -> &str {
+/// The extension of a decrypted `.dat`: a picture's, `.wxgf` for WeChat's own container, `.bin` for anything else
+/// (or fewer than four bytes).
+pub fn detect_image_extension(data: &[u8]) -> &'static str {
     if data.len() < 4 {
         return ".bin";
     }
-    if data[..3] == [0xFF, 0xD8, 0xFF] {
-        return ".jpg";
+    match crate::image::ImageFormat::of(data) {
+        Some(format) => format.extension(),
+        None if data.starts_with(b"wxgf") => ".wxgf",
+        None => ".bin",
     }
-    if data[..4] == [0x89, 0x50, 0x4E, 0x47] {
-        return ".png";
-    }
-    if data.len() >= 12
-        && data[..4] == [0x52, 0x49, 0x46, 0x46]
-        && data[8..12] == [0x57, 0x45, 0x42, 0x50]
-    {
-        return ".webp";
-    }
-    if data[..3] == [0x47, 0x49, 0x46] {
-        return ".gif";
-    }
-    if data.len() >= 4 && data[..4] == [0x77, 0x78, 0x67, 0x66] {
-        return ".wxgf";
-    }
-    ".bin"
 }
-
-/// Re-exported for compatibility; see [`crate::keys::derive_image_keys`].
-pub use crate::keys::derive_image_keys;
 
 /// Default key of V1 (`07 08 56 31 08 07`) `.dat` files.
 pub const V1_AES_KEY: [u8; 16] = *b"cfcd208495d565ef";
@@ -200,20 +184,6 @@ pub fn decrypt_file(
     decrypt_dat(&data, xor_key, aes_key).map_err(|err| AppError::runtime(err.to_string()))
 }
 
-pub fn decrypt_file_to_json(
-    path: &Path,
-    xor_key: u8,
-    aes_key: Option<&[u8; 16]>,
-) -> AppResult<Value> {
-    let result = decrypt_file(path, xor_key, aes_key)?;
-    Ok(json!({
-        "path": path.to_string_lossy(),
-        "ext": result.ext,
-        "isWxgf": result.is_wxgf,
-        "size": result.data.len()
-    }))
-}
-
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
@@ -352,17 +322,6 @@ mod tests {
         let hex = "00112233445566778899aabbccddeeff";
         assert_eq!(parse_aes_key(hex).unwrap()[15], 0xff);
         assert_eq!(parse_aes_key("short"), None);
-    }
-
-    #[test]
-    fn derives_image_keys_deterministically() {
-        let (xor1, aes1) = derive_image_keys(12345, "wxid_test");
-        let (xor2, aes2) = derive_image_keys(12345, "wxid_test");
-        assert_eq!(xor1, xor2);
-        assert_eq!(aes1, aes2);
-        assert_eq!(xor1, (12345u64 & 0xFF) as u8);
-        assert_eq!(aes1.len(), 16);
-        assert!(aes1.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]

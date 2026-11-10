@@ -1150,68 +1150,6 @@ pub fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) ->
     }
 }
 
-/// The order a lite message without a `sort_seq` gets: its send time in milliseconds.
-fn lite_sort_seq(create_time: i64) -> i64 {
-    if create_time > 0 {
-        create_time * 1000
-    } else {
-        0
-    }
-}
-
-/// `mapRowsToMessagesLiteForApi` of the typed rows of one conversation, which it takes: their text moves into the
-/// messages.
-pub fn map_msg_rows_lite(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
-    let table_name = weflow_native::native_msg::table_name_for(session_id);
-    rows.into_iter()
-        .map(|mut row| {
-            let fields = typed_fields(&mut row, lite_sort_seq);
-            lite_message(fields, typed_source(&row, &table_name), my_wxid)
-        })
-        .collect()
-}
-
-/// A message with the row's columns and its text as stored, nothing parsed out of it.
-fn lite_message(fields: RowFields, src: SourceInfo, my_wxid: &str) -> ChatMessage {
-    let RowFields {
-        content,
-        local_type,
-        raw_is_send: raw,
-        sender,
-        create_time,
-        local_id,
-        server_id,
-        server_id_raw,
-        sort_seq,
-    } = fields;
-    let from_row = sender.or_else(|| extract_sender_from_content(&content));
-    let is_send = resolve_is_send(raw, from_row.as_deref(), my_wxid);
-    let sender = from_row
-        .or_else(|| (is_send == Some(1) && !my_wxid.is_empty()).then(|| my_wxid.to_string()));
-    ChatMessage {
-        message_key: build_message_key(
-            local_id,
-            server_id,
-            create_time,
-            sort_seq,
-            sender.as_deref(),
-            local_type,
-            &src,
-        ),
-        local_id,
-        server_id,
-        server_id_raw,
-        local_type,
-        create_time,
-        sort_seq,
-        is_send,
-        sender_username: sender,
-        parsed_content: String::new(),
-        raw_content: content,
-        ..Default::default()
-    }
-}
-
 /// The columns [`chat_message`] turns into a message.
 struct RowFields {
     content: String,
@@ -1239,13 +1177,13 @@ pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<C
 /// One row of [`map_msg_rows`], for callers that map rows one at a time; `table_name` is the conversation's
 /// (`table_name_for`).
 pub fn map_msg_row(mut row: MsgRow, table_name: &str, my_wxid: &str) -> ChatMessage {
-    let fields = typed_fields(&mut row, |create_time| create_time);
+    let fields = typed_fields(&mut row);
     let src = typed_source(&row, table_name);
     chat_message(fields, row.packed_info.as_deref(), src, my_wxid)
 }
 
-/// The fields of a typed row, its text moved out; a row without a `sort_seq` gets `default_seq(create_time)`.
-fn typed_fields(row: &mut MsgRow, default_seq: fn(i64) -> i64) -> RowFields {
+/// The fields of a typed row, its text moved out; a row without a `sort_seq` is ordered by its send time.
+fn typed_fields(row: &mut MsgRow) -> RowFields {
     let create_time = crate::message::msg_row_timestamp(row);
     let server_id = row.server_id.unwrap_or(0);
     RowFields {
@@ -1265,7 +1203,7 @@ fn typed_fields(row: &mut MsgRow, default_seq: fn(i64) -> i64) -> RowFields {
         } else {
             "0".into()
         },
-        sort_seq: row.sort_seq.unwrap_or_else(|| default_seq(create_time)),
+        sort_seq: row.sort_seq.unwrap_or(create_time),
     }
 }
 
@@ -1581,7 +1519,7 @@ mod tests {
                 ..MsgRow::default()
             },
         ];
-        let m = map_msg_rows(rows.clone(), "wxid_bob", "wxid_me");
+        let m = map_msg_rows(rows, "wxid_bob", "wxid_me");
         assert_eq!(m[0].sender_username.as_deref(), Some("wxid_bob"));
         assert_eq!(m[0].parsed_content, "hello");
         assert_eq!(m[0].server_id_raw, "9007199254740993");
@@ -1591,8 +1529,5 @@ mod tests {
         );
         assert_eq!(m[1].is_send, Some(1));
         assert_eq!(m[1].sender_username, None);
-        let lite = map_msg_rows_lite(rows, "wxid_bob", "wxid_me");
-        assert_eq!(lite[1].sender_username.as_deref(), Some("wxid_me"));
-        assert_eq!(lite[1].sort_seq, 1700000100 * 1000);
     }
 }

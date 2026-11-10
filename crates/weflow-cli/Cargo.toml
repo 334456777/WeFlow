@@ -17,14 +17,12 @@ alloc-stats = []
 
 [dependencies]
 base64.workspace = true
-anyhow.workspace = true
 async-stream.workspace = true
 axum.workspace = true
 clap.workspace = true
 mimalloc.workspace = true
 mime_guess.workspace = true
 rand.workspace = true
-reqwest.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -32,12 +30,13 @@ serde_json.workspace = true
 tokio = { workspace = true, features = ["process", "io-util", "fs", "sync", "time"] }
 # `serve` compresses its JSON answers (gzip / br, from `Accept-Encoding`)
 tower-http = { workspace = true, features = ["compression-gzip", "compression-br"] }
-tracing.workspace = true
 tracing-subscriber.workspace = true
 weflow-core = { path = "../weflow-core" }
 weflow-assets = { path = "../weflow-assets" }
 
 [dev-dependencies]
+# the examples report their failures with it
+anyhow.workspace = true
 brotli-decompressor = "5"
 flate2.workspace = true
 # examples/dev_account.rs draws the pictures of the account `bun run dev` serves

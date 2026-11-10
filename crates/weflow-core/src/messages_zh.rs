@@ -91,7 +91,6 @@ const CATALOG: &[(&str, &str)] = &[
     ("failed to read {}: {}", "读取 {} 失败：{}"),
     ("base statistics failed: {}", "基础统计失败：{}"),
     ("failed to get dual-report statistics: {}", "获取双人报告统计失败：{}"),
-    ("failed to read the Moments timeline", "读取朋友圈时间线失败"),
     ("DLL error {}", "DLL 错误 {}"),
     ("username must not be empty", "用户名不能为空"),
     ("url must not be empty", "url 不能为空"),
@@ -146,8 +145,8 @@ const CATALOG: &[(&str, &str)] = &[
     ("image cache", "图片缓存"),
     ("unknown error", "未知错误"),
     ("record id is empty", "记录 ID 为空"),
-    ("import_table_snapshot is not supported: the native database backend opens WeChat's databases read-only", "不支持 import_table_snapshot：原生数据库后端以只读方式打开微信数据库"),
-    ("import_table_snapshot_with_schema is not supported: the native database backend opens WeChat's databases read-only", "不支持 import_table_snapshot_with_schema：原生数据库后端以只读方式打开微信数据库"),
+    ("{} is not supported: the native database backend opens WeChat's databases read-only", "不支持 {}：原生数据库后端以只读方式打开微信数据库"),
+    ("{} is not implemented in the native database backend yet", "原生数据库后端尚未实现 {}"),
     ("API call failed ({}): {}", "API 调用失败（{0}）：{1}"),
     ("Telegram push failed (chatId={}): {}", "Telegram 推送失败（chatId={0}）：{1}"),
 ];
@@ -175,6 +174,19 @@ mod tests {
             Some("--start（b）晚于 --end（a）")
         );
         assert_eq!(translate("not in the catalog"), None);
+    }
+
+    #[test]
+    fn a_refused_or_missing_database_call_keeps_its_name() {
+        assert_eq!(
+            translate("delete_message is not supported: the native database backend opens WeChat's databases read-only").as_deref(),
+            Some("不支持 delete_message：原生数据库后端以只读方式打开微信数据库")
+        );
+        assert_eq!(
+            translate("wcdb_get_x is not implemented in the native database backend yet")
+                .as_deref(),
+            Some("原生数据库后端尚未实现 wcdb_get_x")
+        );
     }
 
     #[test]

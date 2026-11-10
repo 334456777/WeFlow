@@ -65,16 +65,11 @@ pub(super) fn add_extension(path: &Path) -> PathBuf {
 
 /// The extension of a few media formats, from their first bytes.
 fn sniff(head: &[u8]) -> Option<&'static str> {
+    if let Some(picture) = weflow_core::image::ImageFormat::of(head) {
+        return Some(picture.extension().trim_start_matches('.'));
+    }
     let at = |i: usize, magic: &[u8]| head.get(i..i + magic.len()) == Some(magic);
-    Some(if at(0, &[0xFF, 0xD8, 0xFF]) {
-        "jpg"
-    } else if at(0, b"\x89PNG") {
-        "png"
-    } else if at(0, b"GIF8") {
-        "gif"
-    } else if at(0, b"RIFF") && at(8, b"WEBP") {
-        "webp"
-    } else if at(0, b"RIFF") && at(8, b"WAVE") {
+    Some(if at(0, b"RIFF") && at(8, b"WAVE") {
         "wav"
     } else if at(0, b"BM") {
         "bmp"

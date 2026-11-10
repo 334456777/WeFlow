@@ -691,19 +691,6 @@ impl ExportMsg {
         serde_json::to_value(crate::contract::MessageView::of(self, my_wxid)).unwrap_or_default()
     }
 
-    pub fn stable_key(&self) -> String {
-        let raw = self
-            .server_id_raw
-            .clone()
-            .unwrap_or_else(|| self.server_id.to_string());
-        format!(
-            "{}:{}:{}",
-            normalize_unsigned_token(&self.local_id.to_string()),
-            normalize_unsigned_token(&self.create_time.to_string()),
-            normalize_unsigned_token(&raw)
-        )
-    }
-
     pub fn platform_message_id(&self) -> Option<String> {
         let raw = self
             .server_id_raw

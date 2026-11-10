@@ -310,12 +310,6 @@ fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
         serde_json::json!({ "username": "wxid_bob", "displayName": "Bobby", "remark": "Bobby", "nickname": "Bob",
             "alias": "bobby_id", "type": "friend", "avatarUrl": "https://example.com/bob.png" })
     );
-    // `chat_contacts_list` leaves the avatars out
-    assert!(hub
-        .chat_contacts_list()
-        .unwrap()
-        .iter()
-        .all(|c| c.avatar_url.is_none()));
 }
 
 #[test]
@@ -863,7 +857,7 @@ fn contacts_carry_labels_signature_and_region_and_sort_by_pinyin() {
             &[(1, "Family"), (3, "Gym")],
         );
     });
-    let list = json!(hub.chat_contacts_list().unwrap());
+    let list = json!(hub.chat_contacts_parsed().unwrap());
     let list = list.as_array().unwrap();
     let names: Vec<&str> = list
         .iter()

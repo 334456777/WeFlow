@@ -1,4 +1,4 @@
-//! Locale-aware string ordering, the Rust counterpart of `Intl.Collator('zh-CN')` and `String.localeCompare`.
+//! Locale-aware string ordering, the Rust counterpart of `Intl.Collator('zh-CN')`.
 //!
 //! WeFlow's desktop app sorts contact and member names with the ICU collator (Chinese names by pinyin, Latin
 //! letters case-insensitively before the first difference in case). The same ICU collation data is used here
@@ -24,13 +24,6 @@ fn build(prefs: CollatorPreferences) -> CollatorBorrowed<'static> {
 pub fn compare_zh(a: &str, b: &str) -> Ordering {
     static ZH: OnceLock<CollatorBorrowed<'static>> = OnceLock::new();
     ZH.get_or_init(|| build(CollatorPreferences::from(&locale!("zh-CN"))))
-        .compare(a, b)
-}
-
-/// `a.localeCompare(b)` without a locale: the root (English-like) collation.
-pub fn compare_default(a: &str, b: &str) -> Ordering {
-    static ROOT: OnceLock<CollatorBorrowed<'static>> = OnceLock::new();
-    ROOT.get_or_init(|| build(CollatorPreferences::from(&locale!("en-US"))))
         .compare(a, b)
 }
 
@@ -66,10 +59,10 @@ mod tests {
     #[test]
     fn latin_ordering_ignores_case_first_and_punctuation_comes_first() {
         assert_eq!(
-            sorted(vec!["b", "B", "a", "A", "_x", "1"], compare_default),
+            sorted(vec!["b", "B", "a", "A", "_x", "1"], compare_zh),
             ["_x", "1", "a", "A", "b", "B"]
         );
-        assert_eq!(compare_default("wxid_a", "wxid_a"), Ordering::Equal);
+        assert_eq!(compare_zh("wxid_a", "wxid_a"), Ordering::Equal);
         assert_eq!(compare_zh("wxid_a", "wxid_b"), Ordering::Less);
     }
 }
