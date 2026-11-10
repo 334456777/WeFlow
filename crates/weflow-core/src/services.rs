@@ -53,7 +53,6 @@ pub struct ServiceHub {
     db_path_override: Option<String>,
     decrypt_key_override: Option<String>,
     wxid_override: Option<String>,
-    pub progress_enabled: bool,
     sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
     /// Statistics being counted right now (see [`analytics::Counting`]).
     analytics_counting: std::sync::Arc<analytics::Counting>,
@@ -78,7 +77,6 @@ impl ServiceHub {
             db_path_override,
             decrypt_key_override,
             wxid_override,
-            progress_enabled: false,
             sns_state: Default::default(),
             analytics_counting: Default::default(),
             image_state: Default::default(),
@@ -608,10 +606,11 @@ impl ServiceHub {
                 size: final_data.len(),
             }))
         } else {
+            use base64::Engine as _;
             let data = format!(
                 "data:image/{};base64,{}",
                 ext.trim_start_matches('.'),
-                base64_encode(&final_data)
+                base64::engine::general_purpose::STANDARD.encode(&final_data)
             );
             Ok(SnsImageDownload::Inline(SnsImageInline {
                 url: url.to_string(),
@@ -1267,9 +1266,8 @@ impl ServiceHub {
         }
         std::fs::create_dir_all(out)
             .map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
-        let hub = self.clone();
         let results = crate::media::download_emojis(&metas, out, &|current, t| {
-            hub.emit_progress("emoji", "downloading emojis", current, t)
+            self.emit_progress("emoji", "downloading emojis", current, t)
         })
         .await
         .map_err(|e| AppError::runtime(e.to_string()))?;
@@ -1296,14 +1294,13 @@ impl ServiceHub {
             include_voice,
             include_emojis,
         };
-        let hub = self.clone();
         let manifest = crate::backup::create_backup(
             &account_dir,
             &options,
             Some(&self.ctx.home_dir),
             &self.ctx.version,
             out,
-            &|current, total| hub.emit_progress("backup", "creating backup", current, total),
+            &|current, total| self.emit_progress("backup", "creating backup", current, total),
         )
         .map_err(|e| AppError::runtime(e.to_string()))?;
         Ok(crate::contract::BackupCreated {
@@ -1323,20 +1320,13 @@ impl ServiceHub {
         path: &Path,
         target_dir: &Path,
     ) -> AppResult<crate::contract::BackupRestored> {
-        let hub = self.clone();
         crate::backup::restore_backup(path, target_dir, &|current, total| {
-            hub.emit_progress("restore", "restoring backup", current, total)
+            self.emit_progress("restore", "restoring backup", current, total)
         })
         .map_err(|e| AppError::runtime(e.to_string()))?;
         Ok(crate::contract::BackupRestored {
             restored_to: target_dir.to_path_buf(),
         })
-    }
-
-    pub fn unsupported(&self, feature: &str) -> AppResult<Value> {
-        Err(AppError::runtime(format!(
-            "{feature} is not yet ported to the native Rust CLI"
-        )))
     }
 
     pub fn emit_progress(&self, stage: &str, message: &str, current: usize, total: usize) {
@@ -1690,34 +1680,6 @@ fn wechat_pids() -> Vec<u32> {
     }
 }
 
-fn base64_encode(data: &[u8]) -> String {
-    const CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
-    let mut i = 0;
-    while i + 3 <= data.len() {
-        let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8) | (data[i + 2] as u32);
-        result.push(CHARS[((n >> 18) & 0x3F) as usize] as char);
-        result.push(CHARS[((n >> 12) & 0x3F) as usize] as char);
-        result.push(CHARS[((n >> 6) & 0x3F) as usize] as char);
-        result.push(CHARS[(n & 0x3F) as usize] as char);
-        i += 3;
-    }
-    if data.len() - i == 2 {
-        let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8);
-        result.push(CHARS[((n >> 18) & 0x3F) as usize] as char);
-        result.push(CHARS[((n >> 12) & 0x3F) as usize] as char);
-        result.push(CHARS[((n >> 6) & 0x3F) as usize] as char);
-        result.push('=');
-    } else if data.len() - i == 1 {
-        let n = (data[i] as u32) << 16;
-        result.push(CHARS[((n >> 18) & 0x3F) as usize] as char);
-        result.push(CHARS[((n >> 12) & 0x3F) as usize] as char);
-        result.push('=');
-        result.push('=');
-    }
-    result
-}
-
 pub const MESSAGE_EXPORT_FORMATS: &str =
     "json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql";
 
@@ -1881,7 +1843,6 @@ fn attach_emoji_captions(
     }
 }
 
-/// `cleanAccountDirName`: `wxid_abc_1234` -> `wxid_abc`, `name_ab12` -> `name`.
 /// One-way fingerprint of a key that decrypted an account's `session.db` (the key cannot be recovered from it).
 fn key_fingerprint(account_dir: &Path, key: &str, salt: &[u8; 16]) -> String {
     use sha2::{Digest, Sha256};
@@ -1910,6 +1871,7 @@ fn remember_fingerprint(path: &Path, fingerprint: &str) {
     let _ = std::fs::write(path, keep.join("\n") + "\n");
 }
 
+/// `cleanAccountDirName`: `wxid_abc_1234` -> `wxid_abc`, `name_ab12` -> `name`.
 pub fn clean_account_dir_name(dir_name: &str) -> String {
     use crate::message::rx;
     let trimmed = dir_name.trim();

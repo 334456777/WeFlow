@@ -625,11 +625,8 @@ pub struct ForwardRecord {
     pub datatype: i64,
     pub sourcename: String,
     pub sourcetime: String,
-    pub sourceheadurl: Option<String>,
     pub datadesc: Option<String>,
     pub datatitle: Option<String>,
-    pub fileext: Option<String>,
-    pub datasize: Option<i64>,
     pub chat_record_title: Option<String>,
     pub chat_record_desc: Option<String>,
     pub chat_record_list: Option<Vec<ForwardRecord>>,
@@ -1507,17 +1504,12 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<ForwardRecord> {
     let datatype = datatype_raw.parse::<i64>().unwrap_or(0);
     let sourcename = decode_html_entities(&extract_xml_value(body, "sourcename"));
     let sourcetime = extract_xml_value(body, "sourcetime");
-    let sourceheadurl = extract_xml_value(body, "sourceheadurl");
     let mut datadesc = extract_xml_value(body, "datadesc");
     if datadesc.is_empty() {
         datadesc = extract_xml_value(body, "content");
     }
     let datadesc = decode_html_entities(&datadesc);
     let datatitle = decode_html_entities(&extract_xml_value(body, "datatitle"));
-    let fileext = extract_xml_value(body, "fileext");
-    let datasize = extract_xml_value(body, "datasize")
-        .parse::<i64>()
-        .unwrap_or(0);
     let nested_xml = extract_xml_value(body, "recordxml");
     let nested_list = if datatype == 17 && !nested_xml.is_empty() {
         Some(parse_forward_container(&nested_xml)).filter(|l| !l.is_empty())
@@ -1549,11 +1541,8 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<ForwardRecord> {
         datatype,
         sourcename,
         sourcetime,
-        sourceheadurl: opt(sourceheadurl),
         datadesc: opt(datadesc),
         datatitle: opt(datatitle),
-        fileext: opt(fileext),
-        datasize: if datasize > 0 { Some(datasize) } else { None },
         chat_record_title: opt(chat_record_title),
         chat_record_desc: opt(chat_record_desc),
         chat_record_list: nested_list,

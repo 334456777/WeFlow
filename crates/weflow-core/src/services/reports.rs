@@ -1540,28 +1540,13 @@ impl ServiceHub {
                 }
             }
         }
-        let db_path = self
-            .connection_inputs()
-            .map(|(dir, _, _)| dir.to_string_lossy().to_string())
-            .unwrap_or_default();
-        if my_url.is_none() {
-            if let Some(m) = &my_md5 {
-                if let Ok(u) = wcdb.emoticon_cdn_url(&db_path, m) {
-                    if !u.is_empty() {
-                        my_url = Some(u);
-                    }
-                }
-            }
-        }
-        if fr_url.is_none() {
-            if let Some(m) = &fr_md5 {
-                if let Ok(u) = wcdb.emoticon_cdn_url(&db_path, m) {
-                    if !u.is_empty() {
-                        fr_url = Some(u);
-                    }
-                }
-            }
-        }
+        // a sticker whose message names no URL: the one the sticker database has for it
+        let stored_url = |md5: &Option<String>| {
+            let url = wcdb.emoticon_cdn_url(md5.as_deref()?).ok()?;
+            (!url.is_empty()).then_some(url)
+        };
+        let my_url = my_url.or_else(|| stored_url(&my_md5));
+        let fr_url = fr_url.or_else(|| stored_url(&fr_md5));
         let stats = DualStats {
             total_messages: num(&counts["total"]),
             total_words: num(&counts["words"]),

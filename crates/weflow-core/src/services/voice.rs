@@ -107,7 +107,7 @@ impl ServiceHub {
         }
         for plan in plans {
             let list = serde_json::to_string(&plan).unwrap_or_else(|_| "[]".into());
-            if let Ok(hex) = wcdb.voice_data(session_id, ct, lid, svr, &list) {
+            if let Ok(hex) = wcdb.voice_data(ct, lid, svr, &list) {
                 if let Some(bytes) = decode_voice_blob(&hex).filter(|b| !b.is_empty()) {
                     return Some(bytes);
                 }

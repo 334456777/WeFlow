@@ -15,13 +15,11 @@ const CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 const MOBILE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
+/// A post, as the insight's prompt quotes it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WeiboPost {
-    pub id: String,
     pub created_at: String,
-    pub url: String,
     pub text: String,
-    pub screen_name: Option<String>,
 }
 
 type CacheEntry = (Instant, Vec<WeiboPost>);
@@ -344,14 +342,8 @@ pub async fn fetch_recent_posts(
             continue;
         }
         posts.push(WeiboPost {
-            url: format!("https://m.weibo.cn/detail/{id}"),
-            id,
             created_at: js_string(item.get("created_at")),
             text,
-            screen_name: item
-                .pointer("/user/screen_name")
-                .and_then(Value::as_str)
-                .map(str::to_string),
         });
     }
     cache()

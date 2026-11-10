@@ -581,7 +581,7 @@ impl Wcdb {
         )
     }
 
-    pub fn emoticon_cdn_url(&self, _db_path: &str, md5: &str) -> Result<String> {
+    pub fn emoticon_cdn_url(&self, md5: &str) -> Result<String> {
         self.account()?.emoticon_cdn_url(md5)
     }
 
@@ -592,7 +592,6 @@ impl Wcdb {
 
     pub fn voice_data(
         &self,
-        _session_id: &str,
         create_time: i32,
         local_id: i32,
         svr_id: i64,
