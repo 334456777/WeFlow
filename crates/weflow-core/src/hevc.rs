@@ -16,7 +16,7 @@ const JPEG_QUALITY: u8 = 92;
 /// stream has a larger picture (the largest of the 5,668 WXGF pictures on a real account had 12.4 million). The
 /// decoder allocates the whole coded picture before it reads a slice, and an SPS can declare up to 65535 × 65535
 /// samples, so without this a damaged stream could ask for tens of gigabytes.
-pub const MAX_LUMA_SAMPLES: u64 = 35_651_584;
+const MAX_LUMA_SAMPLES: u64 = 35_651_584;
 
 /// Why the first picture of an HEVC stream is not turned into a JPEG here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -534,7 +534,7 @@ impl Bits {
 
 /// `video_full_range_flag` of a sequence parameter set (H.265 7.3.2.2), `None` when it carries no VUI signal type or
 /// cannot be parsed. The decoder reads the SPS itself; this only walks to the VUI for the sample range.
-pub fn sps_full_range(sps: &[u8]) -> Option<bool> {
+fn sps_full_range(sps: &[u8]) -> Option<bool> {
     let mut b = Bits::new(sps);
     let SpsStart {
         max_sub_layers_minus1,

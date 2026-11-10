@@ -9,7 +9,7 @@
 
 const SIZE: usize = 256;
 
-pub struct Isaac64 {
+struct Isaac64 {
     mm: [u64; SIZE],
     rs: [u64; SIZE],
     aa: u64,
@@ -55,7 +55,7 @@ impl Isaac64 {
     }
 
     /// Parses the decimal key the way `strtoull(key, NULL, 10)` does (leading digits only).
-    pub fn from_key(key: &str) -> Self {
+    fn from_key(key: &str) -> Self {
         let digits: String = key
             .trim()
             .chars()
@@ -95,7 +95,7 @@ impl Isaac64 {
     }
 
     /// `size` bytes of keystream (big-endian words, truncated to `size`).
-    pub fn keystream(&mut self, size: usize) -> Vec<u8> {
+    fn keystream(&mut self, size: usize) -> Vec<u8> {
         let mut out = Vec::with_capacity(size + 8);
         while out.len() < size {
             out.extend_from_slice(&self.next_u64().to_be_bytes());

@@ -720,11 +720,7 @@ impl ServiceHub {
     }
 
     /// `downloadEmoji`: cached fetch of a sticker by CDN URL.
-    pub async fn chat_download_emoji(
-        &self,
-        cdn_url: &str,
-        md5: Option<&str>,
-    ) -> AppResult<PathBuf> {
+    async fn chat_download_emoji(&self, cdn_url: &str, md5: Option<&str>) -> AppResult<PathBuf> {
         if cdn_url.is_empty() {
             return Err(AppError::usage("invalid CDN URL"));
         }

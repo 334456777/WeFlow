@@ -186,7 +186,7 @@ pub enum ProgressMode {
 }
 
 /// Default number of seconds a command must run before the automatic progress bar appears.
-pub const DEFAULT_BAR_DELAY_SECS: u64 = 5;
+const DEFAULT_BAR_DELAY_SECS: u64 = 5;
 
 static BAR_DELAY_SECS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(DEFAULT_BAR_DELAY_SECS);
@@ -248,7 +248,7 @@ pub fn set_progress_mode(mode: ProgressMode) {
 
 use crate::locale::tr;
 
-pub fn format_duration(secs: u64) -> String {
+fn format_duration(secs: u64) -> String {
     if secs >= 3600 {
         format!("{}h{:02}m{:02}s", secs / 3600, secs % 3600 / 60, secs % 60)
     } else if secs >= 60 {
@@ -260,7 +260,7 @@ pub fn format_duration(secs: u64) -> String {
 
 /// One line of the bar; `total == 0` means the total is unknown (spinner, no percentage).
 /// `eta_secs` is the (smoothed) remaining time, when known.
-pub fn render_bar(
+fn render_bar(
     message: &str,
     current: usize,
     total: usize,
@@ -301,7 +301,7 @@ pub fn render_bar(
 }
 
 /// Cuts a line to `max` characters so it never wraps (a wrapped line cannot be redrawn in place).
-pub fn fit_line(line: &str, max: usize) -> String {
+fn fit_line(line: &str, max: usize) -> String {
     if max == 0 || line.chars().count() <= max {
         line.to_string()
     } else {

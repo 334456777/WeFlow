@@ -113,7 +113,7 @@ fn read_varint(buf: &[u8], mut offset: usize) -> Option<(u64, usize)> {
 }
 
 /// Top-level length-delimited fields numbered `target`, as trimmed UTF-8 text without NULs (empty ones dropped).
-pub fn extra_buffer_strings(row: &Value, target: u64) -> Vec<String> {
+fn extra_buffer_strings(row: &Value, target: u64) -> Vec<String> {
     let Some(bytes) = extra_buffer_bytes(row) else {
         return Vec::new();
     };

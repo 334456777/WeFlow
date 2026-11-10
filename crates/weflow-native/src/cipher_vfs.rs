@@ -326,8 +326,9 @@ impl CipherFile {
         self.error.lock().ok().and_then(|e| e.clone())
     }
 
-    /// Pages decrypted so far (for tests and statistics).
-    pub fn pages_decrypted(&self) -> u64 {
+    /// Pages decrypted so far.
+    #[cfg(test)]
+    fn pages_decrypted(&self) -> u64 {
         self.pages_decrypted.load(Ordering::Relaxed)
     }
 

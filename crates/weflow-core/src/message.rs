@@ -59,7 +59,7 @@ fn strip_cdata(c: &str) -> String {
         .to_string()
 }
 
-pub fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
+fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
     if !tag.is_empty() && tag.is_ascii() && !attr.is_empty() && attr.is_ascii() {
         return crate::xml::attribute(xml, tag, attr)
             .unwrap_or_default()
@@ -75,7 +75,7 @@ pub fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
         .unwrap_or_default()
 }
 
-pub fn decode_html_entities(text: &str) -> String {
+fn decode_html_entities(text: &str) -> String {
     decode_html_entities_cow(text).into_owned()
 }
 
@@ -94,7 +94,7 @@ fn decode_html_entities_cow(text: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(decoded)
 }
 
-pub fn normalize_app_message_content(content: &str) -> String {
+fn normalize_app_message_content(content: &str) -> String {
     normalize_app_message_cow(content).into_owned()
 }
 
@@ -133,12 +133,11 @@ pub struct MsgXml<'a> {
     once: std::cell::OnceCell<std::borrow::Cow<'a, str>>,
     /// `once` normalized again, when that changes it.
     twice: std::cell::OnceCell<Option<String>>,
-    app_type_once: std::cell::OnceCell<String>,
     app_type_twice: std::cell::OnceCell<String>,
     /// The `<refermsg>` blocks of `once` and of `twice`.
     refer_once: std::cell::OnceCell<Option<String>>,
     refer_twice: std::cell::OnceCell<Option<String>>,
-    /// [`parse_quote_message`] of `once`, which reads the `<refermsg>` of `twice`.
+    /// The quote in `once`, which is read from the `<refermsg>` of `twice`.
     quote_twice: std::cell::OnceCell<QuoteInfo>,
     display: std::cell::OnceCell<Option<QuotedDisplay>>,
 }
@@ -149,7 +148,6 @@ impl<'a> MsgXml<'a> {
             content,
             once: Default::default(),
             twice: Default::default(),
-            app_type_once: Default::default(),
             app_type_twice: Default::default(),
             refer_once: Default::default(),
             refer_twice: Default::default(),
@@ -179,14 +177,8 @@ impl<'a> MsgXml<'a> {
         twice.as_deref().unwrap_or_else(|| self.once())
     }
 
-    /// [`extract_app_message_type`] of the content.
-    pub fn app_type_once(&self) -> &str {
-        self.app_type_once
-            .get_or_init(|| app_type_in(self.content, self.once()))
-    }
-
     /// [`extract_app_message_type`] of [`once`](Self::once).
-    pub fn app_type_twice(&self) -> &str {
+    fn app_type_twice(&self) -> &str {
         self.app_type_twice
             .get_or_init(|| app_type_in(self.once(), self.twice()))
     }
@@ -197,7 +189,7 @@ impl<'a> MsgXml<'a> {
     }
 
     /// [`is_readable_system_message`] of [`once`](Self::once).
-    pub fn readable_system_twice(&self, local_type: i64) -> bool {
+    fn readable_system_twice(&self, local_type: i64) -> bool {
         local_type == 10000 || has_sysmsg(self.twice())
     }
 
@@ -236,8 +228,8 @@ impl<'a> MsgXml<'a> {
             .as_deref()
     }
 
-    /// [`parse_quote_message`] of [`once`](Self::once).
-    pub fn quote_twice(&self) -> &QuoteInfo {
+    /// The quote in [`once`](Self::once): who is quoted and what they said.
+    fn quote_twice(&self) -> &QuoteInfo {
         self.quote_twice.get_or_init(|| {
             self.refer_twice()
                 .map_or_else(QuoteInfo::empty, quote_info_of)
@@ -273,7 +265,7 @@ impl<'a> MsgXml<'a> {
             .as_ref()
     }
 
-    /// [`extract_reply_to_message_id`] of the content.
+    /// The server id (`<svrid>`) of the message the content replies to.
     pub fn reply_to_message_id(&self) -> Option<String> {
         unsigned_token(&extract_xml_value(self.refer_once()?, "svrid"))
     }
@@ -334,7 +326,7 @@ fn sender_prefix_len(content: &str) -> usize {
     }
 }
 
-pub fn extract_app_message_type(content: &str) -> String {
+fn extract_app_message_type(content: &str) -> String {
     app_type_in(content, &normalize_app_message_cow(content))
 }
 
@@ -655,7 +647,7 @@ pub struct ExportMsg {
     pub image_dat_name: Option<String>,
     pub emoji_cdn_url: Option<String>,
     pub emoji_md5: Option<String>,
-    /// The md5 of a sticker sent as an app message of type 8 ([`appmsg_emoticon_md5`]).
+    /// The md5 of a sticker sent as an app message of type 8 ([`appmsg_emoticon_md5_in`]).
     pub sticker_md5: Option<String>,
     pub emoji_caption: Option<String>,
     pub video_md5: Option<String>,
@@ -693,13 +685,13 @@ impl ExportMsg {
 
 // ────────────────────────── system / revoke / voip ──────────────────────────
 
-pub struct RevokeInfo {
+struct RevokeInfo {
     pub is_revoke: bool,
     pub is_self_revoke: bool,
     pub revoker_wxid: Option<String>,
 }
 
-pub fn extract_revoker_info(content: &str) -> RevokeInfo {
+fn extract_revoker_info(content: &str) -> RevokeInfo {
     let none = RevokeInfo {
         is_revoke: false,
         is_self_revoke: false,
@@ -739,7 +731,7 @@ pub fn extract_revoker_info(content: &str) -> RevokeInfo {
     }
 }
 
-pub fn is_readable_system_message(local_type: i64, content: &str) -> bool {
+fn is_readable_system_message(local_type: i64, content: &str) -> bool {
     local_type == 10000 || has_sysmsg(&normalize_app_message_cow(content))
 }
 
@@ -900,11 +892,7 @@ pub fn parse_voip_message(content: &str) -> String {
 
 // ───────────────────────────── type mapping ─────────────────────────────
 
-pub fn convert_message_type(local_type: i64, content: &str) -> i64 {
-    convert_message_type_in(local_type, &MsgXml::new(content))
-}
-
-/// [`convert_message_type`] of a message's [`MsgXml`].
+/// The export's type code of a message: its local type, or for an app message the kind its [`MsgXml`] names.
 pub fn convert_message_type_in(local_type: i64, x: &MsgXml) -> i64 {
     let normalized = x.once();
     if x.readable_system_twice(local_type) {
@@ -948,14 +936,7 @@ pub fn convert_message_type_in(local_type: i64, x: &MsgXml) -> i64 {
     }
 }
 
-pub fn message_type_name(local_type: i64, content: Option<&str>) -> &'static str {
-    match content {
-        Some(content) => message_type_name_in(local_type, &MsgXml::new(content)),
-        None => message_type_name_of(local_type),
-    }
-}
-
-/// [`message_type_name`] of a message's [`MsgXml`].
+/// The type name of a message: its local type's, or for an app message the name of the kind its [`MsgXml`] names.
 pub fn message_type_name_in(local_type: i64, x: &MsgXml) -> &'static str {
     {
         if !x.content().is_empty() {
@@ -978,7 +959,7 @@ pub fn message_type_name_in(local_type: i64, x: &MsgXml) -> &'static str {
     message_type_name_of(local_type)
 }
 
-/// [`message_type_name`] by the local type alone.
+/// The type name of a message by the local type alone.
 fn message_type_name_of(local_type: i64) -> &'static str {
     match local_type {
         1 => "文本消息",
@@ -1017,7 +998,7 @@ pub fn weclone_type_name(local_type: i64, content: &str) -> &'static str {
 
 // ─────────────────────────────── emoji helpers ───────────────────────────────
 
-pub fn normalize_md5(value: &str) -> Option<String> {
+fn normalize_md5(value: &str) -> Option<String> {
     let md5 = value.trim().to_lowercase();
     if md5.len() == 32 && md5.chars().all(|c| c.is_ascii_hexdigit()) {
         Some(md5)
@@ -1026,7 +1007,7 @@ pub fn normalize_md5(value: &str) -> Option<String> {
     }
 }
 
-pub fn extract_loose_hex_md5(content: &str) -> Option<String> {
+fn extract_loose_hex_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
@@ -1169,13 +1150,8 @@ pub fn format_emoji_semantic_text(caption: Option<&str>) -> String {
     }
 }
 
-/// 以 appmsg type 8 发送的表情的 md5（`<emoticonmd5>`），用来查表情描述。
-pub fn appmsg_emoticon_md5(content: &str) -> Option<String> {
-    appmsg_emoticon_md5_in(&MsgXml::new(content))
-}
-
-/// [`appmsg_emoticon_md5`] of a message's [`MsgXml`].
-pub fn appmsg_emoticon_md5_in(x: &MsgXml) -> Option<String> {
+/// The md5 (`<emoticonmd5>`) of a sticker sent as an app message of type 8, which looks up the sticker's caption.
+fn appmsg_emoticon_md5_in(x: &MsgXml) -> Option<String> {
     // the tag is matched ASCII case-insensitively; see normalized_may_contain for why `content` can rule it out
     crate::xml::find_ci(x.content(), 0, "emoticonmd5")?;
     if x.app_type_twice() != "8" {
@@ -1187,7 +1163,7 @@ pub fn appmsg_emoticon_md5_in(x: &MsgXml) -> Option<String> {
 
 // ─────────────────────────── image / video / file ───────────────────────────
 
-pub fn normalize_image_dat_name_token(value: &str) -> Option<String> {
+fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     let mut text = value.trim().to_string();
     if text.is_empty() {
         return None;
@@ -1287,7 +1263,7 @@ pub fn extract_image_md5(content: &str) -> Option<String> {
         .or_else(|| crate::xml::text_inner(content, "md5").map(str::to_lowercase))
 }
 
-pub fn extract_video_md5(content: &str) -> Option<String> {
+fn extract_video_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
@@ -1296,7 +1272,7 @@ pub fn extract_video_md5(content: &str) -> Option<String> {
         .or_else(|| crate::xml::text_inner(content, "md5").map(str::to_lowercase))
 }
 
-pub struct FileMeta {
+struct FileMeta {
     pub xml_type: Option<String>,
     pub file_name: Option<String>,
     pub file_size: Option<i64>,
@@ -1304,12 +1280,8 @@ pub struct FileMeta {
     pub file_md5: Option<String>,
 }
 
-pub fn extract_file_app_message_meta(content: &str) -> Option<FileMeta> {
-    extract_file_app_message_meta_in(&MsgXml::new(content))
-}
-
-/// [`extract_file_app_message_meta`] of a message's [`MsgXml`].
-pub fn extract_file_app_message_meta_in(x: &MsgXml) -> Option<FileMeta> {
+/// The file an app message carries ([`FileMeta`]), read from its [`MsgXml`].
+fn extract_file_app_message_meta_in(x: &MsgXml) -> Option<FileMeta> {
     let normalized = x.once();
     if normalized.is_empty() || (!normalized.contains("<appmsg") && !normalized.contains("<msg>")) {
         return None;
@@ -1357,9 +1329,9 @@ pub fn extract_file_app_message_meta_in(x: &MsgXml) -> Option<FileMeta> {
 }
 
 /// (latitude, longitude, label, poi name) of a location message.
-pub type LocationMeta = (Option<f64>, Option<f64>, Option<String>, Option<String>);
+type LocationMeta = (Option<f64>, Option<f64>, Option<String>, Option<String>);
 
-pub fn extract_location_meta(content: &str, local_type: i64) -> Option<LocationMeta> {
+fn extract_location_meta(content: &str, local_type: i64) -> Option<LocationMeta> {
     if content.is_empty() || local_type != 48 {
         return None;
     }
@@ -1443,7 +1415,7 @@ fn location_text(content: &str) -> String {
 
 // ─────────────────────────── forward chat records ───────────────────────────
 
-pub fn parse_chat_history(content: &str) -> Option<Vec<ForwardRecord>> {
+fn parse_chat_history(content: &str) -> Option<Vec<ForwardRecord>> {
     let normalized = normalize_app_message_cow(content);
     let app_type = extract_app_message_type(&normalized);
     if app_type != "19" && !normalized.contains("<recorditem") {
@@ -1650,7 +1622,7 @@ fn build_forward_lines(record: &ForwardRecord, depth: usize) -> Vec<String> {
     vec![format!("{indent}{prefix}{text}")]
 }
 
-pub fn format_forward_chat_record_content(content: &str) -> String {
+fn format_forward_chat_record_content(content: &str) -> String {
     let normalized = normalize_app_message_content(content);
     let name = ["nickname", "title", "des", "displayname"]
         .iter()
@@ -1677,7 +1649,7 @@ pub fn format_forward_chat_record_content(content: &str) -> String {
 // ───────────────────────────── quoted replies ─────────────────────────────
 
 #[derive(Clone)]
-pub struct QuoteInfo {
+struct QuoteInfo {
     pub content: Option<String>,
     pub sender: Option<String>,
     pub quote_type: Option<String>,
@@ -1789,15 +1761,7 @@ pub(crate) fn extract_preferred_quoted_text(refer_xml: &str) -> String {
     full
 }
 
-pub fn parse_quote_message(content: &str) -> QuoteInfo {
-    if !normalized_may_contain(content, "refermsg") {
-        return QuoteInfo::empty();
-    }
-    let normalized = normalize_app_message_cow(content);
-    refermsg_xml(&normalized).map_or_else(QuoteInfo::empty, quote_info_of)
-}
-
-/// [`parse_quote_message`] given the `<refermsg>` block of the normalized content.
+/// The quote a `<refermsg>` block (of the normalized content) holds.
 fn quote_info_of(refer: impl AsRef<str>) -> QuoteInfo {
     let refer = refer.as_ref();
     let mut sender = extract_xml_value(refer, "displayname");
@@ -1952,7 +1916,7 @@ pub struct QuotedDisplay {
     pub quoted_preview: String,
 }
 
-pub fn extract_quoted_reply_display(content: &str) -> Option<QuotedDisplay> {
+fn extract_quoted_reply_display(content: &str) -> Option<QuotedDisplay> {
     MsgXml::new(content).quoted_display().cloned()
 }
 
@@ -1979,13 +1943,8 @@ pub fn is_quoted_reply_message(local_type: i64, content: &str) -> bool {
     extract_app_message_type(&normalized) == "57" || normalized.contains("<refermsg>")
 }
 
-/// 是不是「回复/引用」消息：只认 localType 244813135921 或 appmsg type 57。
-/// 图片、转发的聊天记录等消息里也可能夹带 `<refermsg>`，它们不是文字引用。
-pub fn is_text_quote_message(local_type: i64, content: &str) -> bool {
-    is_text_quote_message_in(local_type, &MsgXml::new(content))
-}
-
-/// [`is_text_quote_message`] of a message's [`MsgXml`].
+/// Whether the message is a reply (a text quote): only local type 244813135921 and app message type 57 are.
+/// Images, forwarded chat records and others may carry a `<refermsg>` too, and are not text quotes.
 pub fn is_text_quote_message_in(local_type: i64, x: &MsgXml) -> bool {
     if local_type == 244_813_135_921 {
         return true;
@@ -1994,10 +1953,6 @@ pub fn is_text_quote_message_in(local_type: i64, x: &MsgXml) -> bool {
         return false;
     }
     x.app_type_twice() == "57"
-}
-
-pub fn extract_reply_to_message_id(content: &str) -> Option<String> {
-    MsgXml::new(content).reply_to_message_id()
 }
 
 /// Sender wxid of a quoted message, following `resolveQuotedSenderUsername`.
@@ -2014,7 +1969,7 @@ pub fn is_same_wxid(lhs: &str, rhs: &str) -> bool {
     weflow_native::native_db::same_identity(lhs, rhs)
 }
 
-pub fn get_transfer_prefix(
+fn get_transfer_prefix(
     content: &str,
     my_wxid: Option<&str>,
     sender_wxid: Option<&str>,
@@ -2085,7 +2040,7 @@ pub fn transfer_parties(content: &str) -> Option<(String, String)> {
 // ──────────────────────────── plain text rendering ────────────────────────────
 
 #[derive(Clone, Debug, Default)]
-pub struct PlainOpts {
+struct PlainOpts {
     pub export_voice_as_text: bool,
 }
 
@@ -2339,7 +2294,7 @@ pub fn parse_message_content_in(
 }
 
 /// `formatPlainExportContent` — text used by TXT / Excel / HTML.
-pub fn format_plain_export_content(
+fn format_plain_export_content(
     content: &str,
     local_type: i64,
     opts: &PlainOpts,
@@ -2517,7 +2472,7 @@ pub struct LinkCard {
     pub url: String,
 }
 
-pub fn normalize_http_link_url(raw: &str) -> String {
+fn normalize_http_link_url(raw: &str) -> String {
     let value = raw.trim().replace("&amp;", "&");
     if value.is_empty() {
         return String::new();
@@ -2683,14 +2638,6 @@ pub fn extract_arkme_app_message_meta_in(
 
 /// [`extract_arkme_app_message_meta`] of a quote or a link; `None` for every other message, whose fields are not
 /// read.
-pub fn quote_or_link_app_message_meta(
-    content: &str,
-    local_type: i64,
-) -> Option<Map<String, Value>> {
-    quote_or_link_app_message_meta_in(&MsgXml::new(content), local_type)
-}
-
-/// [`quote_or_link_app_message_meta`] of a message's [`MsgXml`].
 pub fn quote_or_link_app_message_meta_in(
     x: &MsgXml,
     local_type: i64,
@@ -3006,7 +2953,7 @@ pub struct CollectOptions<'a> {
 
 /// Who sent a message, as the exports name it: the revoker of a revoke notice, the account for its own messages,
 /// else the row's sender, else the conversation itself.
-pub fn message_sender(
+fn message_sender(
     local_type: i64,
     content: &str,
     is_send: bool,
@@ -3282,11 +3229,11 @@ mod tests {
         assert_eq!(format_emoji_semantic_text(Some("打call")), "[表情：打call]");
         let xml = "<msg><appmsg><title /><type>8</type><appattach><emoticonmd5>35A036EDED53A8D41C043215C66FFDA3</emoticonmd5></appattach></appmsg></msg>";
         assert_eq!(
-            appmsg_emoticon_md5(xml).as_deref(),
+            appmsg_emoticon_md5_in(&MsgXml::new(xml)).as_deref(),
             Some("35a036eded53a8d41c043215c66ffda3")
         );
         assert_eq!(
-            appmsg_emoticon_md5("<msg><appmsg><type>5</type></appmsg></msg>"),
+            appmsg_emoticon_md5_in(&MsgXml::new("<msg><appmsg><type>5</type></appmsg></msg>")),
             None
         );
     }
@@ -3302,7 +3249,10 @@ mod tests {
         let xml = "<msg><appmsg><title>ok</title><type>57</type><refermsg><type>1</type><displayname>Bob</displayname><content>hi there</content><svrid>123</svrid></refermsg></appmsg></msg>";
         let d = extract_quoted_reply_display(xml).unwrap();
         assert_eq!(build_quoted_reply_text(&d), "ok[引用 Bob：hi there]");
-        assert_eq!(extract_reply_to_message_id(xml).as_deref(), Some("123"));
+        assert_eq!(
+            MsgXml::new(xml).reply_to_message_id().as_deref(),
+            Some("123")
+        );
         assert_eq!(
             parse_message_content(xml, 49, None, None, None).unwrap(),
             "ok[引用 Bob：hi there]"
@@ -3384,7 +3334,7 @@ mod tests {
         let xml = "<msg><appmsg><title>群聊的聊天记录</title><type>19</type><recorditem><![CDATA[<recordinfo><datalist><dataitem datatype=\"1\"><sourcename>Bob</sourcename><sourcetime>2024-01-01 10:00:00</sourcetime><datadesc>hello</datadesc></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>";
         let text = format_forward_chat_record_content(xml);
         assert_eq!(text, "[转发的聊天记录]群聊的聊天记录\nBob: hello");
-        assert_eq!(convert_message_type(49, xml), 7);
+        assert_eq!(convert_message_type_in(49, &MsgXml::new(xml)), 7);
     }
 
     #[test]
@@ -4089,7 +4039,7 @@ mod tests {
         let joined =
             "<msg><appmsg><ty<patmsg>a</patmsg>pe>5</ty<patmsg>b</patmsg>pe></appmsg></msg>";
         assert_eq!(app_message_kind(joined, 1), Some("link"));
-        assert!(quote_or_link_app_message_meta(joined, 1).is_some());
+        assert!(quote_or_link_app_message_meta_in(&MsgXml::new(joined), 1).is_some());
         let mut rng = StdRng::seed_from_u64(546);
         let mut kinds: HashMap<Option<&'static str>, usize> = HashMap::new();
         for _ in 0..20_000 {
@@ -4115,7 +4065,7 @@ mod tests {
             );
             let quote_or_link = whole.filter(|_| matches!(kind, Some("quote" | "link")));
             assert_eq!(
-                quote_or_link_app_message_meta(&s, t),
+                quote_or_link_app_message_meta_in(&MsgXml::new(&s), t),
                 quote_or_link,
                 "{s:?} as {t}"
             );

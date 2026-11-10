@@ -574,7 +574,7 @@ fn config_pointer_file() -> Option<PathBuf> {
 }
 
 /// The config path chosen with `config set config_path` (`None` = the default location).
-pub fn saved_config_path() -> Option<PathBuf> {
+fn saved_config_path() -> Option<PathBuf> {
     let text = fs::read_to_string(config_pointer_file()?).ok()?;
     let text = text.trim();
     (!text.is_empty()).then(|| PathBuf::from(text))

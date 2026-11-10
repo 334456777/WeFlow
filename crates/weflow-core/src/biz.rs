@@ -12,7 +12,7 @@ fn fallback_or_empty(primary: &str, extract_fn: impl FnOnce() -> String) -> Stri
     }
 }
 
-pub fn parse_biz_content_list(xml_str: &str) -> Vec<BizArticle> {
+fn parse_biz_content_list(xml_str: &str) -> Vec<BizArticle> {
     if xml_str.is_empty() {
         return Vec::new();
     }
@@ -46,7 +46,7 @@ pub fn parse_biz_content_list(xml_str: &str) -> Vec<BizArticle> {
 }
 
 /// A notice, without the message's ids.
-pub fn parse_pay_xml(xml_str: &str) -> Option<PayRecord> {
+fn parse_pay_xml(xml_str: &str) -> Option<PayRecord> {
     if xml_str.is_empty() {
         return None;
     }

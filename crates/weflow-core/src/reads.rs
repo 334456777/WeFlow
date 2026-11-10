@@ -197,7 +197,7 @@ pub fn day_span(start: Option<&str>, end: Option<&str>) -> AppResult<(i64, i64)>
 
 /// `config profiles` (#215, #216): what each profile is set up with, the keys only as whether they are set, so a
 /// client can tell which account is ready without reading a key. `complete`: enough to open the database.
-pub fn profiles_summary(config: &ConfigStore) -> Vec<crate::contract::ProfileSummary> {
+fn profiles_summary(config: &ConfigStore) -> Vec<crate::contract::ProfileSummary> {
     let set = |value: &Option<String>| value.as_deref().is_some_and(|v| !v.trim().is_empty());
     let profiles = config
         .profiles

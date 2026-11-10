@@ -155,7 +155,7 @@ pub fn hex(bytes: &[u8]) -> String {
 }
 
 /// Text form of a BLOB: inflate zstd frames, then UTF-8 if valid, otherwise lowercase hex.
-pub fn blob_to_string(b: &[u8]) -> String {
+fn blob_to_string(b: &[u8]) -> String {
     let inflated;
     let bytes = if b.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
         match zstd::stream::decode_all(b) {

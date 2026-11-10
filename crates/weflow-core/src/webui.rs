@@ -24,7 +24,7 @@ use crate::error::{AppError, AppResult};
 
 /// Where the versions are published.
 pub const REGISTRY: &str = "https://ghcr.io";
-pub const REPOSITORY: &str = "334456777/weflow-web";
+const REPOSITORY: &str = "334456777/weflow-web";
 /// The artifact type of a WebUI version, and the media type of its one layer (the page, zipped).
 pub const ARTIFACT_TYPE: &str = "application/vnd.weflow.web.v1";
 pub const LAYER_TYPE: &str = "application/vnd.weflow.web.layer.v1+zip";
@@ -33,9 +33,9 @@ pub const ANNOTATION_API: &str = "io.weflow.web.api-version";
 pub const ANNOTATION_MIN_BACKEND: &str = "io.weflow.web.min-backend-version";
 
 /// The most a package may weigh, and the most it may unpack to, in how many files.
-pub const MAX_PACKAGE: u64 = 64 << 20;
-pub const MAX_UNPACKED: u64 = 256 << 20;
-pub const MAX_FILES: usize = 10_000;
+const MAX_PACKAGE: u64 = 64 << 20;
+const MAX_UNPACKED: u64 = 256 << 20;
+const MAX_FILES: usize = 10_000;
 
 /// What a built page says about itself (`weflow-web.json`, written by the WebUI's build).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,7 +74,7 @@ impl Backend<'_> {
 
 /// Compares versions as SemVer does (`5.0.0-rc.2` < `5.0.0-rc.10` < `5.0.0`), leading `v` or not. A development
 /// build's `git describe` (`5.0.0-rc.5-3-gabc1234`) comes after its tag and before the next one.
-pub fn compare_versions(a: &str, b: &str) -> Ordering {
+fn compare_versions(a: &str, b: &str) -> Ordering {
     fn parts(v: &str) -> (Vec<u64>, Vec<String>, u64) {
         let v = v.trim().trim_start_matches('v');
         let v = v.split('+').next().unwrap_or("");
@@ -121,7 +121,7 @@ pub fn compare_versions(a: &str, b: &str) -> Ordering {
 }
 
 /// A version as a folder name: digits, letters, dots, dashes and pluses only.
-pub fn valid_version(version: &str) -> bool {
+fn valid_version(version: &str) -> bool {
     !version.is_empty()
         && version.len() <= 64
         && version.chars().next().is_some_and(|c| c.is_ascii_digit())
@@ -557,7 +557,7 @@ impl Registry {
 
 /// Unpacks a package into `dir` under the limits: only paths inside it, no links, at most [`MAX_UNPACKED`] bytes
 /// in [`MAX_FILES`] files.
-pub fn unpack(package: &Path, dir: &Path) -> AppResult<()> {
+fn unpack(package: &Path, dir: &Path) -> AppResult<()> {
     let bad = |what: String| AppError::runtime(format!("the WebUI package is refused: {what}"));
     let file = std::fs::File::open(package)
         .map_err(|e| AppError::runtime(format!("cannot read {}: {e}", package.display())))?;
