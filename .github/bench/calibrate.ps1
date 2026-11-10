@@ -16,7 +16,7 @@
 
 .EXAMPLE
   .\calibrate.ps1                 # once, now
-  .\calibrate.ps1 -Register       # every four weeks, Friday 02:40, whether you are logged on or not
+  .\calibrate.ps1 -Register       # every four weeks, Friday 02:40, whether you are logged on or not, waking the computer
 #>
 param(
   [string] $BenchDir = 'E:\weflow-bench',
@@ -33,7 +33,8 @@ if ($Register) {
   $trigger = New-ScheduledTaskTrigger -Weekly -WeeksInterval 4 -DaysOfWeek Friday -At 02:40
   # S4U: runs whether you are logged on or not, without keeping your password
   $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
-  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 3)
+  # wakes the computer from sleep; a run missed while it was off starts once it is back
+  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Hours 3)
   Register-ScheduledTask -TaskName 'WeFlow benchmark calibration' -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings -Force | Out-Null
   Write-Host 'registered: WeFlow benchmark calibration, every four weeks on Friday at 02:40'
