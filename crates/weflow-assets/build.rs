@@ -83,10 +83,6 @@ fn collect_assets(
 }
 
 fn include_asset(logical: &str, target: &str) -> bool {
-    if logical == "image/README.md" {
-        return true;
-    }
-
     let is_windows = target.contains("windows");
     let is_macos = target.contains("apple-darwin");
     let is_linux = target.contains("linux");
@@ -100,15 +96,6 @@ fn include_asset(logical: &str, target: &str) -> bool {
         return is_macos && !logical.contains("/source/");
     }
     if logical.starts_with("key/linux/") {
-        return is_linux && arch_match(logical, is_arm64);
-    }
-    if logical.starts_with("wedecrypt/win32/") {
-        return is_windows && arch_match(logical, is_arm64);
-    }
-    if logical.starts_with("wedecrypt/macos/") {
-        return is_macos && (logical.contains("/universal/") || arch_match(logical, is_arm64));
-    }
-    if logical.starts_with("wedecrypt/linux/") {
         return is_linux && arch_match(logical, is_arm64);
     }
 

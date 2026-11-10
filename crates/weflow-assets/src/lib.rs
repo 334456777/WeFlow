@@ -159,15 +159,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embedded_manifest_is_not_empty() {
+    fn the_manifest_lists_every_embedded_file() {
         let manifest = manifest("1.2.3");
         assert_eq!(manifest.version, "1.2.3");
-        assert!(!manifest.entries.is_empty());
         assert!(!manifest.target.is_empty());
-        assert!(manifest
-            .entries
-            .iter()
-            .any(|entry| entry.path.ends_with("image/README.md")));
+        // a target without helpers (Linux arm64) embeds nothing (#646)
+        let listed: Vec<&str> = manifest.entries.iter().map(|e| e.path.as_str()).collect();
+        let embedded: Vec<&str> = EMBEDDED_ASSETS.iter().map(|a| a.logical_path).collect();
+        assert_eq!(listed, embedded);
     }
 
     #[test]
@@ -187,7 +186,11 @@ mod tests {
         let home = std::env::temp_dir().join(format!("weflow-assets-{}", std::process::id()));
         let _ = fs::remove_dir_all(&home);
         let dir = ensure_runtime(&home, "test").unwrap();
-        let asset = &EMBEDDED_ASSETS[0];
+        // a target that embeds nothing has no file to damage
+        let Some(asset) = EMBEDDED_ASSETS.first() else {
+            let _ = fs::remove_dir_all(&home);
+            return;
+        };
         let path = dir.join(asset.logical_path);
         assert_eq!(fs::read(&path).unwrap(), asset.bytes);
         let manifest_time = fs::metadata(dir.join("manifest.json"))
