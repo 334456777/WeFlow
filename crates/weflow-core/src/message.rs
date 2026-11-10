@@ -296,8 +296,29 @@ pub fn strip_sender_prefix(content: &str) -> String {
     content[sender_prefix_len(content)..].to_string()
 }
 
+/// `content`, the text of a message `sender` sent, without its sender line (#656). Only a message somebody else
+/// sent to a group starts with one, naming them; the first line of any other text, such as `PS:`, stays. The line
+/// goes when it names `sender`, or when the sender is the group itself (the exports' sender of a row whose sender
+/// was not resolved). With no sender known (none or empty) it is [`strip_sender_prefix`].
+pub fn strip_sender_line(content: &str, sender: Option<&str>) -> String {
+    let Some(sender) = sender.map(str::trim).filter(|s| !s.is_empty()) else {
+        return strip_sender_prefix(content);
+    };
+    match sender_prefix(content) {
+        Some((name, end)) if name.eq_ignore_ascii_case(sender) || sender.ends_with("@chatroom") => {
+            content[end..].to_string()
+        }
+        _ => content.to_string(),
+    }
+}
+
 /// Length of the sender prefix [`strip_sender_prefix`] removes: `^\s*([A-Za-z0-9_@-]+):(\r?\n|)`, or 0.
 fn sender_prefix_len(content: &str) -> usize {
+    sender_prefix(content).map_or(0, |(_, end)| end)
+}
+
+/// The name of the sender prefix [`strip_sender_prefix`] removes, and where the text after it starts.
+fn sender_prefix(content: &str) -> Option<(&str, usize)> {
     // 数据库里的群消息是 "wxid:\n正文"（企业微信成员是 "…@openim:\n正文"）；同一行的 "1:3-1:6" 这类是正文本身，
     // 不能当作前缀去掉。
     let h = content.as_bytes();
@@ -308,7 +329,7 @@ fn sender_prefix_len(content: &str) -> usize {
         .count();
     let colon = start + name_len;
     if name_len == 0 || h.get(colon) != Some(&b':') {
-        return 0;
+        return None;
     }
     let rest = &h[colon + 1..];
     let newline = if rest.starts_with(b"\r\n") {
@@ -319,11 +340,7 @@ fn sender_prefix_len(content: &str) -> usize {
     let end = colon + 1 + newline;
     let name = &content[start..colon];
     let looks_like_id = name.starts_with("wxid_") || name.starts_with("gh_");
-    if (newline > 0 || looks_like_id) && !content[end..].starts_with("//") {
-        end
-    } else {
-        0
-    }
+    ((newline > 0 || looks_like_id) && !content[end..].starts_with("//")).then_some((name, end))
 }
 
 fn extract_app_message_type(content: &str) -> String {
@@ -2158,7 +2175,7 @@ pub fn parse_message_content_in(
         }
     };
     match local_type {
-        1 => Some(strip_sender_prefix(content)),
+        1 => Some(strip_sender_line(content, sender_wxid)),
         3 => Some("[图片]".into()),
         34 => Some("[语音消息]".into()),
         42 => Some("[名片]".into()),
@@ -3203,6 +3220,28 @@ mod tests {
         // an enterprise WeChat member's id
         assert_eq!(strip_sender_prefix("123456@openim:\nhi"), "hi");
         assert_eq!(strip_sender_prefix("a@b.c:hi"), "a@b.c:hi");
+    }
+
+    #[test]
+    fn only_the_line_naming_the_sender_is_a_sender_line() {
+        // a group message somebody else sent (#656)
+        assert_eq!(strip_sender_line("wxid_bob:\nhi", Some("wxid_bob")), "hi");
+        assert_eq!(strip_sender_line("WXID_bob:\nhi", Some("wxid_bob")), "hi");
+        assert_eq!(strip_sender_line("1@openim:\nhi", Some("1@openim")), "hi");
+        // a sender the exports could not resolve is the group itself
+        assert_eq!(strip_sender_line("wxid_bob:\nhi", Some("1@chatroom")), "hi");
+        // any other message's first line is its own
+        for (text, sender) in [
+            ("PS:\nsee you", "wxid_bob"),
+            ("TODO:\nbuy milk", "wxid_me"),
+            ("wxid_carol:\nhi", "wxid_bob"),
+            ("4:1", "wxid_bob"),
+        ] {
+            assert_eq!(strip_sender_line(text, Some(sender)), text, "{text}");
+        }
+        // with no sender known, the text alone decides
+        assert_eq!(strip_sender_line("PS:\nsee you", None), "see you");
+        assert_eq!(strip_sender_line("PS:\nsee you", Some(" ")), "see you");
     }
 
     #[test]

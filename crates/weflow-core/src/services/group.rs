@@ -1068,7 +1068,15 @@ impl ServiceHub {
                     }
                     let msg_type = row.local_type;
                     let create_time = row.create_time.unwrap_or(0);
-                    let content = rx(SENDER_LINE).replace(row.content.trim(), "");
+                    // only the line naming the sender is a sender line (#656): the owner's text keeps a first
+                    // line such as `TODO:`
+                    let body = row.content.trim();
+                    let content = match rx(SENDER_LINE).captures(body) {
+                        Some(line) if line[1].trim().eq_ignore_ascii_case(sender.trim()) => {
+                            &body[line[0].len()..]
+                        }
+                        _ => body,
+                    };
                     total += 1;
                     if msg_type == 1 || msg_type == 244813135921 {
                         text += 1;
