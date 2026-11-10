@@ -581,6 +581,18 @@ impl Wcdb {
         )
     }
 
+    /// Where WeChat's media index puts the images, by message md5 (see `NativeAccount::image_hardlink_index`).
+    pub fn image_hardlink_index(
+        &self,
+    ) -> Result<std::collections::HashMap<String, Vec<std::path::PathBuf>>> {
+        self.account()?.image_hardlink_index()
+    }
+
+    /// Where WeChat's media index puts the video of a message md5 (see `NativeAccount::video_hardlinks`).
+    pub fn video_hardlinks(&self, md5: &str) -> Result<Vec<std::path::PathBuf>> {
+        self.account()?.video_hardlinks(md5)
+    }
+
     pub fn emoticon_cdn_url(&self, md5: &str) -> Result<String> {
         self.account()?.emoticon_cdn_url(md5)
     }

@@ -1190,9 +1190,6 @@ struct ImageTarget {
     /// Return a file path instead of a base64 data URL
     #[arg(long)]
     prefer_file_path: bool,
-    /// Only look the file up in WeChat's hardlink index
-    #[arg(long)]
-    hardlink_only: bool,
     /// Do not fall back to scanning by .dat name
     #[arg(long)]
     no_cache_index: bool,
@@ -1206,7 +1203,6 @@ impl ImageTarget {
             image_dat_name: self.dat_name.clone(),
             create_time: self.create_time,
             prefer_file_path: self.prefer_file_path,
-            hardlink_only: self.hardlink_only,
             allow_cache_index: if self.no_cache_index {
                 Some(false)
             } else {

@@ -25,6 +25,16 @@ pub struct ImageState {
     dir_listings: HashMap<PathBuf, Arc<DirListing>>,
     /// Names in the folders of the decrypted-image cache (see [`ServiceHub::possibly_cached`]).
     cache_dirs: HashMap<PathBuf, CacheDirNames>,
+    /// WeChat's media index of images (see [`ServiceHub::linked_image_index`]).
+    linked_images: Option<LinkedImages>,
+}
+
+/// The image rows of WeChat's media index (`hardlink.db`), read whole, and the state of its database files when
+/// they were read: a change to the database or to its WAL reads them again.
+struct LinkedImages {
+    account_dir: PathBuf,
+    stamp: [Option<(Option<SystemTime>, u64)>; 2],
+    by_md5: Arc<HashMap<String, Vec<PathBuf>>>,
 }
 
 /// `failureKind` of a WXGF image the built-in decoder cannot convert.
@@ -154,6 +164,26 @@ struct DatFiles {
     thumb: Option<String>,
 }
 
+/// What a `.dat` file of an image holds, best first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Rendition {
+    Hd,
+    Original,
+    Thumbnail,
+}
+
+impl Rendition {
+    fn of(dat_path: &str) -> Self {
+        if img::is_hd_dat_path(dat_path) {
+            Self::Hd
+        } else if img::is_t_variant_dat(dat_path) {
+            Self::Thumbnail
+        } else {
+            Self::Original
+        }
+    }
+}
+
 /// A `not_found` failure (HTTP 404), as the image routes report a missing file.
 fn not_found(message: &str) -> AppError {
     let mut err = AppError::runtime(message);
@@ -168,7 +198,6 @@ pub struct ImagePayload {
     pub image_dat_name: Option<String>,
     pub create_time: Option<i64>,
     pub prefer_file_path: bool,
-    pub hardlink_only: bool,
     /// `allowCacheIndex !== false`
     pub allow_cache_index: Option<bool>,
     pub force: bool,
@@ -192,7 +221,6 @@ impl ImagePayload {
                     .or_else(|| t.as_f64().map(crate::num::saturating_i64))
             }),
             prefer_file_path: b("preferFilePath"),
-            hardlink_only: b("hardlinkOnly"),
             allow_cache_index: v.get("allowCacheIndex").and_then(Value::as_bool),
             force: b("force"),
         }
@@ -606,8 +634,106 @@ impl ServiceHub {
         Some(listing)
     }
 
-    /// `selectBestDatPathByBase`: HD variant in an Img folder, else `<md5>.dat`, else a `_t` thumbnail.
+    /// The best `.dat` of the image `base_md5`: what the folders of its conversation hold
+    /// ([`Self::select_listed_dat`]), unless WeChat's media index names a better rendition on disk, or the folders
+    /// hold none (#651). The index is only an index: many images have no row in it, so the folders are always
+    /// searched, and what they find is kept when the index has nothing better.
     fn select_best_dat(
+        &self,
+        account_dir: &Path,
+        base_md5: &str,
+        session_id: Option<&str>,
+        create_time: Option<i64>,
+        allow_thumbnail: bool,
+    ) -> Option<String> {
+        let listed = self.select_listed_dat(
+            account_dir,
+            base_md5,
+            session_id,
+            create_time,
+            allow_thumbnail,
+        );
+        if listed
+            .as_deref()
+            .is_some_and(|p| Rendition::of(p) == Rendition::Hd)
+        {
+            return listed;
+        }
+        let linked = self.select_linked_dat(account_dir, base_md5, allow_thumbnail);
+        match (listed, linked) {
+            (Some(listed), Some(linked)) if Rendition::of(&linked) < Rendition::of(&listed) => {
+                Some(linked)
+            }
+            (listed, linked) => listed.or(linked),
+        }
+    }
+
+    /// The best rendition of `base_md5` that WeChat's media index lists and that is on disk, the newest of equals;
+    /// only an HD one unless `allow_thumbnail`.
+    fn select_linked_dat(
+        &self,
+        account_dir: &Path,
+        base_md5: &str,
+        allow_thumbnail: bool,
+    ) -> Option<String> {
+        self.linked_dats(account_dir, base_md5)
+            .into_iter()
+            .filter(|p| allow_thumbnail || Rendition::of(p) == Rendition::Hd)
+            // the first of equals: the index lists the newest first
+            .min_by_key(|p| Rendition::of(p))
+    }
+
+    /// The `.dat` files of `base_md5` that WeChat's media index (`hardlink.db`) lists and that are on disk, newest
+    /// first.
+    fn linked_dats(&self, account_dir: &Path, base_md5: &str) -> Vec<String> {
+        if !img::looks_like_md5(base_md5) {
+            return Vec::new();
+        }
+        let index = self.linked_image_index(account_dir);
+        index
+            .get(base_md5)
+            .into_iter()
+            .flatten()
+            .map(|rel| account_dir.join(rel).to_string_lossy().into_owned())
+            .filter(|p| p.to_lowercase().ends_with(".dat") && Path::new(p).is_file())
+            .collect()
+    }
+
+    /// WeChat's media index of images by md5, read again only when its database changed since it was last read.
+    /// Without the database key it cannot be read, and is empty.
+    fn linked_image_index(&self, account_dir: &Path) -> Arc<HashMap<String, Vec<PathBuf>>> {
+        let db = account_dir.join("db_storage/hardlink/hardlink.db");
+        let stamp = [db.clone(), db.with_extension("db-wal")].map(|path| {
+            std::fs::metadata(path)
+                .ok()
+                .map(|m| (m.modified().ok(), m.len()))
+        });
+        if let Some(cached) = self
+            .image_state
+            .lock_or_panic()
+            .linked_images
+            .as_ref()
+            .filter(|c| c.account_dir == account_dir && c.stamp == stamp)
+        {
+            return cached.by_md5.clone();
+        }
+        // read without holding the lock, as the folders are
+        let by_md5 = Arc::new(
+            self.open_wcdb()
+                .ok()
+                .and_then(|wcdb| wcdb.image_hardlink_index().ok())
+                .unwrap_or_default(),
+        );
+        self.image_state.lock_or_panic().linked_images = Some(LinkedImages {
+            account_dir: account_dir.to_path_buf(),
+            stamp,
+            by_md5: by_md5.clone(),
+        });
+        by_md5
+    }
+
+    /// `selectBestDatPathByBase`: HD variant in an Img folder, else `<md5>.dat`, else a `_t` thumbnail.
+    fn select_listed_dat(
         &self,
         account_dir: &Path,
         base_md5: &str,
@@ -902,7 +1028,6 @@ impl ServiceHub {
         let upgraded = self.image_decrypt(&ImagePayload {
             prefer_file_path: true,
             force: true,
-            hardlink_only: true,
             ..p.clone()
         });
         if !upgraded.success {
@@ -1200,7 +1325,7 @@ impl ServiceHub {
             .iter()
             .map(|p| {
                 let key = format!(
-                    "{}|{}|{}|{}|{}|{}",
+                    "{}|{}|{}|{}|{}",
                     p.session_id.as_deref().unwrap_or("").trim().to_lowercase(),
                     p.image_md5.as_deref().unwrap_or("").trim().to_lowercase(),
                     p.image_dat_name
@@ -1209,8 +1334,7 @@ impl ServiceHub {
                         .trim()
                         .to_lowercase(),
                     p.create_time.unwrap_or(0),
-                    p.prefer_file_path,
-                    p.hardlink_only
+                    p.prefer_file_path
                 );
                 memo.entry(key)
                     .or_insert_with(|| self.image_resolve_cache(p))
@@ -1320,7 +1444,8 @@ impl ServiceHub {
         })
     }
 
-    /// The `.dat` files of each rendition of `p`'s image, chosen as [`Self::select_best_dat`] chooses among them.
+    /// The `.dat` files of each rendition of `p`'s image, chosen as [`Self::select_best_dat`] chooses among them:
+    /// what the folders hold, and a rendition they lack where WeChat's media index puts one (#651).
     fn dat_files(&self, p: &ImagePayload) -> Option<DatFiles> {
         let account_dir = self.account_dir_only().ok()?;
         let bases = lookup_bases(
@@ -1328,9 +1453,33 @@ impl ServiceHub {
             p.image_dat_name.as_deref(),
             p.allow_cache_index != Some(false),
         );
+        let mut files = self
+            .listed_dat_files(&account_dir, p, &bases)
+            .unwrap_or_default();
         for base in &bases {
+            for linked in self.linked_dats(&account_dir, base) {
+                let slot = match Rendition::of(&linked) {
+                    Rendition::Hd => &mut files.hd,
+                    Rendition::Original => &mut files.base,
+                    Rendition::Thumbnail => &mut files.thumb,
+                };
+                // the index lists the newest first
+                slot.get_or_insert(linked);
+            }
+        }
+        (files.hd.is_some() || files.base.is_some() || files.thumb.is_some()).then_some(files)
+    }
+
+    /// [`Self::dat_files`] in the folders of the conversation only.
+    fn listed_dat_files(
+        &self,
+        account_dir: &Path,
+        p: &ImagePayload,
+        bases: &[String],
+    ) -> Option<DatFiles> {
+        for base in bases {
             let candidates: Vec<String> = self
-                .collect_dat_candidates(&account_dir, base, p.session_id.as_deref(), p.create_time)
+                .collect_dat_candidates(account_dir, base, p.session_id.as_deref(), p.create_time)
                 .into_iter()
                 .filter(|c| Path::new(c).exists() && c.to_lowercase().ends_with(".dat"))
                 .collect();
@@ -1459,7 +1608,6 @@ impl ServiceHub {
             image_dat_name: dat_name,
             create_time: Some(msg.create_time).filter(|t| *t != 0),
             prefer_file_path: true,
-            hardlink_only: true,
             ..Default::default()
         };
         Ok((payload, msg.raw_content))

@@ -1051,3 +1051,184 @@ async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
     assert_eq!(image, std::fs::read(dir.join(image_rel)).unwrap());
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// WeChat's media index (`hardlink.db`) only adds to what the folders of the conversation hold (#651): a better
+/// rendition it names wins, an image only it knows is found, and what the folders find is kept otherwise, also for
+/// the many images the index has no row for.
+#[test]
+fn the_media_index_adds_to_what_the_folders_hold() {
+    use weflow_native::fixture::{Fixture, HardlinkSpec};
+    let (hub, root, account, img_dir) = setup("img-hardlink");
+    let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
+    let talker = md5_hex("wxid_bob");
+    // a month folder the message's month does not name
+    let elsewhere = account.join("msg/attach").join(&talker).join("2020-01/Img");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let put = |dir: &std::path::Path, name: &str, image: &[u8]| {
+        std::fs::write(dir.join(name), encrypt_v2(image, &key, 0x5a)).unwrap();
+    };
+    // (md5, what the folders hold, what the index names elsewhere, the image expected)
+    let [only_thumb, tie, no_row, only_linked] = ["thumb", "tie", "no-row", "linked"].map(md5_hex);
+    let (thumb, original, listed, renamed, plain, hd) = (
+        jpeg(1200, 1),
+        jpeg(2400, 2),
+        jpeg(2500, 3),
+        jpeg(2600, 4),
+        jpeg(2700, 5),
+        jpeg(2800, 6),
+    );
+    put(&img_dir, &format!("{only_thumb}_t.dat"), &thumb);
+    put(&elsewhere, &format!("{only_thumb}.dat"), &original);
+    put(&img_dir, &format!("{tie}.dat"), &listed);
+    put(&elsewhere, "0123456789abcdef0123456789abcdef.dat", &renamed);
+    put(&img_dir, &format!("{no_row}.dat"), &plain);
+    put(&elsewhere, &format!("{only_linked}_h.dat"), &hd);
+    let file = |md5: &str| format!("{md5}.dat");
+    let hd_file = format!("{only_linked}_h.dat");
+    Fixture::open(&root.join("data"), "wxid_me_ab12").hardlink_db(&[
+        HardlinkSpec::image(&only_thumb, &file(&only_thumb), &talker, "2020-01"),
+        HardlinkSpec::image(
+            &tie,
+            "0123456789abcdef0123456789abcdef.dat",
+            &talker,
+            "2020-01",
+        ),
+        HardlinkSpec::image(&only_linked, &hd_file, &talker, "2020-01"),
+        // a row whose file is gone changes nothing
+        HardlinkSpec::image(
+            &no_row,
+            "fedcba9876543210fedcba9876543210_h.dat",
+            &talker,
+            "2020-01",
+        ),
+    ]);
+
+    for (md5, expected, is_thumb, why) in [
+        (
+            &only_thumb,
+            &original,
+            false,
+            "the index's original beats the folder's thumbnail",
+        ),
+        (
+            &tie,
+            &listed,
+            false,
+            "what the folders find is kept when the index has nothing better",
+        ),
+        (
+            &no_row,
+            &plain,
+            false,
+            "an image the index has no file for is found in the folders",
+        ),
+        (
+            &only_linked,
+            &hd,
+            false,
+            "an image only the index knows is found",
+        ),
+    ] {
+        let r = hub.image_decrypt(&ImagePayload {
+            session_id: Some("wxid_bob".into()),
+            image_md5: Some(md5.clone()),
+            create_time: Some(1_700_000_000),
+            prefer_file_path: true,
+            ..Default::default()
+        });
+        assert!(r.success, "{why}: {:?}", r.error);
+        assert_eq!(
+            &std::fs::read(r.local_path.unwrap()).unwrap(),
+            expected,
+            "{why}"
+        );
+        assert_eq!(r.is_thumb, Some(is_thumb), "{why}");
+    }
+
+    // the index is read whole once, and again when WeChat changes it
+    let later = md5_hex("later");
+    let later_image = jpeg(2900, 7);
+    put(&elsewhere, &file(&later), &later_image);
+    let later_payload = ImagePayload {
+        session_id: Some("wxid_bob".into()),
+        image_md5: Some(later.clone()),
+        create_time: Some(1_700_000_000),
+        prefer_file_path: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        hub.image_decrypt(&later_payload).failure_kind,
+        Some("not_found")
+    );
+    Fixture::open(&root.join("data"), "wxid_me_ab12").hardlink_db(&[HardlinkSpec::image(
+        &later,
+        &file(&later),
+        &talker,
+        "2020-01",
+    )]);
+    let r = hub.image_decrypt(&later_payload);
+    assert!(r.success, "{:?}", r.error);
+    assert_eq!(std::fs::read(r.local_path.unwrap()).unwrap(), later_image);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A video whose file is named otherwise than the message's md5 is not in the month folders under that name; WeChat's
+/// media index says where it is (#651). A video the folders find stays the one they find.
+#[test]
+fn a_video_the_folders_miss_is_found_through_the_media_index() {
+    use weflow_native::fixture::{Fixture, HardlinkSpec, MsgSpec};
+    let (hub, root, account, _img_dir) = setup("video-hardlink");
+    let at = 1_700_000_000;
+    let month = weflow_core::image::year_month_from_create_time(Some(at));
+    let folder = account.join("msg/video").join(&month);
+    std::fs::create_dir_all(&folder).unwrap();
+    let (renamed, listed) = (md5_hex("renamed"), md5_hex("listed"));
+    let xml =
+        |md5: &str| format!("<msg><videomsg md5=\"{md5}\" length=\"9\" playlength=\"1\" /></msg>");
+    let fixture = Fixture::open(&root.join("data"), "wxid_me_ab12");
+    fixture.message_shard(
+        2,
+        &[(
+            "wxid_bob",
+            vec![
+                MsgSpec::text(20, "wxid_bob", at, &xml(&renamed)).of_type(43),
+                MsgSpec::text(21, "wxid_bob", at + 1, &xml(&listed)).of_type(43),
+            ],
+        )],
+    );
+    // the first is on disk under another name, with its cover beside it; the second under its md5
+    let other = "ffeeddccbbaa99887766554433221100";
+    std::fs::write(folder.join(format!("{other}.mp4")), b"renamed video").unwrap();
+    std::fs::write(folder.join(format!("{other}.jpg")), b"\xFF\xD8cover").unwrap();
+    std::fs::write(folder.join(format!("{listed}.mp4")), b"listed video").unwrap();
+    std::fs::write(
+        folder.join("00112233445566778899aabbccddeeff.mp4"),
+        b"elsewhere",
+    )
+    .unwrap();
+    let other_file = format!("{other}.mp4");
+    fixture.hardlink_db(&[
+        HardlinkSpec::video(&renamed, &other_file, &month),
+        HardlinkSpec::video(&listed, "00112233445566778899aabbccddeeff.mp4", &month),
+    ]);
+
+    let found = hub
+        .video_files_for_message("wxid_bob", "20", Some(at))
+        .unwrap();
+    assert_eq!(std::fs::read(&found.video).unwrap(), b"renamed video");
+    assert_eq!(found.cover, Some(folder.join(format!("{other}.jpg"))));
+    let info = hub
+        .video_info(&renamed, true, weflow_core::video::PosterFormat::DataUrl)
+        .unwrap();
+    assert!(info.exists);
+    assert!(info
+        .cover_url
+        .unwrap()
+        .starts_with("data:image/jpeg;base64,"));
+
+    let kept = hub
+        .video_files_for_message("wxid_bob", "21", Some(at + 1))
+        .unwrap();
+    assert_eq!(std::fs::read(&kept.video).unwrap(), b"listed video");
+    let _ = std::fs::remove_dir_all(root);
+}

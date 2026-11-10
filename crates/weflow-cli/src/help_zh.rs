@@ -267,7 +267,6 @@ const HELP: &[(&str, &str)] = &[
     ("WeChat Pay records", "微信支付记录"),
     ("Image md5 from the message", "消息中的图片 md5"),
     ("Image .dat file name", "图片 .dat 文件名"),
-    ("Only look the file up in WeChat's hardlink index", "只通过微信的硬链接索引查找文件"),
     ("Show whether the image auto-download hook is running", "显示图片自动下载钩子是否在运行"),
     ("Video md5 from the message", "消息中的视频 md5"),
     ("Only records containing this text", "只看包含这段文字的记录"),
