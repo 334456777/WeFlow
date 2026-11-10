@@ -3756,7 +3756,10 @@ fn reads_follow_the_profile_right_after_it_changes() {
     assert_eq!(sessions(""), own);
     for route in ["/api", ""] {
         let r = server.call("GET", &format!("{route}/config/get?key=config_path"), "");
-        assert_eq!(r.json()["data"], path.as_str(), "{route}");
+        // as paths: `config set` makes the path absolute, which on Windows also writes every separator as `\`,
+        // while the target folder the test runs in may be written with `/` (#655)
+        let read = r.json()["data"].as_str().map(PathBuf::from);
+        assert_eq!(read.as_deref(), Some(other.as_path()), "{route}");
     }
     let r = server.call(
         "DELETE",
