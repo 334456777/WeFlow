@@ -53,10 +53,8 @@ pub struct SnsExportOptions {
     pub format: String,
     pub usernames: Vec<String>,
     pub keyword: Option<String>,
+    /// Also save the pictures, live photos and videos next to the export.
     pub export_media: bool,
-    pub export_images: Option<bool>,
-    pub export_live_photos: Option<bool>,
-    pub export_videos: Option<bool>,
     pub start: i64,
     pub end: i64,
 }
@@ -932,22 +930,7 @@ impl ServiceHub {
     /// `exportTimeline`: json / html / arkmejson with optional media download.
     pub async fn sns_export_timeline(&self, opts: &SnsExportOptions) -> AppResult<SnsExported> {
         use futures::StreamExt;
-        let explicit = opts.export_images.is_some()
-            || opts.export_live_photos.is_some()
-            || opts.export_videos.is_some();
-        let pick = |v: Option<bool>| {
-            if explicit {
-                v == Some(true)
-            } else {
-                opts.export_media
-            }
-        };
-        let (want_images, want_live, want_videos) = (
-            pick(opts.export_images),
-            pick(opts.export_live_photos),
-            pick(opts.export_videos),
-        );
-        let want_media = want_images || want_live || want_videos;
+        let want_media = opts.export_media;
 
         std::fs::create_dir_all(&opts.output_dir).map_err(|e| {
             AppError::runtime(format!(
@@ -1019,10 +1002,13 @@ impl ServiceHub {
                 for (mi, m) in post.media.iter().enumerate() {
                     let url = m.url.clone();
                     let key = m.key.clone();
-                    let video = sns::is_video_url(&url);
-                    if want_images && !video && !url.is_empty() {
+                    if !url.is_empty() {
                         tasks.push(Task {
-                            kind: "image",
+                            kind: if sns::is_video_url(&url) {
+                                "video"
+                            } else {
+                                "image"
+                            },
                             url: url.clone(),
                             key: key.clone(),
                             post_idx: pi,
@@ -1030,17 +1016,7 @@ impl ServiceHub {
                             post_id: post_id.clone(),
                         });
                     }
-                    if want_videos && video && !url.is_empty() {
-                        tasks.push(Task {
-                            kind: "video",
-                            url: url.clone(),
-                            key: key.clone(),
-                            post_idx: pi,
-                            media_idx: mi,
-                            post_id: post_id.clone(),
-                        });
-                    }
-                    if let Some(lp) = m.live_photo.as_ref().filter(|_| want_live) {
+                    if let Some(lp) = m.live_photo.as_ref() {
                         if !lp.url.is_empty() {
                             tasks.push(Task {
                                 kind: "livephoto",
@@ -1228,7 +1204,7 @@ impl ServiceHub {
                     "format": "arkmejson",
                     "schemaVersion": "1.0.0",
                     "recordOwner": record_owner,
-                    "mediaSelection": { "images": want_images, "livePhotos": want_live, "videos": want_videos },
+                    "mediaSelection": { "images": want_media, "livePhotos": want_media, "videos": want_media },
                     "totalPosts": posts.len(),
                     "filters": filters,
                     "posts": built
@@ -1459,32 +1435,18 @@ impl ServiceHub {
         (likes_detail, comments_detail)
     }
 
-    /// Adds `media.proxyUrl` style fields used by the HTTP timeline (`enrichSnsTimelineMedia`).
-    pub async fn sns_enrich_timeline_media(
-        &self,
-        mut posts: Vec<SnsPost>,
-        proxy_base: &str,
-        inline: bool,
-        replace: bool,
-    ) -> Vec<SnsPost> {
+    /// The timeline with its media fetched (`enrichSnsTimelineMedia`, for `sns timeline --with-media`): `url` and
+    /// `thumb` become the files as data URLs, the server's addresses move to `rawUrl` and `rawThumb`.
+    pub async fn sns_enrich_timeline_media(&self, mut posts: Vec<SnsPost>) -> Vec<SnsPost> {
         for media in posts.iter_mut().flat_map(|p| p.media.iter_mut()) {
             let raw_url = std::mem::take(&mut media.url);
             let raw_thumb = std::mem::take(&mut media.thumb);
             let key = media_key(media.key.as_deref());
-            let (url_resolved, url_proxy) = self
-                .resolve_media_url(proxy_base, &raw_url, key.as_deref(), inline)
-                .await;
-            let (thumb_resolved, thumb_proxy) = self
-                .resolve_media_url(proxy_base, &raw_thumb, key.as_deref(), inline)
-                .await;
-            (media.url, media.thumb) = if replace {
-                (
-                    url_resolved.clone().unwrap_or_else(|| raw_url.clone()),
-                    thumb_resolved.clone().unwrap_or_else(|| raw_thumb.clone()),
-                )
-            } else {
-                (raw_url.clone(), raw_thumb.clone())
-            };
+            let (url_resolved, url_proxy) = self.resolve_media_url(&raw_url, key.as_deref()).await;
+            let (thumb_resolved, thumb_proxy) =
+                self.resolve_media_url(&raw_thumb, key.as_deref()).await;
+            media.url = url_resolved.clone().unwrap_or_else(|| raw_url.clone());
+            media.thumb = thumb_resolved.clone().unwrap_or_else(|| raw_thumb.clone());
             media.raw_url = Some(raw_url);
             media.raw_thumb = Some(raw_thumb);
             media.resolved_url = url_resolved;
@@ -1496,19 +1458,13 @@ impl ServiceHub {
                 let raw_l_thumb = std::mem::take(&mut live.thumb);
                 let live_key = media_key(live.key.as_deref()).or_else(|| key.clone());
                 let (lu, lu_proxy) = self
-                    .resolve_media_url(proxy_base, &raw_l_url, live_key.as_deref(), inline)
+                    .resolve_media_url(&raw_l_url, live_key.as_deref())
                     .await;
                 let (lt, lt_proxy) = self
-                    .resolve_media_url(proxy_base, &raw_l_thumb, live_key.as_deref(), inline)
+                    .resolve_media_url(&raw_l_thumb, live_key.as_deref())
                     .await;
-                (live.url, live.thumb) = if replace {
-                    (
-                        lu.clone().unwrap_or_else(|| raw_l_url.clone()),
-                        lt.clone().unwrap_or_else(|| raw_l_thumb.clone()),
-                    )
-                } else {
-                    (raw_l_url.clone(), raw_l_thumb.clone())
-                };
+                live.url = lu.clone().unwrap_or_else(|| raw_l_url.clone());
+                live.thumb = lt.clone().unwrap_or_else(|| raw_l_thumb.clone());
                 live.raw_url = Some(raw_l_url);
                 live.raw_thumb = Some(raw_l_thumb);
                 live.resolved_url = lu;
@@ -1520,27 +1476,19 @@ impl ServiceHub {
         posts
     }
 
+    /// What `raw_url` is shown as, and its proxy address: the file as a data URL, else the proxy address for both.
     async fn resolve_media_url(
         &self,
-        proxy_base: &str,
         raw_url: &str,
         key: Option<&str>,
-        inline: bool,
     ) -> (Option<String>, Option<String>) {
         let target = raw_url.trim();
         if target.is_empty() {
             return (None, None);
         }
-        let mut proxy = format!(
-            "{}/api/v1/sns/media/proxy?url={}",
-            proxy_base.trim_end_matches('/'),
-            url_encode(target)
-        );
+        let mut proxy = format!("/api/v1/sns/media/proxy?url={}", url_encode(target));
         if let Some(k) = key {
             proxy.push_str(&format!("&key={}", url_encode(k)));
-        }
-        if !inline {
-            return (Some(proxy.clone()), Some(proxy));
         }
         if let Ok(SnsProxyResult::DataUrl(d)) = self.sns_proxy_image(raw_url, key).await {
             return (Some(d), Some(proxy));

@@ -133,11 +133,7 @@ impl ServiceHub {
         if !my.trim().is_empty() {
             return format!("wxid:{}", my.trim());
         }
-        let db = self
-            .db_path_override
-            .clone()
-            .or_else(|| self.profile().ok().and_then(|p| p.db_path.clone()))
-            .unwrap_or_default();
+        let db = self.configured_db_path().unwrap_or_default();
         if !db.trim().is_empty() {
             use sha1::{Digest, Sha1};
             let h: String = Sha1::digest(db.trim().as_bytes())

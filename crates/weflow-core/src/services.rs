@@ -53,9 +53,6 @@ pub struct ServiceHub {
     ctx: AppContext,
     config: ConfigStore,
     profile_name: String,
-    db_path_override: Option<String>,
-    decrypt_key_override: Option<String>,
-    wxid_override: Option<String>,
     sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
     /// Statistics being counted right now (see [`analytics::Counting`]).
     analytics_counting: std::sync::Arc<analytics::Counting>,
@@ -64,22 +61,13 @@ pub struct ServiceHub {
 }
 
 impl ServiceHub {
-    pub fn new(
-        ctx: AppContext,
-        config: ConfigStore,
-        profile_name: Option<String>,
-        db_path_override: Option<String>,
-        decrypt_key_override: Option<String>,
-        wxid_override: Option<String>,
-    ) -> Self {
-        let profile_name = profile_name.unwrap_or_else(|| config.current_profile.clone());
+    /// A hub over the account of the config's current profile.
+    pub fn new(ctx: AppContext, config: ConfigStore) -> Self {
+        let profile_name = config.current_profile.clone();
         Self {
             ctx,
             config,
             profile_name,
-            db_path_override,
-            decrypt_key_override,
-            wxid_override,
             sns_state: Default::default(),
             analytics_counting: Default::default(),
             image_state: Default::default(),
@@ -151,8 +139,7 @@ impl ServiceHub {
     pub fn db_wxid(&self, root: Option<&str>) -> AppResult<crate::contract::DbAccounts> {
         let configured = root
             .map(str::to_string)
-            .or_else(|| self.db_path_override.clone())
-            .or_else(|| self.profile().ok().and_then(|p| p.db_path.clone()));
+            .or_else(|| self.configured_db_path());
         let roots: Vec<PathBuf> = match configured {
             Some(root) => vec![crate::config::expand_home(&root)],
             None => default_db_candidates()
@@ -495,7 +482,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let profile = self.profile()?;
         let options = json!({
-            "myWxid": self.wxid_override.as_deref().or(profile.wxid.as_deref()).unwrap_or_default(),
+            "myWxid": profile.wxid.as_deref().unwrap_or_default(),
             "beginTimestamp": begin,
             "endTimestamp": end
         });
@@ -875,10 +862,7 @@ impl ServiceHub {
             Some(dir) => crate::config::expand_home(dir),
             None => self.account_dir_only()?,
         };
-        let wxid = self
-            .wxid_override
-            .as_deref()
-            .or_else(|| self.profile().ok().and_then(|p| p.wxid.as_deref()));
+        let wxid = self.profile().ok().and_then(|p| p.wxid.as_deref());
         crate::image_keys::acquire_image_keys(kvcomm_dirs, &account, wxid, scan_budget)
     }
 
@@ -1375,17 +1359,15 @@ impl ServiceHub {
 
     fn connection_inputs(&self) -> AppResult<(PathBuf, String, Option<String>)> {
         let profile = self.profile()?;
-        let db_path = self
-            .db_path_override
+        let db_path = profile
+            .db_path
             .clone()
-            .or_else(|| profile.db_path.clone())
             .ok_or_else(|| AppError::config("missing db_path; run config set db_path"))?;
-        let key = self
-            .decrypt_key_override
+        let key = profile
+            .decrypt_key
             .clone()
-            .or_else(|| profile.decrypt_key.clone())
             .ok_or_else(|| AppError::config("missing decrypt_key; run config set decrypt_key"))?;
-        let wxid = self.wxid_override.clone().or_else(|| profile.wxid.clone());
+        let wxid = profile.wxid.clone();
         let account_dir = match &wxid {
             Some(wxid) => resolve_account_dir(&db_path, wxid),
             None => PathBuf::from(db_path),
@@ -1401,6 +1383,16 @@ impl ServiceHub {
 
     pub fn profile_name(&self) -> &str {
         &self.profile_name
+    }
+
+    /// The account's wxid as the profile has it: the id, or the account folder's name with its suffix.
+    fn configured_wxid(&self) -> Option<String> {
+        self.profile().ok()?.wxid.clone()
+    }
+
+    /// The WeChat data directory (or account folder) of the profile.
+    fn configured_db_path(&self) -> Option<String> {
+        self.profile().ok()?.db_path.clone()
     }
 }
 

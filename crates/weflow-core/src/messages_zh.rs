@@ -45,7 +45,7 @@ const CATALOG: &[(&str, &str)] = &[
     // config
     ("invalid value '{}' for lang; use en or zh", "lang 的值 '{}' 无效；请使用 en 或 zh"),
     ("invalid value {} for {}; use a whole number from {} to {}", "{1} 的值 {0} 无效；请使用 {2} 到 {3} 之间的整数"),
-    ("config override must include a parent directory", "配置文件路径必须包含上级目录"),
+    ("the config file path must include a parent directory", "配置文件路径必须包含上级目录"),
     ("failed to prepare runtime assets: {}", "准备运行时资源失败：{}"),
     ("failed to locate platform config directory", "无法定位系统配置目录"),
     ("expected scalar string value", "需要字符串值"),
@@ -58,7 +58,6 @@ const CATALOG: &[(&str, &str)] = &[
     ("no account or database path configured", "未配置账号或数据库路径"),
     ("account directory not found", "未找到账号目录"),
     ("no current account (wxid) configured, nothing to clear", "未配置当前账号（wxid），没有可清理的内容"),
-    ("nothing chosen to clear: neither the caches nor an export folder", "没有选择要清理的内容：既没有缓存，也没有导出文件夹"),
     // services
     ("failed to create HTTP client: {}", "创建 HTTP 客户端失败：{}"),
     ("failed to download image: {}", "下载图片失败：{}"),

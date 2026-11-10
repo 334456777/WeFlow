@@ -308,14 +308,12 @@ fn full(root: &Path, fixture: &Fixture, args: &Args) -> anyhow::Result<()> {
         version: "probe".into(),
     };
     std::fs::create_dir_all(&ctx.home_dir)?;
-    let hub = ServiceHub::new(
-        ctx,
-        ConfigStore::default(),
-        None,
-        Some(fixture.account_dir.to_string_lossy().to_string()),
-        Some(fixture.key_hex()),
-        Some(OWNER.into()),
-    );
+    let mut config = ConfigStore::default();
+    let profile = config.profile_mut(None);
+    profile.db_path = Some(fixture.account_dir.to_string_lossy().to_string());
+    profile.decrypt_key = Some(fixture.key_hex());
+    profile.wxid = Some(OWNER.into());
+    let hub = ServiceHub::new(ctx, config);
     let out = root.join("out");
     // first run pays the key derivations and remembers the verified key: keep it out of the numbers
     timed("full pipeline warm-up (txt)", || {

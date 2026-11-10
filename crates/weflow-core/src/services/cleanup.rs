@@ -211,84 +211,61 @@ impl ServiceHub {
         }
     }
 
-    /// What [`Self::clear_current_account_data`] removes (only what exists). `clear_cache` takes WeFlow's caches of
-    /// the current account (images, voices, stickers, Moments, analytics, key fingerprints); `export_dirs` are
-    /// folders whose entries named after the account are taken.
-    pub fn account_data_paths(
-        &self,
-        clear_cache: bool,
-        export_dirs: &[PathBuf],
-    ) -> AppResult<Vec<PathBuf>> {
-        if !clear_cache && export_dirs.is_empty() {
-            return Err(AppError::usage(
-                "nothing chosen to clear: neither the caches nor an export folder",
-            ));
-        }
-        let raw = self.my_wxid_cleaned();
-        if raw.trim().is_empty() {
+    /// What [`Self::clear_current_account_data`] removes (only what exists): WeFlow's caches of the current account
+    /// (images, voices, stickers, Moments, analytics, key fingerprints), and the entries of `export_dirs` named
+    /// after the account.
+    pub fn account_data_paths(&self, export_dirs: &[PathBuf]) -> AppResult<Vec<PathBuf>> {
+        let id = self.my_wxid_cleaned();
+        if id.is_empty() {
             return Err(AppError::config(
                 "no current account (wxid) configured, nothing to clear",
             ));
         }
-        let normalized = clean_account_dir_name(&raw);
-        let mut ids: Vec<String> = vec![raw.trim().to_lowercase()];
-        if !normalized.is_empty() && !ids.contains(&normalized.to_lowercase()) {
-            ids.push(normalized.to_lowercase());
-        }
+        let ids = [id.to_lowercase()];
         let mut paths: Vec<PathBuf> = Vec::new();
         let mut add = |path: PathBuf| {
             if path.exists() && !paths.contains(&path) {
                 paths.push(path);
             }
         };
-        if clear_cache {
-            let base = self.cache_base();
-            let roots = [
-                base.clone(),
-                base.join("Images"),
-                base.join("Voices"),
-                base.join("Emojis"),
-            ];
-            for id in [raw.trim().to_string(), normalized]
-                .into_iter()
-                .filter(|s| !s.is_empty())
-            {
-                for root in &roots {
-                    add(root.join(&id));
-                }
-            }
-            for root in &roots {
-                matched_entries(root, &ids).into_iter().for_each(&mut add);
-            }
-            add(base.join("analytics_cache.json"));
-            // fingerprints of keys that worked (the profile's key goes with the account settings)
-            add(self.ctx.cache_dir().join("verified-keys"));
+        let base = self.cache_base();
+        let roots = [
+            base.clone(),
+            base.join("Images"),
+            base.join("Voices"),
+            base.join("Emojis"),
+        ];
+        for root in &roots {
+            add(root.join(&id));
         }
+        for root in &roots {
+            matched_entries(root, &ids).into_iter().for_each(&mut add);
+        }
+        add(base.join("analytics_cache.json"));
+        // fingerprints of keys that worked (the profile's key goes with the account settings)
+        add(self.ctx.cache_dir().join("verified-keys"));
         for dir in export_dirs {
             matched_entries(dir, &ids).into_iter().for_each(&mut add);
         }
         Ok(paths)
     }
 
-    /// `chat:clearCurrentAccountData`: removes [`Self::account_data_paths`]. The caller resets the account settings
-    /// of the profile when `clear_cache` is set, as WeFlow's desktop app does.
+    /// `chat:clearCurrentAccountData`: removes [`Self::account_data_paths`]. The caller then resets the account
+    /// settings of the profile, as WeFlow's desktop app does.
     pub fn clear_current_account_data(
         &self,
-        clear_cache: bool,
         export_dirs: &[PathBuf],
     ) -> AppResult<crate::contract::AccountCleared> {
-        let paths = self.account_data_paths(clear_cache, export_dirs)?;
+        let paths = self.account_data_paths(export_dirs)?;
         let (mut removed, mut warnings) = (Vec::new(), Vec::new());
         for path in &paths {
             remove_path(path, &mut removed, &mut warnings);
         }
-        if clear_cache {
-            self.sns_clear_memory_cache();
-            self.image_forget_cached();
-        }
+        self.sns_clear_memory_cache();
+        self.image_forget_cached();
         Ok(crate::contract::AccountCleared {
             removed_paths: removed,
-            profile_reset: clear_cache,
+            profile_reset: true,
             warnings,
         })
     }

@@ -82,13 +82,10 @@ pub fn hub_for_account(
     };
     std::fs::create_dir_all(&ctx.home_dir).unwrap();
     let mut config = ConfigStore::default();
-    tweak(config.profiles.get_mut("default").unwrap());
-    ServiceHub::new(
-        ctx,
-        config,
-        None,
-        Some(account_dir.to_string_lossy().to_string()),
-        Some(key_hex.into()),
-        Some(wxid.into()),
-    )
+    let profile = config.profiles.get_mut("default").unwrap();
+    profile.db_path = Some(account_dir.to_string_lossy().to_string());
+    profile.decrypt_key = Some(key_hex.into());
+    profile.wxid = Some(wxid.into());
+    tweak(profile);
+    ServiceHub::new(ctx, config)
 }

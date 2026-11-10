@@ -557,13 +557,7 @@ impl ServiceHub {
             ),
             _ => HashMap::new(),
         };
-        let my_wxid = clean_account_dir_name(
-            &self
-                .wxid_override
-                .clone()
-                .or_else(|| self.profile().ok().and_then(|p| p.wxid.clone()))
-                .unwrap_or_default(),
-        );
+        let my_wxid = self.my_wxid_cleaned();
 
         let mut data: Vec<(GroupMember, String)> = Vec::new();
         for member in &members {
@@ -758,13 +752,7 @@ impl ServiceHub {
             Ok(Value::Object(m)) => trusted_nicknames(&m, &cands),
             _ => HashMap::new(),
         };
-        let my_wxid = clean_account_dir_name(
-            &self
-                .wxid_override
-                .clone()
-                .or_else(|| self.profile().ok().and_then(|p| p.wxid.clone()))
-                .unwrap_or_default(),
-        );
+        let my_wxid = self.my_wxid_cleaned();
         let owner = self.detect_group_owner(wcdb, chatroom_id, &members);
         Ok(members
             .iter()
@@ -1572,13 +1560,7 @@ impl ServiceHub {
             Ok(Value::Object(m)) => trusted_nicknames(&m, &build_id_candidates(&refs)),
             _ => HashMap::new(),
         };
-        let my_wxid = clean_account_dir_name(
-            &self
-                .wxid_override
-                .clone()
-                .or_else(|| self.profile().ok().and_then(|p| p.wxid.clone()))
-                .unwrap_or_default(),
-        );
+        let my_wxid = self.my_wxid_cleaned();
         let mut rows: Vec<[String; 5]> = Vec::new();
         for m in &members {
             let wxid = pick_str(m, &["username"]);

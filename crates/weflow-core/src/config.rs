@@ -20,12 +20,14 @@ pub struct AppContext {
 }
 
 impl AppContext {
-    pub fn new(config_override: Option<PathBuf>, version: impl Into<String>) -> AppResult<Self> {
+    /// Where this `weflow` keeps its files: beside the config file chosen with `config set config_path`, else in
+    /// the home folder.
+    pub fn new(version: impl Into<String>) -> AppResult<Self> {
         let version = version.into();
-        let config_override = config_override.or_else(saved_config_path);
-        let home_dir = if let Some(config_path) = &config_override {
+        let chosen = saved_config_path();
+        let home_dir = if let Some(config_path) = &chosen {
             config_path.parent().map(Path::to_path_buf).ok_or_else(|| {
-                AppError::config("config override must include a parent directory")
+                AppError::config("the config file path must include a parent directory")
             })?
         } else {
             default_home_dir()?
@@ -33,7 +35,7 @@ impl AppContext {
         fs::create_dir_all(&home_dir).map_err(|err| {
             AppError::config(format!("failed to create {}: {err}", home_dir.display()))
         })?;
-        let config_path = config_override.unwrap_or_else(|| home_dir.join("config.json"));
+        let config_path = chosen.unwrap_or_else(|| home_dir.join("config.json"));
         let runtime_dir = weflow_assets::ensure_runtime(&home_dir, &version)
             .map_err(|err| AppError::native(format!("failed to prepare runtime assets: {err}")))?;
         Ok(Self {

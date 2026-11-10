@@ -37,24 +37,12 @@ fn connection_opens_the_encrypted_account() {
 fn a_wrong_key_is_reported_as_a_native_error() {
     let (hub, _root) = common::mock_hub_with("n-badkey", |_| {});
     // same account, different key
-    let ctx = weflow_core::config::AppContext {
-        home_dir: _root.join("home"),
-        config_path: _root.join("home/config.json"),
-        runtime_dir: _root.join("runtime"),
-        version: "test".into(),
-    };
-    let bad = weflow_core::services::ServiceHub::new(
-        ctx,
-        weflow_core::config::ConfigStore::default(),
-        None,
-        Some(
-            _root
-                .join("data/wxid_me_ab12")
-                .to_string_lossy()
-                .to_string(),
-        ),
-        Some("11".repeat(32)),
-        Some("wxid_me_ab12".into()),
+    let bad = common::hub_for_account(
+        &_root,
+        &_root.join("data/wxid_me_ab12"),
+        &"11".repeat(32),
+        "wxid_me_ab12",
+        |_| {},
     );
     let err = bad.db_test().unwrap_err();
     assert_eq!(err.code, "native_error");
@@ -887,7 +875,7 @@ fn contacts_carry_labels_signature_and_region_and_sort_by_pinyin() {
 }
 
 #[test]
-fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
+fn clearing_account_data_removes_only_that_account() {
     let (hub, root) = common::mock_hub("n-clear");
     let base = hub.image_cache_root().parent().unwrap().to_path_buf();
     let put = |p: std::path::PathBuf| {
@@ -905,16 +893,12 @@ fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
     let mine_export = put(exports.join("wxid_me_chat.json"));
     let other_export = put(exports.join("someone_else.json"));
 
-    assert!(
-        hub.clear_current_account_data(false, &[]).is_err(),
-        "nothing selected"
-    );
     // what `cache clear-account` shows before asking is what goes
     let shown = hub
-        .account_data_paths(true, std::slice::from_ref(&exports))
+        .account_data_paths(std::slice::from_ref(&exports))
         .unwrap();
     let r = hub
-        .clear_current_account_data(true, std::slice::from_ref(&exports))
+        .clear_current_account_data(std::slice::from_ref(&exports))
         .unwrap();
     assert!(r.profile_reset);
     let shown: Vec<String> = shown
@@ -928,12 +912,6 @@ fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
         other.exists() && other_export.exists(),
         "other accounts and unrelated exports stay"
     );
-
-    // exports only: caches stay, the profile is not reset
-    let again = put(base.join("Images/wxid_me/b.jpg"));
-    let r = hub.clear_current_account_data(false, &[exports]).unwrap();
-    assert!(!r.profile_reset);
-    assert!(again.exists());
 }
 
 #[test]

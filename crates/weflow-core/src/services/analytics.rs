@@ -451,10 +451,9 @@ impl ServiceHub {
 
     fn analytics_connect(&self) -> AppResult<(weflow_native::wcdb::Wcdb, String)> {
         let profile = self.profile()?;
-        let wxid = self
-            .wxid_override
+        let wxid = profile
+            .wxid
             .clone()
-            .or_else(|| profile.wxid.clone())
             .filter(|w| !w.is_empty())
             .ok_or_else(|| AppError::config("wxid is not configured"))?;
         let wcdb = self.open_wcdb()?;

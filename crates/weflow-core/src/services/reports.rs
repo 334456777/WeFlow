@@ -349,10 +349,9 @@ fn format_date_time(ms: i64) -> String {
 impl ServiceHub {
     fn report_connect(&self) -> AppResult<(weflow_native::wcdb::Wcdb, String, String)> {
         let profile = self.profile()?;
-        let raw = self
-            .wxid_override
+        let raw = profile
+            .wxid
             .clone()
-            .or_else(|| profile.wxid.clone())
             .filter(|w| !w.is_empty())
             .ok_or_else(|| AppError::config("wxid is not configured"))?;
         let wcdb = self.open_wcdb()?;
