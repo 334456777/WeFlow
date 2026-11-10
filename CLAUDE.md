@@ -32,6 +32,7 @@
 GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ）是今后增添文档的新地方，也是唯一的地方：不再往仓库里新增文档文件。
 - 只写中文，以技术文档为主，用正式语气书写
 - 根据 issue、PR、注释和代码本身写，要写详细
+- 只写现状，写成最终结论，不写中间过程：不写「原来/原先……」「已删除」「从未起作用」「改为」「从 X 变为 Y」、改动前后的测量对比和改动经过，这些写进 issue 和 PR；「命令-API」#版本 按版本列出破坏性改动，每项也只写一句结果
 - `wiki/` 是 Wiki（`WeFlow.wiki.git`，分支 `master`）的 clone，是独立的 git 仓库：`.gitignore` 把它排除在主仓库之外，`.ignore` 让 ripgrep 等搜索工具仍能搜到它；改 Wiki 时在这个目录里单独提交和推送
 - Wiki 是公开的，隐私规则同样适用
 - 写法要求见 GitHub 的[关于 Wiki 页面](https://docs.github.com/zh/communities/documenting-your-project-with-wikis/about-wikis)：README 是快速介绍，Wiki 写如何使用项目、如何设计项目和核心原则，不重复 README 的内容；按主题组织，同一内容只写在一处，改动页面结构时同步重写 `_Sidebar.md`
@@ -49,6 +50,7 @@ GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ）是今后增添文档
 - 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public），GitHub Project「WeFlow」是公开 Project
 - 提交信息使用 Conventional Commits 规范，默认使用英语；Pull Request 分支名称使用 Conventional Commits 风格的 `<type>/<scope>-<description>` 格式。
 - 版本与 tag 规范：版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀；tag 一律用附注 tag，不用轻量 tag（`git tag -a vX.Y.Z -m "WeFlow vX.Y.Z" <commit>`，用 `git cat-file -t vX.Y.Z` 检查，应输出 `tag`）；发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag。
+- API 版本（`crates/weflow-core/src/contract.rs` 的 `API_VERSION`，与 `web/package.json` 的 `weflow.apiVersion` 一致）只在会让现有客户端出错的改动时提升（路由、参数、响应、配置键）。提出升版本之前先核对：最新 `web-v*` tag 中 `web/package.json` 的 `weflow.apiVersion`，和 `origin/main` 上的 `API_VERSION`。main 已经比发布版高一个版本（升过、还没发布）时，改动并入这个版本，不再提醒升版本，只把改动记进 Wiki「命令-API」#版本 中当前版本的条目；两者相同时才提出要升
 - 严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等隐私信息上传到公开的 GitHub 仓库或写入 CLAUDE.md
 - GitHub Issues 根据 Lables 分类，筛选和表达状态，根据 Relationships 梳理 Issue 依赖关系（Issue dependencies），创建 Issue 时及时添加 Lables 和 Relationships （如果有对应的 Development 则添加对应 Development）
 - GitHub Issues 会有人类和其他大语言模型（LLM）参与讨论，以下情况记录到本仓库的 GitHub Issues: 被列为计划内的工作，需要多轮确认的bug，不符合当前工作的主题但是需要解决的bug，可以稍后解决的bug，被要求将不会被开展的工作，需要多轮和长时间研究思考的精益求精的要求，工作中遇到的反常/不太对劲的地方，新功能或请求，对文档的改进或补充，一些在修改代码后会经常出现的问题和需要更多信息的问题以及任何你想提出的issues；同时在遇到上述情况时也可以查询Issues寻找解决方法或继续跟踪评论issues
