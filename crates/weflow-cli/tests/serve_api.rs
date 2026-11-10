@@ -2340,6 +2340,34 @@ fn list_exports_write_the_rows_in_every_format() {
 }
 
 #[test]
+fn a_session_list_export_keeps_only_the_sessions_named() {
+    let root = temp_root("sessions-named");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let out = root.join("named.json");
+    let body = json!({ "session": ["wxid_bob"], "out": out });
+    let r = server.call("POST", "/export/sessions", &body.to_string());
+    assert_eq!(r.status, 200, "{}", r.body);
+    let rows: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let names: Vec<&str> = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["username"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["wxid_bob"]);
+    // a part of an ID, or a key of the rows, names no session (#664)
+    for session in ["wxid_bo", "username"] {
+        let none = root.join(format!("{session}.json"));
+        let body = json!({ "session": [session], "out": none });
+        let r = server.call("POST", "/export/sessions", &body.to_string());
+        assert_eq!(r.status, 400, "{session}: {}", r.body);
+        assert_eq!(r.json()["error"]["code"], "invalid_arguments");
+        assert!(!none.exists(), "{session}");
+    }
+}
+
+#[test]
 fn chat_media_answers_fit_the_contract() {
     use weflow_native::fixture::{DAY, T0};
     let root = temp_root("chat-media-contract");

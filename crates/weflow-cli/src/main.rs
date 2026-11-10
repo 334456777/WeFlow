@@ -2695,7 +2695,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             let format = ListFormat::named(format.as_deref())?;
             let mut data = hub.sessions()?;
             if !sessions.is_empty() {
-                data = filter_named_items(data, &sessions);
+                data = sessions_named(data, &sessions)?;
             }
             Ok(json!(write_export("sessions", format, &out, &data)?))
         }
@@ -3955,20 +3955,29 @@ fn csv_escape(value: &str) -> String {
     }
 }
 
-fn filter_named_items(value: Value, needles: &[String]) -> Value {
-    let Some(items) = value.as_array() else {
-        return value;
+/// The rows of the session list whose `username` is one of `ids`, compared exactly (#664).
+///
+/// # Errors
+///
+/// When no row is one of `ids`, rather than writing an empty list.
+fn sessions_named(list: Value, ids: &[String]) -> AppResult<Value> {
+    let Value::Array(rows) = list else {
+        return Ok(list);
     };
-    Value::Array(
-        items
-            .iter()
-            .filter(|item| {
-                let text = item.to_string();
-                needles.iter().any(|needle| text.contains(needle))
-            })
-            .cloned()
-            .collect(),
-    )
+    let rows: Vec<Value> = rows
+        .into_iter()
+        .filter(|row| {
+            row.get("username")
+                .and_then(Value::as_str)
+                .is_some_and(|username| ids.iter().any(|id| id == username))
+        })
+        .collect();
+    if rows.is_empty() {
+        return Err(AppError::usage(
+            "none of the sessions asked for is in the session list",
+        ));
+    }
+    Ok(Value::Array(rows))
 }
 
 fn handle_backup(command: &BackupCommand, hub: &ServiceHub) -> AppResult<Value> {
