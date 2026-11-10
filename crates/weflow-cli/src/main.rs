@@ -1529,11 +1529,11 @@ async fn main() -> ExitCode {
 /// The hub `run` builds, and the config file it was built from: the command API's in-process routes keep one
 /// open and build it again when that file changes.
 fn open_hub() -> AppResult<(ServiceHub, PathBuf)> {
-    let ctx = AppContext::new(None, VERSION)?;
+    let ctx = AppContext::new(VERSION)?;
     let config =
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
     let path = ctx.config_path.clone();
-    Ok((ServiceHub::new(ctx, config, None, None, None, None), path))
+    Ok((ServiceHub::new(ctx, config), path))
 }
 
 /// The commands that are a [`Read`] of `weflow_core::reads` (#397): the CLI runs them as such, and the command API's
@@ -1848,14 +1848,14 @@ fn write_media(file: MediaFile, out: &Path) -> AppResult<u64> {
 }
 
 async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> AppResult<Value> {
-    let ctx = AppContext::new(None, VERSION)?;
+    let ctx = AppContext::new(VERSION)?;
     let mut config =
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
 
     apply_progress_settings(&config, progress);
 
     let command = match read_of(command) {
-        Ok(read) => return read.run(&ServiceHub::new(ctx, config, None, None, None, None)),
+        Ok(read) => return read.run(&ServiceHub::new(ctx, config)),
         Err(command) => command,
     };
     let command = match command {
@@ -1879,7 +1879,7 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
     };
 
     let config_path = ctx.config_path.clone();
-    let hub = ServiceHub::new(ctx, config, None, None, None, None);
+    let hub = ServiceHub::new(ctx, config);
     match command {
         Commands::Db(command) => handle_db(&command, &hub),
         Commands::Chat(command) => handle_chat(command, &hub).await,
@@ -1983,7 +1983,7 @@ fn handle_cache(
     use weflow_core::locale::tr;
     use weflow_core::services::disk_usage;
 
-    let hub = ServiceHub::new(ctx.clone(), config.clone(), None, None, None, None);
+    let hub = ServiceHub::new(ctx.clone(), config.clone());
     match &command.command {
         CacheSubcommand::List => unreachable!("a read"),
         CacheSubcommand::Clear(args) => {
@@ -2033,7 +2033,7 @@ fn handle_cache(
             dry_run,
         } => {
             let targets: Vec<RemovalTarget> = hub
-                .account_data_paths(true, exports_dir)?
+                .account_data_paths(exports_dir)?
                 .into_iter()
                 .map(|path| RemovalTarget {
                     label: "",
@@ -2051,7 +2051,7 @@ fn handle_cache(
             if !confirm_removal(heading, &targets, *yes)? {
                 return Ok(json!(Cancelled { cancelled: true }));
             }
-            let result = hub.clear_current_account_data(true, exports_dir)?;
+            let result = hub.clear_current_account_data(exports_dir)?;
             // like WeFlow's desktop app: the account is signed out of this profile
             ConfigStore::update(&ctx.config_path, |config| {
                 for key in ACCOUNT_KEYS {
@@ -2285,19 +2285,9 @@ fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
             if data["dryRun"] == true {
                 let paths = data["paths"].as_array()?;
                 let mut out = String::from(if paths.is_empty() {
-                    tr(
-                        "Nothing would be removed.
-",
-                        "没有需要清理的文件。
-",
-                    )
+                    tr("Nothing would be removed.\n", "没有需要清理的文件。\n")
                 } else {
-                    tr(
-                        "Would remove:
-",
-                        "将会清理：
-",
-                    )
+                    tr("Would remove:\n", "将会清理：\n")
                 });
                 let rows: Vec<Vec<String>> = paths
                     .iter()
@@ -2309,10 +2299,7 @@ fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
                     })
                     .collect();
                 for line in align_columns(&rows) {
-                    out.push_str(&format!(
-                        "  {line}
-"
-                    ));
+                    out.push_str(&format!("  {line}\n"));
                 }
                 return Some(out);
             }
@@ -2617,9 +2604,9 @@ async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppResult<Value>
     }
 }
 
-/// `--save` (#216): writes the keys a `key` command found to the active profile and leaves them out of its result, so
-/// they go from WeChat to the config file without being printed, nor reaching a WebUI through `serve`.
-/// Writes `keys` to the current profile; answers their names, for the result's `saved`.
+/// `--save` (#216): writes the keys a `key` command found to the active profile, and answers their names for the
+/// result's `saved`. The caller leaves the keys out of the result, so they go from WeChat to the config file without
+/// being printed, nor reaching a WebUI through `serve`.
 fn save_keys(config_path: &Path, keys: &[(&str, Value)]) -> AppResult<Vec<String>> {
     ConfigStore::update(config_path, |config| {
         keys.iter()
@@ -3088,7 +3075,7 @@ async fn handle_sns(command: SnsCommand, hub: &ServiceHub) -> AppResult<Value> {
                 start,
                 end,
             })?;
-            let posts = hub.sns_enrich_timeline_media(posts, "", true, true).await;
+            let posts = hub.sns_enrich_timeline_media(posts).await;
             Ok(json!(weflow_core::contract::SnsTimeline {
                 timeline: posts
             }))
@@ -3114,7 +3101,6 @@ async fn handle_sns(command: SnsCommand, hub: &ServiceHub) -> AppResult<Value> {
                     export_media: media,
                     start,
                     end,
-                    ..Default::default()
                 })
                 .await?;
             Ok(json!(exported))
@@ -4025,7 +4011,6 @@ fn print_response(response: &weflow_core::output::CliResponse<Value>, summary: O
     }
 }
 
-/// `key db` / `key image` print the keys under the names `config set` expects, so they can be copied over.
 /// The commands whose answer the terminal shows in words of its own, and which words: chosen before the command
 /// runs, which takes the command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -4124,7 +4109,8 @@ fn key_summary(summary: Summary, data: &Value) -> Option<String> {
     }
 }
 
-/// `key db`, `image` and `scan-image`: the keys, or that they were saved.
+/// `key db`, `image` and `scan-image`: the keys under the names `config set` expects, so they can be copied over,
+/// or that they were saved.
 fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
     if data.get("saved").is_some() {
@@ -4133,8 +4119,7 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
             KeyShown::Image | KeyShown::ScanImage => tr("Image keys", "图片密钥"),
         };
         let mut text = format!(
-            "{}
-",
+            "{}\n",
             tr(
                 "{what} obtained and saved to the active profile",
                 "已获取{what}，已保存到当前档案"
@@ -4143,10 +4128,8 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
         );
         if data["verified"] == false {
             text.push_str(tr(
-                "(AES header verified; XOR and the complete pair are not verified)
-",
-                "（AES 首块已验证；XOR 与整组密钥尚未验证）
-",
+                "(AES header verified; XOR and the complete pair are not verified)\n",
+                "（AES 首块已验证；XOR 与整组密钥尚未验证）\n",
             ));
         }
         return Some(text);

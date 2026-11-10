@@ -420,16 +420,14 @@ impl ServiceHub {
     /// The account directory without needing the database key.
     pub(super) fn account_dir_only(&self) -> AppResult<PathBuf> {
         let profile = self.profile()?;
-        let db_path = self
-            .db_path_override
+        let db_path = profile
+            .db_path
             .clone()
-            .or_else(|| profile.db_path.clone())
             .filter(|p| !p.trim().is_empty())
             .ok_or_else(|| AppError::config("no account or database path configured"))?;
-        let wxid = self
-            .wxid_override
+        let wxid = profile
+            .wxid
             .clone()
-            .or_else(|| profile.wxid.clone())
             .filter(|w| !w.trim().is_empty())
             .ok_or_else(|| AppError::config("no account or database path configured"))?;
         let dir = crate::config::resolve_account_dir(&db_path, &wxid);
