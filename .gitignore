@@ -49,8 +49,11 @@ desktop.ini
 
 .cache/
 
-# cli
+# cli: a copy of the binary at the root, and what `make cross-*` writes there
 weflow.exe
+/weflow-macos-arm64
+/weflow-linux-x64
+/weflow-windows-x64.exe
 
 # 忽略 Visual Studio 临时文件夹
 .vs/
@@ -58,21 +61,21 @@ weflow.exe
 *.ipch
 *.aps
 
-*info
+# tsc's incremental build state (web/)
+*.tsbuildinfo
 *.bak
 .claude/
 .agents/
 .codex
 /temp/*
 
-# docs: only top-level files, es-ES and zh-CN are kept; other folders are third-party/reference material
+# docs: only images/ (the READMEs' pictures) is kept; the other folders are third-party/reference material
 /docs/sarv.blog/
 /docs/sjzar/
 /docs/weflow-tech-docs/
 /docs/weflow-wcdb-api-oss/
 /docs/YeJe-cpu/
 /docs/ycccccccy/
-weflow.exe
 __pycache__/
 
 # docs: wiki

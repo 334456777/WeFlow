@@ -15,7 +15,7 @@
 ### Rust workspace（`crates/`）
 依赖方向：`weflow-cli` → `weflow-core` → `weflow-native` / `weflow-silk` / `weflow-assets`
 - `weflow-native`：纯 Rust + 内置 SQLite 的只读数据库层，替代闭源 `wcdb_api`。`cipher_vfs`/`sqlcipher` 负责按页解密，`native_*` 按领域（消息、联系人、朋友圈、媒体、统计、报告）查询，`wcdb.rs` 是给上层用的门面，`wxkey` 处理密钥；未移植的调用返回 "not implemented"，必须同步登记到 Wiki 的「不支持的功能」（见下面的 Wiki 一节）。`make docs-check` 检查两份 README 的相对链接和锚点是否有效、两份 README 和 CLAUDE.md 里汉字旁的逗号是否为中文逗号（只报告，不自动修改）
-- `weflow-core`：业务层。`services/` 下按功能划分（chat、group、analytics、sns、image、voice、insight、reports、cleanup、api），外加 CLI 与命令 API 共用的类型化读取（`reads`，#397）、命令 API 的契约类型（`contract`，#399）、导出（`export*`）、消息推送（`push`）、配置（`config`）、图片/视频/语音解密等
+- `weflow-core`：业务层。`services/` 下按功能划分（chat、group、analytics、sns、image、voice、insight、reports、cleanup、export_stream、api），外加 CLI 与命令 API 共用的类型化读取（`reads`，#397）、命令 API 的契约类型（`contract`，#399）、导出（`export*`）、消息推送（`push`）、配置（`config`）、图片/视频/语音解密等
 - `weflow-cli`：命令行入口（clap），生成二进制 `weflow`；`help_zh.rs`/`i18n.rs` 为中文帮助与本地化；`serve_api.rs` 与 `serve_api/` 是 `weflow serve` 的命令 API：路由和 `/openapi.json` 由 clap 命令树生成，`in_process` 在服务进程内执行 `/api/` 读取，`jobs`（生命周期，不依赖 axum）与 `job_routes`（HTTP 层）是后台任务（#398），其余路由在子进程里运行命令（见 Wiki「服务端实现」的「子进程路由」）
 - `weflow-silk`：内置 Skype SILK SDK 的语音解码器（`vendor/` 为第三方 C 源码，勿改）
 - `weflow-assets`：构建期把 `assets/` 下的文件（各平台的辅助程序、VC 运行库）嵌入二进制，运行时解压到运行时目录，路径与 `assets/` 下相同

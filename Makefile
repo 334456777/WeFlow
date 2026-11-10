@@ -7,29 +7,24 @@
 # ── 平台检测 ──────────────────────────────────────────────────────────────────
 ifeq ($(OS),Windows_NT)
   PLATFORM     := windows
-  EXE          := .exe
   BIN          := target/release/weflow.exe
-  INSTALL_DIR  := $(USERPROFILE)/.cargo/bin
-  OPEN         := start
-  PKG_INSTALL  := winget install -e --id Git.Git
+  # Forward slashes: printf would read the backslashes of a Windows path as escapes (\U of C:\Users).
+  INSTALL_DIR  := $(subst \,/,$(USERPROFILE))/.cargo/bin
+  GIT_INSTALL  := winget install -e --id Git.Git --accept-package-agreements --accept-source-agreements
   RUST_INSTALL := powershell -NoProfile -Command \
     "Invoke-WebRequest -Uri https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe -OutFile rustup-init.exe; \
      Start-Process -Wait -FilePath rustup-init.exe -ArgumentList '-y'; \
      Remove-Item rustup-init.exe"
 else
   UNAME := $(shell uname -s)
-  EXE   :=
   BIN   := target/release/weflow
   ifeq ($(UNAME),Darwin)
     PLATFORM    := macos
-    OPEN        := open
     INSTALL_DIR := /usr/local/bin
     RUST_INSTALL := curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    GIT_INSTALL  := xcode-select --install
     BREW_INSTALL := /bin/bash -c "$$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   else
     PLATFORM    := linux
-    OPEN        := xdg-open
     INSTALL_DIR := /usr/local/bin
     RUST_INSTALL := curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     GIT_INSTALL  := $(shell \
@@ -60,14 +55,21 @@ TARGET_MACOS_ARM  := aarch64-apple-darwin
 TARGET_LINUX_X64  := x86_64-unknown-linux-gnu
 TARGET_WIN_X64    := x86_64-pc-windows-gnu
 TARGET_WIN_X64_MS := x86_64-pc-windows-msvc
-# cross-windows builds the GNU target on macOS/Linux (MinGW) and the MSVC target on Windows itself
+# cross-windows builds the GNU target on macOS/Linux (linked by MinGW) and the MSVC target on Windows itself
 ifeq ($(PLATFORM),windows)
   WIN_TARGET := $(TARGET_WIN_X64_MS)
+  CROSS_WINDOWS_ENV :=
 else
   WIN_TARGET := $(TARGET_WIN_X64)
+  CROSS_WINDOWS_ENV := CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
 endif
 # cross-linux needs a cross linker (and C compiler for the vendored C code) unless the host already is x86_64 Linux:
 # without CARGO_TARGET_*_LINKER rustc links with the host's `cc`, which fails for another architecture.
+# On Windows it builds inside WSL instead, whose own toolchain is that linker and C compiler; the build cache stays
+# on WSL's disk (WSL_TARGET_DIR, a path inside WSL), far faster than one under /mnt/c. A WSL that is x86_64 Linux
+# itself builds for its host, in the folders its other builds use. `wsl.exe -e` hands the script to bash as it is:
+# without it WSL's default shell expands the script's variables first, in a shell that has no cargo.
+WSL_TARGET_DIR ?= $$HOME/wf-target
 CROSS_LINUX_ENV :=
 ifeq ($(PLATFORM),macos)
   CROSS_LINUX_ENV := CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
@@ -88,7 +90,7 @@ $(BOLD)WeFlow CLI v$(VERSION) — $(PLATFORM)$(RESET)
 $(BOLD)基础命令$(RESET)
   $(CYAN)make build$(RESET)          当前平台 debug 构建
   $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)
-  $(CYAN)make test$(RESET)            运行全部单元测试
+  $(CYAN)make test$(RESET)            运行全部测试（单元测试和端到端测试）
   $(CYAN)make check$(RESET)           cargo check（只检查，不编译）
   $(CYAN)make docs-check$(RESET)      检查指定 Markdown 文档的一致性
   $(CYAN)make fmt$(RESET)             格式化代码
@@ -97,13 +99,13 @@ $(BOLD)基础命令$(RESET)
   $(CYAN)make clean$(RESET)           清理 target/
 
 $(BOLD)安装$(RESET)
-  $(CYAN)make install$(RESET)         将 release binary 安装到 $(HELP_INSTALL_DIR)
-  $(CYAN)make uninstall$(RESET)        从 $(HELP_INSTALL_DIR) 删除 weflow
+  $(CYAN)make install$(RESET)         将 release binary 安装到 $(INSTALL_DIR)
+  $(CYAN)make uninstall$(RESET)        从 $(INSTALL_DIR) 删除 weflow
 
 $(BOLD)跨平台编译$(RESET)
   $(CYAN)make cross-macos$(RESET)     → weflow-macos-arm64     ($(TARGET_MACOS_ARM))
   $(CYAN)make cross-linux$(RESET)     → weflow-linux-x64       ($(TARGET_LINUX_X64))
-  $(CYAN)make cross-windows$(RESET)   → weflow-windows-x64.exe ($(TARGET_WIN_X64))
+  $(CYAN)make cross-windows$(RESET)   → weflow-windows-x64.exe ($(WIN_TARGET))
   $(CYAN)make cross-all$(RESET)       构建所有跨平台目标
 
 $(BOLD)环境$(RESET)
@@ -113,8 +115,6 @@ $(BOLD)环境$(RESET)
 
 endef
 export HELP_TEXT
-# Backslashes in Windows paths would be read as printf escapes (e.g. \U), so use forward slashes.
-HELP_INSTALL_DIR := $(subst \,/,$(INSTALL_DIR))
 
 .PHONY: help
 help:
@@ -142,7 +142,7 @@ ifeq ($(PLATFORM),windows)
 	@command -v git >/dev/null 2>&1 || { \
 		printf "$(YELLOW)⚠ git 未找到，正在安装...$(RESET)\n"; \
 		printf "  执行: $(GIT_INSTALL)\n"; \
-		winget install -e --id Git.Git --accept-package-agreements --accept-source-agreements || { \
+		$(GIT_INSTALL) || { \
 			printf "$(RED)  自动安装失败，请手动安装: https://git-scm.com/download/win$(RESET)\n"; exit 1; }; \
 		printf "$(YELLOW)  安装完成，请重新打开终端使 git 生效$(RESET)\n"; \
 	}
@@ -317,23 +317,29 @@ cross-macos: check-rust _ensure-target-macos
 	@cp target/$(TARGET_MACOS_ARM)/release/weflow weflow-macos-arm64
 	@printf "$(GREEN)✓ → weflow-macos-arm64 ($$(ls -lh weflow-macos-arm64 | awk '{print $$5}'))$(RESET)\n"
 
+ifeq ($(PLATFORM),windows)
+cross-linux:
+	@command -v wsl.exe >/dev/null 2>&1 || { \
+		printf "$(RED)✗ 在 Windows 上编译 Linux 版本需要 WSL: wsl --install$(RESET)\n"; exit 1; }
+	@printf "$(BOLD)▶ 编译 Linux x64（在 WSL 中）$(RESET)\n"
+	MSYS_NO_PATHCONV=1 wsl.exe -e bash -lc '. "$$HOME/.cargo/env" 2>/dev/null; \
+	  command -v cargo >/dev/null || { echo "WSL 中未找到 cargo，请先在 WSL 里安装 Rust: https://rustup.rs" >&2; exit 1; }; \
+	  export CARGO_TARGET_DIR="$(WSL_TARGET_DIR)"; \
+	  if [ "$$(rustc -vV | sed -n "s/^host: //p")" = $(TARGET_LINUX_X64) ]; then target=; out=release; \
+	  else target="--target $(TARGET_LINUX_X64)"; out=$(TARGET_LINUX_X64)/release; fi; \
+	  cargo build --release -p weflow-cli $$target && cp "$$CARGO_TARGET_DIR/$$out/weflow" weflow-linux-x64'
+	@printf "$(GREEN)✓ → weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
+else
 cross-linux: check-rust _ensure-target-linux
 	@printf "$(BOLD)▶ 编译 Linux x64$(RESET)\n"
 	$(CROSS_LINUX_ENV) cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
 	@cp target/$(TARGET_LINUX_X64)/release/weflow weflow-linux-x64
 	@printf "$(GREEN)✓ → weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
+endif
 
 cross-windows: check-rust _ensure-target-windows
-	@printf "$(BOLD)▶ 编译 Windows x64 (GNU ABI)$(RESET)\n"
-ifeq ($(PLATFORM),macos)
-	CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
-	  cargo build --release -p weflow-cli --target $(TARGET_WIN_X64)
-else ifeq ($(PLATFORM),linux)
-	CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
-	  cargo build --release -p weflow-cli --target $(TARGET_WIN_X64)
-else
-	cargo build --release -p weflow-cli --target $(TARGET_WIN_X64_MS)
-endif
+	@printf "$(BOLD)▶ 编译 Windows x64 ($(WIN_TARGET))$(RESET)\n"
+	$(CROSS_WINDOWS_ENV) cargo build --release -p weflow-cli --target $(WIN_TARGET)
 	@cp target/$(WIN_TARGET)/release/weflow.exe weflow-windows-x64.exe
 	@printf "$(GREEN)✓ → weflow-windows-x64.exe ($$(ls -lh weflow-windows-x64.exe | awk '{print $$5}'))$(RESET)\n"
 

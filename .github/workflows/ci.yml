@@ -13,9 +13,12 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - "clippy.toml"
       - "Makefile"
       # the contract the tests keep equal to the answers (#399)
       - "web/contract/**"
+      # the API version the page asks for, which a test keeps equal to the server's
+      - "web/package.json"
       - ".github/workflows/ci.yml"
   push:
     branches: [main]
@@ -24,9 +27,12 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - "clippy.toml"
       - "Makefile"
       # the contract the tests keep equal to the answers (#399)
       - "web/contract/**"
+      # the API version the page asks for, which a test keeps equal to the server's
+      - "web/package.json"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
 
