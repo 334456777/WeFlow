@@ -55,6 +55,19 @@ case "${1:-}" in
     fi
     echo "weflow --version matches $TAG"
     "$BIN" config path
+    if [ "${RUNNER_OS:-}" = "Windows" ]; then
+      # The C runtime is linked statically (#676); a RUSTFLAGS set around the build replaces the flag of
+      # .cargo/config.toml without a word, and the program then needs the Visual C++ Redistributable to start.
+      rustup component add llvm-tools > /dev/null
+      HOST="$(rustc -vV | sed -n 's/^host: //p')"
+      OBJDUMP="$(rustc --print sysroot)/lib/rustlib/$HOST/bin/llvm-objdump.exe"
+      DLLS="$("$OBJDUMP" -p "$BIN" | sed -n 's/^ *DLL Name: //p' | tr -d '\r')"
+      echo "weflow$EXT imports: $(tr '\n' ' ' <<< "$DLLS")"
+      if grep -qiE '^(vcruntime|msvcp)' <<< "$DLLS"; then
+        echo "::error::weflow$EXT imports the Visual C++ runtime: it is not linked statically (+crt-static)"
+        exit 1
+      fi
+    fi
     ;;
   bench-base)
     # The base of the benchmark run after the release (#516): the one asked for, else the previous release, as

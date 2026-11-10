@@ -88,7 +88,7 @@ fn include_asset(logical: &str, target: &str) -> bool {
     let is_linux = target.contains("linux");
     let is_arm64 = target.contains("aarch64") || target.contains("arm64");
 
-    if logical.starts_with("runtime/win32/") || logical.starts_with("image/win32/") {
+    if logical.starts_with("image/win32/") {
         return is_windows;
     }
     if logical.starts_with("key/macos/") {
