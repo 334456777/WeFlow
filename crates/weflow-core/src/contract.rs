@@ -22,7 +22,7 @@ use crate::message::{app_message_kind, parse_message_content, ExportMsg};
 ///
 /// `web/package.json` and `web/contract/openapi.json` say it too:
 /// `the_webui_and_the_contract_have_the_server_s_api_version` fails until they agree with this.
-pub const API_VERSION: &str = "2";
+pub const API_VERSION: &str = "3";
 
 /// A message of a page as the chat window shows it (`chat messages`, `chat message` and `chat search` with
 /// `parsed`).
@@ -1633,7 +1633,7 @@ pub struct SnsImageInline {
     pub data: String,
 }
 
-/// The accounts `db scan` found under a folder: those with a `db_storage` or `FileStorage/Image` folder.
+/// The accounts `db scan` found under a folder: those with a `db_storage` folder.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbScan {
     pub root: PathBuf,
@@ -1936,6 +1936,9 @@ pub struct BackupCreated {
 #[serde(rename_all = "camelCase")]
 pub struct BackupRestored {
     pub restored_to: PathBuf,
+    /// WeFlow's sticker cache, where the stickers of the backup went; left out when it held none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stickers_restored_to: Option<PathBuf>,
 }
 
 /// What `cache clear` removed.

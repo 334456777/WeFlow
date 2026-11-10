@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Archive, ArrowCounterClockwise, Check, CircleNotch, DownloadSimple, FolderOpen, MagnifyingGlass } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
-import { backupParams, backupParts, inspectBackup, type BackupManifest } from '../api/backup';
+import { backupParams, backupParts, inspectBackup, type BackupChoice, type BackupManifest } from '../api/backup';
 import { jobFileUrl, type Job } from '../api/jobs';
 import { formatSize, jobLine } from '../jobs/TaskCenter';
 import { runJob, type JobsState } from '../jobs/useJobs';
@@ -28,7 +28,7 @@ const backupPath = (job: Job) => {
 };
 
 export function BackupPage({ jobs }: { jobs: JobsState }) {
-  const [parts, setParts] = useState({ images: true, voice: true, emojis: true });
+  const [parts, setParts] = useState<BackupChoice>({ images: false, videos: false, files: false, emojis: false });
   const [note, setNote] = useState<Note>(null);
   const [path, setPath] = useState('');
   const [target, setTarget] = useState('');
@@ -74,10 +74,12 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
     <section className="backup-block" aria-label={t('创建备份')}>
       <h2><Archive size={18} />{t('创建备份')}</h2>
       <p className="muted">{t('把当前账号的数据库打包成一个 zip，在服务端生成，完成后从浏览器下载。')}</p>
+      <p className="muted">{t('数据库里已经有聊天记录和语音。图片、视频和文件可能很大，需要时再勾选。')}</p>
       <div className="backup-parts">
-        <Check3 label={t('图片')} hint={t('微信保存的聊天图片（FileStorage/Image）')} checked={parts.images} onChange={images => setParts(p => ({ ...p, images }))} />
-        <Check3 label={t('语音')} hint="FileStorage/Audio" checked={parts.voice} onChange={voice => setParts(p => ({ ...p, voice }))} />
-        <Check3 label={t('表情')} hint={t('WeFlow 缓存的表情')} checked={parts.emojis} onChange={emojis => setParts(p => ({ ...p, emojis }))} />
+        <Check3 label={t('图片')} hint={t('微信保存的聊天图片（msg/attach）')} checked={parts.images} onChange={images => setParts(p => ({ ...p, images }))} />
+        <Check3 label={t('视频')} hint={t('微信保存的视频（msg/video）')} checked={parts.videos} onChange={videos => setParts(p => ({ ...p, videos }))} />
+        <Check3 label={t('文件')} hint={t('收发的文件（msg/file）')} checked={parts.files} onChange={files => setParts(p => ({ ...p, files }))} />
+        <Check3 label={t('表情')} hint={t('WeFlow 下载的表情，恢复时放回表情缓存')} checked={parts.emojis} onChange={emojis => setParts(p => ({ ...p, emojis }))} />
       </div>
       <button type="button" className="primary-button large export-pending" disabled={busy === 'create'} onClick={create}>{busy === 'create' ? <CircleNotch size={18} className="spin" /> : <Archive size={18} />}{t('创建备份')}</button>
       <NoteLine note={note} />

@@ -2,7 +2,7 @@
 // again once weflow-cli has rewritten the contract.
 
 /** The API version of the contract, `apiVersion` of `/health`. */
-export const CONTRACT_API_VERSION = "2";
+export const CONTRACT_API_VERSION = "3";
 
 /** A conversation of `chat sessions`, newest first. */
 export interface Session {
@@ -1442,7 +1442,7 @@ export interface WebPruned {
   shown: string[];
 }
 
-/** The accounts `db scan` found under a folder: those with a `db_storage` or `FileStorage/Image` folder. */
+/** The accounts `db scan` found under a folder: those with a `db_storage` folder. */
 export interface DbScan {
   root: string;
   accounts: ScannedAccount[];
@@ -1725,7 +1725,10 @@ export interface BackupManifest {
 
 /** A file in a backup. */
 export interface BackupEntry {
-  /** Its path in the backup: `db_storage/…`, `FileStorage/…` or `emojis/…`. */
+  /**
+   * Its path in the backup: `db_storage/…`, `msg/attach/…`, `msg/video/…`, `msg/file/…` or `emojis/…`; a backup
+   * of an older WeFlow can also hold `FileStorage/…`.
+   */
   path: string;
   sha256: string;
   /** Bytes. */
@@ -1735,6 +1738,8 @@ export interface BackupEntry {
 /** Where `backup restore` put the files. */
 export interface BackupRestored {
   restoredTo: string;
+  /** WeFlow's sticker cache, where the stickers of the backup went; left out when it held none. */
+  stickersRestoredTo?: string;
 }
 
 /** The default places of WeChat's data directory (`db detect`). */

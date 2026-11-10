@@ -120,10 +120,7 @@ impl ServiceHub {
                     continue;
                 }
                 let name = entry.file_name().to_string_lossy().to_string();
-                if path.join("db_storage").exists()
-                    || path.join("FileStorage/Image").exists()
-                    || path.join("FileStorage/Image2").exists()
-                {
+                if crate::config::is_account_dir(&path) {
                     wxids.push(crate::contract::ScannedAccount { wxid: name, path });
                 }
             }
@@ -1289,20 +1286,13 @@ impl ServiceHub {
     pub fn backup_create(
         &self,
         out: &Path,
-        include_images: bool,
-        include_voice: bool,
-        include_emojis: bool,
+        options: &crate::backup::BackupOptions,
     ) -> AppResult<crate::contract::BackupCreated> {
         let (account_dir, _, _) = self.connection_inputs()?;
-        let options = crate::backup::BackupOptions {
-            include_images,
-            include_voice,
-            include_emojis,
-        };
         let manifest = crate::backup::create_backup(
             &account_dir,
-            &options,
-            Some(&self.ctx.home_dir),
+            options,
+            Some(&self.cache_base().join("Emojis")),
             &self.ctx.version,
             out,
             &|current, total| self.emit_progress("backup", "creating backup", current, total),
@@ -1325,12 +1315,15 @@ impl ServiceHub {
         path: &Path,
         target_dir: &Path,
     ) -> AppResult<crate::contract::BackupRestored> {
-        crate::backup::restore_backup(path, target_dir, &|current, total| {
-            self.emit_progress("restore", "restoring backup", current, total)
-        })
-        .map_err(|e| AppError::runtime(e.to_string()))?;
+        let emoji_dir = self.cache_base().join("Emojis");
+        let stickers =
+            crate::backup::restore_backup(path, target_dir, Some(&emoji_dir), &|current, total| {
+                self.emit_progress("restore", "restoring backup", current, total)
+            })
+            .map_err(|e| AppError::runtime(e.to_string()))?;
         Ok(crate::contract::BackupRestored {
             restored_to: target_dir.to_path_buf(),
+            stickers_restored_to: stickers.then_some(emoji_dir),
         })
     }
 

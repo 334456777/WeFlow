@@ -11,31 +11,37 @@ export type BackupManifest = Contract.BackupManifest;
 
 export const inspectBackup = (path: string, signal?: AbortSignal) => get<BackupManifest>('backup/inspect', { path }, signal);
 
-/** The parameters of `backup create`: what it leaves out. */
-export function backupParams(parts: { images: boolean; voice: boolean; emojis: boolean }) {
+/** What `backup create` adds to the databases, which it always holds (with the voice messages in them, #643). */
+export type BackupChoice = { images: boolean; videos: boolean; files: boolean; emojis: boolean };
+
+/** The parameters of `backup create`: what it adds to the databases. */
+export function backupParams(parts: BackupChoice) {
   return {
-    'no-images': parts.images ? undefined : true,
-    'no-voice': parts.voice ? undefined : true,
-    'no-emojis': parts.emojis ? undefined : true,
+    images: parts.images || undefined,
+    videos: parts.videos || undefined,
+    files: parts.files || undefined,
+    emojis: parts.emojis || undefined,
   };
 }
 
-/** The entries of a backup by what they are: the databases, and each part of the cache. */
+/** The entries of a backup by what they are: the databases, WeChat's media and WeFlow's stickers. */
 export function backupParts(entries: readonly BackupEntry[]): { label: string; files: number; bytes: number }[] {
   const groups = new Map<string, { files: number; bytes: number }>();
   for (const e of entries) {
     const path = e.path.replace(/\\/g, '/').toLowerCase();
-    // as `backup create` collects them: db_storage, FileStorage/Image(2), FileStorage/Audio, and WeFlow's emojis
-    // shown through t()
+    // as `backup create` collects them: db_storage, msg/attach, msg/video, msg/file and WeFlow's stickers; a backup of
+    // an older WeFlow can hold FileStorage/Image(2) and FileStorage/Audio. Shown through t()
     const label = path.startsWith('db_storage/') ? msg('数据库')
-      : /^filestorage\/image2?\//.test(path) ? msg('图片')
-        : path.startsWith('filestorage/audio/') ? msg('语音')
-          : path.startsWith('emojis/') ? msg('表情')
-            : msg('其他');
+      : path.startsWith('msg/attach/') || /^filestorage\/image2?\//.test(path) ? msg('图片')
+        : path.startsWith('msg/video/') ? msg('视频')
+          : path.startsWith('msg/file/') ? msg('文件')
+            : path.startsWith('filestorage/audio/') ? msg('语音')
+              : path.startsWith('emojis/') ? msg('表情')
+                : msg('其他');
     const g = groups.get(label) ?? { files: 0, bytes: 0 };
     g.files += 1; g.bytes += e.size;
     groups.set(label, g);
   }
-  const order = [msg('数据库'), msg('图片'), msg('语音'), msg('表情'), msg('其他')];
+  const order = [msg('数据库'), msg('图片'), msg('视频'), msg('文件'), msg('语音'), msg('表情'), msg('其他')];
   return [...groups.entries()].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])).map(([label, g]) => ({ label, ...g }));
 }
