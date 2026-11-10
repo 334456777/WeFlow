@@ -223,7 +223,7 @@ const HELP: &[(&str, &str)] = &[
     ("Output directory (default: the current directory)", "输出目录（默认：当前目录）"),
     ("JSON array of {localId, createTime, serverId?, senderWxid?}", "{localId, createTime, serverId?, senderWxid?} 的 JSON 数组"),
     ("Download the stickers of a conversation", "下载一个会话中的表情"),
-    ("Check whether the anti-revoke trigger is installed for sessions", "检查这些会话是否已安装防撤回触发器"),
+    ("Check whether the anti-revoke trigger is installed for sessions (refused: the database is read-only)", "检查这些会话是否已安装防撤回触发器（会被拒绝：数据库是只读的）"),
     ("Install the anti-revoke trigger for sessions (refused: the database is read-only)", "为这些会话安装防撤回触发器（会被拒绝：数据库是只读的）"),
     ("Remove the anti-revoke trigger from sessions (refused: the database is read-only)", "移除这些会话的防撤回触发器（会被拒绝：数据库是只读的）"),
     ("Export the session list", "导出会话列表"),

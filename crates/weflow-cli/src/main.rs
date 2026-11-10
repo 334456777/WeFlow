@@ -696,7 +696,7 @@ struct PageArgs {
 enum AntiRevokeSubcommand {
     /// Sessions that anti-revoke can be installed for
     Sessions,
-    /// Check whether the anti-revoke trigger is installed for sessions
+    /// Check whether the anti-revoke trigger is installed for sessions (refused: the database is read-only)
     Check {
         /// Conversation ids
         sessions: Vec<String>,

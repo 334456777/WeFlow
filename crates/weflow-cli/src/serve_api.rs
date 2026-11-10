@@ -92,6 +92,8 @@ const REFUSED: &[(&str, &[Verb])] = &[
     ("chat update-message", &[Patch]),
     ("chat delete-message", &[Delete]),
     ("chat mark-read", &[Post]),
+    // looking for the trigger is refused like installing it (#644)
+    ("chat anti-revoke check", &[Get]),
     ("chat anti-revoke install", &[Put]),
     ("chat anti-revoke uninstall", &[Delete]),
     ("sns block-delete", &[Get, Put, Delete]),

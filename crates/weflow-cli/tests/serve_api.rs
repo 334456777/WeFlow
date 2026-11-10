@@ -884,6 +884,7 @@ fn refused_commands_are_marked_and_refused() {
             "DELETE /chat/delete-message",
             "DELETE /sns/block-delete",
             "DELETE /sns/delete",
+            "GET /chat/anti-revoke/check",
             "GET /sns/block-delete",
             "PATCH /chat/update-message",
             "POST /chat/mark-read",
