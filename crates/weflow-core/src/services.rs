@@ -4,7 +4,10 @@ use serde_json::{json, Value};
 use weflow_native::msg_row::MsgRow;
 use weflow_native::native_media::SessionRow;
 
-use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig, ServeSettings};
+use crate::config::{
+    clean_account_dir_name, resolve_account_dir, AppContext, ConfigStore, ProfileConfig,
+    ServeSettings,
+};
 use crate::error::{AppError, AppResult};
 
 mod analytics;
@@ -12,7 +15,7 @@ mod api;
 mod chat;
 mod cleanup;
 mod export_stream;
-pub use cleanup::{disk_usage, normalize_account_id, CachePart};
+pub use cleanup::{disk_usage, CachePart};
 mod group;
 mod image;
 mod insight;
@@ -1871,25 +1874,6 @@ fn remember_fingerprint(path: &Path, fingerprint: &str) {
     let _ = std::fs::write(path, keep.join("\n") + "\n");
 }
 
-/// `cleanAccountDirName`: `wxid_abc_1234` -> `wxid_abc`, `name_ab12` -> `name`.
-pub fn clean_account_dir_name(dir_name: &str) -> String {
-    use crate::message::rx;
-    let trimmed = dir_name.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    if trimmed.to_lowercase().starts_with("wxid_") {
-        return rx(r"(?i)^(wxid_[^_]+)")
-            .captures(trimmed)
-            .map(|c| c[1].to_string())
-            .unwrap_or_else(|| trimmed.to_string());
-    }
-    rx(r"^(.+)_([a-zA-Z0-9]{4})$")
-        .captures(trimmed)
-        .map(|c| c[1].to_string())
-        .unwrap_or_else(|| trimmed.to_string())
-}
-
 fn extract_member_ids(value: &Value) -> Vec<String> {
     let list = value
         .as_array()
@@ -2070,14 +2054,6 @@ mod export_tests {
     }
 
     use super::*;
-
-    #[test]
-    fn cleans_account_dir_names() {
-        assert_eq!(clean_account_dir_name("wxid_abc123_ab12"), "wxid_abc123");
-        assert_eq!(clean_account_dir_name("someone_a1b2"), "someone");
-        assert_eq!(clean_account_dir_name("plain"), "plain");
-        assert_eq!(clean_account_dir_name(" "), "");
-    }
 
     #[test]
     fn member_ids_from_various_shapes() {

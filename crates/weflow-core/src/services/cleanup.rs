@@ -64,34 +64,6 @@ pub fn disk_usage(path: &Path) -> (u64, u64) {
         })
 }
 
-/// `normalizeAccountId`: `wxid_abc_1a2b` → `wxid_abc`, `name_1a2b` → `name`.
-pub fn normalize_account_id(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    if trimmed.to_lowercase().starts_with("wxid_") {
-        // `wxid_` plus everything up to the next underscore
-        let rest = &trimmed[5..];
-        let end = rest.find('_').unwrap_or(rest.len());
-        return if end == 0 {
-            trimmed.to_string()
-        } else {
-            trimmed[..5 + end].to_string()
-        };
-    }
-    match trimmed.rsplit_once('_') {
-        Some((head, tail))
-            if !head.is_empty()
-                && tail.len() == 4
-                && tail.chars().all(|c| c.is_ascii_alphanumeric()) =>
-        {
-            head.to_string()
-        }
-        _ => trimmed.to_string(),
-    }
-}
-
 /// `buildAccountNameMatcher`: a file or folder name belongs to the account when it equals, starts with
 /// `<id>_` or contains one of the ids (case-insensitive).
 fn account_name_matches(name: &str, ids: &[String]) -> bool {
@@ -258,7 +230,7 @@ impl ServiceHub {
                 "no current account (wxid) configured, nothing to clear",
             ));
         }
-        let normalized = normalize_account_id(&raw);
+        let normalized = clean_account_dir_name(&raw);
         let mut ids: Vec<String> = vec![raw.trim().to_lowercase()];
         if !normalized.is_empty() && !ids.contains(&normalized.to_lowercase()) {
             ids.push(normalized.to_lowercase());
@@ -331,15 +303,6 @@ mod tests {
         for part in CachePart::ALL {
             assert_eq!(serde_json::to_value(part).unwrap(), part.name());
         }
-    }
-
-    #[test]
-    fn account_ids_lose_their_directory_suffix() {
-        assert_eq!(normalize_account_id("wxid_abc123_1a2b"), "wxid_abc123");
-        assert_eq!(normalize_account_id("WXID_abc"), "WXID_abc");
-        assert_eq!(normalize_account_id("alice_9x9z"), "alice");
-        assert_eq!(normalize_account_id("alice_toolong"), "alice_toolong");
-        assert_eq!(normalize_account_id("  "), "");
     }
 
     #[test]
