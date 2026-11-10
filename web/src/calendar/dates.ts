@@ -24,8 +24,6 @@ export function parseDay(day: string): Date {
   return new Date(y, m - 1, d);
 }
 
-export const isDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
-
 export const today = () => toDay(new Date());
 
 export function addDays(day: string, days: number): string {

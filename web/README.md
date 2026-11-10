@@ -49,5 +49,5 @@ After `bun run build`, `weflow serve --ui-dir web/dist` opens the built page.
 | `bun run build` | Type-check, then build into `dist/` |
 | `bun run preview` | Serve `dist/` with the same proxy |
 | `bun run contract` | Write `src/api/contract.gen.ts` from `contract/openapi.json`; `--check` only checks it |
-| `bun run i18n` | List the page's texts without their English, and the Chinese not passed through `t()` yet; `--check` fails on the first |
-| `bun run check` | Check the types of the contract and the English, type-check, test and build, as CI does |
+| `bun run i18n` | List the page's texts without their English, the English no text uses any more, and the Chinese not passed through `t()` yet; `--check` fails on the first two |
+| `bun run check` | Check the types of the contract and the English, type-check, test and build, as CI does (CI also compares the contract with the latest release's) |

@@ -53,7 +53,8 @@ describe('the WebUI versions (#406)', () => {
 
   it('says when the server shows another page this run, and what prune removed and left', async () => {
     serve((method, url) => {
-      if (url === '/web/list') return ok([kept(WEB.version), kept('1.0.0'), kept('0.5.0', { suits: false, minBackendVersion: '99.0.0' })]);
+      // 0.0.5: a version the page itself (WEB.version) never has, so the rows stay three
+      if (url === '/web/list') return ok([kept(WEB.version), kept('1.0.0'), kept('0.0.5', { suits: false, minBackendVersion: '99.0.0' })]);
       if (method === 'PUT') return ok({ version: '1.0.0', path: 'x' });
       if (url === '/ui/weflow-web.json') return json({ version: WEB.version });
       if (method === 'DELETE' && url === '/web/prune') return ok({ removed: ['1.0.0'], kept: [WEB.version], shown: ['0.9.0'] });
@@ -61,7 +62,7 @@ describe('the WebUI versions (#406)', () => {
     const onReload = vi.fn();
     render(<WebVersions health={HEALTH} onReload={onReload} />);
     await act(async () => {});
-    expect(screen.getAllByRole('listitem')[2].textContent).toBe('0.5.0需要 weflow 99.0.0 或更新的版本，这个是 9.9.9');
+    expect(screen.getAllByRole('listitem')[2].textContent).toBe('0.0.5需要 weflow 99.0.0 或更新的版本，这个是 9.9.9');
     fireEvent.click(screen.getByRole('button', { name: '换成 1.0.0' }));
     await act(async () => {});
     expect(onReload).not.toHaveBeenCalled();

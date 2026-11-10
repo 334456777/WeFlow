@@ -49,5 +49,5 @@ bun run dev                               # http://localhost:5173/ui/
 | `bun run build` | 类型检查后构建到 `dist/` |
 | `bun run preview` | 用同样的代理预览 `dist/` |
 | `bun run contract` | 由 `contract/openapi.json` 生成 `src/api/contract.gen.ts`；带 `--check` 时只检查 |
-| `bun run i18n` | 列出还没有英文的界面文字，以及还没经过 `t()` 的中文；带 `--check` 时前者不为空就失败 |
-| `bun run check` | 检查契约类型和英文，再做类型检查、测试和构建，与 CI 相同 |
+| `bun run i18n` | 列出还没有英文的界面文字、不再有文字使用的英文，以及还没经过 `t()` 的中文；带 `--check` 时前两种不为空就失败 |
+| `bun run check` | 检查契约类型和英文，再做类型检查、测试和构建，与 CI 相同（CI 另外把契约与最新发布版对比） |
