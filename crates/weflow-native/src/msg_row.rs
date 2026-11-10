@@ -199,14 +199,9 @@ impl MsgRow {
         }
     }
 
-    /// The select list over the message table `m` and `Name2Id` `n`, joined on the sender; lite rows leave out the
-    /// source and the packed info, which bulk scans do not read.
-    pub(crate) fn columns(lite: bool) -> &'static str {
-        Self::columns_of(if lite { Columns::Lite } else { Columns::All })
-    }
-
-    /// The select list of [`columns`](Self::columns) for `which` columns.
-    pub(crate) fn columns_of(which: Columns) -> &'static str {
+    /// The select list over the message table `m` and `Name2Id` `n`, joined on the sender, for `which` columns: lite
+    /// rows leave out the source and the packed info, which bulk scans do not read.
+    pub(crate) fn columns(which: Columns) -> &'static str {
         match which {
             Columns::All => MSG_COLUMNS,
             Columns::NoSource => MSG_COLUMNS_NO_SOURCE,

@@ -574,7 +574,7 @@ struct AppState {
     /// The `/api/` reads, which wait for a place of `reads`.
     api_reads: Line,
     media: Line,
-    /// `/openapi.json` in English and in Chinese, built when first asked for.
+    /// `/openapi.json` in the server's language, built when first asked for.
     openapi: OnceLock<String>,
     /// The hub of the `/api/` routes.
     hub: Arc<in_process::Hub>,
@@ -1325,7 +1325,7 @@ async fn route(st: &AppState, req: Request) -> Response {
     }
     // the child answers in the server's language, as a read in process does, whatever the request's
     // `Accept-Language` and whatever `weflow lang` was set to since the server started (#433)
-    let lang = Some(server_lang());
+    let lang = server_lang();
     let limit = st.limit(verb);
     // the folder the server chose for the file, made once the command is sure to run
     let make_folder =
@@ -1703,17 +1703,15 @@ fn server_lang() -> &'static str {
 }
 
 /// `weflow <args>` with no stdin and both outputs captured.
-fn command(exe: &std::path::Path, args: &[String], lang: Option<&str>) -> tokio::process::Command {
+fn command(exe: &std::path::Path, args: &[String], lang: &str) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(exe);
     cmd.args(args)
+        .env("WEFLOW_LANG", lang)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         // the command is killed if its request or job goes away before it ends
         .kill_on_drop(true);
-    if let Some(lang) = lang {
-        cmd.env("WEFLOW_LANG", lang);
-    }
     cmd
 }
 
@@ -1737,7 +1735,7 @@ pub(super) fn ends_by_itself(args: &[String]) -> bool {
 pub(super) async fn spawn(
     exe: &std::path::Path,
     args: &[String],
-    lang: Option<&str>,
+    lang: &str,
 ) -> std::io::Result<tokio::process::Child> {
     let mut cmd = command(exe, args, lang);
     if ends_by_itself(args) {
@@ -1763,7 +1761,7 @@ pub(super) async fn spawn(
 async fn run(
     exe: &std::path::Path,
     args: &[String],
-    lang: Option<&str>,
+    lang: &str,
 ) -> std::io::Result<std::process::Output> {
     let mut child = spawn(exe, args, lang).await?;
     // `wait_with_output` closes stdin first, which would end a command that ends by itself (see [`spawn`]); it
