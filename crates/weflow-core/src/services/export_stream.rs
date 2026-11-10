@@ -54,7 +54,7 @@ const COLLECT_MAX_WORKERS: usize = 2;
 /// Pages the consumer takes before it judges whether it waited too long (or what the last woken worker brought).
 const PAGES_PER_CHECK: usize = 3;
 /// Fixes the worker count (a number of threads, at least 1) instead of adapting it, for measurements.
-pub const WORKERS_ENV: &str = "WEFLOW_EXPORT_WORKERS";
+const WORKERS_ENV: &str = "WEFLOW_EXPORT_WORKERS";
 
 /// What a worker turns each parsed page into for the consumer.
 pub(super) type Finish<'f, T> = dyn FnMut(Vec<ExportMsg>) -> T + 'f;

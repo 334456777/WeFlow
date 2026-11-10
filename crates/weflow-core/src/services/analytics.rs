@@ -201,7 +201,7 @@ impl ServiceHub {
     }
 
     /// Persists one key of the active profile to the config file.
-    pub fn set_config_value(&self, key: &str, value: Value) -> AppResult<()> {
+    fn set_config_value(&self, key: &str, value: Value) -> AppResult<()> {
         crate::config::ConfigStore::update_or(
             &self.ctx.config_path,
             || self.config.clone(),

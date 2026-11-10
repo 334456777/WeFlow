@@ -115,7 +115,7 @@ impl ServiceHub {
             .unwrap_or_else(|| self.ctx.cache_dir())
     }
 
-    pub fn sns_cache_dir(&self) -> PathBuf {
+    fn sns_cache_dir(&self) -> PathBuf {
         let dir = self.cache_base().join("sns_cache");
         let _ = std::fs::create_dir_all(&dir);
         dir
@@ -1503,7 +1503,7 @@ fn media_key(key: Option<&str>) -> Option<String> {
     (!t.is_empty()).then(|| t.to_string())
 }
 
-pub fn url_encode(s: &str) -> String {
+fn url_encode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {

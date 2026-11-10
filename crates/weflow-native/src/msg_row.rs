@@ -153,7 +153,7 @@ fn inflate_with(dctx: &mut zstd::zstd_safe::DCtx<'static>, bytes: &[u8]) -> Opti
 
 /// Bytes as text: inflated first when they are a zstd frame, then UTF-8. Bytes that are not UTF-8 lose the invalid
 /// sequences when they are under a fifth of the characters, and are otherwise read one byte a character (Latin-1).
-pub fn bytes_to_text(bytes: &[u8]) -> String {
+fn bytes_to_text(bytes: &[u8]) -> String {
     let inflated = if bytes.starts_with(&ZSTD_MAGIC) {
         inflate(bytes)
     } else {

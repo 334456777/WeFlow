@@ -3,7 +3,7 @@
 use crate::error::{AppError, AppResult};
 
 /// `YYYY-MM-DD` → (year, month, day), validated.
-pub fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
+fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
     let parts: Vec<&str> = s.splitn(3, '-').collect();
     if parts.len() != 3 {
         return Err(format!("invalid date '{s}'; use YYYY-MM-DD"));
@@ -42,14 +42,14 @@ pub fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
 }
 
 /// Unix time of 00:00 on that date in the machine's local time zone (the zone `chat dates` and the statistics use).
-pub fn parse_date_local(s: &str) -> Result<i64, String> {
+fn parse_date_local(s: &str) -> Result<i64, String> {
     let (y, m, d) = parse_date_parts(s)?;
     crate::message::local_midnight(y, m, d)
         .ok_or_else(|| format!("'{s}' does not exist in the local time zone"))
 }
 
 /// Unix time of 00:00 on the day after that date (a 23- or 25-hour day is handled by the zone rules).
-pub fn parse_next_date_local(s: &str) -> Result<i64, String> {
+fn parse_next_date_local(s: &str) -> Result<i64, String> {
     let (y, m, d) = parse_date_parts(s)?;
     crate::message::local_midnight_after(y, m, d)
         .ok_or_else(|| format!("'{s}' does not exist in the local time zone"))

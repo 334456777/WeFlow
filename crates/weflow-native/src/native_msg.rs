@@ -74,7 +74,7 @@ fn exact_key_table(t: &MsgTable) -> bool {
         .is_ok_and(|set| set.contains(&(t.db.clone(), t.table.clone())))
 }
 
-pub struct MessageCursor {
+struct MessageCursor {
     tables: Vec<MsgTable>,
     keys: Vec<Key>,
     pos: usize,

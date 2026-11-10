@@ -42,7 +42,7 @@ pub const ACCOUNT_DIR: &str = "wxid_benchme_b3n9";
 pub const IMAGE_XOR_KEY: u8 = 0x5a;
 pub const IMAGE_AES_KEY: &str = "b3nchm4rk1m4g3k3";
 /// The newest moment of the account (2025-10-09 08:53:20 UTC): fixed, so a seed gives the same account on any day.
-pub const END: i64 = 1_760_000_000;
+const END: i64 = 1_760_000_000;
 
 const DAY: i64 = 86_400;
 /// The account's clock, UTC+8: hours, days and the month folders of its files are in it.
@@ -508,7 +508,7 @@ const CONTENT_BYTES_OTHER: Spread = (2000.0, 6000.0, 20_000.0);
 
 /// SplitMix64: small, fast, and fixed for good, where a library's generator may change its stream in a new version.
 #[derive(Clone)]
-pub struct Rng(u64);
+struct Rng(u64);
 
 impl Rng {
     pub fn new(seed: u64) -> Self {

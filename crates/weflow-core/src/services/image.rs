@@ -1235,7 +1235,7 @@ impl ServiceHub {
 
     /// The thumbnail WeChat keeps of a message's image (`<md5>_t.dat`, a few kilobytes), decrypted in memory; the
     /// image itself ([`Self::image_data_for_message`]) when there is none.
-    pub fn image_thumbnail_for_message(
+    fn image_thumbnail_for_message(
         &self,
         session_id: &str,
         msg_id: &str,

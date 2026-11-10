@@ -54,7 +54,7 @@ pub fn normalize_dat_base(name: &str) -> String {
     }
 }
 
-pub fn is_thumbnail_dat(name: &str) -> bool {
+fn is_thumbnail_dat(name: &str) -> bool {
     let l = name.to_lowercase();
     l.contains("_t.dat") || l.contains(".t.dat") || l.contains("_thumb.dat")
 }
@@ -74,18 +74,6 @@ pub fn is_t_variant_dat(dat_path: &str) -> bool {
 pub fn is_base_dat_path(dat_path: &str, base_md5: &str) -> bool {
     let base = base_md5.trim().to_lowercase();
     !base.is_empty() && file_name_lower(dat_path) == format!("{base}.dat")
-}
-
-pub fn dat_tier(dat_path: &str, base_md5: &str) -> i32 {
-    if is_hd_dat_path(dat_path) {
-        3
-    } else if is_base_dat_path(dat_path, base_md5) {
-        2
-    } else if is_t_variant_dat(dat_path) {
-        1
-    } else {
-        0
-    }
 }
 
 fn stem_and_ext(path: &str) -> (String, String) {
@@ -125,7 +113,7 @@ fn safe_suffix(raw_suffix: &str) -> String {
     }
 }
 
-pub fn cache_variant_suffix_from_dat(dat_path: &str) -> String {
+fn cache_variant_suffix_from_dat(dat_path: &str) -> String {
     if is_hd_dat_path(dat_path) {
         return "_hd".into();
     }
@@ -133,23 +121,6 @@ pub fn cache_variant_suffix_from_dat(dat_path: &str) -> String {
     let stem = lower.strip_suffix(".dat").unwrap_or(&lower).to_string();
     let base = normalize_dat_base(&stem);
     safe_suffix(&stem[base.len().min(stem.len())..])
-}
-
-pub fn cache_variant_suffix_from_cached(cache_path: &str) -> String {
-    let (stem, _) = stem_and_ext(cache_path);
-    let base = normalize_dat_base(&stem);
-    safe_suffix(&stem[base.len().min(stem.len())..])
-}
-
-pub fn cached_path_tier(cache_path: &str) -> i32 {
-    if is_hd_path(cache_path) {
-        return 3;
-    }
-    if cache_variant_suffix_from_cached(cache_path).is_empty() {
-        2
-    } else {
-        1
-    }
 }
 
 fn suffix_search_order(primary: &str, prefer_hd: bool) -> Vec<String> {
@@ -169,7 +140,7 @@ fn suffix_search_order(primary: &str, prefer_hd: bool) -> Vec<String> {
         .collect()
 }
 
-pub fn sanitize_dir_name(s: &str) -> String {
+fn sanitize_dir_name(s: &str) -> String {
     let cleaned: String = s
         .chars()
         .map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c })
@@ -183,7 +154,7 @@ pub fn sanitize_dir_name(s: &str) -> String {
 }
 
 /// `resolveTimeDir`: `YYYY-MM` of the file's mtime (or now).
-pub fn time_dir(path: &Path) -> String {
+fn time_dir(path: &Path) -> String {
     let dt = std::fs::metadata(path)
         .and_then(|m| m.modified())
         .ok()
@@ -252,7 +223,7 @@ pub fn is_img_scoped_dat_path(path: &str) -> bool {
 
 // ───────────────────────── cache layout ─────────────────────────
 
-pub const CACHE_EXTENSIONS: [&str; 5] = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+const CACHE_EXTENSIONS: [&str; 5] = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
 
 pub fn cache_output_path(
     root: &Path,
@@ -578,10 +549,6 @@ mod tests {
         assert!(!is_hd_dat_path(&format!("/a/{MD5}_t.dat")));
         assert!(is_t_variant_dat(&format!("/a/{MD5}_t.dat")));
         assert!(is_base_dat_path(&format!("/a/{MD5}.dat"), MD5));
-        assert_eq!(dat_tier(&format!("{MD5}_h.dat"), MD5), 3);
-        assert_eq!(dat_tier(&format!("{MD5}.dat"), MD5), 2);
-        assert_eq!(dat_tier(&format!("{MD5}_t.dat"), MD5), 1);
-        assert_eq!(dat_tier(&format!("{MD5}_b.dat"), MD5), 0);
     }
 
     #[test]
@@ -619,13 +586,6 @@ mod tests {
             cache_variant_suffix_from_dat(&format!("/x/{MD5}.t.dat")),
             ".t"
         );
-        assert_eq!(
-            cache_variant_suffix_from_cached(&format!("/c/{MD5}_hd.jpg?v=1")),
-            "_hd"
-        );
-        assert_eq!(cached_path_tier(&format!("/c/{MD5}_hd.jpg")), 3);
-        assert_eq!(cached_path_tier(&format!("/c/{MD5}.jpg")), 2);
-        assert_eq!(cached_path_tier(&format!("/c/{MD5}_t.jpg")), 1);
         assert!(is_hd_path(&format!("/c/{MD5}_hd.png")));
         assert!(!is_hd_path(&format!("/c/{MD5}.png")));
         assert_eq!(

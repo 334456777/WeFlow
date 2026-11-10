@@ -25,7 +25,7 @@ const ENV_PRECEDENCE: [&str; 5] = ["WEFLOW_LANG", "LC_ALL", "LC_MESSAGES", "LANG
 
 impl Lang {
     /// Parse a locale string such as `zh_CN.UTF-8`, `zh-TW`, `zh-Hans-CN`, `en_US` or `zh`.
-    pub fn from_locale(value: &str) -> Lang {
+    fn from_locale(value: &str) -> Lang {
         // LANGUAGE may hold a colon-separated priority list: use its first entry.
         let first = value
             .split(':')
@@ -45,7 +45,7 @@ impl Lang {
     }
 
     /// The environment decides when any of the variables is set; otherwise `system` (the OS display language).
-    pub fn detect_with(
+    fn detect_with(
         get: impl Fn(&str) -> Option<String>,
         system: impl Fn() -> Option<String>,
     ) -> Lang {
@@ -67,7 +67,7 @@ impl Lang {
 /// The operating system's display language as a locale string (`zh-CN`, `en-US`, ...), if it can be determined.
 // The `return`s stay: each platform block is compiled alone, but only the last one is a tail expression.
 #[allow(clippy::needless_return)]
-pub fn system_locale() -> Option<String> {
+fn system_locale() -> Option<String> {
     #[cfg(windows)]
     {
         #[link(name = "kernel32")]

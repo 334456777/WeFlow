@@ -3,7 +3,8 @@
 
 /// Process ids of the `(image name, pid)` entries whose image is one of `images`, ignoring ASCII case. The ids are
 /// grouped in the order of `images`, each group in the order of `entries` (the order the system lists them).
-pub fn pick_pids(entries: impl IntoIterator<Item = (String, u32)>, images: &[&str]) -> Vec<u32> {
+#[cfg(any(windows, test))]
+fn pick_pids(entries: impl IntoIterator<Item = (String, u32)>, images: &[&str]) -> Vec<u32> {
     let mut found: Vec<(usize, u32)> = entries
         .into_iter()
         .filter_map(|(name, pid)| {

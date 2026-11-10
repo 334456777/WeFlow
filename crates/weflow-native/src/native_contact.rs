@@ -93,7 +93,7 @@ fn is_member_id(id: &str) -> bool {
 /// The buffer is a protobuf-style stream whose member entries look like
 /// `0x0a <len> <username> 0x12 <len> <nickname> ...`; like WeFlow's desktop app we scan for that shape
 /// instead of relying on the (undocumented) outer message layout.
-pub fn parse_group_nicknames(buf: &[u8]) -> BTreeMap<String, String> {
+fn parse_group_nicknames(buf: &[u8]) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let mut i = 0;
     while i + 2 < buf.len() {

@@ -636,7 +636,7 @@ impl Line {
     }
 }
 
-pub fn router(cfg: ApiConfig) -> Router {
+fn router(cfg: ApiConfig) -> Router {
     let tasks = Arc::new(Semaphore::new(cfg.max_tasks.max(1)));
     let reads = Arc::new(Semaphore::new(cfg.max_reads.max(1)));
     let api_reads = Line::new(reads.clone(), cfg.max_reads);

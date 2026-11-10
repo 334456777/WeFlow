@@ -47,7 +47,8 @@ pub fn supported() -> bool {
 
 /// The main WeChat process among `(pid, command line)` of the `Weixin.exe` processes: of those whose command line
 /// names `weixin.exe` (ignoring case), the one with the shortest; the others carry `--type=…` and such.
-pub fn pick_main_pid(processes: &[(u32, String)]) -> Option<u32> {
+#[cfg(any(windows, test))]
+fn pick_main_pid(processes: &[(u32, String)]) -> Option<u32> {
     processes
         .iter()
         .filter(|(_, line)| line.to_lowercase().contains("weixin.exe"))
@@ -84,7 +85,7 @@ fn find_main_wechat_pid() -> Option<u32> {
 }
 
 /// The whitelist as the DLL expects it: UTF-8 names separated by NUL, terminated by two NULs.
-pub fn whitelist_buffer(whitelist: &[String]) -> Option<Vec<u8>> {
+fn whitelist_buffer(whitelist: &[String]) -> Option<Vec<u8>> {
     if whitelist.is_empty() {
         return None;
     }

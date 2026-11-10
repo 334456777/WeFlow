@@ -161,7 +161,7 @@ impl PageCipher {
 }
 
 /// Cheap key check: derive the keys and verify page 1 of `db`.
-pub fn verify_key(db: &[u8], raw_key: &[u8; 32]) -> Result<PageCipher> {
+fn verify_key(db: &[u8], raw_key: &[u8; 32]) -> Result<PageCipher> {
     if db.len() < PAGE_SIZE {
         bail!("file is smaller than one page ({} bytes)", db.len());
     }
@@ -342,7 +342,7 @@ fn wal_checksum(data: &[u8], big_endian: bool, mut s0: u32, mut s1: u32) -> (u32
 
 /// What a WAL holds: its salt (when the header is valid), how many frames its committed prefix has (what SQLite's
 /// wal-index calls `mxFrame`), and the newest committed frame of each page.
-pub struct WalOverlay {
+pub(crate) struct WalOverlay {
     pub salt: Option<[u8; 8]>,
     pub frames: u32,
     /// Database size in pages after the last commit (`None` when nothing is committed).
@@ -352,7 +352,7 @@ pub struct WalOverlay {
 }
 
 /// Parse a WAL (see [`WalOverlay`]). A missing or invalid WAL gives an empty overlay.
-pub fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
+pub(crate) fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
     let salt = wal.and_then(wal_salt);
     let mut overlay = WalOverlay {
         salt,

@@ -13,9 +13,9 @@ use crate::message::rx;
 
 pub const API_TIMEOUT_MS: u64 = 45_000;
 pub const API_TEMPERATURE: f64 = 0.7;
-pub const API_MAX_TOKENS_DEFAULT: u64 = 1024;
-pub const MAX_RECORDS_PER_SCOPE: usize = 1000;
-pub const RECORDS_FILE: &str = "weflow-insight-records.json";
+const API_MAX_TOKENS_DEFAULT: u64 = 1024;
+const MAX_RECORDS_PER_SCOPE: usize = 1000;
+const RECORDS_FILE: &str = "weflow-insight-records.json";
 
 pub fn now_millis() -> i64 {
     SystemTime::now()
@@ -517,7 +517,7 @@ pub fn normalize_insight_text(text: &str) -> String {
     rx(r"\n{3,}").replace_all(&t, "\n\n").trim().to_string()
 }
 
-pub fn format_message_timestamp(create_time: i64) -> String {
+fn format_message_timestamp(create_time: i64) -> String {
     let ms = if create_time > 1_000_000_000_000 {
         create_time
     } else {
@@ -537,7 +537,7 @@ pub fn format_message_timestamp(create_time: i64) -> String {
     }
 }
 
-pub fn format_message_content(m: &ChatMessage) -> String {
+fn format_message_content(m: &ChatMessage) -> String {
     let parsed = normalize_insight_text(&m.parsed_content);
     let quoted = normalize_insight_text(m.quoted_content.as_deref().unwrap_or(""));
     let quoted_sender = normalize_insight_text(m.quoted_sender.as_deref().unwrap_or(""));

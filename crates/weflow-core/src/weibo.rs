@@ -30,10 +30,6 @@ fn cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
     CACHE.get_or_init(Default::default)
 }
 
-pub fn clear_cache() {
-    cache().lock_or_panic().clear();
-}
-
 /// `normalizeWeiboCookieInput`: a browser-exported JSON cookie array, or a raw `Cookie:` header.
 fn normalize_cookie_input(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
@@ -105,7 +101,7 @@ fn normalize_uid(input: &str) -> Result<String, String> {
 }
 
 /// `sanitizeWeiboText`
-pub fn sanitize_text(text: &str) -> String {
+fn sanitize_text(text: &str) -> String {
     let t: String = text
         .chars()
         .filter(|c| !matches!(c, '\u{200b}' | '\u{200c}' | '\u{200d}' | '\u{feff}'))

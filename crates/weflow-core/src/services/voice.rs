@@ -31,7 +31,7 @@ fn decode_voice_blob(raw: &str) -> Option<Vec<u8>> {
 }
 
 /// `createWavBuffer`: 16-bit PCM WAV header + data.
-pub fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
+fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
     // a WAV header holds 32-bit sizes; a voice message never comes near 4 GiB
     let data_len = u32::try_from(pcm.len()).unwrap_or(u32::MAX);
     let mut out = Vec::with_capacity(44 + pcm.len());
@@ -53,7 +53,7 @@ pub fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
 }
 
 /// `getVoiceCacheKey`
-pub fn voice_cache_key(session_id: &str, msg_id: &str, create_time: Option<i64>) -> String {
+fn voice_cache_key(session_id: &str, msg_id: &str, create_time: Option<i64>) -> String {
     match create_time.filter(|t| *t != 0) {
         Some(t) => format!("{session_id}_{t}_{msg_id}"),
         None => format!("{session_id}_{msg_id}"),

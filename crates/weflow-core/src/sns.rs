@@ -52,7 +52,7 @@ fn json_number(f: f64) -> Option<serde_json::Number> {
     }
 }
 
-pub fn decode_xml_text(text: &str) -> String {
+fn decode_xml_text(text: &str) -> String {
     if text.is_empty() {
         return String::new();
     }
@@ -70,7 +70,7 @@ static CMT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // ───────────────────────── URL / mime helpers ─────────────────────────
 
-pub fn fix_sns_url(url: &str, token: Option<&str>, is_video: bool) -> String {
+fn fix_sns_url(url: &str, token: Option<&str>, is_video: bool) -> String {
     if url.is_empty() {
         return url.to_string();
     }
@@ -175,7 +175,7 @@ pub fn image_ext_from_buffer(buf: &[u8]) -> &'static str {
 
 // ───────────────────────── XML parsing ─────────────────────────
 
-pub fn extract_video_key(xml: &str) -> Option<String> {
+fn extract_video_key(xml: &str) -> Option<String> {
     if xml.is_empty() {
         return None;
     }
@@ -345,7 +345,7 @@ pub fn parse_like_users_from_xml(xml: &str) -> Vec<LikeUser> {
 
 /// `parseLocationFromXml`: the `<location>` of a post, its attributes first and then its child tags; none when it
 /// says nothing.
-pub fn parse_location_from_xml(xml: &str) -> Option<SnsLocation> {
+fn parse_location_from_xml(xml: &str) -> Option<SnsLocation> {
     if xml.is_empty() {
         return None;
     }
@@ -565,7 +565,7 @@ fn format_post_time(ts: i64, now: chrono::DateTime<chrono::Local>) -> String {
 }
 
 /// `toLocaleString('zh-CN')` → `2026/9/30 15:04:05`
-pub fn zh_locale_string(dt: chrono::DateTime<chrono::Local>) -> String {
+fn zh_locale_string(dt: chrono::DateTime<chrono::Local>) -> String {
     use chrono::{Datelike, Timelike};
     format!(
         "{}/{}/{} {:02}:{:02}:{:02}",

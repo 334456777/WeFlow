@@ -438,7 +438,7 @@ pub struct Exporter<'a, 'n> {
     pub settings: Settings,
 }
 
-pub struct SenderFields {
+struct SenderFields {
     pub role: String,
     pub wxid: String,
     pub nickname: String,
@@ -514,7 +514,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         }
     }
 
-    pub fn sender_fields(&mut self, msg: &ExportMsg) -> SenderFields {
+    fn sender_fields(&mut self, msg: &ExportMsg) -> SenderFields {
         if self.session.is_group {
             let p = self.sender_profile_for(msg);
             return SenderFields {
@@ -663,7 +663,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     /// 一条消息的展示文本，detailed JSON 与简易 txt 共用，保证两种格式写法一致：
     /// 引用消息带引用人名字，链接带 URL，转账带「谁转给谁」，系统消息统一用 `[系统: …]` 包裹，
     /// 表情 `[表情]`、语音 `[语音消息]`、图片 `[图片]`（不含媒体文件路径）。
-    pub fn message_text(&mut self, msg: &ExportMsg) -> String {
+    fn message_text(&mut self, msg: &ExportMsg) -> String {
         self.message_text_in(msg, &MsgXml::new(&msg.content))
     }
 
@@ -675,7 +675,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     /// [`message_text`](Self::message_text) 的可调版本：`link` 为链接卡片的写法（`None` 保持解析出的
     /// `[链接] 标题`，用于 HTML 这类另有链接卡片的格式），`wrap_system` 控制系统消息是否包成 `[系统: …]`
     /// （ChatLab 有独立的 system 类型、HTML 有专门的样式，不再包一层）。
-    pub fn message_text_with(
+    fn message_text_with(
         &mut self,
         msg: &ExportMsg,
         x: &MsgXml,
@@ -747,7 +747,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     /// Text for TXT / Excel rows (formatPlainExportContent + transfer + quote + link).
-    pub fn plain_row_content(&mut self, msg: &ExportMsg, x: &MsgXml) -> (String, bool) {
+    fn plain_row_content(&mut self, msg: &ExportMsg, x: &MsgXml) -> (String, bool) {
         if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
             return (m.relative_path.clone(), false);
         }
@@ -1641,7 +1641,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         );
     }
 
-    pub fn render_txt(&mut self, msgs: &[ExportMsg]) -> String {
+    fn render_txt(&mut self, msgs: &[ExportMsg]) -> String {
         let mut out = Vec::new();
         for msg in msgs {
             self.write_txt_entry(msg, &mut out);
@@ -1738,7 +1738,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         format!("{}\r\n", line.join(","))
     }
 
-    pub fn render_weclone(&mut self, msgs: &[ExportMsg]) -> String {
+    fn render_weclone(&mut self, msgs: &[ExportMsg]) -> String {
         let mut out = String::from(Self::WECLONE_HEADER);
         let rows = msgs
             .iter()
@@ -2198,7 +2198,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         );
     }
 
-    pub fn render_sql(&mut self, msgs: &[ExportMsg]) -> String {
+    fn render_sql(&mut self, msgs: &[ExportMsg]) -> String {
         let mut sql = Vec::from(Self::SQL_HEADER);
         for msg in msgs {
             self.write_sql_insert(msg, &mut sql);

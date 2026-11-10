@@ -73,17 +73,8 @@ impl WxKey {
 
     /// Hooks WeChat (`pid`) and waits up to `timeout` for the 64-hex-digit database key, which
     /// WeChat only produces while it opens its databases (i.e. while the user logs in).
-    /// `on_status` receives the DLL's status messages (`level`: 0 info, 1 success, 2 error).
-    pub fn get_db_key(
-        &self,
-        pid: u32,
-        timeout: std::time::Duration,
-        on_status: &mut dyn FnMut(&str, i32),
-    ) -> std::result::Result<String, DbKeyError> {
-        self.get_db_key_with_tick(pid, timeout, on_status, &mut |_| {})
-    }
-
-    /// Like [`get_db_key`](Self::get_db_key), and calls `on_tick` with the remaining seconds about once per second.
+    /// `on_status` receives the DLL's status messages (`level`: 0 info, 1 success, 2 error);
+    /// `on_tick` receives the remaining seconds about once per second.
     pub fn get_db_key_with_tick(
         &self,
         pid: u32,
@@ -197,14 +188,6 @@ impl WxKey {
     pub fn is_available(&self) -> bool {
         cfg!(target_arch = "x86_64")
     }
-    pub fn get_db_key(
-        &self,
-        pid: u32,
-        timeout: std::time::Duration,
-        on_status: &mut dyn FnMut(&str, i32),
-    ) -> std::result::Result<String, DbKeyError> {
-        self.get_db_key_with_tick(pid, timeout, on_status, &mut |_| {})
-    }
     pub fn get_db_key_with_tick(
         &self,
         pid: u32,
@@ -299,7 +282,8 @@ impl std::fmt::Display for DbKeyError {
 }
 
 /// `isLoginRelatedText`
-pub fn is_login_related(value: &str) -> bool {
+#[cfg(any(not(windows), test))]
+fn is_login_related(value: &str) -> bool {
     let n: String = value.split_whitespace().collect::<String>().to_lowercase();
     !n.is_empty()
         && [

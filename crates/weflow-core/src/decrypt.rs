@@ -43,7 +43,7 @@ pub fn detect_image_extension(data: &[u8]) -> &'static str {
 }
 
 /// Default key of V1 (`07 08 56 31 08 07`) `.dat` files.
-pub const V1_AES_KEY: [u8; 16] = *b"cfcd208495d565ef";
+const V1_AES_KEY: [u8; 16] = *b"cfcd208495d565ef";
 
 /// Turns the configured image AES key into the 16 key bytes: the 16-character ASCII form the
 /// desktop app stores (first 16 bytes), or a 32-digit hex string.
