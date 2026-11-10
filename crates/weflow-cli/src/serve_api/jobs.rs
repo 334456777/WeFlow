@@ -383,7 +383,7 @@ impl Jobs {
         self: &Arc<Self>,
         exe: PathBuf,
         args: Vec<String>,
-        lang: Option<&'static str>,
+        lang: &'static str,
         limit: Arc<Semaphore>,
         file_out: Option<super::FileOut>,
     ) -> Arc<Job> {
@@ -466,7 +466,7 @@ async fn run_child(
     job: &Job,
     exe: PathBuf,
     args: Vec<String>,
-    lang: Option<&'static str>,
+    lang: &'static str,
     mut cancelled: watch::Receiver<bool>,
 ) {
     let mut child = match super::spawn(&exe, &args, lang).await {
@@ -692,7 +692,7 @@ mod tests {
         let job = jobs.start(
             PathBuf::from("weflow-that-is-not-there"),
             vec!["export".into()],
-            None,
+            "en",
             limit,
             None,
         );
@@ -720,7 +720,7 @@ mod tests {
         let job = jobs.start(
             PathBuf::from("weflow-that-is-not-there"),
             vec!["export".into()],
-            None,
+            "en",
             Arc::new(Semaphore::new(1)),
             None,
         );

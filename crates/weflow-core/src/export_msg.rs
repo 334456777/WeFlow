@@ -89,7 +89,8 @@ impl<'a> NameBook<'a> {
         }
     }
 
-    pub fn from_map(map: HashMap<String, ContactInfo>) -> NameBook<'static> {
+    #[cfg(test)]
+    fn from_map(map: HashMap<String, ContactInfo>) -> NameBook<'static> {
         NameBook::new(move |u| map.get(u).cloned())
     }
 
@@ -110,7 +111,6 @@ impl<'a> NameBook<'a> {
     }
 }
 
-/// Formats whose file is a list of independent entries, so it can be written while the messages are read.
 /// The senders of an export, in order of first appearance, and how many messages each sent (by lower-case id):
 /// what the member lists need, collected message by message.
 #[derive(Default)]
@@ -755,6 +755,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         (self.message_text_in(msg, x), has_quote)
     }
 
+    #[cfg(test)]
     fn sessions_members(&mut self, msgs: &[ExportMsg]) -> Vec<String> {
         let mut seen: Vec<String> = Vec::new();
         for m in msgs {
@@ -792,7 +793,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
         }
     }
 
-    pub fn build_chatlab(&mut self, msgs: &[ExportMsg]) -> Value {
+    /// The whole ChatLab document, built in memory: what the tests hold the streamed file against.
+    #[cfg(test)]
+    fn build_chatlab(&mut self, msgs: &[ExportMsg]) -> Value {
         let (members, messages) = self.chatlab_parts(msgs);
         let document = ChatlabDocument {
             chatlab: self.chatlab_header(),
@@ -896,6 +899,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     /// The (resolved) members and the message objects of a ChatLab export.
+    #[cfg(test)]
     fn chatlab_parts<'m>(
         &mut self,
         msgs: &'m [ExportMsg],
@@ -927,30 +931,13 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     pub fn write_chatlab(&mut self, msgs: &[ExportMsg], out: &Path, jsonl: bool) -> Result<()> {
-        self.stream_chatlab(msgs, out, jsonl, true)?;
-        Ok(())
-    }
-
-    /// ChatLab (json or jsonl) written from a stream of messages (oldest first): every message goes to a spool
-    /// file as it is read; the member list, which comes first in the file and needs every sender, is written at
-    /// the end. With no messages nothing is written unless `write_if_empty`.
-    fn stream_chatlab<I>(
-        &mut self,
-        msgs: I,
-        out: &Path,
-        jsonl: bool,
-        write_if_empty: bool,
-    ) -> Result<usize>
-    where
-        I: IntoIterator,
-        I::Item: std::borrow::Borrow<ExportMsg>,
-    {
         let format = if jsonl {
             EntryFormat::ChatlabJsonl
         } else {
             EntryFormat::Chatlab
         };
-        self.render_and_write(format, out, msgs, write_if_empty)
+        self.render_and_write(format, out, msgs, true)?;
+        Ok(())
     }
 
     /// Renders `msgs` a chunk at a time on this thread and writes them (see [`write_rendered`](Self::write_rendered)).
@@ -1379,6 +1366,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     /// The whole detailed-JSON (or arkme-json) document, with the messages sorted by time.
+    #[cfg(test)]
     fn json_document<'m>(&mut self, msgs: &'m [ExportMsg], arkme: bool) -> JsonDocument<'m> {
         let mut profiles: HashMap<String, Profile> = HashMap::new();
         let mut messages: Vec<JsonMessage<'m>> = Vec::with_capacity(msgs.len());
@@ -1414,11 +1402,14 @@ impl<'a, 'n> Exporter<'a, 'n> {
         }
     }
 
-    pub fn build_json(&mut self, msgs: &[ExportMsg], arkme: bool) -> Value {
+    /// The whole document, built in memory: what the tests hold the streamed file against.
+    #[cfg(test)]
+    fn build_json(&mut self, msgs: &[ExportMsg], arkme: bool) -> Value {
         serde_json::to_value(self.json_document(msgs, arkme)).unwrap_or_default()
     }
 
     /// `groupMembers` of the arkme export: every sender plus the group's member list, busiest first.
+    #[cfg(test)]
     fn ark_group_members(&mut self, msgs: &[ExportMsg]) -> Vec<ArkGroupMember> {
         let mut tally = SenderTally::default();
         for m in msgs {
@@ -2002,11 +1993,6 @@ impl<'a, 'n> Exporter<'a, 'n> {
             Some(q) if !q.reply_text.is_empty() => q.reply_text.clone(),
             _ => self.html_message_text(msg, &x),
         };
-        if let Some(q) = &quoted {
-            if q.reply_text.is_empty() {
-                text = self.html_message_text(msg, &x);
-            }
-        }
         if is_transfer_export_content(&text) && !msg.content.is_empty() {
             if let Some(desc) = self.transfer_desc(&msg.content) {
                 text = append_transfer_desc(&text, &desc);
@@ -2134,7 +2120,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
         )
     }
 
-    pub fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
+    /// The whole page, built in memory: what the tests hold the streamed file against.
+    #[cfg(test)]
+    fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
         let mut data: Vec<u8> = Vec::new();
         for (i, msg) in msgs.iter().enumerate() {
             if i > 0 {
@@ -2321,6 +2309,7 @@ struct ChatlabRecord<'m> {
 }
 
 /// A whole ChatLab export, for [`Exporter::build_chatlab`].
+#[cfg(test)]
 #[derive(Serialize)]
 struct ChatlabDocument<'a> {
     chatlab: ChatlabHeader,
@@ -2590,6 +2579,7 @@ impl ArkGroupMember {
 }
 
 /// The messages of a detailed-JSON or arkme-json document.
+#[cfg(test)]
 #[derive(Serialize)]
 #[serde(untagged)]
 enum JsonMessages<'m> {
@@ -2598,6 +2588,7 @@ enum JsonMessages<'m> {
 }
 
 /// A whole detailed-JSON or arkme-json export (`senders` and `groupMembers` are arkme's).
+#[cfg(test)]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonDocument<'m> {

@@ -618,20 +618,32 @@ fn default_home_dir() -> AppResult<PathBuf> {
         .ok_or_else(|| AppError::config("failed to locate platform config directory"))
 }
 
-fn clean_account_dir_name(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.to_lowercase().starts_with("wxid_") {
-        if let Some(idx) = trimmed[5..].find('_') {
-            return trimmed[..5 + idx].to_string();
-        }
+/// The account id of an account folder's name (`cleanAccountDirName`, `normalizeAccountId`): `wxid_abc_1a2b` is
+/// `wxid_abc` and `name_1a2b` is `name`; a name without the four-character suffix WeChat adds is the id already.
+pub fn clean_account_dir_name(dir_name: &str) -> String {
+    let trimmed = dir_name.trim();
+    if trimmed
+        .get(..5)
+        .is_some_and(|head| head.eq_ignore_ascii_case("wxid_"))
+    {
+        // `wxid_` and everything up to the next underscore
+        let rest = &trimmed[5..];
+        return match rest.find('_') {
+            Some(0) => trimmed.to_string(),
+            Some(end) => trimmed[..5 + end].to_string(),
+            None => trimmed.to_string(),
+        };
     }
-    if let Some(idx) = trimmed.rfind('_') {
-        let suffix = &trimmed[idx + 1..];
-        if suffix.len() == 4 && suffix.chars().all(|c| c.is_ascii_alphanumeric()) {
-            return trimmed[..idx].to_string();
+    match trimmed.rsplit_once('_') {
+        Some((head, tail))
+            if !head.is_empty()
+                && tail.len() == 4
+                && tail.bytes().all(|b| b.is_ascii_alphanumeric()) =>
+        {
+            head.to_string()
         }
+        _ => trimmed.to_string(),
     }
-    trimmed.to_string()
 }
 
 pub fn is_account_dir(path: &Path) -> bool {
@@ -691,8 +703,8 @@ fn as_i64(value: Value) -> AppResult<i64> {
     }
 }
 
-/// An integer in `min..=max`; anything outside is refused rather than wrapped by a later `as` cast.
-/// A whole number from `min` to `max`, as the type of the field it sets.
+/// A whole number from `min` to `max`, as the type of the field it sets; anything outside is refused rather than
+/// wrapped by a later `as` cast.
 fn as_int_in<T>(value: Value, key: &str, min: T, max: T) -> AppResult<T>
 where
     T: Copy + Into<i64> + TryFrom<i64>,
@@ -738,6 +750,38 @@ mod tests {
 
         let resolved = resolve_account_dir(dir.to_str().unwrap(), "wxid_abc");
         assert_eq!(resolved, account);
+    }
+
+    #[test]
+    fn account_folder_names_lose_the_suffix_wechat_adds() {
+        for (name, id) in [
+            ("wxid_abc123_1a2b", "wxid_abc123"),
+            ("WXID_abc", "WXID_abc"),
+            // four characters after `wxid_` are the id, not a suffix
+            ("wxid_ab12", "wxid_ab12"),
+            ("wxid__ab12", "wxid__ab12"),
+            ("wxid_", "wxid_"),
+            ("alice_9x9z", "alice"),
+            ("alice_toolong", "alice_toolong"),
+            ("_ab12", "_ab12"),
+            ("plain", "plain"),
+            ("  someone_a1b2 ", "someone"),
+            ("  ", ""),
+        ] {
+            assert_eq!(clean_account_dir_name(name), id, "{name:?}");
+        }
+    }
+
+    /// An id of four characters after `wxid_` names its own folder, not every account's.
+    #[test]
+    fn a_short_wxid_resolves_to_its_own_folder() {
+        let dir = temp_dir("weflow-account-short");
+        let other = dir.join("wxid_zz99_1234");
+        let own = dir.join("wxid_ab12_5678");
+        fs::create_dir_all(other.join("db_storage")).unwrap();
+        fs::create_dir_all(own.join("db_storage")).unwrap();
+        assert_eq!(resolve_account_dir(dir.to_str().unwrap(), "wxid_ab12"), own);
+        let _ = fs::remove_dir_all(dir);
     }
 
     /// A config file from a version that had `weflow ffmpeg set baseurl` still loads: the key is left out.

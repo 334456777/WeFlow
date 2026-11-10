@@ -275,9 +275,7 @@ impl<'a> MsgXml<'a> {
 
     /// [`extract_reply_to_message_id`] of the content.
     pub fn reply_to_message_id(&self) -> Option<String> {
-        let refer = self.refer_once()?;
-        let v = normalize_unsigned_token(&extract_xml_value(refer, "svrid"));
-        (v != "0").then_some(v)
+        unsigned_token(&extract_xml_value(self.refer_once()?, "svrid"))
     }
 
     /// [`quoted_sender_username`] of the content.
@@ -300,19 +298,21 @@ impl<'a> MsgXml<'a> {
     }
 }
 
-/// Strip a leading `wxid_xxx:` sender prefix (but not `http://`).
+/// `content` without the sender a group message starts with (`wxid_xxx:` and the line break after it); `http://`
+/// and text such as `1:3-1:6` stay as they are. The one rule for the exports and the chat model.
 pub fn strip_sender_prefix(content: &str) -> String {
     content[sender_prefix_len(content)..].to_string()
 }
 
-/// Length of the sender prefix [`strip_sender_prefix`] removes: `^\s*([A-Za-z0-9_-]+):(\r?\n|)`, or 0.
+/// Length of the sender prefix [`strip_sender_prefix`] removes: `^\s*([A-Za-z0-9_@-]+):(\r?\n|)`, or 0.
 fn sender_prefix_len(content: &str) -> usize {
-    // 数据库里的群消息是 "wxid:\n正文"；同一行的 "1:3-1:6" 这类是正文本身，不能当作前缀去掉。
+    // 数据库里的群消息是 "wxid:\n正文"（企业微信成员是 "…@openim:\n正文"）；同一行的 "1:3-1:6" 这类是正文本身，
+    // 不能当作前缀去掉。
     let h = content.as_bytes();
     let start = crate::xml::skip_ws(content, 0);
     let name_len = h[start..]
         .iter()
-        .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'@' | b'-'))
         .count();
     let colon = start + name_len;
     if name_len == 0 || h.get(colon) != Some(&b':') {
@@ -365,7 +365,7 @@ fn app_type_in(content: &str, normalized: &str) -> String {
         .unwrap_or_default()
 }
 
-fn looks_like_wxid(text: &str) -> bool {
+pub(crate) fn looks_like_wxid(text: &str) -> bool {
     let t = text.trim().to_lowercase();
     if t.is_empty() {
         return false;
@@ -471,7 +471,6 @@ fn last_hex_token(text: &str, min: usize, max: usize) -> Option<String> {
 
 use chrono::{Local, TimeZone};
 
-/// `YYYY-MM-DD HH:MM:SS` in the local time zone (same as WeFlow's desktop app).
 /// Unix time of 00:00 on a calendar date in the machine's local time zone. A date whose midnight does not exist
 /// (a daylight-saving jump at 00:00) starts at the first moment that does.
 pub fn local_midnight(year: i32, month: u32, day: u32) -> Option<i64> {
@@ -495,6 +494,7 @@ pub fn local_midnight_after(year: i32, month: u32, day: u32) -> Option<i64> {
     )
 }
 
+/// `YYYY-MM-DD HH:MM:SS` in the local time zone (same as WeFlow's desktop app).
 pub fn format_timestamp(ts: i64) -> String {
     match Local.timestamp_opt(ts, 0).single() {
         Some(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -603,23 +603,18 @@ pub fn row_int(row: &Value, keys: &[&str], fallback: i64) -> i64 {
     fallback
 }
 
-pub fn normalize_unsigned_token(value: &str) -> String {
+/// An unsigned id in decimal without leading zeros (a float is cut to its whole part); `None` when it is empty,
+/// zero or not a number.
+pub fn unsigned_token(value: &str) -> Option<String> {
     let raw = value.trim();
-    if raw.is_empty() {
-        return "0".into();
-    }
-    if raw.chars().all(|c| c.is_ascii_digit()) {
-        let t = raw.trim_start_matches('0');
-        return if t.is_empty() {
-            "0".into()
-        } else {
-            t.to_string()
-        };
+    if !raw.is_empty() && raw.bytes().all(|b| b.is_ascii_digit()) {
+        let digits = raw.trim_start_matches('0');
+        return (!digits.is_empty()).then(|| digits.to_string());
     }
     match raw.parse::<f64>() {
         // a float displays without an exponent, so a whole number prints as an integer
-        Ok(n) if n.is_finite() && n > 0.0 => format!("{}", n.floor()),
-        _ => "0".into(),
+        Ok(n) if n.is_finite() && n >= 1.0 => Some(format!("{}", n.floor())),
+        _ => None,
     }
 }
 
@@ -630,11 +625,8 @@ pub struct ForwardRecord {
     pub datatype: i64,
     pub sourcename: String,
     pub sourcetime: String,
-    pub sourceheadurl: Option<String>,
     pub datadesc: Option<String>,
     pub datatitle: Option<String>,
-    pub fileext: Option<String>,
-    pub datasize: Option<i64>,
     pub chat_record_title: Option<String>,
     pub chat_record_desc: Option<String>,
     pub chat_record_list: Option<Vec<ForwardRecord>>,
@@ -692,15 +684,9 @@ impl ExportMsg {
     }
 
     pub fn platform_message_id(&self) -> Option<String> {
-        let raw = self
-            .server_id_raw
-            .clone()
-            .unwrap_or_else(|| self.server_id.to_string());
-        let v = normalize_unsigned_token(&raw);
-        if v != "0" {
-            Some(v)
-        } else {
-            None
+        match &self.server_id_raw {
+            Some(raw) => unsigned_token(raw),
+            None => unsigned_token(&self.server_id.to_string()),
         }
     }
 }
@@ -770,11 +756,19 @@ pub fn clean_system_message(content: &str) -> String {
     if let Some(c) = rx(r"(?is)<sysmsg[^>]*>(.*?)</sysmsg>").captures(&content.clone()) {
         content = c[1].to_string();
     }
+    // a revoke as the database keeps it: `<revokemsg><content>…</content><revoketime>…</revoketime></revokemsg>`,
+    // at times with more elements after it. Only the content is the notice
+    if let Some((_, revoke)) = crate::xml::elements(&content, "revokemsg").next() {
+        let notice = extract_xml_value(revoke, "content");
+        if !notice.is_empty() {
+            return notice;
+        }
+    }
     if let Some(c) = rx(r"(?i)<replacemsg><!\[CDATA\[(.*?)\]\]></replacemsg>").captures(&content) {
         return c[1].trim().to_string();
     }
     if let Some(c) = rx(r"(?i)<template><!\[CDATA\[(.*?)\]\]></template>").captures(&content) {
-        let template = c[1].to_string();
+        let template = fill_template_links(&c[1], &content);
         let source = content.clone();
         let replaced = rx(r"\$\{([^}]+)\}").replace_all(&template, |caps: &regex::Captures| {
             let name = regex::escape(&caps[1]);
@@ -807,6 +801,32 @@ pub fn clean_system_message(content: &str) -> String {
     } else {
         stripped
     }
+}
+
+/// The template of a `<sysmsgtemplate>` notice (`"$username$"邀请"$names$"加入了群聊`) with each `$name$` filled from
+/// its `<link name="name">` in `source`: the nicknames of the link's members, joined by its separator. A link without
+/// members is something to click in WeChat (`$revoke$`), and leaves nothing.
+fn fill_template_links(template: &str, source: &str) -> String {
+    let mut text = template.to_string();
+    for (attributes, body) in crate::xml::elements(source, "link") {
+        let Some(name) = rx(r#"(?i)\bname\s*=\s*"([^"]+)""#).captures(attributes) else {
+            continue;
+        };
+        let placeholder = format!("${}$", &name[1]);
+        if !text.contains(&placeholder) {
+            continue;
+        }
+        let nicknames: Vec<String> = crate::xml::elements(body, "member")
+            .map(|(_, member)| extract_xml_value(member, "nickname"))
+            .filter(|nickname| !nickname.is_empty())
+            .collect();
+        let separator = match extract_xml_value(body, "separator") {
+            s if s.is_empty() => "、".to_string(),
+            s => s,
+        };
+        text = text.replace(&placeholder, &nicknames.join(&separator));
+    }
+    text
 }
 
 pub fn extract_readable_system_message_text(content: &str) -> String {
@@ -1114,7 +1134,8 @@ pub fn extract_emoji_md5(content: &str) -> Option<String> {
         .or_else(|| extract_loose_hex_md5(content))
 }
 
-fn percent_decode(s: &str) -> String {
+/// `s` with its `%XX` escapes decoded; `s` itself when they do not spell UTF-8.
+pub(crate) fn percent_decode(s: &str) -> String {
     if !s.contains('%') {
         return s.to_string();
     }
@@ -1517,17 +1538,12 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<ForwardRecord> {
     let datatype = datatype_raw.parse::<i64>().unwrap_or(0);
     let sourcename = decode_html_entities(&extract_xml_value(body, "sourcename"));
     let sourcetime = extract_xml_value(body, "sourcetime");
-    let sourceheadurl = extract_xml_value(body, "sourceheadurl");
     let mut datadesc = extract_xml_value(body, "datadesc");
     if datadesc.is_empty() {
         datadesc = extract_xml_value(body, "content");
     }
     let datadesc = decode_html_entities(&datadesc);
     let datatitle = decode_html_entities(&extract_xml_value(body, "datatitle"));
-    let fileext = extract_xml_value(body, "fileext");
-    let datasize = extract_xml_value(body, "datasize")
-        .parse::<i64>()
-        .unwrap_or(0);
     let nested_xml = extract_xml_value(body, "recordxml");
     let nested_list = if datatype == 17 && !nested_xml.is_empty() {
         Some(parse_forward_container(&nested_xml)).filter(|l| !l.is_empty())
@@ -1559,11 +1575,8 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<ForwardRecord> {
         datatype,
         sourcename,
         sourcetime,
-        sourceheadurl: opt(sourceheadurl),
         datadesc: opt(datadesc),
         datatitle: opt(datatitle),
-        fileext: opt(fileext),
-        datasize: if datasize > 0 { Some(datasize) } else { None },
         chat_record_title: opt(chat_record_title),
         chat_record_desc: opt(chat_record_desc),
         chat_record_list: nested_list,
@@ -1682,7 +1695,8 @@ impl QuoteInfo {
     }
 }
 
-fn refermsg_xml(normalized: &str) -> Option<String> {
+/// The `<refermsg>` block of a quote, in content whose entities are decoded.
+pub(crate) fn refermsg_xml(normalized: &str) -> Option<String> {
     let start = memchr::memmem::find(normalized.as_bytes(), b"<refermsg>")?;
     // 被引用的是「带引用的图片」等消息时，其 content 里还嵌着一层（已解码的）<refermsg>，
     // 取最后一个结束标签才是外层，否则 type / displayname 会被截掉。
@@ -1728,7 +1742,8 @@ fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
     String::new()
 }
 
-fn extract_preferred_quoted_text(refer_xml: &str) -> String {
+/// The quoted text of a `<refermsg>` block: the part the reply picked when it names one, else all of it.
+pub(crate) fn extract_preferred_quoted_text(refer_xml: &str) -> String {
     if refer_xml.is_empty() {
         return String::new();
     }
@@ -3238,6 +3253,9 @@ mod tests {
         assert_eq!(strip_sender_prefix("1:3-1:6"), "1:3-1:6");
         assert_eq!(strip_sender_prefix("4:1"), "4:1");
         assert_eq!(strip_sender_prefix("10:1 abc"), "10:1 abc");
+        // an enterprise WeChat member's id
+        assert_eq!(strip_sender_prefix("123456@openim:\nhi"), "hi");
+        assert_eq!(strip_sender_prefix("a@b.c:hi"), "a@b.c:hi");
     }
 
     #[test]
@@ -3324,6 +3342,38 @@ mod tests {
     fn system_messages() {
         let xml = "<sysmsg type=\"revokemsg\"><revokemsg><replacemsg><![CDATA[\"Bob\" 撤回了一条消息]]></replacemsg></revokemsg></sysmsg>";
         assert_eq!(clean_system_message(xml), "\"Bob\" 撤回了一条消息");
+        // as the database keeps a revoke: the time and what follows it are not part of the notice
+        for more in [
+            "",
+            "<extcommoninfo><groupinfo><type>1</type><id>0a1b-2c3d</id><count>2</count></groupinfo>\
+             <media_expire_at>1700000000</media_expire_at></extcommoninfo>",
+        ] {
+            let xml = format!(
+                "<?xml version=\"1.0\"?><sysmsg type=\"revokemsg\"><revokemsg><content>\"Bob\" 撤回了一条消息</content>\
+                 <revoketime>0</revoketime></revokemsg>{more}</sysmsg>"
+            );
+            assert_eq!(clean_system_message(&xml), "\"Bob\" 撤回了一条消息");
+        }
+        // a notice written as a template names its people in the links after it
+        let member = |id: &str, name: &str| {
+            format!("<member><username><![CDATA[{id}]]></username><nickname><![CDATA[{name}]]></nickname></member>")
+        };
+        let invite = format!(
+            "room@chatroom:\n<sysmsg type=\"sysmsgtemplate\"><sysmsgtemplate><content_template type=\"tmpl_type_profile\">\
+             <plain><![CDATA[]]></plain><template><![CDATA[\"$username$\"邀请\"$names$\"加入了群聊  $revoke$]]></template>\
+             <link_list><link name=\"username\" type=\"link_profile\"><memberlist>{}</memberlist></link>\
+             <link name=\"names\" type=\"link_profile\"><memberlist>{}{}</memberlist>\
+             <separator><![CDATA[、]]></separator></link>\
+             <link name=\"revoke\" type=\"link_revoke\"><title><![CDATA[撤销]]></title></link></link_list>\
+             </content_template></sysmsgtemplate></sysmsg>",
+            member("wxid_a", "Alice"),
+            member("wxid_b", "Bob"),
+            member("wxid_c", "Carol"),
+        );
+        assert_eq!(
+            clean_system_message(&invite),
+            "\"Alice\"邀请\"Bob、Carol\"加入了群聊"
+        );
         assert!(is_readable_system_message(10000, "x"));
         let rv = extract_revoker_info("你撤回了一条消息");
         assert!(rv.is_revoke && rv.is_self_revoke);
@@ -3448,8 +3498,16 @@ mod tests {
             1_700_000_000
         );
         assert!(int_timestamp_seconds(20_240_102_030_405) > 0);
-        assert_eq!(normalize_unsigned_token("00012"), "12");
-        assert_eq!(normalize_unsigned_token("abc"), "0");
+        assert_eq!(unsigned_token("00012").as_deref(), Some("12"));
+        assert_eq!(unsigned_token(" 12.9 ").as_deref(), Some("12"));
+        assert_eq!(
+            unsigned_token("18446744073709551615").as_deref(),
+            Some("18446744073709551615"),
+            "an id above i64::MAX keeps its digits"
+        );
+        for none in ["", "000", "0.5", "-3", "abc"] {
+            assert_eq!(unsigned_token(none), None, "{none:?}");
+        }
         assert_eq!(
             last_hex_token("zz0123456789abcdef0123456789abcdef00zz", 32, 32)
                 .unwrap()
@@ -3498,7 +3556,7 @@ mod tests {
         }
 
         pub fn strip_sender_prefix(content: &str) -> String {
-            let re = rx(r"^\s*([A-Za-z0-9_-]+):(\r?\n|)");
+            let re = rx(r"^\s*([A-Za-z0-9_@-]+):(\r?\n|)");
             if let Some(c) = re.captures(content) {
                 let whole = c.get_match();
                 let looks_like_id = c[1].starts_with("wxid_") || c[1].starts_with("gh_");
@@ -3813,6 +3871,8 @@ mod tests {
             "wxid_ab:",
             "gh_x:\n",
             "a-b:\r\n",
+            "1@openim:\n",
+            "@",
             "<DataItem datatype=\"1\">",
             "<msgsource>",
             "</MsgSource>",

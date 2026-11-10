@@ -873,7 +873,7 @@ impl NativeAccount {
     // ── raw read-only queries ──
 
     /// Default database of a `kind`, or `path` (absolute or relative to `db_storage`) which must stay inside `db_storage`.
-    pub fn resolve_db_path(&self, kind: &str, path: Option<&str>) -> Result<PathBuf> {
+    fn resolve_db_path(&self, kind: &str, path: Option<&str>) -> Result<PathBuf> {
         let root = self.db_storage().to_path_buf();
         match path.map(str::trim).filter(|p| !p.is_empty()) {
             Some(p) => {
@@ -916,7 +916,7 @@ impl NativeAccount {
 }
 
 /// Table names come from our own listings, but they are interpolated into SQL, so check them anyway.
-pub(crate) fn check_ident(name: &str) -> Result<()> {
+fn check_ident(name: &str) -> Result<()> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         bail!("invalid table name: {name}");
     }

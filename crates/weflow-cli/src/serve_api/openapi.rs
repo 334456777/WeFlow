@@ -942,6 +942,15 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
                                     "每次启动服务器、配置改变（包括切换账号）时都会变化；变化之前读到的记录可能属于另一个账号",
                                 ),
                             },
+                            "lang": {
+                                "type": "string",
+                                "enum": ["zh", "en"],
+                                "description": pick(
+                                    zh,
+                                    "The language of the server's answers, which the WebUI shows itself in too",
+                                    "服务端回复所用的语言，WebUI 也按它显示",
+                                ),
+                            },
                             "limits": {
                                 "type": "object",
                                 "description": pick(

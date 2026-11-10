@@ -529,7 +529,7 @@ impl ServiceHub {
         if session.is_empty() || month.is_empty() {
             return Vec::new();
         }
-        let session_dir = img::session_dir_for_storage(session, clean_account_dir_name);
+        let session_dir = img::session_dir_for_storage(session);
         if session_dir.is_empty() {
             return Vec::new();
         }

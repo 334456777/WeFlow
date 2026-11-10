@@ -344,9 +344,7 @@ fn build(data: &Path, args: &Args) -> Result<Fixture> {
     let dir = f
         .account_dir
         .join("msg/attach")
-        .join(weflow_core::image::session_dir_for_storage(ROOM, |s| {
-            s.to_string()
-        }));
+        .join(weflow_core::image::session_dir_for_storage(ROOM));
     let from = (args.messages - IMAGE_FILES_FOR_LATEST).max(1);
     for i in (from..=args.messages).filter(|i| i % IMAGE_EVERY == 0) {
         let month = weflow_core::image::year_month_from_create_time(Some(T0 + i * STEP));

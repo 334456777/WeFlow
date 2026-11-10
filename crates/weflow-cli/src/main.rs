@@ -256,13 +256,13 @@ struct ConfigCommand {
 enum ConfigSubcommand {
     /// Show the path of the config file
     Path,
-    /// Show every key of the active profile
+    /// Show the whole config file: its own settings and every profile
     List,
     /// List the profiles: account, data directory and whether the keys are set (never the keys themselves)
     Profiles,
-    /// Show one key (or all when omitted)
+    /// Show one key (or every key of the active profile when omitted)
     Get {
-        /// Key name (default: show every key)
+        /// Key name (default: every key of the active profile)
         key: Option<String>,
     },
     /// Set a key
@@ -279,7 +279,7 @@ enum ConfigSubcommand {
         /// Key name
         key: String,
     },
-    /// Remove every key of the active profile
+    /// Reset the whole config file: every profile (all accounts and their keys) and its own settings are removed
     Clear,
 }
 
@@ -485,7 +485,7 @@ enum ChatSubcommand {
         #[arg(long)]
         extra: bool,
     },
-    /// Mark all sessions as read
+    /// Mark all sessions as read (always refused: the database is read-only)
     MarkRead,
     /// Contact counts per tab (friends, groups, official accounts, former friends)
     TabCounts,

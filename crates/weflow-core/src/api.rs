@@ -44,26 +44,6 @@ pub fn sanitize_file_name(value: &str, fallback: &str) -> String {
     }
 }
 
-/// An unsigned id in decimal without leading zeros (a float is cut to its whole part); empty when it is none.
-pub fn normalize_unsigned_token(value: &str) -> String {
-    let text = value.trim();
-    if text.is_empty() {
-        return String::new();
-    }
-    if text.chars().all(|c| c.is_ascii_digit()) {
-        let stripped = text.trim_start_matches('0');
-        return if stripped.is_empty() {
-            "0".into()
-        } else {
-            stripped.to_string()
-        };
-    }
-    match text.parse::<f64>() {
-        Ok(f) if f.is_finite() && f > 0.0 => format!("{}", crate::num::saturating_i64(f.floor())),
-        _ => String::new(),
-    }
-}
-
 /// A media file a message export copied.
 #[derive(Clone, Debug)]
 pub struct ApiExportedMedia {
@@ -86,9 +66,5 @@ mod tests {
         assert_eq!(js_parse_int("abc"), None);
         assert_eq!(sanitize_file_name(" a/b:c. ", "x"), "a_b_c");
         assert_eq!(sanitize_file_name("...", "x"), "x");
-        assert_eq!(normalize_unsigned_token("000123"), "123");
-        assert_eq!(normalize_unsigned_token("000"), "0");
-        assert_eq!(normalize_unsigned_token("12.9"), "12");
-        assert_eq!(normalize_unsigned_token("abc"), "");
     }
 }

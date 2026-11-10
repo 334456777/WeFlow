@@ -304,15 +304,15 @@ impl NativeAccount {
     }
 
     /// `select` of the [`MsgRow`] columns over one message table with the sender resolved from `Name2Id`.
-    pub(crate) fn select_sql(t: &MsgTable, tail: &str, lite: bool) -> String {
-        Self::select_sql_of(t, tail, if lite { Columns::Lite } else { Columns::All })
+    pub(crate) fn select_sql(t: &MsgTable, tail: &str) -> String {
+        Self::select_sql_of(t, tail, Columns::All)
     }
 
     /// [`select_sql`](Self::select_sql) reading `which` columns.
     fn select_sql_of(t: &MsgTable, tail: &str, which: Columns) -> String {
         format!(
             "select {} from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id {tail}",
-            MsgRow::columns_of(which),
+            MsgRow::columns(which),
             t.table
         )
     }
@@ -322,8 +322,8 @@ impl NativeAccount {
     fn select_both_sql(t: &MsgTable, indexed: &str, unsequenced: &str) -> String {
         format!(
             "select * from ({}) union all select * from ({})",
-            Self::select_sql(t, indexed, false),
-            Self::select_sql(t, unsequenced, false)
+            Self::select_sql(t, indexed),
+            Self::select_sql(t, unsequenced)
         )
     }
 
@@ -389,7 +389,7 @@ impl NativeAccount {
         );
         let mut out = Vec::new();
         for t in self.message_tables(session_id)? {
-            let sql = Self::select_sql(&t, &tail, false);
+            let sql = Self::select_sql(&t, &tail);
             out.extend(self.read_rows(&t, &sql, &[&since.max(0), &limit])?);
         }
         Ok(out)
@@ -766,7 +766,7 @@ impl NativeAccount {
             ));
             let sql = format!(
                 "select {} from ({}) m left join Name2Id n on n.rowid = m.real_sender_id",
-                MsgRow::columns(false),
+                MsgRow::columns(Columns::All),
                 parts.join(" union all ")
             );
             let page = self.read_rows(
@@ -937,7 +937,6 @@ impl NativeAccount {
             let sql = Self::select_sql(
                 &t,
                 &format!("where m.local_type = ?1 order by m.sort_seq {dir}, m.create_time {dir}, m.local_id {dir} limit ?2"),
-                false,
             );
             rows.extend(self.read_rows(&t, &sql, &[&local_type, &want])?);
         }
@@ -968,16 +967,12 @@ impl NativeAccount {
             out.extend(match create_time {
                 Some(ct) => self.read_rows(
                     &t,
-                    &Self::select_sql(
-                        &t,
-                        "where m.local_id = ?1 and m.create_time = ?2 limit 1",
-                        false,
-                    ),
+                    &Self::select_sql(&t, "where m.local_id = ?1 and m.create_time = ?2 limit 1"),
                     &[&local_id, &ct],
                 )?,
                 None => self.read_rows(
                     &t,
-                    &Self::select_sql(&t, "where m.local_id = ?1 limit 1", false),
+                    &Self::select_sql(&t, "where m.local_id = ?1 limit 1"),
                     &[&local_id],
                 )?,
             });
@@ -1000,7 +995,7 @@ impl NativeAccount {
 
     fn find_one(&self, session_id: &str, cond: &str, arg: &i64) -> Result<Option<MsgRow>> {
         for t in self.message_tables(session_id)?.into_iter().rev() {
-            let sql = Self::select_sql(&t, &format!("where {cond} limit 1"), false);
+            let sql = Self::select_sql(&t, &format!("where {cond} limit 1"));
             if let Some(r) = self.read_rows(&t, &sql, &[arg])?.into_iter().next() {
                 return Ok(Some(r));
             }
@@ -1098,7 +1093,7 @@ impl NativeAccount {
         let mut derived: Vec<bool> = Vec::with_capacity(tables.len());
         for (idx, t) in tables.iter().enumerate() {
             if derive && begin == 0 && end == 0 && !exact_key_table(t) {
-                keys.extend(self.index_keys(t, idx, (begin, end))?);
+                keys.extend(self.index_keys(t, idx)?);
                 derived.push(true);
                 continue;
             }
@@ -1174,27 +1169,21 @@ impl NativeAccount {
         self.collect_keys(t, idx, &sql, &[&begin, &end], false)
     }
 
-    /// The keys of `t` in `create_time` range `(begin, end)` from the `sort_seq` index alone (`local_id` is the rowid,
-    /// so the index covers the query): `create_time` is taken as `sort_seq / 1000` and the range is turned into a
-    /// `sort_seq` range. Rows whose `sort_seq` says nothing about the time (0, negative or none) are read from the
+    /// The keys of every message of `t` (as [`table_keys`](Self::table_keys) without a range lists them) from the
+    /// `sort_seq` index alone (`local_id` is the rowid, so the index covers the query): `create_time` is taken as
+    /// `sort_seq / 1000`. Rows whose `sort_seq` says nothing about the time (0, negative or none) are read from the
     /// table, as [`typed_row_key`] does.
-    fn index_keys(&self, t: &MsgTable, idx: usize, (begin, end): (i64, i64)) -> Result<Vec<Key>> {
-        let lo = begin.saturating_mul(1000);
-        let hi = if end == 0 {
-            0
-        } else {
-            end.saturating_mul(1000).saturating_add(999)
-        };
+    fn index_keys(&self, t: &MsgTable, idx: usize) -> Result<Vec<Key>> {
         let sql = format!(
-            "select sort_seq, local_id from \"{}\" where sort_seq > 0 and sort_seq >= ?1 and (?2 = 0 or sort_seq <= ?2)",
+            "select sort_seq, local_id from \"{}\" where sort_seq > 0",
             t.table
         );
-        let mut keys = self.collect_keys(t, idx, &sql, &[&lo, &hi], true)?;
+        let mut keys = self.collect_keys(t, idx, &sql, &[], true)?;
         let rest = format!(
-            "select sort_seq, create_time, local_id from \"{}\" where (sort_seq is null or sort_seq <= 0) and create_time >= ?1 and (?2 = 0 or create_time <= ?2)",
+            "select sort_seq, create_time, local_id from \"{}\" where (sort_seq is null or sort_seq <= 0) and create_time >= 0",
             t.table
         );
-        keys.extend(self.collect_keys(t, idx, &rest, &[&begin, &end], false)?);
+        keys.extend(self.collect_keys(t, idx, &rest, &[], false)?);
         Ok(keys)
     }
 
@@ -1935,7 +1924,7 @@ mod tests {
         // create_time * 1000, so here they are the newest ones
         let t = acct.message_tables("wxid_bob").unwrap().remove(0);
         let reference = |limit: i32, offset: i32| -> Vec<String> {
-            let sql = NativeAccount::select_sql(&t, "", false);
+            let sql = NativeAccount::select_sql(&t, "");
             let mut rows = acct.read_rows(&t, &sql, &[]).unwrap();
             rows.sort_by_key(|r| std::cmp::Reverse(r.key()));
             let page: Vec<MsgRow> = rows

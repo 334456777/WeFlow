@@ -1,17 +1,27 @@
 //! The chat service's `Message` model (WeFlow's `chatService.ts`):
 //! typed message rows → messages with parsed display text, media tokens, links, quotes.
-//! The exporter has its own (slightly different) model in `message.rs`; this one backs the
-//! HTTP API, the chat commands and the analytics code.
+//! This one backs the HTTP API, the chat commands and the analytics code; the exporter has its own model in
+//! `message.rs` (`exportService.ts`), whose text differs on purpose: a chat window's line (`[链接] title`,
+//! `[语音消息]`) against an export's (`[引用 …]`, a transfer's direction, a sticker's caption).
+//!
+//! What a row means is read the same way by both, with `message.rs`'s functions: the sender prefix of a group
+//! message, the `<refermsg>` of a quote and its text, a system message's XML. Only what the chat window words
+//! differently is here.
 
 use weflow_native::msg_row::MsgRow;
 
-use crate::message::{extract_xml_value, parse_voip_message, rx};
-use crate::services::clean_account_dir_name;
+use crate::api::js_parse_int;
+use crate::config::clean_account_dir_name;
+use crate::message::{
+    extract_preferred_quoted_text, extract_readable_system_message_text, extract_xml_value,
+    looks_like_wxid, parse_voip_message, percent_decode, refermsg_xml, rx, sanitize_quoted_content,
+    strip_sender_prefix,
+};
 
 // ───────────────────────── text helpers ─────────────────────────
 
 /// `decodeHtmlEntities` of the chat service (amp first).
-pub fn decode_html(content: &str) -> String {
+fn decode_html(content: &str) -> String {
     content
         .replace("&amp;", "&")
         .replace("&lt;", "<")
@@ -30,24 +40,7 @@ pub fn clean_utf16(input: &str) -> String {
         .collect()
 }
 
-/// `stripSenderPrefix`: `wxid_x:` (not `http://`) plus the newline / `<br>` that follows.
-pub fn strip_sender_prefix(content: &str) -> String {
-    let Some(prefix) = rx(r"^\s*([A-Za-z0-9_@-]+):").find(content) else {
-        return content.to_string();
-    };
-    let rest = &content[prefix.end()..];
-    if rest.starts_with("//") {
-        return content.to_string();
-    }
-    let consumed = rx(r"(?i)^\s*(?:\r?\n|<br\s*/?>)\s*")
-        .find(rest)
-        .or_else(|| rx(r"^\s*").find(rest))
-        .map(|m| m.end())
-        .unwrap_or(0);
-    rest[consumed..].to_string()
-}
-
-pub fn extract_sender_from_content(content: &str) -> Option<String> {
+fn extract_sender_from_content(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
@@ -57,7 +50,7 @@ pub fn extract_sender_from_content(content: &str) -> Option<String> {
 }
 
 /// chatService flavour of `extractXmlAttribute`: single or double quotes, whitespace before the name.
-pub fn xml_attr(xml: &str, tag: &str, attr: &str) -> String {
+fn xml_attr(xml: &str, tag: &str, attr: &str) -> String {
     let re = rx(&format!(
         r#"(?i)<{}[^>]*\s{}\s*=\s*['"]([^'"]*)['"]"#,
         regex::escape(tag),
@@ -103,16 +96,10 @@ pub fn message_type_label(local_type: i64) -> &'static str {
     }
 }
 
-fn looks_like_wxid(value: &str) -> bool {
-    let t = value.trim().to_lowercase();
-    !t.is_empty() && (t.starts_with("wxid_") || rx(r"^wx[a-z0-9_-]{4,}$").is_match(&t))
-}
-
-fn sanitize_quoted_content(content: &str) -> String {
-    crate::message::sanitize_quoted_content(content)
-}
-
-pub fn clean_system_message(content: &str) -> String {
+/// The line of a system message: what its `<sysmsg>` says in plain text, else the notice the export reads out of
+/// its XML ([`crate::message::clean_system_message`]: a revoke's notice, a template with its names filled in, a
+/// title), with the entities decoded and the sender and the XML declaration in front of it dropped.
+fn system_message_text(content: &str) -> String {
     if content.is_empty() {
         return "[系统消息]".into();
     }
@@ -121,36 +108,11 @@ pub fn clean_system_message(content: &str) -> String {
     if !readable.is_empty() {
         return readable;
     }
-    let mut cleaned = rx(r"(?i)<\?xml[^?]*\?>")
-        .replace_all(&normalized, "")
-        .to_string();
-    cleaned = rx(r"<[^>]+>").replace_all(&cleaned, "").to_string();
-    cleaned = rx(r"\d+\s*$").replace(&cleaned, "").to_string();
-    cleaned = strip_sender_prefix(&cleaned);
-    let cleaned = rx(r"\s+").replace_all(&cleaned, " ").trim().to_string();
-    if cleaned.is_empty() {
-        "[系统消息]".into()
-    } else {
-        cleaned
-    }
+    let body = strip_sender_prefix(&normalized);
+    crate::message::clean_system_message(&rx(r"(?i)<\?xml[^?]*\?>").replace_all(&body, ""))
 }
 
-fn extract_readable_system_message_text(content: &str) -> String {
-    let source = rx(r"(?is)<sysmsg\b[^>]*>(.*?)</sysmsg>")
-        .captures(content)
-        .map(|c| c[1].to_string())
-        .unwrap_or_else(|| content.to_string());
-    let mut text = extract_xml_value(&source, "plain");
-    if text.is_empty() {
-        text = extract_xml_value(&source, "text");
-    }
-    rx(r"\s+")
-        .replace_all(&strip_sender_prefix(&text), " ")
-        .trim()
-        .to_string()
-}
-
-pub fn clean_pat_message(content: &str) -> String {
+fn clean_pat_message(content: &str) -> String {
     if content.is_empty() {
         return "拍一拍".into();
     }
@@ -211,7 +173,7 @@ fn location_label_of(content: &str) -> String {
 }
 
 /// `parseType49`: the display string for appmsg content.
-pub fn parse_type49(content: &str) -> String {
+fn parse_type49(content: &str) -> String {
     let title = extract_xml_value(content, "title");
     let ty = app_xml_type(content);
     let normalized = content.to_lowercase();
@@ -294,8 +256,9 @@ pub fn parse_type49(content: &str) -> String {
     .into()
 }
 
-/// `parseMessageContent`: the display text of any message.
-pub fn parse_message_content(content: &str, local_type: i64) -> String {
+/// `parseMessageContent` of the chat service: the line the chat window shows for any message
+/// ([`ChatMessage::parsed_content`]). The exports word theirs in [`crate::message::parse_message_content`].
+fn parsed_content(content: &str, local_type: i64) -> String {
     if content.is_empty() {
         return message_type_label(local_type).into();
     }
@@ -310,12 +273,7 @@ pub fn parse_message_content(content: &str, local_type: i64) -> String {
         43 => "[视频]".into(),
         47 => "[动画表情]".into(),
         48 => {
-            let label = first_non_empty(&[
-                xml_attr(&content, "location", "label"),
-                xml_attr(&content, "location", "poiname"),
-                extract_xml_value(&content, "label"),
-                extract_xml_value(&content, "poiname"),
-            ]);
+            let label = location_label_of(&content);
             if label.is_empty() {
                 "[位置]".into()
             } else {
@@ -324,7 +282,7 @@ pub fn parse_message_content(content: &str, local_type: i64) -> String {
         }
         49 => parse_type49(&content),
         50 => parse_voip_message(&content),
-        10000 => clean_system_message(&content),
+        10000 => system_message_text(&content),
         244813135921 => {
             let t = extract_xml_value(&content, "title");
             if t.is_empty() {
@@ -463,14 +421,8 @@ fn parse_js_float(s: &str) -> Option<f64> {
     crate::sns::parse_float(s)
 }
 
-fn parse_js_int(s: &str) -> Option<i64> {
-    rx(r"^\s*[+-]?\d+")
-        .find(s)
-        .and_then(|m| m.as_str().trim().parse().ok())
-}
-
 /// `parseType49Message`
-pub fn parse_type49_message(content: &str) -> Type49Info {
+fn parse_type49_message(content: &str) -> Type49Info {
     let mut r = Type49Info::default();
     if content.is_empty() {
         return r;
@@ -532,7 +484,7 @@ pub fn parse_type49_message(content: &str) -> Type49Info {
         r.finder_avatar = opt(ev("avatar"));
         let d = first_non_empty(&[ev("videoPlayDuration"), ev("duration")]);
         if !d.is_empty() {
-            if let Some(n) = parse_js_int(&d).filter(|n| *n > 0) {
+            if let Some(n) = js_parse_int(&d).filter(|n| *n > 0) {
                 r.finder_duration = Some(n);
             }
         }
@@ -586,9 +538,7 @@ pub fn parse_type49_message(content: &str) -> Type49Info {
     } else if xml_type == "87" {
         "announcement"
     } else if xml_type == "57" {
-        let q = parse_quote_message(content);
-        r.quoted_content = q.0;
-        r.quoted_sender = q.1;
+        (r.quoted_content, r.quoted_sender) = quote_of(content);
         "quote"
     } else if xml_type == "53" {
         "solitaire"
@@ -616,7 +566,7 @@ pub fn parse_type49_message(content: &str) -> Type49Info {
             r.file_name = opt(name.clone());
             let size = first_non_empty(&[ev("totallen"), ev("filesize")]);
             if !size.is_empty() {
-                r.file_size = parse_js_int(&size);
+                r.file_size = js_parse_int(&size);
             }
             let ext = ev("fileext");
             let md5 = first_non_empty(&[ev("md5"), ev("filemd5")]);
@@ -673,100 +623,12 @@ pub fn parse_type49_message(content: &str) -> Type49Info {
     r
 }
 
-fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
-    if xml.is_empty() || full.is_empty() {
-        return String::new();
-    }
-    let start_char = extract_xml_value(xml, "start");
-    let end_char = extract_xml_value(xml, "end");
-    let start_index = parse_js_int(&extract_xml_value(xml, "startindex"));
-    let end_index = parse_js_int(&extract_xml_value(xml, "endindex"));
-    if !start_char.is_empty() && !end_char.is_empty() {
-        if let Some(sp) = full.find(&start_char) {
-            let from = sp + start_char.len().saturating_sub(1);
-            if let Some(rel) = full.get(from..).and_then(|s| s.find(&end_char)) {
-                let ep = from + rel;
-                if ep >= sp {
-                    let sliced = full[sp..ep + end_char.len()].trim().to_string();
-                    if !sliced.is_empty() {
-                        return sliced;
-                    }
-                }
-            }
-        }
-    }
-    if let (Some(s), Some(e)) = (start_index, end_index) {
-        if let (true, Ok(skip), Ok(take)) = (e >= s, usize::try_from(s), usize::try_from(e - s + 1))
-        {
-            let chars: Vec<char> = full.chars().collect();
-            let sliced: String = chars
-                .iter()
-                .skip(skip)
-                .take(take)
-                .collect::<String>()
-                .trim()
-                .to_string();
-            if !sliced.is_empty() {
-                return sliced;
-            }
-        }
-    }
-    String::new()
-}
-
-fn extract_preferred_quoted_text(refer_xml: &str) -> String {
-    if refer_xml.is_empty() {
-        return String::new();
-    }
-    let mut sources = vec![decode_html(refer_xml)];
-    let raw_source = extract_xml_value(refer_xml, "msgsource");
-    if !raw_source.is_empty() {
-        let decoded = decode_html(&raw_source);
-        if !decoded.is_empty() {
-            sources.push(decoded);
-        }
-    }
-    let full = sanitize_quoted_content(&extract_xml_value(&sources[0], "content"));
-    let partial = extract_partial_quoted_text(&sources[0], &full);
-    if !partial.is_empty() {
-        return partial;
-    }
-    for source in &sources {
-        for tag in [
-            "selectedcontent",
-            "selectedtext",
-            "selectcontent",
-            "selecttext",
-            "quotecontent",
-            "quotetext",
-            "partcontent",
-            "parttext",
-            "excerpt",
-            "summary",
-            "preview",
-        ] {
-            let v = sanitize_quoted_content(&extract_xml_value(source, tag));
-            if !v.is_empty() {
-                return v;
-            }
-        }
-    }
-    full
-}
-
-/// `parseQuoteMessage` → (content, sender)
-pub fn parse_quote_message(content: &str) -> (Option<String>, Option<String>) {
-    let normalized = decode_html(content);
-    let (Some(start), Some(end)) = (
-        normalized.find("<refermsg>"),
-        normalized.find("</refermsg>"),
-    ) else {
+/// `parseQuoteMessage` of the chat service: what a reply quotes, as (content, sender).
+fn quote_of(content: &str) -> (Option<String>, Option<String>) {
+    let Some(refer_xml) = refermsg_xml(&decode_html(content)) else {
         return (None, None);
     };
-    if end + 11 > normalized.len() || end < start {
-        return (None, None);
-    }
-    let refer_xml = &normalized[start..end + 11];
+    let refer_xml = refer_xml.as_str();
     let mut display_name = extract_xml_value(refer_xml, "displayname");
     if !display_name.is_empty() && looks_like_wxid(&display_name) {
         display_name.clear();
@@ -800,15 +662,7 @@ pub fn parse_quote_message(content: &str) -> (Option<String>, Option<String>) {
 }
 
 fn parse_media_quote(content: &str) -> Option<String> {
-    let normalized = decode_html(content);
-    let (start, end) = (
-        normalized.find("<refermsg>")?,
-        normalized.find("</refermsg>")?,
-    );
-    if end + 11 > normalized.len() || end < start {
-        return None;
-    }
-    let svrid = extract_xml_value(&normalized[start..end + 11], "svrid");
+    let svrid = extract_xml_value(&refermsg_xml(&decode_html(content))?, "svrid");
     (!svrid.is_empty()).then(|| format!("__SVRID__{svrid}__"))
 }
 
@@ -910,24 +764,13 @@ struct EmojiInfo {
     md5: Option<String>,
 }
 
-fn percent_decode_lossy(s: &str) -> String {
-    String::from_utf8(crate::message::percent_decode_bytes(s)).unwrap_or_else(|_| s.to_string())
-}
-
 fn parse_emoji_info(content: &str) -> EmojiInfo {
     let grab = |name: &str| -> Option<String> {
         let quoted = rx(&format!(r#"(?i){name}\s*=\s*['"]([^'"]+)['"]"#)).captures(content);
         let bare = || rx(&format!(r#"(?i){name}\s*=\s*([^'"\s/>]+)"#)).captures(content);
         quoted
             .or_else(bare)
-            .map(|c| c[1].replace("&amp;", "&"))
-            .map(|u| {
-                if u.contains('%') {
-                    percent_decode_lossy(&u)
-                } else {
-                    u
-                }
-            })
+            .map(|c| percent_decode(&c[1].replace("&amp;", "&")))
     };
     let md5 = rx(r#"(?i)md5\s*=\s*['"]([a-fA-F0-9]+)['"]"#)
         .captures(content)
@@ -1032,7 +875,7 @@ impl ChatMessage {
 // ───────────────────────── message keys ─────────────────────────
 
 /// JS `encodeURIComponent`
-pub fn encode_uri_component(s: &str) -> String {
+fn encode_uri_component(s: &str) -> String {
     let mut out = String::new();
     for b in s.trim().bytes() {
         match b {
@@ -1055,13 +898,13 @@ pub fn encode_uri_component(s: &str) -> String {
 }
 
 /// Where a message is kept: its database by name (`message_0`), never by path (#443), and its table.
-pub struct SourceInfo {
-    pub db_name: String,
-    pub table_name: String,
+struct SourceInfo {
+    db_name: String,
+    table_name: String,
 }
 
 /// `buildMessageKey`, scoped by the database's name (`message_0`) instead of its path.
-pub fn build_message_key(
+fn build_message_key(
     local_id: i64,
     server_id: i64,
     create_time: i64,
@@ -1127,7 +970,7 @@ fn identity_keys(raw: &str) -> Vec<String> {
 }
 
 /// `resolveMessageIsSend`
-pub fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) -> Option<i64> {
+fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) -> Option<i64> {
     let sender_keys = identity_keys(sender.unwrap_or(""));
     if sender_keys.is_empty() {
         return raw;
@@ -1250,18 +1093,9 @@ fn chat_message(
         let e = parse_emoji_info(&content);
         m.emoji_cdn_url = e.cdn_url;
         m.emoji_md5 = e.md5;
-        m.cdn_thumb_url = {
-            let t = rx(r#"(?i)thumburl\s*=\s*['"]([^'"]+)['"]"#)
-                .captures(&content)
-                .map(|c| c[1].replace("&amp;", "&"));
-            t.map(|u| {
-                if u.contains('%') {
-                    percent_decode_lossy(&u)
-                } else {
-                    u
-                }
-            })
-        };
+        m.cdn_thumb_url = rx(r#"(?i)thumburl\s*=\s*['"]([^'"]+)['"]"#)
+            .captures(&content)
+            .map(|c| percent_decode(&c[1].replace("&amp;", "&")));
     } else if local_type == 3 && !content.is_empty() {
         let md5 = first_non_empty(&[
             extract_xml_value(&content, "md5"),
@@ -1269,7 +1103,7 @@ fn chat_message(
         ]);
         m.image_md5 = opt(md5);
         m.aes_key = opt(xml_attr(&content, "img", "aeskey"));
-        m.encryp_ver = parse_js_int(&xml_attr(&content, "img", "encrypver"));
+        m.encryp_ver = js_parse_int(&xml_attr(&content, "img", "encrypver"));
         m.cdn_thumb_url = opt(xml_attr(&content, "img", "cdnthumburl"));
         m.image_dat_name = packed_info
             .and_then(crate::message::dat_name_in_packed_info)
@@ -1315,9 +1149,7 @@ fn chat_message(
         m.quoted_sender = t.quoted_sender.clone();
         m.t49 = Some(Box::new(t));
     } else if local_type == 244813135921 || content.contains("<type>57</type>") {
-        let (c, s) = parse_quote_message(&content);
-        m.quoted_content = c;
-        m.quoted_sender = s;
+        (m.quoted_content, m.quoted_sender) = quote_of(&content);
     }
 
     if content.contains("<appmsg") || content.contains("&lt;appmsg") {
@@ -1379,7 +1211,7 @@ fn chat_message(
             m.quoted_sender = t.quoted_sender;
         }
     }
-    m.parsed_content = parse_message_content(&content, local_type);
+    m.parsed_content = parsed_content(&content, local_type);
     m.raw_content = content;
     m.message_key = build_message_key(
         m.local_id,
@@ -1398,11 +1230,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sender_prefix_variants() {
-        assert_eq!(strip_sender_prefix("wxid_a:\nhello"), "hello");
-        assert_eq!(strip_sender_prefix("wxid_a:<br/>hello"), "hello");
-        assert_eq!(strip_sender_prefix("wxid_a: hi"), "hi");
-        assert_eq!(strip_sender_prefix("http://x"), "http://x");
+    fn the_sender_is_read_from_the_prefix_of_a_group_message() {
         assert_eq!(
             extract_sender_from_content("wxid_abcd:\nhello").as_deref(),
             Some("wxid_abcd")
@@ -1412,28 +1240,80 @@ mod tests {
 
     #[test]
     fn display_text_per_type() {
-        assert_eq!(parse_message_content("", 3), "[图片]");
-        assert_eq!(parse_message_content("<msg/>", 3), "[图片]");
-        assert_eq!(parse_message_content("wxid_a:\nhi", 1), "hi");
+        assert_eq!(parsed_content("", 3), "[图片]");
+        assert_eq!(parsed_content("<msg/>", 3), "[图片]");
+        assert_eq!(parsed_content("wxid_a:\nhi", 1), "hi");
+        assert_eq!(parsed_content("123456@openim:\nhi", 1), "hi");
         assert_eq!(
-            parse_message_content(
+            parsed_content(
                 "<msg><appmsg><title>T</title><type>5</type><url>http://x</url></appmsg></msg>",
                 49
             ),
             "[链接] T"
         );
         assert_eq!(
-            parse_message_content("<appmsg><title>f.pdf</title><type>6</type></appmsg>", 49),
+            parsed_content("<appmsg><title>f.pdf</title><type>6</type></appmsg>", 49),
             "[文件] f.pdf"
         );
         assert_eq!(
-            parse_message_content("<sysmsg><plain>Bob joined</plain></sysmsg>", 10000),
+            parsed_content("<sysmsg><plain>Bob joined</plain></sysmsg>", 10000),
             "Bob joined"
         );
         assert_eq!(
-            parse_message_content("<msg><location label=\"Bund\"/></msg>", 48),
+            parsed_content("<msg><location label=\"Bund\"/></msg>", 48),
             "[位置] Bund"
         );
+    }
+
+    #[test]
+    fn text_that_starts_like_a_sender_keeps_its_start() {
+        // only `name:` and a line break, or an id, is a sender: a time, a score or a label is the text itself
+        for text in ["4:1", "1:3-1:6", "10:1 abc", "PS: see you", "http://x"] {
+            assert_eq!(parsed_content(text, 1), text);
+        }
+    }
+
+    #[test]
+    fn system_messages_read_the_notice_out_of_their_xml() {
+        let revoke = "<sysmsg type=\"revokemsg\"><revokemsg><session>wxid_bob</session><msgid>12</msgid>\
+                      <newmsgid>345</newmsgid><replacemsg><![CDATA[\"Bob\" 撤回了一条消息]]></replacemsg>\
+                      </revokemsg></sysmsg>";
+        assert_eq!(parsed_content(revoke, 10000), "\"Bob\" 撤回了一条消息");
+        assert_eq!(
+            parsed_content(&format!("room@chatroom:\n{revoke}"), 10000),
+            "\"Bob\" 撤回了一条消息"
+        );
+        assert_eq!(
+            parsed_content("<?xml version=\"1.0\"?><a>你已添加了 Bob</a>", 10000),
+            "你已添加了 Bob"
+        );
+        // as the database keeps a revoke: its time is not part of the notice
+        assert_eq!(
+            parsed_content(
+                "<?xml version=\"1.0\"?><sysmsg type=\"revokemsg\"><revokemsg><content>\"Bob\" 撤回了一条消息</content>\
+                 <revoketime>0</revoketime></revokemsg></sysmsg>",
+                10000
+            ),
+            "\"Bob\" 撤回了一条消息"
+        );
+        // a notice in plain text is itself, digits at its end included
+        assert_eq!(
+            parsed_content("群聊人数已达 100", 10000),
+            "群聊人数已达 100"
+        );
+        assert_eq!(parsed_content("<a></a>", 10000), "[系统消息]");
+    }
+
+    #[test]
+    fn a_quote_of_a_message_that_quotes_keeps_its_own_sender() {
+        // the quoted message's content holds a `<refermsg>` of its own, decoded: the block ends at the last
+        // closing tag, not at the inner one
+        let xml = "<msg><appmsg><title>好看</title><type>57</type><refermsg><type>1</type><svrid>9</svrid>\
+                   <content>原话&lt;refermsg&gt;&lt;svrid&gt;7&lt;/svrid&gt;&lt;/refermsg&gt;</content>\
+                   <displayname>Me Nick</displayname></refermsg></appmsg></msg>";
+        let (_, sender) = quote_of(xml);
+        assert_eq!(sender.as_deref(), Some("Me Nick"));
+        assert_eq!(parse_media_quote(xml).as_deref(), Some("__SVRID__9__"));
     }
 
     #[test]

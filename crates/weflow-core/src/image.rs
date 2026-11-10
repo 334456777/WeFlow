@@ -205,7 +205,7 @@ pub fn year_month_from_create_time(create_time: Option<i64>) -> String {
 }
 
 /// `resolveSessionDirForStorage`: WeChat stores chat attachments under `md5(username)`.
-pub fn session_dir_for_storage(session_id: &str, clean_account: impl Fn(&str) -> String) -> String {
+pub fn session_dir_for_storage(session_id: &str) -> String {
     use md5::{Digest, Md5};
     let normalized = session_id.trim().to_lowercase();
     if normalized.is_empty() {
@@ -214,7 +214,7 @@ pub fn session_dir_for_storage(session_id: &str, clean_account: impl Fn(&str) ->
     if looks_like_md5(&normalized) {
         return normalized;
     }
-    let cleaned = clean_account(&normalized).to_lowercase();
+    let cleaned = crate::config::clean_account_dir_name(&normalized).to_lowercase();
     if looks_like_md5(&cleaned) {
         return cleaned;
     }
@@ -670,13 +670,12 @@ mod tests {
 
     #[test]
     fn session_dirs_are_md5_of_the_username() {
-        let clean = |s: &str| s.to_string();
         assert_eq!(
-            session_dir_for_storage("WXID_bob", clean),
+            session_dir_for_storage("WXID_bob"),
             "8a7b11f2fd24e19a60664a5fe5d56342"
         );
-        assert_eq!(session_dir_for_storage(MD5, clean), MD5);
-        assert_eq!(session_dir_for_storage("", clean), "");
+        assert_eq!(session_dir_for_storage(MD5), MD5);
+        assert_eq!(session_dir_for_storage(""), "");
     }
 
     #[test]

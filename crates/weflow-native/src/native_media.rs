@@ -512,11 +512,7 @@ impl NativeAccount {
         let mut whole = std::collections::HashMap::new();
         for (at, ids) in wanted {
             let (sid, t) = &tables[at];
-            let sql = Self::select_sql(
-                t,
-                &format!("where m.local_id in ({})", ids.join(",")),
-                false,
-            );
+            let sql = Self::select_sql(t, &format!("where m.local_id in ({})", ids.join(",")));
             for row in self.read_rows(t, &sql, &[])? {
                 let (id, seq) = row.index_key();
                 whole.insert(format!("{sid}\n{id}\n{seq}"), rows.len());
@@ -780,11 +776,7 @@ impl NativeAccount {
         let mut rows: Newest<SessionRow> = Newest::new(k);
         for sid in session_ids {
             for t in self.message_tables(sid)? {
-                let sql = Self::select_sql(
-                    &t,
-                    &format!("where m.local_type in ({kinds}){range}"),
-                    false,
-                );
+                let sql = Self::select_sql(&t, &format!("where m.local_type in ({kinds}){range}"));
                 let table_rows = std::cell::RefCell::new(Newest::new(k));
                 self.read_rows_each(
                     &t,

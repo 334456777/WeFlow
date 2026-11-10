@@ -373,10 +373,7 @@ fn write_picture(
 ) -> Result<String> {
     let dir = account
         .join("msg/attach")
-        .join(weflow_core::image::session_dir_for_storage(
-            session,
-            weflow_core::services::clean_account_dir_name,
-        ))
+        .join(weflow_core::image::session_dir_for_storage(session))
         .join(weflow_core::image::year_month_from_create_time(Some(at)))
         .join("Img");
     std::fs::create_dir_all(&dir)?;

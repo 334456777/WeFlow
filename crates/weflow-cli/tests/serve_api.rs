@@ -1419,10 +1419,7 @@ fn media_come_back_as_files_from_the_process() {
         let img = f
             .account_dir
             .join("msg/attach")
-            .join(weflow_core::image::session_dir_for_storage(
-                "wxid_bob",
-                |s| s.to_string(),
-            ))
+            .join(weflow_core::image::session_dir_for_storage("wxid_bob"))
             .join(weflow_core::image::year_month_from_create_time(Some(
                 T0 + DAY,
             )))
@@ -2305,10 +2302,7 @@ fn chat_media_answers_fit_the_contract() {
         let img = f
             .account_dir
             .join("msg/attach")
-            .join(weflow_core::image::session_dir_for_storage(
-                "wxid_bob",
-                |s| s.to_string(),
-            ))
+            .join(weflow_core::image::session_dir_for_storage("wxid_bob"))
             .join(weflow_core::image::year_month_from_create_time(Some(
                 T0 + DAY,
             )))
@@ -2546,10 +2540,7 @@ fn image_and_video_answers_fit_the_contract() {
         let img = f
             .account_dir
             .join("msg/attach")
-            .join(weflow_core::image::session_dir_for_storage(
-                "wxid_bob",
-                |s| s.to_string(),
-            ))
+            .join(weflow_core::image::session_dir_for_storage("wxid_bob"))
             .join(weflow_core::image::year_month_from_create_time(Some(
                 T0 + DAY,
             )))
