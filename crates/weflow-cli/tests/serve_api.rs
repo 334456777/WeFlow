@@ -2291,6 +2291,54 @@ fn file_exports_fit_the_contract() {
     }
 }
 
+/// The lists as tables (#659): a row for each conversation or contact, and the formats for messages refused.
+#[test]
+fn list_exports_write_the_rows_in_every_format() {
+    use std::io::Read;
+    let root = temp_root("list-exports");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let out = root.join("out");
+    for (route, more) in [
+        ("/export/sessions", json!({})),
+        ("/export/contacts", json!({})),
+        ("/export/contacts", json!({ "parsed": true })),
+    ] {
+        for format in ["html", "sql", "excel", "csv", "json"] {
+            let mut body = more.clone();
+            body["format"] = json!(format);
+            body["out"] = json!(out);
+            let r = server.call("POST", route, &body.to_string());
+            assert_eq!(r.status, 200, "{route} as {format}: {}", r.body);
+            let path = PathBuf::from(r.json()["data"]["out"].as_str().unwrap());
+            let text = if format == "excel" {
+                // the strings of a workbook are in one of its XML parts
+                let mut zip = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+                let mut all = String::new();
+                for i in 0..zip.len() {
+                    let _ = zip.by_index(i).unwrap().read_to_string(&mut all);
+                }
+                all
+            } else {
+                std::fs::read_to_string(&path).unwrap()
+            };
+            assert!(
+                text.contains("wxid_bob"),
+                "{route} as {format} ({more}) has no row for wxid_bob"
+            );
+        }
+        for format in ["chatlab", "weclone"] {
+            let mut body = more.clone();
+            body["format"] = json!(format);
+            body["out"] = json!(out.join("refused"));
+            let r = server.call("POST", route, &body.to_string());
+            assert_eq!(r.status, 400, "{route} as {format}: {}", r.body);
+            assert_eq!(r.json()["error"]["code"], "invalid_arguments");
+        }
+    }
+    assert!(!out.join("refused").exists());
+}
+
 #[test]
 fn chat_media_answers_fit_the_contract() {
     use weflow_native::fixture::{DAY, T0};

@@ -40,7 +40,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("interrupted by user", "已被用户中断"),
     ("failed to serialize JSON: {}", "序列化 JSON 失败：{}"),
     ("no contacts of the kinds asked for", "没有所选类型的联系人"),
-    ("unsupported export format: {}; supported: json, csv, txt, html, excel, sql, chatlab, weclone", "不支持的导出格式：{}；支持：json、csv、txt、html、excel、sql、chatlab、weclone"),
+    ("unsupported export format: {}; supported: json, csv, txt, html, excel, sql", "不支持的导出格式：{}；支持：json、csv、txt、html、excel、sql"),
     ("CSV export expects an array; use --format json for nested data", "CSV 导出需要数组数据；嵌套数据请使用 --format json"),
     // config
     ("invalid value '{}' for lang; use en or zh", "lang 的值 '{}' 无效；请使用 en 或 zh"),

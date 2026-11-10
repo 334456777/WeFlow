@@ -726,7 +726,7 @@ enum ExportSubcommand {
         /// Only these conversations (repeatable; default: all)
         #[arg(long = "session")]
         sessions: Vec<String>,
-        /// Export format (default: json)
+        /// Export format: json (default), csv, txt, html, excel or sql
         #[arg(long)]
         format: Option<String>,
         /// Output file
@@ -735,7 +735,7 @@ enum ExportSubcommand {
     },
     /// Export the contact list
     Contacts {
-        /// Export format (default: json)
+        /// Export format: json (default), csv, txt, html, excel or sql
         #[arg(long)]
         format: Option<String>,
         /// Output file
@@ -2691,16 +2691,13 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             format,
             out,
         } => {
+            // an unknown format is refused before anything is read
+            let format = ListFormat::named(format.as_deref())?;
             let mut data = hub.sessions()?;
             if !sessions.is_empty() {
                 data = filter_named_items(data, &sessions);
             }
-            Ok(json!(write_export(
-                "sessions",
-                format.as_deref(),
-                &out,
-                &data
-            )?))
+            Ok(json!(write_export("sessions", format, &out, &data)?))
         }
         ExportSubcommand::Contacts {
             format,
@@ -2708,6 +2705,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             parsed,
             kind,
         } => {
+            let format = ListFormat::named(format.as_deref())?;
             let data = if parsed {
                 let mut contacts = hub.chat_contacts_parsed()?;
                 if !kind.is_empty() {
@@ -2720,12 +2718,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             } else {
                 hub.contacts()?
             };
-            Ok(json!(write_export(
-                "contacts",
-                format.as_deref(),
-                &out,
-                &data
-            )?))
+            Ok(json!(write_export("contacts", format, &out, &data)?))
         }
         ExportSubcommand::Footprint {
             format,
@@ -2749,7 +2742,8 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             let (b, e) = day_span(&start, &end)?;
             let data = hub.footprint(b, e)?;
             if extension == "json" {
-                return Ok(json!(write_export("footprint", Some("json"), &out, &data)?));
+                let json = (ListFormat::Json, format);
+                return Ok(json!(write_export("footprint", json, &out, &data)?));
             }
             let (headers, rows) = hub.footprint_timeline(&data)?;
             let path = export_path(&out, &format!("footprint.{extension}"));
@@ -3796,47 +3790,79 @@ fn write_json_file(path: &Path, value: &Value) -> AppResult<()> {
         .map_err(|err| AppError::runtime(format!("failed to write {}: {err}", path.display())))
 }
 
+/// A format `export sessions` and `export contacts` write a list in.
+#[derive(Clone, Copy)]
+enum ListFormat {
+    Json,
+    Csv,
+    Txt,
+    Html,
+    Excel,
+    Sql,
+}
+
+impl ListFormat {
+    /// The format `--format` names (JSON without one), and the name as it was given, in lower case. The formats
+    /// for messages (ChatLab, WeClone) are refused: a list has no senders or texts to put in them (#659).
+    fn named(format: Option<&str>) -> AppResult<(Self, String)> {
+        let name = format.unwrap_or("json").to_ascii_lowercase();
+        let format = match name.as_str() {
+            "json" => Self::Json,
+            "csv" => Self::Csv,
+            "txt" => Self::Txt,
+            "html" => Self::Html,
+            "excel" | "xlsx" => Self::Excel,
+            "sql" => Self::Sql,
+            other => {
+                return Err(AppError::usage(format!(
+                    "unsupported export format: {other}; supported: json, csv, txt, html, excel, sql"
+                )));
+            }
+        };
+        Ok((format, name))
+    }
+
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Csv => "csv",
+            Self::Txt => "txt",
+            Self::Html => "html",
+            Self::Excel => "xlsx",
+            Self::Sql => "sql",
+        }
+    }
+}
+
+/// Writes the list `value` to `out` (the file `name` with the format's extension when `out` is a folder): as it is
+/// in JSON and text, and as a table whose columns are the rows' keys in the other formats.
 fn write_export(
     name: &str,
-    format: Option<&str>,
+    (format, format_name): (ListFormat, String),
     out: &Path,
     value: &Value,
 ) -> AppResult<ExportWritten> {
-    let format = format.unwrap_or("json").to_ascii_lowercase();
-    let extension = match format.as_str() {
-        "json" => "json",
-        "csv" => "csv",
-        "txt" => "txt",
-        "html" => "html",
-        "excel" | "xlsx" => "xlsx",
-        "sql" => "sql",
-        "chatlab" => "chatlab.json",
-        "weclone" => "weclone.csv",
-        other => {
-            return Err(AppError::usage(format!(
-                "unsupported export format: {other}; supported: json, csv, txt, html, excel, sql, chatlab, weclone"
-            )));
-        }
-    };
-    let path = export_path(out, &format!("{name}.{extension}"));
+    use weflow_core::export;
+    let path = export_path(out, &format!("{name}.{}", format.extension()));
     make_parent(&path)?;
-    match format.as_str() {
-        "json" => write_json_file(&path, value)?,
-        "csv" => write_csv_file(&path, value)?,
-        "txt" => write_text_file(&path, &format!("{value:#}"))?,
-        "html" => weflow_core::export::export_html(name, value, &json!([]), &path)
-            .map_err(|err| AppError::runtime(err.to_string()))?,
-        "excel" | "xlsx" => weflow_core::export::export_excel(value, &path)
-            .map_err(|err| AppError::runtime(err.to_string()))?,
-        "sql" => weflow_core::export::export_sql(name, value, &path)
-            .map_err(|err| AppError::runtime(err.to_string()))?,
-        "chatlab" => weflow_core::export::export_chatlab(name, value, &json!([]), &path)
-            .map_err(|err| AppError::runtime(err.to_string()))?,
-        "weclone" => weflow_core::export::export_weclone("", value, &json!([]), &path)
-            .map_err(|err| AppError::runtime(err.to_string()))?,
-        _ => unreachable!(),
+    match format {
+        ListFormat::Json => write_json_file(&path, value)?,
+        ListFormat::Csv => write_csv_file(&path, value)?,
+        ListFormat::Txt => write_text_file(&path, &format!("{value:#}"))?,
+        ListFormat::Html | ListFormat::Excel | ListFormat::Sql => {
+            let (headers, rows) = export::list_table(value);
+            match format {
+                ListFormat::Html => export::export_table_html(name, &headers, &rows, &path),
+                ListFormat::Excel => export::export_table_excel(&headers, &rows, &path),
+                _ => export::export_table_sql(name, &headers, &rows, &path),
+            }
+            .map_err(|err| AppError::runtime(err.to_string()))?;
+        }
     }
-    Ok(ExportWritten { out: path, format })
+    Ok(ExportWritten {
+        out: path,
+        format: format_name,
+    })
 }
 
 fn export_path(out: &Path, default_name: &str) -> PathBuf {
