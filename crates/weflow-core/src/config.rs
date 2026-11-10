@@ -648,10 +648,9 @@ pub fn clean_account_dir_name(dir_name: &str) -> String {
     }
 }
 
+/// A WeChat 4.x account folder: one with `db_storage`, which the database layer reads.
 pub fn is_account_dir(path: &Path) -> bool {
-    path.join("db_storage").exists()
-        || path.join("FileStorage/Image").exists()
-        || path.join("FileStorage/Image2").exists()
+    path.join("db_storage").is_dir()
 }
 
 fn is_profile_key(key: &str) -> bool {

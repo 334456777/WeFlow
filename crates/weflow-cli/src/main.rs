@@ -1443,15 +1443,18 @@ enum BackupSubcommand {
         /// Output file
         #[arg(long)]
         out: PathBuf,
-        /// Leave out the cached images
+        /// Also back up the images WeChat keeps (msg/attach)
         #[arg(long)]
-        no_images: bool,
-        /// Leave out the cached voice files
+        images: bool,
+        /// Also back up the videos WeChat keeps (msg/video)
         #[arg(long)]
-        no_voice: bool,
-        /// Leave out the cached stickers
+        videos: bool,
+        /// Also back up the files sent and received (msg/file)
         #[arg(long)]
-        no_emojis: bool,
+        files: bool,
+        /// Also back up the stickers WeFlow downloaded (its sticker cache)
+        #[arg(long)]
+        emojis: bool,
     },
     /// Show what a backup contains
     Inspect {
@@ -3980,12 +3983,19 @@ fn handle_backup(command: &BackupCommand, hub: &ServiceHub) -> AppResult<Value> 
     match &command.command {
         BackupSubcommand::Create {
             out,
-            no_images,
-            no_voice,
-            no_emojis,
-        } => Ok(json!(
-            hub.backup_create(out, !no_images, !no_voice, !no_emojis)?
-        )),
+            images,
+            videos,
+            files,
+            emojis,
+        } => {
+            let options = weflow_core::backup::BackupOptions {
+                images: *images,
+                videos: *videos,
+                files: *files,
+                emojis: *emojis,
+            };
+            Ok(json!(hub.backup_create(out, &options)?))
+        }
         BackupSubcommand::Inspect { path } => Ok(json!(hub.backup_inspect(path)?)),
         BackupSubcommand::Restore { path, target } => {
             let target_dir = target.as_deref().unwrap_or_else(|| Path::new("."));

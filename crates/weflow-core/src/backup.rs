@@ -9,21 +9,31 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
-use zip::{ZipArchive, ZipWriter};
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 const MANIFEST_NAME: &str = "weflow_backup_manifest.json";
 
-#[derive(Debug, Clone, Default)]
+/// Where WeFlow's sticker cache is kept in a backup.
+const EMOJI_FOLDER: &str = "emojis";
+
+/// What a backup holds besides the databases (`db_storage/`, always there; the voice messages are in them).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BackupOptions {
-    pub include_images: bool,
-    pub include_voice: bool,
-    pub include_emojis: bool,
+    /// The images WeChat keeps: `msg/attach/`.
+    pub images: bool,
+    /// The videos WeChat keeps: `msg/video/`.
+    pub videos: bool,
+    /// The files sent and received: `msg/file/`.
+    pub files: bool,
+    /// WeFlow's cache of the stickers it downloaded, kept in the backup as `emojis/`.
+    pub emojis: bool,
 }
 
 /// A file in a backup.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BackupEntry {
-    /// Its path in the backup: `db_storage/…`, `FileStorage/…` or `emojis/…`.
+    /// Its path in the backup: `db_storage/…`, `msg/attach/…`, `msg/video/…`, `msg/file/…` or `emojis/…`; a backup
+    /// of an older WeFlow can also hold `FileStorage/…`.
     pub path: String,
     pub sha256: String,
     /// Bytes.
@@ -43,10 +53,24 @@ pub struct BackupManifest {
     pub entries: Vec<BackupEntry>,
 }
 
+/// A file to put in a backup.
+struct Collected {
+    path: PathBuf,
+    /// Its path in the backup.
+    name: String,
+    method: CompressionMethod,
+}
+
+/// Write a backup of the account in `account_dir` to `out_path`: its databases, and what `options` add.
+/// `emoji_dir` is WeFlow's sticker cache.
+///
+/// Each file is read and written in pieces, so a large video takes no more memory than a small one. The media are
+/// stored as they are, since they are compressed already. A file that cannot be read (WeChat may hold or remove
+/// one meanwhile) is left out.
 pub fn create_backup(
     account_dir: &Path,
     options: &BackupOptions,
-    weflow_home: Option<&Path>,
+    emoji_dir: Option<&Path>,
     weflow_version: &str,
     out_path: &Path,
     progress_cb: &dyn Fn(usize, usize),
@@ -54,8 +78,6 @@ pub fn create_backup(
     let file =
         fs::File::create(out_path).with_context(|| format!("create {}", out_path.display()))?;
     let mut zip = ZipWriter::new(file);
-    let zip_options =
-        SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     let mut entries = Vec::new();
     let wxid = account_dir
@@ -64,43 +86,60 @@ pub fn create_backup(
         .unwrap_or("")
         .to_string();
 
-    let mut files_to_add: Vec<(PathBuf, String)> = Vec::new();
-
-    // Always include db_storage
-    collect_dir(account_dir, "db_storage", &mut files_to_add);
-
-    if options.include_images {
-        collect_dir(account_dir, "FileStorage/Image", &mut files_to_add);
-        collect_dir(account_dir, "FileStorage/Image2", &mut files_to_add);
-    }
-
-    if options.include_voice {
-        collect_dir(account_dir, "FileStorage/Audio", &mut files_to_add);
-    }
-
-    if options.include_emojis {
-        if let Some(home) = weflow_home {
-            collect_dir(home, "emojis", &mut files_to_add);
+    let mut files_to_add: Vec<Collected> = Vec::new();
+    collect_dir(
+        &account_dir.join("db_storage"),
+        "db_storage",
+        CompressionMethod::Deflated,
+        &mut files_to_add,
+    );
+    for (wanted, folder) in [
+        (options.images, "msg/attach"),
+        (options.videos, "msg/video"),
+        (options.files, "msg/file"),
+    ] {
+        if wanted {
+            collect_dir(
+                &account_dir.join(folder),
+                folder,
+                CompressionMethod::Stored,
+                &mut files_to_add,
+            );
         }
+    }
+    if let Some(dir) = emoji_dir.filter(|_| options.emojis) {
+        collect_dir(
+            dir,
+            EMOJI_FOLDER,
+            CompressionMethod::Stored,
+            &mut files_to_add,
+        );
     }
 
     let total = files_to_add.len();
-    for (idx, (abs_path, zip_path)) in files_to_add.iter().enumerate() {
+    for (idx, item) in files_to_add.iter().enumerate() {
         progress_cb(idx, total);
-        let data = match fs::read(abs_path) {
-            Ok(d) => d,
-            Err(_) => continue,
+        let Ok(mut source) = fs::File::open(&item.path) else {
+            continue;
         };
-        let sha = sha256_hex(&data);
-        zip.start_file(zip_path, zip_options)
-            .with_context(|| format!("zip start_file {zip_path}"))?;
-        zip.write_all(&data)
-            .with_context(|| format!("zip write {zip_path}"))?;
-        entries.push(BackupEntry {
-            path: zip_path.clone(),
-            sha256: sha,
-            size: data.len() as u64,
-        });
+        let size = source.metadata().map_or(0, |m| m.len());
+        let zip_options = SimpleFileOptions::default()
+            .compression_method(item.method)
+            .large_file(size >= u64::from(u32::MAX));
+        zip.start_file(item.name.as_str(), zip_options)
+            .with_context(|| format!("zip start_file {}", item.name))?;
+        match copy_hashing(&mut source, &mut zip)
+            .with_context(|| format!("zip write {}", item.name))?
+        {
+            Some((sha256, size)) => entries.push(BackupEntry {
+                path: item.name.clone(),
+                sha256,
+                size,
+            }),
+            None => zip
+                .abort_file()
+                .with_context(|| format!("zip abort {}", item.name))?,
+        }
     }
     progress_cb(total, total);
 
@@ -117,8 +156,11 @@ pub fn create_backup(
     };
 
     let manifest_bytes = serde_json::to_vec_pretty(&manifest).context("serialize manifest")?;
-    zip.start_file(MANIFEST_NAME, zip_options)
-        .context("zip manifest")?;
+    zip.start_file(
+        MANIFEST_NAME,
+        SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+    )
+    .context("zip manifest")?;
     zip.write_all(&manifest_bytes)
         .context("zip write manifest")?;
     zip.finish().context("zip finish")?;
@@ -138,16 +180,18 @@ pub fn inspect_backup(archive_path: &Path) -> Result<BackupManifest> {
     serde_json::from_slice(&buf).context("parse manifest")
 }
 
-/// Restore every manifest entry under `target_dir`.
+/// Restore every manifest entry under `target_dir`, except WeFlow's stickers (`emojis/…`), which go back into
+/// `emoji_dir`, the sticker cache, when one is given. Returns whether any sticker went there.
 ///
 /// The whole archive is checked before anything is written: each entry must be a plain relative path, every file in
 /// the archive must be listed in the manifest (and the other way round), and sizes and SHA-256 must match. Files are
-/// then written through a temporary file, never through a symbolic link or junction inside `target_dir`.
+/// then written through a temporary file, never through a symbolic link or junction inside the folder they go to.
 pub fn restore_backup(
     archive_path: &Path,
     target_dir: &Path,
+    emoji_dir: Option<&Path>,
     progress_cb: &dyn Fn(usize, usize),
-) -> Result<()> {
+) -> Result<bool> {
     let file =
         fs::File::open(archive_path).with_context(|| format!("open {}", archive_path.display()))?;
     let mut zip = ZipArchive::new(file).context("open zip archive")?;
@@ -198,12 +242,20 @@ pub fn restore_backup(
     }
 
     // Pass 2: write each file to a temporary name next to its target, then move it into place.
+    let mut stickers = false;
     for entry in &manifest.entries {
         progress_cb(done, total);
         done += 1;
         let (_, relative) = &listed[entry.path.as_str()];
-        let out_path = target_dir.join(relative);
-        create_parent_dirs(target_dir, relative)?;
+        let (base, relative) = match (emoji_dir, relative.strip_prefix(EMOJI_FOLDER)) {
+            (Some(dir), Ok(sticker)) if !sticker.as_os_str().is_empty() => {
+                stickers = true;
+                (dir, sticker)
+            }
+            _ => (target_dir, relative.as_path()),
+        };
+        let out_path = base.join(relative);
+        create_parent_dirs(base, relative)?;
 
         let tmp = out_path.with_file_name(format!(
             "{}.weflow-restore",
@@ -228,7 +280,7 @@ pub fn restore_backup(
         written?;
     }
     progress_cb(total, total);
-    Ok(())
+    Ok(stickers)
 }
 
 /// Turn a manifest path (`/`-separated, as `create_backup` writes it) into a relative path that cannot leave the
@@ -306,29 +358,52 @@ fn verify_copy(reader: &mut impl Read, out: &mut impl Write, expected: &BackupEn
     Ok(())
 }
 
-fn collect_dir(base: &Path, subdir: &str, out: &mut Vec<(PathBuf, String)>) {
-    let dir = base.join(subdir);
-    if !dir.exists() {
-        return;
-    }
-    for entry in WalkDir::new(&dir).into_iter().filter_map(|e| e.ok()) {
+/// The files under `dir`, named in the backup `<prefix>/<their path under dir>`; nothing when `dir` is missing.
+fn collect_dir(dir: &Path, prefix: &str, method: CompressionMethod, out: &mut Vec<Collected>) {
+    for entry in WalkDir::new(dir).into_iter().filter_map(Result::ok) {
         if !entry.file_type().is_file() {
             continue;
         }
-        let abs = entry.path().to_path_buf();
-        let rel = abs
-            .strip_prefix(base)
-            .map(|p: &Path| {
-                p.components()
-                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default();
-        out.push((abs, rel));
+        let Ok(relative) = entry.path().strip_prefix(dir) else {
+            continue;
+        };
+        let name = std::iter::once(prefix.to_string())
+            .chain(
+                relative
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+            )
+            .collect::<Vec<_>>()
+            .join("/");
+        out.push(Collected {
+            path: entry.path().to_path_buf(),
+            name,
+            method,
+        });
     }
 }
 
+/// Copy `reader` into `out`: the SHA-256 and size of what was copied, or `None` when reading failed part way.
+/// Failing to write is an error.
+fn copy_hashing(reader: &mut impl Read, out: &mut impl Write) -> io::Result<Option<(String, u64)>> {
+    let mut hasher = Sha256::new();
+    let mut size = 0u64;
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(_) => return Ok(None),
+        };
+        hasher.update(&buf[..n]);
+        out.write_all(&buf[..n])?;
+        size += n as u64;
+    }
+    Ok(Some((hex_digest(&hasher.finalize()), size)))
+}
+
+#[cfg(test)]
 fn sha256_hex(data: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(data);
@@ -412,7 +487,7 @@ mod tests {
         .unwrap();
 
         let restore_dir = temp_dir("weflow-restore-target");
-        restore_backup(&archive, &restore_dir, &|_, _| {}).unwrap();
+        assert!(!restore_backup(&archive, &restore_dir, None, &|_, _| {}).unwrap());
 
         let restored = fs::read(restore_dir.join("db_storage/data.db")).unwrap();
         assert_eq!(restored, b"restore-me");
@@ -427,6 +502,89 @@ mod tests {
         let _ = fs::remove_dir_all(&account_dir);
         let _ = fs::remove_dir_all(&out_dir);
         let _ = fs::remove_dir_all(&restore_dir);
+    }
+
+    /// The media of WeChat 4.x (`msg/attach`, `msg/video`, `msg/file`) and WeFlow's sticker cache come in only when
+    /// asked for (#643), stored as they are; the stickers go back into the sticker cache.
+    #[test]
+    fn media_and_stickers_come_in_when_asked() {
+        let account_dir = temp_dir("weflow-backup-media");
+        let emoji_dir = temp_dir("weflow-backup-emojis");
+        for (path, data) in [
+            ("db_storage/session/session.db", &b"db"[..]),
+            ("msg/attach/0a1b/2024-01/Img/abc.dat", b"image"),
+            ("msg/video/2024-01/abc.mp4", b"video"),
+            ("msg/file/2024-01/report.pdf", b"file"),
+            ("msg/migrate/left-out.bin", b"other"),
+        ] {
+            let file = account_dir.join(path);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, data).unwrap();
+        }
+        fs::write(emoji_dir.join("0123.gif"), b"sticker").unwrap();
+        let out_dir = temp_dir("weflow-backup-media-out");
+        let backup = |options: BackupOptions, name: &str| {
+            let archive = out_dir.join(name);
+            let manifest = create_backup(
+                &account_dir,
+                &options,
+                Some(&emoji_dir),
+                "1.2.3",
+                &archive,
+                &|_, _| {},
+            )
+            .unwrap();
+            let mut paths: Vec<String> = manifest.entries.into_iter().map(|e| e.path).collect();
+            paths.sort();
+            (archive, paths)
+        };
+
+        let (_, paths) = backup(BackupOptions::default(), "databases.zip");
+        assert_eq!(paths, ["db_storage/session/session.db"]);
+
+        let all = BackupOptions {
+            images: true,
+            videos: true,
+            files: true,
+            emojis: true,
+        };
+        let (archive, paths) = backup(all, "all.zip");
+        assert_eq!(
+            paths,
+            [
+                "db_storage/session/session.db",
+                "emojis/0123.gif",
+                "msg/attach/0a1b/2024-01/Img/abc.dat",
+                "msg/file/2024-01/report.pdf",
+                "msg/video/2024-01/abc.mp4",
+            ]
+        );
+        let mut zip = ZipArchive::new(fs::File::open(&archive).unwrap()).unwrap();
+        assert_eq!(
+            zip.by_name("msg/video/2024-01/abc.mp4")
+                .unwrap()
+                .compression(),
+            CompressionMethod::Stored
+        );
+        assert_eq!(
+            zip.by_name("db_storage/session/session.db")
+                .unwrap()
+                .compression(),
+            CompressionMethod::Deflated
+        );
+
+        let target = temp_dir("weflow-backup-media-target");
+        let cache = temp_dir("weflow-backup-media-cache");
+        assert!(restore_backup(&archive, &target, Some(&cache), &|_, _| {}).unwrap());
+        assert_eq!(fs::read(cache.join("0123.gif")).unwrap(), b"sticker");
+        assert!(!target.join("emojis").exists());
+        assert_eq!(
+            fs::read(target.join("msg/video/2024-01/abc.mp4")).unwrap(),
+            b"video"
+        );
+        for dir in [account_dir, emoji_dir, out_dir, target, cache] {
+            let _ = fs::remove_dir_all(dir);
+        }
     }
 
     /// Write an archive holding `files` and a manifest listing `listed` as (path, content the hash is taken from).
@@ -460,7 +618,7 @@ mod tests {
     }
 
     fn restore_err(archive: &Path, target: &Path) -> String {
-        restore_backup(archive, target, &|_, _| {})
+        restore_backup(archive, target, None, &|_, _| {})
             .unwrap_err()
             .to_string()
     }
@@ -486,7 +644,7 @@ mod tests {
                 let err = restore_err(&archive, &target);
                 assert!(err.contains("unsafe path"), "{name}: {err}");
             } else {
-                restore_backup(&archive, &target, &|_, _| {}).unwrap();
+                restore_backup(&archive, &target, None, &|_, _| {}).unwrap();
                 assert!(target.join(name).is_file());
             }
             assert!(!outside.exists(), "{name} escaped the target folder");

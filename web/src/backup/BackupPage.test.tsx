@@ -15,35 +15,42 @@ const job = (over: Partial<Job>): Job => ({
 const NONE: JobsState = { jobs: [], labels: {} };
 
 describe('backup', () => {
-  it('groups what a backup holds the way `backup create` collects it, and leaves out what is unticked', () => {
+  it('groups what a backup holds the way `backup create` collects it, and adds only what is ticked', () => {
     expect(backupParts([
       { path: 'db_storage/message/message_0.db', sha256: '', size: 300 },
       { path: 'db_storage\\contact\\contact.db', sha256: '', size: 100 },
-      { path: 'FileStorage/Image2/2026-10/a.dat', sha256: '', size: 20 },
-      { path: 'FileStorage/Image/2026-10/b.dat', sha256: '', size: 30 },
+      { path: 'msg/attach/0a1b/2026-10/Img/a.dat', sha256: '', size: 20 },
+      { path: 'msg/video/2026-10/b.mp4', sha256: '', size: 70 },
+      { path: 'msg/file/2026-10/c.pdf', sha256: '', size: 9 },
       { path: 'emojis/c.gif', sha256: '', size: 5 },
+      // a backup of an older WeFlow
+      { path: 'FileStorage/Image/2026-10/b.dat', sha256: '', size: 30 },
+      { path: 'FileStorage/Audio/2026-10/d.amr', sha256: '', size: 2 },
       { path: 'manifest.extra', sha256: '', size: 1 },
     ])).toEqual([
       { label: '数据库', files: 2, bytes: 400 },
       { label: '图片', files: 2, bytes: 50 },
+      { label: '视频', files: 1, bytes: 70 },
+      { label: '文件', files: 1, bytes: 9 },
+      { label: '语音', files: 1, bytes: 2 },
       { label: '表情', files: 1, bytes: 5 },
       { label: '其他', files: 1, bytes: 1 },
     ]);
-    expect(JSON.parse(JSON.stringify(backupParams({ images: true, voice: true, emojis: true })))).toEqual({});
-    expect(backupParams({ images: false, voice: true, emojis: false })).toEqual({ 'no-images': true, 'no-voice': undefined, 'no-emojis': true });
+    expect(JSON.parse(JSON.stringify(backupParams({ images: false, videos: false, files: false, emojis: false })))).toEqual({});
+    expect(JSON.parse(JSON.stringify(backupParams({ images: true, videos: false, files: true, emojis: false })))).toEqual({ images: true, files: true });
   });
 
-  it('makes a backup as a job that keeps the file, without the parts unticked', async () => {
+  it('makes a backup of the databases as a job that keeps the file, with the parts ticked', async () => {
     const calls: { url: string; body: unknown; prefer: string | undefined }[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, body: JSON.parse(String(init?.body)), prefer: (init?.headers as Record<string, string>)?.Prefer });
       return json({ success: true, data: job({ status: 'queued' }) }, 202);
     }));
     render(<BackupPage jobs={NONE} />);
-    fireEvent.click(screen.getByRole('checkbox', { name: '语音' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '视频' }));
     fireEvent.click(screen.getByRole('button', { name: '创建备份' }));
     await act(async () => {});
-    expect(calls).toEqual([{ url: '/backup/create?return=file', body: { 'no-voice': true }, prefer: 'respond-async' }]);
+    expect(calls).toEqual([{ url: '/backup/create?return=file', body: { videos: true }, prefer: 'respond-async' }]);
     expect(screen.getByText('已开始备份，进度在任务中心和下面的列表里。')).toBeTruthy();
   });
 

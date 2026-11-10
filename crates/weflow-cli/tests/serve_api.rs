@@ -2899,7 +2899,20 @@ fn message_and_media_exports_fit_the_contract() {
 #[test]
 fn backup_answers_fit_the_contract() {
     let root = temp_root("backup-contract");
-    let home = account_home(&root);
+    let home = account_home_with(&root, |f| {
+        let video = f.account_dir.join("msg/video/2023-11");
+        std::fs::create_dir_all(&video).unwrap();
+        std::fs::write(video.join("v.mp4"), b"video").unwrap();
+    });
+    // a sticker WeFlow downloaded, in its sticker cache
+    let cache = root.join("cache");
+    std::fs::create_dir_all(cache.join("Emojis")).unwrap();
+    std::fs::write(cache.join("Emojis/e.gif"), b"sticker").unwrap();
+    let (exit, _, stderr) = run_cli(
+        &home,
+        &["config", "set", "cache_path", cache.to_str().unwrap()],
+    );
+    assert_eq!(exit, 0, "{stderr}");
     let server = start(&home, &["--api-token", TOKEN]);
     let contract = contract();
     let fits = |verb: &str, route: &str, body: String, schema: &str| -> Value {
@@ -2932,12 +2945,70 @@ fn backup_answers_fit_the_contract() {
         created["entries"].as_i64().unwrap(),
         "{manifest}"
     );
-    fits(
+    // the databases only, unless more is asked for (#643)
+    let paths = |manifest: &Value| -> Vec<String> {
+        manifest["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["path"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert!(
+        paths(&manifest)
+            .iter()
+            .all(|p| p.starts_with("db_storage/")),
+        "{manifest}"
+    );
+    let restored = fits(
         "POST",
         "/backup/restore",
         json!({ "path": out, "target": root.join("restored") }).to_string(),
         "BackupRestored",
     );
+    assert_eq!(restored.get("stickersRestoredTo"), None, "{restored}");
+
+    let more = root.join("more.zip");
+    fits(
+        "POST",
+        "/backup/create",
+        json!({ "out": more, "videos": true, "emojis": true }).to_string(),
+        "BackupCreated",
+    );
+    let manifest = fits(
+        "GET",
+        &format!("/backup/inspect?path={}", percent(&more.to_string_lossy())),
+        String::new(),
+        "BackupManifest",
+    );
+    let paths = paths(&manifest);
+    for wanted in ["msg/video/2023-11/v.mp4", "emojis/e.gif"] {
+        assert!(paths.iter().any(|p| p == wanted), "{wanted}: {paths:?}");
+    }
+    std::fs::remove_file(cache.join("Emojis/e.gif")).unwrap();
+    let restored = fits(
+        "POST",
+        "/backup/restore",
+        json!({ "path": more, "target": root.join("restored-more") }).to_string(),
+        "BackupRestored",
+    );
+    assert_eq!(
+        std::fs::read(root.join("restored-more/msg/video/2023-11/v.mp4")).unwrap(),
+        b"video"
+    );
+    // the sticker went back into the sticker cache
+    assert!(restored["stickersRestoredTo"].is_string(), "{restored}");
+    assert_eq!(
+        std::fs::read(cache.join("Emojis/e.gif")).unwrap(),
+        b"sticker"
+    );
+    // the options of older WeFlows are gone
+    let r = server.call(
+        "POST",
+        "/backup/create",
+        &json!({ "out": root.join("old.zip"), "no-images": true }).to_string(),
+    );
+    assert_eq!(r.status, 400, "{}", r.body);
 }
 
 #[test]
