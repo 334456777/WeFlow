@@ -3025,6 +3025,7 @@ fn html_script(count_template: &str, empty_label: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use weflow_native::fixture::TestDir;
     use weflow_native::msg_row::MsgRow;
 
     fn row(
@@ -3392,7 +3393,7 @@ mod tests {
 
     #[test]
     fn chatlab_jsonl_lines() {
-        let dir = std::env::temp_dir().join(format!("weflow-jsonl-{}", std::process::id()));
+        let dir = TestDir::new("weflow-jsonl");
         let out = dir.join("a.jsonl");
         with_exporter(false, |ex, msgs| {
             ex.write_chatlab(msgs, &out, true).unwrap()
@@ -3405,7 +3406,6 @@ mod tests {
         assert_eq!(lines[0]["_type"], "header");
         assert!(lines.iter().filter(|l| l["_type"] == "member").count() >= 2);
         assert_eq!(lines.iter().filter(|l| l["_type"] == "message").count(), 5);
-        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -3453,8 +3453,7 @@ mod tests {
     #[test]
     fn entries_rendered_in_pages_by_other_exporters_write_the_same_file() {
         use crate::message::ForwardRecord;
-        let dir = std::env::temp_dir().join(format!("weflow-rendered-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TestDir::new("weflow-rendered");
         let with_records = |msgs: &[ExportMsg]| {
             let mut all = msgs.to_vec();
             for (i, people) in [&["Alice", "Carol"][..], &["Dave"], &["Alice", ""]]
@@ -3531,13 +3530,11 @@ mod tests {
                 "{who} is a member"
             );
         }
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn streamed_exports_are_byte_identical_to_serializing_the_whole_value() {
-        let dir = std::env::temp_dir().join(format!("weflow-json-stream-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TestDir::new("weflow-json-stream");
         let read = |f: &Path| std::fs::read_to_string(f).unwrap();
         for group in [false, true] {
             let file = dir.join(format!("g{group}.json"));
@@ -3616,7 +3613,6 @@ mod tests {
             )
             .unwrap())
         );
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -3673,8 +3669,7 @@ mod tests {
     /// only once there are more than `EXCEL_BIG` messages.
     #[test]
     fn streamed_exports_cover_every_format_and_both_excel_sizes() {
-        let dir = std::env::temp_dir().join(format!("weflow-stream-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TestDir::new("weflow-stream");
         for format in [
             "txt",
             "sql",
@@ -3724,19 +3719,16 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().ends_with(".part"))
             .count();
         assert_eq!(leftovers, 0);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn excel_writes_file() {
-        let dir = std::env::temp_dir().join(format!("weflow-xlsx-{}", std::process::id()));
+        let dir = TestDir::new("weflow-xlsx");
         let out = dir.join("chat.xlsx");
-        fs::create_dir_all(&dir).unwrap();
         with_exporter(true, |ex, msgs| ex.write_excel(msgs, &out).unwrap());
         let bytes = fs::read(&out).unwrap();
         assert_eq!(&bytes[..2], b"PK");
         assert!(bytes.len() > 2000);
-        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -3813,10 +3805,7 @@ mod tests {
             messages in proptest::collection::vec(text_message(), 1..6),
             first in 0i64..4_000_000_000,
         ) {
-            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let dir = std::env::temp_dir().join(format!("weflow-lossless-{}-{n}", std::process::id()));
-            fs::create_dir_all(&dir).unwrap();
+            let dir = TestDir::new("weflow-lossless");
             let rows: Vec<MsgRow> = (1i64..)
                 .zip(&messages)
                 .map(|(i, (text, server_id, is_send))| MsgRow {
@@ -3850,7 +3839,6 @@ mod tests {
                 .map(|l| serde_json::from_str::<Value>(l).unwrap())
                 .filter(|l| l["_type"] == "message")
                 .collect();
-            let _ = fs::remove_dir_all(&dir);
             for (i, (text, server_id, is_send)) in messages.iter().enumerate() {
                 let time = first + (i as i64 + 1) * 60;
                 let platform = (*server_id > 0).then(|| server_id.to_string());

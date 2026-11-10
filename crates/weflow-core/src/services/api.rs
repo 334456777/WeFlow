@@ -1421,10 +1421,8 @@ impl ServiceHub {
 mod tests {
     use super::*;
 
-    fn media_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("weflow-media-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        dir
+    fn media_dir(tag: &str) -> weflow_native::fixture::TestDir {
+        weflow_native::fixture::TestDir::new(&format!("weflow-media-{tag}"))
     }
 
     fn put(to: &MediaTarget<'_>, bytes: &[u8], thumbnail: bool) -> Option<ApiExportedMedia> {
@@ -1471,7 +1469,6 @@ mod tests {
                 std::fs::read(dir.join("images").join("a.jpg")).unwrap(),
                 b"a larger full image"
             );
-            let _ = std::fs::remove_dir_all(&dir);
         }
     }
 
@@ -1494,6 +1491,5 @@ mod tests {
         assert!(put(&to, b"", false).is_none());
         let names: Vec<_> = std::fs::read_dir(dir.join("images")).unwrap().collect();
         assert_eq!(names.len(), 1, "no temporary file is left behind");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

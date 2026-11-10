@@ -732,8 +732,7 @@ mod tests {
 
     #[test]
     fn record_store_scopes_filters_and_trims() {
-        let dir = std::env::temp_dir().join(format!("weflow-insight-{}", now_millis()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = weflow_native::fixture::TestDir::new("weflow-insight");
         let mut s = RecordStore::load(&dir);
         let a = s.add(
             NewRecord {
@@ -800,6 +799,5 @@ mod tests {
             1
         );
         assert_eq!(again.list("wxid:other", &RecordFilters::default()).total, 1);
-        let _ = std::fs::remove_dir_all(dir);
     }
 }

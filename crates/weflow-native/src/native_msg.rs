@@ -1444,6 +1444,7 @@ impl NativeAccount {
 )]
 mod tests {
     use super::*;
+    use crate::fixture::TestDir;
     use crate::native_db::hex;
     use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
     use crate::sqlcipher::PageCipher;
@@ -1486,9 +1487,8 @@ mod tests {
     }
 
     /// Two shards: ids 1..3 in shard 0 (days 0..2), ids 1..2 in shard 1 (days 3..4); local_id overlaps on purpose.
-    fn account(tag: &str) -> (NativeAccount, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("weflow-msg-{}-{tag}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn account(tag: &str) -> (TestDir, NativeAccount) {
+        let dir = TestDir::new(&format!("weflow-msg-{tag}"));
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let cipher = PageCipher::derive(&KEY, &SALT);
         let s0 = shard(
@@ -1506,7 +1506,8 @@ mod tests {
         std::fs::write(dir.join("message/message_0.db"), encrypt_db(&s0, &cipher)).unwrap();
         std::fs::write(dir.join("message/message_1.db"), encrypt_db(&s1, &cipher)).unwrap();
         std::fs::write(dir.join("message/message_fts.db"), b"not a message shard").unwrap();
-        (NativeAccount::new(&dir, &hex(&KEY)).unwrap(), dir)
+        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        (dir, acct)
     }
 
     fn texts(rows: &[MsgRow]) -> Vec<String> {
@@ -1514,12 +1515,12 @@ mod tests {
     }
 
     /// An account with `shards` of `wxid_bob`'s messages, each in its own directory.
-    fn export_world(tag: &str, shards: &[Vec<crate::fixture::MsgSpec>]) -> NativeAccount {
+    fn export_world(
+        tag: &str,
+        shards: &[Vec<crate::fixture::MsgSpec>],
+    ) -> (TestDir, NativeAccount) {
         use crate::fixture::{Fixture, SessionSpec, T0};
-        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let root =
-            std::env::temp_dir().join(format!("weflow-keys-{}-{tag}-{n}", std::process::id()));
+        let root = TestDir::new(&format!("weflow-keys-{tag}"));
         let f = Fixture::new(&root, "wxid_me_ab12");
         f.session_db(&[SessionSpec {
             username: "wxid_bob",
@@ -1531,7 +1532,8 @@ mod tests {
         for (i, msgs) in shards.iter().enumerate() {
             f.message_shard(i as u32, &[("wxid_bob", msgs.clone())]);
         }
-        NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap()
+        let acct = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        (root, acct)
     }
 
     fn cursor_state(acct: &NativeAccount, id: i64) -> (Vec<Key>, Vec<bool>) {
@@ -1554,7 +1556,7 @@ mod tests {
 
     #[test]
     fn cursor_keys_preserve_null_and_non_integer_fallbacks() {
-        let root = std::env::temp_dir().join(format!("weflow-key-types-{}", std::process::id()));
+        let root = TestDir::new("weflow-key-types");
         let fixture = crate::fixture::Fixture::new(&root, "wxid_synthetic_ab12");
         let table = table_name_for("wxid_bob");
         let plain = plain_db_with(|conn| {
@@ -1626,7 +1628,7 @@ mod tests {
     #[test]
     fn bounded_export_keeps_messages_whose_sort_seq_time_is_outside_the_range() {
         use crate::fixture::{MsgSpec, T0};
-        let acct = export_world(
+        let (_dir, acct) = export_world(
             "range-excludes-derived-key",
             &[vec![
                 MsgSpec::text(1, "wxid_bob", T0 + 100, "inside").with_sort_seq(T0 * 1000),
@@ -1647,7 +1649,7 @@ mod tests {
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
         // WeChat's rule (`sort_seq` = `create_time` in ms + a counter), ties in `sort_seq`, a row without `sort_seq`,
         // two shards with overlapping local ids
-        let acct = export_world(
+        let (_dir, acct) = export_world(
             "rule",
             &[
                 vec![
@@ -1693,7 +1695,7 @@ mod tests {
     fn a_table_another_page_read_again_is_not_read_once_more() {
         use crate::fixture::{MsgSpec, T0};
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
-        let acct = export_world(
+        let (_dir, acct) = export_world(
             "off-once",
             &[vec![
                 text(1, T0),
@@ -1718,7 +1720,7 @@ mod tests {
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
         // message 2's sort_seq says T0 + 50 but it was sent at T0 + 1: the order stays the same. The second shard
         // follows the rule
-        let acct = export_world(
+        let (_dir, acct) = export_world(
             "off",
             &[
                 vec![
@@ -1756,7 +1758,7 @@ mod tests {
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
         // the same sort_seq, but message 2 was sent first: the rows order them 2, 1 and the index 1, 2
         let seq = (T0 + 1) * 1000;
-        let acct = export_world(
+        let (_dir, acct) = export_world(
             "pages",
             &[vec![
                 text(1, T0 + 9).with_sort_seq(seq),
@@ -1775,7 +1777,7 @@ mod tests {
     fn rows_written_after_the_cursor_opened_do_not_change_its_pages() {
         use crate::fixture::{Fixture, MsgSpec, SessionSpec, T0};
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
-        let root = std::env::temp_dir().join(format!("weflow-keys-{}-newer", std::process::id()));
+        let root = TestDir::new("weflow-keys-newer");
         let f = Fixture::new(&root, "wxid_me_ab12");
         f.session_db(&[SessionSpec {
             username: "wxid_bob",
@@ -1833,8 +1835,7 @@ mod tests {
 
     #[test]
     fn biz_message_databases_are_read_with_numbers_of_their_own() {
-        let root = std::env::temp_dir().join(format!("weflow-msg-{}-biz", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = TestDir::new("weflow-msg-biz");
         let f = crate::fixture::Fixture::new(&root, "wxid_me_ab12");
         let spec = |text| vec![crate::fixture::MsgSpec::text(1, "gh_a", 100, text)];
         f.message_shard(0, &[("gh_a", spec("plain"))]);
@@ -1860,7 +1861,7 @@ mod tests {
 
     #[test]
     fn shards_are_discovered_and_merged_newest_first() {
-        let (acct, _dir) = account("merge");
+        let (_dir, acct) = account("merge");
         assert_eq!(
             acct.message_dbs().len(),
             2,
@@ -1882,8 +1883,7 @@ mod tests {
 
     #[test]
     fn newest_pages_are_exact_when_sort_seq_ties_cross_the_page_boundary() {
-        let dir = std::env::temp_dir().join(format!("weflow-msg-{}-ties", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = TestDir::new("weflow-msg-ties");
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let table = table_name_for("wxid_bob");
         // 60 rows: sort_seq takes only 6 distinct values (10 rows each), some rows have none; create_time varies
@@ -1919,7 +1919,7 @@ mod tests {
             encrypt_db(&plain, &cipher),
         )
         .unwrap();
-        let acct = NativeAccount::new(&dir, &hex(&KEY)).unwrap();
+        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
         // every row sorted by its key, then the page taken: rows without a sort_seq (null or 0) are keyed by
         // create_time * 1000, so here they are the newest ones
         let t = acct.message_tables("wxid_bob").unwrap().remove(0);
@@ -2006,9 +2006,8 @@ mod tests {
 
     /// An account whose `wxid_bob` messages are `shards`, one `message_<n>.db` each: rows of (local_id, sort_seq as
     /// an SQL literal, create_time as one). Neither column has a type, so a row can store any SQLite value.
-    fn keyed_account(tag: &str, shards: &[Vec<(i64, String, String)>]) -> NativeAccount {
-        let dir = std::env::temp_dir().join(format!("weflow-msg-{}-{tag}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn keyed_account(tag: &str, shards: &[Vec<(i64, String, String)>]) -> (TestDir, NativeAccount) {
+        let dir = TestDir::new(&format!("weflow-msg-{tag}"));
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let table = table_name_for("wxid_bob");
         let cipher = PageCipher::derive(&KEY, &SALT);
@@ -2045,7 +2044,8 @@ mod tests {
             )
             .unwrap();
         }
-        NativeAccount::new(&dir, &hex(&KEY)).unwrap()
+        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        (dir, acct)
     }
 
     #[test]
@@ -2065,7 +2065,7 @@ mod tests {
         let second: Vec<_> = (1..=30)
             .map(|i| if i <= 10 { row(i, 1) } else { row(i, 3) })
             .collect();
-        let acct = keyed_account("offset", &[first, second]);
+        let (_dir, acct) = keyed_account("offset", &[first, second]);
         let tables = acct.message_tables("wxid_bob").unwrap();
         assert_eq!(tables.len(), 2);
         for limit in [0, 1, 3, 7, 50] {
@@ -2102,7 +2102,7 @@ mod tests {
                 .map(|i| (i, (i * 1000).to_string(), i.to_string()))
                 .collect();
             rows.push((7, seq.to_string(), create.to_string()));
-            let acct = keyed_account(&format!("unusual-{tag}"), &[rows]);
+            let (_dir, acct) = keyed_account(&format!("unusual-{tag}"), &[rows]);
             let tables = acct.message_tables("wxid_bob").unwrap();
             // a time that is not an integer is found where it matters: in the page or tied at its ends
             assert_eq!(
@@ -2127,7 +2127,7 @@ mod tests {
     #[test]
     fn equal_keys_of_two_databases_come_in_database_order_both_ways() {
         let row = vec![(1, "null".to_string(), (T0 + 5).to_string())];
-        let acct = keyed_account("equal-keys", &[row.clone(), row]);
+        let (_dir, acct) = keyed_account("equal-keys", &[row.clone(), row]);
         for ascending in [false, true] {
             let cursor = acct
                 .open_message_cursor("wxid_bob", 10, ascending, 0, 0, false)
@@ -2180,9 +2180,7 @@ mod tests {
             pages in proptest::collection::vec((0usize..100, 0usize..25), 1..6),
             batch in 1i32..40,
         ) {
-            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let acct = keyed_account(&format!("any-page-{n}"), &shards);
+            let (_dir, acct) = keyed_account("any-page", &shards);
             let tables = acct.message_tables("wxid_bob").unwrap();
             for (offset, limit) in pages {
                 proptest::prop_assert_eq!(
@@ -2205,11 +2203,6 @@ mod tests {
                 }
             }
             acct.close_message_cursor(cursor).unwrap();
-            drop(acct);
-            // each case's account, not left behind by the hundreds
-            let _ = std::fs::remove_dir_all(
-                std::env::temp_dir().join(format!("weflow-msg-{}-any-page-{n}", std::process::id())),
-            );
             proptest::prop_assert_eq!(read, every);
         }
     }
@@ -2218,7 +2211,7 @@ mod tests {
     /// shard; lite rows of a cursor leave out the source and the packed info, an export's the source only.
     #[test]
     fn rows_carry_typed_columns_sender_and_inflated_content() {
-        let (acct, _dir) = account("rows");
+        let (_dir, acct) = account("rows");
         let acct = acct.with_my_wxid(Some("wxid_me".into()));
         let rows = acct.messages("wxid_bob", 0, 0).unwrap();
         let packed = Some(vec![0u8, 1, 2, 0xff]);
@@ -2278,7 +2271,7 @@ mod tests {
 
     #[test]
     fn messages_where_keeps_what_the_condition_does_from_a_time_on() {
-        let (acct, _dir) = account("where");
+        let (_dir, acct) = account("where");
         let all: Vec<MsgRow> = acct.messages("wxid_bob", 0, 0).unwrap();
         let since = all.iter().filter_map(|m| m.create_time).min().unwrap() + 1;
         let kept: Vec<MsgRow> = acct
@@ -2305,7 +2298,7 @@ mod tests {
     fn odd_integer_cells_are_absent_and_counted() {
         use crate::fixture::T0;
         use crate::msg_row::odd_cell_count;
-        let root = std::env::temp_dir().join(format!("weflow-odd-cells-{}", std::process::id()));
+        let root = TestDir::new("weflow-odd-cells");
         let fixture = crate::fixture::Fixture::new(&root, "wxid_synthetic_ab12");
         let table = table_name_for("wxid_bob");
         let plain = plain_db_with(|conn| {
@@ -2333,7 +2326,6 @@ mod tests {
         assert_eq!((rows[0].server_id, rows[0].sort_seq), (None, None));
         assert_eq!(rows[0].key(), (T0 * 1000, T0, 1));
         assert!(odd_cell_count() >= before + 2);
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// One conversation in one database whose rows `fill` (SQL run after the schema) writes into table `t`; the
@@ -2342,9 +2334,8 @@ mod tests {
         tag: &str,
         fill: &str,
         damage: impl FnOnce(&[u8], &mut Vec<u8>),
-    ) -> NativeAccount {
-        let dir = std::env::temp_dir().join(format!("weflow-scan-{}-{tag}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+    ) -> (TestDir, NativeAccount) {
+        let dir = TestDir::new(&format!("weflow-scan-{tag}"));
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let table = table_name_for("wxid_bob");
         let fill = fill.replace("\"t\"", &format!("\"{table}\""));
@@ -2360,7 +2351,8 @@ mod tests {
         let mut file = encrypt_db(&plain, &PageCipher::derive(&KEY, &SALT));
         damage(&plain, &mut file);
         std::fs::write(dir.join("message/message_0.db"), file).unwrap();
-        NativeAccount::new(&dir, &hex(&KEY)).unwrap()
+        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        (dir, acct)
     }
 
     /// 6,000 rows over more than a year: a b-tree of several levels, every 40th row's text long enough to overflow,
@@ -2381,7 +2373,7 @@ mod tests {
 
     #[test]
     fn date_counts_from_the_leaf_scan_are_those_of_sql() {
-        let acct = scanned_account("many", MANY_ROWS, |_, _| {});
+        let (_dir, acct) = scanned_account("many", MANY_ROWS, |_, _| {});
         let t = &acct.message_tables("wxid_bob").unwrap()[0];
         let scanned = acct
             .date_counts_by_scan(t)
@@ -2401,7 +2393,8 @@ mod tests {
                  local_type = case when local_id % 13 = 0 then null when local_id % 17 = 0 then 0
                                    else 1 + local_id % 4 end;"
         );
-        let acct = scanned_account("stats", &fill, |_, _| {}).with_my_wxid(Some("wxid_me".into()));
+        let (_dir, acct) = scanned_account("stats", &fill, |_, _| {});
+        let acct = acct.with_my_wxid(Some("wxid_me".into()));
         let ids = vec!["wxid_bob".to_string()];
         let read = |acct: &NativeAccount| {
             let (b, e) = (1_705_000_000, 1_720_000_000);
@@ -2440,7 +2433,8 @@ mod tests {
                  when local_id % 53 = 0 then null
                  else 'p' || (local_id % 37) end;"
         );
-        let acct = scanned_account("extras", &fill, |_, _| {}).with_my_wxid(Some("wxid_me".into()));
+        let (_dir, acct) = scanned_account("extras", &fill, |_, _| {});
+        let acct = acct.with_my_wxid(Some("wxid_me".into()));
         let ids = vec!["wxid_bob".to_string()];
         let read = |acct: &NativeAccount| {
             (
@@ -2467,7 +2461,7 @@ mod tests {
         ] {
             let fill =
                 format!("{MANY_ROWS} update \"t\" set create_time = {time} where local_id = 3000;");
-            let acct = scanned_account(tag, &fill, |_, _| {});
+            let (_dir, acct) = scanned_account(tag, &fill, |_, _| {});
             let t = &acct.message_tables("wxid_bob").unwrap()[0];
             assert!(acct.date_counts_by_scan(t).unwrap().is_none(), "{tag}");
             let counts = acct.session_message_date_counts("wxid_bob").unwrap();
@@ -2482,7 +2476,7 @@ mod tests {
     #[test]
     fn a_leaf_page_damaged_on_disk_fails_the_date_counts() {
         // the last table leaf page of the file is one of the conversation's: its rows were written last
-        let acct = scanned_account("damaged", MANY_ROWS, |plain, file| {
+        let (_dir, acct) = scanned_account("damaged", MANY_ROWS, |plain, file| {
             let leaf = (0..plain.len() / crate::sqlcipher::PAGE_SIZE)
                 .rev()
                 .find(|&p| p > 0 && plain[p * crate::sqlcipher::PAGE_SIZE] == 13)
@@ -2496,7 +2490,7 @@ mod tests {
 
     #[test]
     fn dates_and_counts() {
-        let (acct, _dir) = account("dates");
+        let (_dir, acct) = account("dates");
         let counts = acct.session_message_date_counts("wxid_bob").unwrap();
         assert_eq!(counts.as_object().unwrap().len(), 5);
         assert!(counts.as_object().unwrap().values().all(|n| *n == 1));
@@ -2521,8 +2515,7 @@ mod tests {
 
     #[test]
     fn days_are_counted_as_the_local_date_of_each_message() {
-        let dir = std::env::temp_dir().join(format!("weflow-msg-{}-days", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = TestDir::new("weflow-msg-days");
         std::fs::create_dir_all(dir.join("message")).unwrap();
         // a message every 6 min 13 s for ten days, so midnights fall between the quarters' own messages
         let texts: Vec<String> = (0..2400).map(|k| format!("m{k}")).collect();
@@ -2537,7 +2530,7 @@ mod tests {
             encrypt_db(&shard(&msgs, None), &cipher),
         )
         .unwrap();
-        let acct = NativeAccount::new(&dir, &hex(&KEY)).unwrap();
+        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
         let sqlite = Connection::open_in_memory().unwrap();
         let mut want = serde_json::Map::new();
         for (_, offset, ..) in &msgs {
@@ -2556,12 +2549,11 @@ mod tests {
             acct.session_message_date_counts("wxid_bob").unwrap(),
             Value::Object(want)
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn lookups_by_type_and_id() {
-        let (acct, _dir) = account("lookup");
+        let (_dir, acct) = account("lookup");
         assert_eq!(
             texts(&acct.messages_by_type("wxid_bob", 1, true, 0, 0).unwrap()),
             ["hello", "third", "fourth"]
@@ -2603,7 +2595,7 @@ mod tests {
 
     #[test]
     fn cursor_walks_all_messages_in_order_across_shards() {
-        let (acct, _dir) = account("cursor");
+        let (_dir, acct) = account("cursor");
         let c = acct
             .open_message_cursor("wxid_bob", 2, true, 0, 0, false)
             .unwrap();
@@ -2625,7 +2617,7 @@ mod tests {
 
     #[test]
     fn pages_by_number_match_the_batches_and_leave_the_cursor_alone() {
-        let (acct, _dir) = account("cursor-pages");
+        let (_dir, acct) = account("cursor-pages");
         let c = acct
             .open_message_cursor("wxid_bob", 2, true, 0, 0, false)
             .unwrap();
@@ -2650,7 +2642,7 @@ mod tests {
 
     #[test]
     fn parallel_page_reads_open_at_most_the_allowed_connections() {
-        let (acct, dir) = account("cursor-parallel");
+        let (dir, acct) = account("cursor-parallel");
         acct.set_read_connections(3);
         let c = acct
             .open_message_cursor("wxid_bob", 1, true, 0, 0, false)
@@ -2676,7 +2668,7 @@ mod tests {
 
     #[test]
     fn cursor_honours_time_range_direction_and_lite() {
-        let (acct, _dir) = account("range");
+        let (_dir, acct) = account("range");
         // [day1, day3] inclusive, newest first, lite rows
         let (begin, end) = ((T0 + DAY) as i32, (T0 + DAY * 3) as i32);
         let c = acct
@@ -2692,7 +2684,7 @@ mod tests {
 
     #[test]
     fn sender_filtered_cursor_reads_only_the_wanted_senders() {
-        let (acct, _dir) = account("senders");
+        let (_dir, acct) = account("senders");
         let acct = acct.with_my_wxid(Some("wxid_me".into()));
         let read = |ok: &dyn Fn(&str) -> bool, mine: bool| -> Vec<String> {
             let c = acct

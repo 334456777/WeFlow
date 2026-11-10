@@ -29,7 +29,7 @@ fn session(username: &'static str) -> SessionSpec<'static> {
 
 #[test]
 fn chatlab_content_keeps_quotes_markup_and_big_server_ids() {
-    let (hub, root, _f) = common::custom_hub("chatlab", |f| {
+    let (root, hub, _f) = common::custom_hub("chatlab", |f| {
         f.session_db(&[session("wxid_bob")]);
         f.contact_db(
             &[
@@ -91,7 +91,7 @@ fn chatlab_content_keeps_quotes_markup_and_big_server_ids() {
 
 #[test]
 fn group_export_uses_group_nicknames_members_and_system_messages() {
-    let (hub, root, _f) = common::custom_hub("group", |f| {
+    let (root, hub, _f) = common::custom_hub("group", |f| {
         f.session_db(&[session("room1@chatroom")]);
         f.contact_db(
             &[
@@ -175,7 +175,7 @@ fn txt_request(sender: Option<&str>, display_pref: DisplayPref) -> MessageExport
 
 #[test]
 fn txt_names_senders_and_honours_sender_and_display_name() {
-    let (hub, root, _f) = common::custom_hub("txt", |f| {
+    let (root, hub, _f) = common::custom_hub("txt", |f| {
         f.session_db(&[session("room1@chatroom")]);
         f.contact_db(
             &[
@@ -342,7 +342,7 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
 
 #[test]
 fn empty_range_is_an_error_and_bad_format_is_usage_error() {
-    let (hub, root) = common::mock_hub("errors");
+    let (root, hub) = common::mock_hub("errors");
     let mut req = request("wxid_bob", "txt");
     req.start = Some(1_800_000_000);
     assert!(hub.export_messages(&req, &root.join("x.txt")).is_err());
@@ -357,7 +357,7 @@ async fn an_export_whose_keys_break_the_sort_seq_rule_starts_over_in_the_right_o
     // the same sort_seq for two messages, but message 2 was sent first: keys taken from the sort_seq index list them
     // 1, 2, the rows 2, 1; the export finds out on its first page and starts over
     let seq = (T0 + 1) * 1000;
-    let (hub, root, _) = common::custom_hub("keys-rule", |f| {
+    let (root, hub, _) = common::custom_hub("keys-rule", |f| {
         f.session_db(&[session("wxid_bob")]);
         f.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
         f.message_shard(
@@ -387,7 +387,7 @@ async fn an_export_whose_keys_break_the_sort_seq_rule_starts_over_in_the_right_o
     assert_eq!(texts(&out), ["first", "later", "last"]);
 
     // an export with media reads the messages first: the same, on a hub that has not met this table yet
-    let (hub, root2, _) = common::custom_hub("keys-rule-media", |f| {
+    let (root2, hub, _) = common::custom_hub("keys-rule-media", |f| {
         f.session_db(&[session("wxid_bob")]);
         f.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
         f.message_shard(
@@ -412,6 +412,4 @@ async fn an_export_whose_keys_break_the_sort_seq_rule_starts_over_in_the_right_o
         .await
         .unwrap();
     assert_eq!(texts(&out), ["first", "later", "last"]);
-    let _ = std::fs::remove_dir_all(root);
-    let _ = std::fs::remove_dir_all(root2);
 }

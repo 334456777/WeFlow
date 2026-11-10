@@ -55,9 +55,16 @@ fn fake_ai(answer: &'static str) -> (String, Arc<Mutex<Vec<String>>>) {
     (base, seen)
 }
 
-fn hub_with_ai(tag: &str, base: String, filter: &[&str]) -> weflow_core::services::ServiceHub {
+fn hub_with_ai(
+    tag: &str,
+    base: String,
+    filter: &[&str],
+) -> (
+    weflow_native::fixture::TestDir,
+    weflow_core::services::ServiceHub,
+) {
     let filter: Vec<serde_json::Value> = filter.iter().map(|s| json!(s)).collect();
-    let (hub, _root) = common::mock_hub_with(tag, move |p| {
+    common::mock_hub_with(tag, move |p| {
         p.ai_model_api_base_url = Some(base);
         p.ai_model_api_key = Some("sk-test".into());
         p.ai_model_api_model = Some("test-model".into());
@@ -67,14 +74,13 @@ fn hub_with_ai(tag: &str, base: String, filter: &[&str]) -> weflow_core::service
         p.extra.insert("aiInsightFilterList".into(), json!(filter));
         p.extra.insert("aiInsightAllowContext".into(), json!(true));
         p.extra.insert("aiFootprintEnabled".into(), json!(true));
-    });
-    hub
+    })
 }
 
 #[tokio::test]
 async fn connection_test_uses_chat_completions_without_adding_v1() {
     let (base, seen) = fake_ai("connection successful");
-    let hub = hub_with_ai("ins-test", base, &[]);
+    let (_root, hub) = hub_with_ai("ins-test", base, &[]);
     let r = hub.insight_test_connection().await;
     assert!(r.success, "{r:?}");
     assert!(r.message.unwrap().contains("connection successful"));
@@ -87,7 +93,7 @@ async fn connection_test_uses_chat_completions_without_adding_v1() {
 #[tokio::test]
 async fn trigger_test_builds_context_and_stores_a_record() {
     let (base, seen) = fake_ai("Ask about the weekend plans.");
-    let hub = hub_with_ai("ins-trigger", base, &["wxid_bob"]);
+    let (_root, hub) = hub_with_ai("ins-trigger", base, &["wxid_bob"]);
     let r = hub.insight_trigger_test().await;
     assert!(r.success, "{r:?}");
     let req = seen.lock().unwrap()[0].clone();
@@ -127,7 +133,7 @@ async fn trigger_test_builds_context_and_stores_a_record() {
 #[tokio::test]
 async fn silence_scan_and_skip_answers() {
     let (base, _seen) = fake_ai("Reach out, it has been quiet.");
-    let hub = hub_with_ai("ins-silence", base, &["wxid_bob"]);
+    let (_root, hub) = hub_with_ai("ins-silence", base, &["wxid_bob"]);
     let mut got = Vec::new();
     let n = hub.insight_silence_scan(&mut |r| got.push(r.clone())).await;
     assert_eq!(n, 1, "only the whitelisted silent private chat");
@@ -135,7 +141,7 @@ async fn silence_scan_and_skip_answers() {
     assert!(got[0].log.user_prompt.contains("days since you contacted"));
 
     let (base2, _) = fake_ai("SKIP");
-    let hub2 = hub_with_ai("ins-skip", base2, &["wxid_bob"]);
+    let (_root2, hub2) = hub_with_ai("ins-skip", base2, &["wxid_bob"]);
     assert_eq!(hub2.insight_silence_scan(&mut |_| {}).await, 0);
     assert_eq!(
         hub2.insight_list_records(&RecordFilters::default()).total,
@@ -147,7 +153,7 @@ async fn silence_scan_and_skip_answers() {
 #[tokio::test]
 async fn footprint_summary_formats_the_prompt() {
     let (base, seen) = fake_ai("You chatted a lot. Reply to Bob sooner.");
-    let hub = hub_with_ai("ins-foot", base, &[]);
+    let (_root, hub) = hub_with_ai("ins-foot", base, &[]);
     let payload = json!({
         "rangeLabel": "Last 7 days",
         "summary": { "private_inbound_people": 5, "private_outbound_people": 4, "private_reply_rate": 0.8, "mention_count": 2, "mention_group_count": 1 },

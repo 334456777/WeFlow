@@ -2,7 +2,7 @@ mod common;
 
 #[test]
 fn members_panel_is_sorted_and_enriched() {
-    let (hub, _root) = common::mock_hub("group-panel");
+    let (_root, hub) = common::mock_hub("group-panel");
     let (entries, _) = hub.group_members_panel("room1@chatroom", true).unwrap();
     let entries = serde_json::to_value(entries).unwrap();
     let names: Vec<&str> = entries
@@ -36,7 +36,7 @@ fn members_panel_is_sorted_and_enriched() {
 
 #[test]
 fn group_chats_and_full_members() {
-    let (hub, _root) = common::mock_hub("group-list");
+    let (_root, hub) = common::mock_hub("group-list");
     let groups = hub.group_chats().unwrap();
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].username, "room1@chatroom");
@@ -55,7 +55,7 @@ fn group_chats_and_full_members() {
 
 #[test]
 fn member_analytics_and_exports() {
-    let (hub, root) = common::mock_hub("group-export");
+    let (root, hub) = common::mock_hub("group-export");
     let a = serde_json::to_value(
         hub.group_member_analytics("room1@chatroom", "wxid_bob", 0, 0)
             .unwrap(),

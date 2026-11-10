@@ -6,21 +6,20 @@
     reason = "test helpers fail the test by panicking"
 )]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::services::ServiceHub;
-use weflow_native::fixture::Fixture;
+use weflow_native::fixture::{Fixture, TestDir};
 
-pub fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("weflow-e2e-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+/// A directory of the test's own, removed when it is dropped.
+pub fn temp_dir(tag: &str) -> TestDir {
+    TestDir::new(&format!("weflow-e2e-{tag}"))
 }
 
-/// Returns a hub connected to the standard fixture account, plus the temp root for outputs.
-pub fn mock_hub(tag: &str) -> (ServiceHub, PathBuf) {
+/// Returns the temp root for outputs, plus a hub connected to the standard fixture account. The root comes first so
+/// that `let (root, hub) = …` drops the hub, and the files it has open, before the directory.
+pub fn mock_hub(tag: &str) -> (TestDir, ServiceHub) {
     mock_hub_with(tag, |_| {})
 }
 
@@ -28,14 +27,15 @@ pub fn mock_hub(tag: &str) -> (ServiceHub, PathBuf) {
 pub fn mock_hub_with(
     tag: &str,
     tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig),
-) -> (ServiceHub, PathBuf) {
+) -> (TestDir, ServiceHub) {
     let root = temp_dir(tag);
     let fixture = Fixture::standard(&root.join("data"));
-    (hub_for(&root, &fixture, tweak), root)
+    let hub = hub_for(&root, &fixture, tweak);
+    (root, hub)
 }
 
 /// A hub over an account built from scratch by `build` (the account is `wxid_me_ab12`, key from the fixture).
-pub fn custom_hub(tag: &str, build: impl FnOnce(&Fixture)) -> (ServiceHub, PathBuf, Fixture) {
+pub fn custom_hub(tag: &str, build: impl FnOnce(&Fixture)) -> (TestDir, ServiceHub, Fixture) {
     custom_hub_with(tag, build, |_| {})
 }
 
@@ -43,11 +43,12 @@ pub fn custom_hub_with(
     tag: &str,
     build: impl FnOnce(&Fixture),
     tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig),
-) -> (ServiceHub, PathBuf, Fixture) {
+) -> (TestDir, ServiceHub, Fixture) {
     let root = temp_dir(tag);
     let fixture = Fixture::new(&root.join("data"), "wxid_me_ab12");
     build(&fixture);
-    (hub_for(&root, &fixture, tweak), root, fixture)
+    let hub = hub_for(&root, &fixture, tweak);
+    (root, hub, fixture)
 }
 
 fn hub_for(

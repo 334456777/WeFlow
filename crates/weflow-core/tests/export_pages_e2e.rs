@@ -72,7 +72,7 @@ fn expected(start: Option<i64>, end: Option<i64>, sender: Option<&str>) -> Vec<S
 
 #[tokio::test]
 async fn multi_page_exports_keep_every_message_in_reader_order() {
-    let (hub, root, _f) = common::custom_hub("export-pages", |f| {
+    let (root, hub, _f) = common::custom_hub("export-pages", |f| {
         f.session_db(&[SessionSpec {
             username: PEER,
             summary: "",

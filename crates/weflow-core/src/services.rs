@@ -1950,9 +1950,7 @@ pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
 mod export_tests {
     #[test]
     fn atomic_writes_replace_the_file_and_leave_no_temporary_file() {
-        let dir = std::env::temp_dir().join(format!("weflow-atomic-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = weflow_native::fixture::TestDir::new("weflow-atomic");
         let path = dir.join("a.jpg");
         super::write_atomically(&path, b"first").unwrap();
         super::write_atomically(&path, b"second").unwrap();
@@ -1970,13 +1968,11 @@ mod export_tests {
             .collect();
         names.sort();
         assert_eq!(names, ["a.jpg", "b.jpg", "src.bin"]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn finds_account_folders_and_strips_the_suffix() {
-        let root = std::env::temp_dir().join(format!("weflow-wxid-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = weflow_native::fixture::TestDir::new("weflow-wxid");
         std::fs::create_dir_all(root.join("wxid_abc123_ab12/db_storage")).unwrap();
         std::fs::create_dir_all(root.join("someone_a1b2/db_storage")).unwrap();
         std::fs::create_dir_all(root.join("all_users")).unwrap();
@@ -1985,7 +1981,6 @@ mod export_tests {
         // the account folder itself works too
         let one = find_accounts(&root.join("wxid_abc123_ab12"));
         assert_eq!(one[0].0, "wxid_abc123");
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     /// Drives `wait_for_fresh_wechat` with a scripted process list; each `sleep` is one second.

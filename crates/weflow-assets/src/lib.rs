@@ -158,6 +158,16 @@ fn maybe_make_executable(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
 
+    /// A home of the test's own, removed when dropped; `WEFLOW_KEEP_TEST_DIRS` keeps it, as for the other crates'
+    /// `weflow_native::fixture::TestDir`, which this crate does not depend on.
+    fn temp_home(prefix: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("{prefix}-"))
+            .disable_cleanup(std::env::var_os("WEFLOW_KEEP_TEST_DIRS").is_some())
+            .tempdir()
+            .unwrap()
+    }
+
     #[test]
     fn the_manifest_lists_every_embedded_file() {
         let manifest = manifest("1.2.3");
@@ -183,12 +193,11 @@ mod tests {
 
     #[test]
     fn extraction_reuses_identical_files_and_repairs_changed_ones() {
-        let home = std::env::temp_dir().join(format!("weflow-assets-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&home);
+        let temp = temp_home("weflow-assets");
+        let home = temp.path().join("home");
         let dir = ensure_runtime(&home, "test").unwrap();
         // a target that embeds nothing has no file to damage
         let Some(asset) = EMBEDDED_ASSETS.first() else {
-            let _ = fs::remove_dir_all(&home);
             return;
         };
         let path = dir.join(asset.logical_path);
@@ -213,13 +222,13 @@ mod tests {
                 .unwrap(),
             manifest_time
         );
-        let _ = fs::remove_dir_all(&home);
     }
 
     #[test]
     fn concurrent_extraction_on_a_fresh_home_succeeds() {
-        let home = std::env::temp_dir().join(format!("weflow-assets-race-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&home);
+        // a home that does not exist yet: the workers race to create it too
+        let temp = temp_home("weflow-assets-race");
+        let home = temp.path().join("home");
         std::thread::scope(|s| {
             let workers: Vec<_> = (0..16)
                 .map(|_| s.spawn(|| ensure_runtime(&home, "test")))
@@ -238,7 +247,6 @@ mod tests {
             .filter(|p| p.to_string_lossy().ends_with(".tmp-weflow"))
             .count();
         assert_eq!(leftovers, 0);
-        let _ = fs::remove_dir_all(&home);
     }
 
     fn walk(dir: &Path) -> Vec<PathBuf> {

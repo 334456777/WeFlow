@@ -29,13 +29,13 @@ fn request(session: &str, format: &str) -> MessageExportRequest {
 
 #[test]
 fn connection_opens_the_encrypted_account() {
-    let (hub, _root) = common::mock_hub("n-conn");
+    let (_root, hub) = common::mock_hub("n-conn");
     assert!(hub.db_test().unwrap().connected);
 }
 
 #[test]
 fn a_wrong_key_is_reported_as_a_native_error() {
-    let (hub, _root) = common::mock_hub_with("n-badkey", |_| {});
+    let (_root, hub) = common::mock_hub_with("n-badkey", |_| {});
     // same account, different key
     let bad = common::hub_for_account(
         &_root,
@@ -61,7 +61,7 @@ fn a_wrong_key_is_reported_as_a_native_error() {
 
 #[test]
 fn session_list_is_filtered_sorted_and_carries_unread_counts() {
-    let (hub, _root) = common::mock_hub("n-sessions");
+    let (_root, hub) = common::mock_hub("n-sessions");
     let sessions = hub.chat_sessions_list().unwrap();
     let names: Vec<&str> = sessions.iter().map(|s| s.username.as_str()).collect();
     // official accounts are not real conversations: their session row is replaced by the history placeholder
@@ -101,7 +101,7 @@ fn lookup_server_id(
 
 #[test]
 fn single_messages_are_normalised_across_shards_and_compression() {
-    let (hub, _root) = common::mock_hub("n-single");
+    let (_root, hub) = common::mock_hub("n-single");
     let m = lookup_id(&hub, "wxid_bob", 5, None);
     assert_eq!(m["message"]["text"], "see you");
     assert_eq!(m["message"]["isSend"], 0);
@@ -124,7 +124,7 @@ fn single_messages_are_normalised_across_shards_and_compression() {
 fn a_local_id_shared_by_two_message_databases_is_told_apart() {
     use weflow_native::fixture::{MsgSpec, SessionSpec, DAY, T0};
     // local id 1 is an image in shard 0 and a text in shard 1 (issue #144)
-    let (hub, _root, _f) = common::custom_hub("n-local-id", |f| {
+    let (_root, hub, _f) = common::custom_hub("n-local-id", |f| {
         f.session_db(&[SessionSpec {
             username: "wxid_bob",
             summary: "",
@@ -194,7 +194,7 @@ fn a_local_id_shared_by_two_message_databases_is_told_apart() {
 
 #[test]
 fn dates_counts_statuses_and_tab_counts() {
-    let (hub, _root) = common::mock_hub("n-dates");
+    let (_root, hub) = common::mock_hub("n-dates");
     let dates = json!(hub.chat_dates("wxid_bob").unwrap());
     let dates = dates["dates"].as_array().unwrap();
     assert_eq!(
@@ -239,7 +239,7 @@ fn dates_counts_statuses_and_tab_counts() {
 
 #[test]
 fn contacts_and_groups_resolve_names_owner_and_nicknames() {
-    let (hub, _root) = common::mock_hub("n-contacts");
+    let (_root, hub) = common::mock_hub("n-contacts");
     let contact = hub.contact("wxid_bob").unwrap();
     assert_eq!(contact["nick_name"], "Bob");
     assert_eq!(contact["remark"], "Bobby");
@@ -264,7 +264,7 @@ fn contacts_and_groups_resolve_names_owner_and_nicknames() {
 
 #[test]
 fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
-    let (hub, _root) = common::mock_hub("n-contacts-parsed");
+    let (_root, hub) = common::mock_hub("n-contacts-parsed");
     let contacts = json!(hub.chat_contacts_parsed().unwrap());
     let contacts = contacts.as_array().unwrap();
     let rows: Vec<String> = contacts
@@ -302,7 +302,7 @@ fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
 
 #[test]
 fn every_format_exports_five_messages_of_a_conversation() {
-    let (hub, root) = common::mock_hub("n-formats");
+    let (root, hub) = common::mock_hub("n-formats");
     for (format, file) in [
         ("json", "a.json"),
         ("arkme-json", "b.json"),
@@ -328,7 +328,7 @@ fn every_format_exports_five_messages_of_a_conversation() {
 
 #[test]
 fn json_export_carries_names_senders_and_decoded_text() {
-    let (hub, root) = common::mock_hub("n-json");
+    let (root, hub) = common::mock_hub("n-json");
     let out = root.join("out/bob.json");
     hub.export_messages(&request("wxid_bob", "json"), &out)
         .unwrap();
@@ -358,7 +358,7 @@ fn json_export_carries_names_senders_and_decoded_text() {
 
 #[test]
 fn group_export_uses_group_nicknames_and_strips_sender_prefixes() {
-    let (hub, root) = common::mock_hub("n-group");
+    let (root, hub) = common::mock_hub("n-group");
     let out = root.join("out/room.json");
     let mut req = request("room1@chatroom", "json");
     req.display_pref = DisplayPref::GroupNickname;
@@ -378,7 +378,7 @@ fn group_export_uses_group_nicknames_and_strips_sender_prefixes() {
 
 #[test]
 fn date_range_and_sender_filters_apply() {
-    let (hub, root) = common::mock_hub("n-filter");
+    let (root, hub) = common::mock_hub("n-filter");
     let mut req = request("wxid_bob", "txt");
     req.sender = Some("wxid_me".into());
     let out = root.join("out/mine.txt");
@@ -395,7 +395,7 @@ fn date_range_and_sender_filters_apply() {
 
 #[test]
 fn overall_statistics_count_private_chats_by_type_and_direction() {
-    let (hub, _root) = common::mock_hub("n-overall");
+    let (_root, hub) = common::mock_hub("n-overall");
     let s = json!(hub.analytics_overall_statistics().unwrap());
     // read from the databases every time: nothing kept that could go stale when messages arrive
     let cache = hub
@@ -425,7 +425,7 @@ fn overall_statistics_count_private_chats_by_type_and_direction() {
 
 #[test]
 fn chat_detail_lists_shard_tables_with_counts_and_times() {
-    let (hub, _root) = common::mock_hub("n-detail");
+    let (_root, hub) = common::mock_hub("n-detail");
     let d = json!(hub.chat_detail("wxid_bob").unwrap());
     assert_eq!(d["displayName"], "Bobby");
     assert_eq!(d["avatarUrl"], "https://example.com/bob.png");
@@ -446,7 +446,7 @@ fn chat_detail_lists_shard_tables_with_counts_and_times() {
 
 #[test]
 fn export_stats_report_type_counts_and_group_relations() {
-    let (hub, _root) = common::mock_hub("n-exportstats");
+    let (_root, hub) = common::mock_hub("n-exportstats");
     let s = serde_json::to_value(
         hub.chat_export_stats(&strs(&["wxid_bob", "room1@chatroom"]), 0, 0, true)
             .unwrap(),
@@ -475,7 +475,7 @@ fn export_stats_report_type_counts_and_group_relations() {
 
 #[test]
 fn group_ranking_hours_and_media_mix() {
-    let (hub, _root) = common::mock_hub("n-groupstats");
+    let (_root, hub) = common::mock_hub("n-groupstats");
     let ranking = hub
         .group_message_ranking("room1@chatroom", 10, 0, 0)
         .unwrap();
@@ -498,7 +498,7 @@ fn group_ranking_hours_and_media_mix() {
 
 #[test]
 fn report_years_come_from_the_data() {
-    let (hub, _root) = common::mock_hub("n-years");
+    let (_root, hub) = common::mock_hub("n-years");
     let y = hub.report_available_years().unwrap();
     assert_eq!(y.years, [2023]);
     assert_eq!(y.strategy, "native");
@@ -508,7 +508,7 @@ fn report_years_come_from_the_data() {
 
 #[test]
 fn moments_timeline_is_enriched_with_names_avatars_and_fixed_urls() {
-    let (hub, _root) = common::mock_hub("n-sns");
+    let (_root, hub) = common::mock_hub("n-sns");
     let q = weflow_core::services::SnsTimelineQuery {
         limit: 10,
         offset: 0,
@@ -569,7 +569,7 @@ fn moments_timeline_is_enriched_with_names_avatars_and_fixed_urls() {
 
 #[test]
 fn moments_users_and_export_stats() {
-    let (hub, _root) = common::mock_hub("n-snsstats");
+    let (_root, hub) = common::mock_hub("n-snsstats");
     assert_eq!(
         hub.sns_usernames_list().unwrap(),
         ["wxid_bob", "wxid_carol", "wxid_me"]
@@ -583,7 +583,7 @@ fn moments_users_and_export_stats() {
 
 #[test]
 fn operations_that_modify_wechat_databases_are_refused_clearly() {
-    let (hub, _root) = common::mock_hub("n-readonly");
+    let (_root, hub) = common::mock_hub("n-readonly");
     for err in [
         hub.sns_block_delete_install().unwrap_err(),
         hub.sns_delete_post("1001").unwrap_err(),
@@ -603,7 +603,7 @@ fn operations_that_modify_wechat_databases_are_refused_clearly() {
 
 #[test]
 fn dual_report_combines_native_counts_with_service_side_details() {
-    let (hub, _root) = common::mock_hub("n-dual");
+    let (_root, hub) = common::mock_hub("n-dual");
     let d = serde_json::to_value(hub.report_dual("wxid_bob", 0, &[]).unwrap()).unwrap();
     assert_eq!(
         (d["friendName"].as_str(), d["selfName"].as_str()),
@@ -656,7 +656,7 @@ fn dual_report_combines_native_counts_with_service_side_details() {
 
 #[test]
 fn annual_report_uses_native_extras_and_native_moments() {
-    let (hub, _root) = common::mock_hub("n-annual");
+    let (_root, hub) = common::mock_hub("n-annual");
     let a = serde_json::to_value(hub.report_annual(2023).unwrap()).unwrap();
     assert_eq!(
         (a["totalMessages"].as_i64(), a["totalFriends"].as_i64()),
@@ -709,7 +709,7 @@ fn annual_report_breaks_ties_the_same_way_every_time() {
         .with_ymd_and_hms(2023, 11, 14, 1, 0, 0)
         .unwrap()
         .timestamp();
-    let (hub, _root, _f) = common::custom_hub("n-annual-ties", |f| {
+    let (_root, hub, _f) = common::custom_hub("n-annual-ties", |f| {
         let session = |username| SessionSpec {
             username,
             summary: "",
@@ -745,7 +745,7 @@ fn annual_report_breaks_ties_the_same_way_every_time() {
 
 #[test]
 fn footprint_reports_private_chats_segments_and_mentions() {
-    let (hub, _root) = common::mock_hub("n-footprint");
+    let (_root, hub) = common::mock_hub("n-footprint");
     let f = hub.footprint(0, 0).unwrap();
     assert_eq!(
         f["summary"],
@@ -811,7 +811,7 @@ fn extra(fields: &[(u8, &str)]) -> &'static [u8] {
 #[test]
 fn contacts_carry_labels_signature_and_region_and_sort_by_pinyin() {
     use weflow_native::fixture::{ContactSpec, SessionSpec, T0};
-    let (hub, _root, _f) = common::custom_hub("n-contact-extra", |f| {
+    let (_root, hub, _f) = common::custom_hub("n-contact-extra", |f| {
         f.session_db(&[SessionSpec {
             username: "wxid_dummy",
             summary: "",
@@ -876,7 +876,7 @@ fn contacts_carry_labels_signature_and_region_and_sort_by_pinyin() {
 
 #[test]
 fn clearing_account_data_removes_only_that_account() {
-    let (hub, root) = common::mock_hub("n-clear");
+    let (root, hub) = common::mock_hub("n-clear");
     let base = hub.image_cache_root().parent().unwrap().to_path_buf();
     let put = |p: std::path::PathBuf| {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -917,7 +917,7 @@ fn clearing_account_data_removes_only_that_account() {
 #[test]
 fn cache_parts_clear_on_their_own_and_all_together() {
     use weflow_core::services::CachePart;
-    let (hub, _root) = common::mock_hub("n-cache-parts");
+    let (_root, hub) = common::mock_hub("n-cache-parts");
     let base = hub.image_cache_root().parent().unwrap().to_path_buf();
     let put = |p: std::path::PathBuf| {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();

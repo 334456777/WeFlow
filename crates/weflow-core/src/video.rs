@@ -344,11 +344,8 @@ pub fn parse_video_md5(content: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn tmp(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("weflow-video-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        d
+    fn tmp(tag: &str) -> weflow_native::fixture::TestDir {
+        weflow_native::fixture::TestDir::new(&format!("weflow-video-{tag}"))
     }
 
     #[test]

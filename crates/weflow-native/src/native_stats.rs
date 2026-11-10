@@ -926,14 +926,15 @@ fn check_ident(name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixture::{Fixture, DAY, T0};
+    use crate::fixture::{Fixture, TestDir, DAY, T0};
 
-    fn account(tag: &str) -> NativeAccount {
-        let root = std::env::temp_dir().join(format!("weflow-stats-{}-{tag}", std::process::id()));
+    fn account(tag: &str) -> (TestDir, NativeAccount) {
+        let root = TestDir::new(&format!("weflow-stats-{tag}"));
         let f = Fixture::standard(&root);
-        NativeAccount::new(f.db_storage(), &f.key_hex())
+        let acct = NativeAccount::new(f.db_storage(), &f.key_hex())
             .unwrap()
-            .with_my_wxid(Some("wxid_me_ab12".into()))
+            .with_my_wxid(Some("wxid_me_ab12".into()));
+        (root, acct)
     }
 
     fn ids(v: &[&str]) -> Vec<String> {
@@ -950,7 +951,7 @@ mod tests {
 
     #[test]
     fn aggregate_counts_split_by_direction_type_and_time() {
-        let a = account("agg");
+        let (_dir, a) = account("agg");
         let v = a
             .aggregate_stats(&ids(&["wxid_bob", "room1@chatroom"]), 0, 0)
             .unwrap();
@@ -989,7 +990,7 @@ mod tests {
 
     #[test]
     fn aggregate_honours_the_time_range_and_unknown_sessions() {
-        let a = account("range");
+        let (_dir, a) = account("range");
         let v = a
             .aggregate_stats(
                 &ids(&["wxid_bob", "room1@chatroom", "nobody"]),
@@ -1011,7 +1012,7 @@ mod tests {
 
     #[test]
     fn table_stats_and_time_range_per_shard() {
-        let a = account("tables");
+        let (_dir, a) = account("tables");
         let v = a.message_table_stats("wxid_bob").unwrap();
         let rows = v.as_array().unwrap();
         assert_eq!(rows.len(), 2);
@@ -1052,7 +1053,7 @@ mod tests {
 
     #[test]
     fn years_and_date_count_batches() {
-        let a = account("years");
+        let (_dir, a) = account("years");
         assert_eq!(
             a.available_years(&ids(&["wxid_bob", "room1@chatroom"]))
                 .unwrap(),
@@ -1064,7 +1065,7 @@ mod tests {
 
     #[test]
     fn type_stats_batch_for_private_and_group_sessions() {
-        let a = account("types");
+        let (_dir, a) = account("types");
         let v = a
             .session_message_type_stats_batch(&ids(&["wxid_bob", "room1@chatroom"]), &json!({}))
             .unwrap();
@@ -1105,7 +1106,7 @@ mod tests {
 
     #[test]
     fn group_stats_merge_senders_across_shards_by_username() {
-        let a = account("group");
+        let (_dir, a) = account("group");
         let v = a.group_stats("room1@chatroom", 0, 0).unwrap();
         let senders = v["sessions"]["room1@chatroom"]["senders"]
             .as_object()
@@ -1140,7 +1141,7 @@ mod tests {
 
     #[test]
     fn exec_query_is_read_only_and_stays_inside_db_storage() {
-        let a = account("exec");
+        let (_dir, a) = account("exec");
         let rows = a
             .exec_query("session", None, "select count(*) as n from SessionTable")
             .unwrap();

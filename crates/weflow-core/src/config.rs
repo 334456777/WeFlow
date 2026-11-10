@@ -737,7 +737,6 @@ fn as_bool(value: Value) -> AppResult<bool> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use serde_json::json;
 
@@ -782,7 +781,6 @@ mod tests {
         fs::create_dir_all(other.join("db_storage")).unwrap();
         fs::create_dir_all(own.join("db_storage")).unwrap();
         assert_eq!(resolve_account_dir(dir.to_str().unwrap(), "wxid_ab12"), own);
-        let _ = fs::remove_dir_all(dir);
     }
 
     /// A config file from a version that had `weflow ffmpeg set baseurl` still loads: the key is left out.
@@ -806,7 +804,6 @@ mod tests {
         assert_eq!(store.lang.as_deref(), Some("zh"));
         assert_eq!(store.get_key(None, "default.wxid"), json!("wxid_test"));
         assert!(!serde_json::to_string(&store).unwrap().contains("ffmpeg"));
-        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -864,7 +861,6 @@ mod tests {
                 .all(|n| n == "config.json" || n == "config.json.lock"),
             "{names:?}"
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -877,7 +873,6 @@ mod tests {
             ConfigStore::update(&path, |c| c.set_key(None, "image_xor_key", json!(256))).is_err()
         );
         assert_eq!(fs::read(&path).unwrap(), before);
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -945,13 +940,7 @@ mod tests {
         assert_eq!(store.serve.host.as_deref(), Some("0.0.0.0"));
     }
 
-    fn temp_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
-        fs::create_dir_all(&dir).unwrap();
-        dir
+    fn temp_dir(prefix: &str) -> weflow_native::fixture::TestDir {
+        weflow_native::fixture::TestDir::new(prefix)
     }
 }

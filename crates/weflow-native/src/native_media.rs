@@ -1026,14 +1026,15 @@ impl NativeAccount {
 )]
 mod tests {
     use super::*;
-    use crate::fixture::{Fixture, DAY, T0};
+    use crate::fixture::{Fixture, TestDir, DAY, T0};
 
-    fn account(tag: &str) -> NativeAccount {
-        let root = std::env::temp_dir().join(format!("weflow-media-{}-{tag}", std::process::id()));
+    fn account(tag: &str) -> (TestDir, NativeAccount) {
+        let root = TestDir::new(&format!("weflow-media-{tag}"));
         let f = Fixture::standard(&root);
-        NativeAccount::new(f.db_storage(), &f.key_hex())
+        let acct = NativeAccount::new(f.db_storage(), &f.key_hex())
             .unwrap()
-            .with_my_wxid(Some("wxid_me_ab12".into()))
+            .with_my_wxid(Some("wxid_me_ab12".into()));
+        (root, acct)
     }
 
     fn contents(hits: &[SessionRow]) -> Vec<String> {
@@ -1086,7 +1087,7 @@ mod tests {
 
     #[test]
     fn search_finds_plain_and_compressed_text_across_sessions() {
-        let a = account("search");
+        let (_dir, a) = account("search");
         // "later, compressed" is a zstd blob: it can only be found after decoding
         assert_eq!(
             contents(
@@ -1134,7 +1135,7 @@ mod tests {
 
     #[test]
     fn search_orders_pages_and_filters_by_time() {
-        let a = account("page");
+        let (_dir, a) = account("page");
         let all = a
             .search_messages("e", Some("wxid_bob"), 50, 0, 0, 0)
             .unwrap(); // hello, later, compressed, see you
@@ -1166,7 +1167,7 @@ mod tests {
     #[test]
     fn search_pages_are_those_of_a_sort_of_every_hit() {
         use crate::fixture::{Fixture, MsgSpec, SessionSpec};
-        let root = std::env::temp_dir().join(format!("weflow-search-ties-{}", std::process::id()));
+        let root = TestDir::new("weflow-search-ties");
         let f = Fixture::new(&root, "wxid_me_ab12");
         f.session_db(&[SessionSpec {
             username: "wxid_bob",
@@ -1288,14 +1289,12 @@ mod tests {
         let first = &a.search_messages("pie", None, 1, 0, 0, 0).unwrap()[0].row;
         assert!(first.content.ends_with("Apple pie"));
         assert_eq!(first.sender.as_deref(), Some("wxid_bob"));
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn search_reads_wechats_index_and_scans_what_it_does_not_hold() {
         use crate::fixture::{Fixture, FtsSpec, MsgSpec, SessionSpec};
-        let root = std::env::temp_dir().join(format!("weflow-search-fts-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = TestDir::new("weflow-search-fts");
         let f = Fixture::new(&root, "wxid_me_ab12");
         let room = "room9@chatroom";
         f.session_db(&[room, "wxid_bob"].map(|username| SessionSpec {
@@ -1483,12 +1482,11 @@ mod tests {
             .row;
         assert_eq!(first.sender.as_deref(), Some("wxid_alice"));
         assert!(first.content.contains("<refermsg>"));
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn media_stream_pages_images_and_videos() {
-        let a = account("media");
+        let (_dir, a) = account("media");
         let ids = vec!["wxid_bob".to_string(), "room1@chatroom".to_string()];
         let (rows, more) = a.scan_media_stream(&ids, 1, 0, 0, 10, 0).unwrap();
         assert_eq!(rows.len(), 1, "one image in the fixture");
@@ -1510,7 +1508,7 @@ mod tests {
 
     #[test]
     fn voice_is_found_by_server_id_or_by_local_id_and_time_window() {
-        let a = account("voice");
+        let (_dir, a) = account("voice");
         let bob = vec!["wxid_bob".to_string()];
         assert_eq!(
             a.voice_data(T0 + 500, 6, 9_000_000_000_001, &bob).unwrap(),
@@ -1561,7 +1559,7 @@ mod tests {
 
     #[test]
     fn voice_batch_mixes_hits_and_misses() {
-        let a = account("vbatch");
+        let (_dir, a) = account("vbatch");
         let req = json!([
             {"session_id": "wxid_bob", "create_time": T0 + 500, "local_id": 6, "svr_id": 9_000_000_000_001i64, "candidates": ["wxid_bob"]},
             {"session_id": "wxid_bob", "create_time": T0 + 600, "local_id": 7, "svr_id": "9000000000002", "candidates": ["wxid_bob", "wxid_me"]},
@@ -1576,7 +1574,7 @@ mod tests {
 
     #[test]
     fn emoticon_urls_and_captions() {
-        let a = account("emoji");
+        let (_dir, a) = account("emoji");
         assert_eq!(
             a.emoticon_cdn_url("aabbccddeeff00112233445566778899")
                 .unwrap(),
@@ -1614,8 +1612,7 @@ mod tests {
     fn the_media_index_names_the_files_of_an_md5_newest_first() {
         use crate::fixture::HardlinkSpec;
         use std::path::Path;
-        let root =
-            std::env::temp_dir().join(format!("weflow-media-{}-hardlink", std::process::id()));
+        let root = TestDir::new("weflow-media-hardlink");
         let f = Fixture::standard(&root);
         let a = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
         // no index: nothing, and no failure
@@ -1694,6 +1691,5 @@ mod tests {
         );
         assert!(a.video_hardlinks(image).unwrap().is_empty());
         assert!(a.video_hardlinks(" ").unwrap().is_empty());
-        let _ = std::fs::remove_dir_all(root);
     }
 }

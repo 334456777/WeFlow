@@ -7,7 +7,6 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -20,6 +19,7 @@ use axum::Router;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use weflow_core::webui::{self, Backend, Registry, WebStore, ARTIFACT_TYPE, LAYER_TYPE};
+use weflow_native::fixture::TestDir;
 
 const REPO: &str = "334456777/weflow-web";
 const BACKEND: Backend = Backend {
@@ -163,11 +163,14 @@ async fn serve(reg: Arc<Registry_>) -> String {
     format!("http://{addr}")
 }
 
-fn temp_store(tag: &str) -> WebStore {
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("webui-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    WebStore::new(dir)
+/// A store in a folder that does not exist yet, inside a directory of the test's own.
+fn temp_store(tag: &str) -> (TestDir, WebStore) {
+    let dir = TestDir::new_in(
+        std::path::Path::new(env!("CARGO_TARGET_TMPDIR")),
+        &format!("webui-{tag}"),
+    );
+    let store = WebStore::new(dir.join("store"));
+    (dir, store)
 }
 
 /// Names in the store's folder (the versions, `current`, and any download left behind), but the install locks,
@@ -205,7 +208,7 @@ async fn a_version_is_downloaded_checked_and_kept() {
     );
     let base = serve(reg.clone()).await;
     let registry = Registry::new(&base, REPO).unwrap();
-    let store = temp_store("install");
+    let (_dir, store) = temp_store("install");
 
     // tags: versions only, newest first; one anonymous token for all the requests
     assert_eq!(registry.versions().await.unwrap(), ["0.2.0-rc.1", "0.1.0"]);
@@ -263,7 +266,7 @@ async fn installs_of_one_version_at_once_download_it_once() {
     );
     let base = serve(reg.clone()).await;
     let registry = Registry::new(&base, REPO).unwrap();
-    let store = temp_store("at-once");
+    let (_dir, store) = temp_store("at-once");
     // two stores on one folder: their locks are two files open, as in two processes (#332)
     let other = WebStore::new(store.root().to_path_buf());
 
@@ -341,7 +344,7 @@ async fn damaged_and_incompatible_versions_change_nothing() {
     );
     let base = serve(reg.clone()).await;
     let registry = Registry::new(&base, REPO).unwrap();
-    let store = temp_store("damaged");
+    let (_dir, store) = temp_store("damaged");
     webui::install(&store, &registry, "0.1.0", BACKEND, QUIET)
         .await
         .unwrap();
@@ -408,7 +411,7 @@ async fn packages_reaching_out_of_their_folder_are_refused() {
     );
     let base = serve(reg.clone()).await;
     let registry = Registry::new(&base, REPO).unwrap();
-    let store = temp_store("escape");
+    let (_dir, store) = temp_store("escape");
     for version in ["0.1.0", "0.1.1", "0.1.2"] {
         let err = webui::install(&store, &registry, version, BACKEND, QUIET)
             .await
@@ -434,7 +437,7 @@ async fn two_installs_at_once_keep_one_copy() {
         "5.0.0-rc.5",
     );
     let base = serve(reg.clone()).await;
-    let store = temp_store("race");
+    let (_dir, store) = temp_store("race");
     let (a, b) = (
         Registry::new(&base, REPO).unwrap(),
         Registry::new(&base, REPO).unwrap(),

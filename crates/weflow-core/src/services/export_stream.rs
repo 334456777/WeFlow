@@ -692,9 +692,7 @@ mod tests {
         use std::panic::{catch_unwind, AssertUnwindSafe};
         use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, SessionSpec, T0};
 
-        let root =
-            std::env::temp_dir().join(format!("weflow-consumer-panic-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = weflow_native::fixture::TestDir::new("weflow-consumer-panic");
         let fixture = Fixture::new(&root, "wxid_me_ab12");
         fixture.session_db(&[SessionSpec {
             username: "wxid_bob",
@@ -760,7 +758,6 @@ mod tests {
         });
         // before the fix the export waited forever for the sleeping workers
         let panicked = finished.recv_timeout(Duration::from_secs(60));
-        let _ = std::fs::remove_dir_all(&root);
         assert_eq!(panicked, Ok(true), "the export hung or swallowed the panic");
     }
 
@@ -768,7 +765,7 @@ mod tests {
     fn pages_read_after_wechat_changed_the_database_are_read_again() {
         use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, SessionSpec, T0};
 
-        let root = std::env::temp_dir().join(format!("weflow-stale-export-{}", std::process::id()));
+        let root = weflow_native::fixture::TestDir::new("weflow-stale-export");
         let fixture = Fixture::new(&root, "wxid_me_ab12");
         fixture.session_db(&[SessionSpec {
             username: "wxid_bob",
@@ -849,7 +846,6 @@ mod tests {
             }
         }
         let reruns = wcdb.stale_reruns();
-        let _ = std::fs::remove_dir_all(&root);
         assert!(reruns > 0, "no query was reading when the database changed");
     }
 

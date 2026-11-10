@@ -23,6 +23,8 @@ thiserror.workspace = true
 zstd.workspace = true
 # the voices of the benchmark account (`test-fixtures`)
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"], optional = true }
+# `fixture::TestDir` (`test-fixtures`)
+tempfile = { workspace = true, optional = true }
 
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Memory", "Win32_Storage_FileSystem", "Win32_System_Kernel", "Win32_System_SystemInformation", "Win32_System_Console", "Win32_System_LibraryLoader"] }
@@ -35,10 +37,11 @@ libloading.workspace = true
 proptest.workspace = true
 # the fixture is built for the crate's own tests too, without `test-fixtures`
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
+tempfile.workspace = true
 
 [features]
 # Expose the synthetic-account builder (src/fixture.rs) to other crates' tests.
-test-fixtures = ["dep:weflow-silk"]
+test-fixtures = ["dep:weflow-silk", "dep:tempfile"]
 
 [[example]]
 name = "refresh_probe"

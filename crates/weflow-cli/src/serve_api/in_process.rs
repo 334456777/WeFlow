@@ -640,8 +640,7 @@ mod tests {
 
     #[test]
     fn a_config_written_twice_within_a_tick_of_a_coarse_clock_is_told_changed() {
-        let dir = std::env::temp_dir().join(format!("weflow-stamp-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = weflow_native::fixture::TestDir::new("weflow-stamp");
         let path = dir.join("config.json");
         std::fs::write(&path, r#"{"profile":"aaaa"}"#).unwrap();
         let time = std::fs::metadata(&path).unwrap().modified().unwrap();
@@ -669,7 +668,6 @@ mod tests {
         assert!(stamp.settled && stamp.holds(&path));
         std::fs::write(&path, r#"{"profile":"cccc"}"#).unwrap();
         assert!(!stamp.holds(&path));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     fn command_tree() -> Command {

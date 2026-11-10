@@ -1662,9 +1662,8 @@ mod tests {
         );
     }
 
-    fn listing_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("weflow-listing-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn listing_dir(tag: &str) -> weflow_native::fixture::TestDir {
+        let dir = weflow_native::fixture::TestDir::new(&format!("weflow-listing-{tag}"));
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         dir
     }
@@ -1727,7 +1726,6 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(sorted, expected);
         assert_eq!(listing.dirs, vec!["sub".to_string()]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1745,7 +1743,6 @@ mod tests {
             !settled.current(&dir),
             "a new file changes the folder's time"
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

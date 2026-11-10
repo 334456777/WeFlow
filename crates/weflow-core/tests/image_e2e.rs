@@ -12,6 +12,7 @@ mod common;
 use aes::cipher::{Array, BlockModeEncrypt, KeyInit};
 use md5::{Digest, Md5};
 use weflow_core::services::ImagePayload;
+use weflow_native::fixture::TestDir;
 
 const MD5: &str = "0123456789abcdef0123456789abcdef";
 const KEY: &str = "0123456789abcdef";
@@ -72,12 +73,12 @@ fn md5_hex(s: &str) -> String {
 fn setup(
     tag: &str,
 ) -> (
+    TestDir,
     weflow_core::services::ServiceHub,
     std::path::PathBuf,
     std::path::PathBuf,
-    std::path::PathBuf,
 ) {
-    let (hub, root) = common::mock_hub_with(tag, |p| {
+    let (root, hub) = common::mock_hub_with(tag, |p| {
         p.image_xor_key = Some(0x5a);
         p.image_aes_key = Some(KEY.into());
     });
@@ -89,12 +90,12 @@ fn setup(
         .join(&month)
         .join("Img");
     std::fs::create_dir_all(&img_dir).unwrap();
-    (hub, root, account, img_dir)
+    (root, hub, account, img_dir)
 }
 
 #[test]
 fn decrypts_the_hd_variant_and_caches_it() {
-    let (hub, root, _account, img_dir) = setup("img-hd");
+    let (_root, hub, _account, img_dir) = setup("img-hd");
     let hd = jpeg(3000, 1);
     let thumb = jpeg(1500, 2);
     std::fs::write(
@@ -169,12 +170,11 @@ fn decrypts_the_hd_variant_and_caches_it() {
     let cleared = hub.cache_clear(&[weflow_core::services::CachePart::Images]);
     assert!(cleared.warnings.is_empty(), "{:?}", cleared.warnings);
     assert!(!std::path::Path::new(&path).exists());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_username_with_a_folder_like_suffix_is_looked_for_whole_then_cut() {
-    let (hub, root, account, _img_dir) = setup("img-suffix");
+    let (_root, hub, account, _img_dir) = setup("img-suffix");
     let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
     let month = weflow_core::image::year_month_from_create_time(Some(1_700_000_000));
     // `name_1998` keeps its images under md5 of the whole username; `name_2001`'s are under md5("name"), where the
@@ -209,12 +209,11 @@ fn a_username_with_a_folder_like_suffix_is_looked_for_whole_then_cut() {
             "{session}"
         );
     }
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn falls_back_to_the_thumbnail_and_promotes_it_when_hd_appears() {
-    let (hub, root, _account, img_dir) = setup("img-thumb");
+    let (_root, hub, _account, img_dir) = setup("img-thumb");
     let thumb = jpeg(1500, 3);
     let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
     std::fs::write(
@@ -259,12 +258,11 @@ fn falls_back_to_the_thumbnail_and_promotes_it_when_hd_appears() {
         !std::path::Path::new(&path).exists(),
         "the thumbnail cache file is removed after the upgrade"
     );
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn the_cache_sees_files_changed_by_another_process() {
-    let (hub, root, _account, img_dir) = setup("img-cache-names");
+    let (_root, hub, _account, img_dir) = setup("img-cache-names");
     let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
     let other = "fedcba9876543210fedcba9876543210";
     let (mine, theirs) = (jpeg(3000, 6), jpeg(3000, 7));
@@ -310,12 +308,11 @@ fn the_cache_sees_files_changed_by_another_process() {
     });
     assert!(again.success, "{:?}", again.error);
     assert_eq!(std::fs::read(&path).unwrap(), mine);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn reports_missing_files_keys_and_bad_keys() {
-    let (hub, root, _account, img_dir) = setup("img-errors");
+    let (_root, hub, _account, img_dir) = setup("img-errors");
     let p = ImagePayload {
         session_id: Some("wxid_bob".into()),
         image_md5: Some(MD5.into()),
@@ -344,11 +341,9 @@ fn reports_missing_files_keys_and_bad_keys() {
     assert!(bad.error.unwrap().contains("decrypt failed"));
 
     // no xor key configured at all
-    let (hub2, root2) = common::mock_hub("img-nokeys");
+    let (_root2, hub2) = common::mock_hub("img-nokeys");
     let r = hub2.image_decrypt(&p);
     assert!(!r.success);
-    let _ = std::fs::remove_dir_all(root);
-    let _ = std::fs::remove_dir_all(root2);
 }
 
 /// Two image messages from 2023-11-14 in `wxid_bob`'s chat, image keys configured; returns the hub and the
@@ -356,12 +351,12 @@ fn reports_missing_files_keys_and_bad_keys() {
 fn export_world(
     tag: &str,
 ) -> (
+    TestDir,
     weflow_core::services::ServiceHub,
-    std::path::PathBuf,
     std::path::PathBuf,
 ) {
     use weflow_native::fixture::{MsgSpec, SessionSpec, T0};
-    let (hub, root, fixture) = common::custom_hub_with(
+    let (root, hub, fixture) = common::custom_hub_with(
         tag,
         |f| {
             f.session_db(&[SessionSpec {
@@ -404,12 +399,12 @@ fn export_world(
         .join(&month)
         .join("Img");
     std::fs::create_dir_all(&img_dir).unwrap();
-    (hub, root, img_dir)
+    (root, hub, img_dir)
 }
 
 #[tokio::test]
 async fn export_media_copies_images_of_a_conversation() {
-    let (hub, root, img_dir) = export_world("img-export");
+    let (root, hub, img_dir) = export_world("img-export");
     let md5 = "aabbccddeeff00112233445566778899";
     let plain = jpeg(3000, 7);
     std::fs::write(
@@ -440,21 +435,14 @@ async fn export_media_copies_images_of_a_conversation() {
         .export_media(Some("wxid_bob"), &out, "bogus", None, None)
         .await
         .is_err());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// The same image (md5) shown by two messages: the older one, from a month whose folder has no file, and the newer
 /// one, whose month has it. The threads of an export reach them in either order.
-fn shared_image_world(
-    tag: &str,
-) -> (
-    weflow_core::services::ServiceHub,
-    std::path::PathBuf,
-    Vec<u8>,
-) {
+fn shared_image_world(tag: &str) -> (TestDir, weflow_core::services::ServiceHub, Vec<u8>) {
     use weflow_native::fixture::{MsgSpec, SessionSpec, DAY, T0};
     let md5 = "aabbccddeeff00112233445566778899";
-    let (hub, root, fixture) = common::custom_hub_with(
+    let (root, hub, fixture) = common::custom_hub_with(
         tag,
         |f| {
             f.session_db(&[SessionSpec {
@@ -497,14 +485,14 @@ fn shared_image_world(
         encrypt_v2(&plain, KEY.as_bytes().try_into().unwrap(), 0x5a),
     )
     .unwrap();
-    (hub, root, plain)
+    (root, hub, plain)
 }
 
 #[tokio::test]
 async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order() {
     // the order the two messages are looked at in is up to the threads: run it a few times
     for round in 0..5 {
-        let (hub, root, plain) = shared_image_world(&format!("img-shared-{round}"));
+        let (root, hub, plain) = shared_image_world(&format!("img-shared-{round}"));
         let r = serde_json::to_value(
             hub.export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
                 .await
@@ -522,9 +510,8 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
             std::fs::read(files[0]["path"].as_str().unwrap()).unwrap(),
             plain
         );
-        let _ = std::fs::remove_dir_all(root);
 
-        let (hub, root, _) = shared_image_world(&format!("img-shared-msgs-{round}"));
+        let (root, hub, _) = shared_image_world(&format!("img-shared-msgs-{round}"));
         let opts = weflow_core::api::ApiMediaOptions {
             enabled: true,
             images: true,
@@ -546,7 +533,6 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
             (Some(2), Some(0)),
             "round {round}: {r}"
         );
-        let _ = std::fs::remove_dir_all(root);
     }
 }
 
@@ -567,7 +553,7 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
         .unwrap();
     };
 
-    let (hub, root, img_dir) = export_world("img-wxgf-unsupported");
+    let (root, hub, img_dir) = export_world("img-wxgf-unsupported");
     put(&img_dir);
     let p = ImagePayload {
         session_id: Some("wxid_bob".into()),
@@ -608,7 +594,7 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
         "{r}"
     );
 
-    let (hub, root2, img_dir) = export_world("img-wxgf-unsupported-msgs");
+    let (root2, hub, img_dir) = export_world("img-wxgf-unsupported-msgs");
     put(&img_dir);
     let opts = weflow_core::api::ApiMediaOptions {
         enabled: true,
@@ -627,7 +613,7 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
     assert!(r["media"].get("ffmpegMissing").is_none(), "{r}");
 
     // a WXGF picture the built-in decoder reads
-    let (hub, root3, img_dir) = export_world("img-wxgf-builtin");
+    let (root3, hub, img_dir) = export_world("img-wxgf-builtin");
     let mut blob = b"wxgf".to_vec();
     blob.extend([0x24u8, 0x01, 0x00, 0x46, 0x00, 0x2e]); // a header, before the HEVC stream
     blob.extend(include_bytes!("../testdata/wxgf/full_range.hevc"));
@@ -654,14 +640,11 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
         (Some(1), Some(1)),
         "{r}"
     );
-    let _ = std::fs::remove_dir_all(root);
-    let _ = std::fs::remove_dir_all(root2);
-    let _ = std::fs::remove_dir_all(root3);
 }
 
 #[tokio::test]
 async fn export_media_reports_thumbnail_only_images() {
-    let (hub, root, img_dir) = export_world("img-export-thumb");
+    let (root, hub, img_dir) = export_world("img-export-thumb");
     let md5 = "aabbccddeeff00112233445566778899";
     // only the thumbnail rendition exists on disk
     let thumb = jpeg(1500, 9);
@@ -696,12 +679,11 @@ async fn export_media_reports_thumbnail_only_images() {
         "the note explains what thumbOnly means"
     );
     assert_eq!(r["files"][0]["isThumb"], true);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
 async fn export_media_honours_the_date_range_and_reports_missing_by_kind() {
-    let (hub, root, _img_dir) = export_world("img-export-range");
+    let (root, hub, _img_dir) = export_world("img-export-range");
     let out = root.join("media-range");
     // both image messages are from 2023-11-14; a later window matches nothing
     let none = serde_json::to_value(
@@ -726,14 +708,13 @@ async fn export_media_honours_the_date_range_and_reports_missing_by_kind() {
     assert_eq!(all["found"], 2);
     assert_eq!(all["missing"], 2, "no .dat files exist");
     assert_eq!(all["missingByKind"]["image"], 2);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// bob's chat: text, an image on disk, an image that was never downloaded, a voice message and a sticker.
-fn embed_world(tag: &str) -> (weflow_core::services::ServiceHub, std::path::PathBuf) {
+fn embed_world(tag: &str) -> (TestDir, weflow_core::services::ServiceHub) {
     use weflow_native::fixture::{MsgSpec, SessionSpec, VoiceSpec, T0};
     let md5 = "aabbccddeeff00112233445566778899";
-    let (hub, root, fixture) = common::custom_hub_with(
+    let (root, hub, fixture) = common::custom_hub_with(
         tag,
         |f| {
             f.session_db(&[SessionSpec {
@@ -796,7 +777,7 @@ fn embed_world(tag: &str) -> (weflow_core::services::ServiceHub, std::path::Path
         encrypt_v2(&jpeg(3000, 7), KEY.as_bytes().try_into().unwrap(), 0x5a),
     )
     .unwrap();
-    (hub, root)
+    (root, hub)
 }
 
 fn media_request(format: &str) -> weflow_core::services::MessageExportRequest {
@@ -813,7 +794,7 @@ fn media_request(format: &str) -> weflow_core::services::MessageExportRequest {
 
 #[tokio::test]
 async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for_it() {
-    let (hub, root) = embed_world("embed");
+    let (root, hub) = embed_world("embed");
     let opts = weflow_core::api::ApiMediaOptions {
         enabled: true,
         images: true,
@@ -936,13 +917,12 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
     .await
     .unwrap();
     assert!(!plain_dir.join("media").exists());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
 async fn several_formats_without_media_are_what_each_writes_alone() {
     // #628: read once and written side by side, each file as the streaming export of that format writes it
-    let (hub, root) = embed_world("formats-alone");
+    let (root, hub) = embed_world("formats-alone");
     let (together, alone) = (root.join("together"), root.join("alone"));
     std::fs::create_dir_all(&together).unwrap();
     std::fs::create_dir_all(&alone).unwrap();
@@ -988,13 +968,12 @@ async fn several_formats_without_media_are_what_each_writes_alone() {
             .count();
         assert!(differing <= 1, "{format}: {differing} lines differ");
     }
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
 async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
     // #342: the messages read and the media copied once, every format pointing at the same files
-    let (hub, root) = embed_world("formats-zip");
+    let (root, hub) = embed_world("formats-zip");
     let opts = weflow_core::api::ApiMediaOptions {
         enabled: true,
         images: true,
@@ -1049,7 +1028,6 @@ async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
     let mut image = Vec::new();
     std::io::Read::read_to_end(&mut archive.by_name(image_rel).unwrap(), &mut image).unwrap();
     assert_eq!(image, std::fs::read(dir.join(image_rel)).unwrap());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// WeChat's media index (`hardlink.db`) only adds to what the folders of the conversation hold (#651): a better
@@ -1058,7 +1036,7 @@ async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
 #[test]
 fn the_media_index_adds_to_what_the_folders_hold() {
     use weflow_native::fixture::{Fixture, HardlinkSpec};
-    let (hub, root, account, img_dir) = setup("img-hardlink");
+    let (root, hub, account, img_dir) = setup("img-hardlink");
     let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
     let talker = md5_hex("wxid_bob");
     // a month folder the message's month does not name
@@ -1169,7 +1147,6 @@ fn the_media_index_adds_to_what_the_folders_hold() {
     let r = hub.image_decrypt(&later_payload);
     assert!(r.success, "{:?}", r.error);
     assert_eq!(std::fs::read(r.local_path.unwrap()).unwrap(), later_image);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// A video whose file is named otherwise than the message's md5 is not in the month folders under that name; WeChat's
@@ -1177,7 +1154,7 @@ fn the_media_index_adds_to_what_the_folders_hold() {
 #[test]
 fn a_video_the_folders_miss_is_found_through_the_media_index() {
     use weflow_native::fixture::{Fixture, HardlinkSpec, MsgSpec};
-    let (hub, root, account, _img_dir) = setup("video-hardlink");
+    let (root, hub, account, _img_dir) = setup("video-hardlink");
     let at = 1_700_000_000;
     let month = weflow_core::image::year_month_from_create_time(Some(at));
     let folder = account.join("msg/video").join(&month);
@@ -1230,5 +1207,4 @@ fn a_video_the_folders_miss_is_found_through_the_media_index() {
         .video_files_for_message("wxid_bob", "21", Some(at + 1))
         .unwrap();
     assert_eq!(std::fs::read(&kept.video).unwrap(), b"listed video");
-    let _ = std::fs::remove_dir_all(root);
 }
