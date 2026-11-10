@@ -2884,7 +2884,7 @@ fn plain_message_text(msg: &ExportMsg) -> Option<String> {
         return None;
     }
     Some(match msg.local_type {
-        1 => strip_sender_prefix(c),
+        1 => strip_sender_line(c, Some(&msg.sender_username)),
         3 => "[图片]".into(),
         34 => "[语音消息]".into(),
         43 => "[视频]".into(),
@@ -3276,6 +3276,9 @@ mod tests {
         let samples: Vec<(i64, &str, Option<&str>)> = vec![
             (1, "hello", None),
             (1, "wxid_bob:\nhi", None),
+            // a first line that names somebody else is the text's own (#656)
+            (1, "PS:\nsee you", None),
+            (1, "wxid_carol:\nhi", None),
             (1, "1:3-1:6", None),
             (1, "", None),
             (1, "  带空格  ", None),
@@ -3334,6 +3337,10 @@ mod tests {
                 true,
             );
             assert_eq!(fast, full, "type {ty}, content {content:?}");
+            if ty == 1 {
+                let expected = content.strip_prefix("wxid_bob:\n").unwrap_or(content);
+                assert_eq!(fast, expected, "{content:?}");
+            }
         }
         // 含 appmsg / sysmsg / refermsg 的内容不走快速路径
         for k in ["appmsg", "sysmsg", "refermsg"] {

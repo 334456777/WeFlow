@@ -187,6 +187,10 @@ fn message_display_content(m: &ChatMessage) -> Option<String> {
         &m.raw_content
     };
     match m.local_type {
+        // the parsed text has lost the line naming its sender, and only that line (#656)
+        1 if !m.parsed_content.is_empty() => {
+            clean_official(Some(m.parsed_content.trim().to_string()))
+        }
         1 => clean_official(normalize_text(text_source)),
         3 => Some("[图片]".into()),
         34 => Some("[语音]".into()),

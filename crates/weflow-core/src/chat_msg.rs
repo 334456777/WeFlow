@@ -15,7 +15,7 @@ use crate::config::clean_account_dir_name;
 use crate::message::{
     extract_preferred_quoted_text, extract_readable_system_message_text, extract_xml_value,
     looks_like_wxid, parse_voip_message, percent_decode, refermsg_xml, rx, sanitize_quoted_content,
-    strip_sender_prefix,
+    strip_sender_line, strip_sender_prefix,
 };
 
 // ───────────────────────── text helpers ─────────────────────────
@@ -257,8 +257,9 @@ fn parse_type49(content: &str) -> String {
 }
 
 /// `parseMessageContent` of the chat service: the line the chat window shows for any message
-/// ([`ChatMessage::parsed_content`]). The exports word theirs in [`crate::message::parse_message_content`].
-fn parsed_content(content: &str, local_type: i64) -> String {
+/// ([`ChatMessage::parsed_content`]), `sender` the message's ([`ChatMessage::sender_username`]). The exports word
+/// theirs in [`crate::message::parse_message_content`].
+fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
     if content.is_empty() {
         return message_type_label(local_type).into();
     }
@@ -266,7 +267,7 @@ fn parsed_content(content: &str, local_type: i64) -> String {
     let xml_type = extract_xml_value(&content, "type");
     let looks_app = content.contains("<appmsg") || content.contains("&lt;appmsg");
     match local_type {
-        1 => strip_sender_prefix(&content),
+        1 => strip_sender_line(&content, sender),
         3 => "[图片]".into(),
         34 => "[语音消息]".into(),
         42 => "[名片]".into(),
@@ -1211,7 +1212,7 @@ fn chat_message(
             m.quoted_sender = t.quoted_sender;
         }
     }
-    m.parsed_content = parsed_content(&content, local_type);
+    m.parsed_content = parsed_content(&content, local_type, m.sender_username.as_deref());
     m.raw_content = content;
     m.message_key = build_message_key(
         m.local_id,
@@ -1240,27 +1241,35 @@ mod tests {
 
     #[test]
     fn display_text_per_type() {
-        assert_eq!(parsed_content("", 3), "[图片]");
-        assert_eq!(parsed_content("<msg/>", 3), "[图片]");
-        assert_eq!(parsed_content("wxid_a:\nhi", 1), "hi");
-        assert_eq!(parsed_content("123456@openim:\nhi", 1), "hi");
+        assert_eq!(parsed_content("", 3, None), "[图片]");
+        assert_eq!(parsed_content("<msg/>", 3, None), "[图片]");
+        assert_eq!(parsed_content("wxid_a:\nhi", 1, Some("wxid_a")), "hi");
+        assert_eq!(
+            parsed_content("123456@openim:\nhi", 1, Some("123456@openim")),
+            "hi"
+        );
         assert_eq!(
             parsed_content(
                 "<msg><appmsg><title>T</title><type>5</type><url>http://x</url></appmsg></msg>",
-                49
+                49,
+                None
             ),
             "[链接] T"
         );
         assert_eq!(
-            parsed_content("<appmsg><title>f.pdf</title><type>6</type></appmsg>", 49),
+            parsed_content(
+                "<appmsg><title>f.pdf</title><type>6</type></appmsg>",
+                49,
+                None
+            ),
             "[文件] f.pdf"
         );
         assert_eq!(
-            parsed_content("<sysmsg><plain>Bob joined</plain></sysmsg>", 10000),
+            parsed_content("<sysmsg><plain>Bob joined</plain></sysmsg>", 10000, None),
             "Bob joined"
         );
         assert_eq!(
-            parsed_content("<msg><location label=\"Bund\"/></msg>", 48),
+            parsed_content("<msg><location label=\"Bund\"/></msg>", 48, None),
             "[位置] Bund"
         );
     }
@@ -1269,8 +1278,39 @@ mod tests {
     fn text_that_starts_like_a_sender_keeps_its_start() {
         // only `name:` and a line break, or an id, is a sender: a time, a score or a label is the text itself
         for text in ["4:1", "1:3-1:6", "10:1 abc", "PS: see you", "http://x"] {
-            assert_eq!(parsed_content(text, 1), text);
+            assert_eq!(parsed_content(text, 1, None), text);
         }
+        // only a line naming the message's sender is its sender line (#656)
+        assert_eq!(
+            parsed_content("PS:\nsee you", 1, Some("wxid_bob")),
+            "PS:\nsee you"
+        );
+        assert_eq!(
+            parsed_content("wxid_me:\nhi", 1, Some("wxid_bob")),
+            "wxid_me:\nhi"
+        );
+    }
+
+    #[test]
+    fn a_text_message_loses_only_the_line_naming_its_sender() {
+        // as the chat model reads a row: a private message whose first line is `PS:` keeps it, a group message
+        // somebody else sent loses the line naming them (#656)
+        let row = |content: &str, sender: &str| MsgRow {
+            local_type: 1,
+            content: content.into(),
+            sender: Some(sender.into()),
+            ..MsgRow::default()
+        };
+        let messages = map_msg_rows(
+            vec![
+                row("PS:\nsee you", "wxid_bob"),
+                row("wxid_carol:\nhi", "wxid_carol"),
+            ],
+            "room@chatroom",
+            "wxid_me",
+        );
+        assert_eq!(messages[0].parsed_content, "PS:\nsee you");
+        assert_eq!(messages[1].parsed_content, "hi");
     }
 
     #[test]
@@ -1278,13 +1318,16 @@ mod tests {
         let revoke = "<sysmsg type=\"revokemsg\"><revokemsg><session>wxid_bob</session><msgid>12</msgid>\
                       <newmsgid>345</newmsgid><replacemsg><![CDATA[\"Bob\" 撤回了一条消息]]></replacemsg>\
                       </revokemsg></sysmsg>";
-        assert_eq!(parsed_content(revoke, 10000), "\"Bob\" 撤回了一条消息");
         assert_eq!(
-            parsed_content(&format!("room@chatroom:\n{revoke}"), 10000),
+            parsed_content(revoke, 10000, None),
             "\"Bob\" 撤回了一条消息"
         );
         assert_eq!(
-            parsed_content("<?xml version=\"1.0\"?><a>你已添加了 Bob</a>", 10000),
+            parsed_content(&format!("room@chatroom:\n{revoke}"), 10000, None),
+            "\"Bob\" 撤回了一条消息"
+        );
+        assert_eq!(
+            parsed_content("<?xml version=\"1.0\"?><a>你已添加了 Bob</a>", 10000, None),
             "你已添加了 Bob"
         );
         // as the database keeps a revoke: its time is not part of the notice
@@ -1292,16 +1335,17 @@ mod tests {
             parsed_content(
                 "<?xml version=\"1.0\"?><sysmsg type=\"revokemsg\"><revokemsg><content>\"Bob\" 撤回了一条消息</content>\
                  <revoketime>0</revoketime></revokemsg></sysmsg>",
-                10000
+                10000,
+                None
             ),
             "\"Bob\" 撤回了一条消息"
         );
         // a notice in plain text is itself, digits at its end included
         assert_eq!(
-            parsed_content("群聊人数已达 100", 10000),
+            parsed_content("群聊人数已达 100", 10000, None),
             "群聊人数已达 100"
         );
-        assert_eq!(parsed_content("<a></a>", 10000), "[系统消息]");
+        assert_eq!(parsed_content("<a></a>", 10000, None), "[系统消息]");
     }
 
     #[test]
