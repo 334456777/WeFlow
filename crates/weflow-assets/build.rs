@@ -89,7 +89,8 @@ fn include_asset(logical: &str, target: &str) -> bool {
     let is_arm64 = target.contains("aarch64") || target.contains("arm64");
 
     if logical.starts_with("image/win32/") {
-        return is_windows;
+        // image_download.rs loads img_helper.dll on x64 only
+        return is_windows && arch_match(logical, is_arm64);
     }
     if logical.starts_with("key/macos/") {
         // the helpers' source is kept next to them, not embedded
