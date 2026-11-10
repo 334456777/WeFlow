@@ -9,12 +9,13 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
 use weflow_core::contract::API_VERSION;
+use weflow_native::fixture::TestDir;
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -123,12 +124,11 @@ fn answer(mut stream: TcpStream, packages: &HashMap<String, Vec<u8>>) {
     let _ = stream.write_all(&body);
 }
 
-fn temp_root(tag: &str) -> PathBuf {
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("web-versions-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp_root(tag: &str) -> TestDir {
+    TestDir::new_in(
+        Path::new(env!("CARGO_TARGET_TMPDIR")),
+        &format!("web-versions-{tag}"),
+    )
 }
 
 fn weflow(home: &Path, registry: &str) -> Command {

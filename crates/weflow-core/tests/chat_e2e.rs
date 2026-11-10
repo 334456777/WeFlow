@@ -55,7 +55,7 @@ fn images_world(f: &Fixture) {
 
 #[test]
 fn resources_and_images_are_deduplicated() {
-    let (hub, _root, _f) = common::custom_hub("chat-res", images_world);
+    let (_root, hub, _f) = common::custom_hub("chat-res", images_world);
     let images = serde_json::to_value(hub.chat_all_images("wxid_bob").unwrap()).unwrap();
     let list = images["images"].as_array().unwrap();
     assert_eq!(
@@ -167,7 +167,7 @@ fn listed(r: &serde_json::Value) -> Vec<String> {
 
 #[test]
 fn resources_page_across_conversations_from_a_cursor() {
-    let (hub, _root, _f) = common::custom_hub("chat-res-pages", resources_world);
+    let (_root, hub, _f) = common::custom_hub("chat-res-pages", resources_world);
     let all = hub
         .chat_resources(&ResourceQuery {
             limit: 100,
@@ -244,7 +244,7 @@ fn resources_page_across_conversations_from_a_cursor() {
 
 #[test]
 fn anti_revoke_sessions_skip_official_accounts() {
-    let (hub, _root) = common::mock_hub("chat-anti");
+    let (_root, hub) = common::mock_hub("chat-anti");
     let v = hub.chat_anti_revoke_sessions().unwrap();
     assert!(v
         .as_array()
@@ -255,7 +255,7 @@ fn anti_revoke_sessions_skip_official_accounts() {
 
 #[test]
 fn group_hint_roundtrip_and_transfer_names() {
-    let (hub, _root) = common::mock_hub("chat-hint");
+    let (_root, hub) = common::mock_hub("chat-hint");
     assert_eq!(
         serde_json::to_value(hub.group_hint("room1@chatroom").unwrap()).unwrap(),
         json!({})
@@ -272,7 +272,7 @@ fn group_hint_roundtrip_and_transfer_names() {
 #[test]
 fn voice_messages_decode_from_silk_to_a_cached_wav() {
     let (created, server) = (1_700_000_100_i64, 9_007_199_254_740_993_i64);
-    let (hub, _root, _f) = common::custom_hub("voice", |f| {
+    let (_root, hub, _f) = common::custom_hub("voice", |f| {
         f.session_db(&[session("wxid_bob")]);
         // a real SILK stream made by the vendored encoder: one second of a 440 Hz tone
         let silk = weflow_silk::testenc::encode_tone(24000);
@@ -358,7 +358,7 @@ fn voice_messages_decode_from_silk_to_a_cached_wav() {
 
 #[test]
 fn parsed_pages_keep_the_cursors_and_parse_each_kind() {
-    let (hub, _root, _f) = common::custom_hub("parsed", |f| {
+    let (_root, hub, _f) = common::custom_hub("parsed", |f| {
         f.session_db(&[session("wxid_bob")]);
         f.message_shard(
             0,
@@ -442,7 +442,7 @@ fn cursor_of(page: &serde_json::Value, i: usize) -> String {
 
 #[test]
 fn pages_from_a_cursor_follow_the_offset_order() {
-    let (hub, _root, _f) = common::custom_hub("cursor", |f| {
+    let (_root, hub, _f) = common::custom_hub("cursor", |f| {
         f.session_db(&[session("wxid_bob")]);
         let msg = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, &format!("m{id}"));
         f.message_shard(
@@ -532,7 +532,7 @@ fn pages_from_a_cursor_follow_the_offset_order() {
 #[test]
 fn a_message_looked_up_parsed_is_the_one_of_its_page() {
     // a media list knows a message by its local id and time; opening it there needs the page's `_cursor` (#200)
-    let (hub, _root, _f) = common::custom_hub("lookup-parsed", |f| {
+    let (_root, hub, _f) = common::custom_hub("lookup-parsed", |f| {
         f.session_db(&[session("wxid_bob")]);
         let msg = |id: i64, at: i64, text: &str| MsgSpec::text(id, "wxid_bob", at, text);
         f.message_shard(
@@ -566,7 +566,7 @@ fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
     // WeChat orders a chat by sort_seq, the send time in milliseconds plus a little; a message may be ordered a
     // second or two off its own send time (issue #242)
     let t = T0 + 100;
-    let (hub, _root, _f) = common::custom_hub("since-drift", |f| {
+    let (_root, hub, _f) = common::custom_hub("since-drift", |f| {
         f.session_db(&[session("wxid_bob")]);
         let msg = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, &format!("m{id}"));
         f.message_shard(
@@ -628,7 +628,7 @@ fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
 
 #[test]
 fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
-    let (hub, _root, _f) = common::custom_hub("since", |f| {
+    let (_root, hub, _f) = common::custom_hub("since", |f| {
         f.session_db(&[session("wxid_bob")]);
         let msg = |id: i64, at: i64, text: &str| MsgSpec::text(id, "wxid_bob", at, text);
         f.message_shard(

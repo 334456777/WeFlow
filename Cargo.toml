@@ -68,6 +68,8 @@ terminal_size = "0.4"
 rand = "0.10"
 serde_json = { version = "1.0.140", features = ["preserve_order"] }
 sha2 = "0.11.1"
+# the directories of the tests, removed when a test ends (#685)
+tempfile = "3.27"
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "signal", "net"] }
 tower-http = { version = "0.7", default-features = false }

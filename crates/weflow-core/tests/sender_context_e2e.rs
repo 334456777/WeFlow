@@ -10,7 +10,7 @@ use weflow_native::fixture::{ContactSpec, MsgSpec, SessionSpec, T0};
 #[tokio::test]
 async fn sender_prefilter_preserves_revoker_identity_across_shards_and_paths() {
     const ROOM: &str = "room_synthetic@chatroom";
-    let (hub, root, _fixture) = common::custom_hub("sender-context", |f| {
+    let (root, hub, _fixture) = common::custom_hub("sender-context", |f| {
         f.session_db(&[SessionSpec {
             username: ROOM,
             summary: "synthetic",

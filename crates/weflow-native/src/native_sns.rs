@@ -556,14 +556,15 @@ mod tests {
 #[cfg(test)]
 mod fixture_tests {
     use super::*;
-    use crate::fixture::{Fixture, DAY, T0};
+    use crate::fixture::{Fixture, TestDir, DAY, T0};
 
-    fn account(tag: &str) -> NativeAccount {
-        let root = std::env::temp_dir().join(format!("weflow-sns-{}-{tag}", std::process::id()));
+    fn account(tag: &str) -> (TestDir, NativeAccount) {
+        let root = TestDir::new(&format!("weflow-sns-{tag}"));
         let f = Fixture::standard(&root);
-        NativeAccount::new(f.db_storage(), &f.key_hex())
+        let acct = NativeAccount::new(f.db_storage(), &f.key_hex())
             .unwrap()
-            .with_my_wxid(Some("wxid_me_ab12".into()))
+            .with_my_wxid(Some("wxid_me_ab12".into()));
+        (root, acct)
     }
 
     fn descs(posts: &[SnsPost]) -> Vec<&str> {
@@ -572,7 +573,7 @@ mod fixture_tests {
 
     #[test]
     fn timeline_is_newest_first_with_paging_and_filters() {
-        let a = account("timeline");
+        let (_dir, a) = account("timeline");
         let all = a.sns_timeline(0, 0, &[], None, 0, 0).unwrap();
         assert_eq!(
             descs(&all),
@@ -618,7 +619,7 @@ mod fixture_tests {
 
     #[test]
     fn users_and_export_stats() {
-        let a = account("stats");
+        let (_dir, a) = account("stats");
         assert_eq!(
             a.sns_usernames().unwrap(),
             json!(["wxid_bob", "wxid_carol", "wxid_me"]),
@@ -647,7 +648,7 @@ mod fixture_tests {
 
     #[test]
     fn annual_stats_rank_likers_and_liked_friends() {
-        let a = account("annual");
+        let (_dir, a) = account("annual");
         let v = a.sns_annual_stats(0, 0).unwrap();
         assert_eq!(v["totalPosts"], 2, "only the owner's own posts");
         assert_eq!(v["typeCounts"], json!({"1": 1, "2": 1}));

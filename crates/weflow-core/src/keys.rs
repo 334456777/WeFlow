@@ -205,8 +205,7 @@ mod tests {
 
     #[test]
     fn a_scanned_template_yields_cipher_and_xor_key() {
-        let dir = std::env::temp_dir().join(format!("weflow-keys-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = weflow_native::fixture::TestDir::new("weflow-keys");
         std::fs::create_dir_all(dir.join("a/b")).unwrap();
         let mut data = V2_MAGIC.to_vec();
         data.extend_from_slice(&16i32.to_le_bytes());
@@ -227,6 +226,5 @@ mod tests {
         let template = scan.templates.first().expect("the thumbnail is a template");
         assert_eq!(template.cipher[..4], [0, 1, 2, 3]);
         assert_eq!(template.tail_xor, Some(x ^ 0xff));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

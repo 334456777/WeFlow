@@ -422,18 +422,11 @@ fn hex_digest(digest: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
 
-    fn temp_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
-        fs::create_dir_all(&dir).unwrap();
-        dir
+    fn temp_dir(prefix: &str) -> weflow_native::fixture::TestDir {
+        weflow_native::fixture::TestDir::new(prefix)
     }
 
     #[test]
@@ -461,9 +454,6 @@ mod tests {
         assert_eq!(inspected.weflow_version, "1.2.3");
         assert_eq!(inspected.entries.len(), manifest.entries.len());
         assert_eq!(inspected.entries[0].sha256, manifest.entries[0].sha256);
-
-        let _ = fs::remove_dir_all(&account_dir);
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
@@ -498,10 +488,6 @@ mod tests {
             1,
             "no temporary file left behind"
         );
-
-        let _ = fs::remove_dir_all(&account_dir);
-        let _ = fs::remove_dir_all(&out_dir);
-        let _ = fs::remove_dir_all(&restore_dir);
     }
 
     /// The media of WeChat 4.x (`msg/attach`, `msg/video`, `msg/file`) and WeFlow's sticker cache come in only when
@@ -582,9 +568,6 @@ mod tests {
             fs::read(target.join("msg/video/2024-01/abc.mp4")).unwrap(),
             b"video"
         );
-        for dir in [account_dir, emoji_dir, out_dir, target, cache] {
-            let _ = fs::remove_dir_all(dir);
-        }
     }
 
     /// Write an archive holding `files` and a manifest listing `listed` as (path, content the hash is taken from).
@@ -649,7 +632,6 @@ mod tests {
             }
             assert!(!outside.exists(), "{name} escaped the target folder");
         }
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -663,7 +645,6 @@ mod tests {
         let missing = hand_made_archive(&dir, &[], &[("gone.txt", b"x")]);
         assert!(restore_err(&missing, &target).contains("missing from the archive"));
         assert_eq!(fs::read_dir(&target).unwrap().count(), 0);
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -681,7 +662,6 @@ mod tests {
         assert!(restore_err(&archive, &target).contains("sha256 mismatch for second.txt"));
         assert_eq!(fs::read(target.join("first.txt")).unwrap(), b"old first");
         assert!(!target.join("second.txt").exists());
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[cfg(unix)]
@@ -701,6 +681,5 @@ mod tests {
         );
         assert!(restore_err(&archive, &target).contains("refusing to restore through the link"));
         assert_eq!(fs::read_dir(&elsewhere).unwrap().count(), 0);
-        let _ = fs::remove_dir_all(&dir);
     }
 }

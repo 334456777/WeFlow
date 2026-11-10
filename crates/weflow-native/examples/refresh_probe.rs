@@ -1,16 +1,12 @@
 //! Synthetic cache-refresh experiment; requires --features test-fixtures.
 //! It never opens a user's account. All mutations stay in a new temp directory.
 use std::fs::{File, FileTimes};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use weflow_native::fixture::{Fixture, SessionSpec, T0};
+use std::time::Duration;
+use weflow_native::fixture::{Fixture, SessionSpec, TestDir, T0};
 use weflow_native::native_db::NativeAccount;
 
 fn main() -> anyhow::Result<()> {
-    let root = std::env::temp_dir().join(format!(
-        "weflow-refresh-probe-{}-{}",
-        std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
-    ));
+    let root = TestDir::new("weflow-refresh-probe");
     let f = Fixture::new(&root, "wxid_synthetic_ab12");
     let write = |summary| {
         f.session_db(&[SessionSpec {

@@ -87,7 +87,6 @@ fn collection_preserves_loose_sources_and_rejects_unrelated_tokens() {
         serde_json::to_value(result).unwrap(),
         serde_json::to_value(collect_codes(&input)).unwrap()
     );
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -100,7 +99,6 @@ fn selected_account_is_deduplicated_and_siblings_are_excluded() {
         account_identities(Path::new("/private/custom"), Some("plain-id")).len(),
         2
     );
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -134,12 +132,11 @@ fn templates_select_newest_valid_after_scanning_and_report_truncation() {
     assert_eq!(limited.entries_scanned, 4);
     let missing = scan_templates(&root.join("missing"), 100, 32);
     assert_eq!(missing.read_errors, 1);
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn service_acquires_and_decodes_without_native_helpers_or_saved_image_keys() {
-    let (hub, root) = common::mock_hub_with("image-key-rust-service", |p| {
+    let (root, hub) = common::mock_hub_with("image-key-rust-service", |p| {
         p.image_aes_key = None;
         p.image_xor_key = None;
     });
@@ -180,7 +177,6 @@ fn service_acquires_and_decodes_without_native_helpers_or_saved_image_keys() {
     assert!(jpeg_decoder::Decoder::new(decoded.data.as_slice())
         .decode()
         .is_ok());
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -197,7 +193,6 @@ fn aes_header_alone_does_not_verify_xor_or_the_pair() {
     assert_eq!(result["aes_verified"], true);
     assert_eq!(result["xor_verified"], false);
     assert_eq!(result["verified"], false);
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -233,7 +228,6 @@ fn corrupt_jpeg_or_wrong_xor_never_verifies_the_pair() {
             .unwrap()
             .verified
     );
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -259,7 +253,6 @@ fn acquisition_errors_are_distinct_and_multiple_pairs_are_ambiguous() {
         .unwrap()
         .to_string()
         .contains("image_aes_key"));
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -278,7 +271,6 @@ fn fully_verified_pair_outranks_an_aes_header_only_match() {
     assert_eq!(result["image_aes_key"], aes);
     assert_eq!(result["image_xor_key"], xor);
     assert_eq!(result["verified"], true);
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[cfg(unix)]
@@ -290,5 +282,4 @@ fn templates_are_found_through_a_symlinked_account_root() {
     let link = root.join("link");
     std::os::unix::fs::symlink(&real, &link).unwrap();
     assert_eq!(scan_templates(&link, 100, 32).valid_templates, 1);
-    fs::remove_dir_all(root).unwrap();
 }

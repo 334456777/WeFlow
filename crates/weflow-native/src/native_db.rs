@@ -591,8 +591,8 @@ mod tests {
 
     #[test]
     fn the_databases_of_a_chat_page_open_at_once() {
-        use crate::fixture::{Fixture, SessionSpec, T0};
-        let root = std::env::temp_dir().join(format!("weflow-warm-{}", std::process::id()));
+        use crate::fixture::{Fixture, SessionSpec, TestDir, T0};
+        let root = TestDir::new("weflow-warm");
         let f = Fixture::new(&root, "wxid_me_ab12");
         f.session_db(&[SessionSpec {
             username: "wxid_bob",
@@ -618,6 +618,5 @@ mod tests {
         // a database that cannot be opened is skipped
         let missing = acct.db_path("message/message_9.db");
         assert_eq!(acct.warm(&[missing]), 0);
-        let _ = std::fs::remove_dir_all(&root);
     }
 }

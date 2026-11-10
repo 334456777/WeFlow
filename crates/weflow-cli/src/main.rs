@@ -4281,8 +4281,7 @@ mod tests {
 
     #[test]
     fn saved_keys_go_to_the_profile() {
-        let dir = std::env::temp_dir().join(format!("weflow-key-save-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = weflow_native::fixture::TestDir::new("weflow-key-save");
         let path = dir.join("config.json");
         let saved = save_keys(
             &path,
@@ -4297,7 +4296,6 @@ mod tests {
         let profile = config.profile(None).unwrap();
         assert_eq!(profile.image_xor_key, Some(83));
         assert_eq!(profile.image_aes_key.as_deref(), Some("0123456789abcdef"));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

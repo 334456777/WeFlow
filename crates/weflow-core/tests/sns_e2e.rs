@@ -76,7 +76,7 @@ fn encrypt(mut data: Vec<u8>, key: &str, limit: Option<usize>) -> Vec<u8> {
 
 #[test]
 fn stats_usernames_and_caches() {
-    let (hub, _root) = common::mock_hub("sns-stats");
+    let (_root, hub) = common::mock_hub("sns-stats");
     assert_eq!(
         hub.sns_usernames_list().unwrap(),
         vec!["wxid_bob", "wxid_carol", "wxid_me"]
@@ -101,7 +101,7 @@ fn stats_usernames_and_caches() {
 
 #[test]
 fn image_and_video_media_are_decrypted_and_cached() {
-    let (hub, _root) = common::mock_hub("sns-media");
+    let (_root, hub) = common::mock_hub("sns-media");
     let plain = fake_jpeg();
     let mut video_plain = vec![0, 0, 0, 0x18];
     video_plain.extend_from_slice(b"ftypmp42");
@@ -174,7 +174,7 @@ fn image_and_video_media_are_decrypted_and_cached() {
 
 #[test]
 fn media_the_timeline_cannot_fetch_point_at_the_route_of_sns_media() {
-    let (hub, _root) = common::mock_hub("sns-with-media");
+    let (_root, hub) = common::mock_hub("sns-with-media");
     let base = serve(vec![]);
     let mut posts = hub
         .sns_timeline_query(&SnsTimelineQuery {
@@ -214,7 +214,7 @@ fn media_the_timeline_cannot_fetch_point_at_the_route_of_sns_media() {
 fn emoji_download_decrypts_with_aes_key() {
     use aes_gcm::aead::Aead;
     use aes_gcm::{Aes128Gcm, KeyInit, Nonce};
-    let (hub, _root) = common::mock_hub("sns-emoji");
+    let (_root, hub) = common::mock_hub("sns-emoji");
     let key = [3u8; 16];
     let nonce = [5u8; 12];
     let mut gif = b"GIF89a".to_vec();
@@ -251,7 +251,7 @@ fn exports_json_html_and_arkmejson() {
         <user_comment><comment_id>1</comment_id><username>wxid_carol</username><nickname>Carol</nickname><content>nice</content><ref_comment_id>0</ref_comment_id></user_comment>\
         <user_comment><comment_id>2</comment_id><username>wxid_bob</username><nickname>Bob</nickname><content>thx</content><ref_comment_id>1</ref_comment_id></user_comment>\
         </comment_user_list>";
-    let (hub, root, _f) = common::custom_hub("sns-export", |f| {
+    let (root, hub, _f) = common::custom_hub("sns-export", |f| {
         f.session_db(&[SessionSpec {
             username: "wxid_bob",
             summary: "",
@@ -344,7 +344,7 @@ fn exports_json_html_and_arkmejson() {
 
 #[test]
 fn debug_resource_reports_status_and_decryption_headers() {
-    let (hub, _root) = common::mock_hub("sns-debug");
+    let (_root, hub) = common::mock_hub("sns-debug");
     let base = serve(vec![(
         "/res",
         vec![

@@ -4,7 +4,7 @@ use weflow_core::contract::ContactKind;
 
 #[test]
 fn sessions_are_filtered_and_named() {
-    let (hub, _root) = common::mock_hub("sessions-list");
+    let (_root, hub) = common::mock_hub("sessions-list");
     let sessions = hub.chat_sessions_list().unwrap();
     let find = |u: &str| sessions.iter().find(|s| s.username == u);
     let bob = find("wxid_bob").unwrap();
@@ -16,7 +16,7 @@ fn sessions_are_filtered_and_named() {
 
 #[test]
 fn contacts_are_classified() {
-    let (hub, _root) = common::mock_hub("contacts-list");
+    let (_root, hub) = common::mock_hub("contacts-list");
     let contacts = hub.chat_contacts_parsed().unwrap();
     let find = |u: &str| contacts.iter().find(|c| c.username == u);
     assert_eq!(find("wxid_bob").unwrap().kind, ContactKind::Friend);

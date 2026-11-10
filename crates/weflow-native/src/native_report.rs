@@ -871,20 +871,21 @@ impl Segment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixture::{Fixture, MsgSpec, SessionSpec, DAY, T0};
+    use crate::fixture::{Fixture, MsgSpec, SessionSpec, TestDir, DAY, T0};
 
-    fn world(tag: &str, sessions: &[SessionSpec], shard: &[(&str, Vec<MsgSpec>)]) -> NativeAccount {
-        // tests run in parallel and several build the same world: every call gets its own directory
-        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let root =
-            std::env::temp_dir().join(format!("weflow-report-{}-{tag}-{n}", std::process::id()));
+    fn world(
+        tag: &str,
+        sessions: &[SessionSpec],
+        shard: &[(&str, Vec<MsgSpec>)],
+    ) -> (TestDir, NativeAccount) {
+        let root = TestDir::new(&format!("weflow-report-{tag}"));
         let f = Fixture::new(&root, "wxid_me_ab12");
         f.session_db(sessions);
         f.message_shard(0, shard);
-        NativeAccount::new(f.db_storage(), &f.key_hex())
+        let acct = NativeAccount::new(f.db_storage(), &f.key_hex())
             .unwrap()
-            .with_my_wxid(Some("wxid_me_ab12".into()))
+            .with_my_wxid(Some("wxid_me_ab12".into()));
+        (root, acct)
     }
 
     fn session(username: &'static str) -> SessionSpec<'static> {
@@ -897,7 +898,7 @@ mod tests {
         }
     }
 
-    fn dual() -> NativeAccount {
+    fn dual() -> (TestDir, NativeAccount) {
         let m = |id, who: &'static str, dt: i64, text: &str| MsgSpec::text(id, who, T0 + dt, text);
         world(
             "dual",
@@ -922,7 +923,7 @@ mod tests {
 
     #[test]
     fn dual_report_counts_words_and_kinds() {
-        let v = dual().dual_report_stats("wxid_pal", 0, 0).unwrap();
+        let v = dual().1.dual_report_stats("wxid_pal", 0, 0).unwrap();
         assert_eq!(
             v["counts"],
             json!({"total": 10, "words": 18, "image": 1, "voice": 1, "emoji": 1})
@@ -956,7 +957,7 @@ mod tests {
 
     #[test]
     fn dual_report_initiative_and_response_follow_the_one_hour_rule() {
-        let v = dual().dual_report_stats("wxid_pal", 0, 0).unwrap();
+        let v = dual().1.dual_report_stats("wxid_pal", 0, 0).unwrap();
         // conversations start at messages 1 (pal), 5 (me), 7 (me), 9 (pal)
         assert_eq!(v["initiative"], json!({"initiated": 2, "received": 2}));
         // my replies to pal inside a conversation: 10 s, 10 s and 5 s
@@ -968,7 +969,7 @@ mod tests {
 
     #[test]
     fn dual_report_phrases_and_streak() {
-        let v = dual().dual_report_stats("wxid_pal", 0, 0).unwrap();
+        let v = dual().1.dual_report_stats("wxid_pal", 0, 0).unwrap();
         assert_eq!(
             v["phrases"],
             json!([{"phrase": "ok", "count": 5}, {"phrase": "haha", "count": 2}])
@@ -989,7 +990,7 @@ mod tests {
 
     #[test]
     fn dual_report_respects_the_range_and_handles_empty_conversations() {
-        let a = dual();
+        let (_dir, a) = dual();
         let v = a.dual_report_stats("wxid_pal", T0 + DAY, 0).unwrap();
         assert_eq!(v["counts"]["total"], 4);
         let none = a.dual_report_stats("nobody", 0, 0).unwrap();
@@ -1014,7 +1015,7 @@ mod tests {
         );
     }
 
-    fn footprint() -> NativeAccount {
+    fn footprint() -> (TestDir, NativeAccount) {
         let at = |who: &str| format!("<msgsource><atuserlist>{who}</atuserlist></msgsource>");
         world(
             "footprint",
@@ -1077,6 +1078,7 @@ mod tests {
     #[test]
     fn footprint_private_sessions_summary_and_segments() {
         let v = footprint()
+            .1
             .footprint_stats(&json!({"myWxid": "wxid_me_ab12"}))
             .unwrap();
         let ids: Vec<&str> = v["private_sessions"]
@@ -1143,6 +1145,7 @@ mod tests {
     #[test]
     fn footprint_mentions_use_the_atuserlist_and_count_at_all() {
         let v = footprint()
+            .1
             .footprint_stats(&json!({"myWxid": "wxid_me_ab12"}))
             .unwrap();
         let got: Vec<(String, i64)> = v["mentions"]
@@ -1182,7 +1185,7 @@ mod tests {
 
     #[test]
     fn footprint_options_limit_scope_and_truncate() {
-        let a = footprint();
+        let (_dir, a) = footprint();
         let v = a
             .footprint_stats(
                 &json!({"begin": T0 + 60, "end": T0 + 150, "mention_limit": 1, "private_limit": 1}),
@@ -1221,7 +1224,7 @@ mod tests {
 
     #[test]
     fn mention_parsing_edge_cases() {
-        let a = account_for_mentions();
+        let (_dir, a) = account_for_mentions();
         assert!(a.mentions_me(
             "<msgsource><atuserlist><![CDATA[wxid_me, wxid_x]]></atuserlist></msgsource>"
         ));
@@ -1239,7 +1242,7 @@ mod tests {
 
     #[test]
     fn annual_extras_follow_the_service_layer_definitions() {
-        let a = dual();
+        let (_dir, a) = dual();
         let v = a
             .annual_report_extras(&ids(&["wxid_pal"]), 0, 0, 0, 0)
             .unwrap();
@@ -1320,7 +1323,7 @@ mod tests {
                 "pong",
             ));
         }
-        let a = world(
+        let (_dir, a) = world(
             "annual-response",
             &[session("wxid_fast"), session("wxid_slow")],
             &[
@@ -1365,7 +1368,7 @@ mod tests {
 
     #[test]
     fn annual_stats_add_month_of_year_counts_per_session() {
-        let a = dual();
+        let (_dir, a) = dual();
         let v = a.annual_report_stats(&ids(&["wxid_pal"]), 0, 0).unwrap();
         let plain = a.aggregate_stats(&ids(&["wxid_pal"]), 0, 0).unwrap();
         assert_eq!(v["total"], plain["total"]);
@@ -1393,7 +1396,8 @@ mod tests {
         );
     }
 
-    fn account_for_mentions() -> NativeAccount {
-        world("mentions", &[], &[]).with_my_wxid(Some("wxid_me".into()))
+    fn account_for_mentions() -> (TestDir, NativeAccount) {
+        let (dir, acct) = world("mentions", &[], &[]);
+        (dir, acct.with_my_wxid(Some("wxid_me".into())))
     }
 }

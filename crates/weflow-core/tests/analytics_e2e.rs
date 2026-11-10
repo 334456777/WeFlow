@@ -17,7 +17,7 @@ fn sum(v: &Value) -> i64 {
 
 #[test]
 fn rankings_and_time_distribution() {
-    let (hub, _root) = common::mock_hub("an-rank");
+    let (_root, hub) = common::mock_hub("an-rank");
     let r = json!(hub.analytics_contact_rankings(10, 0, 0).unwrap());
     assert_eq!(
         r.as_array().unwrap().len(),
@@ -50,7 +50,7 @@ fn rankings_and_time_distribution() {
 
 #[test]
 fn exclusion_list_roundtrip_and_candidates() {
-    let (hub, root) = common::mock_hub("an-exclude");
+    let (root, hub) = common::mock_hub("an-exclude");
     assert!(hub.analytics_excluded_usernames().unwrap().is_empty());
     let cand = hub.analytics_exclude_candidates().unwrap();
     assert!(cand.iter().any(|c| c.username == "wxid_bob"

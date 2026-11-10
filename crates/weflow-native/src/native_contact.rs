@@ -383,11 +383,11 @@ fn decode_hex(s: &str) -> Vec<u8> {
 )]
 mod tests {
     use super::*;
+    use crate::fixture::TestDir;
     use crate::native_db::hex;
     use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
     use crate::sqlcipher::PageCipher;
     use rusqlite::{params, Connection};
-    use std::path::PathBuf;
 
     /// One member entry as stored in `ext_buffer`: field 1 wrapping `0x0a id 0x12 nick 0x18 0`.
     fn entry(id: &str, nick: &str) -> Vec<u8> {
@@ -401,9 +401,8 @@ mod tests {
         out
     }
 
-    fn account(tag: &str) -> (NativeAccount, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("weflow-contact-{}-{tag}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn account(tag: &str) -> (TestDir, NativeAccount) {
+        let dir = TestDir::new(&format!("weflow-contact-{tag}"));
         std::fs::create_dir_all(dir.join("contact")).unwrap();
         let mut ext = vec![0x08, 0x01];
         ext.extend(entry("wxid_bob", "Bobby-in-room"));
@@ -498,7 +497,8 @@ mod tests {
         });
         let cipher = PageCipher::derive(&KEY, &SALT);
         std::fs::write(dir.join("contact/contact.db"), encrypt_db(&db, &cipher)).unwrap();
-        (NativeAccount::new(&dir, &hex(&KEY)).unwrap(), dir)
+        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        (dir, acct)
     }
 
     fn ids(v: &[&str]) -> Vec<String> {
@@ -507,7 +507,7 @@ mod tests {
 
     #[test]
     fn contact_lookups() {
-        let (acct, _d) = account("lookup");
+        let (_d, acct) = account("lookup");
         assert_eq!(acct.contact("wxid_bob").unwrap()["nick_name"], "Bob");
         assert_eq!(acct.contact("nobody").unwrap(), json!({}));
         assert_eq!(acct.contacts().unwrap().as_array().unwrap().len(), 7);
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn type_counts_follow_the_desktop_rules() {
-        let (acct, _d) = account("counts");
+        let (_d, acct) = account("counts");
         // wxid_me + wxid_bob (medianote excluded), one group, one official, one former friend (local_type 0 with a pinyin)
         assert_eq!(
             acct.contact_type_counts().unwrap(),
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn names_avatars_aliases_flags_status() {
-        let (acct, _d) = account("names");
+        let (_d, acct) = account("names");
         let who = ids(&["wxid_bob", "wxid_eve", "nobody"]);
         assert_eq!(
             acct.display_names(&who).unwrap(),
@@ -564,7 +564,7 @@ mod tests {
 
     #[test]
     fn group_membership_owner_and_nicknames() {
-        let (acct, _d) = account("group");
+        let (_d, acct) = account("group");
         let m = acct.group_members("room1@chatroom").unwrap();
         let members = m.as_array().unwrap();
         let names: Vec<&str> = members

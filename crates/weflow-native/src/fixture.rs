@@ -19,6 +19,62 @@ use crate::sqlcipher::PageCipher;
 
 pub mod bench;
 
+/// A directory of one test's own, `<parent>/<prefix>-<random>`, removed with everything in it when dropped, so also
+/// when the test panics. Set `WEFLOW_KEEP_TEST_DIRS` to keep the directories for a look afterwards.
+///
+/// Hold it for as long as anything reads the directory, and drop it after what has files open there: a helper that
+/// returns it next to an account puts it first, `(TestDir, account)`, since the later binding of a pattern is dropped
+/// first.
+#[derive(Debug)]
+pub struct TestDir(tempfile::TempDir);
+
+impl TestDir {
+    /// Creates the directory under the system temp directory.
+    ///
+    /// # Panics
+    ///
+    /// If the directory cannot be created.
+    pub fn new(prefix: &str) -> Self {
+        Self::new_in(&std::env::temp_dir(), prefix)
+    }
+
+    /// Creates the directory under `parent`, which must exist.
+    ///
+    /// # Panics
+    ///
+    /// If the directory cannot be created.
+    #[expect(
+        clippy::expect_used,
+        reason = "a test that has no directory fails by panicking"
+    )]
+    pub fn new_in(parent: &Path, prefix: &str) -> Self {
+        let dir = tempfile::Builder::new()
+            .prefix(&format!("{prefix}-"))
+            .disable_cleanup(std::env::var_os("WEFLOW_KEEP_TEST_DIRS").is_some())
+            .tempdir_in(parent)
+            .expect("the parent directory takes a directory");
+        Self(dir)
+    }
+
+    pub fn path(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+impl std::ops::Deref for TestDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        self.path()
+    }
+}
+
+impl AsRef<Path> for TestDir {
+    fn as_ref(&self) -> &Path {
+        self.path()
+    }
+}
+
 pub struct SessionSpec<'a> {
     pub username: &'a str,
     pub summary: &'a str,
