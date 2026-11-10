@@ -32,6 +32,7 @@
 GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ）是今后增添文档的新地方，也是唯一的地方：不再往仓库里新增文档文件。
 - 只写中文，以技术文档为主，用正式语气书写
 - 根据 issue、PR、注释和代码本身写，要写详细
+- 只写现状，写成最终结论，不写中间过程：不写「原来/原先……」「已删除」「从未起作用」「改为」「从 X 变为 Y」、改动前后的测量对比和改动经过，这些写进 issue 和 PR；「命令-API」#版本 按版本列出破坏性改动，每项也只写一句结果
 - `wiki/` 是 Wiki（`WeFlow.wiki.git`，分支 `master`）的 clone，是独立的 git 仓库：`.gitignore` 把它排除在主仓库之外，`.ignore` 让 ripgrep 等搜索工具仍能搜到它；改 Wiki 时在这个目录里单独提交和推送
 - Wiki 是公开的，隐私规则同样适用
 - 写法要求见 GitHub 的[关于 Wiki 页面](https://docs.github.com/zh/communities/documenting-your-project-with-wikis/about-wikis)：README 是快速介绍，Wiki 写如何使用项目、如何设计项目和核心原则，不重复 README 的内容；按主题组织，同一内容只写在一处，改动页面结构时同步重写 `_Sidebar.md`
