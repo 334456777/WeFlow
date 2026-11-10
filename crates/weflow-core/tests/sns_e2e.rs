@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 use weflow_core::isaac64;
-use weflow_core::services::{Freshness, SnsExportOptions, SnsProxyResult};
+use weflow_core::services::{Freshness, SnsExportOptions, SnsProxyResult, SnsTimelineQuery};
 
 /// (path, extra headers, body)
 type Route = (&'static str, Vec<(&'static str, &'static str)>, Vec<u8>);
@@ -170,6 +170,44 @@ fn image_and_video_media_are_decrypted_and_cached() {
             other => panic!("unexpected {other:?}"),
         }
     });
+}
+
+#[test]
+fn media_the_timeline_cannot_fetch_point_at_the_route_of_sns_media() {
+    let (hub, _root) = common::mock_hub("sns-with-media");
+    let base = serve(vec![]);
+    let mut posts = hub
+        .sns_timeline_query(&SnsTimelineQuery {
+            limit: 1,
+            ..SnsTimelineQuery::default()
+        })
+        .unwrap();
+    let missing = format!("{base}/missing?a=1");
+    posts[0].media =
+        vec![
+            serde_json::from_value(json!({ "url": missing, "thumb": "", "key": " 42 " })).unwrap(),
+        ];
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let posts = rt.block_on(hub.sns_enrich_timeline_media(posts));
+    let media = &posts[0].media[0];
+    // `weflow serve` answers `sns media` at /api/sns/media (#663)
+    let proxy = format!(
+        "/api/sns/media?url={}&key=42",
+        missing
+            .bytes()
+            .map(|b| match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' =>
+                    (b as char).to_string(),
+                _ => format!("%{b:02X}"),
+            })
+            .collect::<String>()
+    );
+    assert_eq!(media.proxy_url.as_deref(), Some(proxy.as_str()));
+    assert_eq!(media.resolved_url.as_deref(), Some(proxy.as_str()));
+    assert_eq!(media.url, proxy);
+    assert_eq!(media.raw_url.as_deref(), Some(missing.as_str()));
+    // an empty address has nothing to fetch or proxy
+    assert_eq!(media.proxy_thumb_url, None);
 }
 
 #[test]

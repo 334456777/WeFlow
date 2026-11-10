@@ -1477,6 +1477,7 @@ impl ServiceHub {
     }
 
     /// What `raw_url` is shown as, and its proxy address: the file as a data URL, else the proxy address for both.
+    /// The proxy address is the route of `sns media` on `weflow serve` (#663).
     async fn resolve_media_url(
         &self,
         raw_url: &str,
@@ -1486,7 +1487,7 @@ impl ServiceHub {
         if target.is_empty() {
             return (None, None);
         }
-        let mut proxy = format!("/api/v1/sns/media/proxy?url={}", url_encode(target));
+        let mut proxy = format!("{SNS_MEDIA_ROUTE}?url={}", url_encode(target));
         if let Some(k) = key {
             proxy.push_str(&format!("&key={}", url_encode(k)));
         }
@@ -1496,6 +1497,9 @@ impl ServiceHub {
         (Some(proxy.clone()), Some(proxy))
     }
 }
+
+/// Where `weflow serve` answers `sns media` in its own process.
+const SNS_MEDIA_ROUTE: &str = "/api/sns/media";
 
 /// `toSnsMediaKey` rendered back to text: trimmed, none when empty.
 fn media_key(key: Option<&str>) -> Option<String> {
