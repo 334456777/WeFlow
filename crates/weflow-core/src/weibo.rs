@@ -37,7 +37,7 @@ pub fn clear_cache() {
 }
 
 /// `normalizeWeiboCookieInput`: a browser-exported JSON cookie array, or a raw `Cookie:` header.
-pub fn normalize_cookie_input(raw: &str) -> Result<String, String> {
+fn normalize_cookie_input(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Ok(String::new());
@@ -94,7 +94,7 @@ pub fn normalize_cookie_input(raw: &str) -> Result<String, String> {
 }
 
 /// `normalizeWeiboUid`: a numeric UID or a `weibo.com/u/<uid>` / `m.weibo.cn/u/<uid>` link.
-pub fn normalize_uid(input: &str) -> Result<String, String> {
+fn normalize_uid(input: &str) -> Result<String, String> {
     let t = input.trim();
     if t.len() >= 5 && t.bytes().all(|b| b.is_ascii_digit()) {
         return Ok(t.to_string());

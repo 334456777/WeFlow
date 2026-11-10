@@ -661,7 +661,8 @@ impl ServiceHub {
         let cards = self.messages("notifymessage", upto, 0)?;
         let mut rows: Vec<(MsgRow, bool)> = own.into_iter().map(|m| (m, true)).collect();
         rows.extend(cards.into_iter().map(|m| {
-            let from_pay = crate::biz::extract_xml_value(&m.content, "fromusername") == PAY_ACCOUNT;
+            let from_pay =
+                crate::message::extract_xml_value(&m.content, "fromusername") == PAY_ACCOUNT;
             (m, from_pay)
         }));
         rows.sort_by_key(|(m, _)| {

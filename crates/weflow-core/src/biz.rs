@@ -1,25 +1,8 @@
 use serde_json::Value;
 
 use crate::contract::{BizArticle, BizMessage, PayRecord};
+use crate::message::extract_xml_value;
 use weflow_native::msg_row::MsgRow;
-
-pub fn extract_xml_value(xml: &str, tag_name: &str) -> String {
-    let pattern = format!("<{}>", tag_name);
-    let close_pattern = format!("</{}>", tag_name);
-    let Some(start) = xml.find(&pattern) else {
-        return String::new();
-    };
-    let content_start = start + pattern.len();
-    let Some(end) = xml[content_start..].find(&close_pattern) else {
-        return String::new();
-    };
-    let content = &xml[content_start..content_start + end];
-    content
-        .replace("<![CDATA[", "")
-        .replace("]]>", "")
-        .trim()
-        .to_string()
-}
 
 fn fallback_or_empty(primary: &str, extract_fn: impl FnOnce() -> String) -> String {
     if primary.is_empty() {
@@ -226,20 +209,6 @@ pub fn parse_pay_records(messages: &[MsgRow]) -> Vec<PayRecord> {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn extracts_xml_value() {
-        let xml = r#"<xml><title>Hello</title><des>World</des></xml>"#;
-        assert_eq!(extract_xml_value(xml, "title"), "Hello");
-        assert_eq!(extract_xml_value(xml, "des"), "World");
-        assert_eq!(extract_xml_value(xml, "missing"), "");
-    }
-
-    #[test]
-    fn strips_cdata() {
-        let xml = r#"<xml><title><![CDATA[My Title]]></title></xml>"#;
-        assert_eq!(extract_xml_value(xml, "title"), "My Title");
-    }
 
     #[test]
     fn parses_pay_xml() {

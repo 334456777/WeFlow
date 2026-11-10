@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use serde_json::{json, Value};
 
 use super::*;
-use crate::api::normalize_unsigned_token;
 use crate::chat_msg;
+use crate::message::unsigned_token;
 
 const VOICE_SAMPLE_RATE: i32 = 24000;
 
@@ -157,7 +157,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let mut create_time = create_time.filter(|t| *t != 0);
         let mut sender: Option<String> = sender.filter(|s| !s.is_empty()).map(str::to_string);
-        let mut server = server_id.map(normalize_unsigned_token).unwrap_or_default();
+        let mut server = server_id.and_then(unsigned_token).unwrap_or_default();
         let strong = create_time.is_some_and(|t| t > 0) && !server.is_empty();
         if !strong {
             // several message databases may hold the local id: the create time, then the voice type, pick one
