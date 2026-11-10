@@ -999,7 +999,6 @@ impl ServiceHub {
                 create_time: Some(msg.create_time).filter(|t| *t != 0),
                 force: true,
                 prefer_file_path: true,
-                hardlink_only: true,
                 ..Default::default()
             };
             let mut path = self.image_decrypt(&payload).local_path;
@@ -1068,7 +1067,8 @@ impl ServiceHub {
         }
         if msg.local_type == 43 && opts.videos {
             let md5 = msg.video_md5.as_deref().filter(|m| !m.is_empty())?;
-            let video = self.video_file_path(md5)?;
+            let xml_md5 = crate::video::parse_video_md5(&msg.raw_content).unwrap_or_default();
+            let video = self.video_file_path(&[md5, &xml_md5])?;
             let ext = video
                 .extension()
                 .and_then(|e| e.to_str())

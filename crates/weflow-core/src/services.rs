@@ -421,12 +421,22 @@ impl ServiceHub {
         format: crate::video::PosterFormat,
     ) -> AppResult<crate::video::VideoInfo> {
         let account_dir = self.account_dir_only()?;
-        Ok(crate::video::video_info(
+        let info = crate::video::video_info(
             &account_dir.join("msg").join("video"),
             md5,
             include_poster,
             format,
-        ))
+        );
+        if info.exists {
+            return Ok(info);
+        }
+        Ok(self
+            .open_wcdb()
+            .ok()
+            .and_then(|wcdb| linked_video(&wcdb, &account_dir, &[md5]))
+            .map_or(info, |files| {
+                crate::video::info_of(&files, include_poster, format)
+            }))
     }
 
     /// The files WeChat keeps of a message's video (`msg/video/<yyyy-mm>/<md5>.mp4`, its cover and thumbnail),
@@ -456,24 +466,32 @@ impl ServiceHub {
             .ok_or_else(|| AppError::runtime("the video message has no md5"))?;
         let month = crate::image::year_month_from_create_time(Some(msg.create_time));
         let account_dir = self.account_dir_only()?;
-        crate::video::video_files(&account_dir.join("msg").join("video"), &md5, &month).ok_or_else(
-            || {
+        let xml_md5 = crate::video::parse_video_md5(&msg.raw_content).unwrap_or_default();
+        crate::video::video_files(&account_dir.join("msg").join("video"), &md5, &month)
+            .or_else(|| linked_video(&wcdb, &account_dir, &[&md5, &xml_md5]))
+            .ok_or_else(|| {
                 AppError::runtime("the video is not on this computer: open it in WeChat first")
                     .with_details(json!({ "failureKind": "not_found" }))
-            },
-        )
+            })
     }
 
-    /// Path of the on-disk video for a message md5, if WeChat stored one.
-    pub(super) fn video_file_path(&self, md5: &str) -> Option<PathBuf> {
+    /// Path of the on-disk video of a message, if WeChat stored one: by the first of `md5s` in the month folders,
+    /// else where WeChat's media index puts one of them.
+    pub(super) fn video_file_path(&self, md5s: &[&str]) -> Option<PathBuf> {
         let account_dir = self.account_dir_only().ok()?;
         let info = crate::video::video_info(
             &account_dir.join("msg").join("video"),
-            md5,
+            md5s.first()?,
             false,
             crate::video::PosterFormat::DataUrl,
         );
-        info.video_url.map(PathBuf::from).filter(|p| p.exists())
+        info.video_url
+            .map(PathBuf::from)
+            .filter(|p| p.exists())
+            .or_else(|| {
+                let wcdb = self.open_wcdb().ok()?;
+                linked_video(&wcdb, &account_dir, md5s).map(|files| files.video)
+            })
     }
 
     /// Who I talked with and replied to, and where I was @-mentioned, between `begin` and `end` (Unix seconds,
@@ -1394,6 +1412,26 @@ impl ServiceHub {
     fn configured_db_path(&self) -> Option<String> {
         self.profile().ok()?.db_path.clone()
     }
+}
+
+/// The files of the video that WeChat's media index (`hardlink.db`) lists for the first of `md5s` that has one on
+/// disk (#651). The month folders miss a video whose file is named otherwise than the message's md5; the index is
+/// asked only after them, because many videos have no row in it.
+fn linked_video(
+    wcdb: &weflow_native::wcdb::Wcdb,
+    account_dir: &Path,
+    md5s: &[&str],
+) -> Option<crate::video::VideoFiles> {
+    md5s.iter()
+        .filter(|md5| !md5.trim().is_empty())
+        .find_map(|md5| {
+            wcdb.video_hardlinks(md5)
+                .ok()?
+                .into_iter()
+                .map(|rel| account_dir.join(rel))
+                .find(|path| path.is_file())
+        })
+        .map(crate::video::files_beside)
 }
 
 /// Account folders of a WeChat data directory (or the folder itself when it is one), with their wxid.

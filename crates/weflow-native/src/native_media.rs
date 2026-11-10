@@ -1,5 +1,7 @@
-//! Message search, media scans, voice data (`media_*.db`) and emoticon lookups (`emoticon.db`).
+//! Message search, media scans, voice data (`media_*.db`), where WeChat's media index puts images and videos
+//! (`hardlink.db`) and emoticon lookups (`emoticon.db`).
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -31,6 +33,12 @@ fn text(row: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string()
+}
+
+/// One folder or file name, as the media index stores them: not empty, not a path and not a step up, so a path
+/// built from them stays under the account directory.
+fn is_plain_name(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', ':'])
 }
 
 fn range_sql(begin: i64, end: i64) -> String {
@@ -914,6 +922,61 @@ impl NativeAccount {
         Ok(Value::Array(out))
     }
 
+    // ── WeChat's media index (`hardlink/hardlink.db`) ──
+
+    /// Every image file WeChat's media index lists, by message md5 (lower case), each md5's newest first, relative
+    /// to the account directory: `msg/attach/<dir1>/<dir2>/Img/<file name>`. The renditions of one image
+    /// (thumbnail, original, HD) share its md5; rows of type 4 name no file. An account without the index lists none.
+    ///
+    /// The whole table at once: WeChat gives it no index on the md5, so looking one md5 up reads all of it.
+    pub fn image_hardlink_index(&self) -> Result<HashMap<String, Vec<PathBuf>>> {
+        let db = self.db_path("hardlink/hardlink.db");
+        if !db.is_file() {
+            return Ok(HashMap::new());
+        }
+        let sql = "select h.md5, h.file_name, a.username as dir1, b.username as dir2 from image_hardlink_info_v4 h \
+                   left join dir2id a on a.rowid = h.dir1 left join dir2id b on b.rowid = h.dir2 \
+                   where h.type <> 4 order by h.modify_time desc";
+        let mut index: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        for row in self.query(&db, sql, &[])? {
+            let parts = [
+                text(&row, "dir1"),
+                text(&row, "dir2"),
+                text(&row, "file_name"),
+            ];
+            let md5 = text(&row, "md5").trim().to_ascii_lowercase();
+            if md5.is_empty() || !parts.iter().all(|p| is_plain_name(p)) {
+                continue;
+            }
+            let [dir1, dir2, name] = &parts;
+            let path: PathBuf = ["msg", "attach", dir1, dir2, "Img", name].iter().collect();
+            index.entry(md5).or_default().push(path);
+        }
+        Ok(index)
+    }
+
+    /// The video files WeChat's media index lists for a message md5, newest first, relative to the account
+    /// directory: `msg/video/<dir1>/<file name>`. The file can be named otherwise than the md5.
+    pub fn video_hardlinks(&self, md5: &str) -> Result<Vec<PathBuf>> {
+        let db = self.db_path("hardlink/hardlink.db");
+        let md5 = md5.trim().to_ascii_lowercase();
+        if md5.is_empty() || !db.is_file() {
+            return Ok(Vec::new());
+        }
+        let sql = "select h.file_name, a.username as dir1 from video_hardlink_info_v4 h \
+                   left join dir2id a on a.rowid = h.dir1 \
+                   where h.md5 = ?1 order by h.modify_time desc";
+        let rows = self.query(&db, sql, &[&md5])?;
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let (dir1, name) = (text(row, "dir1"), text(row, "file_name"));
+                (is_plain_name(&dir1) && is_plain_name(&name))
+                    .then(|| ["msg", "video", &dir1, &name].iter().collect())
+            })
+            .collect())
+    }
+
     // ── emoticons ──
 
     fn emoticon_db(&self) -> PathBuf {
@@ -1545,5 +1608,92 @@ mod tests {
             "store captions prefer Chinese"
         );
         assert_eq!(all.get("ffffffffffffffffffffffffffffffff"), None);
+    }
+
+    #[test]
+    fn the_media_index_names_the_files_of_an_md5_newest_first() {
+        use crate::fixture::HardlinkSpec;
+        use std::path::Path;
+        let root =
+            std::env::temp_dir().join(format!("weflow-media-{}-hardlink", std::process::id()));
+        let f = Fixture::standard(&root);
+        let a = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        // no index: nothing, and no failure
+        assert!(a.image_hardlink_index().unwrap().is_empty());
+        assert!(a
+            .video_hardlinks("11223344556677889900aabbccddeeff")
+            .unwrap()
+            .is_empty());
+
+        let (image, video, talker) = (
+            "aabbccddeeff00112233445566778899",
+            "11223344556677889900aabbccddeeff",
+            "d41d8cd98f00b204e9800998ecf8427e",
+        );
+        f.hardlink_db(&[
+            HardlinkSpec::image(
+                image,
+                "0123456789abcdef0123456789abcdef_t.dat",
+                talker,
+                "2023-11",
+            ),
+            HardlinkSpec {
+                modify_time: T0 + DAY,
+                ..HardlinkSpec::image(
+                    image,
+                    "0123456789abcdef0123456789abcdef_h.dat",
+                    talker,
+                    "2023-12",
+                )
+            },
+            // a row of type 4 names no file
+            HardlinkSpec {
+                kind: 4,
+                ..HardlinkSpec::image(image, "0", talker, "2023-11")
+            },
+            // a name that would leave its folder is not followed
+            HardlinkSpec::image(image, "../escape.dat", talker, "2023-11"),
+            // an md5 kept in upper case is found in lower case
+            HardlinkSpec::image(
+                "FFEEDDCCBBAA99887766554433221100",
+                "ffeeddccbbaa99887766554433221100.dat",
+                talker,
+                "2023-11",
+            ),
+            HardlinkSpec::video(video, "ffeeddccbbaa99887766554433221100.mp4", "2023-11"),
+        ]);
+        let image_path = |month: &str, name: &str| {
+            Path::new("msg/attach")
+                .join(talker)
+                .join(month)
+                .join("Img")
+                .join(name)
+        };
+        let index = a.image_hardlink_index().unwrap();
+        assert_eq!(
+            index[image],
+            [
+                image_path("2023-12", "0123456789abcdef0123456789abcdef_h.dat"),
+                image_path("2023-11", "0123456789abcdef0123456789abcdef_t.dat"),
+            ]
+        );
+        assert_eq!(
+            index["ffeeddccbbaa99887766554433221100"],
+            [image_path(
+                "2023-11",
+                "ffeeddccbbaa99887766554433221100.dat"
+            )]
+        );
+        // each kind in its own table
+        assert_eq!(index.len(), 2);
+        assert_eq!(
+            a.video_hardlinks(&video.to_uppercase()).unwrap(),
+            [Path::new(
+                "msg/video/2023-11/ffeeddccbbaa99887766554433221100.mp4"
+            )]
+        );
+        assert!(a.video_hardlinks(image).unwrap().is_empty());
+        assert!(a.video_hardlinks(" ").unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(root);
     }
 }

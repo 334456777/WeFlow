@@ -206,16 +206,8 @@ pub fn video_info(
     include_poster: bool,
     format: PosterFormat,
 ) -> VideoInfo {
-    match locate(video_base_dir, md5) {
-        Some(f) => info_for(
-            &f.video,
-            f.cover.as_deref(),
-            f.thumb.as_deref(),
-            include_poster,
-            format,
-        ),
-        None => VideoInfo::default(),
-    }
+    locate(video_base_dir, md5)
+        .map_or_else(VideoInfo::default, |f| info_of(&f, include_poster, format))
 }
 
 /// The files WeChat keeps of a video: the video itself, and where its cover and its small thumbnail are (they
@@ -239,6 +231,32 @@ fn names_of(md5: &str) -> Option<Vec<String>> {
         None => format!("{real}_raw"),
     };
     Some(vec![real, twin])
+}
+
+/// The files of the video file `video`: its cover and its thumbnail are beside it, named after it.
+pub fn files_beside(video: PathBuf) -> VideoFiles {
+    let stem = video
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let base = stem.strip_suffix("_raw").unwrap_or(&stem).to_string();
+    let dir = video.parent().map(Path::to_path_buf).unwrap_or_default();
+    VideoFiles {
+        cover: Some(dir.join(format!("{base}.jpg"))),
+        thumb: Some(dir.join(format!("{base}_thumb.jpg"))),
+        video,
+    }
+}
+
+/// [`video_info`]'s answer for files already found.
+pub fn info_of(files: &VideoFiles, include_poster: bool, format: PosterFormat) -> VideoInfo {
+    info_for(
+        &files.video,
+        files.cover.as_deref(),
+        files.thumb.as_deref(),
+        include_poster,
+        format,
+    )
 }
 
 /// The files of the video `md5` in one month folder.
