@@ -485,7 +485,7 @@ enum ChatSubcommand {
         #[arg(long)]
         extra: bool,
     },
-    /// Mark all sessions as read
+    /// Mark all sessions as read (always refused: the database is read-only)
     MarkRead,
     /// Contact counts per tab (friends, groups, official accounts, former friends)
     TabCounts,

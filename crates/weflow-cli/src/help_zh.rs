@@ -100,7 +100,7 @@ const HELP: &[(&str, &str)] = &[
     ("Look an image up in the cache without decrypting", "在缓存中查找图片，不进行解密"),
     ("Look up one message by local id or server id", "按本地 ID 或服务器 ID 查找一条消息"),
     ("Look up the on-disk video (and optional cover/thumbnail) for a message md5", "按消息 md5 查找磁盘上的视频（以及可选的封面 / 缩略图）"),
-    ("Mark all sessions as read", "将所有会话标为已读"),
+    ("Mark all sessions as read (always refused: the database is read-only)", "将所有会话标为已读（一律拒绝：数据库是只读的）"),
     ("Members panel (friend flag, owner, group nickname, optional message counts)", "成员面板（好友标记、群主、群昵称，可选消息数）"),
     ("Message count per day for a session", "会话每天的消息数"),
     ("Message create time (seconds); selects the year-month folder", "消息创建时间（秒）；用于选择年月文件夹"),
