@@ -12,6 +12,11 @@
 set -euo pipefail
 TARGET=$1
 EXT=$2
+# RUSTFLAGS replaces the rustflags of .cargo/config.toml, so the static C runtime of Windows is repeated here (#676)
+case "$TARGET" in
+  *-windows-msvc) CRT=" -Ctarget-feature=+crt-static" ;;
+  *) CRT="" ;;
+esac
 if [ "$TARGET" = aarch64-pc-windows-msvc ]; then
   cargo build --release -p weflow-cli --bin weflow --target "$TARGET"
   exit
@@ -30,7 +35,7 @@ SYSROOT=$(rustc --print sysroot)
 HOST=$(rustc -vV | sed -n 's/^host: //p')
 PROFDATA="$SYSROOT/lib/rustlib/$HOST/bin/llvm-profdata$EXT"
 
-export RUSTFLAGS="-Cprofile-generate=$RAW"
+export RUSTFLAGS="-Cprofile-generate=$RAW$CRT"
 cargo build --release -p weflow-cli --bin weflow --target "$TARGET" --target-dir "$GEN"
 cargo build --release -p weflow-cli --example bench_account --target "$TARGET" --target-dir "$GEN"
 WEFLOW="$GEN/$TARGET/release/weflow$EXT"
@@ -90,6 +95,6 @@ run biz accounts
 "$PYTHON" .github/scripts/pgo-serve.py "$WEFLOW" "$GROUP" "$FRIEND" || echo "::warning::PGO serve training failed"
 
 "$PROFDATA" merge -o "$WORK/weflow.profdata" "$RAW"
-export RUSTFLAGS="-Cprofile-use=$(abs "$WORK")/weflow.profdata"
+export RUSTFLAGS="-Cprofile-use=$(abs "$WORK")/weflow.profdata$CRT"
 cargo build --release -p weflow-cli --bin weflow --target "$TARGET"
 rm -rf "$GEN" "$WORK"

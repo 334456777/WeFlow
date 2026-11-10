@@ -14,6 +14,7 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - "clippy.toml"
+      - ".cargo/**"
       - "Makefile"
       # the contract the tests keep equal to the answers (#399)
       - "web/contract/**"
@@ -28,6 +29,7 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - "clippy.toml"
+      - ".cargo/**"
       - "Makefile"
       # the contract the tests keep equal to the answers (#399)
       - "web/contract/**"

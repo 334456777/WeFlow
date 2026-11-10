@@ -1,0 +1,8 @@
+# Windows builds link the C runtime statically, so `weflow.exe` starts on a computer without the Visual C++
+# Redistributable (#676). A RUSTFLAGS environment variable replaces these flags instead of adding to them:
+# .github/scripts/pgo-build.sh sets RUSTFLAGS and passes the flag itself.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
