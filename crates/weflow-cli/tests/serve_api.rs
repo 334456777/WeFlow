@@ -2368,6 +2368,164 @@ fn a_session_list_export_keeps_only_the_sessions_named() {
     }
 }
 
+/// A text message loses its first line only when that line names its sender, as WeChat writes the messages a group
+/// receives (#656): a private message or a sent one that starts like `PS:` keeps it, in the terminal, in the
+/// server's reads and in an export.
+#[test]
+fn only_a_first_line_naming_the_sender_is_taken_off_a_text() {
+    use weflow_native::fixture::{MsgSpec, DAY, T0};
+    let root = temp_root("sender-line");
+    let at = T0 + 5 * DAY;
+    let home = account_home_with(&root, |f| {
+        f.message_shard(
+            2,
+            &[
+                (
+                    "wxid_carol",
+                    vec![
+                        MsgSpec::text(1, "wxid_carol", at, "PS:\nthe file is attached"),
+                        MsgSpec::text(2, "wxid_me", at + 60, "Note:\nlater"),
+                    ],
+                ),
+                (
+                    "room1@chatroom",
+                    vec![
+                        MsgSpec::text(10, "wxid_bob", at + 120, "wxid_bob:\nTODO:\nbuy milk"),
+                        MsgSpec::text(11, "wxid_me", at + 180, "Plan:\nmeet at 5"),
+                    ],
+                ),
+            ],
+        );
+    });
+    let expected = [
+        ("wxid_carol", 1, "PS:\nthe file is attached"),
+        ("wxid_carol", 2, "Note:\nlater"),
+        ("room1@chatroom", 10, "TODO:\nbuy milk"),
+        ("room1@chatroom", 11, "Plan:\nmeet at 5"),
+    ];
+    let text_of = |messages: &Value, local_id: i64| {
+        messages["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["localId"] == local_id)
+            .map(|m| m["parsedContent"].as_str().unwrap().to_string())
+            .unwrap_or_else(|| panic!("message {local_id} in {messages}"))
+    };
+
+    let server = start(&home, &["--api-token", TOKEN]);
+    for session in ["wxid_carol", "room1@chatroom"] {
+        let (exit, stdout, stderr) =
+            run_cli(&home, &["--json", "chat", "messages", session, "--parsed"]);
+        assert_eq!(exit, 0, "{stdout}{stderr}");
+        let terminal: Value = serde_json::from_str(&stdout).unwrap();
+        let target = format!(
+            "/api/chat/messages?session-id={}&parsed=true",
+            session.replace('@', "%40")
+        );
+        let own = server.call("GET", &target, "");
+        assert_eq!(own.status, 200, "{target}: {}", own.body);
+        for &(_, local_id, text) in expected.iter().filter(|(s, ..)| *s == session) {
+            assert_eq!(text_of(&terminal, local_id), text, "{session} {local_id}");
+            assert_eq!(text_of(&own.json(), local_id), text, "{target} {local_id}");
+        }
+    }
+
+    // the plain-text export of each conversation writes the same text
+    for session in ["wxid_carol", "room1@chatroom"] {
+        let out = root.join(format!("{}.txt", session.replace('@', "_")));
+        let (exit, stdout, stderr) = run_cli(
+            &home,
+            &[
+                "--json",
+                "export",
+                "messages",
+                session,
+                "--format",
+                "txt",
+                "--out",
+                out.to_str().unwrap(),
+            ],
+        );
+        assert_eq!(exit, 0, "{stdout}{stderr}");
+        let txt = std::fs::read_to_string(&out).unwrap();
+        for &(_, local_id, text) in expected.iter().filter(|(s, ..)| *s == session) {
+            assert!(txt.contains(text), "{session} {local_id}:\n{txt}");
+        }
+        assert!(!txt.contains("wxid_bob:\nTODO"), "{txt}");
+    }
+}
+
+/// The images of a conversation whose username ends like a folder suffix (`name_1998`) are looked for under the
+/// md5 of the whole username first, then under the md5 of the name without the suffix, where the desktop app
+/// looked (#657): both are found, by the server's own reads and by the command it runs.
+#[test]
+fn images_of_a_username_with_a_folder_like_suffix_are_found() {
+    use md5::{Digest, Md5};
+    use weflow_native::fixture::{MsgSpec, DAY, T0};
+    let md5_hex = |s: &str| weflow_native::native_db::hex(&Md5::digest(s.as_bytes()));
+    let root = temp_root("suffixed-session");
+    let at = T0 + 6 * DAY;
+    // (session, the folder its images are under, the image's md5, the image)
+    let cases: Vec<(&'static str, &str, String, Vec<u8>)> =
+        [("name_1998", "name_1998"), ("name_2001", "name")]
+            .into_iter()
+            .enumerate()
+            .map(|(i, (session, folder))| {
+                let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
+                jpeg.extend((0..2000u32).map(|n| (n as u8).wrapping_mul(i as u8 + 3) | 1));
+                (session, folder, md5_hex(session), jpeg)
+            })
+            .collect();
+    let home = account_home_with(&root, |f| {
+        let sessions: Vec<(&str, Vec<MsgSpec>)> = cases
+            .iter()
+            .map(|(session, _, image_md5, _)| {
+                let xml = format!("<msg><img md5=\"{image_md5}\"/></msg>");
+                (
+                    *session,
+                    vec![MsgSpec::text(1, session, at, &xml).of_type(3)],
+                )
+            })
+            .collect();
+        f.message_shard(2, &sessions);
+        for (_, folder, image_md5, jpeg) in &cases {
+            // an old-style .dat: the whole file XOR-ed
+            let img = f
+                .account_dir
+                .join("msg/attach")
+                .join(md5_hex(folder))
+                .join(weflow_core::image::year_month_from_create_time(Some(at)))
+                .join("Img");
+            std::fs::create_dir_all(&img).unwrap();
+            std::fs::write(
+                img.join(format!("{image_md5}.dat")),
+                jpeg.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
+            )
+            .unwrap();
+        }
+    });
+    let (exit, _, stderr) = run_cli(&home, &["config", "set", "image_xor_key", "90"]);
+    assert_eq!(exit, 0, "{stderr}");
+    let server = start(&home, &["--api-token", TOKEN]);
+    for (session, _, _, jpeg) in &cases {
+        let own = server.call(
+            "GET",
+            &format!("/api/chat/image-data?session-id={session}&msg-id=1&create-time={at}"),
+            "",
+        );
+        assert_eq!(own.status, 200, "{session}: {}", own.body);
+        assert_eq!(&own.bytes, jpeg, "{session}");
+        let child = server.call(
+            "POST",
+            "/chat/image-data?return=file",
+            &json!({ "session-id": session, "msg-id": "1", "create-time": at }).to_string(),
+        );
+        assert_eq!(child.status, 200, "{session}: {}", child.body);
+        assert_eq!(&form_parts(&child)[1].1, jpeg, "{session}");
+    }
+}
+
 #[test]
 fn chat_media_answers_fit_the_contract() {
     use weflow_native::fixture::{DAY, T0};
