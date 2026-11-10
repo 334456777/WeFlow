@@ -97,8 +97,8 @@ pub fn message_type_label(local_type: i64) -> &'static str {
 }
 
 /// The line of a system message: what its `<sysmsg>` says in plain text, else the notice the export reads out of
-/// its XML ([`crate::message::clean_system_message`]: a revoke's `<replacemsg>`, a template, a title), with the
-/// entities decoded and the sender and the XML declaration in front of it dropped.
+/// its XML ([`crate::message::clean_system_message`]: a revoke's notice, a template with its names filled in, a
+/// title), with the entities decoded and the sender and the XML declaration in front of it dropped.
 fn system_message_text(content: &str) -> String {
     if content.is_empty() {
         return "[系统消息]".into();
@@ -1286,6 +1286,15 @@ mod tests {
         assert_eq!(
             parsed_content("<?xml version=\"1.0\"?><a>你已添加了 Bob</a>", 10000),
             "你已添加了 Bob"
+        );
+        // as the database keeps a revoke: its time is not part of the notice
+        assert_eq!(
+            parsed_content(
+                "<?xml version=\"1.0\"?><sysmsg type=\"revokemsg\"><revokemsg><content>\"Bob\" 撤回了一条消息</content>\
+                 <revoketime>0</revoketime></revokemsg></sysmsg>",
+                10000
+            ),
+            "\"Bob\" 撤回了一条消息"
         );
         // a notice in plain text is itself, digits at its end included
         assert_eq!(

@@ -756,11 +756,19 @@ pub fn clean_system_message(content: &str) -> String {
     if let Some(c) = rx(r"(?is)<sysmsg[^>]*>(.*?)</sysmsg>").captures(&content.clone()) {
         content = c[1].to_string();
     }
+    // a revoke as the database keeps it: `<revokemsg><content>…</content><revoketime>…</revoketime></revokemsg>`,
+    // at times with more elements after it. Only the content is the notice
+    if let Some((_, revoke)) = crate::xml::elements(&content, "revokemsg").next() {
+        let notice = extract_xml_value(revoke, "content");
+        if !notice.is_empty() {
+            return notice;
+        }
+    }
     if let Some(c) = rx(r"(?i)<replacemsg><!\[CDATA\[(.*?)\]\]></replacemsg>").captures(&content) {
         return c[1].trim().to_string();
     }
     if let Some(c) = rx(r"(?i)<template><!\[CDATA\[(.*?)\]\]></template>").captures(&content) {
-        let template = c[1].to_string();
+        let template = fill_template_links(&c[1], &content);
         let source = content.clone();
         let replaced = rx(r"\$\{([^}]+)\}").replace_all(&template, |caps: &regex::Captures| {
             let name = regex::escape(&caps[1]);
@@ -793,6 +801,32 @@ pub fn clean_system_message(content: &str) -> String {
     } else {
         stripped
     }
+}
+
+/// The template of a `<sysmsgtemplate>` notice (`"$username$"邀请"$names$"加入了群聊`) with each `$name$` filled from
+/// its `<link name="name">` in `source`: the nicknames of the link's members, joined by its separator. A link without
+/// members is something to click in WeChat (`$revoke$`), and leaves nothing.
+fn fill_template_links(template: &str, source: &str) -> String {
+    let mut text = template.to_string();
+    for (attributes, body) in crate::xml::elements(source, "link") {
+        let Some(name) = rx(r#"(?i)\bname\s*=\s*"([^"]+)""#).captures(attributes) else {
+            continue;
+        };
+        let placeholder = format!("${}$", &name[1]);
+        if !text.contains(&placeholder) {
+            continue;
+        }
+        let nicknames: Vec<String> = crate::xml::elements(body, "member")
+            .map(|(_, member)| extract_xml_value(member, "nickname"))
+            .filter(|nickname| !nickname.is_empty())
+            .collect();
+        let separator = match extract_xml_value(body, "separator") {
+            s if s.is_empty() => "、".to_string(),
+            s => s,
+        };
+        text = text.replace(&placeholder, &nicknames.join(&separator));
+    }
+    text
 }
 
 pub fn extract_readable_system_message_text(content: &str) -> String {
@@ -3308,6 +3342,38 @@ mod tests {
     fn system_messages() {
         let xml = "<sysmsg type=\"revokemsg\"><revokemsg><replacemsg><![CDATA[\"Bob\" 撤回了一条消息]]></replacemsg></revokemsg></sysmsg>";
         assert_eq!(clean_system_message(xml), "\"Bob\" 撤回了一条消息");
+        // as the database keeps a revoke: the time and what follows it are not part of the notice
+        for more in [
+            "",
+            "<extcommoninfo><groupinfo><type>1</type><id>0a1b-2c3d</id><count>2</count></groupinfo>\
+             <media_expire_at>1700000000</media_expire_at></extcommoninfo>",
+        ] {
+            let xml = format!(
+                "<?xml version=\"1.0\"?><sysmsg type=\"revokemsg\"><revokemsg><content>\"Bob\" 撤回了一条消息</content>\
+                 <revoketime>0</revoketime></revokemsg>{more}</sysmsg>"
+            );
+            assert_eq!(clean_system_message(&xml), "\"Bob\" 撤回了一条消息");
+        }
+        // a notice written as a template names its people in the links after it
+        let member = |id: &str, name: &str| {
+            format!("<member><username><![CDATA[{id}]]></username><nickname><![CDATA[{name}]]></nickname></member>")
+        };
+        let invite = format!(
+            "room@chatroom:\n<sysmsg type=\"sysmsgtemplate\"><sysmsgtemplate><content_template type=\"tmpl_type_profile\">\
+             <plain><![CDATA[]]></plain><template><![CDATA[\"$username$\"邀请\"$names$\"加入了群聊  $revoke$]]></template>\
+             <link_list><link name=\"username\" type=\"link_profile\"><memberlist>{}</memberlist></link>\
+             <link name=\"names\" type=\"link_profile\"><memberlist>{}{}</memberlist>\
+             <separator><![CDATA[、]]></separator></link>\
+             <link name=\"revoke\" type=\"link_revoke\"><title><![CDATA[撤销]]></title></link></link_list>\
+             </content_template></sysmsgtemplate></sysmsg>",
+            member("wxid_a", "Alice"),
+            member("wxid_b", "Bob"),
+            member("wxid_c", "Carol"),
+        );
+        assert_eq!(
+            clean_system_message(&invite),
+            "\"Alice\"邀请\"Bob、Carol\"加入了群聊"
+        );
         assert!(is_readable_system_message(10000, "x"));
         let rv = extract_revoker_info("你撤回了一条消息");
         assert!(rv.is_revoke && rv.is_self_revoke);
