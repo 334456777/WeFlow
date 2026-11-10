@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { CaretDown } from '@phosphor-icons/react';
-import { durationMs } from './motion';
+import { springTiming } from './motion';
 import { t } from './i18n';
 
 export interface Card {
@@ -41,10 +41,6 @@ function cardElements(container: HTMLElement | null): HTMLElement[] {
 
 function tops(container: HTMLElement | null): Map<string, number> {
   return new Map(cardElements(container).map(element => [element.dataset.card!, element.getBoundingClientRect().top]));
-}
-
-function snapEasing(): string {
-  return getComputedStyle(document.documentElement).getPropertyValue('--ease-snap').trim() || 'ease';
 }
 
 interface Drag {
@@ -112,12 +108,12 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
       held.offset = held.pointerY - held.grab - layoutTop;
       held.element.style.transform = 'translateY(' + String(held.offset) + 'px)';
     }
-    const duration = durationMs('--duration-panel');
+    const settle = springTiming('settle');
     for (const element of cardElements(container.current)) {
       const id = element.dataset.card!;
       const delta = (previous.tops.get(id) ?? 0) - element.getBoundingClientRect().top;
-      if (id !== previous.skip && duration && Math.abs(delta) >= 1) {
-        element.animate?.([{ transform: 'translateY(' + String(delta) + 'px)' }, { transform: 'translateY(0)' }], { duration, easing: snapEasing() });
+      if (id !== previous.skip && settle.duration && Math.abs(delta) >= 1) {
+        element.animate?.([{ transform: 'translateY(' + String(delta) + 'px)' }, { transform: 'translateY(0)' }], settle);
       }
       if (id === previous.focus) element.querySelector<HTMLElement>('.card-header')?.focus();
     }
@@ -132,10 +128,10 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
     drag.current = null;
     if (!held?.active) return;
     setDragging(null);
-    // Settle into place on the snap curve.
+    // Settle into place on the settle spring.
     held.element.style.transform = '';
-    const duration = durationMs('--duration-panel');
-    if (duration) held.element.animate?.([{ transform: 'translateY(' + String(held.offset) + 'px)' }, { transform: 'translateY(0)' }], { duration, easing: snapEasing() });
+    const settle = springTiming('settle');
+    if (settle.duration) held.element.animate?.([{ transform: 'translateY(' + String(held.offset) + 'px)' }, { transform: 'translateY(0)' }], settle);
   };
 
   function followPointer(event: PointerEvent) {

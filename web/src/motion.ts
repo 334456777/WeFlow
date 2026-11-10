@@ -1,18 +1,55 @@
 // Motion helpers (#193). Durations and curves live in styles/tokens.css; scripts read them from there so the
 // 「减少动画」 switch and `prefers-reduced-motion` (both set the durations to 0ms) apply to scripts too.
 import { useEffect, useState } from 'react';
+import { spring } from 'motion';
 
-/** Spring presets for when Motion for React comes in; CSS approximates them with the curves in tokens.css. */
+/**
+ * The springs of the interface (#652), the one place their parameters are written: Motion traces each as a CSS
+ * `linear()` curve, which {@link installSprings} writes into the `--spring-<name>` tokens the stylesheets animate with.
+ */
 export const springs = {
-  /** Buttons and switches. */
+  /** Buttons and switches: a thumb, a knob, a check, the hover hollow; a little overshoot. */
   control: { stiffness: 600, damping: 30, mass: 1 },
-  /** Popovers and cards opening. */
+  /** Popovers, dialogs and cards opening. */
   overlay: { stiffness: 320, damping: 28, mass: 1 },
-  /** Success, copied and other light feedback. */
+  /** A notice and other light feedback: the most overshoot. */
   feedback: { stiffness: 380, damping: 18, mass: 1 },
-  /** Dragged panels settling, without overshoot. */
+  /** Panels settling: a dragged card, the sidebar folding; no overshoot. */
   settle: { stiffness: 1200, damping: 80, mass: 0.1 },
 } as const;
+
+export type SpringName = keyof typeof springs;
+
+/** A spring as CSS, `<duration>ms linear(…)`: as long as it takes to come to rest, and the curve it traces. */
+export function springCss(name: SpringName): string {
+  return spring({ keyframes: [0, 1], ...springs[name] }).toString();
+}
+
+/**
+ * Writes every spring as its `--spring-<name>` token, and its duration alone as `--spring-<name>-duration` (for a
+ * delay that waits for it), in a stylesheet put before all the others, so that the reduced-motion rules of
+ * tokens.css, later in the cascade, still set the tokens to 0ms. A browser without `linear()` easing gets each
+ * spring's duration on an ease-out curve.
+ */
+export function installSprings(doc: Document = document): void {
+  const linear = typeof CSS !== 'undefined' && CSS.supports?.('transition-timing-function', 'linear(0, 1)');
+  const tokens = (Object.keys(springs) as SpringName[]).map(name => {
+    const css = springCss(name);
+    const duration = css.slice(0, css.indexOf(' '));
+    return '--spring-' + name + ': ' + (linear ? css : duration + ' ease-out') + '; --spring-' + name + '-duration: ' + duration + ';';
+  });
+  const style = doc.getElementById('weflow-springs') ?? doc.createElement('style');
+  style.id = 'weflow-springs';
+  style.textContent = ':root { ' + tokens.join(' ') + ' }';
+  doc.head.prepend(style);
+}
+
+/** A spring token as the Web Animations API takes it; a duration of 0 with reduced motion or without the token. */
+export function springTiming(name: SpringName, element: Element = document.documentElement): { duration: number; easing: string } {
+  const value = getComputedStyle(element).getPropertyValue('--spring-' + name).trim();
+  const space = value.indexOf(' ');
+  return { duration: durationMs('--spring-' + name, element), easing: space < 0 ? 'linear' : value.slice(space + 1) };
+}
 
 /** How long a success mark, a notice or a located message stays marked. Kept with reduced motion. */
 export const FEEDBACK_MS = 2500;
@@ -22,9 +59,12 @@ export function prefersReducedMotion(setting: boolean): boolean {
   return setting || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 }
 
-/** Reads a duration token such as `--duration-exit` in milliseconds; 0 when it is missing. */
+/**
+ * Reads a duration token such as `--duration-exit` in milliseconds, or the duration a `--spring-<name>` token starts
+ * with; 0 when it is missing.
+ */
 export function durationMs(token: string, element: Element = document.documentElement): number {
-  const value = getComputedStyle(element).getPropertyValue(token).trim();
+  const value = getComputedStyle(element).getPropertyValue(token).trim().split(/\s+/)[0] ?? '';
   const amount = Number.parseFloat(value);
   if (!Number.isFinite(amount)) return 0;
   return value.endsWith('ms') ? amount : value.endsWith('s') ? amount * 1000 : 0;
