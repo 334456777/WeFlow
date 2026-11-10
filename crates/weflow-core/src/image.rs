@@ -175,26 +175,41 @@ pub fn year_month_from_create_time(create_time: Option<i64>) -> String {
     }
 }
 
-/// `resolveSessionDirForStorage`: WeChat stores chat attachments under `md5(username)`.
+/// `resolveSessionDirForStorage`: WeChat stores chat attachments under `md5(username)`, the username lower-cased.
+/// The first of [`session_dirs_for_storage`]; empty for an empty username.
 pub fn session_dir_for_storage(session_id: &str) -> String {
-    use md5::{Digest, Md5};
+    session_dirs_for_storage(session_id)
+        .into_iter()
+        .next()
+        .unwrap_or_default()
+}
+
+/// The folders under `msg/attach` a conversation's attachments may be in, the likelier first (#657): `md5` of the
+/// whole username, then, when an account folder's suffix (`clean_account_dir_name`) can be cut off it, `md5` of
+/// what is left, the folder the desktop app looked in. A username that is already an md5 is its own folder.
+pub fn session_dirs_for_storage(session_id: &str) -> Vec<String> {
     let normalized = session_id.trim().to_lowercase();
     if normalized.is_empty() {
-        return String::new();
+        return Vec::new();
     }
     if looks_like_md5(&normalized) {
-        return normalized;
+        return vec![normalized];
     }
+    let mut dirs = vec![md5_hex(&normalized)];
     let cleaned = crate::config::clean_account_dir_name(&normalized).to_lowercase();
-    if looks_like_md5(&cleaned) {
-        return cleaned;
+    if !cleaned.is_empty() && cleaned != normalized {
+        dirs.push(if looks_like_md5(&cleaned) {
+            cleaned
+        } else {
+            md5_hex(&cleaned)
+        });
     }
-    let src = if cleaned.is_empty() {
-        &normalized
-    } else {
-        &cleaned
-    };
-    Md5::digest(src.as_bytes())
+    dirs
+}
+
+fn md5_hex(text: &str) -> String {
+    use md5::{Digest, Md5};
+    Md5::digest(text.as_bytes())
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
@@ -636,6 +651,21 @@ mod tests {
         );
         assert_eq!(session_dir_for_storage(MD5), MD5);
         assert_eq!(session_dir_for_storage(""), "");
+        // a username ending like an account folder is looked for whole first, then cut as the desktop app did (#657)
+        assert_eq!(
+            session_dirs_for_storage("name_1998"),
+            [md5_hex("name_1998"), md5_hex("name")]
+        );
+        assert_eq!(
+            session_dirs_for_storage("wxid_abc_1a2b"),
+            [md5_hex("wxid_abc_1a2b"), md5_hex("wxid_abc")]
+        );
+        assert_eq!(
+            session_dirs_for_storage(&format!("{MD5}_1a2b")),
+            [md5_hex(&format!("{MD5}_1a2b")), MD5.to_string()]
+        );
+        assert_eq!(session_dirs_for_storage("123@chatroom").len(), 1);
+        assert!(session_dirs_for_storage("  ").is_empty());
     }
 
     #[test]
