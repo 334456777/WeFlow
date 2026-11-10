@@ -11,6 +11,8 @@ name: Release
 # every target: the test suite, and the packaged binary run once and checked against the tag), release (only after
 # every build and test passed). v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1,
 # v1.2.3-rc1, ...) is a pre-release.
+# A test tag (test.<name>, pushed or given to a manual run) runs prepare, build and test the same way and publishes
+# nothing: no release, no tag, no benchmark. Its packages stay on the run as artifacts.
 # A manual run with `bench` also runs bench.yml after the release (#516, #601): `bench_base` and the tag, by default
 # the previous release, each measured on the benchmark runner unless already measured; the link to their comparison
 # in the viewer on GitHub Pages, with a few lines, goes into the release notes.
@@ -18,10 +20,11 @@ on:
   push:
     tags:
       - "v*"
+      - "test.*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release, e.g. v2.1.2 (created as an annotated tag on the selected branch if it does not exist)"
+        description: "Tag to release, e.g. v2.1.2 (created as an annotated tag on the selected branch if it does not exist); test.<name> builds and tests without publishing"
         required: true
         type: string
       notes:
@@ -57,6 +60,7 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
       sha: ${{ steps.tag.outputs.sha }}
       new: ${{ steps.tag.outputs.new }}
+      test: ${{ steps.tag.outputs.test }}
       bench_base: ${{ steps.bench.outputs.bench_base }}
     steps:
       - uses: actions/checkout@v7
@@ -72,7 +76,7 @@ jobs:
 
       - id: bench
         name: Pick the benchmark base
-        if: inputs.bench
+        if: inputs.bench && steps.tag.outputs.test != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -265,6 +269,7 @@ jobs:
   release:
     name: Publish release
     needs: [prepare, build, test]
+    if: needs.prepare.outputs.test != 'true'
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
