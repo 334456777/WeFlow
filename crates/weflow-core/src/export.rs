@@ -6,119 +6,6 @@ use serde_json::{json, Value};
 
 use crate::locale::{self, Lang};
 
-pub fn export_html(
-    title: &str,
-    messages: &Value,
-    contacts_value: &Value,
-    out: &Path,
-) -> Result<()> {
-    let contact_map = build_contact_map(contacts_value);
-    let items = messages.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
-    let mut body = String::new();
-    for (idx, msg) in items.iter().enumerate() {
-        let sender = msg
-            .get("sender")
-            .or_else(|| msg.get("from"))
-            .or_else(|| msg.get("talker"))
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        let nickname = contact_map
-            .get(sender)
-            .cloned()
-            .unwrap_or_else(|| sender.to_string());
-        let content = msg
-            .get("content")
-            .or_else(|| msg.get("text"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let time = msg
-            .get("createTime")
-            .or_else(|| msg.get("create_time"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let msg_type = msg
-            .get("type")
-            .or_else(|| msg.get("msgType"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let type_label = message_type_label(msg_type);
-        let is_self = msg
-            .get("isSelf")
-            .or_else(|| msg.get("is_sent"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let align = if is_self { "right" } else { "left" };
-        let time_str = format_timestamp(time);
-        let escaped = html_escape(content);
-        body.push_str(&format!(
-            r#"<div class="msg {align}"><div class="sender">{nickname}</div><div class="bubble"><span class="type">{type_label}</span>{escaped}</div><div class="time">{time_str}</div></div>"#,
-        ));
-        if idx > 0 && idx % 100 == 0 {
-            body.push('\n');
-        }
-    }
-
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title><style>
-body{{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:800px;margin:0 auto;padding:20px;background:#f5f5f5}}
-.msg{{margin:10px 0;padding:10px 15px;border-radius:12px;max-width:70%;clear:both}}
-.msg.left{{float:left;background:white;box-shadow:0 1px 2px rgba(0,0,0,.1)}}
-.msg.right{{float:right;background:#95ec69;box-shadow:0 1px 2px rgba(0,0,0,.1)}}
-.sender{{font-size:12px;color:#888;margin-bottom:4px}}
-.bubble{{word-wrap:break-word;white-space:pre-wrap}}
-.type{{display:inline-block;font-size:10px;background:#eee;padding:1px 4px;border-radius:3px;margin-right:4px}}
-.time{{font-size:11px;color:#aaa;margin-top:4px;text-align:right}}
-.container{{overflow:hidden}}
-</style></head><body><h2>{title}</h2><div class="container">{body}</div></body></html>"#,
-    );
-    write_file(out, &html)
-}
-
-pub fn export_excel(messages: &Value, out: &Path) -> Result<()> {
-    let items = messages.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
-    let mut workbook = rust_xlsxwriter::Workbook::new();
-    let worksheet = workbook.add_worksheet();
-    let header_format = rust_xlsxwriter::Format::new().set_bold();
-    let headers = match locale::current() {
-        Lang::En => ["No.", "Time", "Sender", "Message type", "Content"],
-        Lang::Zh => ["序号", "时间", "发送者", "消息类型", "内容"],
-    };
-    for (col, header) in headers.iter().enumerate() {
-        worksheet.write_string_with_format(0, u16::try_from(col)?, *header, &header_format)?;
-    }
-    for (row, msg) in items.iter().enumerate() {
-        let r = u32::try_from(row + 1)?;
-        worksheet.write_number(r, 0, (row + 1) as f64)?;
-        let time = msg
-            .get("createTime")
-            .or_else(|| msg.get("create_time"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        worksheet.write_string(r, 1, format_timestamp(time))?;
-        let sender = msg
-            .get("sender")
-            .or_else(|| msg.get("from"))
-            .or_else(|| msg.get("talker"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        worksheet.write_string(r, 2, sender)?;
-        let msg_type = msg
-            .get("type")
-            .or_else(|| msg.get("msgType"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        worksheet.write_string(r, 3, message_type_label(msg_type))?;
-        let content = msg
-            .get("content")
-            .or_else(|| msg.get("text"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        worksheet.write_string(r, 4, content)?;
-    }
-    workbook.save(out)?;
-    Ok(())
-}
-
 /// The footprint (`export footprint`) as a timeline, for CSV and Excel (#315): the column names, and a row for each
 /// private-chat segment and each message that @-mentions me, oldest first. `names` gives conversations' and senders'
 /// names by username.
@@ -219,13 +106,181 @@ pub fn footprint_timeline(
     )
 }
 
+/// A list of objects (`export sessions`, `export contacts`) as a table (#659): the columns are the rows' keys in the
+/// order they first appear, and a row has `Null` in the columns it has no key for. What is not a list of objects
+/// gives no columns and no rows.
+pub fn list_table(list: &Value) -> (Vec<String>, Vec<Vec<Value>>) {
+    let objects: Vec<&serde_json::Map<String, Value>> = list
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .collect();
+    let mut columns: Vec<String> = Vec::new();
+    for object in &objects {
+        for key in object.keys() {
+            if !columns.contains(key) {
+                columns.push(key.clone());
+            }
+        }
+    }
+    let rows = objects
+        .iter()
+        .map(|object| {
+            columns
+                .iter()
+                .map(|column| object.get(column).cloned().unwrap_or(Value::Null))
+                .collect()
+        })
+        .collect();
+    (columns, rows)
+}
+
+/// A cell as text: a string as it is, nothing for `Null`, anything else as JSON.
+fn cell_text(value: &Value) -> std::borrow::Cow<'_, str> {
+    match value {
+        Value::String(text) => text.into(),
+        Value::Null => "".into(),
+        other => other.to_string().into(),
+    }
+}
+
+/// A table as an HTML page: `title` as the heading, the header row, then a line for each row. Every cell is text,
+/// so an address in a cell is shown and not loaded.
+pub fn export_table_html(
+    title: &str,
+    headers: &[impl AsRef<str>],
+    rows: &[Vec<Value>],
+    out: &Path,
+) -> Result<()> {
+    write_file(out, &table_html(title, headers, rows))
+}
+
+fn table_html(title: &str, headers: &[impl AsRef<str>], rows: &[Vec<Value>]) -> String {
+    let title = html_escape(title);
+    let mut html = format!(
+        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title><style>
+body{{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:20px}}
+table{{border-collapse:collapse}}
+th,td{{border:1px solid #ddd;padding:4px 8px;text-align:left;vertical-align:top;white-space:pre-wrap}}
+th{{background:#f5f5f5;position:sticky;top:0}}
+</style></head><body><h2>{title}</h2><table><thead><tr>"#
+    );
+    for header in headers {
+        html.push_str(&format!("<th>{}</th>", html_escape(header.as_ref())));
+    }
+    html.push_str("</tr></thead><tbody>\n");
+    for row in rows {
+        html.push_str("<tr>");
+        for cell in row {
+            html.push_str(&format!("<td>{}</td>", html_escape(&cell_text(cell))));
+        }
+        html.push_str("</tr>\n");
+    }
+    html.push_str("</tbody></table></body></html>\n");
+    html
+}
+
+/// A table as SQL in SQLite's dialect: `CREATE TABLE` with a column for each header, then an `INSERT` for each row.
+/// A column that holds only whole numbers and booleans is `INTEGER` (a boolean is 1 or 0), one that holds only
+/// numbers and booleans `REAL`, any other `TEXT`; `Null` is `NULL`. A table without columns is a comment saying so.
+pub fn export_table_sql(
+    table: &str,
+    headers: &[impl AsRef<str>],
+    rows: &[Vec<Value>],
+    out: &Path,
+) -> Result<()> {
+    write_file(out, &table_sql(table, headers, rows))
+}
+
+fn table_sql(table: &str, headers: &[impl AsRef<str>], rows: &[Vec<Value>]) -> String {
+    let quoted = |name: &str| format!("\"{}\"", name.replace('"', "\"\""));
+    let table = quoted(table);
+    if headers.is_empty() {
+        return format!("-- {table}: nothing to export\n");
+    }
+    let types: Vec<SqlType> = (0..headers.len())
+        .map(|column| SqlType::of(rows.iter().filter_map(|row| row.get(column))))
+        .collect();
+    let names: Vec<String> = headers.iter().map(|h| quoted(h.as_ref())).collect();
+    let columns = names
+        .iter()
+        .zip(&types)
+        .map(|(name, kind)| format!("\t{name} {}", kind.name()))
+        .collect::<Vec<_>>()
+        .join(",\n");
+    let mut sql = format!("CREATE TABLE IF NOT EXISTS {table} (\n{columns}\n);\n\n");
+    let names = names.join(", ");
+    for row in rows {
+        let values = row
+            .iter()
+            .zip(&types)
+            .map(|(value, kind)| kind.literal(value))
+            .collect::<Vec<_>>()
+            .join(", ");
+        sql.push_str(&format!(
+            "INSERT INTO {table} ({names}) VALUES ({values});\n"
+        ));
+    }
+    sql
+}
+
+/// The type of a column of [`table_sql`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SqlType {
+    Integer,
+    Real,
+    Text,
+}
+
+impl SqlType {
+    /// The type that holds every one of `values`; `Text` when there is none but `Null`.
+    fn of<'a>(values: impl Iterator<Item = &'a Value>) -> Self {
+        let mut found = None;
+        for value in values {
+            match value {
+                Value::Null => {}
+                Value::Bool(_) => found = found.or(Some(Self::Integer)),
+                Value::Number(n) if n.is_i64() || n.is_u64() => {
+                    found = found.or(Some(Self::Integer));
+                }
+                Value::Number(_) => found = Some(Self::Real),
+                _ => return Self::Text,
+            }
+        }
+        found.unwrap_or(Self::Text)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Integer => "INTEGER",
+            Self::Real => "REAL",
+            Self::Text => "TEXT",
+        }
+    }
+
+    /// `value` as a literal of a column of this type.
+    fn literal(self, value: &Value) -> String {
+        match (value, self) {
+            (Value::Null, _) => "NULL".into(),
+            (Value::Bool(yes), Self::Integer | Self::Real) => u8::from(*yes).to_string(),
+            (Value::Number(n), Self::Integer | Self::Real) => n.to_string(),
+            (other, _) => format!("'{}'", sql_escape(&cell_text(other))),
+        }
+    }
+}
+
 /// A table as a worksheet: the bold header, then a line for each row.
-pub fn export_table_excel(headers: &[&str], rows: &[Vec<Value>], out: &Path) -> Result<()> {
+pub fn export_table_excel(
+    headers: &[impl AsRef<str>],
+    rows: &[Vec<Value>],
+    out: &Path,
+) -> Result<()> {
     let mut workbook = rust_xlsxwriter::Workbook::new();
     let worksheet = workbook.add_worksheet();
     let bold = rust_xlsxwriter::Format::new().set_bold();
     for (col, header) in headers.iter().enumerate() {
-        worksheet.write_string_with_format(0, u16::try_from(col)?, *header, &bold)?;
+        worksheet.write_string_with_format(0, u16::try_from(col)?, header.as_ref(), &bold)?;
     }
     for (r, row) in rows.iter().enumerate() {
         for (col, value) in row.iter().enumerate() {
@@ -240,233 +295,6 @@ pub fn export_table_excel(headers: &[&str], rows: &[Vec<Value>], out: &Path) -> 
     }
     workbook.save(out)?;
     Ok(())
-}
-
-pub fn export_sql(table_name: &str, messages: &Value, out: &Path) -> Result<()> {
-    let items = messages.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
-    let mut sql = String::new();
-    sql.push_str(&format!(
-        "CREATE TABLE IF NOT EXISTS \"{table_name}\" (\n\
-         \tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\
-         \tsession_id TEXT,\n\
-         \tlocal_id INTEGER,\n\
-         \tcreate_time INTEGER,\n\
-         \tsender TEXT,\n\
-         \ttype INTEGER,\n\
-         \tcontent TEXT\n\
-         );\n\n"
-    ));
-    for msg in items {
-        let session_id = sql_escape(
-            msg.get("sessionId")
-                .or_else(|| msg.get("session_id"))
-                .and_then(Value::as_str)
-                .unwrap_or(""),
-        );
-        let local_id = msg
-            .get("localId")
-            .or_else(|| msg.get("local_id"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let create_time = msg
-            .get("createTime")
-            .or_else(|| msg.get("create_time"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let sender = sql_escape(
-            msg.get("sender")
-                .or_else(|| msg.get("from"))
-                .or_else(|| msg.get("talker"))
-                .and_then(Value::as_str)
-                .unwrap_or(""),
-        );
-        let msg_type = msg
-            .get("type")
-            .or_else(|| msg.get("msgType"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let content = sql_escape(
-            msg.get("content")
-                .or_else(|| msg.get("text"))
-                .and_then(Value::as_str)
-                .unwrap_or(""),
-        );
-        sql.push_str(&format!(
-            "INSERT INTO \"{table_name}\" (session_id, local_id, create_time, sender, type, content) VALUES ('{session_id}', {local_id}, {create_time}, '{sender}', {msg_type}, '{content}');\n"
-        ));
-    }
-    write_file(out, &sql)
-}
-
-pub fn export_chatlab(
-    session_id: &str,
-    messages: &Value,
-    contacts: &Value,
-    out: &Path,
-) -> Result<()> {
-    let contact_map = build_contact_map(contacts);
-    let items = messages.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
-    let chatlab_messages: Vec<Value> = items
-        .iter()
-        .map(|msg| {
-            let sender = msg
-                .get("sender")
-                .or_else(|| msg.get("from"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let account_name = contact_map
-                .get(sender)
-                .cloned()
-                .unwrap_or_else(|| sender.to_string());
-            let msg_type = msg
-                .get("type")
-                .or_else(|| msg.get("msgType"))
-                .and_then(Value::as_i64)
-                .unwrap_or(1);
-            let chatlab_type = match msg_type {
-                1 => 0,      // TEXT
-                3 => 1,      // IMAGE
-                34 => 2,     // VOICE
-                43 => 3,     // VIDEO
-                47 => 5,     // EMOJI
-                48 => 8,     // LOCATION
-                49 => 7,     // LINK
-                42 => 27,    // CONTACT
-                50 => 23,    // CALL
-                10000 => 80, // SYSTEM
-                _ => 0,
-            };
-            let content = msg
-                .get("content")
-                .or_else(|| msg.get("text"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let timestamp = msg
-                .get("createTime")
-                .or_else(|| msg.get("create_time"))
-                .and_then(Value::as_i64)
-                .unwrap_or(0);
-            json!({
-                "sender": sender,
-                "accountName": account_name,
-                "timestamp": timestamp,
-                "type": chatlab_type,
-                "content": content
-            })
-        })
-        .collect();
-
-    let output = json!({
-        "chatlab": {
-            "version": "1.0",
-            "exportedAt": std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs()
-        },
-        "meta": {
-            "sessionId": session_id,
-            "messageCount": chatlab_messages.len()
-        },
-        "members": contact_map.into_iter().map(|(k, v)| json!({"username": k, "nickname": v})).collect::<Vec<_>>(),
-        "messages": chatlab_messages
-    });
-    let bytes = serde_json::to_vec_pretty(&output)?;
-    write_bytes(out, &bytes)
-}
-
-pub fn export_weclone(wxid: &str, messages: &Value, contacts: &Value, out: &Path) -> Result<()> {
-    let contact_map = build_contact_map(contacts);
-    let items = messages.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
-    let mut csv = String::from("talker,type,text\n");
-    for msg in items {
-        let sender = msg
-            .get("sender")
-            .or_else(|| msg.get("from"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let is_self = sender == wxid;
-        let talker = if is_self {
-            "self".to_string()
-        } else {
-            contact_map
-                .get(sender)
-                .cloned()
-                .unwrap_or_else(|| sender.to_string())
-        };
-        let msg_type = msg
-            .get("type")
-            .or_else(|| msg.get("msgType"))
-            .and_then(Value::as_i64)
-            .unwrap_or(1);
-        let type_name = match msg_type {
-            1 => "text",
-            3 => "image",
-            47 => "sticker",
-            43 => "video",
-            34 => "voice",
-            _ => "text",
-        };
-        let content = msg
-            .get("content")
-            .or_else(|| msg.get("text"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        csv.push_str(&format!(
-            "{},{},{}\n",
-            csv_escape(&talker),
-            type_name,
-            csv_escape(content)
-        ));
-    }
-    write_file(out, &csv)
-}
-
-fn build_contact_map(contacts: &Value) -> std::collections::HashMap<String, String> {
-    let mut map = std::collections::HashMap::new();
-    let Some(items) = contacts.as_array() else {
-        return map;
-    };
-    for c in items {
-        let username = c
-            .get("username")
-            .or_else(|| c.get("userName"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let nickname = c
-            .get("nickname")
-            .or_else(|| c.get("alias"))
-            .or_else(|| c.get("remark"))
-            .and_then(Value::as_str)
-            .unwrap_or(username.as_str())
-            .to_string();
-        if !username.is_empty() {
-            map.insert(username, nickname);
-        }
-    }
-    map
-}
-
-fn message_type_label(msg_type: i64) -> &'static str {
-    message_type_label_in(locale::current(), msg_type)
-}
-
-fn message_type_label_in(lang: Lang, msg_type: i64) -> &'static str {
-    let (en, zh) = match msg_type {
-        1 => ("Text", "文本"),
-        3 => ("Image", "图片"),
-        34 => ("Voice", "语音"),
-        43 => ("Video", "视频"),
-        47 => ("Sticker", "表情"),
-        49 => ("Link", "链接"),
-        10000 => ("System", "系统"),
-        _ => ("Other", "其他"),
-    };
-    match lang {
-        Lang::En => en,
-        Lang::Zh => zh,
-    }
 }
 
 /// `YYYY-MM-DD HH:MM:SS` in the machine's local time zone, like WeFlow's desktop app.
@@ -489,26 +317,11 @@ fn sql_escape(s: &str) -> String {
     s.replace('\'', "''")
 }
 
-fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s.to_string()
-    }
-}
-
 fn write_file(path: &Path, content: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     fs::write(path, content).with_context(|| format!("write {}", path.display()))
-}
-
-fn write_bytes(path: &Path, data: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
-    }
-    fs::write(path, data).with_context(|| format!("write {}", path.display()))
 }
 
 /// Packs everything under `dir` into the zip `out` (#342), paths relative to `dir` with `/`; pictures, videos and
@@ -619,9 +432,97 @@ mod tests {
     }
 
     #[test]
-    fn csv_escapes() {
-        assert_eq!(csv_escape("hello"), "hello");
-        assert_eq!(csv_escape("he said,\"hello\""), "\"he said,\"\"hello\"\"\"");
+    fn a_list_becomes_a_table_of_its_rows_keys() {
+        let list = json!([
+            { "username": "wxid_bob", "unread": 2 },
+            { "username": "room@chatroom", "name": "The room" },
+            "not an object",
+        ]);
+        let (columns, rows) = list_table(&list);
+        // serde_json keeps an object's keys sorted, or in the order written with `preserve_order`
+        let at = |name: &str| columns.iter().position(|c| c == name).unwrap();
+        assert_eq!(columns.len(), 3);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0][at("username")], json!("wxid_bob"));
+        assert_eq!(rows[0][at("unread")], json!(2));
+        assert_eq!(rows[0][at("name")], Value::Null);
+        assert_eq!(rows[1][at("name")], json!("The room"));
+        assert_eq!(rows[1][at("unread")], Value::Null);
+        for not_a_list in [json!({ "a": 1 }), json!("text"), json!([])] {
+            assert_eq!(list_table(&not_a_list), (Vec::new(), Vec::new()));
+        }
+    }
+
+    #[test]
+    fn a_table_as_html_escapes_every_cell() {
+        let html = table_html(
+            "a<b",
+            &["name", "n"],
+            &[
+                vec![json!("<img src=x>"), json!(3)],
+                vec![Value::Null, json!([1, 2])],
+            ],
+        );
+        assert!(html.contains("<h2>a&lt;b</h2>"), "{html}");
+        assert!(html.contains("<th>name</th><th>n</th>"), "{html}");
+        assert!(
+            html.contains("<tr><td>&lt;img src=x&gt;</td><td>3</td></tr>"),
+            "{html}"
+        );
+        assert!(html.contains("<tr><td></td><td>[1,2]</td></tr>"), "{html}");
+        assert!(!html.contains("<img"), "{html}");
+    }
+
+    #[test]
+    fn a_table_as_sql_types_its_columns_and_quotes_its_text() {
+        let sql = table_sql(
+            "the \"list\"",
+            &["name", "count", "pinned", "ratio", "mixed", "empty"],
+            &[
+                vec![
+                    json!("it's"),
+                    json!(3),
+                    json!(true),
+                    json!(1),
+                    json!(1),
+                    Value::Null,
+                ],
+                vec![
+                    Value::Null,
+                    json!(4),
+                    json!(false),
+                    json!(0.5),
+                    json!("x"),
+                    Value::Null,
+                ],
+            ],
+        );
+        assert!(
+            sql.starts_with("CREATE TABLE IF NOT EXISTS \"the \"\"list\"\"\" (\n"),
+            "{sql}"
+        );
+        for column in [
+            "\t\"name\" TEXT",
+            "\t\"count\" INTEGER",
+            "\t\"pinned\" INTEGER",
+            "\t\"ratio\" REAL",
+            "\t\"mixed\" TEXT",
+            "\t\"empty\" TEXT",
+        ] {
+            assert!(sql.contains(column), "{column} in {sql}");
+        }
+        assert!(
+            sql.contains("VALUES ('it''s', 3, 1, 1, '1', NULL);\n"),
+            "{sql}"
+        );
+        assert!(
+            sql.contains("VALUES (NULL, 4, 0, 0.5, 'x', NULL);\n"),
+            "{sql}"
+        );
+        assert_eq!(
+            table_sql("t", &[] as &[&str], &[]),
+            "-- \"t\": nothing to export\n"
+        );
     }
 
     #[test]
@@ -630,15 +531,5 @@ mod tests {
         let s = format_timestamp(ts);
         assert!(s.contains("2023"));
         assert!(s.contains(':'));
-    }
-
-    #[test]
-    fn message_type_labels() {
-        assert_eq!(message_type_label_in(Lang::En, 1), "Text");
-        assert_eq!(message_type_label_in(Lang::En, 3), "Image");
-        assert_eq!(message_type_label_in(Lang::En, 999), "Other");
-        assert_eq!(message_type_label_in(Lang::Zh, 1), "文本");
-        assert_eq!(message_type_label_in(Lang::Zh, 3), "图片");
-        assert_eq!(message_type_label_in(Lang::Zh, 43), "视频");
     }
 }

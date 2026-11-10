@@ -39,6 +39,6 @@ export function countKinds(contacts: readonly Contact[]): Record<ContactKind, nu
 /** The formats of `export contacts --format`. */
 export const CONTACT_FORMATS = [
   { value: 'excel', label: 'Excel' }, { value: 'csv', label: 'CSV' }, { value: 'json', label: 'JSON' }, { value: 'html', label: 'HTML' },
-  { value: 'txt', label: 'TXT' }, { value: 'sql', label: 'SQL' }, { value: 'chatlab', label: 'ChatLab' }, { value: 'weclone', label: 'WeClone' },
+  { value: 'txt', label: 'TXT' }, { value: 'sql', label: 'SQL' },
 ] as const;
 export type ContactFormat = typeof CONTACT_FORMATS[number]['value'];
