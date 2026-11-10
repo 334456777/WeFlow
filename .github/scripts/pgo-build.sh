@@ -12,11 +12,9 @@
 set -euo pipefail
 TARGET=$1
 EXT=$2
-# RUSTFLAGS replaces the rustflags of .cargo/config.toml, so the static C runtime of Windows is repeated here (#676)
-case "$TARGET" in
-  *-windows-msvc) CRT=" -Ctarget-feature=+crt-static" ;;
-  *) CRT="" ;;
-esac
+# The PGO flag goes in as `--config`, which adds it to the rustflags of .cargo/config.toml (a RUSTFLAGS variable would
+# replace them). A TOML literal string keeps the backslashes of a Windows path.
+rustflag() { printf "target.%s.rustflags=['%s']" "$TARGET" "$1"; }
 if [ "$TARGET" = aarch64-pc-windows-msvc ]; then
   cargo build --release -p weflow-cli --bin weflow --target "$TARGET"
   exit
@@ -35,9 +33,9 @@ SYSROOT=$(rustc --print sysroot)
 HOST=$(rustc -vV | sed -n 's/^host: //p')
 PROFDATA="$SYSROOT/lib/rustlib/$HOST/bin/llvm-profdata$EXT"
 
-export RUSTFLAGS="-Cprofile-generate=$RAW$CRT"
-cargo build --release -p weflow-cli --bin weflow --target "$TARGET" --target-dir "$GEN"
-cargo build --release -p weflow-cli --example bench_account --target "$TARGET" --target-dir "$GEN"
+GEN_FLAG=$(rustflag "-Cprofile-generate=$RAW")
+cargo build --release -p weflow-cli --bin weflow --target "$TARGET" --target-dir "$GEN" --config "$GEN_FLAG"
+cargo build --release -p weflow-cli --example bench_account --target "$TARGET" --target-dir "$GEN" --config "$GEN_FLAG"
 WEFLOW="$GEN/$TARGET/release/weflow$EXT"
 
 # the account is written by the instrumented programs too: what they count meanwhile is thrown away
@@ -95,6 +93,6 @@ run biz accounts
 "$PYTHON" .github/scripts/pgo-serve.py "$WEFLOW" "$GROUP" "$FRIEND" || echo "::warning::PGO serve training failed"
 
 "$PROFDATA" merge -o "$WORK/weflow.profdata" "$RAW"
-export RUSTFLAGS="-Cprofile-use=$(abs "$WORK")/weflow.profdata$CRT"
-cargo build --release -p weflow-cli --bin weflow --target "$TARGET"
+cargo build --release -p weflow-cli --bin weflow --target "$TARGET" \
+  --config "$(rustflag "-Cprofile-use=$(abs "$WORK")/weflow.profdata")"
 rm -rf "$GEN" "$WORK"
