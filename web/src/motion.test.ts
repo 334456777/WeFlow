@@ -1,10 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
-import { durationMs, usePresence } from './motion';
+import { durationMs, installSprings, springCss, springTiming, springs, usePresence } from './motion';
+import type { SpringName } from './motion';
 
 afterEach(() => {
   vi.useRealTimers();
   document.documentElement.removeAttribute('style');
+  document.getElementById('weflow-springs')?.remove();
 });
 
 describe('durationMs', () => {
@@ -17,6 +19,52 @@ describe('durationMs', () => {
 
   it('treats a missing token as no wait', () => {
     expect(durationMs('--duration-missing')).toBe(0);
+  });
+
+  it('reads the duration a spring token starts with', () => {
+    document.documentElement.style.setProperty('--spring-settle', '500ms linear(0, 0.5, 1)');
+    expect(durationMs('--spring-settle')).toBe(500);
+  });
+});
+
+describe('springs', () => {
+  const names = Object.keys(springs) as SpringName[];
+
+  it('trace each spring as a duration and a linear() curve that ends at rest', () => {
+    for (const name of names) {
+      const css = springCss(name);
+      expect(css).toMatch(/^\d+ms linear\(0, .*1\)$/);
+      expect(Number.parseInt(css, 10)).toBeGreaterThan(0);
+    }
+  });
+
+  it('overshoot only where they are meant to', () => {
+    const peak = (name: SpringName) => Math.max(...springCss(name).slice(springCss(name).indexOf('(') + 1, -1).split(',').map(Number));
+    expect(peak('settle')).toBeLessThanOrEqual(1);
+    expect(peak('feedback')).toBeGreaterThan(peak('control'));
+    expect(peak('control')).toBeGreaterThan(1);
+  });
+
+  it('are written as tokens in a stylesheet ahead of every other one', () => {
+    const other = document.createElement('style');
+    document.head.append(other);
+    installSprings();
+    installSprings();
+    const style = document.getElementById('weflow-springs')!;
+    expect(document.head.firstElementChild).toBe(style);
+    expect(document.querySelectorAll('#weflow-springs')).toHaveLength(1);
+    for (const name of names) {
+      expect(style.textContent).toContain('--spring-' + name + ': ');
+      expect(style.textContent).toContain('--spring-' + name + '-duration: ' + String(Number.parseInt(springCss(name), 10)) + 'ms;');
+    }
+    other.remove();
+  });
+
+  it('give the Web Animations API a duration and an easing, and nothing to run with reduced motion', () => {
+    document.documentElement.style.setProperty('--spring-settle', '500ms linear(0, 0.5, 1)');
+    expect(springTiming('settle')).toEqual({ duration: 500, easing: 'linear(0, 0.5, 1)' });
+    document.documentElement.style.setProperty('--spring-settle', '0ms');
+    expect(springTiming('settle').duration).toBe(0);
   });
 });
 
