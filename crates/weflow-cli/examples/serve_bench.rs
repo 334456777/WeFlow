@@ -28,10 +28,11 @@
 //! milliseconds as the client sees them (connection included), how many were timed, and the size of the answer. A
 //! last row gives the server's CPU time per second while `/api/push/messages` is listened to (the engine looks for
 //! new messages every second), next to the idle one; below the table, the CPU time and the peak memory of the server
-//! process over all of these reads (the commands it runs as child processes are not counted). Both accounts also time the reads that had no `/api/` route (issues #175, #413), in a table of their own on the
-//! synthetic one. `--save` writes the numbers to a JSON file;
-//! `--compare` reads such a file, adds a column with the ratio to it and fails when a median is more than
-//! `--tolerance` times (default 2) and more than 20 ms slower.
+//! process over all of these reads (the commands it runs as child processes are not counted). Both accounts also time
+//! the reads the in-process routes were chosen by (`chat dates`, `chat date-counts`, `chat statuses`,
+//! `chat detail --fast` and others; issues #175, #413) through both routes, in a table of their own on the synthetic
+//! one. `--save` writes the numbers to a JSON file; `--compare` reads such a file, adds a column with the ratio to it
+//! and fails when a median is more than `--tolerance` times (default 2) and more than 20 ms slower.
 #![expect(
     clippy::unwrap_used,
     reason = "probe code reports failure by panicking"
@@ -1381,7 +1382,7 @@ impl Bench<'_> {
         self.read(op, "api", target)
     }
 
-    /// The reads that had no `/api/` route (issues #175, #413), through both routes.
+    /// The reads the in-process routes were chosen by (issues #175, #413), through both routes.
     fn candidates(&mut self, t: &Targets) -> Result<()> {
         let big = encode(&t.big);
         let statuses: Vec<String> = t
@@ -1976,7 +1977,7 @@ fn main() -> Result<()> {
         println!("  a new message reached the listener after {ms:.0} ms");
     }
     println!(
-        "reads that had no /api/ route, on the synthetic account ({SNS_POSTS} moments), {} runs each",
+        "reads the in-process routes were chosen by, on the synthetic account ({SNS_POSTS} moments), {} runs each",
         args.runs
     );
     println!();
