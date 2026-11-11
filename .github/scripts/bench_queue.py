@@ -18,9 +18,12 @@ night is over. Nothing in the queue is ever cancelled or replaced, as runs waiti
   - with `night` on, the request goes to the end of the queue, its commits resolved to full SHAs (a branch or HEAD
     stays the commit it was when asked for); when it is night already, the measure job takes the queue at once
     (`mode=drain`), else the run at 23:30 does (`mode=none`)
-  - the run at 23:30: `mode=drain`, an empty queue too, so that the runner looks whether the calibration of #605
-    changed the profile: a new profile is a new environment, and bench-commits.py `--backfill` measures it first on
-    [`backfill_commits`], from 23:30, the night's whole time
+  - the run at 23:30: `mode=drain` when the queue holds a request; with an empty queue, only on Friday nights
+    ([`calibration_night`]), so that the runner looks whether the calibration of #605 changed the profile: a new
+    profile is a new environment, and bench-commits.py `--backfill` measures it first on [`backfill_commits`], from
+    23:30, the night's whole time. Other nights with an empty queue leave the benchmark machine alone (`mode=none`):
+    whether it is on at night is not certain, and what is not needed of it is not asked. A calibration put off past
+    Friday (the computer was off) is seen on the next Friday, or on the next night with a request.
 It writes the outputs to `--outputs` and what it did, in Chinese, to `--summary`, both replaced on every call: the
 workflow calls it again when its push of the queue lost a race with another one.
 
@@ -50,6 +53,14 @@ def at_night(now=None):
     """Whether it is NIGHT in Japan."""
     t = (now or datetime.datetime.now(JST)).astimezone(JST).time()
     return t >= NIGHT[0] or t < NIGHT[1]
+
+
+def calibration_night(now=None):
+    """Whether this is the night after the calibration of #605, which runs on Fridays at 02:40 in Japan: the night that
+    begins on Friday at 23:30 (a run of the schedule that comes late, after midnight, still belongs to it)."""
+    now = (now or datetime.datetime.now(JST)).astimezone(JST)
+    began = now.date() - datetime.timedelta(days=1) if now.time() < NIGHT[1] else now.date()
+    return began.weekday() == 4
 
 
 def git(*args, cwd=None):
@@ -163,12 +174,15 @@ def plan(args):
     night = at_night()
     queue = load_queue(args.pages)
     if args.event == "schedule":
-        # an empty queue too: the runner looks whether the calibration changed the profile (bench-runner.sh)
-        out["mode"] = "drain"
         if queue["requests"]:
+            out["mode"] = "drain"
             said.append(f"- 夜间运行：队列里有 {len(queue['requests'])} 个请求，按顺序测到日本时间 {NIGHT[1]:%H:%M}")
+        elif calibration_night():
+            # the runner looks whether the calibration changed the profile (bench-runner.sh)
+            out["mode"] = "drain"
+            said.append("- 夜间运行：队列为空；今天是校准日（周五），在 runner 上检查 profile 是否更换")
         else:
-            said.append("- 夜间运行：队列为空，只在 runner 上检查校准是否更换了 profile")
+            said.append("- 夜间运行：队列为空，不用基准机器")
     else:
         request = request_from_env()
         branch = os.environ.get("OTHER_BRANCH", "")

@@ -27,9 +27,12 @@ name: Bench
 # turn, and the pushes to gh-pages try again on a fresh checkout when another push came first. `night` off measures
 # at once, after whatever the runner is doing, and so does a run started on another branch than the default one: the
 # queue is measured and published by the default branch's workflow, so a trial on a branch with its publish job
-# turned off stays a trial. The run at 23:30 goes to the runner with an empty queue too: when the calibration task of
-# #605 (`.github/bench/calibrate.ps1`) changed the profile, the new environment is measured first on the releases and
-# the PRs labeled `bench`, from 23:30, so it has the whole night.
+# turned off stays a trial. The run at 23:30 asks for the runner only when there is something for it: a request in
+# the queue, or Friday night, after the calibration task of #605 (`.github/bench/calibrate.ps1`) ran: when it changed
+# the profile, the new environment is measured first on the releases and the PRs labeled `bench`, from 23:30, so it
+# has the whole night. Whether the machine is on at night is not certain; a night it is off or asleep leaves the queue
+# as it is for the next one (a job waits a day for the runner, then fails), and one it is shut down in keeps the
+# results measured so far for the next run to publish.
 on:
   workflow_dispatch:
     inputs:
