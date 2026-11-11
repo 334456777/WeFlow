@@ -32,6 +32,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("unknown media kind: {}; use image, voice, video, emoji, file, avatar or all", "未知的媒体类型：{}；请使用 image、voice、video、emoji、file、avatar 或 all"),
     ("a list takes no {} media; use --media avatar", "列表不附带 {} 媒体；请使用 --media avatar"),
     ("--media avatar puts the avatars on the HTML page; use --format html", "--media avatar 把头像放在 HTML 页面上；请使用 --format html"),
+    ("--zip writes a zip: give --out a folder or a .zip file", "--zip 写出的是 zip：--out 请给文件夹或 .zip 文件"),
     ("unsupported media type: {}; use image, voice, video, emoji, file or all", "不支持的媒体类型：{}；请使用 image、voice、video、emoji、file 或 all"),
     ("--start ({}) is after --end ({})", "--start（{0}）晚于 --end（{1}）"),
     ("request failed", "请求失败"),

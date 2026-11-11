@@ -49,6 +49,7 @@ const HELP: &[(&str, &str)] = &[
     ("With avatars in --media: only those WeChat keeps on this computer, none downloaded", "--media 含头像时只用微信存在本机的头像，不联网下载"),
     ("avatar: put the avatars on the HTML page, in `media/<output name>/avatars/` beside the output file", "avatar：在 HTML 页面上显示头像，头像保存在输出文件旁的 `media/<输出名>/avatars/` 中"),
     ("With --media avatar: only those WeChat keeps on this computer, none downloaded", "使用 --media avatar 时只用微信存在本机的头像，不联网下载"),
+    ("Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)", "把导出文件和它的 media 文件夹打包成一个 zip（`--out` 是文件夹时在其中生成 <列表名>.zip）"),
     ("Create, inspect and restore backups", "创建、查看和恢复备份"),
     ("Cursor returned as `nextCursor` by the previous page", "上一页返回的 `nextCursor` 游标"),
     ("Dates that have messages in a session (YYYY-MM-DD)", "会话中有消息的日期（YYYY-MM-DD）"),

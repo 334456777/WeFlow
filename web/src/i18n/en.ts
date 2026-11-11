@@ -219,6 +219,8 @@ export const en: Record<string, string> = {
   "导出格式": "Formats",
   "附带媒体": "Media",
   "附带的媒体（可多选）": "Media to include (any number)",
+  "附带的媒体": "Media to include",
+  "头像放进 media 文件夹，和页面一起打包成 zip；本机没有的联网下载，联系人多时要等一会儿": "The avatars go in a media folder, packed in a zip with the page; those not on this computer are downloaded, which takes a while with many contacts",
   "排队中：前面的任务完成后开始。": "Queued: starts once the tasks before it are done.",
   "各个格式的文件和 media 文件夹打包在这个 zip 里。": "The file of each format and the media folder are packed in this zip.",
   "各个格式的文件打包在这个 zip 里。": "The file of each format is packed in this zip.",
