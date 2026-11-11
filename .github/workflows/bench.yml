@@ -27,8 +27,9 @@ name: Bench
 # turn, and the pushes to gh-pages try again on a fresh checkout when another push came first. `night` off measures
 # at once, after whatever the runner is doing, and so does a run started on another branch than the default one: the
 # queue is measured and published by the default branch's workflow, so a trial on a branch with its publish job
-# turned off stays a trial. The calibration task of #605 (`.github/bench/calibrate.ps1`) asks for
-# the releases and the PRs labeled `bench` when the profile changed.
+# turned off stays a trial. The run at 23:30 goes to the runner with an empty queue too: when the calibration task of
+# #605 (`.github/bench/calibrate.ps1`) changed the profile, the new environment is measured first on the releases and
+# the PRs labeled `bench`, from 23:30, so it has the whole night.
 on:
   workflow_dispatch:
     inputs:
@@ -197,6 +198,8 @@ jobs:
         env:
           MODE: ${{ needs.queue.outputs.mode }}
           REQUEST: ${{ needs.queue.outputs.request }}
+          # read-only, for the releases and the PRs labeled bench a new environment is measured on first
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh measure'
 
       # the results alone, a few small files, and how the run went: a run whose upload fails keeps the results in the

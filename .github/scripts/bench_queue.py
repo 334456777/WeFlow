@@ -18,20 +18,24 @@ night is over. Nothing in the queue is ever cancelled or replaced, as runs waiti
   - with `night` on, the request goes to the end of the queue, its commits resolved to full SHAs (a branch or HEAD
     stays the commit it was when asked for); when it is night already, the measure job takes the queue at once
     (`mode=drain`), else the run at 23:30 does (`mode=none`)
-  - the run at 23:30: `mode=drain` when the queue holds a request, else `mode=none`
+  - the run at 23:30: `mode=drain`, an empty queue too, so that the runner looks whether the calibration of #605
+    changed the profile: a new profile is a new environment, and bench-commits.py `--backfill` measures it first on
+    [`backfill_commits`], from 23:30, the night's whole time
 It writes the outputs to `--outputs` and what it did, in Chinese, to `--summary`, both replaced on every call: the
 workflow calls it again when its push of the queue lost a race with another one.
 
 `done`, in the publish job: each request the measure job went through (`<results>/<i>/run.json`) leaves the queue when
 it was measured through; one the night was over for stays, with what bench-commits.py says to ask next (`next`);
-those it did not reach stay as they were.
+those it did not reach stay as they were. A backfill the night was over for, which was in no queue, goes to its front.
 """
 
 import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
+import urllib.request
 
 # When commits are measured: from 23:30 to 05:00 in Japan, which keeps no daylight saving time. bench.yml's schedule
 # (14:30 UTC) and bench-runner.sh hold the same hours.
@@ -89,6 +93,30 @@ def spec(c):
     return f"{c['ref']}={c['sha']}" if says_more else c["sha"]
 
 
+def api(path):
+    """A GET of the repository's REST API, with the job's token when it has one."""
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    if os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = f"Bearer {os.environ['GITHUB_TOKEN']}"
+    url = f"https://api.github.com/repos/{os.environ.get('GITHUB_REPOSITORY', '334456777/WeFlow')}{path}"
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as reply:
+        return json.load(reply)
+
+
+def backfill_commits():
+    """What a new environment is measured on first, so it holds results to compare at once: the three newest releases
+    (no release candidate), then the four PRs labeled `bench` merged last, each before and after it (`#N前`, `#N后`),
+    the oldest first, so the oldest release becomes the environment's anchor."""
+    releases = [r for r in api("/releases?per_page=100")
+                if not r["draft"] and not r["prerelease"] and re.fullmatch(r"v\d+\.\d+\.\d+", r["tag_name"])]
+    items = [r["tag_name"] for r in sorted(releases, key=lambda r: r["published_at"])[-3:]]
+    prs = [api(f"/pulls/{i['number']}") for i in api("/issues?labels=bench&state=closed&per_page=100")
+           if i.get("pull_request")]
+    for pr in sorted((p for p in prs if p["merged_at"]), key=lambda p: p["merged_at"])[-4:]:
+        items += [f"#{pr['number']}前={pr['merge_commit_sha']}^", f"#{pr['number']}后={pr['merge_commit_sha']}"]
+    return ",".join(items)
+
+
 def queue_path(pages):
     return os.path.join(pages, "bench", "queue.json")
 
@@ -135,11 +163,12 @@ def plan(args):
     night = at_night()
     queue = load_queue(args.pages)
     if args.event == "schedule":
+        # an empty queue too: the runner looks whether the calibration changed the profile (bench-runner.sh)
+        out["mode"] = "drain"
         if queue["requests"]:
-            out["mode"] = "drain"
             said.append(f"- 夜间运行：队列里有 {len(queue['requests'])} 个请求，按顺序测到日本时间 {NIGHT[1]:%H:%M}")
         else:
-            said.append("- 夜间运行：队列为空，不测量")
+            said.append("- 夜间运行：队列为空，只在 runner 上检查校准是否更换了 profile")
     else:
         request = request_from_env()
         branch = os.environ.get("OTHER_BRANCH", "")
@@ -173,8 +202,12 @@ def done(args):
         with open(file, encoding="utf-8") as f:
             run = json.load(f)
         request = by_id.get(run["request"]["id"])
-        # a run asked to measure at once is not in the queue, and another run may have taken a request out already
+        # A run asked to measure at once is not in the queue, and another run may have taken a request out already. A
+        # backfill the night was over for goes first, so the next night carries it on before anything else.
         if request is None:
+            if run["request"].get("backfill") and run.get("next"):
+                queue["requests"].insert(0, {**run["request"], "commits": run["next"]["commits"],
+                                             "force": run["next"]["force"]})
             continue
         if run.get("next"):
             request.update(commits=run["next"]["commits"], force=run["next"]["force"])

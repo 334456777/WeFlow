@@ -2,6 +2,7 @@
 already measured.
 
 usage: python bench-commits.py --requests FILE --bench-dir DIR --tools DIR --index FILE --out DIR [--night]
+                               [--backfill]
 
 Run from a checkout of the commit whose tools measure (the workflow's), with the tools already built in `--tools`
 (`weflow.exe`, `bench_account.exe`, `serve_bench.exe`). `--bench-dir` is the runner's own folder that outlives a
@@ -26,6 +27,11 @@ same environment publishes them along with its own, without measuring them again
 takes them from there too. A commit that does not build or whose measuring stops is left out with a warning (an old
 commit may not build with today's tools), and the others go on; only an anchor's failing stops the run.
 
+With `--backfill` (the run at 23:30), a new environment of the default options, which holds no result yet (a new
+profile from the calibration of #605, a new machine, measuring method or generator layout), is measured first on the
+releases and the PRs labeled `bench` (bench_queue.py's `backfill_commits`, through the API with GITHUB_TOKEN), so it
+holds results to compare at once.
+
 With `--night` (the queue taken at night), a commit is built and measured only during bench_queue.py's NIGHT: once it
 is over, no further commit starts (the one under way runs to its end). The commits a request has left are postponed:
 its run.json says what to ask next (`next`), which the queue keeps for the next night, and the requests after it are
@@ -41,6 +47,7 @@ runner that fails is not tried again).
 """
 
 import argparse
+import datetime
 import json
 import os
 import shutil
@@ -50,7 +57,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench  # noqa: E402
-from bench_queue import NIGHT, at_night, resolve_commits, spec  # noqa: E402
+from bench_queue import NIGHT, OPTIONS, at_night, backfill_commits, resolve_commits, spec  # noqa: E402
 
 TARGET = "x86_64-pc-windows-msvc"
 # the account a run uses when it is given no size, kept whatever the run used
@@ -244,6 +251,40 @@ class Run:
         self.late = False
         self.accounts, self.anchors = set(), set()
 
+    def account(self, req):
+        """The benchmark account of a request's size, built when needed, and the environment it measures in."""
+        seed, group_messages, conversations = (int(req[k]) for k in ("seed", "group_messages", "conversations"))
+        # an account per size, kept between runs (about 1.5 GB to write): bench_account builds it again only when its
+        # generator's layout, its size or its profile changed
+        size = f"s{seed}-g{group_messages}-c{conversations}"
+        account = os.path.join(self.bench_dir, "accounts", size)
+        self.accounts.add(size)
+        # a profile calibrated on this machine (#605), else the default one
+        profile = os.path.join(self.bench_dir, "profile", "profile.json")
+        subprocess.run([os.path.join(self.tools, "bench_account.exe"), account, "--weflow",
+                        os.path.join(self.tools, "weflow.exe"), "--seed", str(seed), "--group-messages",
+                        str(group_messages), "--conversations", str(conversations),
+                        *(["--profile", profile] if os.path.exists(profile) else [])],
+                       check=True, stdout=subprocess.DEVNULL)
+        return account, bench.environment_of(account, int(req["load_seconds"]), self.args.load_workers)
+
+    def backfill(self):
+        """The request a new environment of the default options starts with (bench_queue.backfill_commits), or None
+        when the environment holds results already, here or in pending/. A new profile from the calibration of #605
+        makes one; so do a new machine, measuring method or generator layout."""
+        req = {**OPTIONS, "force": False, "release_tag": ""}
+        key = self.account(req)[1]["key"]
+        if self.index.get("envs", {}).get(key, {}).get("results") or self.pending.get(key):
+            return None
+        commits = backfill_commits()
+        print(f"environment {key} holds no result yet: measured first on {commits}", flush=True)
+        server, repo = os.environ.get("GITHUB_SERVER_URL", "https://github.com"), os.environ.get("GITHUB_REPOSITORY")
+        run_id = os.environ.get("GITHUB_RUN_ID", "0")
+        return {**req, "id": f"backfill-{key}", "backfill": True,
+                "asked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+                "run": f"{server}/{repo}/actions/runs/{run_id}" if repo else "",
+                "commits": ",".join(spec(c) for c in resolve_commits(commits))}
+
     def night_over(self):
         if self.args.night and not self.late and not at_night():
             print(f"the night ({NIGHT[0]:%H:%M}-{NIGHT[1]:%H:%M} JST) is over: what is left is postponed", flush=True)
@@ -255,21 +296,8 @@ class Run:
         started = time.time()
         os.makedirs(out, exist_ok=True)
         args, bench_dir, tools = self.args, self.bench_dir, self.tools
-        seed, group_messages, conversations = (int(req[k]) for k in ("seed", "group_messages", "conversations"))
         runs, load_seconds, only, force = int(req["runs"]), int(req["load_seconds"]), req["only"], bool(req["force"])
-        # an account per size, kept between runs (about 1.5 GB to write): bench_account builds it again only when its
-        # generator's layout, its size or its profile changed
-        size = f"s{seed}-g{group_messages}-c{conversations}"
-        account = os.path.join(bench_dir, "accounts", size)
-        self.accounts.add(size)
-        # a profile calibrated on this machine (#605), else the default one
-        profile = os.path.join(bench_dir, "profile", "profile.json")
-        subprocess.run([os.path.join(tools, "bench_account.exe"), account, "--weflow",
-                        os.path.join(tools, "weflow.exe"), "--seed", str(seed), "--group-messages",
-                        str(group_messages), "--conversations", str(conversations),
-                        *(["--profile", profile] if os.path.exists(profile) else [])],
-                       check=True, stdout=subprocess.DEVNULL)
-        env = bench.environment_of(account, load_seconds, args.load_workers)
+        account, env = self.account(req)
         key = env["key"]
         print(f"environment {key}: {json.dumps(env, ensure_ascii=False)}", flush=True)
         held = self.index.get("envs", {}).get(key, {})
@@ -390,6 +418,8 @@ def main():
     p.add_argument("--out", required=True)
     p.add_argument("--load-workers", type=int, default=4)
     p.add_argument("--night", action="store_true", help="start a commit only during NIGHT, postpone the rest")
+    p.add_argument("--backfill", action="store_true",
+                   help="a new environment of the default options is measured first on the releases and bench PRs")
     args = p.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     out = os.path.abspath(args.out)
@@ -402,6 +432,10 @@ def main():
             index = json.load(f)
 
     run = Run(args, index)
+    if args.backfill and not run.night_over():
+        first = run.backfill()
+        if first:
+            requests.insert(0, first)
     begun = 0
     for i, req in enumerate(requests):
         # a request is begun only during the night; one cut short by its end leaves those after it as they are
