@@ -85,7 +85,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .likes+.cmts{border-top:1px solid var(--line)}
 .cmt{overflow-wrap:anywhere;white-space:pre-wrap}
 .cmt b{font-weight:500;color:var(--link)}
-.cmt i{font-style:normal;margin:0 .25em}
+.cmt i{font-style:normal}
 
 /* ============================================================ time rail
    Collapsed: ticks at the left edge, one a year (or a month, when the posts are all in one year), the one in view
@@ -256,7 +256,7 @@ function grid(p, i) {
   }).join("") + "</div>";
 }
 function comment([who, text, to]) {
-  return '<div class="cmt"><b>' + hl(who) + "</b>" + (to ? "<i>" + esc(T("回复")) + "</i><b>" + hl(to) + "</b>" : "") + "：" + hl(text || T("[表情]")) + "</div>";
+  return '<div class="cmt"><b>' + hl(who) + "</b>" + (to ? "<i> " + esc(T("回复")) + " </i><b>" + hl(to) + "</b>" : "") + "：" + hl(text || T("[表情]")) + "</div>";
 }
 function post(p, i) {
   const text = p.text || "", long = text.split("\n").length > 6 || text.length > 180;
