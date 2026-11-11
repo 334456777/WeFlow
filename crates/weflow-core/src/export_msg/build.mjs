@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Makes the HTML export's template small: template.html, one copy for each language, which the program embeds
-// (html.rs). Run after changing template.html: `bun crates/weflow-core/src/export_msg/build.mjs`. CI runs it too
-// when template.html or this script changes on a branch, and commits what it writes (.github/workflows/html-template.yml).
+// (html.rs). CI runs it when template.html or this script changes on a branch, and commits what it writes to that
+// branch (.github/workflows/html-template.yml): the copies are made there, not by hand.
 //
 //   template.zh.html  the English words left out (the page's words are written in Chinese)
 //   template.en.html  with them
