@@ -13,7 +13,9 @@ Prints the environment key, for the commit message, and appends what reached gh-
 many results, the viewer and, for each commit, the `BENCH-<anchor>-<commit>` reference to its comparison with the
 anchor. When exactly two commits were asked for and the environment holds both, they are a base and a head: the
 summary adds the reference and the viewer's address of their comparison, also given to the steps after it as the
-outputs `key`, `url`, `base` and `head` (full SHAs).
+outputs `key`, `url`, `base` and `head` (full SHAs). When the night was over before every commit was measured
+(bench-commits.py `--night`), the outputs `next_commits` and `next_force` say what to ask the next run. An
+environment new to the index is added only once it holds a result.
 """
 
 import argparse
@@ -51,7 +53,11 @@ def main():
     if os.path.exists(index_path):
         with open(index_path, encoding="utf-8") as f:
             index = json.load(f)
-    held = index["envs"].setdefault(key, {k: v for k, v in env.items() if k != "key"})
+    # an environment nothing was measured in yet (every commit postponed) is not listed until it holds a result
+    if key in index["envs"] or any(c["measured"] for c in run["commits"]):
+        held = index["envs"].setdefault(key, {k: v for k, v in env.items() if k != "key"})
+    else:
+        held = {}
     held.setdefault("results", {})
     if run.get("anchor"):
         held.setdefault("anchor", run["anchor"])
@@ -95,6 +101,14 @@ def main():
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                 f.write(f"key={key}\nurl={url}\nbase={base['sha']}\nhead={head['sha']}\n")
+    # the commits postponed past the night, for the run the workflow starts next
+    following = run.get("next")
+    if following:
+        waiting = sum(1 for c in run["commits"] if c.get("postponed"))
+        lines.append(f"- {waiting} 个提交延后：另起一次运行，等到下一个夜间时段再测")
+        if os.environ.get("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+                f.write(f"next_commits={following['commits']}\nnext_force={str(following['force']).lower()}\n")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")

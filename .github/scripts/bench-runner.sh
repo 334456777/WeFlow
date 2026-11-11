@@ -5,8 +5,10 @@
 # the Python it installs and a venv with psutil (no PowerShell, which the runner's account may not run scripts in),
 # and what bench-commits.py keeps there (the accounts, the binaries, the clone the commits are built in).
 #
-# usage: bench-runner.sh measure   (env: COMMITS, RUNS, SEED, GROUP_MESSAGES, CONVERSATIONS, LOAD_SECONDS, ONLY, FORCE
-#                                    as bench.yml passes them)
+# usage: bench-runner.sh wait      until the night in Japan (23:30 to 05:00, bench-commits.py's NIGHT): at once
+#                                   during it, else sleeps until 23:30
+#        bench-runner.sh measure   (env: COMMITS, RUNS, SEED, GROUP_MESSAGES, CONVERSATIONS, LOAD_SECONDS, ONLY, FORCE,
+#                                    NIGHT as bench.yml passes them)
 #        bench-runner.sh clean     what the next run will not use: the Rust toolchains neither this commit's nor used
 #                                   in the last TOOLCHAIN_DAYS days (an older commit built here brings its own, and a
 #                                   backfill over several runs keeps it; bench-commits.py notes in
@@ -14,6 +16,19 @@
 #                                   TARGET_LIMIT_MIB, what the clone no longer reaches, and this run's files in the
 #                                   checkout (bench-commits.py already removed the binaries and accounts)
 set -euo pipefail
+
+if [ "${1:-}" = wait ]; then
+  # seconds into the day in Japan, which keeps no daylight saving time
+  now=$(( ($(date -u +%s) + 9 * 3600) % 86400 ))
+  start=$(( 23 * 3600 + 30 * 60 )) end=$(( 5 * 3600 ))
+  if [ "$now" -ge "$start" ] || [ "$now" -lt "$end" ]; then
+    echo "it is night in Japan: measuring now"
+  else
+    echo "waiting $(( (start - now) / 60 )) minutes for 23:30 in Japan"
+    sleep $(( start - now ))
+  fi
+  exit 0
+fi
 
 : "${WEFLOW_BENCH_DIR:?the runner has no WEFLOW_BENCH_DIR in its .env}"
 dir=$(cygpath -m "$WEFLOW_BENCH_DIR")
@@ -60,7 +75,8 @@ case "${1:-}" in
 
     "$venv/Scripts/python.exe" .github/scripts/bench-commits.py --commits "$COMMITS" --bench-dir "$dir" --tools tools \
       --index index.json --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" --only "$ONLY" \
-      --seed "$SEED" --group-messages "$GROUP_MESSAGES" --conversations "$CONVERSATIONS" ${FORCE:+--force}
+      --seed "$SEED" --group-messages "$GROUP_MESSAGES" --conversations "$CONVERSATIONS" ${FORCE:+--force} \
+      ${NIGHT:+--night}
     ;;
   clean)
     keep=$(rustup show active-toolchain 2>/dev/null | cut -d' ' -f1 || true)
@@ -93,7 +109,7 @@ case "${1:-}" in
     rm -rf tools results index.json
     ;;
   *)
-    echo "usage: $0 measure | clean" >&2
+    echo "usage: $0 wait | measure | clean" >&2
     exit 2
     ;;
 esac

@@ -14,6 +14,14 @@
   -BenchDir\profile is readable by the runner's account (-RunnerAccount), writable by you only. What each run printed
   is appended to -BenchDir\profile\calibrate.log.
 
+  When the profile was written, it starts bench.yml so that the new environment holds results to compare at once: the
+  three newest releases (no release candidate), then the four PRs labeled `bench` merged last, each before and after
+  it (`#N前`, `#N后`), the oldest first, so the oldest release becomes the environment's anchor. bench.yml measures them
+  during the night in Japan, over more than one night when they do not fit. That takes a fine-grained token in
+  -TokenFile, for this repository only, with Actions read and write (to start the run) and Contents, Issues and Pull
+  requests read-only (to list the releases and the PRs); without the file the run is not started, which the log says.
+  The file must stay in your own folders: -BenchDir is the runner's to read.
+
 .EXAMPLE
   .\calibrate.ps1                 # once, now
   .\calibrate.ps1 -Register       # every four weeks, Friday 02:40, whether you are logged on or not, waking the computer
@@ -23,6 +31,7 @@ param(
   [string] $Config = (Join-Path ($env:WEFLOW_HOME ? $env:WEFLOW_HOME : (Join-Path $env:APPDATA 'weflow')) 'config.json'),
   [string] $RunnerAccount = 'weflow-bench',
   [string] $Repository = 'https://github.com/334456777/WeFlow.git',
+  [string] $TokenFile = (Join-Path $env:LOCALAPPDATA 'weflow-bench\dispatch-token'),
   [switch] $Register
 )
 $ErrorActionPreference = 'Stop'
@@ -73,3 +82,41 @@ $code = $LASTEXITCODE
 # what the probe says in calibrate mode carries no number of the account; an error is kept to its first line
 foreach ($line in @($out)) { Say "$line".Split("`n")[0] }
 if ($code) { Say "the probe failed ($code)"; exit $code }
+if (-not (@($out) | Where-Object { "$_" -like 'written:*' })) { exit 0 }
+
+# ---- a new profile: bench.yml on the releases and the PRs labeled bench ----
+
+if (-not (Test-Path $TokenFile)) { Say "no token at ${TokenFile}: bench.yml not started"; exit 0 }
+$repo = ([uri] $Repository).AbsolutePath.Trim('/') -replace '\.git$', ''
+$headers = @{
+  Authorization = "Bearer $((Get-Content -Raw $TokenFile).Trim())"
+  Accept = 'application/vnd.github+json'
+  'X-GitHub-Api-Version' = '2022-11-28'
+}
+function Api([string] $Method, [string] $Path, $Body) {
+  $call = @{ Method = $Method; Uri = "https://api.github.com/repos/$repo$Path"; Headers = $headers }
+  if ($Body) { $call.Body = $Body | ConvertTo-Json -Compress; $call.ContentType = 'application/json' }
+  # a JSON array comes back as one object: written from a variable, its items go down the pipeline one by one
+  $reply = Invoke-RestMethod @call
+  $reply
+}
+try {
+  # the three newest releases, the oldest first: it becomes the new environment's anchor
+  $releases = Api GET '/releases?per_page=100' |
+    Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -match '^v\d+\.\d+\.\d+$' } |
+    Sort-Object { [datetime] $_.published_at } -Descending | Select-Object -First 3
+  $commits = @($releases | Sort-Object { [datetime] $_.published_at } | ForEach-Object { $_.tag_name })
+  # the four PRs labeled bench merged last, each before and after it, the oldest first
+  $prs = Api GET '/issues?labels=bench&state=closed&per_page=100' | Where-Object { $_.pull_request } |
+    ForEach-Object { Api GET "/pulls/$($_.number)" } | Where-Object { $_.merged_at } |
+    Sort-Object { [datetime] $_.merged_at } -Descending | Select-Object -First 4
+  foreach ($pr in @($prs | Sort-Object { [datetime] $_.merged_at })) {
+    $commits += "#$($pr.number)前=$($pr.merge_commit_sha)^", "#$($pr.number)后=$($pr.merge_commit_sha)"
+  }
+  Api POST '/actions/workflows/bench.yml/dispatches' @{ ref = 'main'; inputs = @{ commits = $commits -join ',' } } |
+    Out-Null
+  Say "bench.yml started on $($commits.Count) commits: $(($commits | ForEach-Object { ($_ -split '=')[0] }) -join ', ')"
+} catch {
+  Say "bench.yml not started: $($_.Exception.Message.Split("`n")[0])"
+  exit 1
+}

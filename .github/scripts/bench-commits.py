@@ -2,7 +2,7 @@
 
 usage: python bench-commits.py --commits [NAME=]REF[,...] --bench-dir DIR --tools DIR --index FILE --out DIR
                                [--runs N] [--load-seconds S] [--only NAMES] [--seed N] [--group-messages N]
-                               [--conversations N] [--force]
+                               [--conversations N] [--force] [--night]
 
 Run from a checkout of the commit whose tools measure (the workflow's), with the tools already built in `--tools`
 (`weflow.exe`, `bench_account.exe`, `serve_bench.exe`). `--bench-dir` is the runner's own folder that outlives a
@@ -21,15 +21,24 @@ Each result is also kept in `<bench dir>/pending/<sha>/` as soon as it is measur
 whose results never reached gh-pages (its upload or its publishing failed) loses nothing, and the next run of the same
 environment publishes them along with its own, without measuring them again.
 A commit that does not build or whose measuring stops is left out with a warning (an old commit may not build with
-today's tools), and the others go on; only the anchor's failing stops the run. Writes `<out>/<sha>/result.json` (and
-its logs) for each commit measured, `<out>/run.json`: the environment, the anchor and every commit asked for with
-its SHA, its name, whether it was measured, and why not when it failed, and `<out>/summary.md`, how the run went (each
-commit's outcome, how long it took to build and to measure, how busy the machine was, what the version lacked or
-failed), also printed to the log; the publish job puts it on the run's Summary page, whose network is steadier than
-the runner's (an upload from the runner that fails is not tried again).
+today's tools), and the others go on; only the anchor's failing stops the run. A commit asked for twice (by two
+names) is measured once and keeps both names.
+
+With `--night`, a commit is built and measured only while it is night in Japan ([`NIGHT`], 23:30 to 05:00), when
+nobody uses the machine: bench.yml waits for the night before it starts this, and once the night is over no further
+commit starts (the one under way runs to its end). The commits left are postponed: run.json says how to ask for them
+again, and the publish job starts another run with them, which waits for the next night.
+
+Writes `<out>/<sha>/result.json` (and its logs) for each commit measured, `<out>/run.json`: the environment, the
+anchor, every commit asked for with its SHA, its name, whether it was measured, and why not (it failed, it is the same
+as another, it was postponed), and what to ask the next run when some were postponed (`next`), and `<out>/summary.md`,
+how the run went (each commit's outcome, how long it took to build and to measure, how busy the machine was, what the
+version lacked or failed), also printed to the log; the publish job puts it on the run's Summary page, whose network is
+steadier than the runner's (an upload from the runner that fails is not tried again).
 """
 
 import argparse
+import datetime
 import json
 import os
 import shutil
@@ -43,6 +52,22 @@ import bench  # noqa: E402
 TARGET = "x86_64-pc-windows-msvc"
 # the account a run uses when it is given no size
 DEFAULT_SIZE = "s1-g200000-c300"
+# When a run with --night may start a commit: from 23:30 to 05:00 in Japan, which keeps no daylight saving time.
+# bench-runner.sh waits for the same start.
+JST = datetime.timezone(datetime.timedelta(hours=9))
+NIGHT = (datetime.time(23, 30), datetime.time(5, 0))
+
+
+def at_night(now=None):
+    """Whether it is NIGHT in Japan."""
+    t = (now or datetime.datetime.now(JST)).astimezone(JST).time()
+    return t >= NIGHT[0] or t < NIGHT[1]
+
+
+def spec(c):
+    """How a commit is asked for again: its name with its full SHA, so a branch or HEAD stays the commit it was."""
+    says_more = c["ref"] != "HEAD" and not c["sha"].startswith(c["ref"])
+    return f"{c['ref']}={c['sha']}" if says_more else c["sha"]
 
 
 def git(*args, cwd=None):
@@ -138,17 +163,20 @@ def load_outcome(result):
     return "还没有" if any(s in said for s in bench.UNSUPPORTED) else "没跑成"
 
 
-def run_summary(env, anchor, new_anchor, commits, out, elapsed):
+def run_summary(env, anchor, new_anchor, commits, out, elapsed, postponed):
     """How the run went, in Chinese for the one who started it: the environment, then a row per commit."""
     m, acc = env["machine"], env["account"]
     profile = acc.get("profile") or {}
     outcome = {"measured": "测完", "reused": "沿用之前测完、没发布的结果", "held": "已测过，跳过",
-               "build": "编译失败，跳过", "measure": "测量中断，跳过"}
-    short = {"measured": "测完", "held": "已测过", "reused": "沿用", "build": "编译失败", "measure": "测量中断"}
+               "build": "编译失败，跳过", "measure": "测量中断，跳过", "same": "与前面同名提交相同，一并记名",
+               "postponed": "夜间时段已过，留到下一次"}
+    short = {"measured": "测完", "held": "已测过", "reused": "沿用", "build": "编译失败", "measure": "测量中断",
+             "same": "重复", "postponed": "延后"}
     counts = dict.fromkeys(short, 0)
     rows = []
     for c in commits:
-        kind = c.get("failed") or ("reused" if c.get("reused") else "measured" if c["measured"] else "held")
+        kind = c.get("failed") or ("same" if c.get("same_as") else "postponed" if c.get("postponed")
+                                   else "reused" if c.get("reused") else "measured" if c["measured"] else "held")
         counts[kind] += 1
         quiet = cmds = unsupported = failed_runs = load = "-"
         file = os.path.join(out, c["sha"], "result.json")
@@ -171,9 +199,12 @@ def run_summary(env, anchor, new_anchor, commits, out, elapsed):
         f"- 环境 `{env['key']}`：{m['cpu']}，{m['cpus']} 个逻辑 CPU，{m['memory_gib']} GiB 内存；测法版本 {env['method']}",
         f"- 基准账号：种子 {acc['seed']}，{acc['messages']:,} 条消息，{acc['conversations']} 个会话，"
         + (f"profile `{profile['hash']}`（测于 {profile['measured']}）" if profile else "默认 profile"),
-        f"- 锚点 `{(anchor or '')[:10]}`" + ("（这个环境的第一个提交，这次新成为锚点）" if new_anchor
-                                             else "（沿用这个环境原有的锚点）"),
+        (f"- 锚点 `{anchor[:10]}`" + ("（这个环境的第一个提交，这次新成为锚点）" if new_anchor
+                                       else "（沿用这个环境原有的锚点）")) if anchor
+        else "- 锚点：这个环境还没有，由下一次运行第一个测量的提交担任",
         f"- {len(commits)} 个提交：{tally}；用时 {minutes(elapsed)}",
+        *([(f"- 日本时间 {NIGHT[0]:%H:%M}–{NIGHT[1]:%H:%M} 的夜间时段已过，{postponed} 个提交延后：publish 另起一次运行，"
+            "等到下一个夜间时段再测")] if postponed else []),
         "",
         "| 名字 | 提交 | 结果 | 编译 | 测量 | 其他进程 CPU（p50 / p95） | 命令 | 还没有 | 失败的运行 | 持续负载 |",
         "|---|---|---|---|---|---|---|---|---|---|",
@@ -217,6 +248,7 @@ def main():
     p.add_argument("--group-messages", type=int, default=200000)
     p.add_argument("--conversations", type=int, default=300)
     p.add_argument("--force", action="store_true")
+    p.add_argument("--night", action="store_true", help="start a commit only during NIGHT, postpone the rest")
     args = p.parse_args()
     started = time.time()
     sys.stdout.reconfigure(encoding="utf-8")
@@ -273,7 +305,15 @@ def main():
             name = f"{rev}@{sha[:10]}"
         commits.append({"ref": name or rev, "sha": sha})
     print("commits: " + ", ".join(f"{c['ref']} = {c['sha'][:10]}" for c in commits), flush=True)
+    asked_specs = [spec(c) for c in commits]
+    first_name = {}
     for c in commits:
+        # the same commit by another name: measured once, the publish gives it both names
+        if c["sha"] in first_name:
+            c.update(measured=False, same_as=first_name[c["sha"]])
+            print(f"== {c['ref']} ({c['sha'][:10]}): the same commit as {c['same_as']}", flush=True)
+            continue
+        first_name[c["sha"]] = c["ref"]
         have = results.get(c["sha"])
         c["measured"] = args.force or not have or (bool(have.get("only")) and not args.only)
         if not c["measured"]:
@@ -294,10 +334,24 @@ def main():
         anchor = todo[0]["sha"]
         print(f"environment {key} has no anchor yet: {anchor[:10]} becomes it", flush=True)
 
+    def night_over():
+        if args.night and not at_night():
+            print(f"the night ({NIGHT[0]:%H:%M}-{NIGHT[1]:%H:%M} JST) is over: the commits left are postponed",
+                  flush=True)
+            return True
+        return False
+
     anchor_exe = anchor_alloc = None
+    late = False
     if todo and any(c["sha"] != anchor for c in todo):
-        anchor_exe, anchor_alloc = build(anchor, bench_dir)
+        late = night_over()
+        if not late:
+            anchor_exe, anchor_alloc = build(anchor, bench_dir)
     for c in todo:
+        late = late or night_over()
+        if late:
+            c.update(measured=False, postponed=True)
+            continue
         begin = time.time()
         try:
             exe, alloc = build(c["sha"], bench_dir)
@@ -333,10 +387,21 @@ def main():
             continue
         os.makedirs(os.path.join(pending_dir, c["sha"]), exist_ok=True)
         shutil.copyfile(os.path.join(out, c["sha"], "result.json"), os.path.join(pending_dir, c["sha"], "result.json"))
+    postponed = [c for c in commits if c.get("postponed")]
+    # a new anchor that was postponed is no anchor yet: the next run picks it again, as the first commit it measures
+    if new_anchor and any(c["sha"] == anchor for c in postponed):
+        anchor, new_anchor = None, False
+    # The next run gets every commit asked for (those measured now are held by then, and two commits stay a base and a
+    # head); with --force, the postponed ones alone, which it measures again whatever the environment holds.
+    following = None
+    if postponed:
+        following = {"commits": ",".join(spec(c) for c in postponed) if args.force else ",".join(asked_specs),
+                     "force": args.force}
     clean_up(bench_dir, {anchor} | {e.get("anchor") for e in index.get("envs", {}).values()}, account)
     with open(os.path.join(out, "run.json"), "w", encoding="utf-8") as f:
-        json.dump({"env": env, "anchor": anchor, "commits": commits}, f, ensure_ascii=False, indent=1)
-    run_summary(env, anchor, new_anchor, commits, out, time.time() - started)
+        json.dump({"env": env, "anchor": anchor, "commits": commits, "next": following}, f, ensure_ascii=False,
+                  indent=1)
+    run_summary(env, anchor, new_anchor, commits, out, time.time() - started, len(postponed))
 
 
 if __name__ == "__main__":

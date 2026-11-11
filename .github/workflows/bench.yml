@@ -17,6 +17,13 @@ name: Bench
 # `WEFLOW_BENCH_DIR` in its `.env`: its own folder, kept between runs so that nothing a run before set up is
 # installed, downloaded or written again (Rust, the build cache, the account, the anchor's binary), and cleaned after
 # each run of what the next one will not use (`.github/scripts/bench-runner.sh`).
+#
+# With `night` (the default), commits are measured only during the night in Japan, 23:30 to 05:00, when nobody uses
+# the machine: the wait job holds the run until then, on the runner, and the measure job starts no commit once the
+# night is over. The commits it leaves are postponed: the publish job starts another run of this workflow with them
+# (as github-actions[bot], the one actor besides the owner allowed to run it), which waits for the next night. The wait
+# is a job of its own so that the measure job's tokens are fresh when it starts. The calibration task of #605
+# (`.github/bench/calibrate.ps1`) starts a run on the releases and the PRs labeled `bench` when the profile changed.
 on:
   workflow_dispatch:
     inputs:
@@ -64,6 +71,11 @@ on:
         required: false
         default: ""
         type: string
+      night:
+        description: "只在日本时间 23:30–05:00 测量：不在这个时段时等到 23:30；时段结束时没测完的提交另起一次运行，等下一个夜间时段"
+        required: false
+        default: true
+        type: boolean
   # release.yml runs it after publishing a release (#516) with the previous release and the new tag
   workflow_call:
     inputs:
@@ -82,6 +94,10 @@ on:
         required: false
         default: ""
         type: string
+      night:
+        required: false
+        default: true
+        type: boolean
     outputs:
       viewer_url:
         description: "The comparison of the two commits in the viewer (empty unless two were given)"
@@ -100,9 +116,32 @@ env:
   TARGET: x86_64-pc-windows-msvc
 
 jobs:
+  # until the night in Japan; skipped without `night`
+  wait:
+    name: wait for the night
+    if: inputs.night && (github.actor == github.repository_owner || github.actor == 'github-actions[bot]')
+    runs-on: [self-hosted, Windows, X64, weflow-bench]
+    timeout-minutes: 1200
+    steps:
+      - name: Find Git
+        shell: cmd
+        run: '>>"%GITHUB_PATH%" echo C:\Program Files\Git\cmd'
+
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Wait
+        shell: cmd
+        run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh wait'
+
   measure:
     name: measure
-    if: github.actor == github.repository_owner
+    needs: wait
+    if: >-
+      !cancelled() && (needs.wait.result == 'success' || needs.wait.result == 'skipped')
+      && (github.actor == github.repository_owner || github.actor == 'github-actions[bot]')
     runs-on: [self-hosted, Windows, X64, weflow-bench]
     timeout-minutes: 720
     # The steps run .github/scripts/bench-runner.sh through cmd with Git's bash by its full path: the runner finds a
@@ -128,6 +167,7 @@ jobs:
           LOAD_SECONDS: ${{ inputs.load_seconds }}
           ONLY: ${{ inputs.only }}
           FORCE: ${{ inputs.force && '1' || '' }}
+          NIGHT: ${{ inputs.night && '1' || '' }}
         run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh measure'
 
       # the results alone, a few small files, and how the run went: a run whose upload fails keeps the results in the
@@ -160,13 +200,14 @@ jobs:
   # How the run went on the run's Summary page, written here rather than on the runner, whose network may drop the
   # upload; the results into the gh-pages branch with the viewer (bench-publish.py), which adds what was published to
   # the page and, with two commits, the link to their comparison; with `release_tag` the 性能基准 section of that
-  # release's notes.
+  # release's notes; the postponed commits to another run.
   publish:
     name: publish
     needs: measure
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write   # the run for the postponed commits
     concurrency:
       group: gh-pages
       cancel-in-progress: false
@@ -225,4 +266,29 @@ jobs:
           URL: ${{ steps.push.outputs.url }}
         run: |
           node main/.github/bench/cli.mjs "pages/bench/data/$KEY/$BASE.json" "pages/bench/data/$KEY/$HEAD.json" --out compare
-          bash main/.github/scripts/release-bench-notes.sh "$TAG" "$(echo "${COMMITS%%,*}" | xargs)" "$URL" compare/highlights.md
+          # the base by the name it was asked by (a run started for postponed commits has them as name=SHA)
+          base=$(echo "${COMMITS%%,*}" | xargs)
+          bash main/.github/scripts/release-bench-notes.sh "$TAG" "${base%%=*}" "$URL" compare/highlights.md
+
+      # the commits the night was over for: another run of this workflow, on the same branch and with the same options,
+      # which waits for the next night (a run started with the GITHUB_TOKEN is the one kind of run it may start)
+      - name: Postpone the rest to the next night
+        if: steps.push.outputs.next_commits != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT: ${{ steps.push.outputs.next_commits }}
+          NEXT_FORCE: ${{ steps.push.outputs.next_force }}
+          RUNS: ${{ inputs.runs }}
+          SEED: ${{ inputs.seed || '1' }}
+          GROUP_MESSAGES: ${{ inputs.group_messages || '200000' }}
+          CONVERSATIONS: ${{ inputs.conversations || '300' }}
+          LOAD_SECONDS: ${{ inputs.load_seconds }}
+          ONLY: ${{ inputs.only }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          gh workflow run bench.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f commits="$NEXT" \
+            -f runs="$RUNS" -f seed="$SEED" -f group_messages="$GROUP_MESSAGES" -f conversations="$CONVERSATIONS" \
+            -f load_seconds="$LOAD_SECONDS" -f only="$ONLY" -f force="$NEXT_FORCE" -f release_tag="$TAG" -f night=true
+          echo "- 已另起一次运行测延后的提交：https://github.com/$GITHUB_REPOSITORY/actions/workflows/bench.yml" \
+            >> "$GITHUB_STEP_SUMMARY"
