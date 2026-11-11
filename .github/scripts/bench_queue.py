@@ -5,7 +5,7 @@ usage: python bench_queue.py plan --pages DIR --event EVENT [--night] --outputs 
                                    FORCE, RELEASE_TAG as bench.yml passes them; GITHUB_RUN_ID and the like)
        python bench_queue.py done --pages DIR --results DIR
 
-The benchmark runner is a machine used by day, so commits are measured at night in Japan ([`NIGHT`]). A run asked for
+Commits are measured at night in Japan ([`NIGHT`]). A run asked for
 during the day does not hold a job open until then: its request waits in `<pages>/bench/queue.json`, and the run
 bench.yml starts every day at 23:30 (`schedule`) measures the requests there in order (bench-commits.py), until the
 night is over. Nothing in the queue is ever cancelled or replaced, as runs waiting in a concurrency group would be.
@@ -21,9 +21,7 @@ night is over. Nothing in the queue is ever cancelled or replaced, as runs waiti
   - the run at 23:30: `mode=drain` when the queue holds a request; with an empty queue, only on Friday nights
     ([`calibration_night`]), so that the runner looks whether the calibration of #605 changed the profile: a new
     profile is a new environment, and bench-commits.py `--backfill` measures it first on [`backfill_commits`], from
-    23:30, the night's whole time. Other nights with an empty queue leave the benchmark machine alone (`mode=none`):
-    whether it is on at night is not certain, and what is not needed of it is not asked. A calibration put off past
-    Friday (the computer was off) is seen on the next Friday, or on the next night with a request.
+    23:30, the night's whole time. Other nights with an empty queue do not use the runner (`mode=none`).
 It writes the outputs to `--outputs` and what it did, in Chinese, to `--summary`, both replaced on every call: the
 workflow calls it again when its push of the queue lost a race with another one.
 

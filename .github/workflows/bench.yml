@@ -18,7 +18,7 @@ name: Bench
 # before set up is installed, downloaded or written again (Rust, the build cache, the account, the anchor's binary),
 # and cleaned after each run of what the next one will not use (`.github/scripts/bench-runner.sh`).
 #
-# The machine is used by day, so with `night` (the default) commits are measured at night in Japan, 23:30 to 05:00
+# With `night` (the default), commits are measured at night in Japan, 23:30 to 05:00
 # (#688): the queue job puts the request at the end of the queue on the gh-pages branch (bench/queue.json,
 # `.github/scripts/bench_queue.py`) and the run ends; the run this workflow starts every day at 23:30 measures the
 # requests there in order, and one asked for during the night is measured at once. Once the night is over no further
@@ -30,9 +30,7 @@ name: Bench
 # turned off stays a trial. The run at 23:30 asks for the runner only when there is something for it: a request in
 # the queue, or Friday night, after the calibration task of #605 (`.github/bench/calibrate.ps1`) ran: when it changed
 # the profile, the new environment is measured first on the releases and the PRs labeled `bench`, from 23:30, so it
-# has the whole night. Whether the machine is on at night is not certain; a night it is off or asleep leaves the queue
-# as it is for the next one (a job waits a day for the runner, then fails), and one it is shut down in keeps the
-# results measured so far for the next run to publish.
+# has the whole night. A run whose runner is not there leaves the queue as it is for the next night.
 on:
   workflow_dispatch:
     inputs:

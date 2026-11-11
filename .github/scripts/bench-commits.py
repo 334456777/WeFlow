@@ -423,8 +423,7 @@ def main():
     args = p.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     # The machine must not go to sleep on its own while it measures: a commit timed across a sleep has its wall times
-    # off by the time asleep. Held until this process ends; putting the machine to sleep by hand or turning it off is
-    # not stopped, and leaves the queue and the results kept so far as they are.
+    # off by the time asleep. Held until this process ends.
     if sys.platform == "win32":
         import ctypes
         es_continuous, es_system_required = 0x80000000, 0x00000001
