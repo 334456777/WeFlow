@@ -2339,6 +2339,55 @@ fn list_exports_write_the_rows_in_every_format() {
     assert!(!out.join("refused").exists());
 }
 
+/// `--zip` (#708): the page of a list and its avatars in one zip, which is the file the export names, so the WebUI
+/// downloads both.
+#[test]
+fn a_list_export_packs_its_page_and_avatars_into_a_zip() {
+    use std::io::Read;
+    let root = temp_root("list-zip");
+    let picture = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4];
+    let home = account_home_with(&root, |f| f.head_image_db(&[("wxid_bob", &picture)]));
+    let server = start(&home, &["--api-token", TOKEN]);
+    let out = root.join("out");
+    let body = json!({
+        "format": "html", "parsed": true, "media": ["avatar"], "no-avatar-download": true, "zip": true, "out": out,
+    });
+    let r = server.call("POST", "/export/contacts", &body.to_string());
+    assert_eq!(r.status, 200, "{}", r.body);
+    let path = PathBuf::from(r.json()["data"]["out"].as_str().unwrap());
+    assert_eq!(path, out.join("contacts.zip"));
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+    let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+    let avatar = names
+        .iter()
+        .find(|n| n.starts_with("media/contacts/avatars/"))
+        .unwrap_or_else(|| panic!("no avatar in {names:?}"))
+        .clone();
+    let mut page = String::new();
+    zip.by_name("contacts.html")
+        .unwrap()
+        .read_to_string(&mut page)
+        .unwrap();
+    assert!(page.contains(&avatar), "the page points at {avatar}");
+    let mut bytes = Vec::new();
+    zip.by_name(&avatar)
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    assert_eq!(bytes, picture);
+    // only the zip is left beside it
+    let left: Vec<_> = std::fs::read_dir(&out)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(left, ["contacts.zip"]);
+
+    // a zip is not written under another file's name
+    let body = json!({ "format": "html", "zip": true, "out": out.join("contacts.html") });
+    let r = server.call("POST", "/export/contacts", &body.to_string());
+    assert_eq!(r.status, 400, "{}", r.body);
+}
+
 #[test]
 fn a_session_list_export_keeps_only_the_sessions_named() {
     let root = temp_root("sessions-named");

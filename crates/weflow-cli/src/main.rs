@@ -739,6 +739,9 @@ enum ExportSubcommand {
         /// With --media avatar: only those WeChat keeps on this computer, none downloaded
         #[arg(long)]
         no_avatar_download: bool,
+        /// Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)
+        #[arg(long)]
+        zip: bool,
     },
     /// Export the contact list
     Contacts {
@@ -760,6 +763,9 @@ enum ExportSubcommand {
         /// With --media avatar: only those WeChat keeps on this computer, none downloaded
         #[arg(long)]
         no_avatar_download: bool,
+        /// Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)
+        #[arg(long)]
+        zip: bool,
     },
     /// Export the footprint statistics
     Footprint {
@@ -2707,6 +2713,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             out,
             media,
             no_avatar_download,
+            zip,
         } => {
             // an unknown format or media kind is refused before anything is read
             let format = ListFormat::named(format.as_deref())?;
@@ -2716,7 +2723,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
                 data = sessions_named(data, &sessions)?;
             }
             let written =
-                export_list(hub, ListKind::Sessions, format, &out, &data, avatars).await?;
+                export_list(hub, ListKind::Sessions, format, &out, &data, avatars, zip).await?;
             Ok(json!(written))
         }
         ExportSubcommand::Contacts {
@@ -2726,6 +2733,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             kind,
             media,
             no_avatar_download,
+            zip,
         } => {
             let format = ListFormat::named(format.as_deref())?;
             let avatars = list_avatars(&media, no_avatar_download, format.0)?;
@@ -2742,7 +2750,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
                 hub.contacts()?
             };
             let written =
-                export_list(hub, ListKind::Contacts, format, &out, &data, avatars).await?;
+                export_list(hub, ListKind::Contacts, format, &out, &data, avatars, zip).await?;
             Ok(json!(written))
         }
         ExportSubcommand::Footprint {
@@ -3919,10 +3927,59 @@ fn list_avatars(
     }))
 }
 
+/// Writes the list as [`write_list`] does; with `zip`, into a folder beside the zip (taken away after) that is packed
+/// into the zip (`out`, or `<list>.zip` in the folder `out`): the list's file and its `media/` folder. The result's
+/// `out` is then the zip.
+async fn export_list(
+    hub: &ServiceHub,
+    kind: ListKind,
+    format: (ListFormat, String),
+    out: &Path,
+    value: &Value,
+    avatars: Option<weflow_core::api::AvatarSource>,
+    zip: bool,
+) -> AppResult<ExportWritten> {
+    if !zip {
+        return write_list(hub, kind, format, out, value, avatars).await;
+    }
+    if out
+        .extension()
+        .is_some_and(|ext| !ext.eq_ignore_ascii_case("zip"))
+    {
+        return Err(AppError::usage(
+            "--zip writes a zip: give --out a folder or a .zip file",
+        ));
+    }
+    let zip_path = export_path(out, &format!("{}.zip", kind.name()));
+    let folder = zip_path.with_file_name(format!(
+        ".{}.parts",
+        zip_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    ));
+    let _ = std::fs::remove_dir_all(&folder);
+    // the file itself: the folder's name has a dot, which would make it a file's
+    let file = folder.join(format!("{}.{}", kind.name(), format.0.extension()));
+    let packed = async {
+        let written = write_list(hub, kind, format, &file, value, avatars).await?;
+        weflow_core::export::zip_folder(&folder, &zip_path).map_err(|err| {
+            AppError::runtime(format!("failed to write {}: {err:#}", zip_path.display()))
+        })?;
+        Ok::<_, AppError>(written.format)
+    }
+    .await;
+    let _ = std::fs::remove_dir_all(&folder);
+    Ok(ExportWritten {
+        out: zip_path,
+        format: packed?,
+    })
+}
+
 /// Writes the list `value` to `out` (the file named after the list, with the format's extension, when `out` is a
 /// folder): as it is in JSON and text, and as a table whose columns are the rows' keys in the other formats; on the
 /// HTML page, the avatars of its rows when `avatars` says where from.
-async fn export_list(
+async fn write_list(
     hub: &ServiceHub,
     kind: ListKind,
     (format, format_name): (ListFormat, String),
