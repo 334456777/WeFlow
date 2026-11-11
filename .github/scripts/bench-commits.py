@@ -168,7 +168,9 @@ def request_summary(run, out, elapsed):
             unsupported = str(sum(1 for e in entries if e.get("unsupported")))
             failed_runs = str(sum(e.get("failed_runs", 0) for e in entries))
             load = load_outcome(r)
-        rows.append(f"| {c['ref']} | `{c['sha'][:10]}` | {outcome[kind]} | {minutes(c.get('build_s'))} | "
+        # a commit asked for by its SHA (HEAD is queued as one) has no name to show but the start of it
+        name = c["ref"][:10] if c["sha"].startswith(c["ref"]) else c["ref"]
+        rows.append(f"| {name} | `{c['sha'][:10]}` | {outcome[kind]} | {minutes(c.get('build_s'))} | "
                     f"{minutes(c.get('measure_s'))} | {quiet} | {cmds} | {unsupported} | {failed_runs} | {load} |")
     tally = "，".join(f"{short[k]} {counts[k]}" for k in short)
     postponed = counts["postponed"]
