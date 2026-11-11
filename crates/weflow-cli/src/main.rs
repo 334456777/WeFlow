@@ -15,6 +15,7 @@ use weflow_core::contract::{
 };
 use weflow_core::dates::date_range_args;
 use weflow_core::error::{AppError, AppResult};
+use weflow_core::export_msg::{ListKind, ListPage};
 use weflow_core::output::{failure, success};
 use weflow_core::reads::{image_variant, MediaBody, MediaFile, MediaRead, MessagePage, Read};
 use weflow_core::services::{CachePart, ServiceHub};
@@ -732,6 +733,12 @@ enum ExportSubcommand {
         /// Output file
         #[arg(long)]
         out: PathBuf,
+        /// avatar: put the avatars on the HTML page, in `media/<output name>/avatars/` beside the output file
+        #[arg(long, value_delimiter = ',')]
+        media: Vec<String>,
+        /// With --media avatar: only those WeChat keeps on this computer, none downloaded
+        #[arg(long)]
+        no_avatar_download: bool,
     },
     /// Export the contact list
     Contacts {
@@ -747,6 +754,12 @@ enum ExportSubcommand {
         /// Only these kinds of contact (repeat for several; with --parsed)
         #[arg(long, requires = "parsed", value_parser = ["friend", "group", "official", "former_friend"], action = clap::ArgAction::Append)]
         kind: Vec<String>,
+        /// avatar: put the avatars on the HTML page, in `media/<output name>/avatars/` beside the output file
+        #[arg(long, value_delimiter = ',')]
+        media: Vec<String>,
+        /// With --media avatar: only those WeChat keeps on this computer, none downloaded
+        #[arg(long)]
+        no_avatar_download: bool,
     },
     /// Export the footprint statistics
     Footprint {
@@ -2692,22 +2705,30 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             sessions,
             format,
             out,
+            media,
+            no_avatar_download,
         } => {
-            // an unknown format is refused before anything is read
+            // an unknown format or media kind is refused before anything is read
             let format = ListFormat::named(format.as_deref())?;
-            let mut data = hub.sessions()?;
+            let avatars = list_avatars(&media, no_avatar_download, format.0)?;
+            let mut data = hub.sessions_with_names()?;
             if !sessions.is_empty() {
                 data = sessions_named(data, &sessions)?;
             }
-            Ok(json!(write_export("sessions", format, &out, &data)?))
+            let written =
+                export_list(hub, ListKind::Sessions, format, &out, &data, avatars).await?;
+            Ok(json!(written))
         }
         ExportSubcommand::Contacts {
             format,
             out,
             parsed,
             kind,
+            media,
+            no_avatar_download,
         } => {
             let format = ListFormat::named(format.as_deref())?;
+            let avatars = list_avatars(&media, no_avatar_download, format.0)?;
             let data = if parsed {
                 let mut contacts = hub.chat_contacts_parsed()?;
                 if !kind.is_empty() {
@@ -2720,7 +2741,9 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             } else {
                 hub.contacts()?
             };
-            Ok(json!(write_export("contacts", format, &out, &data)?))
+            let written =
+                export_list(hub, ListKind::Contacts, format, &out, &data, avatars).await?;
+            Ok(json!(written))
         }
         ExportSubcommand::Footprint {
             format,
@@ -2744,8 +2767,9 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             let (b, e) = day_span(&start, &end)?;
             let data = hub.footprint(b, e)?;
             if extension == "json" {
-                let json = (ListFormat::Json, format);
-                return Ok(json!(write_export("footprint", json, &out, &data)?));
+                let path = export_path(&out, "footprint.json");
+                write_json_file(&path, &data)?;
+                return Ok(json!(ExportWritten { out: path, format }));
             }
             let (headers, rows) = hub.footprint_timeline(&data)?;
             let path = export_path(&out, &format!("footprint.{extension}"));
@@ -3861,25 +3885,85 @@ impl ListFormat {
     }
 }
 
-/// Writes the list `value` to `out` (the file `name` with the format's extension when `out` is a folder): as it is
-/// in JSON and text, and as a table whose columns are the rows' keys in the other formats.
-fn write_export(
-    name: &str,
+/// Where the avatars of a list's HTML page come from, as `--media` and `--no-avatar-download` ask (`None`: no
+/// avatars). Only avatars go with a list, and only on its HTML page.
+fn list_avatars(
+    media: &[String],
+    no_download: bool,
+    format: ListFormat,
+) -> AppResult<Option<weflow_core::api::AvatarSource>> {
+    let mut wanted = false;
+    for kind in media.iter().map(|m| m.trim().to_ascii_lowercase()) {
+        match kind.as_str() {
+            "" => {}
+            "avatar" | "avatars" => wanted = true,
+            other => {
+                return Err(AppError::usage(format!(
+                    "a list takes no {other} media; use --media avatar"
+                )));
+            }
+        }
+    }
+    if !wanted {
+        return Ok(None);
+    }
+    if !matches!(format, ListFormat::Html) {
+        return Err(AppError::usage(
+            "--media avatar puts the avatars on the HTML page; use --format html",
+        ));
+    }
+    Ok(Some(if no_download {
+        weflow_core::api::AvatarSource::Local
+    } else {
+        weflow_core::api::AvatarSource::Download
+    }))
+}
+
+/// Writes the list `value` to `out` (the file named after the list, with the format's extension, when `out` is a
+/// folder): as it is in JSON and text, and as a table whose columns are the rows' keys in the other formats; on the
+/// HTML page, the avatars of its rows when `avatars` says where from.
+async fn export_list(
+    hub: &ServiceHub,
+    kind: ListKind,
     (format, format_name): (ListFormat, String),
     out: &Path,
     value: &Value,
+    avatars: Option<weflow_core::api::AvatarSource>,
 ) -> AppResult<ExportWritten> {
     use weflow_core::export;
+    let name = kind.name();
     let path = export_path(out, &format!("{name}.{}", format.extension()));
     make_parent(&path)?;
     match format {
         ListFormat::Json => write_json_file(&path, value)?,
         ListFormat::Csv => write_csv_file(&path, value)?,
         ListFormat::Txt => write_text_file(&path, &format!("{value:#}"))?,
-        ListFormat::Html | ListFormat::Excel | ListFormat::Sql => {
+        ListFormat::Html => {
+            let (columns, rows) = export::list_table(value);
+            let pictures = match avatars {
+                Some(source) => {
+                    hub.export_list_avatars(list_users(value), &path, source)
+                        .await?
+                }
+                None => Default::default(),
+            };
+            let page = ListPage {
+                kind,
+                columns: &columns,
+                rows: &rows,
+                avatars: &pictures,
+                exported_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |since| {
+                        i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+                    }),
+            };
+            export::export_list_html(&page, &path)
+                .map_err(|err| AppError::runtime(err.to_string()))?;
+        }
+        ListFormat::Excel | ListFormat::Sql => {
             let (headers, rows) = export::list_table(value);
             match format {
-                ListFormat::Html => export::export_table_html(name, &headers, &rows, &path),
                 ListFormat::Excel => export::export_table_excel(&headers, &rows, &path),
                 _ => export::export_table_sql(name, &headers, &rows, &path),
             }
@@ -3890,6 +3974,18 @@ fn write_export(
         out: path,
         format: format_name,
     })
+}
+
+/// The usernames of a list's rows, each once, in the list's order.
+fn list_users(list: &Value) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|row| row.get("username")?.as_str())
+        .filter(|user| !user.is_empty() && seen.insert(*user))
+        .map(str::to_string)
+        .collect()
 }
 
 fn export_path(out: &Path, default_name: &str) -> PathBuf {
@@ -4274,6 +4370,38 @@ fn print_failure(err: &AppError) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_list_takes_only_avatars_and_only_on_its_html_page() {
+        use weflow_core::api::AvatarSource;
+        let media = |kinds: &[&str]| kinds.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+        let html = ListFormat::Html;
+        assert_eq!(list_avatars(&[], false, html).unwrap(), None);
+        assert_eq!(
+            list_avatars(&media(&["avatar"]), false, html).unwrap(),
+            Some(AvatarSource::Download)
+        );
+        assert_eq!(
+            list_avatars(&media(&["Avatars"]), true, html).unwrap(),
+            Some(AvatarSource::Local)
+        );
+        assert!(list_avatars(&media(&["image"]), false, html).is_err());
+        assert!(list_avatars(&media(&["avatar"]), false, ListFormat::Json).is_err());
+        // nothing asked for: any format
+        assert_eq!(list_avatars(&[], true, ListFormat::Csv).unwrap(), None);
+    }
+
+    #[test]
+    fn a_list_names_each_user_once() {
+        let list = json!([
+            { "username": "wxid_a" },
+            { "username": "room@chatroom" },
+            { "username": "wxid_a" },
+            { "username": "" },
+            { "name": "no username" },
+        ]);
+        assert_eq!(list_users(&list), ["wxid_a", "room@chatroom"]);
+    }
 
     #[test]
     fn reported_failures_become_errors() {

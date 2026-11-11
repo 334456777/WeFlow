@@ -21,6 +21,9 @@ use crate::locale;
 use crate::message::*;
 
 mod html;
+mod list_html;
+
+pub use list_html::{ListKind, ListPage};
 
 fn chrome(zh: &'static str, en: &'static str) -> &'static str {
     locale::tr(en, zh)

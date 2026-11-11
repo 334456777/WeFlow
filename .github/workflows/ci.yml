@@ -2,7 +2,7 @@ name: CI
 
 # Code changes run `make ci` (rustfmt, clippy with warnings as errors, the whole test suite) on Linux and macOS,
 # plus `make docs-check`. Changes to the READMEs or CLAUDE.md alone run docs-check.yml instead, and changes to the
-# HTML export's template alone run html-template.yml (on main, the copies it commits run CI). Windows x64 (MSVC, a
+# HTML export's templates alone run html-template.yml (on main, the copies it commits run CI). Windows x64 (MSVC, a
 # release target) builds the CLI, runs the test suite and runs the CLI once, since some code (the allocator setup, the
 # platform helpers) only
 # compiles there; Windows arm64 is left to release.yml, so CI covers the three main platforms. The tests use the
@@ -12,12 +12,15 @@ on:
   pull_request:
     paths:
       - "crates/**"
-      # the HTML export's template, the script that makes it small and the two copies html-template.yml commits from
+      # the HTML export's templates, the script that makes them small and the copies html-template.yml commits from
       # them: a pull request's paths are all it changes, the copies included, so they are tested on main
       - "!crates/weflow-core/src/export_msg/template.html"
+      - "!crates/weflow-core/src/export_msg/list.html"
       - "!crates/weflow-core/src/export_msg/build.mjs"
       - "!crates/weflow-core/src/export_msg/template.zh.html"
       - "!crates/weflow-core/src/export_msg/template.en.html"
+      - "!crates/weflow-core/src/export_msg/list.zh.html"
+      - "!crates/weflow-core/src/export_msg/list.en.html"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -33,9 +36,10 @@ on:
     branches: [main]
     paths:
       - "crates/**"
-      # the HTML export's template and the script that makes it small: the program embeds what html-template.yml
+      # the HTML export's templates and the script that makes them small: the program embeds what html-template.yml
       # builds from them, not these files
       - "!crates/weflow-core/src/export_msg/template.html"
+      - "!crates/weflow-core/src/export_msg/list.html"
       - "!crates/weflow-core/src/export_msg/build.mjs"
       - "Cargo.toml"
       - "Cargo.lock"

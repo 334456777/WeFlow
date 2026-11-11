@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<!--
+  WeFlow list export page (`export sessions`, `export contacts` in HTML). One self-contained file: the styles and the
+  script below, and the list itself as JSON in #wf-data (the data model: see list_html.rs). build.mjs makes this file
+  small, one copy for each language (list.zh.html, list.en.html, which the program embeds); the export fills in the
+  three placeholders: __WF_LANG__, __WF_TITLE__ and __WF_DATA__.
+
+  The page: a header bar (title, count, list or table, search), filters, then the rows as a chat list (sessions), a
+  directory in sections (contacts) or a table of every column; a row clicked shows all its fields in a panel beside
+  the list.
+-->
+<html lang="__WF_LANG__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="generator" content="WeFlow">
+<title>__WF_TITLE__</title>
+<style>
+/* ============================================================ colours
+   Those of the chat page. Light; dark when the system is dark and the page is not set to light, or when the page is
+   set to dark (the chat page's theme, kept in the browser). --pick, the filter picked, is one green in both: white
+   on it (light) is 4.56:1, black (dark) 4.61:1 */
+:root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--pick:#048842;--on-pick:#fff;--card:#fff;--chip:#0000000d;
+  --bar:#fafafadb;--side:#f2f2f4;--hover:#0000000d;--stripe:#00000008;--sel:#07c16014;--mark:#ffe066;--red:#fa5151;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--pick:#048842;
+  --on-pick:#000;--card:#2c2c2e;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--hover:#ffffff0f;--stripe:#ffffff08;--sel:#35d28d1f;
+  --mark:#b8860b;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--pick:#048842;--on-pick:#000;--card:#2c2c2e;
+  --chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--hover:#ffffff0f;--stripe:#ffffff08;--sel:#35d28d1f;--mark:#b8860b;color-scheme:dark}
+
+/* ============================================================ base */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;overflow:hidden}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+mark{background:var(--mark);color:inherit;border-radius:2px}
+.app{display:flex;height:100%}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.ib{width:32px;height:32px;border:0;border-radius:8px;background:none;display:grid;place-items:center;flex:none}
+.ib:hover{background:var(--hover)}
+.ib svg{width:18px;height:18px}
+
+/* ============================================================ header bar and filters */
+.bar{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--bar);border-bottom:1px solid var(--line);backdrop-filter:saturate(1.6) blur(16px)}
+.ttl{flex:1;min-width:0}
+.ttl h1{margin:0;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttl .sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search{display:flex;align-items:center;gap:6px;width:260px;height:32px;padding:0 10px;border-radius:8px;background:var(--chip)}
+.search svg{width:16px;height:16px;color:var(--muted)}
+.search input{flex:1;min-width:0;border:0;background:none;outline:0}
+.seg{display:flex;background:var(--chip);border-radius:8px;padding:2px;flex:none}
+.seg button{border:0;background:none;border-radius:6px;padding:4px 10px;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--card);color:var(--fg);box-shadow:0 1px 2px #0000001f}
+.tools{flex:none;display:flex;align-items:center;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line);overflow-x:auto}
+.chip{flex:none;border:0;border-radius:14px;padding:4px 12px;background:var(--chip);font-size:13px;color:var(--muted)}
+.chip b{font-weight:500;margin-left:4px;opacity:.7}
+.chip[aria-pressed=true]{background:var(--pick);color:var(--on-pick)}
+.chip[aria-pressed=true] b{opacity:1}
+.spacer{flex:1}
+.sort{flex:none;border:0;background:none;font-size:12px;color:var(--muted);padding:4px 6px;border-radius:6px}
+button.sort:hover{background:var(--hover)}
+.body{flex:1;overflow:auto}
+.none{padding:48px 16px;text-align:center;color:var(--muted)}
+
+/* ============================================================ rows: avatar, name, a line under it */
+.av{width:40px;height:40px;border-radius:5px;flex:none;display:grid;place-items:center;color:#fff;font-size:16px;font-weight:600}
+.av.room{font-size:13px}
+img.av{object-fit:cover;background:var(--chip)}
+.list,.dir{max-width:860px;margin:0 auto;padding:6px 0 24px}
+.row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-radius:8px;margin:0 8px;cursor:pointer}
+.row:hover{background:var(--hover)}
+.row.sel{background:var(--sel)}
+.row .tx{flex:1;min-width:0}
+.row .l1{display:flex;gap:8px;align-items:baseline}
+.row .nm{flex:1;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .tm{flex:none;font-size:12px;color:var(--muted);max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .l2{display:flex;gap:8px;align-items:center;margin-top:2px}
+.row .sm{flex:1;min-width:0;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dir .row .sm{font-size:12px}
+.badge{flex:none;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;display:grid;place-items:center}
+.tag{flex:none;font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+/* contacts: a section heading for each kind, held at the top while its rows scroll */
+.sec{position:sticky;top:0;z-index:1;max-width:860px;margin:0 auto;padding:6px 24px;font-size:12px;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--line)}
+.sec+.dir{padding-top:6px}
+
+/* ============================================================ the table: every column with a value, sorted by a header */
+table{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
+th,td{padding:7px 12px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line);max-width:320px;overflow:hidden;text-overflow:ellipsis}
+th{position:sticky;top:0;z-index:1;background:var(--side);font-weight:500;color:var(--muted);cursor:pointer;user-select:none}
+th.on{color:var(--fg)}
+th i{font-style:normal;margin-left:4px}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+td.e{color:var(--muted)}
+tbody tr:nth-child(even) td{background:var(--stripe)}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--hover)}
+tbody tr.sel td{background:var(--sel)}
+
+/* ============================================================ the panel of a row's fields */
+.side{width:340px;flex:none;background:var(--side);border-left:1px solid var(--line);display:flex;flex-direction:column}
+.side header{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)}
+.side header .av{width:32px;height:32px;font-size:14px}
+.side header .nm{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kv{flex:1;overflow:auto;margin:0;padding:8px 16px 16px}
+.kv div{display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.kv dt{width:150px;flex:none;color:var(--muted);font-family:ui-monospace,Consolas,monospace;font-size:12px;padding-top:1px;overflow-wrap:anywhere}
+.kv dd{margin:0;flex:1;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.kv .e dd{color:var(--muted)}
+.side .foot{flex:none;padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+
+/* ============================================================ narrow screens: the panel over the list */
+@media (max-width:760px){
+  .bar{gap:6px;padding:0 10px}
+  .search{width:auto;flex:1 1 120px}
+  .ttl{flex:0 1 auto}
+  .ttl .sub{display:none}
+  .side{position:fixed;inset:0;width:auto;z-index:2;border-left:0}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <div class="bar">
+      <div class="ttl"><h1 id="ttl"></h1><div class="sub" id="sub"></div></div>
+      <div class="seg" id="view"><button data-v="list" data-t="列表"></button><button data-v="table" data-t="表格"></button></div>
+      <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search"></label>
+    </div>
+    <div class="tools" id="tools"></div>
+    <div class="body" id="body"></div>
+  </div>
+  <aside class="side" id="side" hidden>
+    <header><div id="sav"></div><div class="nm" id="snm"></div><button class="ib" id="close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+    <dl class="kv" id="kv"></dl>
+    <div class="foot"><label><input type="checkbox" id="empty"> <span data-t="显示空字段"></span></label></div>
+  </aside>
+</div>
+<script id="wf-data" type="application/json">__WF_DATA__</script>
+<script>
+/* ============================================================ data
+   {v, lang, kind: "sessions" | "contacts", exported: unix seconds, columns: [name], rows: [[value for each column]],
+   avatars: {username: path from the page}}. The rows are those of the export's other formats: the database's rows,
+   or for `export contacts --parsed` the contacts as `chat contacts --parsed` lists them. */
+const D = JSON.parse(document.getElementById("wf-data").textContent);
+const COLS = D.columns || [], ROWS = (D.rows || []).map(r => Object.fromEntries(COLS.map((k, i) => [k, r[i]])));
+const AV = D.avatars || {}, EN_PAGE = D.lang === "en";
+// the words of the page are written in Chinese; these are their English. A Chinese page leaves them out (build.mjs
+// cuts what is between the two markers)
+const EN = /*EN*/{"会话列表":"Sessions","联系人":"Contacts","个会话":"sessions","位联系人":"contacts","导出于":"exported","列表":"List","表格":"Table",
+  "搜索任意字段":"Search any field","全部":"All","私聊":"Private","群聊":"Groups","公众号":"Official","有未读":"Unread","好友":"Friends","其他":"Others",
+  "其他联系人":"Others","曾经的好友":"Former friends","按最后消息时间":"By last message","按未读数":"By unread","按名称":"By name",
+  "点表头排序 · 空列已收起":"Click a header to sort · empty columns hidden","显示空字段":"Show empty fields","关闭":"Close","已隐藏":"Hidden",
+  "微信号：":"WeChat ID: ","没有结果":"No results","群":"G"}/*EN*/;
+const T = s => EN[s] || s;
+
+/* ============================================================ helpers */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const hue = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.codePointAt(0)) % 360; return h; };
+const empty = v => v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length);
+const pad = n => String(n).padStart(2, "0");
+const full = t => { const d = new Date(t * 1000); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+// a time in the list: the hour today, the day this year, else the date
+function when(t) {
+  if (!t) return "";
+  const d = new Date(t * 1000), now = new Date();
+  if (d.toDateString() === now.toDateString()) return pad(d.getHours()) + ":" + pad(d.getMinutes());
+  if (d.getFullYear() === now.getFullYear()) return EN_PAGE ? d.toLocaleDateString("en", { month: "short", day: "numeric" }) : (d.getMonth() + 1) + "月" + d.getDate() + "日";
+  return d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate();
+}
+// the columns holding unix seconds, shown as dates
+const TIME = new Set(["last_timestamp", "sort_timestamp", "last_clear_unread_timestamp"]);
+const text = (k, v) => empty(v) ? "—" : TIME.has(k) && typeof v === "number" && v > 0 ? full(v) : typeof v === "object" ? JSON.stringify(v) : String(v);
+// the first letter, digit or CJK character of a name; names of symbols only sort after the others
+const initial = n => (String(n || "").match(/[\p{L}\p{N}]/u) || ["?"])[0].toUpperCase();
+const lead = /^[\p{L}\p{N}]/u;
+const byName = (a, b) => { const x = lead.test(a), y = lead.test(b); return x === y ? a.localeCompare(b, EN_PAGE ? "en" : "zh") : x ? -1 : 1; };
+const kindOf = u => String(u).endsWith("@chatroom") ? "room" : String(u).startsWith("gh_") ? "gh" : "user";
+const first = (r, ...ks) => { for (const k of ks) if (!empty(r[k])) return String(r[k]); return ""; };
+// the exported avatar, else the name's first character on a colour of the username's own
+function avatar(name, u) {
+  if (AV[u]) return '<img class="av" src="' + esc(AV[u]) + '" alt="" loading="lazy">';
+  const room = kindOf(u) === "room";
+  return '<div class="av' + (room ? " room" : "") + '" style="background:hsl(' + hue(u) + ',45%,58%)">' + esc(room ? T("群") : initial(name)) + "</div>";
+}
+
+/* ============================================================ the two lists
+   name: what a row is called; filters: [label, test]; sorts: [label, compare] for the list (the table sorts by a
+   header); section (contacts): the heading a row goes under; row: the two lines beside the avatar */
+const PAGES = {
+  sessions: {
+    title: "会话列表", unit: "个会话",
+    name: r => first(r, "display_name", "username"),
+    filters: [["全部", () => true], ["私聊", r => kindOf(r.username) === "user"], ["群聊", r => kindOf(r.username) === "room"],
+      ["公众号", r => kindOf(r.username) === "gh"], ["有未读", r => r.unread_count > 0]],
+    sorts: [["按最后消息时间", (a, b) => (b.sort_timestamp || 0) - (a.sort_timestamp || 0)],
+      ["按未读数", (a, b) => (b.unread_count || 0) - (a.unread_count || 0) || (b.sort_timestamp || 0) - (a.sort_timestamp || 0)]],
+    row: (r, h) => '<div class="l1"><span class="nm">' + h(PAGE.name(r)) + '</span><span class="tm">' + when(r.last_timestamp) + "</span></div>" +
+      '<div class="l2"><span class="sm">' + h(r.summary || "") + "</span>" + (r.unread_count > 0 ? '<span class="badge">' + r.unread_count + "</span>" : "") +
+      (r.is_hidden ? '<span class="tag">' + esc(T("已隐藏")) + "</span>" : "") + "</div>",
+  },
+  contacts: {
+    title: "联系人", unit: "位联系人",
+    // the database's rows (remark, nick_name, local_type…) or the parsed contacts (displayName, nickname, type…)
+    name: r => first(r, "displayName", "remark", "nick_name", "nickname", "alias", "username"),
+    section: r => {
+      switch (r.type) {
+        case "friend": return "好友";
+        case "group": return "群聊";
+        case "official": return "公众号";
+        case "former_friend": return "曾经的好友";
+      }
+      const k = kindOf(r.username);
+      return k === "room" ? "群聊" : k === "gh" ? "公众号" : r.local_type === 1 ? "好友" : "其他联系人";
+    },
+    sorts: [["按名称", (a, b) => byName(PAGE.name(a), PAGE.name(b))]],
+    row: (r, h) => {
+      const nick = first(r, "nick_name", "nickname"), about = first(r, "description", "detailDescription", "region");
+      return '<div class="l1"><span class="nm">' + h(PAGE.name(r)) + "</span>" + (nick && nick !== PAGE.name(r) ? '<span class="tm">' + h(nick) + "</span>" : "") +
+        '</div><div class="l2"><span class="sm">' + (r.alias ? esc(T("微信号：")) + h(r.alias) : h(r.username)) + (about ? " · " + h(about) : "") + "</span></div>";
+    },
+  },
+};
+const PAGE = PAGES[D.kind] || PAGES.sessions;
+// the sections in their order; the filters of contacts are their sections
+const SECTIONS = ["好友", "群聊", "公众号", "曾经的好友", "其他联系人"];
+if (PAGE.section) PAGE.filters = [["全部", () => true]].concat(SECTIONS.filter(s => ROWS.some(r => PAGE.section(r) === s)).map(s => [s === "其他联系人" ? "其他" : s, r => PAGE.section(r) === s]));
+
+/* ============================================================ state */
+const store = (k, v) => { try { v === undefined ? (v = localStorage.getItem("wf." + k)) : localStorage.setItem("wf." + k, v); } catch (e) { v = null; } return v; };
+// the theme the chat page was set to
+const theme = store("theme");
+if (theme === "light" || theme === "dark") document.documentElement.setAttribute("data-theme", theme);
+let filter = 0, sort = 0, view = store("list-view") === "table" ? "table" : "list", query = "", sel = -1, tsort = null, showEmpty = false;
+const counts = PAGE.filters.map(([, f]) => ROWS.filter(f).length);
+const titled = T(PAGE.title);
+$("ttl").textContent = document.title = titled;
+$("sub").textContent = ROWS.length.toLocaleString() + " " + T(PAGE.unit) + (D.exported ? " · " + T("导出于") + " " + full(D.exported) : "");
+for (const el of document.querySelectorAll("[data-t]")) el.textContent = T(el.dataset.t);
+$("q").placeholder = T("搜索任意字段");
+$("close").title = T("关闭");
+
+/* ============================================================ drawing */
+// the rows a search keeps: any field, or the name, holds the words
+const match = r => !query || PAGE.name(r).toLowerCase().includes(query) || COLS.some(k => !empty(r[k]) && text(k, r[k]).toLowerCase().includes(query));
+// text with the first match of the search marked
+function hl(s) {
+  s = String(s);
+  const i = query ? s.toLowerCase().indexOf(query) : -1;
+  return i < 0 ? esc(s) : esc(s.slice(0, i)) + "<mark>" + esc(s.slice(i, i + query.length)) + "</mark>" + esc(s.slice(i + query.length));
+}
+function tools() {
+  const chips = PAGE.filters.map(([n], i) => '<button class="chip" data-f="' + i + '" aria-pressed="' + (i === filter) + '">' + esc(T(n)) + "<b>" + counts[i].toLocaleString() + "</b></button>").join("");
+  const note = view === "table" ? '<span class="sort">' + esc(T("点表头排序 · 空列已收起")) + "</span>"
+    : PAGE.sorts.length > 1 ? '<button class="sort" id="sort">' + esc(T(PAGE.sorts[sort][0])) + " ⇅</button>" : '<span class="sort">' + esc(T(PAGE.sorts[sort][0])) + "</span>";
+  $("tools").innerHTML = chips + '<span class="spacer"></span>' + note;
+}
+function draw() {
+  tools();
+  const rows = ROWS.map((r, i) => [r, i]).filter(([r]) => PAGE.filters[filter][1](r) && match(r));
+  const body = $("body");
+  if (!rows.length) { body.innerHTML = '<div class="none">' + esc(T("没有结果")) + "</div>"; return; }
+  if (view === "table") {
+    const cols = COLS.filter(k => ROWS.some(r => !empty(r[k])));
+    if (tsort) {
+      const { k, d } = tsort, key = v => empty(v) ? null : typeof v === "object" ? JSON.stringify(v) : v;
+      rows.sort(([a], [b]) => {
+        const x = key(a[k]), y = key(b[k]);
+        if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+        return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), EN_PAGE ? "en" : "zh")) * d;
+      });
+    }
+    const head = cols.map(k => '<th data-k="' + esc(k) + '"' + (tsort && tsort.k === k ? ' class="on"' : "") + ">" + esc(k) + (tsort && tsort.k === k ? "<i>" + (tsort.d > 0 ? "↑" : "↓") + "</i>" : "") + "</th>").join("");
+    const cell = (r, k) => '<td class="' + (typeof r[k] === "number" && !TIME.has(k) ? "n" : "") + (empty(r[k]) ? " e" : "") + '" title="' + esc(text(k, r[k])) + '">' + hl(text(k, r[k])) + "</td>";
+    body.innerHTML = "<table><thead><tr>" + head + "</tr></thead><tbody>" +
+      rows.map(([r, i]) => '<tr data-i="' + i + '"' + (i === sel ? ' class="sel"' : "") + ">" + cols.map(k => cell(r, k)).join("") + "</tr>").join("") + "</tbody></table>";
+    return;
+  }
+  rows.sort(([a], [b]) => PAGE.sorts[sort][1](a, b));
+  const item = ([r, i]) => '<div class="row' + (i === sel ? " sel" : "") + '" data-i="' + i + '">' + avatar(PAGE.name(r), r.username) + '<div class="tx">' + PAGE.row(r, hl) + "</div></div>";
+  if (!PAGE.section) { body.innerHTML = '<div class="list">' + rows.map(item).join("") + "</div>"; return; }
+  const groups = new Map();
+  for (const x of rows) { const s = PAGE.section(x[0]); if (!groups.has(s)) groups.set(s, []); groups.get(s).push(x); }
+  body.innerHTML = SECTIONS.filter(s => groups.has(s)).map(s => '<div class="sec">' + esc(T(s)) + " · " + groups.get(s).length.toLocaleString() + '</div><div class="dir">' + groups.get(s).map(item).join("") + "</div>").join("");
+}
+// the panel of the selected row's fields, in the order of the columns
+function detail() {
+  const side = $("side");
+  if (sel < 0) { side.hidden = true; return; }
+  const r = ROWS[sel];
+  side.hidden = false;
+  $("sav").innerHTML = avatar(PAGE.name(r), r.username);
+  $("snm").textContent = PAGE.name(r);
+  $("kv").innerHTML = COLS.filter(k => showEmpty || !empty(r[k])).map(k => '<div class="' + (empty(r[k]) ? "e" : "") + '"><dt>' + esc(k) + "</dt><dd>" + esc(text(k, r[k])) + "</dd></div>").join("");
+}
+function select(i) {
+  sel = i;
+  for (const el of $("body").querySelectorAll(".sel")) el.classList.remove("sel");
+  if (i >= 0) { const el = $("body").querySelector('[data-i="' + i + '"]'); if (el) el.classList.add("sel"); }
+  detail();
+}
+
+/* ============================================================ what clicks and keys do */
+$("tools").onclick = e => {
+  const b = e.target.closest("[data-f]");
+  if (b) { filter = +b.dataset.f; draw(); return; }
+  if (e.target.closest("#sort")) { sort = (sort + 1) % PAGE.sorts.length; draw(); }
+};
+$("body").onclick = e => {
+  const th = e.target.closest("th");
+  if (th) { const k = th.dataset.k; tsort = tsort && tsort.k === k ? { k, d: -tsort.d } : { k, d: 1 }; draw(); return; }
+  const r = e.target.closest("[data-i]");
+  if (r) select(+r.dataset.i);
+};
+function setView(v) {
+  view = v;
+  for (const b of $("view").children) b.setAttribute("aria-pressed", b.dataset.v === v);
+  store("list-view", v);
+  draw();
+}
+$("view").onclick = e => { const b = e.target.closest("[data-v]"); if (b) setView(b.dataset.v); };
+let typing;
+$("q").oninput = e => { clearTimeout(typing); typing = setTimeout(() => { query = e.target.value.trim().toLowerCase(); draw(); }, 120); };
+$("close").onclick = () => select(-1);
+$("empty").onchange = e => { showEmpty = e.target.checked; detail(); };
+addEventListener("keydown", e => {
+  if (e.key === "Escape" && sel >= 0) select(-1);
+  else if (e.key === "/" && document.activeElement !== $("q")) { e.preventDefault(); $("q").focus(); }
+});
+setView(view);
+</script>
+</body>
+</html>
