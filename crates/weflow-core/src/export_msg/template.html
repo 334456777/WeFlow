@@ -19,13 +19,14 @@
 <style>
 /* ============================================================ colours
    Light; dark when the system is dark and the page is not set to light, or when the page is set to dark. The dark
-   set is written twice: plain custom properties only, which old browsers read too */
+   set is written twice: plain custom properties only, which old browsers read too. --pick, under a button picked or
+   pointed at, is one green in both: white on it (light) is 4.56:1, black (dark) 4.61:1 */
 :root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--them:#eeeef0;--me:#9df29f;--card:#fff;--card-line:#0000000f;
-  --chip:#0000000d;--bar:#fafafadb;--side:#f2f2f4;--field:#fff;--hover:#0000000d;--mark:#ffe066;--flash:#07c1602e;--accent:#07c160;color-scheme:light}
+  --chip:#0000000d;--bar:#fafafadb;--side:#f2f2f4;--field:#fff;--hover:#0000000d;--mark:#ffe066;--flash:#07c1602e;--accent:#07c160;--pick:#048842;--on-pick:#fff;color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--them:#2f2f30;--me:#35d28d;
-  --card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--mark:#b8860b;--flash:#35d28d33;color-scheme:dark}}
+  --card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--mark:#b8860b;--flash:#35d28d33;--on-pick:#000;color-scheme:dark}}
 :root[data-theme=dark]{--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--them:#2f2f30;--me:#35d28d;
-  --card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--mark:#b8860b;--flash:#35d28d33;color-scheme:dark}
+  --card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--mark:#b8860b;--flash:#35d28d33;--on-pick:#000;color-scheme:dark}
 
 /* ============================================================ base */
 *{box-sizing:border-box}
@@ -104,7 +105,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-l
 .bk{display:flex;align-items:center;gap:8px;max-width:100%}
 .bk>:first-child{min-width:0}
 .back{flex:none;width:36px;height:22px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--muted);display:grid;place-items:center;padding:0;animation:pop .3s cubic-bezier(.2,.8,.2,1)}
-.back:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.back:hover{background:var(--pick);border-color:var(--pick);color:var(--on-pick)}
 .back svg{width:15px;height:15px;stroke-width:2}
 @keyframes pop{0%{opacity:0;transform:scale(.6)}}
 /* search matches */
@@ -212,7 +213,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .row{display:flex;gap:8px;align-items:center}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips button{border:1px solid var(--line);background:var(--field);border-radius:14px;padding:3px 10px;font-size:13px}
-.chips [aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.chips [aria-pressed=true]{background:var(--pick);border-color:var(--pick);color:var(--on-pick)}
 .rs{display:flex;align-items:center;gap:6px;padding:8px 16px;font-size:12px;color:var(--muted)}
 .rs .ib{width:28px;height:28px}
 .rs svg{width:16px;height:16px}
