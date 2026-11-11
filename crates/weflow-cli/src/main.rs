@@ -2992,9 +2992,12 @@ fn parse_media_selection(
             "emoji" | "emojis" | "sticker" | "stickers" => opts.emojis = true,
             "file" | "files" => opts.files = true,
             "avatar" | "avatars" => opts.avatars = Some(avatars),
-            other => return Err(AppError::usage(format!(
-                "unknown media kind: {other}; use image, voice, video, emoji, file, avatar or all"
-            ))),
+            other => {
+                let kinds = "image, voice, video, emoji, file, avatar or all";
+                return Err(AppError::usage(format!(
+                    "unknown media kind: {other}; use {kinds}"
+                )));
+            }
         }
     }
     opts.enabled = opts.images
