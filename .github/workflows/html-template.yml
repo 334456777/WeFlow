@@ -3,8 +3,8 @@ name: HTML template
 # The HTML export's page (crates/weflow-core/src/export_msg/template.html) is embedded in the program made small, one
 # copy for each language (template.zh.html, template.en.html), which build.mjs beside it writes with Bun. A push to a
 # branch that changes the template or the script builds the two copies and, when they differ from the branch's,
-# commits them to that branch, so the program embeds what the template says. Nothing is checked. The commit is pushed
-# with GITHUB_TOKEN, so it starts no other workflow (CI runs again on the branch's next push).
+# commits them to that branch, so the program embeds what the template says. Nothing is checked here, and ci.yml leaves
+# the template, the script and the copies out of a pull request's paths: the copies are tested by CI on main.
 on:
   push:
     branches: ["**"]
