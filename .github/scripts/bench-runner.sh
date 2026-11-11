@@ -5,10 +5,11 @@
 # the Python it installs and a venv with psutil (no PowerShell, which the runner's account may not run scripts in),
 # and what bench-commits.py keeps there (the accounts, the binaries, the clone the commits are built in).
 #
-# usage: bench-runner.sh wait      until the night in Japan (23:30 to 05:00, bench-commits.py's NIGHT): at once
-#                                   during it, else sleeps until 23:30
-#        bench-runner.sh measure   (env: COMMITS, RUNS, SEED, GROUP_MESSAGES, CONVERSATIONS, LOAD_SECONDS, ONLY, FORCE,
-#                                    NIGHT as bench.yml passes them)
+# usage: bench-runner.sh measure   (env: MODE and REQUEST as the queue job of bench.yml gives them) MODE=now measures
+#                                   REQUEST, a request as bench_queue.py writes it, at once; MODE=drain measures the
+#                                   requests of the queue on the gh-pages branch, in order, during the night only
+#                                   (bench_queue.py's NIGHT, 23:30 to 05:00 in Japan): after it, nothing is set up or
+#                                   built, and results/summary.md says so
 #        bench-runner.sh clean     what the next run will not use: the Rust toolchains neither this commit's nor used
 #                                   in the last TOOLCHAIN_DAYS days (an older commit built here brings its own, and a
 #                                   backfill over several runs keeps it; bench-commits.py notes in
@@ -16,19 +17,6 @@
 #                                   TARGET_LIMIT_MIB, what the clone no longer reaches, and this run's files in the
 #                                   checkout (bench-commits.py already removed the binaries and accounts)
 set -euo pipefail
-
-if [ "${1:-}" = wait ]; then
-  # seconds into the day in Japan, which keeps no daylight saving time
-  now=$(( ($(date -u +%s) + 9 * 3600) % 86400 ))
-  start=$(( 23 * 3600 + 30 * 60 )) end=$(( 5 * 3600 ))
-  if [ "$now" -ge "$start" ] || [ "$now" -lt "$end" ]; then
-    echo "it is night in Japan: measuring now"
-  else
-    echo "waiting $(( (start - now) / 60 )) minutes for 23:30 in Japan"
-    sleep $(( start - now ))
-  fi
-  exit 0
-fi
 
 : "${WEFLOW_BENCH_DIR:?the runner has no WEFLOW_BENCH_DIR in its .env}"
 dir=$(cygpath -m "$WEFLOW_BENCH_DIR")
@@ -46,6 +34,16 @@ TOOLCHAIN_DAYS=14
 
 case "${1:-}" in
   measure)
+    # a run of the queue that got the runner after the night (another run held it till then) leaves the queue as it is
+    if [ "$MODE" = drain ]; then
+      # seconds into the day in Japan, which keeps no daylight saving time
+      now=$(( ($(date -u +%s) + 9 * 3600) % 86400 ))
+      if [ "$now" -ge $(( 5 * 3600 )) ] && [ "$now" -lt $(( 23 * 3600 + 30 * 60 )) ]; then
+        mkdir -p results
+        printf '## 运行情况\n\n- 拿到 runner 时夜间时段已过，没有测量，队列留到下一个夜间时段\n' > results/summary.md
+        exit 0
+      fi
+    fi
     if [ ! -x "$CARGO_HOME/bin/rustup.exe" ]; then
       curl -sSfLo "$tmp/rustup-init.exe" https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
       "$tmp/rustup-init.exe" -y --no-modify-path --default-toolchain none --profile minimal
@@ -72,11 +70,16 @@ case "${1:-}" in
 
     git fetch -q origin gh-pages
     git show origin/gh-pages:bench/data/index.json > index.json 2>/dev/null || rm -f index.json
+    night=
+    if [ "$MODE" = drain ]; then
+      git show origin/gh-pages:bench/queue.json > requests.json 2>/dev/null || echo '{"requests": []}' > requests.json
+      night=--night
+    else
+      printf '{"requests": [%s]}' "$REQUEST" > requests.json
+    fi
 
-    "$venv/Scripts/python.exe" .github/scripts/bench-commits.py --commits "$COMMITS" --bench-dir "$dir" --tools tools \
-      --index index.json --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" --only "$ONLY" \
-      --seed "$SEED" --group-messages "$GROUP_MESSAGES" --conversations "$CONVERSATIONS" ${FORCE:+--force} \
-      ${NIGHT:+--night}
+    "$venv/Scripts/python.exe" .github/scripts/bench-commits.py --requests requests.json --bench-dir "$dir" \
+      --tools tools --index index.json --out results $night
     ;;
   clean)
     keep=$(rustup show active-toolchain 2>/dev/null | cut -d' ' -f1 || true)
@@ -106,7 +109,7 @@ case "${1:-}" in
       git -C "$dir/src" reflog expire --expire=now --all
       git -C "$dir/src" gc --quiet --prune=now
     fi
-    rm -rf tools results index.json
+    rm -rf tools results index.json requests.json
     ;;
   *)
     echo "usage: $0 wait | measure | clean" >&2

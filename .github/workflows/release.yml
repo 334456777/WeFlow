@@ -15,8 +15,8 @@ name: Release
 # nothing: no release, no tag, no benchmark. Its packages stay on the run as artifacts.
 # A manual run with `bench` also runs bench.yml after the release (#516, #601): `bench_base` and the tag, by default
 # the previous release, each measured on the benchmark runner unless already measured; the link to their comparison
-# in the viewer on GitHub Pages, with a few lines, goes into the release notes. bench.yml measures during the night in
-# Japan only, so the section comes after 23:30 there.
+# in the viewer on GitHub Pages, with a few lines, goes into the release notes. bench.yml queues them for the night in
+# Japan, so the section comes once they are measured, after 23:30 there.
 on:
   push:
     tags:
@@ -33,7 +33,7 @@ on:
         required: false
         type: string
       bench:
-        description: "发布后在基准 runner 上测这个版本（上一个版本没测过时一起测），把对比链接和主要结论补进更新日志（不影响发布；只在日本时间 23:30–05:00 测量）"
+        description: "发布后在基准 runner 上测这个版本（上一个版本没测过时一起测），把对比链接和主要结论补进更新日志（不影响发布；排进夜间队列，在日本时间 23:30–05:00 测量）"
         required: false
         default: false
         type: boolean
@@ -384,8 +384,7 @@ jobs:
     needs: [prepare, release]
     if: needs.prepare.outputs.bench_base != ''
     permissions:
-      contents: write   # the results are pushed to the gh-pages branch and the release notes edited
-      actions: write    # the commits the night was over for go to another run of bench.yml
+      contents: write   # the queue and the results are pushed to the gh-pages branch and the release notes edited
     uses: ./.github/workflows/bench.yml
     with:
       commits: ${{ needs.prepare.outputs.bench_base }},${{ needs.prepare.outputs.tag }}

@@ -1,21 +1,20 @@
-"""Put the results of a benchmark run into the gh-pages branch (#601, #603).
+"""Put the results of one request of a benchmark run into the gh-pages branch (#601, #603, #688).
 
-usage: python bench-publish.py --pages DIR --results DIR --viewer DIR
+usage: python bench-publish.py --pages DIR --results DIR --viewer DIR --outputs FILE --summary FILE
 
-`--pages` is a checkout of the gh-pages branch, `--results` the `--out` folder of bench-commits.py (its run.json and
+`--pages` is a checkout of the gh-pages branch, `--results` a request's folder of bench-commits.py (its run.json and
 `<sha>/result.json`), `--viewer` the folder of the viewer's files (`.github/bench`). Writes, under `<pages>/bench/`:
   - `data/<env key>/<sha>.json`: each result measured, replacing an older one of the same commit
   - `data/index.json`: every environment (what it is, its anchor) and the commits it holds, with the names they
     were asked by (a tag or a branch; a commit asked again by another name gains that name) and when they were
-    measured; the viewer lists them from here
+    measured; the viewer lists them from here. An environment new to it is added only once it holds a result.
   - `index.html` and `compare.mjs`, the viewer, as they are in `--viewer`
-Prints the environment key, for the commit message, and appends what reached gh-pages to $GITHUB_STEP_SUMMARY: how
-many results, the viewer and, for each commit, the `BENCH-<anchor>-<commit>` reference to its comparison with the
-anchor. When exactly two commits were asked for and the environment holds both, they are a base and a head: the
-summary adds the reference and the viewer's address of their comparison, also given to the steps after it as the
-outputs `key`, `url`, `base` and `head` (full SHAs). When the night was over before every commit was measured
-(bench-commits.py `--night`), the outputs `next_commits` and `next_force` say what to ask the next run. An
-environment new to the index is added only once it holds a result.
+Prints the environment key, for the commit message, and writes to `--summary` what reached gh-pages: how many results,
+the viewer and, for each commit, the `BENCH-<anchor>-<commit>` reference to its comparison with the anchor. When the
+request asked for exactly two commits and the environment holds both, they are a base and a head: the summary adds the
+reference and the viewer's address of their comparison, and `--outputs` gets `key`, `url`, `base` and `head` (full
+SHAs), `base_name` and the request's `release_tag`, for the release notes. Both files are replaced on every call: the
+workflow calls it again when its push lost a race with another one.
 """
 
 import argparse
@@ -40,6 +39,8 @@ def main():
     p.add_argument("--pages", required=True)
     p.add_argument("--results", required=True)
     p.add_argument("--viewer", required=True)
+    p.add_argument("--outputs", required=True)
+    p.add_argument("--summary", required=True)
     args = p.parse_args()
 
     with open(os.path.join(args.results, "run.json"), encoding="utf-8") as f:
@@ -88,30 +89,27 @@ def main():
     owner = os.environ.get("GITHUB_REPOSITORY_OWNER", "334456777").lower()
     repo = os.environ.get("GITHUB_REPOSITORY", "334456777/WeFlow").split("/")[-1]
     viewer = f"https://{owner}.github.io/{repo}/bench/?env={key}"
-    lines = ["## 发布", "", f"- {len(published)} 份结果推到 gh-pages，环境 `{key}`；查看页：{viewer}"]
+    lines = [f"- {len(published)} 份结果推到 gh-pages，环境 `{key}`；查看页：{viewer}"]
     refs = [f"  - {c['ref']}：`BENCH-{anchor[:10]}-{c['sha'][:10]}`" for c in published if c["sha"] != anchor]
     if refs:
         lines += ["- 和锚点的对比（在 issue、PR 和提交说明里写这个引用，会自动链接到查看页）："] + refs
-    # two commits asked for are a base and a head, compared when the environment holds both
-    pair = run["commits"] if len(run["commits"]) == 2 else []
-    if pair and all(c["sha"] in held["results"] for c in pair):
-        base, head = pair
+    outputs = {}
+    # the commits the request asked for come first; two of them are a base and a head, compared when the environment
+    # holds both
+    asked = run["commits"][:len([s for s in run["request"]["commits"].split(",") if s.strip()])]
+    if len(asked) == 2 and all(c["sha"] in held["results"] for c in asked):
+        base, head = asked
         url = f"{viewer}&base={link_name(base)}&head={link_name(head)}"
         lines.append(f"- base 对 head：`BENCH-{base['sha'][:10]}-{head['sha'][:10]}`，查看页：{url}")
-        if os.environ.get("GITHUB_OUTPUT"):
-            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-                f.write(f"key={key}\nurl={url}\nbase={base['sha']}\nhead={head['sha']}\n")
-    # the commits postponed past the night, for the run the workflow starts next
-    following = run.get("next")
-    if following:
+        outputs = {"key": key, "url": url, "base": base["sha"], "head": head["sha"], "base_name": base["ref"],
+                   "release_tag": run["request"].get("release_tag", "")}
+    if run.get("next"):
         waiting = sum(1 for c in run["commits"] if c.get("postponed"))
-        lines.append(f"- {waiting} 个提交延后：另起一次运行，等到下一个夜间时段再测")
-        if os.environ.get("GITHUB_OUTPUT"):
-            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-                f.write(f"next_commits={following['commits']}\nnext_force={str(following['force']).lower()}\n")
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
+        lines.append(f"- {waiting} 个提交留在队列里，下一个夜间时段再测")
+    with open(args.outputs, "w", encoding="utf-8") as f:
+        f.write("".join(f"{k}={v}\n" for k, v in outputs.items()))
+    with open(args.summary, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n\n")
     print(key)
 
 
