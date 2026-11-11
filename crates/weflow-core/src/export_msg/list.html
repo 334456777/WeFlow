@@ -2,8 +2,9 @@
 <!--
   WeFlow list export page (`export sessions`, `export contacts` in HTML). One self-contained file: the styles and the
   script below, and the list itself as JSON in #wf-data (the data model: see list_html.rs). build.mjs makes this file
-  small, one copy for each language (list.zh.html, list.en.html, which the program embeds); the export fills in the
-  three placeholders: __WF_LANG__, __WF_TITLE__ and __WF_DATA__.
+  small, one copy for each language (list.zh.html, list.en.html, which the program embeds), with the colours of every
+  page (colours.css) in place of the @colours comment; the export fills in the three placeholders: __WF_LANG__,
+  __WF_TITLE__ and __WF_DATA__.
 
   The page: a header bar (title, count, list or table, search), filters, then the rows as a chat list (sessions), a
   directory in sections (contacts) or a table of every column; a row clicked shows all its fields in a panel beside
@@ -17,17 +18,7 @@
 <meta name="generator" content="WeFlow">
 <title>__WF_TITLE__</title>
 <style>
-/* ============================================================ colours
-   Those of the chat page. Light; dark when the system is dark and the page is not set to light, or when the page is
-   set to dark (the chat page's theme, kept in the browser). --pick, the filter picked, is one green in both: white
-   on it (light) is 4.56:1, black (dark) 4.61:1 */
-:root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--pick:#048842;--on-pick:#fff;--card:#fff;--chip:#0000000d;
-  --bar:#fafafadb;--side:#f2f2f4;--hover:#0000000d;--stripe:#00000008;--sel:#07c16014;--mark:#ffe066;--red:#fa5151;color-scheme:light}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--pick:#048842;
-  --on-pick:#000;--card:#2c2c2e;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--hover:#ffffff0f;--stripe:#ffffff08;--sel:#35d28d1f;
-  --mark:#b8860b;color-scheme:dark}}
-:root[data-theme=dark]{--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--pick:#048842;--on-pick:#000;--card:#2c2c2e;
-  --chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--hover:#ffffff0f;--stripe:#ffffff08;--sel:#35d28d1f;--mark:#b8860b;color-scheme:dark}
+/* @colours */
 
 /* ============================================================ base */
 *{box-sizing:border-box}

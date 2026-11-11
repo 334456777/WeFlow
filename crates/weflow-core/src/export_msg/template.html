@@ -2,8 +2,9 @@
 <!--
   WeFlow chat export page. One self-contained file: the styles and the script below, and the chat itself as JSON in
   #wf-data (the data model: see html.rs). build.mjs makes this file small, one copy for each language
-  (template.zh.html, template.en.html, which the program embeds); the export fills in the three placeholders:
-  __WF_LANG__, __WF_TITLE__ and __WF_DATA__.
+  (template.zh.html, template.en.html, which the program embeds), with the colours of every page (colours.css) in
+  place of the @colours comment; the export fills in the three placeholders: __WF_LANG__, __WF_TITLE__ and
+  __WF_DATA__.
 
   The page: a chat column (header bar, messages, a time rail at its left edge and a scrollbar of its own at its right
   edge) and a sidebar (search, filters, theme) that folds away; over them, a media viewer and a dialog for chat
@@ -17,16 +18,7 @@
 <meta name="generator" content="WeFlow">
 <title>__WF_TITLE__</title>
 <style>
-/* ============================================================ colours
-   Light; dark when the system is dark and the page is not set to light, or when the page is set to dark. The dark
-   set is written twice: plain custom properties only, which old browsers read too. --pick, under a button picked or
-   pointed at, is one green in both: white on it (light) is 4.56:1, black (dark) 4.61:1 */
-:root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--them:#eeeef0;--me:#9df29f;--card:#fff;--card-line:#0000000f;
-  --chip:#0000000d;--bar:#fafafadb;--side:#f2f2f4;--field:#fff;--hover:#0000000d;--mark:#ffe066;--flash:#07c1602e;--accent:#07c160;--pick:#048842;--on-pick:#fff;color-scheme:light}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--them:#2f2f30;--me:#35d28d;
-  --card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--mark:#b8860b;--flash:#35d28d33;--on-pick:#000;color-scheme:dark}}
-:root[data-theme=dark]{--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--them:#2f2f30;--me:#35d28d;
-  --card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--mark:#b8860b;--flash:#35d28d33;--on-pick:#000;color-scheme:dark}
+/* @colours */
 
 /* ============================================================ base */
 *{box-sizing:border-box}

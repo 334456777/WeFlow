@@ -22,8 +22,10 @@ use crate::message::*;
 
 mod html;
 mod list_html;
+mod moments_html;
 
 pub use list_html::{ListKind, ListPage};
+pub use moments_html::{MomentComment, MomentMedia, MomentMediaKind, MomentPost, MomentsPage};
 
 fn chrome(zh: &'static str, en: &'static str) -> &'static str {
     locale::tr(en, zh)

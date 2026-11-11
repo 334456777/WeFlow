@@ -1,0 +1,18 @@
+/* ============================================================ colours
+   The colours of every page the HTML export writes (the chat, the lists, Moments): build.mjs puts this file in place of a
+   template's comment that says only @colours. Light; dark when the system is dark and the page is not set to light, or when the
+   page is set to dark (the chat page's theme, kept in the browser). The dark set is written twice: plain custom
+   properties only, which old browsers read too.
+   --me the user's bubble; --them the others' bubbles, and the box of likes and comments; --accent a field in focus;
+   --pick under a button picked or pointed at, one green in both: white on it (light) is 4.56:1, black (dark) 4.61:1;
+   --link names and places; --sel a row picked; --stripe every other row of a table; --flash a message or post jumped
+   to */
+:root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--them:#eeeef0;--me:#9df29f;--card:#fff;--card-line:#0000000f;
+  --chip:#0000000d;--bar:#fafafadb;--side:#f2f2f4;--field:#fff;--hover:#0000000d;--stripe:#00000008;--sel:#07c16014;--mark:#ffe066;
+  --flash:#07c1602e;--accent:#07c160;--pick:#048842;--on-pick:#fff;--link:#576b95;--red:#fa5151;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--them:#2f2f30;
+  --me:#35d28d;--card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;
+  --stripe:#ffffff08;--sel:#35d28d1f;--mark:#b8860b;--flash:#35d28d33;--on-pick:#000;--link:#7d90a9;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--them:#2f2f30;--me:#35d28d;--card:#2c2c2e;
+  --card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--stripe:#ffffff08;
+  --sel:#35d28d1f;--mark:#b8860b;--flash:#35d28d33;--on-pick:#000;--link:#7d90a9;color-scheme:dark}

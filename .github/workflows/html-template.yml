@@ -1,17 +1,20 @@
 name: HTML template
 
 # The HTML export's pages (crates/weflow-core/src/export_msg/: template.html, the chat; list.html, the lists of
-# sessions and contacts) are embedded in the program made small, one copy of each for each language (template.zh.html,
-# template.en.html, list.zh.html, list.en.html), which build.mjs beside them writes with Bun. A push to a branch that
-# changes a template or the script builds the copies and, when they differ from the branch's, commits them to that
-# branch, so the program embeds what the templates say. Nothing is checked here, and ci.yml leaves the templates, the
-# script and the copies out of a pull request's paths: the copies are tested by CI on main.
+# sessions and contacts; moments.html, Moments; colours.css, the colours they share) are embedded in the program made
+# small, one copy of each page for each language (<page>.zh.html, <page>.en.html), which build.mjs beside them writes
+# with Bun. A push to a branch that changes a template, the colours or the script builds the copies and, when they
+# differ from the branch's, commits them to that branch, so the program embeds what the templates say. Nothing is
+# checked here, and ci.yml leaves the templates, the colours, the script and the copies out of a pull request's paths:
+# the copies are tested by CI on main.
 on:
   push:
     branches: ["**"]
     paths:
       - "crates/weflow-core/src/export_msg/template.html"
       - "crates/weflow-core/src/export_msg/list.html"
+      - "crates/weflow-core/src/export_msg/moments.html"
+      - "crates/weflow-core/src/export_msg/colours.css"
       - "crates/weflow-core/src/export_msg/build.mjs"
       - ".github/workflows/html-template.yml"
   workflow_dispatch:
@@ -41,8 +44,9 @@ jobs:
         env:
           DIR: crates/weflow-core/src/export_msg
         run: |
-          COPIES="$DIR/template.zh.html $DIR/template.en.html $DIR/list.zh.html $DIR/list.en.html"
-          git add $COPIES
+          for page in template list moments; do
+            git add "$DIR/$page.zh.html" "$DIR/$page.en.html"
+          done
           if git diff --cached --quiet; then
             echo "The copies are up to date."
             exit 0
