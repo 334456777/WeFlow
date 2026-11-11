@@ -842,7 +842,7 @@ impl ServiceHub {
     }
 
     /// Copies the media of `msgs` into `<out dir>/media/<out name>/{images,voices,videos,emojis,files}` and records
-    /// each file on its message. Returns `{ requested, exported, missing, dir }`.
+    /// each file on its message; the avatars asked for go to `avatars/` beside them (see [`Self::export_avatars`]).
     pub(super) async fn attach_export_media(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -850,7 +850,7 @@ impl ServiceHub {
         session_id: &str,
         out: &Path,
         opts: &ApiMediaOptions,
-    ) -> crate::contract::MediaCopied {
+    ) -> ExportMedia {
         use crate::message::MediaRef;
         let out_dir = out
             .parent()
@@ -983,12 +983,105 @@ impl ServiceHub {
             });
             exported += 1;
         }
-        crate::contract::MediaCopied {
-            requested: total,
-            exported,
-            missing: total - exported,
-            dir: session_dir,
+        let avatars = match opts.avatars {
+            Some(source) => {
+                self.export_avatars(wcdb, msgs, session_id, &session_dir, &prefix, source)
+                    .await
+            }
+            None => HashMap::new(),
+        };
+        ExportMedia {
+            copied: crate::contract::MediaCopied {
+                requested: total,
+                exported,
+                missing: total - exported,
+                dir: session_dir,
+            },
+            avatars,
         }
+    }
+
+    /// The avatars of who speaks in `msgs` (the user, the other side of a private chat, a group's members) written
+    /// to `<session_dir>/avatars/`: WeChat's copy on this computer, else, with [`AvatarSource::Download`], the
+    /// picture at the contact's avatar address. Returns `{ username: path from the export file }` for those written;
+    /// the others keep the page's initial.
+    async fn export_avatars(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        msgs: &[crate::message::ExportMsg],
+        session_id: &str,
+        session_dir: &Path,
+        prefix: &str,
+        source: api::AvatarSource,
+    ) -> HashMap<String, String> {
+        use futures::StreamExt as _;
+        let me = self.wmy();
+        let is_group = session_id.ends_with("@chatroom");
+        let mut users: Vec<String> = Vec::new();
+        for m in msgs {
+            let user = if m.is_send {
+                me.as_str()
+            } else if is_group {
+                m.sender_username.as_str()
+            } else {
+                session_id
+            };
+            if !user.is_empty() && !users.iter().any(|u| u == user) {
+                users.push(user.to_string());
+            }
+        }
+        let dir = session_dir.join("avatars");
+        if users.is_empty() || std::fs::create_dir_all(&dir).is_err() {
+            return HashMap::new();
+        }
+        let mut pictures: Vec<(String, Vec<u8>)> = Vec::new();
+        let mut elsewhere: Vec<String> = Vec::new();
+        for user in users {
+            match wcdb.head_image(&user) {
+                Ok(Some(bytes)) => pictures.push((user, bytes)),
+                _ => elsewhere.push(user),
+            }
+        }
+        if source == api::AvatarSource::Download && !elsewhere.is_empty() {
+            let urls = serde_json::to_string(&elsewhere)
+                .ok()
+                .and_then(|list| wcdb.avatar_urls(&list).ok())
+                .unwrap_or(Value::Null);
+            let wanted: Vec<(String, String)> = elsewhere
+                .into_iter()
+                .filter_map(|user| {
+                    let url = urls.get(&user)?.as_str()?.to_string();
+                    Some((user, url))
+                })
+                .collect();
+            let total = wanted.len();
+            self.emit_progress("export", "downloading avatars", 0, total);
+            let fetched: Vec<(String, Option<Vec<u8>>)> = futures::stream::iter(wanted)
+                .map(|(user, url)| async move { (user, avatar_picture(&url).await) })
+                .buffer_unordered(5)
+                .collect()
+                .await;
+            self.emit_progress("export", "downloading avatars", total, total);
+            pictures.extend(fetched.into_iter().filter_map(|(u, b)| Some((u, b?))));
+        }
+        pictures
+            .into_iter()
+            .filter_map(|(user, bytes)| {
+                let ext = crate::image::ImageFormat::of(&bytes).map_or(".jpg", |f| f.extension());
+                // named by the user's id, which may hold characters a file name cannot
+                let hash: String = {
+                    use md5::{Digest, Md5};
+                    Md5::digest(user.as_bytes())
+                        .iter()
+                        .take(6)
+                        .map(|b| format!("{b:02x}"))
+                        .collect()
+                };
+                let file = format!("{hash}{ext}");
+                write_atomically(&dir.join(&file), &bytes).ok()?;
+                Some((user, format!("{prefix}/avatars/{file}")))
+            })
+            .collect()
     }
 
     /// Images, voices and videos: everything that needs no network, so it can run on several threads (with the
@@ -1195,6 +1288,34 @@ fn put_media(
     })
 }
 
+/// What [`ServiceHub::attach_export_media`] copied: the media messages' counts, and the avatars written as
+/// `{ username: path from the export file }`.
+pub(super) struct ExportMedia {
+    pub copied: crate::contract::MediaCopied,
+    pub avatars: HashMap<String, String>,
+}
+
+/// The picture at an avatar address: a `data:image/…;base64,` address read as it is, any other downloaded. `None`
+/// when it holds no picture or cannot be fetched.
+async fn avatar_picture(url: &str) -> Option<Vec<u8>> {
+    let bytes = if let Some(rest) = url.strip_prefix("data:image/") {
+        crate::sns::lenient_base64(rest.split_once(";base64,")?.1)
+    } else {
+        let client = crate::http_client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .ok()?;
+        let resp = client.get(url).send().await.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        resp.bytes().await.ok()?.to_vec()
+    };
+    crate::image::ImageFormat::of(&bytes)
+        .is_some()
+        .then_some(bytes)
+}
+
 /// A file message: an app message of type 6.
 fn is_file_message(xml_type: Option<&str>) -> bool {
     xml_type == Some("6")
@@ -1311,6 +1432,8 @@ impl ServiceHub {
             videos: wanted("video"),
             emojis: wanted("emoji"),
             files: wanted("file"),
+            // a message has no avatar: `export messages` puts them on its page
+            avatars: None,
         };
         // the local types of each kind: a file is an app message of type 6, which several local types carry
         let types: [(&[i64], &'static str, bool); 5] = [

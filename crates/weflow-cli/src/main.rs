@@ -810,9 +810,12 @@ enum ExportSubcommand {
         #[arg(long)]
         excel_compact: bool,
         /// Copy media next to the export and point the messages at the copies: any of image, voice, video, emoji,
-        /// file (comma separated) or all. Files go to `media/<output name>/` beside the output file.
+        /// file, avatar (comma separated) or all. Files go to `media/<output name>/` beside the output file.
         #[arg(long, value_delimiter = ',')]
         media: Vec<String>,
+        /// With avatars in --media: only those WeChat keeps on this computer, none downloaded
+        #[arg(long)]
+        no_avatar_download: bool,
     },
 }
 
@@ -2790,6 +2793,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             display_name,
             excel_compact,
             media,
+            no_avatar_download,
             zip,
         } => {
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
@@ -2804,7 +2808,12 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
                 }
             }
             let fmt = formats.first().cloned().unwrap_or_else(|| "txt".into());
-            let media_opts = parse_media_selection(&media)?;
+            let avatars = if no_avatar_download {
+                weflow_core::api::AvatarSource::Local
+            } else {
+                weflow_core::api::AvatarSource::Download
+            };
+            let media_opts = parse_media_selection(&media, avatars)?;
             let parse_display = |s: &str| {
                 weflow_core::export_msg::DisplayPref::parse(s).ok_or_else(|| {
                     AppError::usage("--display-name must be group-nickname, remark or nickname")
@@ -2955,7 +2964,11 @@ async fn export_messages_bundle(
 }
 
 /// `--media image,voice` / `--media all` → the media kinds to copy next to a message export.
-fn parse_media_selection(values: &[String]) -> Result<weflow_core::api::ApiMediaOptions, AppError> {
+/// The media `--media` names; the avatars, when named, come from `avatars`.
+fn parse_media_selection(
+    values: &[String],
+    avatars: weflow_core::api::AvatarSource,
+) -> Result<weflow_core::api::ApiMediaOptions, AppError> {
     let mut opts = weflow_core::api::ApiMediaOptions::default();
     for v in values
         .iter()
@@ -2970,21 +2983,26 @@ fn parse_media_selection(values: &[String]) -> Result<weflow_core::api::ApiMedia
                     opts.videos,
                     opts.emojis,
                     opts.files,
-                ) = (true, true, true, true, true)
+                ) = (true, true, true, true, true);
+                opts.avatars = Some(avatars);
             }
             "image" | "images" => opts.images = true,
             "voice" | "voices" => opts.voices = true,
             "video" | "videos" => opts.videos = true,
             "emoji" | "emojis" | "sticker" | "stickers" => opts.emojis = true,
             "file" | "files" => opts.files = true,
-            other => {
-                return Err(AppError::usage(format!(
-                    "unknown media kind: {other}; use image, voice, video, emoji, file or all"
-                )))
-            }
+            "avatar" | "avatars" => opts.avatars = Some(avatars),
+            other => return Err(AppError::usage(format!(
+                "unknown media kind: {other}; use image, voice, video, emoji, file, avatar or all"
+            ))),
         }
     }
-    opts.enabled = opts.images || opts.voices || opts.videos || opts.emojis || opts.files;
+    opts.enabled = opts.images
+        || opts.voices
+        || opts.videos
+        || opts.emojis
+        || opts.files
+        || opts.avatars.is_some();
     Ok(opts)
 }
 

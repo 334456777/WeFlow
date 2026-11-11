@@ -411,6 +411,8 @@ pub struct Settings {
     pub display_pref: DisplayPref,
     pub excel_compact: bool,
     pub exported_at: i64,
+    /// The avatars on the HTML page: `{ username: path from the export file }`.
+    pub avatars: HashMap<String, String>,
 }
 
 impl Default for Settings {
@@ -422,6 +424,7 @@ impl Default for Settings {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0),
+            avatars: HashMap::new(),
         }
     }
 }

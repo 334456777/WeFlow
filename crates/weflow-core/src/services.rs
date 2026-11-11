@@ -977,11 +977,11 @@ impl ServiceHub {
             return self.export_messages(req, out);
         }
         let (wcdb, mut collected) = again_if_keys_changed(|| self.export_collect(req))?;
-        let stats = self
+        let media = self
             .attach_export_media(&wcdb, &mut collected, &req.session_id, out, media)
             .await;
-        let mut result = self.export_write(req, out, &wcdb, &collected)?;
-        result.media = Some(stats);
+        let mut result = self.export_write(req, out, &wcdb, &collected, &media.avatars)?;
+        result.media = Some(media.copied);
         Ok(result)
     }
 
@@ -1008,13 +1008,13 @@ impl ServiceHub {
             return Ok(Vec::new());
         };
         let (wcdb, mut collected) = again_if_keys_changed(|| self.export_collect(req))?;
-        let stats = if media.enabled {
-            Some(
-                self.attach_export_media(&wcdb, &mut collected, &req.session_id, first, media)
-                    .await,
-            )
+        let (stats, avatars) = if media.enabled {
+            let media = self
+                .attach_export_media(&wcdb, &mut collected, &req.session_id, first, media)
+                .await;
+            (Some(media.copied), media.avatars)
         } else {
-            None
+            (None, std::collections::HashMap::new())
         };
         let lanes: Vec<_> = outs
             .iter()
@@ -1022,7 +1022,8 @@ impl ServiceHub {
             .collect();
         crate::output::progress_formats(&lanes);
         let lanes = std::sync::Mutex::new(lanes);
-        let (wcdb, collected, stats, lanes) = (&wcdb, &collected, &stats, &lanes);
+        let (wcdb, collected, stats, lanes, avatars) =
+            (&wcdb, &collected, &stats, &lanes, &avatars);
         std::thread::scope(|scope| {
             let writers: Vec<_> = outs
                 .iter()
@@ -1030,7 +1031,7 @@ impl ServiceHub {
                 .map(|(index, (format, out))| {
                     let request = request(format);
                     scope.spawn(move || {
-                        let written = self.export_write(&request, out, wcdb, collected);
+                        let written = self.export_write(&request, out, wcdb, collected, avatars);
                         use crate::sync::MutexExt as _;
                         let mut lanes = lanes.lock_or_panic();
                         lanes[index].1 = true;
@@ -1240,12 +1241,14 @@ impl ServiceHub {
         })
     }
 
+    /// `collected` written in `req`'s format; `avatars` (`{ username: path from the export file }`) go on the HTML page.
     fn export_write(
         &self,
         req: &MessageExportRequest,
         out: &Path,
         wcdb: &weflow_native::wcdb::Wcdb,
         collected: &[crate::message::ExportMsg],
+        avatars: &std::collections::HashMap<String, String>,
     ) -> AppResult<crate::contract::MessagesExported> {
         let format = req.format.to_ascii_lowercase();
         let runtime = |e: anyhow::Error| AppError::runtime(e.to_string());
@@ -1267,7 +1270,10 @@ impl ServiceHub {
                 "excel" | "xlsx" => exporter.write_excel(collected, out).map_err(runtime),
                 "txt" => exporter.write_txt(collected, out).map_err(runtime),
                 "weclone" => exporter.write_weclone(collected, out).map_err(runtime),
-                "html" => exporter.write_html(collected, out).map_err(runtime),
+                "html" => {
+                    exporter.settings.avatars.clone_from(avatars);
+                    exporter.write_html(collected, out).map_err(runtime)
+                }
                 "sql" => exporter.write_sql(collected, out).map_err(runtime),
                 other => Err(AppError::usage(format!(
                     "unsupported message export format: {other}; supported: {MESSAGE_EXPORT_FORMATS}"

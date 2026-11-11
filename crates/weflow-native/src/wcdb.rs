@@ -534,6 +534,11 @@ impl Wcdb {
             .display_names(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
+    /// The avatar kept on this computer for `username` (see `NativeAccount::head_image`).
+    pub fn head_image(&self, username: &str) -> Result<Option<Vec<u8>>> {
+        self.account()?.head_image(username)
+    }
+
     pub fn avatar_urls(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
             .avatar_urls(&crate::native_contact::usernames_from_json(usernames_json))

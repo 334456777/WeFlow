@@ -802,6 +802,7 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
         videos: false,
         emojis: false,
         files: false,
+        avatars: None,
     };
     let dir = root.join("exp");
     std::fs::create_dir_all(&dir).unwrap();
@@ -1332,5 +1333,115 @@ async fn file_messages_copy_their_files() {
     assert_eq!(
         std::fs::read_to_string(out.join("wxid_bob/files/2019-01/report.pdf")).unwrap(),
         "first"
+    );
+}
+
+/// The avatars on the HTML page (#700): WeChat's copy on this computer first; the others from the contact's
+/// avatar address unless asked not to download; who has none keeps the page's initial.
+#[tokio::test]
+async fn html_pages_carry_the_avatars() {
+    use base64::Engine as _;
+    use weflow_native::fixture::{ContactSpec, MsgSpec, SessionSpec, T0};
+    let (local, remote) = (jpeg(200, 1), jpeg(300, 2));
+    let address = format!(
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&remote)
+    );
+    let (root, hub, fixture) = common::custom_hub_with(
+        "avatars",
+        |f| {
+            f.session_db(&[SessionSpec {
+                username: "wxid_bob",
+                summary: "",
+                last_timestamp: T0 + 2,
+                unread: 0,
+                last_msg_type: 1,
+            }]);
+            f.message_shard(
+                0,
+                &[(
+                    "wxid_bob",
+                    vec![
+                        MsgSpec::text(1, "wxid_bob", T0, "hi"),
+                        MsgSpec::text(2, "wxid_me", T0 + 1, "hello"),
+                        MsgSpec::text(3, "wxid_bob", T0 + 2, "bye"),
+                    ],
+                )],
+            );
+        },
+        |_| {},
+    );
+    // the head image is kept for Bob; the user has only an address
+    fixture.head_image_db(&[("wxid_bob", &local)]);
+    let me = ContactSpec {
+        avatar: &address,
+        ..ContactSpec::new("wxid_me", 1, "Me")
+    };
+    fixture.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob"), me], &[]);
+
+    let users = |html: &str| -> Vec<(String, String)> {
+        let open = "<script id=\"wf-data\" type=\"application/json\">";
+        let start = html.find(open).unwrap() + open.len();
+        let end = start + html[start..].find("</script>").unwrap();
+        let data: serde_json::Value = serde_json::from_str(&html[start..end]).unwrap();
+        data["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| {
+                (
+                    u[0].as_str().unwrap().to_string(),
+                    u[1].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    };
+    let export = |name: &'static str, source| {
+        let dir = root.join(name);
+        let hub = &hub;
+        async move {
+            let opts = weflow_core::api::ApiMediaOptions {
+                enabled: true,
+                avatars: Some(source),
+                ..Default::default()
+            };
+            hub.export_messages_with_media(&media_request("html"), &dir.join("chat.html"), &opts)
+                .await
+                .unwrap();
+            (
+                dir.clone(),
+                std::fs::read_to_string(dir.join("chat.html")).unwrap(),
+            )
+        }
+    };
+
+    let (dir, html) = export("downloaded", weflow_core::api::AvatarSource::Download).await;
+    let got = users(&html);
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert!(
+        got.iter()
+            .all(|(_, path)| path.starts_with("media/chat/avatars/") && path.ends_with(".jpg")),
+        "{got:?}"
+    );
+    let files: Vec<Vec<u8>> = got
+        .iter()
+        .map(|(_, p)| std::fs::read(dir.join(p)).unwrap())
+        .collect();
+    assert!(
+        files.contains(&local) && files.contains(&remote),
+        "Bob's kept copy and the user's downloaded one"
+    );
+
+    let (_, html) = export("kept", weflow_core::api::AvatarSource::Local).await;
+    let got = users(&html);
+    let with: Vec<&str> = got
+        .iter()
+        .filter(|(_, p)| !p.is_empty())
+        .map(|(n, _)| n.as_str())
+        .collect();
+    assert_eq!(
+        with.len(),
+        1,
+        "only Bob's kept copy, nothing downloaded: {got:?}"
     );
 }

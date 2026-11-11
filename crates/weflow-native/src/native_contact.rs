@@ -238,6 +238,24 @@ impl NativeAccount {
         Ok(Value::Object(map))
     }
 
+    /// The avatar WeChat keeps on this computer for `username` (`head_image/head_image.db`): the picture's bytes,
+    /// `None` when there is none or no such database.
+    pub fn head_image(&self, username: &str) -> Result<Option<Vec<u8>>> {
+        let db = self.db_path("head_image/head_image.db");
+        if username.is_empty() || !db.is_file() {
+            return Ok(None);
+        }
+        let rows = self.query(
+            &db,
+            "select image_buffer from head_image where username = ?1",
+            &[&username],
+        )?;
+        Ok(rows
+            .iter()
+            .map(|r| decode_hex(&text(r, "image_buffer")))
+            .find(|b| !b.is_empty()))
+    }
+
     /// `{ username: url }` for contacts that have one (big avatar preferred).
     pub fn avatar_urls(&self, usernames: &[String]) -> Result<Value> {
         let mut map = Map::new();
