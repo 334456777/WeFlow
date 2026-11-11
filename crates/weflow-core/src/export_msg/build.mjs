@@ -18,11 +18,13 @@ import path from "node:path";
 
 const HERE = import.meta.dir;
 const TEMPLATES = ["template", "list", "moments"];
-const COLOURS = fs.readFileSync(path.join(HERE, "colours.css"), "utf8").trim();
+// read with LF line ends, whatever the checkout wrote (core.autocrlf), so the copies are the same everywhere
+const read = file => fs.readFileSync(path.join(HERE, file), "utf8").replace(/\r\n?/g, "\n");
+const COLOURS = read("colours.css").trim();
 
 /** The template `name` with the colours in it. */
 function source(name) {
-  const t = fs.readFileSync(path.join(HERE, name + ".html"), "utf8");
+  const t = read(name + ".html");
   const parts = t.split("/* @colours */");
   if (parts.length !== 2) throw new Error(`${name}.html: the @colours comment is not there exactly once`);
   return parts[0] + COLOURS + parts[1];
