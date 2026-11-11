@@ -78,16 +78,16 @@ svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-l
 .m{display:flex;align-items:flex-start;padding:6px 16px;gap:10px}
 .me,.me .voice,.me .bk{flex-direction:row-reverse}
 .av{width:40px;height:40px;border-radius:5px;flex:none;object-fit:cover;display:grid;place-items:center;color:#fff;font-size:16px;font-weight:600;overflow:hidden;user-select:none}
-.col,.bkb{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
-.col{max-width:min(72%,560px)}
-.me .col,.me .bkb{align-items:flex-end}
+.col{display:flex;flex-direction:column;align-items:flex-start;min-width:0;max-width:min(72%,560px)}
+.me .col{align-items:flex-end}
 .nm{line-height:16px;margin:0 0 3px;max-width:100%}
 .named>.av{margin-top:19px}
-/* the bubble, its arrow at the middle of its side */
+/* the bubble: others' arrow points at the middle of their avatar (the avatar is 40px, level with the bubble's top),
+   the user's at the middle of the bubble's side */
 .b{position:relative;padding:9px 12px;border-radius:6px;background:var(--them);min-height:40px}
 .me .b{background:var(--me);color:#000}
-.b:before{content:"";position:absolute;top:50%;margin-top:-6px;left:-5px;border:6px solid transparent;border-left:0;border-right-color:var(--them)}
-.me .b:before{left:auto;right:-5px;border-right:0;border-left:6px solid var(--me)}
+.b:before{content:"";position:absolute;top:20px;margin-top:-6px;left:-5px;border:6px solid transparent;border-left:0;border-right-color:var(--them)}
+.me .b:before{top:50%;left:auto;right:-5px;border-right:0;border-left:6px solid var(--me)}
 .me .b a{color:inherit}
 /* the quoted message under a reply */
 .q{margin-top:4px;max-width:100%;padding:5px 9px;border:0;border-radius:5px;background:var(--chip);color:var(--muted);font-size:13px;text-align:left}
@@ -100,8 +100,10 @@ svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-l
 /* a message jumped to flashes; after a jump from a quote, it carries a button back */
 .flash{animation:flash 2s ease-out}
 @keyframes flash{0%,40%{background:var(--flash)}to{background:#0000}}
-.bk{display:flex;align-items:flex-start;gap:8px;max-width:100%}
-.back{flex:none;margin-top:9px;width:36px;height:22px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--muted);display:grid;place-items:center;padding:0;animation:pop .3s cubic-bezier(.2,.8,.2,1)}
+/* the button sits beside what the message shows, level with its middle; a reply's quote goes under both */
+.bk{display:flex;align-items:center;gap:8px;max-width:100%}
+.bk>:first-child{min-width:0}
+.back{flex:none;width:36px;height:22px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--muted);display:grid;place-items:center;padding:0;animation:pop .3s cubic-bezier(.2,.8,.2,1)}
 .back:hover{background:var(--accent);border-color:var(--accent);color:#fff}
 .back svg{width:15px;height:15px;stroke-width:2}
 @keyframes pop{0%{opacity:0;transform:scale(.6)}}
@@ -448,6 +450,8 @@ function avatar(u) {
 function initial(n) { n = n || "?"; return '<div class="av" style="background:hsl(' + hue(n) + ',45%,58%)">' + esc(Array.from(n.trim())[0] || "?") + "</div>"; }
 /** A picture's shown size: within mw × mh, its shape kept, no side under 40. */
 function fit(w, h, mw, mh) { if (!w || !h) return [mw, mh]; const r = Math.min(1, mw / w, mh / h); return [Math.max(40, Math.round(w * r)), Math.max(40, Math.round(h * r))]; }
+/** The quoted message under a reply, which goes to it. */
+function quote(m) { return '<button class="q" data-go="' + (m.r ?? "") + '">' + hl((m.qn ? m.qn + ": " : "") + (m.qx || "")) + "</button>"; }
 /** A card: a link when it opens a page or a file, a button when it opens the dialog, else a box. */
 function card(cls, inner, foot, attrs) {
   const tag = attrs && attrs.indexOf("href=") === 0 ? "a" : attrs ? "button" : "div";
@@ -457,7 +461,7 @@ function card(cls, inner, foot, attrs) {
 function body(m, i) {
   switch (m.k) {
     case K.TEXT: return '<div class="b">' + rich(m.x) + "</div>";
-    case K.QUOTE: return '<div class="b">' + rich(m.x) + '</div><button class="q" data-go="' + (m.r ?? "") + '">' + hl((m.qn ? m.qn + ": " : "") + (m.qx || "")) + "</button>";
+    case K.QUOTE: return '<div class="b">' + rich(m.x) + "</div>" + quote(m);
     case K.IMG: {
       if (!m.s) return '<div class="gone">' + SVG.img + esc(T("图片已丢失")) + "</div>";
       // a picture of unknown size takes its own, within the same bounds
@@ -513,7 +517,11 @@ function msg(i) {
   if (m.k === K.SYS || m.u < 0) return h + '<div class="sys" id="m' + i + '"><span>' + rich(m.x) + "</span></div>";
   const me = m.u === ME, named = GROUP && !me;
   let b = body(m, i);
-  if (BACK && BACK.to === i) b = '<div class="bk"><div class="bkb">' + b + '</div><button class="back" data-back title="' + esc(T("返回引用处")) + '">' + SVG.back + "</button></div>";
+  if (BACK && BACK.to === i) {
+    // the button beside what the message shows; a reply's quote (the end of its body) under both
+    const q = m.k === K.QUOTE ? quote(m) : "";
+    b = '<div class="bk">' + b.slice(0, b.length - q.length) + '<button class="back" data-back title="' + esc(T("返回引用处")) + '">' + SVG.back + "</button></div>" + q;
+  }
   return h + '<div class="m' + (me ? " me" : "") + (named ? " named" : "") + '" id="m' + i + '" title="' + full(m.t) + '">' + avatar(m.u) + '<div class="col">' + (named ? '<div class="nm">' + esc(U[m.u][0]) + "</div>" : "") + b + "</div></div>";
 }
 
