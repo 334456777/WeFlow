@@ -75,7 +75,7 @@ fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
         .unwrap_or_default()
 }
 
-fn decode_html_entities(text: &str) -> String {
+pub(crate) fn decode_html_entities(text: &str) -> String {
     decode_html_entities_cow(text).into_owned()
 }
 
@@ -178,7 +178,7 @@ impl<'a> MsgXml<'a> {
     }
 
     /// [`extract_app_message_type`] of [`once`](Self::once).
-    fn app_type_twice(&self) -> &str {
+    pub(crate) fn app_type_twice(&self) -> &str {
         self.app_type_twice
             .get_or_init(|| app_type_in(self.once(), self.twice()))
     }
@@ -189,7 +189,7 @@ impl<'a> MsgXml<'a> {
     }
 
     /// [`is_readable_system_message`] of [`once`](Self::once).
-    fn readable_system_twice(&self, local_type: i64) -> bool {
+    pub(crate) fn readable_system_twice(&self, local_type: i64) -> bool {
         local_type == 10000 || has_sysmsg(self.twice())
     }
 

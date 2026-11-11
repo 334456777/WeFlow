@@ -1,2 +1,4 @@
 # shell scripts keep LF wherever they are checked out (a Windows runner with core.autocrlf would hand bash CRLF)
 *.sh text eol=lf
+# the HTML export's template made small by build.mjs beside it (CI rebuilds and commits them, html-template.yml)
+crates/weflow-core/src/export_msg/template.*.html linguist-generated=true eol=lf

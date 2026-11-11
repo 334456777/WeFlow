@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<!--
+  WeFlow chat export page. One self-contained file: the styles and the script below, and the chat itself as JSON in
+  #wf-data (the data model: see html.rs). build.mjs makes this file small, one copy for each language
+  (template.zh.html, template.en.html, which the program embeds); the export fills in the three placeholders:
+  __WF_LANG__, __WF_TITLE__ and __WF_DATA__.
+
+  The page: a chat column (header bar, messages, a time rail at its left edge and a scrollbar of its own at its right
+  edge) and a sidebar (search, filters, theme) that folds away; over them, a media viewer and a dialog for chat
+  histories and announcements.
+-->
+<html lang="__WF_LANG__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="generator" content="WeFlow">
+<title>__WF_TITLE__</title>
+<style>
+/* ============================================================ colours
+   Light; dark when the system is dark and the page is not set to light, or when the page is set to dark. The dark
+   set is written twice: plain custom properties only, which old browsers read too */
+:root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--them:#eeeef0;--me:#9df29f;--card:#fff;--card-line:#0000000f;
+  --chip:#0000000d;--bar:#fafafadb;--side:#f2f2f4;--field:#fff;--hover:#0000000d;--mark:#ffe066;--flash:#07c1602e;--accent:#07c160;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--them:#2f2f30;--me:#35d28d;
+  --card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--mark:#b8860b;--flash:#35d28d33;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--them:#2f2f30;--me:#35d28d;
+  --card:#2c2c2e;--card-line:#ffffff12;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--field:#2f2f30;--hover:#ffffff0f;--mark:#b8860b;--flash:#35d28d33;color-scheme:dark}
+
+/* ============================================================ base */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:#576b95}
+svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+[hidden]{display:none!important}
+
+/* ============================================================ shared text treatments
+   one line cut with an ellipsis; a few lines cut; line breaks kept; long words broken anywhere; small grey text;
+   a rule under a section */
+.bar h1,.nm,.card .ft,.rec .lines div,.hit .h1 b,.dlg header span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q,.card .t1,.card .t2,.hit .h2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.card .t2{-webkit-line-clamp:3}
+.b,.q,.card .t2,.sys span,.dlg .bd{white-space:pre-wrap}
+.b,.q,.card .t1,.card .t2,.hit .h2,.sys span,.dlg .bd{overflow-wrap:anywhere}
+.sub,.nm,.lbl,.hit .h1,.ri .h1{font-size:12px;color:var(--muted)}
+.sh,.sb,.rs,.ri,.dlg header{border-bottom:1px solid var(--line)}
+
+/* ============================================================ page layout: the chat column and the sidebar */
+.app{display:flex;height:100%}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.bar{height:52px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bar);border-bottom:1px solid var(--line);-webkit-backdrop-filter:saturate(1.6) blur(16px);backdrop-filter:saturate(1.6) blur(16px);z-index:2}
+.ttl{flex:1;min-width:0;text-align:center}
+.bar h1{margin:0;font-size:16px;font-weight:600}
+/* icon buttons; a hidden one balances the bar so the title stays centred */
+.ib{width:36px;height:36px;border:0;border-radius:8px;background:none;display:grid;place-items:center;flex:none}
+.ib:hover{background:var(--hover)}
+.ib svg{width:20px;height:20px}
+.ghost{visibility:hidden}
+#chat{flex:1;overflow-y:auto;overflow-anchor:none;overscroll-behavior:contain}
+#list{position:relative;max-width:900px;margin:0 auto;padding:8px 0 24px}
+.side{width:var(--sw,340px);flex:none;background:var(--side);border-left:1px solid var(--line);display:flex;flex-direction:column;position:relative;min-width:260px;max-width:70vw}
+.grip{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3}
+
+/* ============================================================ the chat's scrollbar
+   the chat's own (see the script) in place of the browser's: a thin thumb, wider while the pointer is on it */
+#chat{scrollbar-width:none}
+#chat::-webkit-scrollbar{display:none}
+.sbar{position:absolute;right:0;top:52px;bottom:0;width:14px;z-index:2;touch-action:none}
+.sbar i{position:absolute;right:3px;top:0;width:6px;border-radius:3px;background:var(--muted);opacity:.4;transition:width .15s,opacity .15s}
+.sbar:hover i,.sbar.drag i{width:8px;opacity:.7}
+
+/* ============================================================ messages
+   others on the left and the user on the right: an avatar, then a column with the name (in a group) and the bubble;
+   the avatar lines up with the top of the bubble */
+.m{display:flex;align-items:flex-start;padding:6px 16px;gap:10px}
+.me,.me .voice,.me .bk{flex-direction:row-reverse}
+.av{width:40px;height:40px;border-radius:5px;flex:none;object-fit:cover;display:grid;place-items:center;color:#fff;font-size:16px;font-weight:600;overflow:hidden;user-select:none}
+.col,.bkb{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.col{max-width:min(72%,560px)}
+.me .col,.me .bkb{align-items:flex-end}
+.nm{line-height:16px;margin:0 0 3px;max-width:100%}
+.named>.av{margin-top:19px}
+/* the bubble, its arrow at the middle of its side */
+.b{position:relative;padding:9px 12px;border-radius:6px;background:var(--them);min-height:40px}
+.me .b{background:var(--me);color:#000}
+.b:before{content:"";position:absolute;top:50%;margin-top:-6px;left:-5px;border:6px solid transparent;border-left:0;border-right-color:var(--them)}
+.me .b:before{left:auto;right:-5px;border-right:0;border-left:6px solid var(--me)}
+.me .b a{color:inherit}
+/* the quoted message under a reply */
+.q{margin-top:4px;max-width:100%;padding:5px 9px;border:0;border-radius:5px;background:var(--chip);color:var(--muted);font-size:13px;text-align:left}
+.q:hover{color:var(--fg)}
+/* system lines and time chips */
+.sys,.tm{display:flex;justify-content:center;padding:4px 40px}
+.tm{padding:10px 16px 4px}
+.sys span,.tm span{font-size:12px;color:var(--muted);text-align:center;max-width:600px}
+.tm span{background:var(--chip);padding:2px 8px;border-radius:4px}
+/* a message jumped to flashes; after a jump from a quote, it carries a button back */
+.flash{animation:flash 2s ease-out}
+@keyframes flash{0%,40%{background:var(--flash)}to{background:#0000}}
+.bk{display:flex;align-items:flex-start;gap:8px;max-width:100%}
+.back{flex:none;margin-top:9px;width:36px;height:22px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--muted);display:grid;place-items:center;padding:0;animation:pop .3s cubic-bezier(.2,.8,.2,1)}
+.back:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.back svg{width:15px;height:15px;stroke-width:2}
+@keyframes pop{0%{opacity:0;transform:scale(.6)}}
+/* search matches */
+mark{background:var(--mark);color:inherit;border-radius:2px}
+
+/* ============================================================ message contents */
+/* pictures, videos and stickers; a missing file shows as a placeholder */
+.media{display:block;border-radius:6px;background:var(--chip);cursor:zoom-in;max-width:100%;height:auto}
+.vid{position:relative;display:block;border-radius:6px;overflow:hidden;background:#000;border:0;padding:0}
+.vid video{display:block;width:100%;height:100%;object-fit:cover;pointer-events:none}
+.vid:after{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:#00000073 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M9 7v10l8-5z'/%3E%3C/svg%3E") 50%/26px no-repeat;border:2px solid #ffffffd9}
+.dur{position:absolute;right:6px;bottom:4px;color:#fff;font-size:12px;text-shadow:0 0 3px #0009;z-index:1}
+.gone{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;width:120px;height:120px;border-radius:6px;background:var(--chip);color:var(--muted);font-size:12px;text-align:center}
+.gone svg{width:28px;height:28px;stroke-width:1.5}
+.emo{display:block;max-width:140px;max-height:140px;width:auto;height:auto;cursor:zoom-in}
+.emo.gone{display:flex;width:80px;height:80px;cursor:default}
+/* voice (its waves blink while it plays) and calls */
+.voice,.call{display:flex;align-items:center;gap:6px}
+.voice{user-select:none}
+.voice i{width:18px;height:18px;flex:none;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M6 12h.01M10 8a6 6 0 0 1 0 8M14 5a10 10 0 0 1 0 14'/%3E%3C/svg%3E") 50%/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M6 12h.01M10 8a6 6 0 0 1 0 8M14 5a10 10 0 0 1 0 14'/%3E%3C/svg%3E") 50%/contain no-repeat}
+.me .voice i{transform:scaleX(-1)}
+.voice.on i{animation:blink 1s steps(2) infinite}
+.voice.na{cursor:default;opacity:.7}
+@keyframes blink{50%{opacity:.35}}
+.call svg{width:18px;height:18px}
+/* cards: files, links and app messages, payments, locations, chat histories, contact cards */
+.card{display:block;width:260px;max-width:100%;border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;overflow:hidden;border:1px solid var(--card-line);text-align:left;padding:0}
+.card .in{padding:10px 12px;display:flex;gap:10px}
+.tx{flex:1;min-width:0}
+.t1{line-height:1.35}
+.t2{margin-top:4px;font-size:12px;color:var(--muted)}
+.ft{padding:5px 12px 6px;border-top:1px solid var(--card-line);font-size:11px;color:var(--muted)}
+.ico{width:42px;height:42px;border-radius:4px;flex:none;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase}
+.pay{color:#fff;border:0}
+.pay .in{align-items:center}
+.pay .t1{font-size:16px}
+.pay .t2{color:#ffffffd9}
+.pay .ft{color:#ffffffbf;border-color:#fff3}
+.pay svg{width:36px;height:36px;stroke-width:1.6}
+.tr{background:#f79c46}
+.rp{background:#f35543}
+.done{opacity:.62}
+.map{height:96px;background:linear-gradient(135deg,#07c16029,#576b9529),repeating-linear-gradient(0deg,#0000 0 18px,var(--card-line) 0 19px),repeating-linear-gradient(90deg,#0000 0 18px,var(--card-line) 0 19px);display:grid;place-items:center}
+.map svg{width:28px;height:28px;fill:#f35543;stroke:none}
+.lines{margin-top:4px;font-size:12px;color:var(--muted);line-height:1.5}
+
+/* ============================================================ time rail
+   Collapsed: ticks at the left edge, one a year (or a month, when the chat is all in one year), the one the chat is
+   at marked; the edge hints when the pointer comes near. Open: a panel with the years, then the months, then the days
+   side by side, each column centred on the rail's middle (the script places the columns and rolls one longer than
+   the window), the chat under them shaded */
+.edge,.cal{position:absolute;left:0;top:52px;bottom:0;z-index:3}
+.edge{width:32px}
+.cal{display:flex;align-items:center;z-index:4;pointer-events:none}
+/* collapsed: the ticks (an item's tick in the open rail has the same shape) */
+.ticks{pointer-events:auto;display:flex;flex-direction:column;gap:9px;padding:14px 16px 14px 8px;cursor:pointer;transition:opacity .2s}
+.ticks i,.cc button:before{height:2px;width:8px;border-radius:1px;opacity:.45}
+.ticks i{background:var(--muted);transition:width .3s cubic-bezier(.2,.8,.2,1) var(--d,0s),opacity .3s var(--d,0s)}
+.ticks .on{width:16px;background:var(--fg);opacity:.9}
+.hint .ticks i{width:14px;opacity:.8}
+.hint .ticks .on{width:24px;opacity:1}
+/* open: the panel takes the ticks' place */
+.calp{position:absolute;inset:0;pointer-events:none}
+.open .ticks{opacity:0;pointer-events:none}
+/* the columns: each fades in as it fills, a rolling one fades out at its ends; open, they take the pointer, but not
+   an `old` copy (a column going) */
+.cc{position:absolute;overflow:hidden;touch-action:none;opacity:0;transition:opacity .16s}
+.cc.in{opacity:1}
+.cc:empty{display:none}
+.rolls{-webkit-mask-image:linear-gradient(#0000,#000 30px,#000 calc(100% - 30px),#0000);mask-image:linear-gradient(#0000,#000 30px,#000 calc(100% - 30px),#0000)}
+.open .cc{pointer-events:auto}
+.open .cc.old{pointer-events:none}
+/* coming and going: the panel slides in from the left as the rail opens and back out as it closes; so does the months
+   column, or the days column, as it appears and as it goes (the years come with the panel). A column that only
+   changes what it holds stays where it is */
+.calp,.cc+.cc{opacity:0;transform:translateX(-12px);transition:opacity .18s,transform .24s cubic-bezier(.2,.8,.2,1)}
+.open .calp,.cc+.cc.in{opacity:1;transform:none}
+/* the shade over the chat under the columns, so the labels read; the rest of the chat stays as it is. It comes and
+   goes with the panel (--dim) and follows how far the columns reach (--cols) as they come and go; `shade` keeps the
+   mask on while it shows. Browsers without @property change it at once */
+@property --dim{syntax:"<number>";inherits:true;initial-value:0}
+@property --cols{syntax:"<length>";inherits:true;initial-value:0px}
+.main{transition:--dim .18s,--cols .24s cubic-bezier(.2,.8,.2,1)}
+.dim{--dim:1}
+.shade #chat{-webkit-mask-image:linear-gradient(90deg,rgb(0 0 0/calc(1 - .9*var(--dim))) calc(var(--cols) - 10px),#000 calc(var(--cols) + 70px));mask-image:linear-gradient(90deg,rgb(0 0 0/calc(1 - .9*var(--dim))) calc(var(--cols) - 10px),#000 calc(var(--cols) + 70px))}
+/* an item: like a collapsed tick, a tick and its label, no background; the label keeps a halo of the page colour so
+   it reads over the chat. The picked year and month are marked like a hovered item. The numbers sit in boxes of
+   their own, so that they line up digit under digit */
+.cc button{position:absolute;left:6px;top:0;width:var(--bw);display:flex;align-items:center;gap:8px;border:0;background:none;padding:3px 8px 3px 26px;font-size:13px;line-height:18px;color:var(--muted);white-space:nowrap;text-align:left;text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 0 8px var(--bg),0 0 12px var(--bg)}
+.cc button:before{content:"";position:absolute;left:6px;top:50%;margin-top:-1px;background:currentColor;box-shadow:0 0 0 2px var(--bg);transition:width .2s cubic-bezier(.2,.8,.2,1),opacity .2s}
+.cc button:hover,.cc .sel{color:var(--fg)}
+.cc button:hover:before,.cc .sel:before{width:14px;opacity:.8}
+.cc .n{display:inline-block;min-width:2ch;text-align:right;font-style:normal;font-variant-numeric:tabular-nums}
+.cc small{margin-left:2px;font-size:11px;font-weight:400;opacity:.6}
+
+/* ============================================================ sidebar: search, filters, results, theme, about */
+.sh{height:52px;flex:none;display:flex;align-items:center;padding:0 8px 0 16px;font-weight:600}
+.sh span,.rs span{flex:1}
+.sb{padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.fld{position:relative;display:flex;align-items:center}
+.fld input,.fld select{width:100%;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--field);padding:0 10px 0 32px;outline:0}
+.fld select{padding-left:10px}
+.fld :focus{border-color:var(--accent)}
+.fld svg{position:absolute;left:10px;top:10px;width:16px;height:16px;stroke:var(--muted);stroke-width:2;pointer-events:none}
+.row{display:flex;gap:8px;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--line);background:var(--field);border-radius:14px;padding:3px 10px;font-size:13px}
+.chips [aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.rs{display:flex;align-items:center;gap:6px;padding:8px 16px;font-size:12px;color:var(--muted)}
+.rs .ib{width:28px;height:28px}
+.rs svg{width:16px;height:16px}
+#res{flex:1;overflow-y:auto;overscroll-behavior:contain}
+.hit{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:8px 16px}
+.hit:hover,.cur{background:var(--hover)}
+.h1{display:flex;gap:8px}
+.h1 b{font-weight:500;flex:1;min-width:0}
+.h2{font-size:14px;margin-top:2px}
+.empty{padding:24px 16px;text-align:center;color:var(--muted);font-size:13px}
+.info{padding:10px 16px 14px;font-size:12px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line)}
+
+/* ============================================================ overlays: the media viewer and the dialog */
+.lb,.dlg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+.lb{background:#000000eb;z-index:10;overflow:hidden;touch-action:none}
+.lb img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
+.lb video{max-width:92vw;max-height:84vh}
+.lb .ib{position:absolute;color:#fff;background:#ffffff14;z-index:1}
+.lb .ib:hover{background:#ffffff2e}
+.x{top:14px;right:14px}.pv,.nx{top:50%;margin-top:-18px}.pv{left:14px}.nx{right:14px}
+.cap{position:absolute;left:0;right:0;bottom:0;padding:10px 16px 14px;color:#fffc;font-size:13px;display:flex;justify-content:center;gap:12px;align-items:center;background:linear-gradient(#0000,#0009);z-index:1}
+.cap button{background:#ffffff1f;border:0;color:#fff;border-radius:6px;padding:3px 10px;font-size:12px}
+.dlg{z-index:9;background:#0006;padding:16px}
+.pn{background:var(--bg);border-radius:10px;width:min(560px,100%);max-height:84vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px #0000004d}
+.dlg header{display:flex;align-items:center;padding:6px 6px 6px 16px;font-weight:600}
+.dlg header span{flex:1;min-width:0}
+.bd{overflow-y:auto;padding:8px 0}
+.ri{padding:8px 16px}
+
+/* ============================================================ narrow windows: the sidebar covers the page */
+@media (max-width:760px){
+  .side{position:fixed;inset:0;width:100%!important;max-width:none;z-index:5;border:0}
+  .grip{display:none}
+  .col{max-width:78%}
+  .m{padding:6px 10px}
+  .ticks{padding-left:3px}
+  .edge{width:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="main">
+    <header class="bar">
+      <span class="ib ghost"></span>
+      <div class="ttl"><h1 id="ttl"></h1><div class="sub" id="sub"></div></div>
+      <button class="ib" id="tgl" data-i="find"></button>
+    </header>
+    <div id="chat" tabindex="-1"><div id="list"></div></div>
+    <div class="sbar" id="sbar"><i></i></div>
+    <div class="edge" id="edge"></div>
+    <nav class="cal" id="cal">
+      <div class="ticks" id="ticks"></div>
+      <div class="calp"><div class="cc" id="cy"></div><div class="cc" id="cm"></div><div class="cc" id="cd"></div></div>
+    </nav>
+  </main>
+  <aside class="side" id="side" hidden>
+    <div class="grip" id="grip"></div>
+    <div class="sh"><span data-t="搜索与筛选"></span><button class="ib" id="cls" data-i="x"></button></div>
+    <div class="sb">
+      <label class="fld"><i data-i="find"></i><input id="q" type="search" autocomplete="off" spellcheck="false"></label>
+      <div class="chips" id="kinds"></div>
+      <label class="fld" id="whoBox"><select id="who"></select></label>
+    </div>
+    <div class="rs"><span id="cnt"></span><button class="ib" id="prev" data-i="up"></button><button class="ib" id="next" data-i="down"></button></div>
+    <div id="res"></div>
+    <div class="sb"><div class="row"><span class="lbl" data-t="外观"></span><div class="chips" id="theme"></div></div></div>
+    <div class="info" id="info"></div>
+  </aside>
+</div>
+<div class="lb" id="lb" hidden>
+  <button class="ib x" id="lbx" data-i="x"></button><button class="ib pv" id="lbp" data-i="left"></button><button class="ib nx" id="lbn" data-i="right"></button>
+  <div class="cap"><span id="lbc"></span><button id="lbg" data-t="定位到聊天"></button></div>
+</div>
+<div class="dlg" id="dlg" hidden><div class="pn"><header><span id="dlt"></span><button class="ib" id="dlx" data-i="x"></button></header><div class="bd" id="dlb"></div></div></div>
+<script id="wf-data" type="application/json">__WF_DATA__</script>
+<script>
+(() => {
+"use strict";
+/* The script, in order: the data and the words of the page; helpers; the page around the chat (header, sidebar,
+   theme); the messages (how one is drawn, the blocks that draw only those near the view, the scrollbar); search; the
+   time rail; the media viewer, the dialog and voice; what clicks and keys do; the start, at the latest message. */
+
+/* ============================================================ data
+   msgs[i] = {t: unix seconds, u: index into users (-1: none), k: kind, ...the kind's fields}; the order is WeChat's
+   sort order, so times are not always rising. Times show in the time zone of the computer that opens the page. */
+const D = JSON.parse(document.getElementById("wf-data").textContent);
+const M = D.msgs, U = D.users, ME = D.me, GROUP = D.kind === "group", EN_PAGE = D.lang === "en";
+// a quote whose message comes later in the export names that message by id (rq), and that message carries the id
+{
+  let ids = null;
+  for (const m of M) if (m.rq) {
+    if (!ids) { ids = new Map(); M.forEach((q, j) => { if (q.id) ids.set(q.id, j); }); }
+    if (ids.has(m.rq)) m.r = ids.get(m.rq);
+  }
+}
+const K = {SYS:0,TEXT:1,IMG:2,VOICE:3,VIDEO:4,EMOJI:5,FILE:6,LINK:7,QUOTE:8,RECORD:9,TRANSFER:10,PACKET:11,LOC:12,CARD:13,CALL:14,MUSIC:15,MINI:16,FINDER:17,NOTICE:18,APP:19};
+// the words of the page are written in Chinese; these are their English. A Chinese page leaves them out (build.mjs
+// cuts what is between the two markers)
+const EN = /*EN*/{"搜索与筛选":"Search & filter","搜索":"Search","外观":"Theme","自动":"Auto","浅色":"Light","深色":"Dark",
+  "全部":"All","图片与视频":"Photos & videos","文件":"Files","链接":"Links","语音":"Voice","聊天记录":"Chat history","转账与红包":"Payments","所有人":"Everyone",
+  "群聊":"Group chat","私聊":"Private chat","公众号":"Official account","条消息":" messages","条结果":" results","定位到聊天":"Show in chat","返回引用处":"Back to the reply","图片已丢失":"Image missing",
+  "视频已丢失":"Video missing","表情":"Sticker","微信转账":"Transfer","微信红包":"Red packet","位置":"Location","个人名片":"Contact card","音乐":"Music","小程序":"Mini program",
+  "视频号":"Channels","群公告":"Announcement","语音通话":"Voice call","视频通话":"Video call","导出时间":"Exported","时间范围":"Range","消息数":"Messages","没有结果":"No results",
+  "输入关键词或选择类型":"Type a keyword or pick a type","我":"Me","星期日":"Sun","星期一":"Mon","星期二":"Tue","星期三":"Wed","星期四":"Thu","星期五":"Fri","星期六":"Sat",
+  "已收款":"Received","已退还":"Returned","[图片]":"[Photo]","[视频]":"[Video]","[语音]":"[Voice]","[表情]":"[Sticker]","[文件]":"[File]","[链接]":"[Link]",
+  "[聊天记录]":"[Chat history]","[转账]":"[Transfer]","[红包]":"[Red packet]","[位置]":"[Location]","[名片]":"[Contact]","[通话]":"[Call]","[音乐]":"[Music]","[小程序]":"[Mini program]",
+  "[视频号]":"[Channels]","[群公告]":"[Announcement]","[应用消息]":"[App message]"}/*EN*/;
+const T = s => EN[s] || s;
+
+/* ============================================================ helpers */
+const $ = id => document.getElementById(id);
+const chat = $("chat"), list = $("list"), main = chat.parentNode;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pad = n => (n < 10 ? "0" : "") + n;
+const WEEK = ["星期日","星期一","星期二","星期三","星期四","星期五","星期六"];
+const day = t => { const d = new Date(t * 1000); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
+const hm = t => { const d = new Date(t * 1000); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+const ymd = t => { const d = new Date(t * 1000); return EN_PAGE ? d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) : d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日"; };
+const full = t => ymd(t) + " " + hm(t);
+const size = n => n == null ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : n < 1073741824 ? (n / 1048576).toFixed(1) + " MB" : (n / 1073741824).toFixed(2) + " GB";
+const dur = s => Math.floor(s / 60) + ":" + pad(Math.floor(s % 60));
+/** A sender's name; in a private chat the user's own name may be empty. */
+const name = u => u < 0 ? "" : u === ME && !GROUP ? (U[u][0] || T("我")) : U[u][0];
+/** A hue of its own for a name or a file extension. */
+const hue = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h) % 360; };
+// icons: the inside of a 24×24 svg each; an element with data-i="name" gets that icon
+const SVG = {};
+for (const [k, v] of Object.entries({
+  img: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+  cam: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3"/>',
+  pay: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8m-3-4 3 4-3 4"/>',
+  packet: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 8c3 2.5 11 2.5 14 0"/><circle cx="12" cy="11" r="2"/>',
+  pin: '<path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5" fill="#fff"/>',
+  back: '<path d="M9 15 4 10l5-5M4 10h10a6 6 0 0 1 0 12h-2"/>',
+  find: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  up: '<path d="m6 15 6-6 6 6"/>', down: '<path d="m6 9 6 6 6-6"/>', left: '<path d="m15 6-6 6 6 6"/>', right: '<path d="m9 6 6 6-6 6"/>'
+})) SVG[k] = '<svg viewBox="0 0 24 24">' + v + "</svg>";
+for (const el of document.querySelectorAll("[data-i]")) el.innerHTML = SVG[el.dataset.i];
+// what is kept in the browser: the theme, whether the sidebar is open, and its width
+const store = (k, v) => { try { v === undefined ? (v = localStorage.getItem("wf." + k)) : localStorage.setItem("wf." + k, v); } catch (e) { v = null; } return v; };
+
+/* ============================================================ the page around the chat */
+/* header: the title, the kind of chat and how many messages; the words of the page in its language */
+const KIND = { group: "群聊", private: "私聊", official: "公众号" };
+document.title = D.title || document.title;
+$("ttl").textContent = D.title || "";
+$("sub").textContent = [T(KIND[D.kind] || ""), M.length.toLocaleString() + T("条消息")].filter(Boolean).join(" · ");
+for (const el of document.querySelectorAll("[data-t]")) el.textContent = T(el.dataset.t);
+$("q").placeholder = T("搜索");
+/* sidebar: opened by the header's button, or by typing on the page; its width set by dragging its edge */
+const side = $("side");
+function openSide(on) { side.hidden = !on; store("side", on ? "1" : "0"); if (on) $("q").focus(); }
+$("tgl").onclick = () => openSide(side.hidden);
+$("cls").onclick = () => openSide(false);
+if (store("side") === "1" && innerWidth > 760) side.hidden = false;
+const sw = +store("sw"); if (sw) side.style.setProperty("--sw", sw + "px");
+$("grip").onpointerdown = e => {
+  const g = e.target; g.setPointerCapture(e.pointerId);
+  g.onpointermove = ev => side.style.setProperty("--sw", Math.max(260, Math.min(innerWidth * 0.7, innerWidth - ev.clientX)) + "px");
+  g.onpointerup = () => { g.onpointermove = g.onpointerup = null; store("sw", parseInt(side.style.getPropertyValue("--sw"))); };
+};
+/* about: how many messages, the time they span, when they were exported */
+if (M.length) {
+  let lo = Infinity, hi = -Infinity; for (const m of M) { if (m.t < lo) lo = m.t; if (m.t > hi) hi = m.t; }
+  $("info").innerHTML = esc(T("消息数")) + ": " + M.length.toLocaleString() + "<br>" + esc(T("时间范围")) + ": " + esc(ymd(lo)) + " – " + esc(ymd(hi)) + (D.exported ? "<br>" + esc(T("导出时间")) + ": " + esc(full(D.exported)) : "");
+}
+/* theme: automatic (the system's), light or dark */
+const THEMES = [["auto", "自动"], ["light", "浅色"], ["dark", "深色"]];
+function setTheme(v) {
+  v === "auto" ? document.documentElement.removeAttribute("data-theme") : document.documentElement.setAttribute("data-theme", v);
+  for (const b of $("theme").children) b.setAttribute("aria-pressed", b.dataset.v === v);
+  store("theme", v);
+}
+$("theme").innerHTML = THEMES.map(([v, l]) => '<button data-v="' + v + '">' + esc(T(l)) + "</button>").join("");
+$("theme").onclick = e => { const v = e.target.dataset && e.target.dataset.v; if (v) setTheme(v); };
+setTheme(store("theme") || "auto");
+
+/* ============================================================ messages: how one is drawn */
+/* text: search matches are marked as it is drawn; links in it can be followed */
+let Q = "";
+function hl(s) {
+  s = s == null ? "" : String(s);
+  if (!Q) return esc(s);
+  const low = s.toLowerCase(); let out = "", i = 0, j;
+  while ((j = low.indexOf(Q, i)) !== -1) { out += esc(s.slice(i, j)) + "<mark>" + esc(s.slice(j, j + Q.length)) + "</mark>"; i = j + Q.length; }
+  return out + esc(s.slice(i));
+}
+const URL_RE = /\bhttps?:\/\/[^\s<>"'，。！？、）》】]+/g;
+function rich(s) {
+  s = s == null ? "" : String(s);
+  let out = "", i = 0, m; URL_RE.lastIndex = 0;
+  while ((m = URL_RE.exec(s))) { out += hl(s.slice(i, m.index)) + '<a href="' + esc(m[0]) + '" target="_blank">' + hl(m[0]) + "</a>"; i = m.index + m[0].length; }
+  return out + hl(s.slice(i));
+}
+/* plain text: what search matches and what the result list shows; a kind without words shows as a tag */
+const PRE = { [K.IMG]:"[图片]",[K.VOICE]:"[语音]",[K.VIDEO]:"[视频]",[K.EMOJI]:"[表情]",[K.FILE]:"[文件]",[K.LINK]:"[链接]",[K.RECORD]:"[聊天记录]",[K.TRANSFER]:"[转账]",
+  [K.PACKET]:"[红包]",[K.LOC]:"[位置]",[K.CARD]:"[名片]",[K.CALL]:"[通话]",[K.MUSIC]:"[音乐]",[K.MINI]:"[小程序]",[K.FINDER]:"[视频号]",[K.NOTICE]:"[群公告]",[K.APP]:"[应用消息]" };
+function plain(m) {
+  switch (m.k) {
+    case K.SYS: case K.TEXT: case K.NOTICE: return m.x || "";
+    case K.QUOTE: return (m.x || "") + (m.qx ? "\n" + (m.qn ? m.qn + ": " : "") + m.qx : "");
+    case K.FILE: return T(PRE[m.k]) + " " + (m.n || "");
+    case K.LINK: case K.APP: case K.MUSIC: case K.MINI: case K.FINDER: return T(PRE[m.k]) + " " + [m.ti, m.x, m.f].filter(Boolean).join(" ");
+    case K.RECORD: return T(PRE[m.k]) + " " + (m.ti || "") + "\n" + (m.it || []).map(r => r[0] + ": " + r[2]).join("\n");
+    case K.TRANSFER: return T(PRE[m.k]) + " ¥" + (m.a || "") + " " + (m.x || "");
+    case K.PACKET: return T(PRE[m.k]) + " " + (m.ti || "");
+    case K.LOC: return T(PRE[m.k]) + " " + [m.ti, m.x].filter(Boolean).join(" ");
+    case K.CARD: return T(PRE[m.k]) + " " + (m.n || "");
+    case K.CALL: return T(PRE[m.k]) + " " + (m.x || "");
+    default: return T(PRE[m.k] || "");
+  }
+}
+/* time chips: one after a gap of five minutes, and one with the date whenever the day changes */
+const CHIP = new Array(M.length);
+{
+  let last = -1e12, lastDay = 0;
+  for (let i = 0; i < M.length; i++) {
+    const t = M[i].t, d = day(t);
+    if (d !== lastDay) CHIP[i] = ymd(t) + (EN_PAGE ? "" : " " + T(WEEK[new Date(t * 1000).getDay()])) + " " + hm(t);
+    else if (t - last >= 300) CHIP[i] = hm(t);
+    last = t; lastDay = d;
+  }
+}
+/* avatars: the picture, or the first character of the name on a colour of its own (also when the picture does not
+   load: see "files that do not load") */
+function avatar(u) {
+  const a = U[u][1];
+  if (a) return '<img class="av" data-u="' + u + '" src="' + esc(a) + '" alt="" loading="lazy" decoding="async">';
+  return initial(U[u][0]);
+}
+function initial(n) { n = n || "?"; return '<div class="av" style="background:hsl(' + hue(n) + ',45%,58%)">' + esc(Array.from(n.trim())[0] || "?") + "</div>"; }
+/** A picture's shown size: within mw × mh, its shape kept, no side under 40. */
+function fit(w, h, mw, mh) { if (!w || !h) return [mw, mh]; const r = Math.min(1, mw / w, mh / h); return [Math.max(40, Math.round(w * r)), Math.max(40, Math.round(h * r))]; }
+/** A card: a link when it opens a page or a file, a button when it opens the dialog, else a box. */
+function card(cls, inner, foot, attrs) {
+  const tag = attrs && attrs.indexOf("href=") === 0 ? "a" : attrs ? "button" : "div";
+  return "<" + tag + ' class="card ' + cls + '" ' + (attrs || "") + ">" + inner + (foot ? '<div class="ft">' + esc(foot) + "</div>" : "") + "</" + tag + ">";
+}
+/** What a message shows, by its kind. */
+function body(m, i) {
+  switch (m.k) {
+    case K.TEXT: return '<div class="b">' + rich(m.x) + "</div>";
+    case K.QUOTE: return '<div class="b">' + rich(m.x) + '</div><button class="q" data-go="' + (m.r ?? "") + '">' + hl((m.qn ? m.qn + ": " : "") + (m.qx || "")) + "</button>";
+    case K.IMG: {
+      if (!m.s) return '<div class="gone">' + SVG.img + esc(T("图片已丢失")) + "</div>";
+      // a picture of unknown size takes its own, within the same bounds
+      const [w, h] = fit(m.w, m.h, 240, 240), box = m.w && m.h ? 'width="' + w + '" height="' + h + '" style="width:' + w + "px;height:" + h + 'px"' : 'style="max-width:240px;max-height:240px"';
+      return '<img class="media" data-lb="' + i + '" src="' + esc(m.s) + '" ' + box + ' alt="" loading="lazy" decoding="async">';
+    }
+    case K.EMOJI: {
+      if (!m.s) return '<div class="gone emo">' + esc(T("表情")) + "</div>";
+      const [w, h] = fit(m.w || 120, m.h || 120, 140, 140);
+      return '<img class="emo" data-lb="' + i + '" src="' + esc(m.s) + '" width="' + w + '" height="' + h + '" alt="" loading="lazy" decoding="async">';
+    }
+    case K.VIDEO: {
+      if (!m.s) return '<div class="gone">' + SVG.cam + esc(T("视频已丢失")) + "</div>";
+      const [w, h] = fit(m.w || 16, m.h || 9, 240, 240);
+      return '<button class="vid" data-lb="' + i + '" style="width:' + w + "px;height:" + h + 'px"><video src="' + esc(m.s) + '#t=0.1" preload="metadata" muted playsinline></video>' + (m.d ? '<span class="dur">' + dur(m.d) + "</span>" : "") + "</button>";
+    }
+    case K.VOICE: {
+      const d = m.d || 1, w = Math.min(240, 72 + d * 4);
+      return '<div class="b voice' + (m.s ? "" : " na") + '" data-voice="' + i + '" style="width:' + w + 'px"><i></i><span>' + Math.round(d) + "″</span></div>";
+    }
+    case K.CALL: return '<div class="b call">' + (m.v ? SVG.cam : SVG.phone) + "<span>" + hl(m.x || T(m.v ? "视频通话" : "语音通话")) + "</span></div>";
+    case K.FILE: {
+      const ext = (m.e || (m.n || "").split(".").pop() || "").slice(0, 4);
+      return card("file", '<div class="in"><div class="tx"><div class="t1">' + hl(m.n) + '</div><div class="t2">' + size(m.z) + '</div></div><div class="ico" style="background:hsl(' + hue(ext.toLowerCase()) + ',55%,52%)">' + esc(ext) + "</div></div>", T("文件"), m.s ? 'href="' + esc(m.s) + '" download' : "");
+    }
+    case K.LINK: case K.APP: case K.MUSIC:
+      return card("link", '<div class="in"><div class="tx"><div class="t1">' + hl(m.ti || m.l || "") + "</div>" + (m.x ? '<div class="t2">' + hl(m.x) + "</div>" : "") + "</div></div>",
+        m.k === K.MUSIC ? T("音乐") : (m.f || ""), m.l ? 'href="' + esc(m.l) + '" target="_blank"' : "");
+    case K.MINI: return card("link", '<div class="in"><div class="tx"><div class="t2" style="margin:0 0 4px">' + hl(m.f || "") + '</div><div class="t1">' + hl(m.ti || "") + "</div></div></div>", T("小程序"));
+    case K.FINDER: return card("link", '<div class="in"><div class="tx"><div class="t1">' + hl(m.ti || "") + "</div>" + (m.f ? '<div class="t2">' + hl(m.f) + "</div>" : "") + "</div></div>", T("视频号"));
+    case K.NOTICE: return card("link", '<div class="in"><div class="tx"><div class="t1" style="font-weight:600">' + esc(T("群公告")) + '</div><div class="t2" style="-webkit-line-clamp:6;color:var(--fg);font-size:14px">' + hl(m.x) + "</div></div></div>", "", 'data-dlg="' + i + '"');
+    case K.RECORD: {
+      const it = m.it || [];
+      return card("rec", '<div class="in"><div class="tx"><div class="t1">' + hl(m.ti || T("聊天记录")) + '</div><div class="lines">' + it.slice(0, 4).map(r => "<div>" + hl(r[0] + ": " + r[2]) + "</div>").join("") + "</div></div></div>", T("聊天记录"), 'data-dlg="' + i + '"');
+    }
+    case K.TRANSFER: {
+      const st = m.st === 3 ? T("已收款") : m.st === 4 ? T("已退还") : m.x || T("微信转账");
+      return card("pay tr" + (m.st === 3 || m.st === 4 ? " done" : ""), '<div class="in">' + SVG.pay + '<div class="tx"><div class="t1">¥' + esc(m.a || "") + '</div><div class="t2">' + hl(st) + "</div></div></div>", T("微信转账"));
+    }
+    case K.PACKET: return card("pay rp", '<div class="in">' + SVG.packet + '<div class="tx"><div class="t1">' + hl(m.ti || "恭喜发财，大吉大利") + "</div></div></div>", T("微信红包"));
+    case K.LOC: return card("loc", '<div class="in"><div class="tx"><div class="t1">' + hl(m.ti || m.x || T("位置")) + "</div>" + (m.x && m.x !== m.ti ? '<div class="t2">' + hl(m.x) + "</div>" : "") + '</div></div><div class="map">' + SVG.pin + "</div>",
+      "", m.la != null ? 'href="https://uri.amap.com/marker?position=' + m.lo + "," + m.la + '" target="_blank"' : "");
+    case K.CARD: return card("vcard", '<div class="in"><div class="av" style="background:hsl(' + hue(m.n || "") + ',45%,58%)">' + esc(Array.from(m.n || "?")[0]) + '</div><div class="tx"><div class="t1">' + hl(m.n) + "</div></div></div>", T("个人名片"));
+    default: return '<div class="b">' + hl(m.x || T(PRE[m.k] || "")) + "</div>";
+  }
+}
+// after a jump from the quote at `from` to the message at `to`, that message carries a button back to `from`
+let BACK = null;
+/** A message: its time chip, then a system line, or the avatar, the name in a group and what it shows. */
+function msg(i) {
+  const m = M[i];
+  let h = CHIP[i] ? '<div class="tm"><span>' + esc(CHIP[i]) + "</span></div>" : "";
+  if (m.k === K.SYS || m.u < 0) return h + '<div class="sys" id="m' + i + '"><span>' + rich(m.x) + "</span></div>";
+  const me = m.u === ME, named = GROUP && !me;
+  let b = body(m, i);
+  if (BACK && BACK.to === i) b = '<div class="bk"><div class="bkb">' + b + '</div><button class="back" data-back title="' + esc(T("返回引用处")) + '">' + SVG.back + "</button></div>";
+  return h + '<div class="m' + (me ? " me" : "") + (named ? " named" : "") + '" id="m' + i + '" title="' + full(m.t) + '">' + avatar(m.u) + '<div class="col">' + (named ? '<div class="nm">' + esc(U[m.u][0]) + "</div>" : "") + b + "</div></div>";
+}
+
+/* ============================================================ messages: blocks
+   The messages go in blocks of N. Only the blocks near the view hold their messages; the others keep their height:
+   the one they had when shown, or an estimate. */
+const N = 40, NB = Math.ceil(M.length / N), BL = [];
+for (let b = 0; b < NB; b++) { const el = document.createElement("div"); el.className = "blk"; el.dataset.b = b; list.appendChild(el); BL.push({ el, on: false, h: 0, est: 0 }); }
+/** Estimates the height of each block from the size of its messages at the list's width. */
+function estimate() {
+  const width = Math.min(560, (Math.min(list.clientWidth || chat.clientWidth, 900) - 100) * 0.72);
+  for (let b = 0; b < NB; b++) {
+    let h = 0;
+    for (let i = b * N, e = Math.min(M.length, i + N); i < e; i++) {
+      const m = M[i];
+      if (CHIP[i]) h += 34;
+      if (m.k === K.SYS || m.u < 0) { h += 26; continue; }
+      let x = 52;
+      if (m.k === K.TEXT || m.k === K.QUOTE) {
+        let w = 0; const s = m.x || ""; for (let c = 0; c < s.length; c++) w += s.charCodeAt(c) > 255 ? 15 : 8.4;
+        const lines = Math.max(1, Math.ceil(w / (width - 24))) + (s.split("\n").length - 1);
+        x = 30 + lines * 21.75 + 12 + (m.k === K.QUOTE ? 34 : 0);
+      } else if (m.k === K.IMG || m.k === K.VIDEO) x = (m.s ? fit(m.w || 16, m.h || 9, 240, 240)[1] : 120) + 12;
+      else if (m.k === K.EMOJI) x = (m.s ? fit(m.w || 120, m.h || 120, 140, 140)[1] : 80) + 12;
+      else if (m.k >= K.FILE && m.k !== K.CALL) x = m.k === K.LOC ? 200 : m.k === K.RECORD ? 150 : 110;
+      h += Math.max(x, 52) + (GROUP && m.u !== ME ? 19 : 0);
+    }
+    BL[b].est = h;
+    if (!BL[b].on) BL[b].el.style.height = (BL[b].h || h) + "px";
+  }
+}
+/** Fills a block; one above the view keeps what is in view where it is. */
+function show(b) {
+  const B = BL[b]; if (!B || B.on) return;
+  const before = B.el.offsetHeight, above = B.el.offsetTop + before <= chat.scrollTop + 1;
+  let h = ""; for (let i = b * N, e = Math.min(M.length, i + N); i < e; i++) h += msg(i);
+  B.el.innerHTML = h; B.el.style.height = ""; B.on = true;
+  const after = B.el.offsetHeight; B.h = after;
+  if (above && after !== before) chat.scrollTop += after - before;
+}
+/** Empties a block, keeping its height. */
+function hide(b) {
+  const B = BL[b]; if (!B.on) return;
+  B.h = B.el.offsetHeight; B.el.style.height = B.h + "px"; B.el.textContent = ""; B.on = false;
+}
+const io = new IntersectionObserver(es => { for (const e of es) { const b = +e.target.dataset.b; e.isIntersecting ? show(b) : hide(b); } }, { root: chat, rootMargin: "1500px 0px" });
+/** Draws a shown block again, after what its messages show changed. */
+function redo(b) { const B = BL[b]; if (!B || !B.on) return; B.on = false; B.el.style.height = B.el.offsetHeight + "px"; show(b); }
+function redraw() { for (let b = 0; b < NB; b++) redo(b); }
+/** Empties the blocks away from block b: those shown by an earlier jump may never have crossed the observer's margin. */
+function only(b) { for (let x = 0; x < NB; x++) if (BL[x].on && Math.abs(x - b) > 1) hide(x); }
+/** Brings message i to the middle of the view, flashing it if asked. */
+function jump(i, flash) {
+  if (i == null || i < 0 || i >= M.length) return;
+  const b = Math.floor(i / N);
+  only(b); show(b);
+  const el = $("m" + i); if (!el) return;
+  // a neighbouring block is drawn first only when the view will reach into it: a block is mostly taller than the view
+  const into = el.offsetTop - BL[b].el.offsetTop, half = chat.clientHeight / 2;
+  if (into < half) show(b - 1);
+  if (BL[b].el.offsetHeight - into - el.offsetHeight < half) show(b + 1);
+  chat.scrollTop = el.offsetTop - (chat.clientHeight - el.offsetHeight) / 2;
+  if (flash) { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+}
+function toEnd() { only(NB - 1); show(NB - 1); show(NB - 2); chat.scrollTop = chat.scrollHeight; }
+
+/* ============================================================ messages: the scrollbar
+   The chat draws its own. Its thumb stands for where the view is among the messages, not among the pixels (most
+   blocks' heights are estimates until drawn), so it stays under the pointer while dragged. A position is a message's
+   index plus how far into it; the thumb is at a / (messages - span), a being the position at the top of the view and
+   span how many messages the view holds, so it reaches both ends. */
+const sbar = $("sbar"), thumb = sbar.firstElementChild;
+// SPAN: how many messages the view holds; TH: the thumb's height, sized for a scrollbar SIZED pixels high
+let SPAN = 1, TH = 28, SIZED = 0, dragging = false;
+
+/* ---------- the view moves the thumb ---------- */
+/** Puts the thumb where the view is (left alone while it is dragged); no scrollbar when everything is in view. */
+function track() {
+  sbar.hidden = chat.scrollHeight <= chat.clientHeight;
+  if (sbar.hidden) return;
+  if (sbar.clientHeight !== SIZED) sizeThumb();
+  const a = measure();
+  if (!dragging) setThumb(M.length > SPAN ? a / (M.length - SPAN) : 0);
+}
+/** The position at the top of the view; SPAN set to how many messages the view holds. */
+function measure() { const a = posAt(chat.scrollTop); SPAN = posAt(chat.scrollTop + chat.clientHeight) - a; return a; }
+/** The position at y in the list (pixels from its top): by the block there, and the message in it when it is drawn. */
+function posAt(y) {
+  let lo = 0, hi = NB - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (BL[mid].el.offsetTop <= y) lo = mid; else hi = mid - 1; }
+  const B = BL[lo], top = B.el.offsetTop, bottom = top + B.el.offsetHeight, first = lo * N, n = Math.min(N, M.length - first);
+  if (!B.on) return first + clamp((y - top) / (bottom - top || 1), 0, 1) * n;
+  const els = B.el.querySelectorAll('[id^="m"]');
+  let k = els.length - 1; while (k > 0 && els[k].offsetTop > y) k--;
+  const t = els[k].offsetTop, end = k + 1 < els.length ? els[k + 1].offsetTop : bottom;
+  return first + k + clamp((y - t) / (end - t || 1), 0, 1);
+}
+/** The thumb's height: the share of the messages a view holds, as the estimates have it, but not under 28 pixels. */
+function sizeThumb() {
+  let h = 0; for (const B of BL) h += B.h || B.est;
+  SIZED = sbar.clientHeight;
+  TH = clamp(SIZED * chat.clientHeight / (h || 1), 28, SIZED);
+  thumb.style.height = TH + "px";
+}
+function setThumb(f) { thumb.style.transform = "translateY(" + (f * (sbar.clientHeight - TH)).toFixed(1) + "px)"; }
+let trackQ = 0; chat.addEventListener("scroll", () => { if (!trackQ) trackQ = requestAnimationFrame(() => { trackQ = 0; track(); }); }, { passive: true });
+
+/* ---------- the thumb moves the view ---------- */
+/** Brings the view to thumb position f (0 to 1); the span is measured again where it lands, and the view placed
+ * again by it, so that letting go leaves the thumb where it is. */
+function seekThumb(f) {
+  if (f === 1) return toEnd();
+  for (let k = 0; k < 2; k++) { const span = SPAN; seek(f * Math.max(0, M.length - span)); measure(); if (Math.abs(SPAN - span) < 0.01) break; }
+}
+/** Brings position a to the top of the view, drawing what it needs. */
+function seek(a) {
+  const i = clamp(Math.floor(a), 0, M.length - 1), b = Math.floor(i / N);
+  only(b); show(b);
+  const B = BL[b].el, el = $("m" + i), next = i % N < N - 1 && $("m" + (i + 1));
+  if (B.offsetTop + B.offsetHeight - el.offsetTop < chat.clientHeight) show(b + 1);
+  const t = el.offsetTop, end = next ? next.offsetTop : B.offsetTop + B.offsetHeight;
+  // at the very start, the first message's time chip and the list's top show too
+  chat.scrollTop = a <= 0 ? 0 : t + clamp(a - i, 0, 1) * (end - t);
+}
+// the thumb follows the pointer, held where it was grabbed; a press on the track brings the thumb's middle there
+sbar.onpointerdown = e => {
+  e.preventDefault(); sbar.setPointerCapture(e.pointerId);
+  const r = sbar.getBoundingClientRect(), on = e.target === thumb, grab = on ? e.clientY - thumb.getBoundingClientRect().top : TH / 2;
+  dragging = true; sbar.classList.add("drag");
+  const to = y => { const f = clamp((y - r.top - grab) / (r.height - TH), 0, 1); setThumb(f); seekThumb(f); };
+  if (!on) to(e.clientY);
+  sbar.onpointermove = ev => to(ev.clientY);
+  sbar.onpointerup = sbar.onpointercancel = () => { sbar.onpointermove = sbar.onpointerup = sbar.onpointercancel = null; dragging = false; sbar.classList.remove("drag"); track(); };
+};
+// the wheel over the scrollbar scrolls the chat
+sbar.addEventListener("wheel", e => { chat.scrollTop += e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? chat.clientHeight : 1); }, { passive: true });
+
+/* ============================================================ search
+   A keyword (matched in a message's plain text and its sender's name), a kind and, in a group, a sender. The results
+   list newest first, a hundred at a time; picking one brings it to the view. */
+const KINDS = [["", "全部"], ["media", "图片与视频", [K.IMG, K.VIDEO]], ["file", "文件", [K.FILE]], ["link", "链接", [K.LINK, K.MUSIC, K.MINI, K.FINDER, K.APP]], ["voice", "语音", [K.VOICE]], ["rec", "聊天记录", [K.RECORD]], ["pay", "转账与红包", [K.TRANSFER, K.PACKET]]];
+// HAY: each message's searchable text in lower case, made on the first search
+let kindSet = null, who = -1, hits = [], cur = -1, shown = 0, HAY = null;
+$("kinds").innerHTML = KINDS.map(([v, l]) => '<button data-v="' + v + '" aria-pressed="' + !v + '">' + esc(T(l)) + "</button>").join("");
+$("kinds").onclick = e => {
+  const v = e.target.dataset && e.target.dataset.v; if (v === undefined) return;
+  for (const b of $("kinds").children) b.setAttribute("aria-pressed", b.dataset.v === v);
+  const k = KINDS.find(x => x[0] === v); kindSet = k[2] ? new Set(k[2]) : null; run();
+};
+// in a group, the senders, most messages first
+if (GROUP) {
+  const cnt = new Map(); for (const m of M) if (m.u >= 0) cnt.set(m.u, (cnt.get(m.u) || 0) + 1);
+  const opts = [...cnt].sort((a, b) => b[1] - a[1]).map(([u, n]) => '<option value="' + u + '">' + esc(U[u][0]) + " (" + n + ")</option>");
+  $("who").innerHTML = '<option value="-1">' + esc(T("所有人")) + "</option>" + opts.join("");
+  $("who").onchange = () => { who = +$("who").value; run(); };
+} else $("whoBox").hidden = true;
+let qt; $("q").oninput = () => { clearTimeout(qt); qt = setTimeout(() => { Q = $("q").value.trim().toLowerCase(); run(); }, 120); };
+/** Finds the results, lists them and draws the shown messages again with the keyword marked. */
+function run() {
+  if (!HAY && Q) HAY = M.map(m => (plain(m) + "\u0001" + (m.u >= 0 ? U[m.u][0] : "")).toLowerCase());
+  hits = [];
+  if (Q || kindSet || who >= 0) for (let i = 0; i < M.length; i++) {
+    const m = M[i];
+    if (kindSet && !kindSet.has(m.k)) continue;
+    if (who >= 0 && m.u !== who) continue;
+    if (Q && HAY[i].indexOf(Q) === -1) continue;
+    hits.push(i);
+  }
+  cur = -1; shown = 0; $("res").textContent = ""; more(); count(); redraw();
+}
+function count() {
+  const any = Q || kindSet || who >= 0;
+  $("cnt").textContent = !any ? "" : hits.length ? (cur >= 0 ? cur + 1 + " / " : "") + hits.length.toLocaleString() + T("条结果") : T("没有结果");
+  if (!any) $("res").innerHTML = '<div class="empty">' + esc(T("输入关键词或选择类型")) + "</div>";
+}
+/** A result's line of text, starting near the keyword. */
+function snippet(m) {
+  let s = plain(m).replace(/\s+/g, " ");
+  if (Q) { const j = s.toLowerCase().indexOf(Q); if (j > 24) s = "…" + s.slice(j - 16); }
+  return s.slice(0, 160);
+}
+/** Lists the next hundred results. */
+function more() {
+  if (shown >= hits.length) return;
+  const end = Math.min(hits.length, shown + 100); let h = "";
+  for (let n = hits.length - 1 - shown; n >= hits.length - end; n--) {
+    const i = hits[n], m = M[i];
+    h += '<button class="hit" data-n="' + n + '"><div class="h1"><b>' + esc(m.u >= 0 ? name(m.u) : "") + "</b><span>" + esc(full(m.t)) + '</span></div><div class="h2">' + hl(snippet(m)) + "</div></button>";
+  }
+  shown = end; $("res").insertAdjacentHTML("beforeend", h);
+}
+$("res").onscroll = () => { const r = $("res"); if (r.scrollTop + r.clientHeight > r.scrollHeight - 300) more(); };
+/** Picks result n (in chat order): marks it in the list, listing down to it, and brings it to the view. */
+function pick(n) {
+  if (!hits.length) return;
+  cur = (n + hits.length) % hits.length; count();
+  while (shown < hits.length - cur) more();
+  for (const el of $("res").querySelectorAll(".hit.cur")) el.classList.remove("cur");
+  const el = $("res").querySelector('[data-n="' + cur + '"]'); if (el) { el.classList.add("cur"); el.scrollIntoView({ block: "nearest" }); }
+  jump(hits[cur], true);
+  if (innerWidth <= 760) openSide(false);
+}
+$("res").onclick = e => { const b = e.target.closest(".hit"); if (b) pick(+b.dataset.n); };
+// up and Enter go to older results, down and Shift+Enter to newer ones; either way the first pick is the newest result
+const stepHit = d => pick(cur < 0 ? hits.length - 1 : cur + d);
+$("q").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); stepHit(e.shiftKey ? 1 : -1); } };
+$("prev").onclick = () => stepHit(-1);
+$("next").onclick = () => stepHit(1);
+
+/* ============================================================ time rail
+   Collapsed, ticks at the chat's left edge mark the year (or the month) the chat is at. The pointer on them opens
+   the rail, showing the years alone; the pointer on a year shows its months beside it, on a month its days, and on a
+   day the chat goes there at once. A click goes to the first message of what is clicked and closes the rail. On a
+   touch screen, a tap opens the next column and a second tap goes there. */
+// year -> month -> day, each with its first message (in chat order) and how many messages it has
+const CAL = new Map();
+for (let i = 0; i < M.length; i++) {
+  const d = new Date(M[i].t * 1000), y = d.getFullYear(), mo = d.getMonth() + 1, dd = d.getDate();
+  let Y = CAL.get(y); if (!Y) CAL.set(y, Y = { i, n: 0, sub: new Map() });
+  let Mo = Y.sub.get(mo); if (!Mo) Y.sub.set(mo, Mo = { i, n: 0, sub: new Map() });
+  let Dd = Mo.sub.get(dd); if (!Dd) Mo.sub.set(dd, Dd = { i, n: 0 });
+  Y.n++; Mo.n++; Dd.n++;
+}
+const sorted = m => [...m.keys()].sort((a, b) => a - b);
+const YEARS = sorted(CAL);
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+// the numbers in boxes of their own, so that they line up digit under digit
+const num = n => '<i class="n">' + n + "</i>";
+const label = {
+  y: y => num(y) + (EN_PAGE ? "" : "年"),
+  m: m => EN_PAGE ? MON[m - 1] : num(m) + "月",
+  d: (y, m, d) => num(d) + (EN_PAGE ? "" : "日") + " " + T(WEEK[new Date(y, m - 1, d).getDay()]).replace("星期", "周"),
+};
+const cal = $("cal"), ticks = $("ticks"), cy = $("cy"), cm = $("cm"), cd = $("cd");
+const HOVER = matchMedia("(hover: hover)").matches;
+// openY, openM: the year whose months show and the month whose days show (0: none); hoverDay: the day the chat went to
+let openY = 0, openM = 0, hoverDay = 0;
+
+/* ---------- collapsed: the ticks ---------- */
+const TOP = YEARS.length > 1 ? YEARS.map(y => [y]) : YEARS.length ? sorted(CAL.get(YEARS[0]).sub).map(m => [YEARS[0], m]) : [];
+ticks.innerHTML = TOP.map((_, n) => '<i style="--d:' + Math.min(n, 12) * 18 + 'ms"></i>').join("");
+// at: the year, month and day of the message near the top of the view
+let at = [0, 0, 0];
+function where() {
+  const r = chat.getBoundingClientRect();
+  for (let y = r.top + 24; y < r.top + 200; y += 16) {
+    const el = document.elementFromPoint(r.left + r.width / 2, y), m = el && el.closest('[id^="m"]');
+    if (m) { const d = new Date(M[+m.id.slice(1)].t * 1000); return [d.getFullYear(), d.getMonth() + 1, d.getDate()]; }
+  }
+  return at;
+}
+/** Marks the tick of where the chat is. */
+function mark() {
+  const w = where(); if (w[0] === at[0] && w[1] === at[1] && w[2] === at[2]) return;
+  at = w;
+  TOP.forEach((k, n) => ticks.children[n].classList.toggle("on", k[0] === at[0] && (k.length === 1 || k[1] === at[1])));
+}
+let markQ = 0; chat.addEventListener("scroll", () => { if (!markQ) markQ = requestAnimationFrame(() => { markQ = 0; mark(); }); }, { passive: true });
+
+/* ---------- opening and closing
+   The ticks open the rail when the pointer has rested on them a moment, or on a click. Open, the three boxes take the
+   pointer, and so does the safe zone: the hull of the point where the pointer left the boxes and the months and the
+   days (the years, when neither shows), since the pointer cuts corners going from one column to the next. The rail
+   closes a moment after the pointer is out of both, or once it has rested in the safe zone for DWELL. Opening under
+   the pointer takes the ticks away from it, which counts as leaving the boxes there. ---------- */
+const DWELL = 400;
+// pointer: where the pointer is; calT: the pending opening or closing; shadeT: the shade's mask going after a close;
+// SAFE: the safe zone, while the pointer is in it; HELD: where the pointer rested when the rail closed under it, the
+// ticks there opening the rail only once it moves
+let pointer = [0, 0], calT, shadeT, SAFE = null, HELD = null;
+function openCal() {
+  clearTimeout(calT); HELD = null; if (cal.classList.contains("open") || !YEARS.length) return;
+  openY = openM = hoverDay = 0;
+  fill(cm, ""); fill(cd, ""); years();
+  still = pointer.slice(); lastHover = null;
+  cal.classList.add("open"); cal.classList.remove("hint"); main.classList.add("shade", "dim");
+  // opened under a pointer that is on none of the boxes: it leaves them there and then (a still pointer's hover is
+  // updated late, so the browser would say so only later)
+  if (HOVER) { const el = document.elementFromPoint(pointer[0], pointer[1]); if (!(el && el.closest(".cc"))) { SAFE = safeZone(pointer[0], pointer[1]); closeCal(DWELL, true); } }
+}
+/** Closes the rail after `delay`; `held`, under a resting pointer. */
+function closeCal(delay, held) {
+  clearTimeout(calT);
+  calT = setTimeout(() => {
+    SAFE = null; if (held) HELD = pointer.slice();
+    cal.classList.remove("open", "hint"); main.classList.remove("dim");
+    // the shade fades with the panel; then its mask goes, unless the rail opened again
+    clearTimeout(shadeT); shadeT = setTimeout(() => { if (!cal.classList.contains("open")) main.classList.remove("shade"); }, 180);
+  }, delay || 0);
+}
+/** The safe zone after the pointer left the boxes at (x, y). */
+function safeZone(x, y) {
+  const p = [[x, y]];
+  for (const col of cm.children.length ? [cm, cd] : [cy]) if (col.children.length) { const r = col.getBoundingClientRect(); p.push([r.left, r.top], [r.right, r.top], [r.left, r.bottom], [r.right, r.bottom]); }
+  return hull(p);
+}
+/** The convex hull of some points, each edge turning the same way round (monotone chain). */
+function hull(p) {
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = q => { const h = []; for (const x of q) { while (h.length > 1 && cross(h[h.length - 2], h[h.length - 1], x) <= 0) h.pop(); h.push(x); } h.pop(); return h; };
+  p.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  return half(p).concat(half(p.slice().reverse()));
+}
+/** Whether a point is in a hull, or within a pixel of it (a hull of fewer than three points holds nothing). */
+function within(poly, x, y) {
+  if (poly.length < 3) return false;
+  for (let k = 0; k < poly.length; k++) {
+    const a = poly[k], b = poly[(k + 1) % poly.length], ex = b[0] - a[0], ey = b[1] - a[1];
+    if (ex * (y - a[1]) - ey * (x - a[0]) < -Math.hypot(ex, ey)) return false;
+  }
+  return true;
+}
+// the edge and the ticks hint that the rail is there
+$("edge").onmouseenter = () => { if (!cal.classList.contains("open")) cal.classList.add("hint"); };
+$("edge").onmouseleave = e => { if (!cal.contains(e.relatedTarget)) cal.classList.remove("hint"); };
+ticks.onmouseenter = e => {
+  if (HELD && Math.hypot(e.clientX - HELD[0], e.clientY - HELD[1]) <= 3) return;
+  cal.classList.add("hint"); clearTimeout(calT); calT = setTimeout(openCal, 140);
+};
+ticks.onclick = openCal;
+cal.onmouseleave = e => {
+  const open = cal.classList.contains("open");
+  if (!open && e.relatedTarget && e.relatedTarget.id === "edge") return;
+  // (off the boxes since opening, the browser's late word of it changes nothing)
+  if (open && e.relatedTarget) { if (!SAFE) { SAFE = safeZone(e.clientX, e.clientY); closeCal(DWELL, true); } return; }
+  closeCal(open ? 80 : 0);
+};
+cal.onmouseenter = () => { SAFE = null; if (cal.classList.contains("open")) clearTimeout(calT); };
+document.addEventListener("mousemove", e => {
+  pointer = [e.clientX, e.clientY];
+  if (SAFE) within(SAFE, e.clientX, e.clientY) ? closeCal(DWELL, true) : (SAFE = null, closeCal(80));
+  if (HELD && Math.hypot(e.clientX - HELD[0], e.clientY - HELD[1]) > 3) { HELD = null; if (e.target.closest && e.target.closest("#ticks")) ticks.onmouseenter(e); }
+}, { passive: true });
+// out of the window altogether
+document.addEventListener("mouseout", e => { if (!e.relatedTarget && SAFE) { SAFE = null; closeCal(80); } });
+document.addEventListener("pointerdown", e => { if (cal.classList.contains("open") && !cal.contains(e.target)) closeCal(); });
+
+/* ---------- open: the columns and what they hold ---------- */
+function item(kind, key, html, n) {
+  return '<button data-' + kind + '="' + key + '"><span>' + html + "</span>" + (n != null ? "<small>" + n.toLocaleString() + "</small>" : "") + "</button>";
+}
+/** Fills a column (or empties it, with "") and lays the columns out again. A column appearing comes in (see .cc.in);
+ * one going, in the open rail, goes out the way it came in, as a copy left where it was; one that stays only changes
+ * what it holds. */
+function fill(col, html) {
+  const was = col.children.length > 0;
+  if (was && !html && cal.classList.contains("open")) {
+    const old = col.cloneNode(true);
+    old.removeAttribute("id"); old.classList.add("old"); col.after(old);
+    void old.offsetWidth; old.classList.remove("in");
+    setTimeout(() => old.remove(), 240);
+  }
+  col.innerHTML = html;
+  if (!was || !html) { col.classList.remove("in"); if (html) requestAnimationFrame(() => col.classList.add("in")); }
+  layCols();
+}
+function years() { fill(cy, YEARS.map(y => item("y", y, label.y(y), null)).join("")); }
+/** Shows year y's months, the year marked. */
+function months(y) {
+  openY = y; openM = 0; fill(cd, "");
+  for (const b of cy.children) b.classList.toggle("sel", +b.dataset.y === y);
+  const Y = CAL.get(y); fill(cm, sorted(Y.sub).map(m => item("m", m, label.m(m), Y.sub.get(m).n)).join(""));
+}
+/** Shows month m's days, the month marked. */
+function days(m) {
+  openM = m; hoverDay = 0;
+  for (const b of cm.children) b.classList.toggle("sel", +b.dataset.m === m);
+  const Mo = CAL.get(openY).sub.get(m);
+  fill(cd, sorted(Mo.sub).map(d => item("d", d, label.d(openY, m, d), Mo.sub.get(d).n)).join(""));
+}
+/** Hides the days, the pointer being back on the years. */
+function noDays() { if (!openM) return; openM = 0; fill(cd, ""); for (const b of cm.children) b.classList.remove("sel"); }
+
+/* ---------- open: layout and rolling
+   The columns stand side by side, each centred on the rail's middle; a column's box is where it takes the pointer,
+   and the boxes touch. A column longer than the window rolls: after the pointer along it (where the pointer is along
+   its box is where the column is along its list), the wheel, or a finger. A column's roll s is the item at its box's
+   middle; at sMin the first item is at the top, at sMax the last at the bottom. ---------- */
+let COLS = new Map(), rollQ = 0;
+/** Sizes and places the shown columns; the same items keep their roll, new ones start at the top. */
+function layCols() {
+  const H = cal.clientHeight, c = H / 2, PAD = 6, old = COLS;
+  COLS = new Map();
+  let x = 4;
+  for (const col of [cy, cm, cd]) {
+    const items = [...col.children];
+    if (!items.length) continue;
+    col.style.removeProperty("--bw");
+    for (const b of items) b.style.transform = "";
+    // room for the longer tick of a hovered item
+    let w = 12; for (const b of items) w = Math.max(w, b.offsetWidth + 12);
+    const n = items.length, ih = items[0].offsetHeight, full = n * ih + 2 * PAD, h = Math.min(full, H), rolls = full > H;
+    const sMin = rolls ? (h / 2 - PAD) / ih - 0.5 : (n - 1) / 2, sMax = rolls ? n - 1 - sMin : sMin;
+    const prev = old.get(col);
+    const s = clamp(prev && prev.first === items[0] && prev.n === n ? prev.s : sMin, sMin, sMax);
+    col.style.cssText = "left:" + x + "px;top:" + (c - h / 2) + "px;width:" + (w + 2 * PAD) + "px;height:" + h + "px;--bw:" + w + "px";
+    col.classList.toggle("rolls", rolls);
+    COLS.set(col, { items, first: items[0], n, ih, h, sMin, sMax, s, target: s });
+    seat(col);
+    x += w + 2 * PAD;
+  }
+  // how far the columns reach: the chat fades up to there
+  main.style.setProperty("--cols", x + "px");
+}
+/** Puts a column's items where its roll has them. */
+function seat(col) {
+  const g = COLS.get(col);
+  g.items.forEach((b, k) => { b.style.transform = "translateY(" + (g.h / 2 + (k - g.s - 0.5) * g.ih).toFixed(1) + "px)"; });
+}
+/** Rolls a column to `target`: at once (`now`: the pointer or a finger leads), else eased over a few frames (the wheel). */
+function rollTo(col, target, now) {
+  const g = COLS.get(col); if (!g || g.sMax <= g.sMin) return;
+  g.target = clamp(target, g.sMin, g.sMax);
+  if (now) { g.s = g.target; seat(col); probe(); }
+  else if (!rollQ) rollQ = requestAnimationFrame(roll);
+}
+function roll() {
+  rollQ = 0;
+  let moving = false;
+  for (const [col, g] of COLS) {
+    const d = g.target - g.s; if (!d) continue;
+    g.s = Math.abs(d) < 0.01 ? g.target : g.s + d * 0.24;
+    moving = moving || g.s !== g.target;
+    seat(col);
+  }
+  if (moving) rollQ = requestAnimationFrame(roll);
+  probe();
+}
+/** The column under the pointer rolls so that where the pointer is along its box is where it is along the list. */
+function steer(e) {
+  for (const [col, g] of COLS) {
+    if (g.sMax <= g.sMin) continue;
+    const r = col.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) continue;
+    rollTo(col, g.sMin + clamp((e.clientY - r.top) / r.height, 0, 1) * (g.sMax - g.sMin), true);
+  }
+}
+for (const col of [cy, cm, cd]) {
+  col.addEventListener("wheel", e => { const g = COLS.get(col); if (!g) return; e.preventDefault(); rollTo(col, g.target + e.deltaY / g.ih * 0.6); }, { passive: false });
+  // a finger rolls a column by dragging it; a drag is not a tap
+  let drag = null;
+  col.addEventListener("pointerdown", e => { const g = COLS.get(col); if (e.pointerType !== "mouse" && g) drag = { y: e.clientY, s: g.target, ih: g.ih, moved: false }; });
+  col.addEventListener("pointermove", e => { if (!drag) return; const d = e.clientY - drag.y; if (Math.abs(d) > 6) drag.moved = true; rollTo(col, drag.s - d / drag.ih, true); });
+  col.addEventListener("pointerup", () => { if (drag && drag.moved) col.dataset.dragged = "1"; drag = null; });
+  col.addEventListener("click", e => { if (col.dataset.dragged) { delete col.dataset.dragged; e.stopPropagation(); } }, true);
+}
+
+/* ---------- open: the pointer on the items
+   The rail opens under a still pointer, and the browser reports what is then under it as hovered: hovering counts
+   once the pointer has moved (`still`, where it was on opening). ---------- */
+let still = null, lastHover = null;
+function hover(target) {
+  const b = target.closest && target.closest("button"); if (!b) return;
+  if (b.dataset.y) { const y = +b.dataset.y; y !== openY ? months(y) : noDays(); }
+  else if (b.dataset.m) { const m = +b.dataset.m; if (m !== openM) days(m); }
+  // a day under the pointer: the chat goes there at once (the browser reports each day once, as the pointer enters it)
+  else if (b.dataset.d && +b.dataset.d !== hoverDay && openM) { hoverDay = +b.dataset.d; jump(CAL.get(openY).sub.get(openM).sub.get(hoverDay).i, false); }
+  if (!b.dataset.d) hoverDay = 0;
+}
+/** A column rolled under a still pointer: what is under it now is what it hovers. */
+function probe() {
+  if (!cal.classList.contains("open") || !HOVER || still) return;
+  const el = document.elementFromPoint(pointer[0], pointer[1]), b = el && el.closest && el.closest(".cc button");
+  if (b && b !== lastHover) { lastHover = b; hover(b); }
+}
+cy.onmouseenter = () => { if (HOVER && !still) noDays(); };
+cal.onmouseover = e => { if (!HOVER || still) return; const b = e.target.closest && e.target.closest("button"); if (b && b !== lastHover) { lastHover = b; hover(b); } };
+cal.onmousemove = e => {
+  if (still && Math.hypot(e.clientX - still[0], e.clientY - still[1]) > 3) { still = null; const b = e.target.closest && e.target.closest("button"); if (b) { lastHover = b; hover(b); } }
+  if (HOVER && !still) steer(e);
+};
+cal.onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  let i;
+  if (b.dataset.y) { const y = +b.dataset.y; if (!HOVER && y !== openY) return months(y); i = CAL.get(y).i; }
+  else if (b.dataset.m) { const m = +b.dataset.m; if (!HOVER && m !== openM) return days(m); i = CAL.get(openY).sub.get(m).i; }
+  else if (b.dataset.d) i = CAL.get(openY).sub.get(openM).sub.get(+b.dataset.d).i;
+  closeCal(); jump(i, true);
+};
+
+/* ============================================================ media viewer
+   Pictures, videos and stickers of the whole chat, one after another; a picture zooms with the wheel or a double
+   click and moves by dragging. */
+let GAL = null, gi = -1, sc = 1, tx = 0, ty = 0, node = null;
+const lb = $("lb");
+function gallery() { if (!GAL) { GAL = []; for (let i = 0; i < M.length; i++) if (M[i].s && (M[i].k === K.IMG || M[i].k === K.VIDEO || M[i].k === K.EMOJI)) GAL.push(i); } return GAL; }
+function place() { if (node && node.tagName === "IMG") node.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + sc + ")"; }
+function fitView() { if (!node || node.tagName !== "IMG" || !node.naturalWidth) return; sc = Math.min(1, innerWidth * 0.94 / node.naturalWidth, innerHeight * 0.86 / node.naturalHeight); tx = (innerWidth - node.naturalWidth * sc) / 2; ty = (innerHeight - node.naturalHeight * sc) / 2; place(); }
+function view(i) {
+  const g = gallery(); gi = g.indexOf(i); if (gi < 0) return;
+  const m = M[i]; if (node) node.remove();
+  if (m.k === K.VIDEO) { node = document.createElement("video"); node.controls = true; node.autoplay = true; node.playsInline = true; node.src = m.s; }
+  else { node = new Image(); node.decoding = "async"; node.onload = fitView; node.src = m.s; node.draggable = false; }
+  lb.insertBefore(node, lb.firstChild);
+  $("lbc").textContent = (m.u >= 0 ? name(m.u) + " · " : "") + full(m.t) + "  (" + (gi + 1) + "/" + g.length + ")";
+  lb.hidden = false; if (node.complete) fitView();
+}
+function closeView() { lb.hidden = true; if (node) { node.remove(); node = null; } }
+function step(d) { const g = gallery(); if (g.length) view(g[(gi + d + g.length) % g.length]); }
+$("lbx").onclick = closeView; $("lbp").onclick = () => step(-1); $("lbn").onclick = () => step(1);
+$("lbg").onclick = () => { const i = gallery()[gi]; closeView(); jump(i, true); };
+lb.onclick = e => { if (e.target === lb) closeView(); };
+lb.onwheel = e => { if (!node || node.tagName !== "IMG") return; e.preventDefault(); const f = Math.exp(-e.deltaY * 0.0015), n = Math.max(0.05, Math.min(16, sc * f)); tx = e.clientX - (e.clientX - tx) * n / sc; ty = e.clientY - (e.clientY - ty) * n / sc; sc = n; place(); };
+lb.onpointerdown = e => {
+  if (!node || e.target !== node || node.tagName !== "IMG") return;
+  e.preventDefault(); const sx = e.clientX - tx, sy = e.clientY - ty; lb.setPointerCapture(e.pointerId);
+  lb.onpointermove = ev => { tx = ev.clientX - sx; ty = ev.clientY - sy; place(); };
+  lb.onpointerup = () => { lb.onpointermove = lb.onpointerup = null; };
+};
+lb.ondblclick = e => { if (!node || node.tagName !== "IMG") return; if (sc < 0.99 || sc > 1.01) { tx = e.clientX - (e.clientX - tx) / sc; ty = e.clientY - (e.clientY - ty) / sc; sc = 1; place(); } else fitView(); };
+
+/* ============================================================ dialog: a chat history or an announcement in full */
+function dialog(i) {
+  const m = M[i];
+  $("dlt").textContent = m.k === K.NOTICE ? T("群公告") : m.ti || T("聊天记录");
+  $("dlb").innerHTML = m.k === K.NOTICE ? '<div class="ri">' + rich(m.x) + "</div>" :
+    (m.it || []).map(r => '<div class="ri"><div class="h1"><b>' + esc(r[0]) + "</b><span>" + esc(typeof r[1] === "number" ? (r[1] ? full(r[1]) : "") : r[1] || "") + "</span></div><div>" + rich(r[2]) + "</div></div>").join("");
+  $("dlg").hidden = false;
+}
+$("dlx").onclick = () => { $("dlg").hidden = true; };
+$("dlg").onclick = e => { if (e.target === $("dlg")) $("dlg").hidden = true; };
+
+/* ============================================================ voice: one plays at a time; a second click stops it */
+const audio = new Audio(); let playing = null;
+audio.onended = audio.onpause = () => { if (playing) playing.classList.remove("on"); playing = null; };
+function voice(el) {
+  const m = M[+el.dataset.voice]; if (!m.s) return;
+  if (playing === el) { audio.pause(); return; }
+  if (playing) playing.classList.remove("on");
+  audio.src = m.s; audio.play().then(() => { playing = el; el.classList.add("on"); }, () => {});
+}
+
+/* ============================================================ files that do not load
+   A picture, video or sticker that is there but does not load shows as missing; an avatar, as the initial, which the
+   sender's other messages then draw straight away. */
+list.addEventListener("error", e => {
+  const t = e.target;
+  if (t.matches && t.matches("img.av[data-u]")) { const u = +t.dataset.u; U[u][1] = ""; t.outerHTML = initial(U[u][0]); return; }
+  const el = t.closest && t.closest("img.media,img.emo,.vid"); if (!el) return;
+  const video = el.classList.contains("vid"), emo = el.classList.contains("emo");
+  el.outerHTML = emo ? '<div class="gone emo">' + esc(T("表情")) + "</div>" : '<div class="gone">' + (video ? SVG.cam : SVG.img) + esc(T(video ? "视频已丢失" : "图片已丢失")) + "</div>";
+}, true);
+
+/* ============================================================ clicks and keys */
+// in the chat: media open the viewer, voice plays, a quote goes to the message it quotes (which then carries the way
+// back), a chat history or an announcement opens the dialog
+list.onclick = e => {
+  const t = e.target;
+  const lbEl = t.closest("[data-lb]"); if (lbEl) return view(+lbEl.dataset.lb);
+  const v = t.closest("[data-voice]"); if (v) return voice(v);
+  if (t.closest("[data-back]")) { const { from, to } = BACK; BACK = null; redo(Math.floor(to / N)); jump(from, true); return; }
+  const q = t.closest("[data-go]");
+  if (q) {
+    if (q.dataset.go === "") return;
+    const from = +q.closest('[id^="m"]').id.slice(1), to = +q.dataset.go, old = BACK;
+    BACK = { from, to };
+    if (old) redo(Math.floor(old.to / N));
+    redo(Math.floor(to / N));
+    jump(to, true);
+    return;
+  }
+  const d = t.closest("[data-dlg]"); if (d) return dialog(+d.dataset.dlg);
+};
+// Escape closes the viewer, the dialog or the rail; the arrows step through the viewer; Ctrl+F and typing anywhere
+// go to the search box (focused during keydown, the box takes the character itself; "Process" is the first key of an
+// input method)
+addEventListener("keydown", e => {
+  if (!lb.hidden) { if (e.key === "Escape") closeView(); else if (e.key === "ArrowLeft") step(-1); else if (e.key === "ArrowRight") step(1); return; }
+  if (!$("dlg").hidden && e.key === "Escape") { $("dlg").hidden = true; return; }
+  if (cal.classList.contains("open") && e.key === "Escape") { closeCal(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") { e.preventDefault(); openSide(true); $("q").select(); return; }
+  const field = e.target.closest && e.target.closest("input,select,textarea,[contenteditable]");
+  if (!field && $("dlg").hidden && !e.ctrlKey && !e.metaKey && !e.altKey && ((e.key.length === 1 && e.key !== " ") || e.key === "Process")) {
+    if (side.hidden) openSide(true); else $("q").focus();
+  }
+});
+
+/* ============================================================ start: at the latest message */
+estimate();
+for (const B of BL) io.observe(B.el);
+toEnd();
+count();
+mark();
+track();
+// a new size: the viewer fits its picture again, the open rail lays out again, the blocks are estimated again when
+// the width changed by more than a little, and the scrollbar follows
+addEventListener("resize", () => { if (!lb.hidden) fitView(); });
+addEventListener("resize", () => { if (cal.classList.contains("open")) layCols(); });
+let rw = innerWidth; addEventListener("resize", () => { if (Math.abs(innerWidth - rw) > 40) { rw = innerWidth; estimate(); SIZED = 0; } track(); });
+})();
+</script>
+</body>
+</html>

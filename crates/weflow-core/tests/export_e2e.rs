@@ -335,9 +335,13 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
     let chatlab: serde_json::Value =
         serde_json::from_str(&read("all-chatlab.out")).expect("streamed ChatLab is valid");
     assert_eq!(chatlab["messages"].as_array().unwrap().len(), 3);
-    assert!(
-        read("all-html.out").contains("3 条消息") || read("all-html.out").contains("3 messages")
-    );
+    // the page's data, in its JSON script element
+    let html = read("all-html.out");
+    let open = "<script id=\"wf-data\" type=\"application/json\">";
+    let data = &html[html.find(open).expect("the page has its data") + open.len()..];
+    let data: serde_json::Value =
+        serde_json::from_str(&data[..data.find("</script>").unwrap()]).expect("valid data");
+    assert_eq!(data["msgs"].as_array().unwrap().len(), 3);
 }
 
 #[test]

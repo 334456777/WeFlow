@@ -900,10 +900,9 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
         .unwrap();
     let html = std::fs::read_to_string(dir.join("chat.html")).unwrap();
     assert!(
-        html.contains("message-media image previewable")
-            && html.contains("<audio class=")
-            && html.contains(&format!("src=\\\"{image_rel}\\\"")),
-        "media tags are embedded in the message bodies"
+        html.contains(&format!("\"k\":2,\"s\":\"{image_rel}\""))
+            && html.contains(&format!("\"k\":3,\"s\":\"{voice_rel}\"")),
+        "the page's data points the picture and the voice message at their files"
     );
 
     // without media nothing is copied and the placeholders stay

@@ -20,7 +20,7 @@ use serde_json::{json, Map, Value};
 use crate::locale;
 use crate::message::*;
 
-const HTML_STYLES: &str = include_str!("export_html.css");
+mod html;
 
 fn chrome(zh: &'static str, en: &'static str) -> &'static str {
     locale::tr(en, zh)
@@ -1958,219 +1958,12 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ─────────────────────────────────── HTML ───────────────────────────────────
 
-    /// HTML 气泡里的文本：与其他格式同一套写法，但链接卡片、系统消息样式由 HTML 自己渲染，不再改写。
+    /// HTML 页面里一条消息的文本（见 [`html`]）：与其他格式同一套写法，但链接卡片、系统消息由页面自己渲染，不再改写。
     fn html_message_text(&mut self, msg: &ExportMsg, x: &MsgXml) -> String {
         if msg.content.is_empty() && msg.local_type != 47 {
             return String::new();
         }
         self.message_text_with(msg, x, None, false)
-    }
-
-    /// The `window.WEFLOW_DATA` item of one message; `index` is the number of messages before it.
-    fn html_item(&mut self, msg: &ExportMsg, index: usize) -> HtmlItem {
-        let is_group = self.session.is_group;
-        let sender_name = if is_group {
-            self.sender_profile_for(msg).display_name
-        } else if msg.is_send {
-            if self.my_display.is_empty() {
-                chrome("我", "Me").to_string()
-            } else {
-                self.my_display.clone()
-            }
-        } else if self.session.display_name.is_empty() {
-            self.session.id.clone()
-        } else {
-            self.session.display_name.clone()
-        };
-        let avatar_html = format!(
-            "<span>{}</span>",
-            html_escape(&avatar_fallback(&sender_name))
-        );
-        let time_text = format_timestamp(msg.create_time);
-        let x = MsgXml::new(&msg.content);
-        let quoted = self.quoted_with_names(msg.local_type, &x);
-        let mut text = match &quoted {
-            Some(q) if !q.reply_text.is_empty() => q.reply_text.clone(),
-            _ => self.html_message_text(msg, &x),
-        };
-        if is_transfer_export_content(&text) && !msg.content.is_empty() {
-            if let Some(desc) = self.transfer_desc(&msg.content) {
-                text = append_transfer_desc(&text, &desc);
-            }
-        }
-        let link_card = if quoted.is_some() {
-            None
-        } else {
-            extract_html_link_card(&msg.content, msg.local_type)
-        };
-        let multiline = |s: &str| {
-            html_escape(s)
-                .replace("\r\n", "<br />")
-                .replace('\n', "<br />")
-        };
-        let text_html = if let Some(q) = &quoted {
-            let sender = q
-                .quoted_sender
-                .as_ref()
-                .filter(|s| !s.is_empty())
-                .map(|s| format!("<div class=\"quoted-sender\">{}</div>", html_escape(s)))
-                .unwrap_or_default();
-            let preview = format!(
-                "<div class=\"quoted-text\">{}</div>",
-                multiline(&q.quoted_preview)
-            );
-            let reply = if text.is_empty() {
-                String::new()
-            } else {
-                format!("<div class=\"message-text\">{}</div>", multiline(&text))
-            };
-            format!("<div class=\"quoted-message\">{sender}{preview}</div>{reply}")
-        } else if let Some(card) = &link_card {
-            format!(
-                "<div class=\"message-text\"><a class=\"message-link-card\" href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">{}</a></div>",
-                html_attr_escape(&card.url),
-                multiline(&card.title)
-            )
-        } else if !text.is_empty() {
-            format!("<div class=\"message-text\">{}</div>", multiline(&text))
-        } else {
-            String::new()
-        };
-        let sender_html = if is_group {
-            format!(
-                "<div class=\"sender-name\">{}</div>",
-                html_escape(&sender_name)
-            )
-        } else {
-            String::new()
-        };
-        let (media_html, text_html) = match &msg.media {
-            Some(m) => {
-                let path = html_attr_escape(&encode_uri(&m.relative_path));
-                let html = match m.kind {
-                    "image" | "emoji" => format!("<img class=\"message-media {} previewable\" src=\"{path}\" data-full=\"{path}\" alt=\"{}\" />", m.kind, m.kind),
-                    "voice" => format!("<audio class=\"message-media audio\" controls src=\"{path}\"></audio>"),
-                    _ => format!("<video class=\"message-media video\" controls preload=\"metadata\" src=\"{path}\"></video>"),
-                };
-                // an image message has no caption of its own
-                (
-                    html,
-                    if msg.local_type == 3 {
-                        String::new()
-                    } else {
-                        text_html
-                    },
-                )
-            }
-            None => (String::new(), text_html),
-        };
-        let body = format!(
-            "<div class=\"message-time\">{}</div>{}<div class=\"message-content\">{}{}</div>",
-            html_escape(&time_text),
-            sender_html,
-            media_html,
-            text_html
-        );
-        HtmlItem {
-            local_id: index + 1,
-            create_time: msg.create_time,
-            is_send: u8::from(msg.is_send),
-            avatar_html,
-            body_html: body,
-            platform_message_id: msg.platform_message_id(),
-            reply_to_message_id: x.reply_to_message_id(),
-        }
-    }
-
-    /// The whole page around the data: `data_marker` stands where the items go.
-    fn html_document(&self, total: usize, data_marker: &str) -> String {
-        let is_group = self.session.is_group;
-        let title = html_escape(&self.session.display_name);
-        let lang = match locale::current() {
-            locale::Lang::Zh => "zh-CN",
-            locale::Lang::En => "en",
-        };
-        let count_label = |n: usize| match locale::current() {
-            locale::Lang::Zh => format!("共 {n} 条"),
-            locale::Lang::En => format!("{n} in total"),
-        };
-        let messages_label = match locale::current() {
-            locale::Lang::Zh => format!("{total} 条消息"),
-            locale::Lang::En => format!("{total} messages"),
-        };
-        let scroll_js = html_script(
-            &count_label(0).replace('0', "${N}"),
-            chrome("暂无消息", "No messages"),
-        );
-        format!(
-            "<!DOCTYPE html>\n<html lang=\"{lang}\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>{title} - {chat_history}</title>\n    <style>{styles}</style>\n  </head>\n  <body>\n    <div class=\"page\">\n      <div class=\"header\">\n        <h1 class=\"title\">{title}</h1>\n        <div class=\"meta\">\n          <span>{messages_label}</span>\n          <span>{kind}</span>\n          <span>{exported}</span>\n        </div>\n        <div class=\"controls\">\n          <input id=\"searchInput\" type=\"search\" placeholder=\"{search}\" />\n          <input id=\"timeInput\" type=\"datetime-local\" />\n          <button id=\"jumpBtn\" type=\"button\">{jump}</button>\n          <div class=\"stats\">\n            <span id=\"resultCount\">{count}</span>\n          </div>\n        </div>\n      </div>\n      <div id=\"scrollContainer\" class=\"scroll-container\"></div>\n    </div>\n    <div class=\"image-preview\" id=\"imagePreview\">\n      <img id=\"imagePreviewTarget\" alt=\"{preview}\" />\n    </div>\n    <script>\n      window.WEFLOW_DATA = [\n{data}\n];\n    </script>\n    <script>\n{scroll_js}\n    </script>\n  </body>\n</html>\n",
-            lang = lang,
-            title = title,
-            chat_history = chrome("聊天记录", "Chat history"),
-            styles = HTML_STYLES,
-            messages_label = messages_label,
-            kind = if is_group { chrome("群聊", "Group chat") } else { chrome("私聊", "Private chat") },
-            exported = html_escape(&format_timestamp(self.settings.exported_at)),
-            search = chrome("搜索消息...", "Search messages..."),
-            jump = chrome("跳转", "Go"),
-            count = count_label(total),
-            preview = chrome("预览", "Preview"),
-            data = data_marker,
-            scroll_js = scroll_js,
-        )
-    }
-
-    /// The whole page, built in memory: what the tests hold the streamed file against.
-    #[cfg(test)]
-    fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
-        let mut data: Vec<u8> = Vec::new();
-        for (i, msg) in msgs.iter().enumerate() {
-            if i > 0 {
-                data.extend_from_slice(b",\n");
-            }
-            let item = self.html_item(msg, i);
-            // a Vec takes every write, and an item has only string keys
-            let _ = write_script_json(&mut data, &item);
-        }
-        self.html_document(msgs.len(), &String::from_utf8(data).unwrap_or_default())
-    }
-
-    /// HTML written from a stream of messages (oldest first): the items go to a spool file as they are read, the
-    /// page around them (which shows the total) is written at the end. With no messages nothing is written unless
-    /// `write_if_empty`.
-    fn stream_html<I>(&mut self, msgs: I, out: &Path, write_if_empty: bool) -> Result<usize>
-    where
-        I: IntoIterator,
-        I::Item: std::borrow::Borrow<ExportMsg>,
-    {
-        use std::borrow::Borrow;
-        use std::io::Write;
-        let mut spool = Spool::create(out)?;
-        let mut count = 0usize;
-        for msg in msgs {
-            let item = self.html_item(msg.borrow(), count);
-            spool.push_with(",\n", |w| write_script_json(w, &item))?;
-            count += 1;
-        }
-        if count == 0 && !write_if_empty {
-            return Ok(0);
-        }
-        const MARKER: &str = "\u{0}WEFLOW_DATA\u{0}";
-        let page = self.html_document(count, MARKER);
-        let (head, tail) = page
-            .split_once(MARKER)
-            .context("the page template has no data placeholder")?;
-        let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
-        w.write_all(head.as_bytes())?;
-        spool.copy_to(&mut w)?;
-        w.write_all(tail.as_bytes())?;
-        w.flush()?;
-        Ok(count)
-    }
-
-    pub fn write_html(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
-        self.stream_html(msgs, out, true)?;
-        Ok(())
     }
 
     // ─────────────────────────────────── SQL ───────────────────────────────────
@@ -2601,25 +2394,6 @@ struct JsonDocument<'m> {
     group_members: Option<Vec<ArkGroupMember>>,
 }
 
-/// One item of the HTML page's `window.WEFLOW_DATA`, which the page script renders.
-#[derive(Serialize)]
-struct HtmlItem {
-    #[serde(rename = "i")]
-    local_id: usize,
-    #[serde(rename = "t")]
-    create_time: i64,
-    #[serde(rename = "s")]
-    is_send: u8,
-    #[serde(rename = "a")]
-    avatar_html: String,
-    #[serde(rename = "b")]
-    body_html: String,
-    #[serde(rename = "p", skip_serializing_if = "Option::is_none")]
-    platform_message_id: Option<String>,
-    #[serde(rename = "r", skip_serializing_if = "Option::is_none")]
-    reply_to_message_id: Option<String>,
-}
-
 /// serde_json's compact format with every `</` inside a string written as `<\/`, so the JSON cannot close the
 /// `<script>` element it is embedded in.
 struct ScriptSafe;
@@ -2849,26 +2623,6 @@ fn write_pretty(
     value.serialize(&mut serializer).map_err(io::Error::from)
 }
 
-/// JavaScript's `encodeURI`: everything except letters, digits and `;,/?:@&=+$-_.!~*'()#` is percent-encoded.
-fn encode_uri(path: &str) -> String {
-    let mut out = String::with_capacity(path.len());
-    for b in path.bytes() {
-        if b.is_ascii_alphanumeric() || b";,/?:@&=+$-_.!~*'()#".contains(&b) {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
-}
-
-fn avatar_fallback(name: &str) -> String {
-    name.chars()
-        .next()
-        .map(|c| c.to_string())
-        .unwrap_or_else(|| "?".into())
-}
-
 /// 文本、图片、语音、视频、表情这几种最常见的消息（约占 9 成）不含 XML，不需要引用 / 链接 / 转账 / 系统消息的
 /// 解析（每一步都要把内容规范化、跑正则），直接给出结果；内容里带 appmsg / sysmsg / refermsg 的仍走完整流程。
 /// 结果与完整流程一致（有测试对照）。
@@ -2907,10 +2661,6 @@ pub fn html_escape(value: &str) -> String {
     out
 }
 
-fn html_attr_escape(value: &str) -> String {
-    html_escape(value).replace('`', "&#96;")
-}
-
 pub fn csv_cell(value: &str) -> String {
     if value.contains(['"', ',', '\r', '\n']) {
         format!("\"{}\"", value.replace('"', "\"\""))
@@ -2942,84 +2692,6 @@ fn write_bytes(out: &Path, bytes: &[u8]) -> Result<()> {
     }
     // the cause goes into the message itself: only the outermost context reaches the user
     fs::write(out, bytes).map_err(|e| anyhow::anyhow!("failed to write {}: {e}", out.display()))
-}
-
-/// Client-side script of the exported HTML page (chunked renderer, search, jump).
-fn html_script(count_template: &str, empty_label: &str) -> String {
-    let (prefix, suffix) = count_template
-        .split_once("${N}")
-        .unwrap_or((count_template, ""));
-    format!(
-        r#"      class ChunkedRenderer {{
-        constructor(container, data, renderItem) {{
-          this.container = container; this.data = data; this.renderItem = renderItem;
-          this.batchSize = 100; this.rendered = 0; this.loading = false;
-          this.list = document.createElement('div'); this.list.className = 'message-list'; this.container.appendChild(this.list);
-          this.sentinel = document.createElement('div'); this.sentinel.className = 'load-sentinel'; this.container.appendChild(this.sentinel);
-          this.renderBatch();
-          this.observer = new IntersectionObserver((entries) => {{ if (entries[0].isIntersecting && !this.loading) this.renderBatch(); }}, {{ root: this.container, rootMargin: '600px' }});
-          this.observer.observe(this.sentinel);
-        }}
-        renderBatch() {{
-          if (this.rendered >= this.data.length) return;
-          this.loading = true;
-          const end = Math.min(this.rendered + this.batchSize, this.data.length);
-          const fragment = document.createDocumentFragment();
-          for (let i = this.rendered; i < end; i++) {{
-            const wrapper = document.createElement('div');
-            wrapper.innerHTML = this.renderItem(this.data[i], i);
-            if (wrapper.firstElementChild) fragment.appendChild(wrapper.firstElementChild);
-          }}
-          this.list.appendChild(fragment); this.rendered = end; this.loading = false;
-        }}
-        setData(newData) {{
-          this.data = newData; this.rendered = 0; this.list.innerHTML = ''; this.container.scrollTop = 0;
-          if (this.data.length === 0) {{ this.list.innerHTML = '<div class="empty">{empty}</div>'; return; }}
-          this.renderBatch();
-        }}
-        scrollToTime(timestamp) {{
-          const idx = this.data.findIndex(item => item.t >= timestamp);
-          if (idx === -1) return;
-          while (this.rendered <= idx) this.renderBatch();
-          const el = this.list.children[idx];
-          if (el) {{ el.scrollIntoView({{ behavior: 'smooth', block: 'center' }}); el.classList.add('highlight'); setTimeout(() => el.classList.remove('highlight'), 2500); }}
-        }}
-      }}
-      const searchInput = document.getElementById('searchInput');
-      const timeInput = document.getElementById('timeInput');
-      const jumpBtn = document.getElementById('jumpBtn');
-      const resultCount = document.getElementById('resultCount');
-      const imagePreview = document.getElementById('imagePreview');
-      const imagePreviewTarget = document.getElementById('imagePreviewTarget');
-      const container = document.getElementById('scrollContainer');
-      let allData = window.WEFLOW_DATA || [];
-      let currentList = allData;
-      const renderItem = (item) => {{
-        const me = item.s === 1;
-        const pid = item.p ? ` data-platform-message-id="${{item.p}}"` : '';
-        const rid = item.r ? ` data-reply-to-message-id="${{item.r}}"` : '';
-        return `<div class="message ${{me ? 'sent' : 'received'}}" data-index="${{item.i}}"${{pid}}${{rid}}><div class="message-row"><div class="avatar">${{item.a}}</div><div class="bubble">${{item.b}}</div></div></div>`;
-      }};
-      const renderer = new ChunkedRenderer(container, currentList, renderItem);
-      const updateCount = () => {{ resultCount.textContent = `{prefix}${{currentList.length}}{suffix}`; }};
-      let searchTimeout;
-      searchInput.addEventListener('input', () => {{
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {{
-          const keyword = searchInput.value.trim().toLowerCase();
-          currentList = keyword ? allData.filter(item => item.b.toLowerCase().includes(keyword)) : allData;
-          renderer.setData(currentList); updateCount();
-        }}, 300);
-      }});
-      jumpBtn.addEventListener('click', () => {{
-        const value = timeInput.value; if (!value) return;
-        renderer.scrollToTime(Math.floor(new Date(value).getTime() / 1000));
-      }});
-      updateCount();"#,
-        prefix = prefix,
-        suffix = suffix,
-        empty = empty_label,
-    )
 }
 
 #[cfg(test)]
@@ -3627,14 +3299,60 @@ mod tests {
         assert!(lines[3].contains(",image,0,Bobby,"));
     }
 
+    /// The page is the template with its placeholders filled in: the title escaped, the data as JSON that cannot
+    /// close its `<script>` element, one entry for each message.
     #[test]
-    fn html_contains_data() {
+    fn html_page_holds_the_data() {
         let html = with_exporter(false, |ex, msgs| ex.render_html(msgs));
-        assert!(html.contains("window.WEFLOW_DATA = ["));
-        assert!(html.contains("&lt;b&gt;there&lt;/b&gt;"));
-        assert!(html.contains("message-link-card"));
-        assert!(!html.contains("<b>there</b>"));
-        assert!(html.contains("<title>Bobby - "));
+        assert!(html.starts_with("<!DOCTYPE html>"));
+        assert!(!html.contains("__WF_"), "every placeholder filled in");
+        assert!(html.contains("<title>Bobby</title>"));
+        let open = "<script id=\"wf-data\" type=\"application/json\">";
+        let start = html.find(open).unwrap() + open.len();
+        let end = start + html[start..].find("</script>").unwrap();
+        let data: Value = serde_json::from_str(&html[start..end]).unwrap();
+        assert_eq!(data["v"], 1);
+        assert_eq!(data["kind"], "private");
+        assert_eq!(data["title"], "Bobby");
+        let msgs = data["msgs"].as_array().unwrap();
+        assert_eq!(msgs.len(), 5);
+        // the user and the other side, each once
+        let users = data["users"].as_array().unwrap();
+        assert_eq!(users.len(), 2);
+        let me = data["me"].as_i64().unwrap();
+        assert_eq!(users[usize::try_from(me).unwrap()][0], "Me Nick");
+        assert!(
+            msgs.iter()
+                .any(|m| m["x"].as_str().is_some_and(|x| x.contains("<b>there</b>"))),
+            "text stays text in the data: the page escapes it"
+        );
+        assert!(
+            !html.contains("<b>there</b>"),
+            "and no `<` of it is markup in the file"
+        );
+        // text, text, a picture whose file is not there, a link, a quote of the first message
+        let kinds: Vec<i64> = msgs.iter().map(|m| m["k"].as_i64().unwrap()).collect();
+        assert_eq!(kinds, [1, 1, 2, 7, 8]);
+        assert!(msgs[2].get("s").is_none());
+        assert_eq!(msgs[3]["ti"], "Doc");
+        assert_eq!(msgs[3]["l"], "https://example.com/x");
+        assert_eq!(msgs[4]["r"], 0);
+    }
+
+    /// A quote of a message that comes later in the export names it by id, and that message carries the id.
+    #[test]
+    fn html_quote_of_a_later_message_goes_by_id() {
+        let html = with_exporter(false, |ex, msgs| {
+            ex.render_html(&[msgs[4].clone(), msgs[0].clone()])
+        });
+        let open = "<script id=\"wf-data\" type=\"application/json\">";
+        let start = html.find(open).unwrap() + open.len();
+        let end = start + html[start..].find("</script>").unwrap();
+        let data: Value = serde_json::from_str(&html[start..end]).unwrap();
+        let msgs = data["msgs"].as_array().unwrap();
+        assert!(msgs[0].get("r").is_none());
+        assert_eq!(msgs[0]["rq"], "111");
+        assert_eq!(msgs[1]["id"], "111");
     }
 
     /// Script-safe JSON is compact JSON with every `</` written as `<\/`, also next to escaped characters.
