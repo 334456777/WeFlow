@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Calibrates the benchmark account's profile on a real account (#605); with -Register, sets itself up to run every
-  four weeks. Run as the user whose WeFlow is configured on the real account, never as the runner's account.
+  six weeks. Run as the user whose WeFlow is configured on the real account, never as the runner's account.
 
 .DESCRIPTION
   Builds account_profile_probe from the newest main in a clone of its own (-BenchDir\calibrate), then runs it on the
@@ -14,9 +14,12 @@
   -BenchDir\profile is readable by the runner's account (-RunnerAccount), writable by you only. What each run printed
   is appended to -BenchDir\profile\calibrate.log.
 
+  A new profile needs nothing more from here: the nightly run of bench.yml (23:30 in Japan) sees that the profile
+  changed and measures the new environment first on the three newest releases and the PRs labeled `bench` (#688).
+
 .EXAMPLE
   .\calibrate.ps1                 # once, now
-  .\calibrate.ps1 -Register       # every four weeks, Friday 02:40, whether you are logged on or not, waking the computer
+  .\calibrate.ps1 -Register       # every six weeks, Friday 02:40, whether you are logged on or not, waking the computer
 #>
 param(
   [string] $BenchDir = 'E:\weflow-bench',
@@ -30,14 +33,14 @@ $ErrorActionPreference = 'Stop'
 if ($Register) {
   $action = New-ScheduledTaskAction -Execute (Get-Command pwsh).Source `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -BenchDir `"$BenchDir`" -Config `"$Config`""
-  $trigger = New-ScheduledTaskTrigger -Weekly -WeeksInterval 4 -DaysOfWeek Friday -At 02:40
+  $trigger = New-ScheduledTaskTrigger -Weekly -WeeksInterval 6 -DaysOfWeek Friday -At 02:40
   # S4U: runs whether you are logged on or not, without keeping your password
   $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
   # wakes the computer from sleep; a run missed while it was off starts once it is back
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Hours 3)
   Register-ScheduledTask -TaskName 'WeFlow benchmark calibration' -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings -Force | Out-Null
-  Write-Host 'registered: WeFlow benchmark calibration, every four weeks on Friday at 02:40'
+  Write-Host 'registered: WeFlow benchmark calibration, every six weeks on Friday at 02:40'
   return
 }
 

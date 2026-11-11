@@ -5,8 +5,14 @@
 # the Python it installs and a venv with psutil (no PowerShell, which the runner's account may not run scripts in),
 # and what bench-commits.py keeps there (the accounts, the binaries, the clone the commits are built in).
 #
-# usage: bench-runner.sh measure   (env: COMMITS, RUNS, SEED, GROUP_MESSAGES, CONVERSATIONS, LOAD_SECONDS, ONLY, FORCE
-#                                    as bench.yml passes them)
+# usage: bench-runner.sh measure   (env: MODE and REQUEST as the queue job of bench.yml gives them) MODE=now measures
+#                                   REQUEST, a request as bench_queue.py writes it, at once; MODE=drain measures the
+#                                   requests of the queue on the gh-pages branch, in order, during the night only
+#                                   (bench_queue.py's NIGHT, 23:30 to 05:00 in Japan): after it, nothing is set up or
+#                                   built, and results/summary.md says so; first, a new profile's environment is
+#                                   measured on the releases and bench PRs (bench-commits.py --backfill), which an
+#                                   empty queue goes through only when the profile is not the one noted in
+#                                   profile-seen
 #        bench-runner.sh clean     what the next run will not use: the Rust toolchains neither this commit's nor used
 #                                   in the last TOOLCHAIN_DAYS days (an older commit built here brings its own, and a
 #                                   backfill over several runs keeps it; bench-commits.py notes in
@@ -31,6 +37,31 @@ TOOLCHAIN_DAYS=14
 
 case "${1:-}" in
   measure)
+    git fetch -q origin gh-pages
+    git show origin/gh-pages:bench/data/index.json > index.json 2>/dev/null || rm -f index.json
+    night=
+    if [ "$MODE" = drain ]; then
+      git show origin/gh-pages:bench/queue.json > requests.json 2>/dev/null || echo '{"requests": []}' > requests.json
+      night="--night --backfill"
+      mkdir -p results
+      # a run of the queue that got the runner after the night (another run held it till then) leaves it as it is
+      now=$(( ($(date -u +%s) + 9 * 3600) % 86400 ))  # seconds into the day in Japan, which keeps no summer time
+      if [ "$now" -ge $(( 5 * 3600 )) ] && [ "$now" -lt $(( 23 * 3600 + 30 * 60 )) ]; then
+        printf '## 运行情况\n\n- 拿到 runner 时夜间时段已过，没有测量，队列留到下一个夜间时段\n' > results/summary.md
+        exit 0
+      fi
+      # An empty queue: only a new profile (the calibration of #605) has something to measure, a backfill of its new
+      # environment (bench-commits.py --backfill). profile-seen holds the hash of the profile the last run of the queue
+      # went through; the same one again needs no tools built.
+      profile_sha=$( { cat "$dir/profile/profile.json" 2>/dev/null || true; } | sha256sum | cut -d' ' -f1)
+      if ! grep -q '"id"' requests.json && [ "$profile_sha" = "$(cat "$dir/profile-seen" 2>/dev/null || true)" ]; then
+        printf '## 运行情况\n\n- 队列为空，profile 没有更换，不测量\n' > results/summary.md
+        exit 0
+      fi
+    else
+      printf '{"requests": [%s]}' "$REQUEST" > requests.json
+    fi
+
     if [ ! -x "$CARGO_HOME/bin/rustup.exe" ]; then
       curl -sSfLo "$tmp/rustup-init.exe" https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
       "$tmp/rustup-init.exe" -y --no-modify-path --default-toolchain none --profile minimal
@@ -55,12 +86,11 @@ case "${1:-}" in
       "$CARGO_TARGET_DIR/$target/release/examples/serve_bench.exe" tools/
     echo "::endgroup::"
 
-    git fetch -q origin gh-pages
-    git show origin/gh-pages:bench/data/index.json > index.json 2>/dev/null || rm -f index.json
-
-    "$venv/Scripts/python.exe" .github/scripts/bench-commits.py --commits "$COMMITS" --bench-dir "$dir" --tools tools \
-      --index index.json --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" --only "$ONLY" \
-      --seed "$SEED" --group-messages "$GROUP_MESSAGES" --conversations "$CONVERSATIONS" ${FORCE:+--force}
+    "$venv/Scripts/python.exe" .github/scripts/bench-commits.py --requests requests.json --bench-dir "$dir" \
+      --tools tools --index index.json --out results $night
+    # the profile this run of the queue went through, the backfill of its environment begun or not needed; one whose
+    # backfill could not be listed is looked at again by the next run
+    if [ "$MODE" = drain ] && [ ! -f results/backfill-unlisted ]; then echo "$profile_sha" > "$dir/profile-seen"; fi
     ;;
   clean)
     keep=$(rustup show active-toolchain 2>/dev/null | cut -d' ' -f1 || true)
@@ -90,10 +120,10 @@ case "${1:-}" in
       git -C "$dir/src" reflog expire --expire=now --all
       git -C "$dir/src" gc --quiet --prune=now
     fi
-    rm -rf tools results index.json
+    rm -rf tools results index.json requests.json
     ;;
   *)
-    echo "usage: $0 measure | clean" >&2
+    echo "usage: $0 wait | measure | clean" >&2
     exit 2
     ;;
 esac

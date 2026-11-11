@@ -13,10 +13,24 @@ name: Bench
 # from the commit this workflow runs on, so every commit of a run is measured the same way.
 #
 # The runner is a machine of the repository's owner, so this workflow runs only when the owner starts it (or a release
-# they started calls it), never for a pull request; no other workflow uses the `weflow-bench` label. The runner needs
-# `WEFLOW_BENCH_DIR` in its `.env`: its own folder, kept between runs so that nothing a run before set up is
-# installed, downloaded or written again (Rust, the build cache, the account, the anchor's binary), and cleaned after
-# each run of what the next one will not use (`.github/scripts/bench-runner.sh`).
+# they started calls it) or on its schedule, never for a pull request; no other workflow uses the `weflow-bench`
+# label. The runner needs `WEFLOW_BENCH_DIR` in its `.env`: its own folder, kept between runs so that nothing a run
+# before set up is installed, downloaded or written again (Rust, the build cache, the account, the anchor's binary),
+# and cleaned after each run of what the next one will not use (`.github/scripts/bench-runner.sh`).
+#
+# With `night` (the default), commits are measured at night in Japan, 23:30 to 05:00
+# (#688): the queue job puts the request at the end of the queue on the gh-pages branch (bench/queue.json,
+# `.github/scripts/bench_queue.py`) and the run ends; the run this workflow starts every day at 23:30 measures the
+# requests there in order, and one asked for during the night is measured at once. Once the night is over no further
+# commit starts, and what is left stays in the queue for the next night. Nothing waits in a concurrency group, where a
+# run queued behind another is cancelled by the next: the runner takes one job at a time, the others wait for it in
+# turn, and the pushes to gh-pages try again on a fresh checkout when another push came first. `night` off measures
+# at once, after whatever the runner is doing, and so does a run started on another branch than the default one: the
+# queue is measured and published by the default branch's workflow, so a trial on a branch with its publish job
+# turned off stays a trial. The run at 23:30 asks for the runner only when there is something for it: a request in
+# the queue, or Friday night, after the calibration task of #605 (`.github/bench/calibrate.ps1`) ran: when it changed
+# the profile, the new environment is measured first on the releases and the PRs labeled `bench`, from 23:30, so it
+# has the whole night. A run whose runner is not there leaves the queue as it is for the next night.
 on:
   workflow_dispatch:
     inputs:
@@ -64,6 +78,11 @@ on:
         required: false
         default: ""
         type: string
+      night:
+        description: "排进夜间队列，在日本时间 23:30–05:00 测量（现在已是夜间则立即开始）；关掉则立即测量"
+        required: false
+        default: true
+        type: boolean
   # release.yml runs it after publishing a release (#516) with the previous release and the new tag
   workflow_call:
     inputs:
@@ -82,27 +101,85 @@ on:
         required: false
         default: ""
         type: string
-    outputs:
-      viewer_url:
-        description: "The comparison of the two commits in the viewer (empty unless two were given)"
-        value: ${{ jobs.publish.outputs.url }}
+      night:
+        required: false
+        default: true
+        type: boolean
+  # the queue, every night at 23:30 in Japan
+  schedule:
+    - cron: "30 14 * * *"
 
 permissions:
   contents: read
-
-# one run at a time on the runner
-concurrency:
-  group: bench
-  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   TARGET: x86_64-pc-windows-msvc
 
 jobs:
+  # The request into the queue, or straight to the measure job with `night` off; whether to measure now, and what.
+  queue:
+    name: queue
+    if: github.actor == github.repository_owner || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      request: ${{ steps.plan.outputs.request }}
+    steps:
+      # the history and the tags, to resolve the commits asked for
+      - uses: actions/checkout@v7
+        with:
+          path: main
+          fetch-depth: 0
+
+      - uses: actions/checkout@v7
+        with:
+          ref: gh-pages
+          path: pages
+
+      - id: plan
+        name: Plan
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          NIGHT: ${{ (github.event_name == 'schedule' || inputs.night) && '1' || '' }}
+          # the queue is measured by the default branch's workflow, whose publish job is on: a run started on another
+          # branch (a trial with its publish turned off) is measured in its own run instead
+          OTHER_BRANCH: ${{ github.ref_name != github.event.repository.default_branch && github.ref_name || '' }}
+          COMMITS: ${{ inputs.commits }}
+          RUNS: ${{ inputs.runs }}
+          SEED: ${{ inputs.seed }}
+          GROUP_MESSAGES: ${{ inputs.group_messages }}
+          CONVERSATIONS: ${{ inputs.conversations }}
+          LOAD_SECONDS: ${{ inputs.load_seconds }}
+          ONLY: ${{ inputs.only }}
+          FORCE: ${{ inputs.force && '1' || '' }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          git -C pages config user.name "github-actions[bot]"
+          git -C pages config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # another run may have pushed in between: plan again on what it pushed
+          for attempt in 1 2 3 4 5; do
+            (cd main && python3 .github/scripts/bench_queue.py plan --pages ../pages --event "$EVENT" ${NIGHT:+--night} \
+              --outputs ../plan.txt --summary ../plan.md)
+            git -C pages add -A bench
+            if git -C pages diff --cached --quiet; then break; fi
+            git -C pages commit -q -m "bench: queue a request of run $GITHUB_RUN_ID"
+            git -C pages push -q origin HEAD:gh-pages && break
+            [ "$attempt" = 5 ] && exit 1
+            sleep $((attempt * 5))
+            git -C pages fetch -q origin gh-pages
+            git -C pages reset -q --hard origin/gh-pages
+          done
+          cat plan.txt >> "$GITHUB_OUTPUT"
+          cat plan.md >> "$GITHUB_STEP_SUMMARY"
+
   measure:
     name: measure
-    if: github.actor == github.repository_owner
+    needs: queue
+    if: needs.queue.outputs.mode == 'now' || needs.queue.outputs.mode == 'drain'
     runs-on: [self-hosted, Windows, X64, weflow-bench]
     timeout-minutes: 720
     # The steps run .github/scripts/bench-runner.sh through cmd with Git's bash by its full path: the runner finds a
@@ -120,14 +197,10 @@ jobs:
       - name: Build and measure
         shell: cmd
         env:
-          COMMITS: ${{ inputs.commits }}
-          RUNS: ${{ inputs.runs }}
-          SEED: ${{ inputs.seed || '1' }}
-          GROUP_MESSAGES: ${{ inputs.group_messages || '200000' }}
-          CONVERSATIONS: ${{ inputs.conversations || '300' }}
-          LOAD_SECONDS: ${{ inputs.load_seconds }}
-          ONLY: ${{ inputs.only }}
-          FORCE: ${{ inputs.force && '1' || '' }}
+          MODE: ${{ needs.queue.outputs.mode }}
+          REQUEST: ${{ needs.queue.outputs.request }}
+          # read-only, for the releases and the PRs labeled bench a new environment is measured on first
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh measure'
 
       # the results alone, a few small files, and how the run went: a run whose upload fails keeps the results in the
@@ -137,9 +210,10 @@ jobs:
         with:
           name: bench-results
           path: |
-            results/run.json
             results/summary.md
-            results/*/result.json
+            results/*/run.json
+            results/*/summary.md
+            results/*/*/result.json
           retention-days: 30
 
       # the output of every command, for looking into a run; publishing does not wait on it
@@ -148,7 +222,7 @@ jobs:
         continue-on-error: true
         with:
           name: bench-logs
-          path: results/*/logs/
+          path: results/*/*/logs/
           retention-days: 7
 
       # what the next run will not use
@@ -158,20 +232,15 @@ jobs:
         run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh clean'
 
   # How the run went on the run's Summary page, written here rather than on the runner, whose network may drop the
-  # upload; the results into the gh-pages branch with the viewer (bench-publish.py), which adds what was published to
-  # the page and, with two commits, the link to their comparison; with `release_tag` the 性能基准 section of that
-  # release's notes.
+  # upload; each request's results into the gh-pages branch with the viewer (bench-publish.py), with two commits the
+  # link to their comparison and, with `release_tag`, the 性能基准 section of that release's notes; the requests
+  # measured out of the queue (bench_queue.py done).
   publish:
     name: publish
     needs: measure
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    concurrency:
-      group: gh-pages
-      cancel-in-progress: false
-    outputs:
-      url: ${{ steps.push.outputs.url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -189,40 +258,51 @@ jobs:
           name: bench-results
           path: results
 
-      - id: push
-        name: Push to gh-pages
+      - name: Push to gh-pages
         shell: bash
         run: |
-          if [ -f results/summary.md ]; then cat results/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
-          python3 main/.github/scripts/bench-publish.py --pages pages --results results --viewer main/.github/bench \
-            > published.txt
-          cd pages
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A bench
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -q -m "bench: results of $(sed -n 1p ../published.txt)"
-          # another publish may have pushed in between: take it and try again
-          for attempt in 1 2 3 4; do
-            git push origin HEAD:gh-pages && break
-            [ "$attempt" = 4 ] && exit 1
+          git -C pages config user.name "github-actions[bot]"
+          git -C pages config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          requests=$(find results -mindepth 2 -maxdepth 2 -name run.json -printf '%h\n' | sort -V)
+          # another run may have pushed in between: publish again on what it pushed
+          for attempt in 1 2 3 4 5; do
+            keys=()
+            for dir in $requests; do
+              keys+=("$(python3 main/.github/scripts/bench-publish.py --pages pages --results "$dir" \
+                --viewer main/.github/bench --outputs "$dir/outputs.txt" --summary "$dir/published.md")")
+            done
+            python3 main/.github/scripts/bench_queue.py done --pages pages --results results
+            git -C pages add -A bench
+            if git -C pages diff --cached --quiet; then break; fi
+            git -C pages commit -q -m "bench: results of ${keys[*]:-no commit}"
+            git -C pages push -q origin HEAD:gh-pages && break
+            [ "$attempt" = 5 ] && exit 1
             sleep $((attempt * 5))
-            git pull -q --rebase origin gh-pages
+            git -C pages fetch -q origin gh-pages
+            git -C pages reset -q --hard origin/gh-pages
           done
+          {
+            if [ -f results/summary.md ]; then cat results/summary.md; fi
+            for dir in $requests; do
+              cat "$dir/summary.md"
+              printf '#### 发布\n\n'
+              cat "$dir/published.md"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      # the base and the head (bench-publish.py gives them when two commits were asked for and both are held): the few
-      # lines of the release notes, and the comparison's address in them
+      # each request with a release tag whose base and head are both held: the few lines of the release notes, and the
+      # comparison's address in them
       - name: Add the benchmark to the release notes
-        if: inputs.release_tag != '' && steps.push.outputs.url != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.release_tag }}
-          COMMITS: ${{ inputs.commits }}
-          KEY: ${{ steps.push.outputs.key }}
-          BASE: ${{ steps.push.outputs.base }}
-          HEAD: ${{ steps.push.outputs.head }}
-          URL: ${{ steps.push.outputs.url }}
         run: |
-          node main/.github/bench/cli.mjs "pages/bench/data/$KEY/$BASE.json" "pages/bench/data/$KEY/$HEAD.json" --out compare
-          bash main/.github/scripts/release-bench-notes.sh "$TAG" "$(echo "${COMMITS%%,*}" | xargs)" "$URL" compare/highlights.md
+          for out in $(find results -mindepth 2 -maxdepth 2 -name outputs.txt | sort -V); do
+            get() { sed -n "s/^$1=//p" "$out"; }
+            tag=$(get release_tag) url=$(get url)
+            [ -n "$tag" ] && [ -n "$url" ] || continue
+            dir=$(dirname "$out")
+            node main/.github/bench/cli.mjs "pages/bench/data/$(get key)/$(get base).json" \
+              "pages/bench/data/$(get key)/$(get head).json" --out "$dir/compare"
+            bash main/.github/scripts/release-bench-notes.sh "$tag" "$(get base_name)" "$url" "$dir/compare/highlights.md"
+          done
