@@ -276,7 +276,16 @@ class Run:
         key = self.account(req)[1]["key"]
         if self.index.get("envs", {}).get(key, {}).get("results") or self.pending.get(key):
             return None
-        commits = backfill_commits()
+        # the API out of reach costs the backfill, not the night: the queue is measured, and the backfill is looked for
+        # again by the next run of the queue (bench-runner.sh keeps profile-seen as it was)
+        try:
+            commits = backfill_commits()
+        except (OSError, ValueError, KeyError) as e:
+            print(f"::warning::environment {key} holds no result yet, but its backfill could not be listed: {e}",
+                  flush=True)
+            with open(os.path.join(self.args.out, "backfill-unlisted"), "w", encoding="utf-8") as f:
+                f.write(f"{e}\n")
+            return None
         print(f"environment {key} holds no result yet: measured first on {commits}", flush=True)
         server, repo = os.environ.get("GITHUB_SERVER_URL", "https://github.com"), os.environ.get("GITHUB_REPOSITORY")
         run_id = os.environ.get("GITHUB_RUN_ID", "0")

@@ -88,8 +88,9 @@ case "${1:-}" in
 
     "$venv/Scripts/python.exe" .github/scripts/bench-commits.py --requests requests.json --bench-dir "$dir" \
       --tools tools --index index.json --out results $night
-    # the profile this run of the queue went through, the backfill of its environment begun or not needed
-    if [ "$MODE" = drain ]; then echo "$profile_sha" > "$dir/profile-seen"; fi
+    # the profile this run of the queue went through, the backfill of its environment begun or not needed; one whose
+    # backfill could not be listed is looked at again by the next run
+    if [ "$MODE" = drain ] && [ ! -f results/backfill-unlisted ]; then echo "$profile_sha" > "$dir/profile-seen"; fi
     ;;
   clean)
     keep=$(rustup show active-toolchain 2>/dev/null | cut -d' ' -f1 || true)
