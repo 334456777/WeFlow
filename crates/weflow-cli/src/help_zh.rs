@@ -47,6 +47,8 @@ const HELP: &[(&str, &str)] = &[
     ("Conversation the image belongs to (locates msg/attach/<md5(session)>/…)", "图片所属的会话（用于定位 msg/attach/<md5(会话)>/…）"),
     ("Copy media next to the export and point the messages at the copies: any of image, voice, video, emoji, file, avatar (comma separated) or all. Files go to `media/<output name>/` beside the output file", "将媒体文件复制到导出文件旁，并让消息指向这些副本：可选 image、voice、video、emoji、file（聊天中收发的文件）、avatar（HTML 页面上的头像；逗号分隔）或 all。文件保存在输出文件旁的 `media/<输出名>/` 中"),
     ("With avatars in --media: only those WeChat keeps on this computer, none downloaded", "--media 含头像时只用微信存在本机的头像，不联网下载"),
+    ("avatar: put the avatars on the HTML page, in `media/<output name>/avatars/` beside the output file", "avatar：在 HTML 页面上显示头像，头像保存在输出文件旁的 `media/<输出名>/avatars/` 中"),
+    ("With --media avatar: only those WeChat keeps on this computer, none downloaded", "使用 --media avatar 时只用微信存在本机的头像，不联网下载"),
     ("Create, inspect and restore backups", "创建、查看和恢复备份"),
     ("Cursor returned as `nextCursor` by the previous page", "上一页返回的 `nextCursor` 游标"),
     ("Dates that have messages in a session (YYYY-MM-DD)", "会话中有消息的日期（YYYY-MM-DD）"),

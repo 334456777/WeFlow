@@ -568,7 +568,7 @@ fn quote_of_system(x: &MsgXml) -> Option<QuotedDisplay> {
 /// A relative path as a URL path: the ASCII characters a URL path cannot hold as they are (a space, `%`, `#`, `?`,
 /// quotes, angle brackets, backslashes and control characters) percent-encoded; other text, Chinese included, kept,
 /// which a page's UTF-8 carries.
-fn url_path(path: &str) -> String {
+pub(super) fn url_path(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
     for c in path.chars() {
         if c.is_ascii_control() || " %#?\"'<>\\`{}|^".contains(c) {

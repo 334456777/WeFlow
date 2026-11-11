@@ -145,40 +145,11 @@ fn cell_text(value: &Value) -> std::borrow::Cow<'_, str> {
     }
 }
 
-/// A table as an HTML page: `title` as the heading, the header row, then a line for each row. Every cell is text,
-/// so an address in a cell is shown and not loaded.
-pub fn export_table_html(
-    title: &str,
-    headers: &[impl AsRef<str>],
-    rows: &[Vec<Value>],
-    out: &Path,
-) -> Result<()> {
-    write_file(out, &table_html(title, headers, rows))
-}
-
-fn table_html(title: &str, headers: &[impl AsRef<str>], rows: &[Vec<Value>]) -> String {
-    let title = html_escape(title);
-    let mut html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title><style>
-body{{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:20px}}
-table{{border-collapse:collapse}}
-th,td{{border:1px solid #ddd;padding:4px 8px;text-align:left;vertical-align:top;white-space:pre-wrap}}
-th{{background:#f5f5f5;position:sticky;top:0}}
-</style></head><body><h2>{title}</h2><table><thead><tr>"#
-    );
-    for header in headers {
-        html.push_str(&format!("<th>{}</th>", html_escape(header.as_ref())));
-    }
-    html.push_str("</tr></thead><tbody>\n");
-    for row in rows {
-        html.push_str("<tr>");
-        for cell in row {
-            html.push_str(&format!("<td>{}</td>", html_escape(&cell_text(cell))));
-        }
-        html.push_str("</tr>\n");
-    }
-    html.push_str("</tbody></table></body></html>\n");
-    html
+/// A list as its HTML page (see [`crate::export_msg::ListPage`]).
+pub fn export_list_html(page: &crate::export_msg::ListPage<'_>, out: &Path) -> Result<()> {
+    let mut html = Vec::new();
+    page.write(&mut html)?;
+    write_file(out, html)
 }
 
 /// A table as SQL in SQLite's dialect: `CREATE TABLE` with a column for each header, then an `INSERT` for each row.
@@ -190,7 +161,7 @@ pub fn export_table_sql(
     rows: &[Vec<Value>],
     out: &Path,
 ) -> Result<()> {
-    write_file(out, &table_sql(table, headers, rows))
+    write_file(out, table_sql(table, headers, rows))
 }
 
 fn table_sql(table: &str, headers: &[impl AsRef<str>], rows: &[Vec<Value>]) -> String {
@@ -306,18 +277,11 @@ fn format_timestamp(ts: i64) -> String {
     }
 }
 
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
 fn sql_escape(s: &str) -> String {
     s.replace('\'', "''")
 }
 
-fn write_file(path: &Path, content: &str) -> Result<()> {
+fn write_file(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
@@ -386,11 +350,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn html_escapes() {
-        assert_eq!(html_escape("<b>hi</b>"), "&lt;b&gt;hi&lt;/b&gt;");
-    }
-
-    #[test]
     fn sql_escapes() {
         assert_eq!(sql_escape("it's"), "it''s");
     }
@@ -451,26 +410,6 @@ mod tests {
         for not_a_list in [json!({ "a": 1 }), json!("text"), json!([])] {
             assert_eq!(list_table(&not_a_list), (Vec::new(), Vec::new()));
         }
-    }
-
-    #[test]
-    fn a_table_as_html_escapes_every_cell() {
-        let html = table_html(
-            "a<b",
-            &["name", "n"],
-            &[
-                vec![json!("<img src=x>"), json!(3)],
-                vec![Value::Null, json!([1, 2])],
-            ],
-        );
-        assert!(html.contains("<h2>a&lt;b</h2>"), "{html}");
-        assert!(html.contains("<th>name</th><th>n</th>"), "{html}");
-        assert!(
-            html.contains("<tr><td>&lt;img src=x&gt;</td><td>3</td></tr>"),
-            "{html}"
-        );
-        assert!(html.contains("<tr><td></td><td>[1,2]</td></tr>"), "{html}");
-        assert!(!html.contains("<img"), "{html}");
     }
 
     #[test]

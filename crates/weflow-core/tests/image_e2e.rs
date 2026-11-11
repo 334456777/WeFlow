@@ -1445,3 +1445,53 @@ async fn html_pages_carry_the_avatars() {
         "only Bob's kept copy, nothing downloaded: {got:?}"
     );
 }
+
+/// The lists' HTML pages (#704): `export sessions` names each conversation after its `username`, and the avatars of
+/// a list's rows go to `media/<out name>/avatars/` beside the page, WeChat's copy on this computer first.
+#[tokio::test]
+async fn list_pages_name_the_sessions_and_carry_their_avatars() {
+    use weflow_native::fixture::{ContactSpec, SessionSpec, T0};
+    let local = jpeg(200, 3);
+    let (root, hub, fixture) = common::custom_hub_with(
+        "list-avatars",
+        |f| {
+            let session = |username, at| SessionSpec {
+                username,
+                summary: "",
+                last_timestamp: at,
+                unread: 0,
+                last_msg_type: 1,
+            };
+            f.session_db(&[session("wxid_bob", T0 + 1), session("wxid_stranger", T0)]);
+        },
+        |_| {},
+    );
+    fixture.head_image_db(&[("wxid_bob", &local)]);
+    fixture.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+
+    let sessions = hub.sessions_with_names().unwrap();
+    let rows = sessions.as_array().unwrap();
+    let name_of = |user: &str| {
+        let row = rows.iter().find(|r| r["username"] == user).unwrap();
+        let keys: Vec<&String> = row.as_object().unwrap().keys().collect();
+        assert_eq!(keys[..2], ["username", "display_name"], "{row}");
+        row["display_name"].clone()
+    };
+    assert_eq!(name_of("wxid_bob"), "Bob");
+    assert_eq!(
+        name_of("wxid_stranger"),
+        "wxid_stranger",
+        "no contact: the username"
+    );
+
+    let out = root.join("lists").join("sessions.html");
+    let users = vec!["wxid_bob".to_string(), "wxid_stranger".to_string()];
+    let avatars = hub
+        .export_list_avatars(users, &out, weflow_core::api::AvatarSource::Local)
+        .await
+        .unwrap();
+    assert_eq!(avatars.len(), 1, "only Bob's kept copy: {avatars:?}");
+    let path = &avatars["wxid_bob"];
+    assert!(path.starts_with("media/sessions/avatars/"), "{path}");
+    assert_eq!(std::fs::read(root.join("lists").join(path)).unwrap(), local);
+}

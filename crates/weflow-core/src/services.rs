@@ -181,6 +181,50 @@ impl ServiceHub {
             .map_err(|err| AppError::native(err.to_string()))
     }
 
+    /// The list `export sessions` writes: [`Self::sessions`] with each conversation's `display_name` (the contact's
+    /// remark, else its nickname, else its WeChat ID, else the username) after its `username`.
+    pub fn sessions_with_names(&self) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        let sessions = wcdb
+            .sessions()
+            .map_err(|err| AppError::native(err.to_string()))?;
+        let Value::Array(rows) = sessions else {
+            return Ok(sessions);
+        };
+        let users: Vec<String> = rows
+            .iter()
+            .filter_map(|row| row["username"].as_str().map(str::to_string))
+            .collect();
+        let names = serde_json::to_string(&users)
+            .ok()
+            .and_then(|list| wcdb.display_names(&list).ok())
+            .unwrap_or(Value::Null);
+        let rows = rows
+            .into_iter()
+            .map(|row| {
+                let Value::Object(fields) = row else {
+                    return row;
+                };
+                let name = fields
+                    .get("username")
+                    .and_then(Value::as_str)
+                    .and_then(|user| names.get(user))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let mut named = serde_json::Map::with_capacity(fields.len() + 1);
+                for (key, value) in fields {
+                    let after = key == "username";
+                    named.insert(key, value);
+                    if after {
+                        named.insert("display_name".into(), name.clone());
+                    }
+                }
+                Value::Object(named)
+            })
+            .collect();
+        Ok(Value::Array(rows))
+    }
+
     /// `limit` messages of a conversation from `offset` on, in the order of `chat messages`.
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> AppResult<Vec<MsgRow>> {
         let wcdb = self.open_wcdb()?;

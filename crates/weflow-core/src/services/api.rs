@@ -852,19 +852,7 @@ impl ServiceHub {
         opts: &ApiMediaOptions,
     ) -> ExportMedia {
         use crate::message::MediaRef;
-        let out_dir = out
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."));
-        let name = api::sanitize_file_name(
-            &out.file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            "export",
-        );
-        let session_dir = out_dir.join("media").join(&name);
-        let prefix = format!("media/{name}");
+        let (session_dir, prefix) = media_dir(out);
         let wanted = |m: &crate::message::ExportMsg| match m.local_type {
             3 => opts.images,
             34 => opts.voices,
@@ -1002,9 +990,7 @@ impl ServiceHub {
     }
 
     /// The avatars of who speaks in `msgs` (the user, the other side of a private chat, a group's members) written
-    /// to `<session_dir>/avatars/`: WeChat's copy on this computer, else, with [`AvatarSource::Download`], the
-    /// picture at the contact's avatar address. Returns `{ username: path from the export file }` for those written;
-    /// the others keep the page's initial.
+    /// to `<session_dir>/avatars/` (see [`Self::write_avatars`]).
     async fn export_avatars(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -1014,7 +1000,6 @@ impl ServiceHub {
         prefix: &str,
         source: api::AvatarSource,
     ) -> HashMap<String, String> {
-        use futures::StreamExt as _;
         let me = self.wmy();
         let is_group = session_id.ends_with("@chatroom");
         let mut users: Vec<String> = Vec::new();
@@ -1030,7 +1015,39 @@ impl ServiceHub {
                 users.push(user.to_string());
             }
         }
-        let dir = session_dir.join("avatars");
+        self.write_avatars(wcdb, users, session_dir, prefix, source)
+            .await
+    }
+
+    /// The avatars of the rows of a list (`export sessions`, `export contacts` with `--media avatar`) for its HTML
+    /// page, written to `media/<out name>/avatars/` beside `out` as [`Self::write_avatars`] does. Returns
+    /// `{ username: path from the page }` for those written.
+    pub async fn export_list_avatars(
+        &self,
+        users: Vec<String>,
+        out: &Path,
+        source: api::AvatarSource,
+    ) -> AppResult<HashMap<String, String>> {
+        let wcdb = self.open_wcdb()?;
+        let (dir, prefix) = media_dir(out);
+        Ok(self
+            .write_avatars(&wcdb, users, &dir, &prefix, source)
+            .await)
+    }
+
+    /// The avatars of `users` written to `<dir>/avatars/`: WeChat's copy on this computer, else, with
+    /// [`AvatarSource::Download`], the picture at the contact's avatar address. Returns
+    /// `{ username: <prefix>/avatars/<file> }` for those written; the others keep the page's initial.
+    async fn write_avatars(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        users: Vec<String>,
+        dir: &Path,
+        prefix: &str,
+        source: api::AvatarSource,
+    ) -> HashMap<String, String> {
+        use futures::StreamExt as _;
+        let dir = dir.join("avatars");
         if users.is_empty() || std::fs::create_dir_all(&dir).is_err() {
             return HashMap::new();
         }
@@ -1286,6 +1303,23 @@ fn put_media(
         relative_path: format!("{safe_talker}/{sub}/{file_name}"),
         thumbnail: false,
     })
+}
+
+/// Where the media of the export written to `out` go, `<out dir>/media/<out name>`, and the same folder as the page
+/// beside `out` names it, `media/<out name>`.
+fn media_dir(out: &Path) -> (PathBuf, String) {
+    let out_dir = out
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let name = api::sanitize_file_name(
+        &out.file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        "export",
+    );
+    (out_dir.join("media").join(&name), format!("media/{name}"))
 }
 
 /// What [`ServiceHub::attach_export_media`] copied: the media messages' counts, and the avatars written as
