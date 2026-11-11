@@ -709,6 +709,8 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .status-dot.error { background: var(--state-danger); }
 .form-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
 .format-row { flex-wrap: wrap; row-gap: var(--space-2); }
+/* a line under a row's choices, lined up with them */
+.field-note { flex-basis: 100%; padding-left: calc(56px + var(--space-3)); color: var(--fg-subtle); font-size: var(--text-xs); }
 .field-label { flex-shrink: 0; min-width: 56px; color: var(--fg-muted); font-size: var(--text-xs); }
 .date-range { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .date-field {
@@ -825,6 +827,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
   .search-button-label { display: none; }
   .form-row { flex-wrap: wrap; gap: var(--space-2); }
   .field-label { min-width: 100%; }
+  .field-note { padding-left: 0; }
   .date-range { width: 100%; }
   .date-field { flex: 1; }
   .format-group { flex: 1 1 100%; width: auto; }

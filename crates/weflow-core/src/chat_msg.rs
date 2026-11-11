@@ -865,6 +865,9 @@ impl ChatMessage {
     pub fn file_name(&self) -> Option<&str> {
         self.t49.as_ref()?.file_name.as_deref()
     }
+    pub fn file_md5(&self) -> Option<&str> {
+        self.t49.as_ref()?.file_md5.as_deref()
+    }
     pub fn xml_type(&self) -> Option<&str> {
         self.t49.as_ref()?.xml_type.as_deref()
     }

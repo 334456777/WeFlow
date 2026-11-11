@@ -44,9 +44,30 @@ export function FormatChips({ formats, onChange }: { formats: readonly MessageFo
   </div>;
 }
 
-/** What the media box says it does. */
-/** Shown through t(). */
-export const MEDIA_NOTE = msg('图片、语音、视频与表情放进 media 文件夹，和导出文件一起打包成 zip');
+/** The media `export messages --media` copies, as the page names them. Labels are shown through t(). */
+export const MEDIA_KINDS = [
+  { value: 'image', label: msg('图片') }, { value: 'voice', label: msg('语音') }, { value: 'video', label: msg('视频') },
+  { value: 'emoji', label: msg('表情') }, { value: 'file', label: msg('文件') },
+] as const;
+export type MediaKind = typeof MEDIA_KINDS[number]['value'];
+
+/** The media picked after `value` was pressed: taken off, or put on in the list's order. */
+export function toggleMedia(kinds: readonly MediaKind[], value: MediaKind): MediaKind[] {
+  const next = new Set(kinds.includes(value) ? kinds.filter(k => k !== value) : [...kinds, value]);
+  return MEDIA_KINDS.map(k => k.value).filter(k => next.has(k));
+}
+
+export const mediaLabel = (kinds: readonly MediaKind[]) => kinds.map(k => t(MEDIA_KINDS.find(m => m.value === k)!.label)).join('、');
+
+/** What the media chips do. Shown through t(). */
+export const MEDIA_NOTE = msg('选中的媒体放进 media 文件夹，和导出文件一起打包成 zip');
+
+/** The media as chips, like the formats: any of them, or none. */
+export function MediaChips({ kinds, onChange, label }: { kinds: readonly MediaKind[]; onChange(kinds: MediaKind[]): void; label: string }) {
+  return <div className="choice-chips" role="group" aria-label={label}>
+    {MEDIA_KINDS.map(k => <button type="button" key={k.value} className="chip" aria-pressed={kinds.includes(k.value)} onClick={() => onChange(toggleMedia(kinds, k.value))}>{t(k.label)}</button>)}
+  </div>;
+}
 
 const NAMES = [{ value: 'group-nickname', label: msg('群昵称') }, { value: 'remark', label: msg('备注') }, { value: 'nickname', label: msg('昵称') }] as const;
 type NameChoice = typeof NAMES[number]['value'];
@@ -56,27 +77,27 @@ export interface BatchOptions {
   from: string;
   to: string;
   names: NameChoice;
-  media: boolean;
+  media: MediaKind[];
   compact: boolean;
 }
 
-export const DEFAULT_BATCH: BatchOptions = { formats: ['html'], from: '', to: '', names: 'group-nickname', media: false, compact: false };
+export const DEFAULT_BATCH: BatchOptions = { formats: ['html'], from: '', to: '', names: 'group-nickname', media: [], compact: false };
 
 /** The parameters of `export messages` for one conversation. */
 export function exportParams(session: string, options: BatchOptions) {
   return {
     'session-id': session, format: options.formats, start: options.from || undefined, end: options.to || undefined,
     'display-name': options.names === 'group-nickname' ? undefined : options.names,
-    media: options.media ? 'all' : undefined,
+    media: options.media.length ? options.media : undefined,
     'excel-compact': options.formats.includes('excel') && options.compact ? true : undefined,
-    zip: packed(options.formats, options.media) ? true : undefined,
+    zip: packed(options.formats, options.media.length > 0) ? true : undefined,
   };
 }
 
 export const formatLabel = (format: MessageFormat) => MESSAGE_FORMATS.find(f => f.value === format)!.label;
 
 export function batchSummary(picked: number, options: BatchOptions): string {
-  return (picked ? t('{n} 个会话', { n: picked }) : t('未选会话')) + ' · ' + formatsLabel(options.formats) + (options.media ? ' · ' + t('含媒体') : '');
+  return (picked ? t('{n} 个会话', { n: picked }) : t('未选会话')) + ' · ' + formatsLabel(options.formats) + (options.media.length ? ' · ' + t('含{kinds}', { kinds: mediaLabel(options.media) }) : '');
 }
 
 export function BatchExport({ picked, options, onChange }: {
@@ -114,7 +135,10 @@ export function BatchExport({ picked, options, onChange }: {
         {NAMES.map(n => <button type="button" key={n.value} aria-pressed={options.names === n.value} onClick={() => set({ names: n.value })}>{t(n.label)}</button>)}
       </Segmented>
     </div>
-    <label className="checkbox"><input type="checkbox" aria-label={t('附带媒体文件')} checked={options.media} onChange={event => set({ media: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('附带媒体文件')} <small>{t(MEDIA_NOTE)}</small></span></label>
+    <div className="form-row format-row"><span className="field-label">{t('附带媒体')}</span>
+      <MediaChips kinds={options.media} label={t('附带的媒体（可多选）')} onChange={media => set({ media })} />
+      <small className="field-note">{t(MEDIA_NOTE)}</small>
+    </div>
     {options.formats.includes('excel') && <label className="checkbox"><input type="checkbox" aria-label={t('Excel 精简列')} checked={options.compact} onChange={event => set({ compact: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('精简列')} <small>{t('时间、发送者、类型、内容')}</small></span></label>}
     <button type="button" className="primary-button large export-pending" disabled={!options.formats.length || !picked.length || busy} onClick={start}><DownloadSimple size={18} />{!options.formats.length ? t('选择导出格式') : picked.length ? t('导出 {n} 个会话', { n: picked.length }) : t('先在左侧选择会话')}</button>
     {note && <p className="card-note" role={note.error ? 'alert' : 'status'}>{note.text}</p>}

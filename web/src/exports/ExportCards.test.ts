@@ -1,5 +1,5 @@
 import { describe, expect, it } from '#test';
-import { DEFAULT_BATCH, exportParams, packed, toggleFormat } from './ExportCards';
+import { DEFAULT_BATCH, exportParams, packed, toggleFormat, toggleMedia } from './ExportCards';
 
 describe('the export formats, several at once (#342)', () => {
   it('puts formats on in the list order, and takes them off, the last too (#353)', () => {
@@ -18,8 +18,17 @@ describe('the export formats, several at once (#342)', () => {
     expect(packed(['html'], false)).toBe(false);
     expect(packed(['html', 'txt'], false)).toBe(true);
     expect(packed(['html'], true)).toBe(true);
-    expect(DEFAULT_BATCH.media).toBe(false);
-    expect(exportParams('wxid_a', { ...DEFAULT_BATCH, media: true })).toMatchObject({ format: ['html'], media: 'all', zip: true });
+    expect(DEFAULT_BATCH.media).toEqual([]);
+    expect(exportParams('wxid_a', { ...DEFAULT_BATCH, media: ['image', 'file'] })).toMatchObject({ format: ['html'], media: ['image', 'file'], zip: true });
     expect(exportParams('wxid_a', DEFAULT_BATCH).zip).toBeUndefined();
+    expect(exportParams('wxid_a', DEFAULT_BATCH).media).toBeUndefined();
+  });
+});
+
+describe('the media an export copies, each kind on its own (#694)', () => {
+  it('puts kinds on in the list order, and takes them off, the last too', () => {
+    expect(toggleMedia(['file'], 'image')).toEqual(['image', 'file']);
+    expect(toggleMedia(['image', 'file'], 'image')).toEqual(['file']);
+    expect(toggleMedia(['file'], 'file')).toEqual([]);
   });
 });

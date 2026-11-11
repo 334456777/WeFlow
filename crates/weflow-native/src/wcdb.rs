@@ -593,6 +593,11 @@ impl Wcdb {
         self.account()?.video_hardlinks(md5)
     }
 
+    /// Where WeChat's media index puts the file of a message md5 (see `NativeAccount::file_hardlinks`).
+    pub fn file_hardlinks(&self, md5: &str) -> Result<Vec<std::path::PathBuf>> {
+        self.account()?.file_hardlinks(md5)
+    }
+
     pub fn emoticon_cdn_url(&self, md5: &str) -> Result<String> {
         self.account()?.emoticon_cdn_url(md5)
     }

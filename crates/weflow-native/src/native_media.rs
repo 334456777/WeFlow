@@ -977,6 +977,28 @@ impl NativeAccount {
             .collect())
     }
 
+    /// The files (sent and received documents, archives …) WeChat's media index lists for a message md5, newest
+    /// first, relative to the account directory: `msg/file/<dir1>/<file name>`, `dir1` being the month (`2024-01`).
+    pub fn file_hardlinks(&self, md5: &str) -> Result<Vec<PathBuf>> {
+        let db = self.db_path("hardlink/hardlink.db");
+        let md5 = md5.trim().to_ascii_lowercase();
+        if md5.is_empty() || !db.is_file() {
+            return Ok(Vec::new());
+        }
+        let sql = "select h.file_name, a.username as dir1 from file_hardlink_info_v4 h \
+                   left join dir2id a on a.rowid = h.dir1 \
+                   where h.md5 = ?1 order by h.modify_time desc";
+        let rows = self.query(&db, sql, &[&md5])?;
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let (dir1, name) = (text(row, "dir1"), text(row, "file_name"));
+                (is_plain_name(&dir1) && is_plain_name(&name))
+                    .then(|| ["msg", "file", &dir1, &name].iter().collect())
+            })
+            .collect())
+    }
+
     // ── emoticons ──
 
     fn emoticon_db(&self) -> PathBuf {

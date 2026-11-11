@@ -801,6 +801,7 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
         voices: true,
         videos: false,
         emojis: false,
+        files: false,
     };
     let dir = root.join("exp");
     std::fs::create_dir_all(&dir).unwrap();
@@ -1206,4 +1207,130 @@ fn a_video_the_folders_miss_is_found_through_the_media_index() {
         .video_files_for_message("wxid_bob", "21", Some(at + 1))
         .unwrap();
     assert_eq!(std::fs::read(&kept.video).unwrap(), b"listed video");
+}
+
+/// A file message's file is copied below `files/<month>/`, as WeChat keeps it: found through WeChat's media index,
+/// else by its name in the month it was sent. Files of one name from different months stay apart, a file sent twice
+/// is copied once, and one not on disk is counted missing (#694).
+#[tokio::test]
+async fn file_messages_copy_their_files() {
+    use weflow_native::fixture::{HardlinkSpec, MsgSpec, SessionSpec, T0};
+    let (indexed, unindexed, gone) = (md5_hex("indexed"), md5_hex("unindexed"), md5_hex("gone"));
+    let file = |name: &str, md5: &str| {
+        format!(
+            "<msg><appmsg><title>{name}</title><type>6</type><appattach><totallen>5</totallen>\
+             <fileext>pdf</fileext></appattach><md5>{md5}</md5></appmsg></msg>"
+        )
+    };
+    // the second is sent a month and a half later, in another month folder
+    let later = T0 + 45 * 86_400;
+    let (root, hub, fixture) = common::custom_hub_with(
+        "files",
+        |f| {
+            f.session_db(&[SessionSpec {
+                username: "wxid_bob",
+                summary: "",
+                last_timestamp: later,
+                unread: 0,
+                last_msg_type: 49,
+            }]);
+            f.message_shard(
+                0,
+                &[(
+                    "wxid_bob",
+                    vec![
+                        MsgSpec::text(1, "wxid_bob", T0, &file("report.pdf", &indexed)).of_type(49),
+                        MsgSpec::text(2, "wxid_bob", later, &file("report.pdf", &unindexed))
+                            .of_type(49),
+                        MsgSpec::text(3, "wxid_bob", later + 1, &file("gone.pdf", &gone))
+                            .of_type(49),
+                        MsgSpec::text(4, "wxid_me", later + 2, &file("report.pdf", &indexed))
+                            .of_type(49),
+                        MsgSpec::text(5, "wxid_bob", later + 3, "hello"),
+                    ],
+                )],
+            );
+        },
+        |_| {},
+    );
+    let month = |t: i64| weflow_core::image::year_month_from_create_time(Some(t));
+    let (first, second) = (month(T0), month(later));
+    assert_ne!(first, second);
+    // the indexed one lies in a folder its send time does not name
+    let files = fixture.account_dir.join("msg/file");
+    for (dir, body) in [("2019-01", "first"), (second.as_str(), "second")] {
+        std::fs::create_dir_all(files.join(dir)).unwrap();
+        std::fs::write(files.join(dir).join("report.pdf"), body).unwrap();
+    }
+    fixture.hardlink_db(&[HardlinkSpec::file(&indexed, "report.pdf", "2019-01")]);
+
+    let dir = root.join("exp");
+    let opts = weflow_core::api::ApiMediaOptions {
+        enabled: true,
+        files: true,
+        ..Default::default()
+    };
+    let r = serde_json::to_value(
+        hub.export_messages_with_media(&media_request("html"), &dir.join("chat.html"), &opts)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            r["media"]["requested"].as_i64(),
+            r["media"]["exported"].as_i64(),
+            r["media"]["missing"].as_i64()
+        ),
+        (Some(4), Some(3), Some(1)),
+        "{r}"
+    );
+    let copied =
+        |rel: &str| std::fs::read_to_string(dir.join("media/chat/files").join(rel)).unwrap();
+    assert_eq!(copied("2019-01/report.pdf"), "first");
+    assert_eq!(copied(&format!("{second}/report.pdf")), "second");
+
+    let html = std::fs::read_to_string(dir.join("chat.html")).unwrap();
+    let open = "<script id=\"wf-data\" type=\"application/json\">";
+    let start = html.find(open).unwrap() + open.len();
+    let end = start + html[start..].find("</script>").unwrap();
+    let data: serde_json::Value = serde_json::from_str(&html[start..end]).unwrap();
+    let msgs = data["msgs"].as_array().unwrap();
+    let paths: Vec<Option<&str>> = msgs.iter().map(|m| m["s"].as_str()).collect();
+    assert_eq!(
+        paths,
+        [
+            Some("media/chat/files/2019-01/report.pdf"),
+            Some(format!("media/chat/files/{second}/report.pdf").as_str()),
+            None,
+            Some("media/chat/files/2019-01/report.pdf"),
+            None,
+        ]
+    );
+    assert!(
+        msgs[..4].iter().all(|m| m["k"] == 6 && m["n"].is_string()),
+        "{msgs:?}"
+    );
+    assert_eq!(msgs[2]["n"], "gone.pdf", "a file not copied keeps its card");
+
+    // `export media --type file`: the same files, below the conversation's folder
+    let out = root.join("media-out");
+    let r = hub
+        .export_media(Some("wxid_bob"), &out, "file", None, None)
+        .await
+        .unwrap();
+    let r = serde_json::to_value(r).unwrap();
+    assert_eq!(
+        (
+            r["found"].as_i64(),
+            r["exported"].as_i64(),
+            r["missing"].as_i64()
+        ),
+        (Some(4), Some(3), Some(1)),
+        "{r}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(out.join("wxid_bob/files/2019-01/report.pdf")).unwrap(),
+        "first"
+    );
 }

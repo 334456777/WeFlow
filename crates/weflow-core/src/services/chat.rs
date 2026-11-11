@@ -19,7 +19,7 @@ use weflow_native::msg_row::MsgRow;
 use weflow_native::native_msg::table_name_for;
 
 const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
-const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
+pub(super) const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
 
 fn native(e: anyhow::Error) -> AppError {
     AppError::from_native(e)

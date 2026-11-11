@@ -3,7 +3,7 @@
 // for the Moments and WeChat Pay pages as well, so the page can be seen without one.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { ArrowSquareOut, Check, DownloadSimple, FilePdf, MagnifyingGlass } from '@phosphor-icons/react';
+import { ArrowSquareOut, DownloadSimple, FilePdf, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
 import { lookupMessage, type Resource } from '../api/details';
 import { jobFileUrl } from '../api/jobs';
@@ -12,7 +12,7 @@ import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
 import { parseDay } from '../calendar/dates';
 import type { Card } from '../CardStack';
-import { FormatChips, formatsLabel, MEDIA_NOTE, packed, type MessageFormat } from '../exports/ExportCards';
+import { FormatChips, formatsLabel, MEDIA_NOTE, MediaChips, mediaLabel, packed, type MessageFormat } from '../exports/ExportCards';
 import { HoverTrack } from '../HoverTrack';
 import { FormatLanes } from '../exports/FormatLanes';
 import { jobDetail } from '../jobs/TaskCenter';
@@ -74,7 +74,8 @@ export interface ChatPage extends Page {
 /** `category`: the records browsed, the chat's or the sample's of the Moments and WeChat Pay pages. */
 export function useChatPage(shell: Shell, prefs: Preferences, category: Category): ChatPage {
   const { backend, connected, scope, sessionList, setMobileDetail, openPreview, toast } = shell;
-  const { includeMedia, setIncludeMedia, reducedMotion } = prefs;
+  const { media: mediaKinds, setMedia: setMediaKinds, reducedMotion } = prefs;
+  const includeMedia = mediaKinds.length > 0;
   // the chat page reads `weflow serve` once it is connected; until then, and for the other pages, sample records
   const live = category === 'chat' && (connected || backend.state === 'checking');
   const [selectedIds, setSelectedIds] = useState<Record<Category, string>>({ chat: 'lin', moments: 'moment-lin', payments: 'payment-coffee' });
@@ -188,7 +189,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
     try {
       const job = await runJob(t('导出 {name} · {formats}', { name: selected.name, formats: formatsLabel(formats) }), 'POST', 'export/messages', {
         'session-id': liveSession.username, format: formats, start: liveRange.from || undefined, end: liveRange.to || undefined,
-        media: includeMedia ? 'all' : undefined, zip: packed(formats, includeMedia) ? true : undefined,
+        media: includeMedia ? mediaKinds : undefined, zip: packed(formats, includeMedia) ? true : undefined,
       });
       setExportJobId(job.id);
     } catch (problem) {
@@ -207,7 +208,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
 
   const cards: Card[] = [
     {
-      id: 'export', title: t('导出'), summary: (formats.length ? formatsLabel(formats) : t('未选择格式')) + (includeMedia ? ' · ' + t('含媒体') : ''),
+      id: 'export', title: t('导出'), summary: (formats.length ? formatsLabel(formats) : t('未选择格式')) + (includeMedia ? ' · ' + t('含{kinds}', { kinds: mediaLabel(mediaKinds) }) : ''),
       content: <>
         <p className="card-lead"><span className="clamp-1">{selected.category === 'chat' ? t('{name}的聊天记录', { name: selected.name }) : t('{name}的记录', { name: selected.name })}</span>{!selected.live && <span className="badge">{t('示例数据')}</span>}</p>
         <div className="form-row"><span className="field-label">{t('时间范围')}</span>{selected.live
@@ -215,7 +216,10 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
           : <DateRange label={t('导出的时间范围')} from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
         <div className="form-row format-row"><span className="field-label">{t('导出格式')}</span>
           <FormatChips formats={formats} onChange={next => { setFormats(next); resetExport(); }} />
-          <label className="checkbox"><input type="checkbox" aria-label={t('附带媒体文件')} checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('附带媒体文件')} <small>{t(MEDIA_NOTE)}</small></span></label>
+        </div>
+        <div className="form-row format-row"><span className="field-label">{t('附带媒体')}</span>
+          <MediaChips kinds={mediaKinds} label={t('附带的媒体（可多选）')} onChange={next => { setMediaKinds(next); resetExport(); }} />
+          <small className="field-note">{t(MEDIA_NOTE)}</small>
         </div>
         {selected.live && liveSession
           ? <><ExportControl stage={stage} result={exportResult} ready={formats.length > 0} onStart={exportRecords} onCancel={cancelExport} />
