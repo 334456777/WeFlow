@@ -1,9 +1,13 @@
 <!doctype html>
-<!-- The benchmark viewer on GitHub Pages (#601, #604): pick an environment, then any two commits measured in it, and
-     the comparison is made here from their result.json (compare.mjs). The choice is kept in the address
-     (?env=&base=&head=, a commit by a name it was asked by, such as a tag, or by its SHA), so a link shows the same
-     comparison; the release notes link here. `?c=<base SHA>-<head SHA>` (or `?c=<head SHA>`) is the same in one
-     parameter: the repository's autolink turns `BENCH-<base>-<head>` in an issue, a PR or a commit into it. bench.yml copies this file to bench/ of the gh-pages branch. -->
+<!-- The benchmark viewer on GitHub Pages (#601, #604): pick a shape of benchmark account (#610) and an environment
+     of it, then any two commits measured in it, and the comparison is made here from their result.json
+     (compare.mjs). Switching the shape keeps the two commits when an environment of the other shape holds them, so
+     the same change can be seen on another account. The choice is kept in the address (?env=&base=&head=, a commit
+     by a name it was asked by, such as a tag, or by its SHA; `?shape=` instead of `?env=` takes the newest
+     environment of that shape), so a link shows the same comparison; the release notes link here.
+     `?c=<base SHA>-<head SHA>` (or `?c=<head SHA>`) is the same in one parameter: the repository's autolink turns
+     `BENCH-<base>-<head>` in an issue, a PR or a commit into it. bench.yml copies this file to bench/ of the gh-pages
+     branch. -->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -34,8 +38,9 @@ padding:4px 6px;min-width:0;width:100%}
 </head>
 <body>
 <h1>WeFlow 基准测试</h1>
-<p class="note">每个提交在同一台自托管机器上分别测量，结果按环境（机器、测量工具、合成账号）分组；仅同一环境内的结果可相互比较。</p>
+<p class="note">每个提交在同一台自托管机器上分别测量，结果按环境（机器、测量工具、合成账号）分组；仅同一环境内的结果可相互比较。合成账号有几种形状，每种形状是单独的环境；切换形状时保留所选的两个提交，可查看同一改动在另一种账号上的表现。</p>
 <form id="pick" aria-label="选择要比较的结果">
+  <label for="shape">账号形状</label><select id="shape"></select>
   <label for="env">环境</label><select id="env"></select>
   <label for="base">base</label><select id="base"></select>
   <label for="head">head</label><select id="head"></select>
@@ -73,6 +78,23 @@ function envLabel(key) {
   return `${key} · ${e.machine.cpu} · ${list.length} 个提交 · 最近测量 ${last}`;
 }
 
+// the shapes bench-commits.py names (#610), in its order; an environment holds the name of its own
+const SHAPE_ORDER = ['group', 'sessions', 'seed2'];
+const shapeOf = key => index.envs[key].shape?.name ?? '';
+const shapeLabel = name => {
+  if (!name) return '未注明形状';
+  const key = Object.keys(index.envs).find(k => shapeOf(k) === name);
+  const label = index.envs[key]?.shape?.label ?? name;
+  return label === name ? name : `${label}（${name}）`;
+};
+const shapeRank = name => (SHAPE_ORDER.includes(name) ? SHAPE_ORDER.indexOf(name) : name ? SHAPE_ORDER.length : Infinity);
+const byShape = (a, b) => shapeRank(a) - shapeRank(b) || a.localeCompare(b);
+const newestFirst = (a, b) => (commitsOf(b)[0]?.measured_at ?? '').localeCompare(commitsOf(a)[0]?.measured_at ?? '');
+/** The environments, those of the shapes listed first, the newest first within a shape. */
+const envKeys = () => Object.keys(index.envs).sort((a, b) => byShape(shapeOf(a), shapeOf(b)) || newestFirst(a, b));
+/** Of `keys`, the first that holds both commits, else the first. */
+const holding = (keys, baseName, headName) => keys.find(k => find(k, baseName) && find(k, headName)) ?? keys[0];
+
 function fill(select, items, chosen) {
   select.replaceChildren(...items.map(([value, label]) => new Option(label, value, false, value === chosen)));
 }
@@ -87,7 +109,9 @@ function choose(key, baseName, headName) {
   const list = commitsOf(key);
   const head = find(key, headName) ?? list[0];
   const base = find(key, baseName) ?? list.find(c => c.sha !== head?.sha) ?? head;
-  fill($('env'), Object.keys(index.envs).sort((a, b) => (commitsOf(b)[0]?.measured_at ?? '').localeCompare(commitsOf(a)[0]?.measured_at ?? '')).map(k => [k, envLabel(k)]), key);
+  const shape = shapeOf(key);
+  fill($('shape'), [...new Set(envKeys().map(shapeOf))].map(s => [s, shapeLabel(s)]), shape);
+  fill($('env'), envKeys().filter(k => shapeOf(k) === shape).map(k => [k, envLabel(k)]), key);
   fill($('base'), list.map(c => [c.sha, commitLabel(c)]), base?.sha);
   fill($('head'), list.map(c => [c.sha, commitLabel(c)]), head?.sha);
   return { base, head };
@@ -125,12 +149,20 @@ try {
     const [one, two] = q.get('c').split('-');
     if (two) { q.set('base', one); q.set('head', two); } else q.set('head', one);
   }
-  const newest = keys.sort((a, b) => (commitsOf(b)[0]?.measured_at ?? '').localeCompare(commitsOf(a)[0]?.measured_at ?? ''))[0];
-  // an address without the environment: the newest one that holds both commits
+  // an address without the environment: the newest one of the shape asked for (else of any, the default shape first)
+  // that holds both commits
+  const ofShape = envKeys().filter(k => !q.has('shape') || shapeOf(k) === q.get('shape'));
   const key = q.has('env') && index.envs[q.get('env')] ? q.get('env')
-    : keys.find(k => find(k, q.get('base')) && find(k, q.get('head'))) ?? newest;
+    : holding(ofShape.length ? ofShape : envKeys(), q.get('base'), q.get('head'));
   choose(key, q.get('base'), q.get('head'));
-  $('env').addEventListener('change', () => { choose($('env').value); show(); });
+  // another shape or environment keeps the two commits chosen, by SHA, where it holds them
+  const picked = () => [$('base').value, $('head').value];
+  $('shape').addEventListener('change', () => {
+    const keys = envKeys().filter(k => shapeOf(k) === $('shape').value);
+    choose(holding(keys, ...picked()), ...picked());
+    show();
+  });
+  $('env').addEventListener('change', () => { choose($('env').value, ...picked()); show(); });
   $('base').addEventListener('change', show);
   $('head').addEventListener('change', show);
   await show();

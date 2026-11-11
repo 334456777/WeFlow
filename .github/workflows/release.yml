@@ -15,7 +15,8 @@ name: Release
 # nothing: no release, no tag, no benchmark. Its packages stay on the run as artifacts.
 # A manual run with `bench` also runs bench.yml after the release (#516, #601): `bench_base` and the tag, by default
 # the previous release, each measured on the benchmark runner unless already measured; the link to their comparison
-# in the viewer on GitHub Pages, with a few lines, goes into the release notes.
+# in the viewer on GitHub Pages, with a few lines, goes into the release notes. `bench_shapes` measures them on more
+# shapes of benchmark account than the default one (#610): the lines are of the first, the others add a link each.
 on:
   push:
     tags:
@@ -40,6 +41,11 @@ on:
         description: "基准测试用来对比的 tag 或提交；留空时是上一个版本（正式版对比上一个正式版）"
         required: false
         default: ""
+        type: string
+      bench_shapes:
+        description: "基准账号的形状，逗号分隔（见 bench.yml 的 shapes，如 group,sessions,seed2 或 all）；更新日志的结论取第一种，其余各给一个对比链接；每多一种，测量时间多一倍"
+        required: false
+        default: "group"
         type: string
 
 permissions:
@@ -387,4 +393,5 @@ jobs:
     uses: ./.github/workflows/bench.yml
     with:
       commits: ${{ needs.prepare.outputs.bench_base }},${{ needs.prepare.outputs.tag }}
+      shapes: ${{ inputs.bench_shapes || 'group' }}
       release_tag: ${{ needs.prepare.outputs.tag }}

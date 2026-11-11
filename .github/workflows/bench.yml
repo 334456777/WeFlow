@@ -9,7 +9,9 @@ name: Bench
 # (`.github/scripts/bench.py`, which says what it measures); in each run an anchor commit, the same for the whole
 # environment, is measured in turns with every commit, so that two results measured apart show how far the machine
 # drifted in between. The account is the synthetic benchmark account of #488, generated on the runner: real chat data
-# never goes to a public repository's Actions. The tools that make the account and time the command API are built
+# never goes to a public repository's Actions. `shapes` names the shapes of account to measure on (#610), by default
+# the one leaning on a big group; each shape is an environment of its own, so a run measures every commit once per
+# shape. The tools that make the account and time the command API are built
 # from the commit this workflow runs on, so every commit of a run is measured the same way.
 #
 # The runner is a machine of the repository's owner, so this workflow runs only when the owner starts it (or a release
@@ -29,20 +31,10 @@ on:
         required: false
         default: "5"
         type: string
-      seed:
-        description: "基准账号的随机种子"
+      shapes:
+        description: "基准账号的形状，逗号分隔，每种是单独的环境，测量时间按形状数成倍增加：group（大群为主：种子 1，大群 20 万条，300 个其他会话）、sessions（会话多：3000 个会话，大群 2 万条）、seed2（种子 2，其余同 group）、all（全部）；也可以写 s种子-g大群消息数-c会话数"
         required: false
-        default: "1"
-        type: string
-      group_messages:
-        description: "基准账号最大群聊的消息数"
-        required: false
-        default: "200000"
-        type: string
-      conversations:
-        description: "基准账号其他会话的个数"
-        required: false
-        default: "300"
+        default: "group"
         type: string
       load_seconds:
         description: "weflow serve 持续请求的秒数（0 表示跳过）"
@@ -77,6 +69,10 @@ on:
       load_seconds:
         required: false
         default: "90"
+        type: string
+      shapes:
+        required: false
+        default: "group"
         type: string
       release_tag:
         required: false
@@ -122,9 +118,7 @@ jobs:
         env:
           COMMITS: ${{ inputs.commits }}
           RUNS: ${{ inputs.runs }}
-          SEED: ${{ inputs.seed || '1' }}
-          GROUP_MESSAGES: ${{ inputs.group_messages || '200000' }}
-          CONVERSATIONS: ${{ inputs.conversations || '300' }}
+          SHAPES: ${{ inputs.shapes || 'group' }}
           LOAD_SECONDS: ${{ inputs.load_seconds }}
           ONLY: ${{ inputs.only }}
           FORCE: ${{ inputs.force && '1' || '' }}
@@ -139,7 +133,7 @@ jobs:
           path: |
             results/run.json
             results/summary.md
-            results/*/result.json
+            results/*/*/result.json
           retention-days: 30
 
       # the output of every command, for looking into a run; publishing does not wait on it
@@ -148,7 +142,7 @@ jobs:
         continue-on-error: true
         with:
           name: bench-logs
-          path: results/*/logs/
+          path: results/*/*/logs/
           retention-days: 7
 
       # what the next run will not use
@@ -195,7 +189,7 @@ jobs:
         run: |
           if [ -f results/summary.md ]; then cat results/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
           python3 main/.github/scripts/bench-publish.py --pages pages --results results --viewer main/.github/bench \
-            > published.txt
+            --more more.md > published.txt
           cd pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -225,4 +219,5 @@ jobs:
           URL: ${{ steps.push.outputs.url }}
         run: |
           node main/.github/bench/cli.mjs "pages/bench/data/$KEY/$BASE.json" "pages/bench/data/$KEY/$HEAD.json" --out compare
-          bash main/.github/scripts/release-bench-notes.sh "$TAG" "$(echo "${COMMITS%%,*}" | xargs)" "$URL" compare/highlights.md
+          bash main/.github/scripts/release-bench-notes.sh "$TAG" "$(echo "${COMMITS%%,*}" | xargs)" "$URL" compare/highlights.md \
+            more.md

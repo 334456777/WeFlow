@@ -1,7 +1,7 @@
 """Benchmark one weflow binary on the benchmark account of #488, for the results of one commit (#601, #602).
 
 usage: python bench.py measure --exe EXE --commit SHA --account DIR --out DIR
-                               [--ref NAME] [--alloc EXE] [--anchor EXE --anchor-commit SHA [--anchor-alloc EXE]]
+                               [--ref NAME] [--shape NAME [--shape-label TEXT]] [--alloc EXE] [--anchor EXE --anchor-commit SHA [--anchor-alloc EXE]]
                                [--runs N] [--load-seconds S] [--serve-bench EXE] [--only NAME[,NAME...]]
        python bench.py env --account DIR [--load-seconds S]
 
@@ -746,6 +746,9 @@ def measure(args):
         "format": 1,
         "commit": args.commit,
         "ref": args.ref or None,
+        # the shape of account it was measured on (#610), as bench-commits.py names it; the account itself is in the
+        # environment
+        "shape": {"name": args.shape, "label": args.shape_label or args.shape} if args.shape else None,
         "version": target["version"],
         "binary_bytes": target["bytes"],
         "measured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
@@ -784,6 +787,8 @@ def main():
     m.add_argument("--exe", required=True)
     m.add_argument("--commit", required=True)
     m.add_argument("--ref", default="", help="the name given for the commit (a tag, a branch)")
+    m.add_argument("--shape", default="", help="the name of the account's shape (bench-commits.py, #610)")
+    m.add_argument("--shape-label", default="", help="how the report names the shape")
     m.add_argument("--alloc", help="the commit built with the alloc-stats feature (#513): allocation counts")
     m.add_argument("--anchor", help="the anchor of the environment, measured in turns with --exe")
     m.add_argument("--anchor-commit", default="")

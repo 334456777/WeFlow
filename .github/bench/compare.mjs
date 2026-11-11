@@ -168,7 +168,7 @@ export function reportBlocks(base, head) {
         sideLine(base, 'base'),
         sideLine(head, 'head'),
         `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 线程，${m.memory_gib} GiB${sameOs ? `，${head.os}` : ''}；测法版本 ${env.method}`,
-        `基准账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话，`
+        `基准账号${head.shape ? `（${head.shape.label}）` : ''}：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话，`
           + (acc.profile ? `profile \`${acc.profile.hash}\`（测于 ${acc.profile.measured}）` : '默认 profile'),
       ],
     },

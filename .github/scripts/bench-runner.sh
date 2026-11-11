@@ -5,8 +5,7 @@
 # the Python it installs and a venv with psutil (no PowerShell, which the runner's account may not run scripts in),
 # and what bench-commits.py keeps there (the accounts, the binaries, the clone the commits are built in).
 #
-# usage: bench-runner.sh measure   (env: COMMITS, RUNS, SEED, GROUP_MESSAGES, CONVERSATIONS, LOAD_SECONDS, ONLY, FORCE
-#                                    as bench.yml passes them)
+# usage: bench-runner.sh measure   (env: COMMITS, RUNS, SHAPES, LOAD_SECONDS, ONLY, FORCE as bench.yml passes them)
 #        bench-runner.sh clean     what the next run will not use: the Rust toolchains neither this commit's nor used
 #                                   in the last TOOLCHAIN_DAYS days (an older commit built here brings its own, and a
 #                                   backfill over several runs keeps it; bench-commits.py notes in
@@ -60,7 +59,7 @@ case "${1:-}" in
 
     "$venv/Scripts/python.exe" .github/scripts/bench-commits.py --commits "$COMMITS" --bench-dir "$dir" --tools tools \
       --index index.json --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" --only "$ONLY" \
-      --seed "$SEED" --group-messages "$GROUP_MESSAGES" --conversations "$CONVERSATIONS" ${FORCE:+--force}
+      --shapes "$SHAPES" ${FORCE:+--force}
     ;;
   clean)
     keep=$(rustup show active-toolchain 2>/dev/null | cut -d' ' -f1 || true)

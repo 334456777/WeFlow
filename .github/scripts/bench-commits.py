@@ -1,37 +1,43 @@
 """Measure a list of commits one by one on the benchmark runner (#601, #603), skipping those already measured.
 
 usage: python bench-commits.py --commits [NAME=]REF[,...] --bench-dir DIR --tools DIR --index FILE --out DIR
-                               [--runs N] [--load-seconds S] [--only NAMES] [--seed N] [--group-messages N]
-                               [--conversations N] [--force]
+                               [--shapes SHAPE[,...]] [--runs N] [--load-seconds S] [--only NAMES] [--force]
 
 Run from a checkout of the commit whose tools measure (the workflow's), with the tools already built in `--tools`
 (`weflow.exe`, `bench_account.exe`, `serve_bench.exe`). `--bench-dir` is the runner's own folder that outlives a
 job, so nothing is installed, downloaded or written again that a run before already has: the accounts
-(`accounts/`), the weflow binaries of the commits measured (`bin/<sha>/`), a clone to build them in (`src/`), the
-build cache (`target/`), Rust and the Python packages (set up by bench-runner.sh); `profile/profile.json`, when
-there, is the account's profile calibrated on this machine (#605), which the account is built from instead of the
+(`accounts/<size>/`), the weflow binaries of the commits measured (`bin/<sha>/`), a clone to build them in (`src/`),
+the build cache (`target/`), Rust and the Python packages (set up by bench-runner.sh); `profile/profile.json`, when
+there, is the account's profile calibrated on this machine (#605), which the accounts are built from instead of the
 default one. `--index` is `bench/data/index.json` of the gh-pages branch (missing: nothing measured yet), which says
-which commits the environment already holds and which is its anchor.
+which commits each environment already holds and which is its anchor.
+
+`--shapes` are the shapes of benchmark account to measure on (#610), by default `group` alone: one fitting a single
+synthetic account, a change could seem faster there and not on another. Each is a name of [`SHAPES`] (`all`: every
+one) or a size `s<seed>-g<messages of the biggest group>-c<other conversations>`. Every shape is an environment of its
+own (the account is in the environment), with its own anchor and its own account, kept in the bench dir; the commits
+are measured on each shape in turn, so the time grows with the number of shapes. A commit is built once for all.
 
 A commit is a ref (a SHA, a tag, a branch, `abc123^`), or `NAME=REF` to give it a name the viewer shows (such as
-`#424前=c054035f^`). For each: resolved to its full SHA; skipped when the environment holds a full result of it (a
-result of `--only` some parts is measured again by a full run), unless `--force`; else built (unless its binary is
-kept) and measured by bench.py next to the anchor. An environment with no anchor yet takes the first commit measured.
-Each result is also kept in `<bench dir>/pending/<sha>/` as soon as it is measured, until gh-pages holds it: a run
-whose results never reached gh-pages (its upload or its publishing failed) loses nothing, and the next run of the same
-environment publishes them along with its own, without measuring them again.
+`#424前=c054035f^`). For each shape and each commit: resolved to its full SHA; skipped when the environment holds a
+full result of it (a result of `--only` some parts is measured again by a full run), unless `--force`; else built
+(unless its binary is kept) and measured by bench.py next to the anchor. An environment with no anchor yet takes the
+first commit measured. Each result is also kept in `<bench dir>/pending/<env key>/<sha>/` as soon as it is measured,
+until gh-pages holds it: a run whose results never reached gh-pages (its upload or its publishing failed) loses
+nothing, and the next run of the same environment publishes them along with its own, without measuring them again.
 A commit that does not build or whose measuring stops is left out with a warning (an old commit may not build with
-today's tools), and the others go on; only the anchor's failing stops the run. Writes `<out>/<sha>/result.json` (and
-its logs) for each commit measured, `<out>/run.json`: the environment, the anchor and every commit asked for with
-its SHA, its name, whether it was measured, and why not when it failed, and `<out>/summary.md`, how the run went (each
-commit's outcome, how long it took to build and to measure, how busy the machine was, what the version lacked or
-failed), also printed to the log; the publish job puts it on the run's Summary page, whose network is steadier than
-the runner's (an upload from the runner that fails is not tried again).
+today's tools), and the others go on; only an anchor's failing stops the run. Writes `<out>/<env key>/<sha>/result.json`
+(and its logs) for each commit measured, `<out>/run.json`: for each shape, the environment, the anchor and every
+commit asked for with its SHA, its name, whether it was measured, and why not when it failed; and `<out>/summary.md`,
+how the run went (for each shape, each commit's outcome, how long it took to build and to measure, how busy the
+machine was, what the version lacked or failed), also printed to the log; the publish job puts it on the run's Summary
+page, whose network is steadier than the runner's (an upload from the runner that fails is not tried again).
 """
 
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,8 +47,45 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench  # noqa: E402
 
 TARGET = "x86_64-pc-windows-msvc"
-# the account a run uses when it is given no size
-DEFAULT_SIZE = "s1-g200000-c300"
+# The shapes of benchmark account (#610): (seed, messages of the biggest group, other conversations) and the name the
+# summary and the viewer show. `group` leans on one big group, as a real account does, and is what a run measures when
+# it is given no shape; `sessions` spreads the account over ten times the conversations, with a smaller group, so the
+# reads that go through every conversation weigh more; `seed2` is the first drawn from another seed. Their accounts
+# stay in the bench dir between runs. Changing one makes it another account, and with it another environment.
+SHAPES = {
+    "group": ((1, 200000, 300), "大群为主"),
+    "sessions": ((1, 20000, 3000), "会话多"),
+    "seed2": ((2, 200000, 300), "另一个种子"),
+}
+DEFAULT_SHAPES = "group"
+
+
+def size_name(size):
+    """The folder of an account's size under accounts/, such as s1-g200000-c300."""
+    return "s{}-g{}-c{}".format(*size)
+
+
+def parse_shapes(text):
+    """[(name, size)] of `--shapes`: names of SHAPES, `all`, or sizes written as size_name writes them; a size that is
+    one of SHAPES goes by its name, so it shares that shape's environment by name too."""
+    by_size = {size: name for name, (size, _) in SHAPES.items()}
+    out = {}
+    for item in [s.strip() for s in (text or "").split(",") if s.strip()] or [DEFAULT_SHAPES]:
+        if item == "all":
+            out.update((name, size) for name, (size, _) in SHAPES.items())
+        elif item in SHAPES:
+            out[item] = SHAPES[item][0]
+        elif m := re.fullmatch(r"s(\d+)-g(\d+)-c(\d+)", item):
+            size = tuple(int(x) for x in m.groups())
+            out[by_size.get(size, size_name(size))] = size
+        else:
+            raise SystemExit(f"no shape {item!r}: one of {', '.join(SHAPES)}, all, or s<seed>-g<N>-c<N>")
+    return list(out.items())
+
+
+def shape_label(name):
+    """How the summary, the report and the viewer name a shape: its Chinese name, or a size alone."""
+    return SHAPES[name][1] if name in SHAPES else name
 
 
 def git(*args, cwd=None):
@@ -138,9 +181,11 @@ def load_outcome(result):
     return "还没有" if any(s in said for s in bench.UNSUPPORTED) else "没跑成"
 
 
-def run_summary(env, anchor, new_anchor, commits, out, elapsed):
-    """How the run went, in Chinese for the one who started it: the environment, then a row per commit."""
-    m, acc = env["machine"], env["account"]
+def shape_summary(run, out):
+    """How the run went on one shape, in Chinese for the one who started it: the environment, then a row per
+    commit."""
+    env, anchor, commits = run["env"], run["anchor"], run["commits"]
+    acc = env["account"]
     profile = acc.get("profile") or {}
     outcome = {"measured": "测完", "reused": "沿用之前测完、没发布的结果", "held": "已测过，跳过",
                "build": "编译失败，跳过", "measure": "测量中断，跳过"}
@@ -151,7 +196,7 @@ def run_summary(env, anchor, new_anchor, commits, out, elapsed):
         kind = c.get("failed") or ("reused" if c.get("reused") else "measured" if c["measured"] else "held")
         counts[kind] += 1
         quiet = cmds = unsupported = failed_runs = load = "-"
-        file = os.path.join(out, c["sha"], "result.json")
+        file = os.path.join(out, env["key"], c["sha"], "result.json")
         if c["measured"] and os.path.exists(file):
             with open(file, encoding="utf-8") as f:
                 r = json.load(f)
@@ -165,22 +210,39 @@ def run_summary(env, anchor, new_anchor, commits, out, elapsed):
         rows.append(f"| {c['ref']} | `{c['sha'][:10]}` | {outcome[kind]} | {minutes(c.get('build_s'))} | "
                     f"{minutes(c.get('measure_s'))} | {quiet} | {cmds} | {unsupported} | {failed_runs} | {load} |")
     tally = "，".join(f"{short[k]} {counts[k]}" for k in short)
-    lines = [
-        "## 运行情况",
+    return [
+        f"### {run['label']}（`{run['shape']}`）" if run["label"] != run["shape"] else f"### `{run['shape']}`",
         "",
-        f"- 环境 `{env['key']}`：{m['cpu']}，{m['cpus']} 个逻辑 CPU，{m['memory_gib']} GiB 内存；测法版本 {env['method']}",
-        f"- 基准账号：种子 {acc['seed']}，{acc['messages']:,} 条消息，{acc['conversations']} 个会话，"
+        f"- 环境 `{env['key']}`；基准账号：种子 {acc['seed']}，{acc['messages']:,} 条消息，{acc['conversations']} 个会话，"
         + (f"profile `{profile['hash']}`（测于 {profile['measured']}）" if profile else "默认 profile"),
-        f"- 锚点 `{(anchor or '')[:10]}`" + ("（这个环境的第一个提交，这次新成为锚点）" if new_anchor
+        f"- 锚点 `{(anchor or '')[:10]}`" + ("（这个环境的第一个提交，这次新成为锚点）" if run["new_anchor"]
                                              else "（沿用这个环境原有的锚点）"),
-        f"- {len(commits)} 个提交：{tally}；用时 {minutes(elapsed)}",
+        f"- {len(commits)} 个提交：{tally}",
         "",
         "| 名字 | 提交 | 结果 | 编译 | 测量 | 其他进程 CPU（p50 / p95） | 命令 | 还没有 | 失败的运行 | 持续负载 |",
         "|---|---|---|---|---|---|---|---|---|---|",
         *rows,
         "",
-        "「还没有」是这个版本还没有的命令（命令行不认识它的子命令、选项或取值）；「失败的运行」是各命令运行失败的次数之和；"
-        "持续负载「还没有」是这个版本的 `weflow serve` 还不认识测量用的参数，「没跑成」是服务没有启动或中途出错。",
+    ]
+
+
+def write_summary(runs, out, elapsed):
+    """How the run went: the machine, then each shape (shape_summary)."""
+    env = runs[0]["env"]
+    m = env["machine"]
+    lines = [
+        "## 运行情况",
+        "",
+        f"- 机器：{m['cpu']}，{m['cpus']} 个逻辑 CPU，{m['memory_gib']} GiB 内存；测法版本 {env['method']}",
+        f"- {len(runs)} 种账号形状：" + "，".join(r["label"] for r in runs) + f"；用时 {minutes(elapsed)}",
+        "",
+    ]
+    for run in runs:
+        lines += shape_summary(run, out)
+    lines += [
+        ("「编译」记在第一次编译它的形状下（一个提交只编译一次）；「还没有」是这个版本还没有的命令（命令行不认识它的子命令、选项或取值）；"
+         "「失败的运行」是各命令运行失败的次数之和；持续负载「还没有」是这个版本的 `weflow serve` 还不认识测量用的参数，"
+         "「没跑成」是服务没有启动或中途出错。"),
         "",
     ]
     text = "\n".join(lines)
@@ -189,17 +251,47 @@ def run_summary(env, anchor, new_anchor, commits, out, elapsed):
     print(text, flush=True)
 
 
-def clean_up(bench_dir, anchors, account):
+def clean_up(bench_dir, anchors, accounts):
     """What the next run will not use: the binaries but the anchors' (a commit measured is not measured again), and
-    the accounts but this run's and the one of the default size."""
+    the accounts but this run's and those of SHAPES."""
     root = os.path.join(bench_dir, "bin")
     for d in os.listdir(root) if os.path.isdir(root) else []:
         if d not in anchors:
             shutil.rmtree(os.path.join(root, d), ignore_errors=True)
-    root, used = os.path.split(account)
-    for d in os.listdir(root):
-        if d not in (used, DEFAULT_SIZE):
+    keep = set(accounts) | {size_name(size) for size, _ in SHAPES.values()}
+    root = os.path.join(bench_dir, "accounts")
+    for d in os.listdir(root) if os.path.isdir(root) else []:
+        if d not in keep:
             shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+
+
+def load_pending(pending_dir, index):
+    """{env key: {sha: (folder, result)}} of the results measured before but not published yet; those gh-pages holds
+    now are removed. A result's own environment says where it belongs, whatever folder it sits in."""
+    pending = {}
+    os.makedirs(pending_dir, exist_ok=True)
+    folders = []
+    for name in os.listdir(pending_dir):
+        top = os.path.join(pending_dir, name)
+        if os.path.exists(os.path.join(top, "result.json")):
+            folders.append(top)
+        elif os.path.isdir(top):
+            folders += [os.path.join(top, sha) for sha in os.listdir(top)]
+            if not os.listdir(top):
+                os.rmdir(top)
+    for folder in folders:
+        file = os.path.join(folder, "result.json")
+        if not os.path.exists(file):
+            shutil.rmtree(folder, ignore_errors=True)
+            continue
+        with open(file, encoding="utf-8") as f:
+            kept = json.load(f)
+        key, sha = kept["env"]["key"], kept["commit"]
+        if sha in index.get("envs", {}).get(key, {}).get("results", {}):
+            shutil.rmtree(folder, ignore_errors=True)
+            continue
+        pending.setdefault(key, {})[sha] = (folder, kept)
+    return pending
 
 
 def main():
@@ -213,9 +305,7 @@ def main():
     p.add_argument("--load-seconds", type=int, default=90)
     p.add_argument("--load-workers", type=int, default=4)
     p.add_argument("--only", default="")
-    p.add_argument("--seed", type=int, default=1)
-    p.add_argument("--group-messages", type=int, default=200000)
-    p.add_argument("--conversations", type=int, default=300)
+    p.add_argument("--shapes", default=DEFAULT_SHAPES)
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
     started = time.time()
@@ -223,72 +313,90 @@ def main():
 
     bench_dir, out, tools = (os.path.abspath(x) for x in (args.bench_dir, args.out, args.tools))
     os.makedirs(out, exist_ok=True)
-    # an account per size, kept between runs (about 1.5 GB to write): bench_account builds it again only when its
-    # generator's layout, its size or its profile changed
-    account = os.path.join(bench_dir, "accounts", f"s{args.seed}-g{args.group_messages}-c{args.conversations}")
-    # a profile calibrated on this machine (#605), else the default one
-    profile = os.path.join(bench_dir, "profile", "profile.json")
-    subprocess.run([os.path.join(tools, "bench_account.exe"), account, "--weflow", os.path.join(tools, "weflow.exe"),
-                    "--seed", str(args.seed), "--group-messages", str(args.group_messages),
-                    "--conversations", str(args.conversations),
-                    *(["--profile", profile] if os.path.exists(profile) else [])],
-                   check=True, stdout=subprocess.DEVNULL)
-    env = bench.environment_of(account, args.load_seconds, args.load_workers)
-    key = env["key"]
-    print(f"environment {key}: {json.dumps(env, ensure_ascii=False)}", flush=True)
-
+    shapes = parse_shapes(args.shapes)
     index = {}
     if os.path.exists(args.index):
         with open(args.index, encoding="utf-8") as f:
             index = json.load(f)
-    held = index.get("envs", {}).get(key, {})
-    anchor = held.get("anchor")
-    results = held.get("results", {})
-
-    # results measured but not published yet; those gh-pages holds now are dropped
     pending_dir = os.path.join(bench_dir, "pending")
-    os.makedirs(pending_dir, exist_ok=True)
-    pending = {}
-    for sha in os.listdir(pending_dir):
-        file = os.path.join(pending_dir, sha, "result.json")
-        if sha in results or not os.path.exists(file):
-            shutil.rmtree(os.path.join(pending_dir, sha), ignore_errors=True)
-            continue
-        with open(file, encoding="utf-8") as f:
-            kept = json.load(f)
-        if kept["env"]["key"] == key:
-            pending[sha] = kept
-    if pending:
-        print(f"{len(pending)} results measured before but not published: published with this run", flush=True)
-        anchor = anchor or next(iter(pending.values()))["anchor"]["commit"]
+    pending = load_pending(pending_dir, index)
 
-    asked = [r.strip() for r in args.commits.split(",") if r.strip()]
-    commits = []
-    for item in asked:
+    asked = []
+    for item in [r.strip() for r in args.commits.split(",") if r.strip()]:
         name, _, rev = item.rpartition("=")
         name, rev = name.strip(), rev.strip()
         sha = resolve(rev)
         # a branch moves on: its name alone would later stand for another commit, so the commit goes with it
         if not name and is_branch(rev):
             name = f"{rev}@{sha[:10]}"
-        commits.append({"ref": name or rev, "sha": sha})
-    print("commits: " + ", ".join(f"{c['ref']} = {c['sha'][:10]}" for c in commits), flush=True)
+        asked.append({"ref": name or rev, "sha": sha})
+    print("commits: " + ", ".join(f"{c['ref']} = {c['sha'][:10]}" for c in asked), flush=True)
+    print("shapes: " + ", ".join(f"{name} = {size_name(size)}" for name, size in shapes), flush=True)
+
+    # what holds for a commit whatever the shape: it does not build, how long the build took
+    built = {}
+    runs = []
+    for shape, size in shapes:
+        runs.append(measure_shape(args, shape, size, asked, index, pending, pending_dir, built, bench_dir, out, tools))
+    anchors = {r["anchor"] for r in runs} | {e.get("anchor") for e in index.get("envs", {}).values()}
+    clean_up(bench_dir, anchors, {size_name(size) for _, size in shapes})
+    with open(os.path.join(out, "run.json"), "w", encoding="utf-8") as f:
+        json.dump({"runs": runs}, f, ensure_ascii=False, indent=1)
+    write_summary(runs, out, time.time() - started)
+
+
+def measure_shape(args, shape, size, asked, index, pending, pending_dir, built, bench_dir, out, tools):
+    """The commits measured on the account of one shape, in its own environment: what run.json holds of it."""
+    # an account per size, kept between runs (about 1.5 GB to write): bench_account builds it again only when its
+    # generator's layout, its size or its profile changed
+    account = os.path.join(bench_dir, "accounts", size_name(size))
+    # a profile calibrated on this machine (#605), else the default one
+    profile = os.path.join(bench_dir, "profile", "profile.json")
+    seed, group_messages, conversations = size
+    print(f"== account of the shape {shape}", flush=True)
+    subprocess.run([os.path.join(tools, "bench_account.exe"), account, "--weflow", os.path.join(tools, "weflow.exe"),
+                    "--seed", str(seed), "--group-messages", str(group_messages),
+                    "--conversations", str(conversations),
+                    *(["--profile", profile] if os.path.exists(profile) else [])],
+                   check=True, stdout=subprocess.DEVNULL)
+    env = bench.environment_of(account, args.load_seconds, args.load_workers)
+    key = env["key"]
+    print(f"environment {key} ({shape}): {json.dumps(env, ensure_ascii=False)}", flush=True)
+    held = index.get("envs", {}).get(key, {})
+    anchor = held.get("anchor")
+    results = held.get("results", {})
+    waiting = pending.get(key, {})
+    if waiting:
+        print(f"{len(waiting)} results measured before in {key} but not published: published with this run",
+              flush=True)
+        anchor = anchor or next(iter(waiting.values()))[1]["anchor"]["commit"]
+
+    commits = [dict(c) for c in asked]
     for c in commits:
         have = results.get(c["sha"])
         c["measured"] = args.force or not have or (bool(have.get("only")) and not args.only)
         if not c["measured"]:
             print(f"== {c['ref']} ({c['sha'][:10]}): already measured in {key}", flush=True)
-        elif c["sha"] in pending and not args.force:
+        elif c["sha"] in waiting and not args.force:
             c["reused"] = True
     # the pending results nobody asked for this time go along too
     asked_shas = {c["sha"] for c in commits}
     commits += [{"ref": r.get("ref") or sha[:10], "sha": sha, "measured": True, "reused": True}
-                for sha, r in pending.items() if sha not in asked_shas]
+                for sha, (_, r) in waiting.items() if sha not in asked_shas]
     for c in commits:
         if c.get("reused"):
-            os.makedirs(os.path.join(out, c["sha"]), exist_ok=True)
-            shutil.copyfile(os.path.join(pending_dir, c["sha"], "result.json"), os.path.join(out, c["sha"], "result.json"))
-    todo = [c for c in commits if c["measured"] and not c.get("reused")]
+            os.makedirs(os.path.join(out, key, c["sha"]), exist_ok=True)
+            shutil.copyfile(os.path.join(waiting[c["sha"]][0], "result.json"),
+                            os.path.join(out, key, c["sha"], "result.json"))
+    todo = []
+    for c in commits:
+        if not c["measured"] or c.get("reused"):
+            continue
+        # a commit that did not build for a shape before does not build for this one either
+        if built.get(c["sha"], {}).get("failed") and c["sha"] != anchor:
+            c.update(measured=False, failed="build")
+            continue
+        todo.append(c)
     new_anchor = bool(todo) and not anchor
     if new_anchor:
         anchor = todo[0]["sha"]
@@ -305,12 +413,17 @@ def main():
             if c["sha"] == anchor:
                 raise
             print(f"::warning::{c['ref']} ({c['sha'][:10]}) does not build ({e.returncode}): left out", flush=True)
+            built[c["sha"]] = {"failed": True}
             c.update(measured=False, failed="build")
             continue
-        c["build_s"] = time.time() - begin
+        # the build is timed once, on the first shape that builds it
+        if c["sha"] not in built:
+            built[c["sha"]] = {"build_s": time.time() - begin}
+            c["build_s"] = built[c["sha"]]["build_s"]
         argv = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bench.py"), "measure",
                 "--exe", exe, "--commit", c["sha"], "--ref", c["ref"], "--account", account,
-                "--out", os.path.join(out, c["sha"]), "--runs", str(args.runs),
+                "--shape", shape, "--shape-label", shape_label(shape),
+                "--out", os.path.join(out, key, c["sha"]), "--runs", str(args.runs),
                 "--load-seconds", str(args.load_seconds), "--load-workers", str(args.load_workers),
                 "--serve-bench", os.path.join(tools, "serve_bench.exe")]
         if alloc:
@@ -321,22 +434,22 @@ def main():
                 argv += ["--anchor-alloc", anchor_alloc]
         if args.only:
             argv += ["--only", args.only]
-        print(f"== measure {c['ref']} ({c['sha'][:10]})", flush=True)
+        print(f"== measure {c['ref']} ({c['sha'][:10]}) on {shape}", flush=True)
         begin = time.time()
         code = subprocess.run(argv).returncode
         c["measure_s"] = time.time() - begin
         if code:
             if c["sha"] == anchor:
-                raise SystemExit(f"the anchor {anchor[:10]} could not be measured ({code})")
-            print(f"::warning::measuring {c['ref']} ({c['sha'][:10]}) stopped ({code}): left out", flush=True)
+                raise SystemExit(f"the anchor {anchor[:10]} of {key} ({shape}) could not be measured ({code})")
+            print(f"::warning::measuring {c['ref']} ({c['sha'][:10]}) on {shape} stopped ({code}): left out",
+                  flush=True)
             c.update(measured=False, failed="measure")
             continue
-        os.makedirs(os.path.join(pending_dir, c["sha"]), exist_ok=True)
-        shutil.copyfile(os.path.join(out, c["sha"], "result.json"), os.path.join(pending_dir, c["sha"], "result.json"))
-    clean_up(bench_dir, {anchor} | {e.get("anchor") for e in index.get("envs", {}).values()}, account)
-    with open(os.path.join(out, "run.json"), "w", encoding="utf-8") as f:
-        json.dump({"env": env, "anchor": anchor, "commits": commits}, f, ensure_ascii=False, indent=1)
-    run_summary(env, anchor, new_anchor, commits, out, time.time() - started)
+        keep = os.path.join(pending_dir, key, c["sha"])
+        os.makedirs(keep, exist_ok=True)
+        shutil.copyfile(os.path.join(out, key, c["sha"], "result.json"), os.path.join(keep, "result.json"))
+    return {"shape": shape, "label": shape_label(shape), "env": env, "anchor": anchor, "new_anchor": new_anchor,
+            "commits": commits}
 
 
 if __name__ == "__main__":
