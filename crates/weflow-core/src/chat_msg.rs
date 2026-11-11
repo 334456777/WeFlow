@@ -744,7 +744,7 @@ fn video_md5_from_content(content: &str) -> Option<String> {
     opt(extract_xml_value(content, "md5")).map(|m| m.to_lowercase())
 }
 
-fn parse_voice_duration_seconds(content: &str) -> Option<i64> {
+pub(crate) fn parse_voice_duration_seconds(content: &str) -> Option<i64> {
     let caps =
         rx(r#"(?i)(voicelength|length|time|playlength)\s*=\s*['"]?([0-9]+(?:\.[0-9]+)?)['"]?"#)
             .captures(content)?;

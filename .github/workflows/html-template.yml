@@ -1,0 +1,50 @@
+name: HTML template
+
+# The HTML export's page (crates/weflow-core/src/export_msg/template.html) is embedded in the program made small, one
+# copy for each language (template.zh.html, template.en.html), which build.mjs beside it writes with Bun. A push to a
+# branch that changes the template or the script builds the two copies and, when they differ from the branch's,
+# commits them to that branch, so the program embeds what the template says. Nothing is checked. The commit is pushed
+# with GITHUB_TOKEN, so it starts no other workflow (CI runs again on the branch's next push).
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "crates/weflow-core/src/export_msg/template.html"
+      - "crates/weflow-core/src/export_msg/build.mjs"
+      - ".github/workflows/html-template.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: html-template-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build and commit the template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # the Bun of the WebUI (packageManager in web/package.json)
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: web/package.json
+
+      - run: bun crates/weflow-core/src/export_msg/build.mjs
+
+      - name: Commit the copies when they changed
+        env:
+          DIR: crates/weflow-core/src/export_msg
+        run: |
+          if git diff --quiet -- "$DIR/template.zh.html" "$DIR/template.en.html"; then
+            echo "The copies are up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DIR/template.zh.html" "$DIR/template.en.html"
+          git commit -m "chore(export): build the HTML template"
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
