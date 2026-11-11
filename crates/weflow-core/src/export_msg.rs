@@ -1958,7 +1958,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ─────────────────────────────────── HTML ───────────────────────────────────
 
-    /// HTML 页面里一条消息的文本（见 [`html`]）：与其他格式同一套写法，但链接卡片、系统消息由页面自己渲染，不再改写。
+    /// HTML 页面里一条消息的文本（见 [`html`]）：与其他格式同一套写法，但链接卡片、系统消息由页面自己渲染。
     fn html_message_text(&mut self, msg: &ExportMsg, x: &MsgXml) -> String {
         if msg.content.is_empty() && msg.local_type != 47 {
             return String::new();
