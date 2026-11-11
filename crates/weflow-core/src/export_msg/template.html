@@ -508,8 +508,11 @@ function body(m, i) {
     default: return '<div class="b">' + hl(m.x || T(PRE[m.k] || "")) + "</div>";
   }
 }
-// after a jump from the quote at `from` to the message at `to`, that message carries a button back to `from`
-let BACK = null;
+// the jumps from quotes, each from the quote at `from` to the message at `to`: the message the last one reached
+// carries a button back to its `from`, where the jump before it shows its button again. A quote on the message just
+// reached adds a jump; a quote elsewhere starts the jumps again
+const BACK = [];
+const lastJump = () => BACK[BACK.length - 1];
 /** A message: its time chip, then a system line, or the avatar, the name in a group and what it shows. */
 function msg(i) {
   const m = M[i];
@@ -517,7 +520,7 @@ function msg(i) {
   if (m.k === K.SYS || m.u < 0) return h + '<div class="sys" id="m' + i + '"><span>' + rich(m.x) + "</span></div>";
   const me = m.u === ME, named = GROUP && !me;
   let b = body(m, i);
-  if (BACK && BACK.to === i) {
+  if (lastJump()?.to === i) {
     // the button beside what the message shows; a reply's quote (the end of its body) under both
     const q = m.k === K.QUOTE ? quote(m) : "";
     b = '<div class="bk">' + b.slice(0, b.length - q.length) + '<button class="back" data-back title="' + esc(T("返回引用处")) + '">' + SVG.back + "</button></div>" + q;
@@ -1072,12 +1075,19 @@ list.onclick = e => {
   const t = e.target;
   const lbEl = t.closest("[data-lb]"); if (lbEl) return view(+lbEl.dataset.lb);
   const v = t.closest("[data-voice]"); if (v) return voice(v);
-  if (t.closest("[data-back]")) { const { from, to } = BACK; BACK = null; redo(Math.floor(to / N)); jump(from, true); return; }
+  if (t.closest("[data-back]")) {
+    const { from, to } = BACK.pop();
+    redo(Math.floor(to / N));
+    redo(Math.floor(from / N));
+    jump(from, true);
+    return;
+  }
   const q = t.closest("[data-go]");
   if (q) {
     if (q.dataset.go === "") return;
-    const from = +q.closest('[id^="m"]').id.slice(1), to = +q.dataset.go, old = BACK;
-    BACK = { from, to };
+    const from = +q.closest('[id^="m"]').id.slice(1), to = +q.dataset.go, old = lastJump();
+    if (old && old.to !== from) BACK.length = 0;
+    BACK.push({ from, to });
     if (old) redo(Math.floor(old.to / N));
     redo(Math.floor(to / N));
     jump(to, true);
