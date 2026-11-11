@@ -175,7 +175,8 @@ def request_summary(run, out, elapsed):
     tally = "，".join(f"{short[k]} {counts[k]}" for k in short)
     postponed = counts["postponed"]
     lines = [
-        f"### 请求：{request['run']}" if request.get("run") else "### 请求",
+        f"### 补测：新环境 `{env['key']}` 的第一批结果" if request.get("backfill")
+        else f"### 请求：{request['run']}" if request.get("run") else "### 请求",
         "",
         f"- 环境 `{env['key']}`：{m['cpu']}，{m['cpus']} 个逻辑 CPU，{m['memory_gib']} GiB 内存；测法版本 {env['method']}",
         f"- 基准账号：种子 {acc['seed']}，{acc['messages']:,} 条消息，{acc['conversations']} 个会话，"

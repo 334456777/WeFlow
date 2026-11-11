@@ -156,6 +156,9 @@ def request_from_env():
         "asked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "run": f"{server}/{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{run_id}",
         "commits": ",".join(spec(c) for c in commits),
+        # two commits asked for are a base and a head: kept apart, since `commits` shrinks to what is left when a
+        # forced request is cut short by the end of the night
+        "pair": [spec(c) for c in commits] if len(commits) == 2 else None,
         **{k: (os.environ.get(k.upper()) or default) for k, default in OPTIONS.items()},
         "force": os.environ.get("FORCE") == "1",
         "release_tag": os.environ.get("RELEASE_TAG", ""),
