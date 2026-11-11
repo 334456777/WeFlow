@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<!--
+  WeFlow Moments export page (`sns export --format html`). One self-contained file: the styles and the script below,
+  and the posts as JSON in #wf-data (the data model: see moments_html.rs). build.mjs makes this file small, one copy
+  for each language (moments.zh.html, moments.en.html, which the program embeds), with the colours of every page
+  (colours.css) in place of the @colours comment; the export fills in the three placeholders: __WF_LANG__,
+  __WF_TITLE__ and __WF_DATA__.
+
+  The page: a column of posts as WeChat shows them (header bar, posts, a time rail at its left edge) and a sidebar
+  (search, filters, theme) that folds away; over them, a viewer of the posts' pictures and videos.
+-->
+<html lang="__WF_LANG__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="generator" content="WeFlow">
+<title>__WF_TITLE__</title>
+<style>
+/* @colours */
+
+/* ============================================================ base */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--link)}
+svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+[hidden]{display:none!important}
+mark{background:var(--mark);color:inherit;border-radius:2px}
+
+/* ============================================================ page layout: the posts and the sidebar */
+.app{display:flex;height:100%}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.bar{height:52px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bar);border-bottom:1px solid var(--line);-webkit-backdrop-filter:saturate(1.6) blur(16px);backdrop-filter:saturate(1.6) blur(16px);z-index:2}
+.ttl{flex:1;min-width:0;text-align:center}
+.bar h1{margin:0;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:12px;color:var(--muted)}
+.ib{width:36px;height:36px;border:0;border-radius:8px;background:none;display:grid;place-items:center;flex:none}
+.ib:hover{background:var(--hover)}
+.ib svg{width:20px;height:20px}
+.ghost{visibility:hidden}
+#feed{flex:1;overflow-y:auto;overscroll-behavior:contain;position:relative}
+#list{max-width:680px;margin:0 auto;padding:4px 0 32px}
+.none{padding:48px 16px;text-align:center;color:var(--muted)}
+
+/* ============================================================ a post
+   the avatar, then a column: the name, the text, the pictures, the place, the time, the likes and comments. Posts
+   out of view are not laid out (content-visibility), so a long feed stays light */
+.post{display:flex;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);content-visibility:auto;contain-intrinsic-size:auto 260px}
+.post.flash{animation:flash 2s ease-out}
+@keyframes flash{0%,40%{background:var(--flash)}to{background:#0000}}
+.av{width:42px;height:42px;border-radius:5px;flex:none;object-fit:cover;display:grid;place-items:center;color:#fff;font-size:17px;font-weight:600;user-select:none}
+.pb{flex:1;min-width:0}
+.who{color:var(--link);font-weight:600}
+.txt{margin-top:3px;white-space:pre-wrap;overflow-wrap:anywhere}
+.txt.fold{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden}
+.more{border:0;background:none;padding:0;color:var(--link);margin-top:2px}
+/* pictures and videos: one at its own shape; two or four in two columns; otherwise three columns of squares */
+.grid{display:grid;gap:5px;margin-top:8px;width:max-content;max-width:100%}
+.g3{grid-template-columns:repeat(3,var(--cell))}
+.g2{grid-template-columns:repeat(2,var(--cell))}
+.pb{--cell:112px}
+.cell{position:relative;width:var(--cell);height:var(--cell);border:0;padding:0;border-radius:3px;overflow:hidden;background:var(--chip);cursor:zoom-in;display:block}
+.cell img,.cell video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.one{width:auto;height:auto;max-width:240px;max-height:240px;min-width:60px;min-height:60px}
+.one img{width:auto;height:auto;max-width:240px;max-height:240px;object-fit:contain}
+.one video{width:240px;height:auto;max-height:240px}
+.vid:after{content:"";position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;background:#00000073 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M9 7v10l8-5z'/%3E%3C/svg%3E") 50%/24px no-repeat;border:2px solid #ffffffd9}
+.live{position:absolute;left:6px;top:6px;display:flex;align-items:center;gap:3px;padding:1px 6px 1px 4px;border-radius:9px;background:#00000059;color:#fff;font-size:11px}
+.live svg{width:12px;height:12px}
+.gone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:default;color:var(--muted);font-size:12px;text-align:center;padding:4px}
+.gone svg{width:24px;height:24px;stroke-width:1.5}
+.loc{margin-top:6px;font-size:13px;color:var(--link);display:flex;align-items:center;gap:3px;overflow-wrap:anywhere}
+.loc svg{width:13px;height:13px}
+.ft{margin-top:6px;font-size:13px;color:var(--muted)}
+/* likes and comments: a grey box with a notch toward the time */
+.box{position:relative;margin-top:8px;background:var(--them);border-radius:4px;font-size:14px;line-height:1.5}
+.box:before{content:"";position:absolute;left:12px;top:-6px;border:6px solid transparent;border-top:0;border-bottom-color:var(--them)}
+.likes{padding:5px 10px;display:flex;gap:6px;color:var(--link)}
+.likes svg{width:15px;height:15px;margin-top:3px;stroke-width:2}
+.likes span{overflow-wrap:anywhere}
+.cmts{padding:5px 10px}
+.likes+.cmts{border-top:1px solid var(--line)}
+.cmt{overflow-wrap:anywhere;white-space:pre-wrap}
+.cmt b{font-weight:500;color:var(--link)}
+.cmt i{font-style:normal;margin:0 .25em}
+
+/* ============================================================ time rail
+   Collapsed: ticks at the left edge, one a year (or a month, when the posts are all in one year), the one in view
+   marked. Clicked: a panel of the months, by year, with how many posts each has; a month goes to its latest post */
+.ticks{position:absolute;left:0;top:52px;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:9px;padding:14px 16px 14px 8px;z-index:3;border:0;background:none}
+.ticks i{height:2px;width:8px;border-radius:1px;background:var(--muted);opacity:.45;transition:width .3s,opacity .3s}
+.ticks .on{width:16px;background:var(--fg);opacity:.9}
+.ticks:hover i{width:14px;opacity:.8}
+.ticks:hover .on{width:24px;opacity:1}
+.cal{position:absolute;left:8px;top:60px;bottom:8px;width:200px;z-index:4;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px #0003;overflow-y:auto;padding:6px 0;overscroll-behavior:contain}
+.cal h3{position:sticky;top:-6px;margin:0;padding:8px 14px 4px;font-size:12px;color:var(--muted);font-weight:500;background:var(--card)}
+.cal button{display:flex;width:100%;border:0;background:none;padding:5px 14px;font-size:14px;text-align:left}
+.cal button:hover,.cal .sel{background:var(--hover)}
+.cal button span{flex:1}
+.cal small{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+
+/* ============================================================ sidebar: search, filters, results, theme, about */
+.side{width:var(--sw,340px);flex:none;background:var(--side);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:260px;max-width:70vw}
+.sh{height:52px;flex:none;display:flex;align-items:center;padding:0 8px 0 16px;font-weight:600;border-bottom:1px solid var(--line)}
+.sh span{flex:1}
+.sb{padding:12px 16px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.fld{position:relative;display:flex;align-items:center}
+.fld input,.fld select{width:100%;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--field);padding:0 10px 0 32px;outline:0}
+.fld select{padding-left:10px}
+.fld :focus{border-color:var(--accent)}
+.fld svg{position:absolute;left:10px;top:10px;width:16px;height:16px;stroke:var(--muted);stroke-width:2;pointer-events:none}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--line);background:var(--field);border-radius:14px;padding:3px 10px;font-size:13px}
+.chips [aria-pressed=true]{background:var(--pick);border-color:var(--pick);color:var(--on-pick)}
+.lbl{font-size:12px;color:var(--muted)}
+.row{display:flex;gap:8px;align-items:center}
+.rs{padding:8px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}
+#res{flex:1;overflow-y:auto;overscroll-behavior:contain}
+.hit{display:flex;gap:10px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:8px 16px}
+.hit:hover{background:var(--hover)}
+.hit .av{width:32px;height:32px;font-size:13px}
+.hit .tx{flex:1;min-width:0}
+.h1{display:flex;gap:8px;font-size:12px;color:var(--muted)}
+.h1 b{font-weight:500;flex:1;min-width:0;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h2{font-size:14px;margin-top:2px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.th{display:flex;gap:3px;margin-top:4px}
+.th img{width:36px;height:36px;object-fit:cover;border-radius:2px;background:var(--chip)}
+.info{padding:10px 16px 14px;font-size:12px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line)}
+
+/* ============================================================ the viewer: a picture zooms with the wheel or a double
+   click and moves by dragging, as on the chat page */
+.lb{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000000eb;z-index:10;overflow:hidden;touch-action:none}
+.lb img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
+.lb video{max-width:92vw;max-height:84vh}
+.lb .ib{position:absolute;color:#fff;background:#ffffff14;z-index:1}
+.lb .ib:hover{background:#ffffff2e}
+.x{top:14px;right:14px}.pv,.nx{top:50%;margin-top:-18px}.pv{left:14px}.nx{right:14px}
+.cap{position:absolute;left:0;right:0;bottom:0;padding:10px 16px 14px;color:#fffc;font-size:13px;display:flex;justify-content:center;gap:12px;align-items:center;background:linear-gradient(#0000,#0009);z-index:1;flex-wrap:wrap}
+.cap button{background:#ffffff1f;border:0;color:#fff;border-radius:6px;padding:3px 10px;font-size:12px}
+
+/* ============================================================ narrow windows: the sidebar covers the page */
+@media (max-width:760px){
+  .side{position:fixed;inset:0;width:100%!important;max-width:none;z-index:5;border:0}
+  .post{padding:14px 12px 14px 16px;gap:10px}
+  .av{width:40px;height:40px}
+  .pb{--cell:min(26vw,100px)}
+  .one,.one img{max-width:min(58vw,220px);max-height:220px}
+  .ticks{padding-left:3px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="main">
+    <header class="bar">
+      <span class="ib ghost"></span>
+      <div class="ttl"><h1 id="ttl"></h1><div class="sub" id="sub"></div></div>
+      <button class="ib" id="tgl" data-i="find"></button>
+    </header>
+    <div id="feed" tabindex="-1"><div id="list"></div></div>
+    <button class="ticks" id="ticks"></button>
+    <nav class="cal" id="cal" hidden></nav>
+  </main>
+  <aside class="side" id="side" hidden>
+    <div class="sh"><span data-t="搜索与筛选"></span><button class="ib" id="cls" data-i="x"></button></div>
+    <div class="sb">
+      <label class="fld"><i data-i="find"></i><input id="q" type="search" autocomplete="off" spellcheck="false"></label>
+      <div class="chips" id="kinds"></div>
+      <label class="fld" id="whoBox"><select id="who"></select></label>
+    </div>
+    <div class="rs" id="cnt"></div>
+    <div id="res"></div>
+    <div class="sb" style="border-bottom:0"><div class="row"><span class="lbl" data-t="外观"></span><div class="chips" id="theme"></div></div></div>
+    <div class="info" id="info"></div>
+  </aside>
+</div>
+<div class="lb" id="lb" hidden>
+  <button class="ib x" id="lbx" data-i="x"></button><button class="ib pv" id="lbp" data-i="left"></button><button class="ib nx" id="lbn" data-i="right"></button>
+  <div class="cap"><span id="lbc"></span><button id="lbl" data-t="播放实况"></button><button id="lbg" data-t="定位到动态"></button></div>
+</div>
+<script id="wf-data" type="application/json">__WF_DATA__</script>
+<script>
+(() => {
+"use strict";
+/* The script, in order: the data and the words of the page; helpers; drawing a post; the page around the posts
+   (header, theme, sidebar); search; the time rail; the viewer; clicks and keys; the start. */
+
+/* ============================================================ data
+   {v, lang, title, exported, keyword, users: [[name, avatar path]], posts: [{t: unix seconds, u: index into users,
+   text, loc, media: [{k: "img" | "vid", s: path of the copy ("" when none was saved), url: WeChat's address, live:
+   path of a live photo's video}], likes: [name], cmts: [[name, text, name answered]]}]}, newest first. A field a post
+   has nothing in is left out. Times show in the time zone of the computer that opens the page. */
+const D = JSON.parse(document.getElementById("wf-data").textContent);
+const P = D.posts || [], U = D.users || [], EN_PAGE = D.lang === "en";
+// the words of the page are written in Chinese; these are their English. A Chinese page leaves them out (build.mjs
+// cuts what is between the two markers)
+const EN = /*EN*/{"朋友圈":"Moments","条动态":"posts","人":"people","搜索与筛选":"Search & filter","搜索文字、评论、位置、名字":"Search text, comments, places, names",
+  "全部":"All","图片":"Photos","视频":"Videos","有评论":"Commented","有位置":"With a place","所有人":"Everyone","外观":"Theme","自动":"Auto","浅色":"Light","深色":"Dark",
+  "条结果":"results","没有结果":"No results","输入关键词或选择类型":"Type a keyword or pick a type","全文":"More","收起":"Less","回复":"replied to","实况":"Live",
+  "查看媒体":"Open the original","媒体已丢失":"Media missing","播放实况":"Play live photo","定位到动态":"Show the post","动态数":"Posts","时间范围":"Range",
+  "导出时间":"Exported","关键词":"Keyword","[表情]":"[Sticker]","没有动态":"No posts"}/*EN*/;
+const T = s => EN[s] || s;
+
+/* ============================================================ helpers */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const hue = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.codePointAt(0)) % 360; return h; };
+const pad = n => String(n).padStart(2, "0");
+const now = new Date();
+const day = d => EN_PAGE ? d.toLocaleDateString("en", { year: d.getFullYear() === now.getFullYear() ? undefined : "numeric", month: "short", day: "numeric" })
+  : (d.getFullYear() === now.getFullYear() ? "" : d.getFullYear() + "年") + (d.getMonth() + 1) + "月" + d.getDate() + "日";
+const when = t => { const d = new Date(t * 1000); return day(d) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+const ymd = t => { const d = new Date(t * 1000); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
+const full = t => ymd(t) + " " + new Date(t * 1000).toTimeString().slice(0, 8);
+const monthName = (y, m) => EN_PAGE ? new Date(y, m).toLocaleDateString("en", { month: "long" }) : (m + 1) + "月";
+const name = u => (U[u] && U[u][0]) || "";
+const initial = (n, cls) => '<div class="av' + (cls || "") + '" style="background:hsl(' + hue(n) + ',45%,58%)">' + esc((String(n).match(/[\p{L}\p{N}]/u) || ["?"])[0]) + "</div>";
+const avatar = u => U[u] && U[u][1] ? '<img class="av" data-u="' + u + '" src="' + esc(U[u][1]) + '" alt="" loading="lazy">' : initial(name(u));
+const SVG = {};
+for (const [k, v] of Object.entries({
+  find: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  left: '<path d="m15 6-6 6 6 6"/>', right: '<path d="m9 6 6 6-6 6"/>',
+  pin: '<path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  live: '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" stroke-dasharray="2 2.6"/>',
+  gone: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 15 5-5 4 4 3-3 6 6M3 3l18 18"/>',
+})) SVG[k] = '<svg viewBox="0 0 24 24">' + v + "</svg>";
+for (const el of document.querySelectorAll("[data-i]")) el.innerHTML = SVG[el.dataset.i];
+// what is kept in the browser, shared with the chat page: the theme, whether the sidebar is open
+const store = (k, v) => { try { v === undefined ? (v = localStorage.getItem("wf." + k)) : localStorage.setItem("wf." + k, v); } catch (e) { v = null; } return v; };
+
+/* ============================================================ drawing a post */
+let Q = "";
+// text with every match of the search marked
+function hl(s) {
+  s = String(s);
+  if (!Q) return esc(s);
+  let out = "", i = 0, low = s.toLowerCase(), j;
+  while ((j = low.indexOf(Q, i)) >= 0) { out += esc(s.slice(i, j)) + "<mark>" + esc(s.slice(j, j + Q.length)) + "</mark>"; i = j + Q.length; }
+  return out + esc(s.slice(i));
+}
+// a medium not saved: a tile with the address WeChat gave, to open it in the browser
+const gone = m => '<div class="cell gone">' + SVG.gone + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(T("查看媒体")) + "</a>" : esc(T("媒体已丢失"))) + "</div>";
+function grid(p, i) {
+  const m = p.media || [];
+  if (!m.length) return "";
+  const cls = m.length === 1 ? "" : m.length === 2 || m.length === 4 ? " g2" : " g3";
+  return '<div class="grid' + cls + '">' + m.map((x, j) => {
+    if (!x.s) return gone(x);
+    const one = m.length === 1 ? " one" : "";
+    const inner = x.k === "vid" ? '<video src="' + esc(x.s) + '" preload="metadata" muted playsinline></video>' : '<img src="' + esc(x.s) + '" alt="" loading="lazy" decoding="async">';
+    return '<button class="cell' + one + (x.k === "vid" ? " vid" : "") + '" data-p="' + i + '" data-m="' + j + '">' + inner + (x.live ? '<span class="live">' + SVG.live + esc(T("实况")) + "</span>" : "") + "</button>";
+  }).join("") + "</div>";
+}
+function comment([who, text, to]) {
+  return '<div class="cmt"><b>' + hl(who) + "</b>" + (to ? "<i>" + esc(T("回复")) + "</i><b>" + hl(to) + "</b>" : "") + "：" + hl(text || T("[表情]")) + "</div>";
+}
+function post(p, i) {
+  const text = p.text || "", long = text.split("\n").length > 6 || text.length > 180;
+  const likes = p.likes && p.likes.length ? '<div class="likes">' + SVG.heart + "<span>" + p.likes.map(hl).join(EN_PAGE ? ", " : "，") + "</span></div>" : "";
+  const cmts = p.cmts && p.cmts.length ? '<div class="cmts">' + p.cmts.map(comment).join("") + "</div>" : "";
+  return '<article class="post" id="p' + i + '">' + avatar(p.u) + '<div class="pb"><div class="who">' + hl(name(p.u)) + "</div>" +
+    (text ? '<div class="txt' + (long ? " fold" : "") + '">' + hl(text) + "</div>" + (long ? '<button class="more">' + esc(T("全文")) + "</button>" : "") : "") +
+    grid(p, i) + (p.loc ? '<div class="loc">' + SVG.pin + hl(p.loc) + "</div>" : "") + '<div class="ft">' + esc(when(p.t)) + "</div>" +
+    (likes || cmts ? '<div class="box">' + likes + cmts + "</div>" : "") + "</div></article>";
+}
+const list = $("list"), feed = $("feed");
+function draw() { list.innerHTML = P.length ? P.map(post).join("") : '<div class="none">' + esc(T("没有动态")) + "</div>"; ticking(); }
+
+/* ============================================================ the page around the posts */
+$("ttl").textContent = document.title = D.title || T("朋友圈");
+const posters = [...new Set(P.map(p => p.u))];
+$("sub").textContent = P.length.toLocaleString() + " " + T("条动态") + " · " + posters.length.toLocaleString() + " " + T("人");
+for (const el of document.querySelectorAll("[data-t]")) el.textContent = T(el.dataset.t);
+$("q").placeholder = T("搜索文字、评论、位置、名字");
+if (P.length) {
+  let lo = Infinity, hi = -Infinity; for (const p of P) { if (p.t < lo) lo = p.t; if (p.t > hi) hi = p.t; }
+  $("info").innerHTML = esc(T("动态数")) + ": " + P.length.toLocaleString() + "<br>" + esc(T("时间范围")) + ": " + esc(ymd(lo)) + " – " + esc(ymd(hi)) +
+    (D.keyword ? "<br>" + esc(T("关键词")) + ": " + esc(D.keyword) : "") + (D.exported ? "<br>" + esc(T("导出时间")) + ": " + esc(full(D.exported)) : "");
+}
+/* theme: automatic (the system's), light or dark */
+const THEMES = [["auto", "自动"], ["light", "浅色"], ["dark", "深色"]];
+function setTheme(v) {
+  v === "auto" ? document.documentElement.removeAttribute("data-theme") : document.documentElement.setAttribute("data-theme", v);
+  for (const b of $("theme").children) b.setAttribute("aria-pressed", b.dataset.v === v);
+  store("theme", v);
+}
+$("theme").innerHTML = THEMES.map(([v, l]) => '<button data-v="' + v + '">' + esc(T(l)) + "</button>").join("");
+$("theme").onclick = e => { const v = e.target.dataset && e.target.dataset.v; if (v) setTheme(v); };
+setTheme(store("theme") || "auto");
+/* sidebar: opened by the header's button, or by typing on the page */
+const side = $("side");
+function openSide(on) { side.hidden = !on; store("side", on ? "1" : "0"); if (on) $("q").focus(); }
+$("tgl").onclick = () => openSide(side.hidden);
+$("cls").onclick = () => openSide(false);
+if (store("side") === "1" && innerWidth > 760) side.hidden = false;
+
+/* ============================================================ search: the posts whose text, comments, place or
+   names hold the words, of the kind and the person picked; the posts themselves are marked too */
+const KINDS = [["全部", () => true], ["图片", p => (p.media || []).some(m => m.k === "img")], ["视频", p => (p.media || []).some(m => m.k === "vid")],
+  ["有评论", p => p.cmts && p.cmts.length], ["有位置", p => p.loc]];
+let kind = 0;
+$("kinds").innerHTML = KINDS.map(([n], i) => '<button data-k="' + i + '" aria-pressed="' + (i === 0) + '">' + esc(T(n)) + "</button>").join("");
+const byName = posters.slice().sort((a, b) => name(a).localeCompare(name(b), EN_PAGE ? "en" : "zh"));
+$("who").innerHTML = '<option value="">' + esc(T("所有人")) + "</option>" + byName.map(u => '<option value="' + u + '">' + esc(name(u)) + "</option>").join("");
+$("whoBox").hidden = posters.length < 2;
+const has = s => s && String(s).toLowerCase().includes(Q);
+const hits = p => !Q || has(p.text) || has(p.loc) || has(name(p.u)) || (p.likes || []).some(has) || (p.cmts || []).some(c => c.some(has));
+function search() {
+  const who = $("who").value, asked = Q || kind || who !== "";
+  const found = asked ? P.map((p, i) => [p, i]).filter(([p]) => KINDS[kind][1](p) && (who === "" || p.u === +who) && hits(p)) : [];
+  $("cnt").textContent = asked ? found.length.toLocaleString() + " " + T("条结果") : T("输入关键词或选择类型");
+  $("res").innerHTML = asked ? (found.length ? found.slice(0, 300).map(([p, i]) => {
+    const c = Q && !has(p.text) ? (p.cmts || []).find(c => c.some(has)) : null;
+    const line = c ? hl(c[0]) + "：" + hl(c[1] || T("[表情]")) : hl(p.text || p.loc || "");
+    const pics = (p.media || []).filter(m => m.s && m.k === "img").slice(0, 5);
+    return '<button class="hit" data-go="' + i + '">' + avatar(p.u) + '<div class="tx"><div class="h1"><b>' + esc(name(p.u)) + "</b><span>" + esc(when(p.t)) + '</span></div><div class="h2">' + line + "</div>" +
+      (pics.length ? '<div class="th">' + pics.map(m => '<img src="' + esc(m.s) + '" alt="" loading="lazy">').join("") + "</div>" : "") + "</div></button>";
+  }).join("") : '<div class="none">' + esc(T("没有结果")) + "</div>") : "";
+  draw();
+}
+let typing;
+$("q").oninput = e => { clearTimeout(typing); typing = setTimeout(() => { Q = e.target.value.trim().toLowerCase(); search(); }, 150); };
+$("kinds").onclick = e => { const b = e.target.closest("[data-k]"); if (!b) return; kind = +b.dataset.k; for (const x of $("kinds").children) x.setAttribute("aria-pressed", x === b); search(); };
+$("who").onchange = search;
+$("res").onclick = e => { const b = e.target.closest("[data-go]"); if (b) go(+b.dataset.go); };
+// a post brought to the middle of the view, flashing
+function go(i) {
+  const el = $("p" + i); if (!el) return;
+  el.scrollIntoView({ block: "center" });
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+}
+
+/* ============================================================ the time rail */
+// the months the posts are in, newest first, with the first post (the latest) of each
+const MONTHS = [];
+P.forEach((p, i) => { const d = new Date(p.t * 1000), y = d.getFullYear(), m = d.getMonth(), last = MONTHS[MONTHS.length - 1];
+  if (last && last.y === y && last.m === m) last.n++; else MONTHS.push({ y, m, i, n: 1 }); });
+const BY_YEAR = new Set(MONTHS.map(x => x.y)).size > 1;
+const TICKS = BY_YEAR ? MONTHS.filter((x, k) => !k || MONTHS[k - 1].y !== x.y) : MONTHS;
+$("ticks").innerHTML = TICKS.map(() => "<i></i>").join("");
+$("ticks").hidden = TICKS.length < 2;
+// the tick of the post at the top of the view: the last post that starts above it, found by halving (the posts are in
+// the order of the page)
+let ticked = -1;
+function ticking() {
+  if (TICKS.length < 2) return;
+  const kids = list.children, y = feed.scrollTop + 60;
+  let lo = 0, hi = kids.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (kids[mid].offsetTop <= y) lo = mid; else hi = mid - 1; }
+  const at = kids[lo] ? +kids[lo].id.slice(1) || 0 : 0;
+  const d = new Date((P[at] || P[0]).t * 1000);
+  const k = TICKS.findIndex(x => BY_YEAR ? x.y === d.getFullYear() : x.y === d.getFullYear() && x.m === d.getMonth());
+  if (k === ticked) return;
+  ticked = k;
+  [...$("ticks").children].forEach((el, j) => el.classList.toggle("on", j === k));
+}
+let frame = 0;
+feed.addEventListener("scroll", () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; ticking(); }); }, { passive: true });
+function openCal() {
+  const cal = $("cal");
+  cal.innerHTML = [...new Set(MONTHS.map(x => x.y))].map(y => "<h3>" + y + "</h3>" + MONTHS.filter(x => x.y === y).map(x =>
+    '<button data-go="' + x.i + '"' + (TICKS[ticked] && (BY_YEAR ? TICKS[ticked].y === x.y && x.i === TICKS[ticked].i : TICKS[ticked] === x) ? ' class="sel"' : "") + "><span>" + esc(monthName(x.y, x.m)) + "</span><small>" + x.n.toLocaleString() + "</small></button>").join("")).join("");
+  cal.hidden = false;
+}
+$("ticks").onclick = () => $("cal").hidden ? openCal() : ($("cal").hidden = true);
+$("cal").onclick = e => { const b = e.target.closest("[data-go]"); if (b) { $("cal").hidden = true; go(+b.dataset.go); } };
+
+/* ============================================================ the viewer: the posts' pictures and videos, one after
+   another; a picture zooms with the wheel or a double click and moves by dragging; a live photo plays on asking */
+const lb = $("lb");
+let GAL = null, gi = -1, sc = 1, tx = 0, ty = 0, node = null;
+function gallery() { if (!GAL) { GAL = []; P.forEach((p, i) => (p.media || []).forEach((m, j) => { if (m.s) GAL.push([i, j]); })); } return GAL; }
+function place() { if (node && node.tagName === "IMG") node.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + sc + ")"; }
+function fitView() { if (!node || node.tagName !== "IMG" || !node.naturalWidth) return; sc = Math.min(1, innerWidth * 0.94 / node.naturalWidth, innerHeight * 0.86 / node.naturalHeight); tx = (innerWidth - node.naturalWidth * sc) / 2; ty = (innerHeight - node.naturalHeight * sc) / 2; place(); }
+function show(src, video) {
+  if (node) node.remove();
+  if (video) { node = document.createElement("video"); node.controls = true; node.autoplay = true; node.playsInline = true; node.src = src; }
+  else { node = new Image(); node.decoding = "async"; node.onload = fitView; node.src = src; node.draggable = false; }
+  lb.insertBefore(node, lb.firstChild);
+  if (!video && node.complete) fitView();
+}
+function view(i, j) {
+  const g = gallery(); gi = g.findIndex(([a, b]) => a === i && b === j); if (gi < 0) return;
+  const p = P[i], m = p.media[j], saved = p.media.filter(x => x.s), k = saved.indexOf(m) + 1;
+  show(m.s, m.k === "vid");
+  $("lbc").textContent = name(p.u) + " · " + full(p.t) + (saved.length > 1 ? "  (" + k + "/" + saved.length + ")" : "");
+  $("lbl").hidden = !m.live;
+  $("lbp").hidden = $("lbn").hidden = g.length < 2;
+  lb.hidden = false;
+}
+function closeView() { lb.hidden = true; if (node) { node.remove(); node = null; } }
+function step(d) { const g = gallery(); if (g.length) { const [i, j] = g[(gi + d + g.length) % g.length]; view(i, j); } }
+$("lbx").onclick = closeView; $("lbp").onclick = () => step(-1); $("lbn").onclick = () => step(1);
+$("lbl").onclick = () => { const [i, j] = gallery()[gi]; show(P[i].media[j].live, true); };
+$("lbg").onclick = () => { const [i] = gallery()[gi]; closeView(); go(i); };
+lb.onclick = e => { if (e.target === lb) closeView(); };
+lb.onwheel = e => { if (!node || node.tagName !== "IMG") return; e.preventDefault(); const f = Math.exp(-e.deltaY * 0.0015), n = Math.max(0.05, Math.min(16, sc * f)); tx = e.clientX - (e.clientX - tx) * n / sc; ty = e.clientY - (e.clientY - ty) * n / sc; sc = n; place(); };
+lb.onpointerdown = e => {
+  if (!node || e.target !== node || node.tagName !== "IMG") return;
+  e.preventDefault(); const sx = e.clientX - tx, sy = e.clientY - ty; lb.setPointerCapture(e.pointerId);
+  lb.onpointermove = ev => { tx = ev.clientX - sx; ty = ev.clientY - sy; place(); };
+  lb.onpointerup = () => { lb.onpointermove = lb.onpointerup = null; };
+};
+lb.ondblclick = e => { if (!node || node.tagName !== "IMG") return; if (sc < 0.99 || sc > 1.01) { tx = e.clientX - (e.clientX - tx) / sc; ty = e.clientY - (e.clientY - ty) / sc; sc = 1; place(); } else fitView(); };
+
+/* ============================================================ files that do not load
+   A picture or video that is there but does not load shows as missing; an avatar, as the initial */
+list.addEventListener("error", e => {
+  const t = e.target;
+  if (t.matches && t.matches("img.av[data-u]")) { const u = +t.dataset.u; U[u][1] = ""; t.outerHTML = initial(name(u)); return; }
+  const cell = t.closest && t.closest(".cell[data-p]"); if (!cell) return;
+  const m = P[+cell.dataset.p].media[+cell.dataset.m];
+  m.s = ""; GAL = null; cell.outerHTML = gone(m);
+}, true);
+
+/* ============================================================ clicks and keys */
+list.onclick = e => {
+  const c = e.target.closest("[data-m]");
+  if (c) { view(+c.dataset.p, +c.dataset.m); return; }
+  const more = e.target.closest(".more");
+  if (more) { const t = more.previousElementSibling; t.classList.toggle("fold"); more.textContent = T(t.classList.contains("fold") ? "全文" : "收起"); }
+};
+document.addEventListener("click", e => { if (!$("cal").hidden && !e.target.closest("#cal,#ticks")) $("cal").hidden = true; });
+// Escape closes the viewer or the months; the arrows step through the viewer; Ctrl+F and typing anywhere go to the
+// search box
+addEventListener("keydown", e => {
+  if (!lb.hidden) { if (e.key === "Escape") closeView(); else if (e.key === "ArrowLeft") step(-1); else if (e.key === "ArrowRight") step(1); return; }
+  if (e.key === "Escape" && !$("cal").hidden) { $("cal").hidden = true; return; }
+  const inField = document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") { e.preventDefault(); openSide(true); return; }
+  if (!inField && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && e.key !== " ") { if (side.hidden) openSide(true); else $("q").focus(); }
+});
+
+/* ============================================================ the start: the latest post at the top (search draws
+   the posts) */
+search();
+})();
+</script>
+</body>
+</html>

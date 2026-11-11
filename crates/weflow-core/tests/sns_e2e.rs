@@ -316,8 +316,33 @@ fn exports_json_html_and_arkmejson() {
         .unwrap()
         .contains('/'));
 
-    assert!(outputs[1].1.contains("<title>朋友圈导出</title>"));
-    assert!(outputs[1].1.contains("hello moments"));
+    // the page's data (#705): the posts newest first, with their place and the comments, a reply naming whom it answers
+    let html = &outputs[1].1;
+    let open = r#"<script id="wf-data" type="application/json">"#;
+    let start = html.find(open).unwrap() + open.len();
+    let end = start + html[start..].find("</script>").unwrap();
+    let page: Value = serde_json::from_str(&html[start..end]).unwrap();
+    let posts = page["posts"].as_array().unwrap();
+    assert_eq!(posts.len(), 2);
+    assert_eq!(posts[0]["text"], "hello moments");
+    let bobby = page["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|u| u[0] == "Bobby")
+        .unwrap();
+    assert_eq!(posts[0]["u"], bobby);
+    assert!(
+        posts[0]["loc"].as_str().unwrap().contains("Bund"),
+        "{}",
+        posts[0]
+    );
+    assert_eq!(posts[0]["likes"], serde_json::json!(["Carol"]));
+    assert_eq!(posts[0]["cmts"][0], serde_json::json!(["Carol", "nice"]));
+    assert_eq!(
+        posts[0]["cmts"][1],
+        serde_json::json!(["Bob", "thx", "Carol"])
+    );
 
     let ark: Value = serde_json::from_str(&outputs[2].1).unwrap();
     assert_eq!(ark["format"], "arkmejson");

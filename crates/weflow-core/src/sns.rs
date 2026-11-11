@@ -508,14 +508,6 @@ pub struct SavedMedia {
 
 // ───────────────────────── HTML export ─────────────────────────
 
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\n', "<br>")
-}
-
 fn normalize_location_text(v: Option<&String>) -> String {
     rx(r"\s+")
         .replace_all(&decode_xml_text(v.map_or("", String::as_str)), " ")
@@ -553,17 +545,6 @@ fn resolve_location_text(location: Option<&SnsLocation>) -> String {
     }
 }
 
-fn format_post_time(ts: i64, now: chrono::DateTime<chrono::Local>) -> String {
-    use chrono::{Datelike, TimeZone, Timelike};
-    let d = chrono::Local.timestamp_opt(ts, 0).single().unwrap_or(now);
-    let time = format!("{:02}:{:02}", d.hour(), d.minute());
-    if d.year() == now.year() {
-        format!("{}月{}日 {}", d.month(), d.day(), time)
-    } else {
-        format!("{}年{}月{}日 {}", d.year(), d.month(), d.day(), time)
-    }
-}
-
 /// `toLocaleString('zh-CN')` → `2026/9/30 15:04:05`
 fn zh_locale_string(dt: chrono::DateTime<chrono::Local>) -> String {
     use chrono::{Datelike, Timelike};
@@ -587,124 +568,79 @@ pub fn zh_locale_from_ts(ts: i64) -> String {
         .unwrap_or_default()
 }
 
-const HTML_STYLE: &str = include_str!("sns_export.css");
-
-/// The HTML export of `posts`; `saved` holds, post by post and medium by medium, the files saved of their media.
+/// The HTML page of `posts` (see [`crate::export_msg::MomentsPage`]); `saved` holds, post by post and medium by medium,
+/// the files saved of their media, and `avatars` the avatars saved, by username, as paths from the page.
 pub fn generate_html(
     posts: &[SnsPost],
     saved: &[Vec<SavedMedia>],
-    usernames: &[String],
     keyword: Option<&str>,
-    avatar_map: &std::collections::HashMap<String, String>,
-) -> String {
-    let now = chrono::Local::now();
-    let mut filter_info = String::new();
-    if let Some(k) = keyword.filter(|k| !k.is_empty()) {
-        filter_info.push_str(&format!("关键词: \"{}\" ", escape_html(k)));
-    }
-    if !usernames.is_empty() {
-        filter_info.push_str(&format!("筛选用户: {} 人", usernames.len()));
-    }
-
-    let posts_html: Vec<String> = posts
-        .iter()
-        .enumerate()
-        .map(|(pi, post)| {
-            let media = &post.media;
-            let grid = match media.len() {
-                1 => "grid-1",
-                2 | 4 => "grid-2",
-                _ => "grid-3",
-            };
-            let media_html: String = media
-                .iter()
-                .enumerate()
-                .map(|(mi, m)| {
-                    let url = &m.url;
-                    let local = saved
-                        .get(pi)
-                        .and_then(|s| s.get(mi))
-                        .and_then(|s| s.file.as_deref())
-                        .filter(|p| !p.is_empty());
-                    match local {
-                        Some(local) if is_video_url(url) => {
-                            format!("<div class=\"mi\"><video src=\"{}\" controls preload=\"metadata\"></video></div>", escape_html(local))
-                        }
-                        Some(local) => format!("<div class=\"mi\"><img src=\"{}\" loading=\"lazy\" onclick=\"openLb(this.src)\" alt=\"\"></div>", escape_html(local)),
-                        None => format!("<div class=\"mi ml\"><a href=\"{}\" target=\"_blank\">查看媒体</a></div>", escape_html(url)),
-                    }
-                })
-                .collect();
-
-            let loc_text = resolve_location_text(post.location.as_ref());
-            let loc_html = if loc_text.is_empty() {
-                String::new()
-            } else {
-                format!("<div class=\"loc\"><span class=\"loc-i\">📍</span><span class=\"loc-t\">{}</span></div>", escape_html(&loc_text))
-            };
-
-            let likes = &post.likes;
-            let likes_html = if likes.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "<div class=\"interactions\"><div class=\"likes\">♥ {}</div></div>",
-                    likes.iter().map(|l| format!("<span>{}</span>", escape_html(l))).collect::<Vec<_>>().join("、")
+    avatars: &std::collections::HashMap<String, String>,
+) -> std::io::Result<Vec<u8>> {
+    use crate::export_msg::{MomentComment, MomentMedia, MomentMediaKind, MomentPost, MomentsPage};
+    let mut page = MomentsPage::new(
+        keyword.map(str::to_string),
+        chrono::Local::now().timestamp(),
+    );
+    for (i, post) in posts.iter().enumerate() {
+        let u = page.user(
+            &post.username,
+            &post.nickname,
+            avatars.get(&post.username).map(String::as_str),
+        );
+        let media = post
+            .media
+            .iter()
+            .enumerate()
+            .map(|(j, m)| {
+                let copy = saved.get(i).and_then(|s| s.get(j));
+                let kind = if is_video_url(&m.url) {
+                    MomentMediaKind::Video
+                } else {
+                    MomentMediaKind::Picture
+                };
+                MomentMedia::new(
+                    kind,
+                    copy.and_then(|c| c.file.as_deref()),
+                    &m.url,
+                    copy.and_then(|c| c.live.as_deref()),
                 )
-            };
-
-            let comments = &post.comments;
-            let comments_html = if comments.is_empty() {
-                String::new()
-            } else {
-                let inner: String = comments
-                    .iter()
-                    .map(|c| {
-                        let ref_nick = c.ref_nickname.as_deref().unwrap_or_default();
-                        let r = if ref_nick.is_empty() { String::new() } else { format!("<span class=\"re\">回复</span><b>{}</b>", escape_html(ref_nick)) };
-                        format!(
-                            "<div class=\"cmt\"><b>{}</b>{}：{}</div>",
-                            escape_html(&c.nickname),
-                            r,
-                            escape_html(&c.content)
-                        )
-                    })
-                    .collect();
-                format!("<div class=\"interactions{}\"><div class=\"cmts\">{}</div></div>", if likes.is_empty() { "" } else { " cmt-border" }, inner)
-            };
-
-            let nickname = &post.nickname;
-            let avatar_html = match avatar_map.get(&post.username) {
-                Some(src) => format!("<div class=\"avatar\"><img src=\"{}\" alt=\"\"></div>", escape_html(src)),
-                None => {
-                    let ch = nickname.chars().next().map(|c| c.to_string()).unwrap_or_else(|| "?".into());
-                    format!("<div class=\"avatar\">{}</div>", escape_html(&ch))
-                }
-            };
-            let content_desc = &post.content_desc;
-
-            format!(
-                "<div class=\"post\">\n{avatar}\n<div class=\"body\">\n<div class=\"hd\"><span class=\"nick\">{nick}</span><span class=\"tm\">{tm}</span></div>\n{txt}\n{loc}\n{mg}\n\n{likes}\n{cmts}\n</div></div>",
-                avatar = avatar_html,
-                nick = escape_html(nickname),
-                tm = format_post_time(post.create_time, now),
-                txt = if content_desc.is_empty() { String::new() } else { format!("<div class=\"txt\">{}</div>", escape_html(content_desc)) },
-                loc = loc_html,
-                mg = if media_html.is_empty() { String::new() } else { format!("<div class=\"mg {grid}\">{media_html}</div>") },
-                likes = likes_html,
-                cmts = comments_html,
-            )
-        })
-        .collect();
-
-    format!(
-        "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>朋友圈导出</title>\n<style>\n{style}</style>\n</head>\n<body>\n<div class=\"container\">\n    <div class=\"feed-hd\"><h2>朋友圈</h2><span class=\"info\">共 {count} 条{filter}</span></div>\n    {posts}\n    <div class=\"ft\">由 WeFlow 导出 · {now}</div>\n</div>\n<div class=\"lb\" id=\"lb\" onclick=\"closeLb()\"><img id=\"lbi\" src=\"\"></div>\n<button class=\"btt\" id=\"btt\" onclick=\"scrollTo({{top:0,behavior:'smooth'}})\">↑</button>\n<script>\nfunction openLb(s){{document.getElementById('lbi').src=s;document.getElementById('lb').classList.add('on');document.body.style.overflow='hidden'}}\nfunction closeLb(){{document.getElementById('lb').classList.remove('on');document.body.style.overflow=''}}\ndocument.addEventListener('keydown',function(e){{if(e.key==='Escape')closeLb()}})\nwindow.addEventListener('scroll',function(){{document.getElementById('btt').classList.toggle('show',window.scrollY>600)}})\n</script>\n</body>\n</html>",
-        style = HTML_STYLE,
-        count = posts.len(),
-        filter = if filter_info.is_empty() { String::new() } else { format!(" · {filter_info}") },
-        posts = posts_html.join("\n"),
-        now = zh_locale_string(now),
-    )
+            })
+            .collect();
+        // a reply names whom it answers, or only the comment it answers: then that comment's writer
+        let answered = |c: &SnsComment| {
+            c.ref_nickname
+                .clone()
+                .filter(|n| !n.is_empty())
+                .or_else(|| {
+                    let id = c.ref_comment_id.as_str();
+                    (!id.is_empty() && id != "0")
+                        .then(|| post.comments.iter().find(|o| o.id == id))
+                        .flatten()
+                        .map(|o| o.nickname.clone())
+                })
+        };
+        let cmts = post
+            .comments
+            .iter()
+            .map(|c| MomentComment {
+                name: c.nickname.clone(),
+                text: c.content.clone(),
+                to: answered(c),
+            })
+            .collect();
+        page.posts.push(MomentPost {
+            t: post.create_time,
+            u,
+            text: post.content_desc.clone(),
+            loc: resolve_location_text(post.location.as_ref()),
+            media,
+            likes: post.likes.clone(),
+            cmts,
+        });
+    }
+    let mut html = Vec::new();
+    page.write(&mut html)?;
+    Ok(html)
 }
 
 // ───────────────────────── emoji decryption ─────────────────────────
@@ -1118,7 +1054,7 @@ mod tests {
     }
 
     #[test]
-    fn html_export_escapes_and_embeds() {
+    fn the_html_export_puts_each_post_on_the_page() {
         let mut post = enrich_post(
             native_post(
                 1,
@@ -1126,27 +1062,54 @@ mod tests {
             ),
             None,
         );
+        post.username = "wxid_n".into();
         post.nickname = "<Nick>".into();
         post.content_desc = "a\nb".into();
         post.likes = vec!["L".into()];
         post.media = enrich_post(
             weflow_native::native_sns::SnsPost {
-                media: vec![native_media("https://x/1.jpg", "", "k")],
+                media: vec![
+                    native_media("https://x/1.jpg", "", "k"),
+                    native_media("https://x/2.jpg", "", "k"),
+                ],
                 ..native_post(1, "")
             },
             None,
         )
         .media;
-        let saved = vec![vec![SavedMedia {
-            file: Some("media/1_0.jpg".into()),
-            live: None,
-        }]];
-        let html = generate_html(&[post], &saved, &[], Some("kw"), &Default::default());
-        assert!(html.contains("&lt;Nick&gt;"));
-        assert!(html.contains("a<br>b"));
-        assert!(html.contains("src=\"media/1_0.jpg\""));
-        assert!(html.contains("<span class=\"re\">回复</span><b>R</b>"));
-        assert!(html.contains("关键词: \"kw\""));
+        let saved = vec![vec![
+            SavedMedia {
+                file: Some("media/1_0.jpg".into()),
+                live: None,
+            },
+            SavedMedia::default(),
+        ]];
+        let avatars = std::collections::HashMap::from([(
+            "wxid_n".to_string(),
+            "media/avatar_1.jpg".to_string(),
+        )]);
+        let html = String::from_utf8(generate_html(&[post], &saved, Some("kw"), &avatars).unwrap())
+            .unwrap();
+        let open = r#"<script id="wf-data" type="application/json">"#;
+        let start = html.find(open).unwrap() + open.len();
+        let end = start + html[start..].find("</script>").unwrap();
+        let d: Value = serde_json::from_str(&html[start..end]).unwrap();
+        assert_eq!(d["keyword"], "kw");
+        assert_eq!(
+            d["users"],
+            serde_json::json!([["<Nick>", "media/avatar_1.jpg"]])
+        );
+        let p = &d["posts"][0];
+        assert_eq!(p["text"], "a\nb");
+        assert_eq!(p["likes"], serde_json::json!(["L"]));
+        assert_eq!(p["cmts"], serde_json::json!([["C", "hi", "R"]]));
+        assert_eq!(p["media"][0]["s"], "media/1_0.jpg");
+        assert_eq!(
+            p["media"][1]["s"], "",
+            "not saved: the page offers the address"
+        );
+        assert_eq!(p["media"][1]["url"], "https://x/2.jpg");
+        assert!(!html.contains("__WF_"), "a placeholder is left");
     }
 
     #[test]

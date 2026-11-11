@@ -3,19 +3,30 @@
 // when a template or this script changes on a branch, and commits what it writes to that branch
 // (.github/workflows/html-template.yml).
 //
-//   template.html  the chat page (html.rs)                     -> template.zh.html, template.en.html
-//   list.html      the list of sessions or contacts (list_html.rs) -> list.zh.html, list.en.html
+//   template.html  the chat page (html.rs)                          -> template.zh.html, template.en.html
+//   list.html      the list of sessions or contacts (list_html.rs)  -> list.zh.html, list.en.html
+//   moments.html   Moments (moments_html.rs)                        -> moments.zh.html, moments.en.html
 //
-// The .zh copy leaves the English words out (the pages' words are written in Chinese); the .en copy keeps them. Each
-// copy: the CSS and the script minified by Bun, the comments and the space between the tags dropped. The three
-// placeholders (__WF_LANG__, __WF_TITLE__, __WF_DATA__) stay as they are.
+// colours.css, the colours of every page, goes in place of each template's `@colours` comment. The .zh copy leaves
+// the English words out (the pages' words are written in Chinese); the .en copy keeps them. Each copy: the CSS and the
+// script minified by Bun, the comments and the space between the tags dropped. The three placeholders (__WF_LANG__,
+// __WF_TITLE__, __WF_DATA__) stay as they are.
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 const HERE = import.meta.dir;
-const TEMPLATES = ["template", "list"];
+const TEMPLATES = ["template", "list", "moments"];
+const COLOURS = fs.readFileSync(path.join(HERE, "colours.css"), "utf8").trim();
+
+/** The template `name` with the colours in it. */
+function source(name) {
+  const t = fs.readFileSync(path.join(HERE, name + ".html"), "utf8");
+  const parts = t.split("/* @colours */");
+  if (parts.length !== 2) throw new Error(`${name}.html: the @colours comment is not there exactly once`);
+  return parts[0] + COLOURS + parts[1];
+}
 
 /** The template `source` made small for one language. */
 async function minified(source, lang) {
@@ -43,9 +54,9 @@ async function minified(source, lang) {
 }
 
 for (const name of TEMPLATES) {
-  const source = fs.readFileSync(path.join(HERE, name + ".html"), "utf8");
+  const page = source(name);
   for (const lang of ["zh", "en"]) {
-    const t = await minified(source, lang);
+    const t = await minified(page, lang);
     fs.writeFileSync(path.join(HERE, `${name}.${lang}.html`), t);
     console.log(`${name}.${lang}.html  ${(Buffer.byteLength(t) / 1024).toFixed(1)} KB`);
   }

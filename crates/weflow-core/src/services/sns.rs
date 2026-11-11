@@ -1215,7 +1215,8 @@ impl ServiceHub {
             }
             _ => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.html"));
-                let html = sns::generate_html(&posts, &saved, usernames, keyword, &avatar_map);
+                let html = sns::generate_html(&posts, &saved, keyword, &avatar_map)
+                    .map_err(|e| AppError::runtime(e.to_string()))?;
                 std::fs::write(&out_path, html).map_err(|e| AppError::runtime(e.to_string()))?;
             }
         }

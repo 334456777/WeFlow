@@ -12,15 +12,20 @@ on:
   pull_request:
     paths:
       - "crates/**"
-      # the HTML export's templates, the script that makes them small and the copies html-template.yml commits from
-      # them: a pull request's paths are all it changes, the copies included, so they are tested on main
+      # the HTML export's templates and their colours, the script that makes them small and the copies
+      # html-template.yml commits from them: a pull request's paths are all it changes, the copies included, so they
+      # are tested on main
       - "!crates/weflow-core/src/export_msg/template.html"
       - "!crates/weflow-core/src/export_msg/list.html"
+      - "!crates/weflow-core/src/export_msg/moments.html"
+      - "!crates/weflow-core/src/export_msg/colours.css"
       - "!crates/weflow-core/src/export_msg/build.mjs"
       - "!crates/weflow-core/src/export_msg/template.zh.html"
       - "!crates/weflow-core/src/export_msg/template.en.html"
       - "!crates/weflow-core/src/export_msg/list.zh.html"
       - "!crates/weflow-core/src/export_msg/list.en.html"
+      - "!crates/weflow-core/src/export_msg/moments.zh.html"
+      - "!crates/weflow-core/src/export_msg/moments.en.html"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -40,6 +45,8 @@ on:
       # builds from them, not these files
       - "!crates/weflow-core/src/export_msg/template.html"
       - "!crates/weflow-core/src/export_msg/list.html"
+      - "!crates/weflow-core/src/export_msg/moments.html"
+      - "!crates/weflow-core/src/export_msg/colours.css"
       - "!crates/weflow-core/src/export_msg/build.mjs"
       - "Cargo.toml"
       - "Cargo.lock"
