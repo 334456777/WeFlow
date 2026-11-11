@@ -11,7 +11,7 @@
 //!   exported: unix seconds, users: [[name, avatar path ("": none)]], msgs }
 //! msgs[i] = { t: unix seconds, u: index into users (-1: none), k: kind, ...the kind's fields }
 //!   0 system {x}  1 text {x}  2 picture {s,w,h}  3 voice {s,d}  4 video {s,w,h,d}  5 sticker {s,w,h}
-//!   6 file {n,z,e}  7 link {ti,x,l,f}  8 quote {x,qn,qx,r | rq}  9 chat history {ti,it: [[name, time, text]]}
+//!   6 file {n,z,e,s}  7 link {ti,x,l,f}  8 quote {x,qn,qx,r | rq}  9 chat history {ti,it: [[name, time, text]]}
 //!   10 transfer {a,x,st}  11 red packet {ti}  12 location {ti,x,la,lo}  13 contact card {n}  14 call {v,x}
 //!   15 music {ti,x,l}  16 mini program {ti,f}  17 channels {ti,f}  18 announcement {x}  19 other app message {ti,x,l,f}
 //! ```
@@ -345,9 +345,14 @@ impl Exporter<'_, '_> {
                 "image" => Kind::Picture,
                 "voice" => Kind::Voice,
                 "emoji" => Kind::Sticker,
+                "file" => Kind::File,
                 _ => Kind::Video,
             };
             m.s = Some(url_path(&media.relative_path));
+            if matches!(kind, Kind::File) {
+                // its name, size and extension come from the app message, as when the file is not copied
+                return self.app_msg(m, msg, &x);
+            }
             let file = state.dir.join(&media.relative_path);
             match kind {
                 Kind::Picture | Kind::Sticker => {

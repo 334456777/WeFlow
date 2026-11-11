@@ -491,6 +491,45 @@ impl ServiceHub {
             })
     }
 
+    /// A file message's file on disk, and where an export puts it below `files/`: `<month>/<file name>`, as WeChat
+    /// keeps it in `msg/file/<month>/`, so files of one name sent in different months stay apart. WeChat's media
+    /// index is asked first (by the file's `md5`), then the message's file `name` is looked for in the month it was
+    /// sent (local time).
+    pub(super) fn message_file(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        md5: Option<&str>,
+        name: Option<&str>,
+        create_time: i64,
+    ) -> Option<(PathBuf, String)> {
+        use chrono::TimeZone as _;
+        let files = self.account_dir_only().ok()?.join("msg").join("file");
+        let linked = md5
+            .filter(|m| !m.trim().is_empty())
+            .and_then(|m| wcdb.file_hardlinks(m).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|rel| {
+                let month = rel.parent()?.file_name()?.to_str()?.to_string();
+                let name = rel.file_name()?.to_str()?.to_string();
+                Some((month, name))
+            });
+        let sent = name
+            .map(|n| crate::api::sanitize_file_name(n, ""))
+            .filter(|n| !n.is_empty())
+            .zip(
+                chrono::Local
+                    .timestamp_opt(create_time, 0)
+                    .single()
+                    .map(|t| t.format("%Y-%m").to_string()),
+            )
+            .map(|(name, month)| (month, name));
+        linked.chain(sent).find_map(|(month, name)| {
+            let path = files.join(&month).join(&name);
+            path.is_file().then(|| (path, format!("{month}/{name}")))
+        })
+    }
+
     /// Who I talked with and replied to, and where I was @-mentioned, between `begin` and `end` (Unix seconds,
     /// both inclusive; 0 for no bound).
     pub fn footprint(&self, begin: i64, end: i64) -> AppResult<Value> {

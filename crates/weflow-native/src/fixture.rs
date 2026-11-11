@@ -281,6 +281,19 @@ impl<'a> HardlinkSpec<'a> {
             modify_time: T0,
         }
     }
+
+    /// A file sent or received, stored as `msg/file/<month>/<file_name>`.
+    pub fn file(md5: &'a str, file_name: &'a str, month: &'a str) -> Self {
+        Self {
+            md5,
+            file_name,
+            kind: 1,
+            dir1: month,
+            dir2: "",
+            size: 100,
+            modify_time: T0,
+        }
+    }
 }
 
 // The tables as WeChat lays them out, shared by `Fixture` and `bench`.

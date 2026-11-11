@@ -211,8 +211,8 @@ describe('App', () => {
     await act(async () => {});
     expect(started).toEqual([]);
     fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
-    // the media off unless asked for (#342)
-    expect((exportCard.getByRole('checkbox', { name: '附带媒体文件' }) as HTMLInputElement).checked).toBe(false);
+    // no media unless asked for (#342), each kind on its own (#694)
+    for (const name of ['图片', '语音', '视频', '表情', '文件']) expect(exportCard.getByRole('button', { name }).getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
     await act(async () => {});
     // a job of the server that keeps its file

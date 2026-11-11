@@ -763,7 +763,7 @@ enum ExportSubcommand {
         #[arg(long)]
         end: Option<String>,
     },
-    /// Export the images, voice (WAV), videos and stickers of messages
+    /// Export the images, voice (WAV), videos, stickers and files of messages
     Media {
         /// Output directory
         #[arg(long)]
@@ -771,7 +771,7 @@ enum ExportSubcommand {
         /// Only media of this conversation id (default: all conversations)
         #[arg(long)]
         session: Option<String>,
-        /// What to export: image, voice, video, emoji or all
+        /// What to export: image, voice, video, emoji, file or all
         #[arg(long, default_value = "all")]
         r#type: String,
         /// Only messages from this date, local time, inclusive (YYYY-MM-DD)
@@ -809,8 +809,8 @@ enum ExportSubcommand {
         /// Excel: compact columns (time, sender, type, content)
         #[arg(long)]
         excel_compact: bool,
-        /// Copy media next to the export and point the messages at the copies: any of image, voice, video, emoji
-        /// (comma separated) or all. Files go to `media/<output name>/` beside the output file.
+        /// Copy media next to the export and point the messages at the copies: any of image, voice, video, emoji,
+        /// file (comma separated) or all. Files go to `media/<output name>/` beside the output file.
         #[arg(long, value_delimiter = ',')]
         media: Vec<String>,
     },
@@ -2964,20 +2964,27 @@ fn parse_media_selection(values: &[String]) -> Result<weflow_core::api::ApiMedia
     {
         match v.as_str() {
             "all" => {
-                (opts.images, opts.voices, opts.videos, opts.emojis) = (true, true, true, true)
+                (
+                    opts.images,
+                    opts.voices,
+                    opts.videos,
+                    opts.emojis,
+                    opts.files,
+                ) = (true, true, true, true, true)
             }
             "image" | "images" => opts.images = true,
             "voice" | "voices" => opts.voices = true,
             "video" | "videos" => opts.videos = true,
             "emoji" | "emojis" | "sticker" | "stickers" => opts.emojis = true,
+            "file" | "files" => opts.files = true,
             other => {
                 return Err(AppError::usage(format!(
-                    "unknown media kind: {other}; use image, voice, video, emoji or all"
+                    "unknown media kind: {other}; use image, voice, video, emoji, file or all"
                 )))
             }
         }
     }
-    opts.enabled = opts.images || opts.voices || opts.videos || opts.emojis;
+    opts.enabled = opts.images || opts.voices || opts.videos || opts.emojis || opts.files;
     Ok(opts)
 }
 

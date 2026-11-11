@@ -791,7 +791,22 @@ impl ServiceHub {
         session_dir: &Path,
         opts: &ApiMediaOptions,
     ) -> Option<ApiExportedMedia> {
-        let _ = wcdb;
+        if opts.files && is_file_message(msg.xml_type()) {
+            let (source, file_name) =
+                self.message_file(wcdb, msg.file_md5(), msg.file_name(), msg.create_time)?;
+            let to = MediaTarget {
+                session_dir,
+                safe_talker,
+                written: None,
+            };
+            return put_media(
+                &to,
+                ("file", "files"),
+                file_name,
+                MediaSource::Copy(&source),
+                false,
+            );
+        }
         if msg.local_type == 47 && opts.emojis {
             let url = msg.emoji_cdn_url.as_deref().filter(|u| !u.is_empty())?;
             let path = self
@@ -826,8 +841,8 @@ impl ServiceHub {
         self.export_local_media(msg, talker, safe_talker, session_dir, opts, None)
     }
 
-    /// Copies the media of `msgs` into `<out dir>/media/<out name>/{images,voices,videos,emojis}` and records each
-    /// file on its message. Returns `{ requested, exported, missing, dir }`.
+    /// Copies the media of `msgs` into `<out dir>/media/<out name>/{images,voices,videos,emojis,files}` and records
+    /// each file on its message. Returns `{ requested, exported, missing, dir }`.
     pub(super) async fn attach_export_media(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -850,16 +865,16 @@ impl ServiceHub {
         );
         let session_dir = out_dir.join("media").join(&name);
         let prefix = format!("media/{name}");
-        let wanted = |t: i64| match t {
+        let wanted = |m: &crate::message::ExportMsg| match m.local_type {
             3 => opts.images,
             34 => opts.voices,
             43 => opts.videos,
             47 => opts.emojis,
-            _ => false,
+            _ => opts.files && is_file_message(m.xml_type.as_deref()),
         };
-        let todo: Vec<usize> = (0..msgs.len())
-            .filter(|i| wanted(msgs[*i].local_type))
-            .collect();
+        let todo: Vec<usize> = (0..msgs.len()).filter(|i| wanted(&msgs[*i])).collect();
+        let in_order =
+            |m: &crate::message::ExportMsg| copied_in_order(m.local_type, m.xml_type.as_deref());
         let chat_msg = |m: &crate::message::ExportMsg| ChatMessage {
             local_id: m.local_id,
             server_id: m.server_id,
@@ -871,6 +886,15 @@ impl ServiceHub {
             video_md5: m.video_md5.clone(),
             emoji_cdn_url: m.emoji_cdn_url.clone(),
             emoji_md5: m.emoji_md5.clone(),
+            // what finds a file message's file
+            t49: is_file_message(m.xml_type.as_deref()).then(|| {
+                Box::new(chat_msg::Type49Info {
+                    xml_type: m.xml_type.clone(),
+                    file_name: m.file_name.clone(),
+                    file_md5: m.file_md5.clone(),
+                    ..Default::default()
+                })
+            }),
             ..Default::default()
         };
         let safe = api::sanitize_file_name(session_id, "session");
@@ -879,9 +903,7 @@ impl ServiceHub {
         // one counter for both passes, so the progress never steps back
         let finished = std::sync::atomic::AtomicUsize::new(0);
         {
-            let local: Vec<usize> = (0..total)
-                .filter(|k| msgs[todo[*k]].local_type != 47)
-                .collect();
+            let local: Vec<usize> = (0..total).filter(|k| !in_order(&msgs[todo[*k]])).collect();
             let workers = std::thread::available_parallelism()
                 .map_or(2, |n| n.get())
                 .clamp(1, 8)
@@ -930,7 +952,7 @@ impl ServiceHub {
         }
         for k in 0..total {
             let m = &msgs[todo[k]];
-            if m.local_type == 47 {
+            if in_order(m) {
                 results[k] = self
                     .export_media_for_message(
                         wcdb,
@@ -952,6 +974,7 @@ impl ServiceHub {
                 "image" => "images",
                 "voice" => "voices",
                 "video" => "videos",
+                "file" => "files",
                 _ => "emojis",
             };
             msgs[todo[k]].media = Some(MediaRef {
@@ -1110,9 +1133,9 @@ enum MediaSource<'a> {
     Copy(&'a Path),
 }
 
-/// Write (or copy) one exported file below `<session_dir>/<sub>`. A file already there is kept, unless this export
-/// wrote it (`written`) from a lesser rendition: then a full rendition (not a `thumbnail`), or a larger one of the
-/// same kind, replaces it.
+/// Write (or copy) one exported file below `<session_dir>/<sub>`; `file_name` may name a folder below that too
+/// (`2024-01/report.pdf`). A file already there is kept, unless this export wrote it (`written`) from a lesser
+/// rendition: then a full rendition (not a `thumbnail`), or a larger one of the same kind, replaces it.
 fn put_media(
     to: &MediaTarget<'_>,
     (kind, sub): (&'static str, &str),
@@ -1121,9 +1144,10 @@ fn put_media(
     thumbnail: bool,
 ) -> Option<ApiExportedMedia> {
     let (session_dir, safe_talker) = (to.session_dir, to.safe_talker);
-    let dir = session_dir.join(sub);
-    std::fs::create_dir_all(&dir).ok()?;
-    let full = dir.join(&file_name);
+    let full = file_name
+        .split('/')
+        .fold(session_dir.join(sub), |path, part| path.join(part));
+    std::fs::create_dir_all(full.parent()?).ok()?;
     let size = match source {
         MediaSource::Bytes([]) => return None,
         MediaSource::Bytes(b) => b.len() as u64,
@@ -1169,6 +1193,17 @@ fn put_media(
         relative_path: format!("{safe_talker}/{sub}/{file_name}"),
         thumbnail: false,
     })
+}
+
+/// A file message: an app message of type 6.
+fn is_file_message(xml_type: Option<&str>) -> bool {
+    xml_type == Some("6")
+}
+
+/// The media copied one after another after the threads, where the database is at hand: stickers (downloaded) and
+/// files (found through WeChat's media index).
+fn copied_in_order(local_type: i64, xml_type: Option<&str>) -> bool {
+    local_type == 47 || is_file_message(xml_type)
 }
 
 /// httpService `detectImageExt`: the picture's extension, `.bmp` for a bitmap, `.jpg` for anything else.
@@ -1240,8 +1275,8 @@ impl ServiceHub {
 
 impl ServiceHub {
     /// `export media`: walks the messages of one conversation (or all of them) and copies each
-    /// image / voice (as WAV) / video / sticker into `<out>/<session>/<kind>s/`, using the same
-    /// per-message pipeline as the HTTP API (`media=1`). `media_type`: image, voice, video, emoji, all.
+    /// image / voice (as WAV) / video / sticker / file into `<out>/<session>/<kind>s/`, using the same
+    /// per-message pipeline as the HTTP API (`media=1`). `media_type`: image, voice, video, emoji, file, all.
     /// `start` / `end` (Unix seconds, `end` exclusive) restrict the message time.
     /// `found` counts media *messages* (an image sent twice counts twice; `chat images` lists unique files).
     pub async fn export_media(
@@ -1253,9 +1288,9 @@ impl ServiceHub {
         end: Option<i64>,
     ) -> AppResult<crate::contract::MediaExport> {
         let wanted = |k: &str| media_type == "all" || media_type == k;
-        if !["image", "voice", "video", "emoji", "all"].contains(&media_type) {
+        if !["image", "voice", "video", "emoji", "file", "all"].contains(&media_type) {
             return Err(AppError::usage(format!(
-                "unsupported media type: {media_type}; use image, voice, video, emoji or all"
+                "unsupported media type: {media_type}; use image, voice, video, emoji, file or all"
             )));
         }
         std::fs::create_dir_all(out)
@@ -1275,12 +1310,15 @@ impl ServiceHub {
             voices: wanted("voice"),
             videos: wanted("video"),
             emojis: wanted("emoji"),
+            files: wanted("file"),
         };
-        let types: Vec<(i64, &'static str, bool)> = vec![
-            (3, "image", opts.images),
-            (34, "voice", opts.voices),
-            (43, "video", opts.videos),
-            (47, "emoji", opts.emojis),
+        // the local types of each kind: a file is an app message of type 6, which several local types carry
+        let types: [(&[i64], &'static str, bool); 5] = [
+            (&[3], "image", opts.images),
+            (&[34], "voice", opts.voices),
+            (&[43], "video", opts.videos),
+            (&[47], "emoji", opts.emojis),
+            (&super::chat::FILE_APP_TYPES, "file", opts.files),
         ];
         let my = self.wmy();
 
@@ -1288,21 +1326,26 @@ impl ServiceHub {
         self.emit_progress("media", "scanning messages", 0, sessions.len());
         let mut work: Vec<(String, &'static str, ChatMessage)> = Vec::new();
         for (i, sid) in sessions.iter().enumerate() {
-            for (code, kind, enabled) in &types {
+            for &(codes, kind, enabled) in &types {
                 if !enabled {
                     continue;
                 }
-                let Ok(rows) = wcdb.messages_by_type(sid, *code, false, 0, 0) else {
-                    continue;
-                };
-                let msgs = chat_msg::map_msg_rows(rows, sid, &my);
                 let mut seen: HashSet<(i64, i64)> = HashSet::new();
-                for m in msgs {
-                    let in_range = start.is_none_or(|s| m.create_time >= s)
-                        && end.is_none_or(|e| m.create_time < e);
-                    if m.local_type == *code && in_range && seen.insert((m.local_id, m.create_time))
-                    {
-                        work.push((sid.clone(), kind, m));
+                for &code in codes {
+                    let Ok(rows) = wcdb.messages_by_type(sid, code, false, 0, 0) else {
+                        continue;
+                    };
+                    for m in chat_msg::map_msg_rows(rows, sid, &my) {
+                        let in_range = start.is_none_or(|s| m.create_time >= s)
+                            && end.is_none_or(|e| m.create_time < e);
+                        let of_kind = kind != "file" || is_file_message(m.xml_type());
+                        if m.local_type == code
+                            && of_kind
+                            && in_range
+                            && seen.insert((m.local_id, m.create_time))
+                        {
+                            work.push((sid.clone(), kind, m));
+                        }
                     }
                 }
             }
@@ -1318,7 +1361,9 @@ impl ServiceHub {
         // threads first, then walk the list in order for emojis and the report.
         let mut done: Vec<Option<Option<ApiExportedMedia>>> = (0..total).map(|_| None).collect();
         {
-            let local: Vec<usize> = (0..total).filter(|i| work[*i].2.local_type != 47).collect();
+            let local: Vec<usize> = (0..total)
+                .filter(|i| !copied_in_order(work[*i].2.local_type, work[*i].2.xml_type()))
+                .collect();
             let workers = std::thread::available_parallelism()
                 .map_or(2, |n| n.get())
                 .clamp(1, 8)

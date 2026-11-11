@@ -644,7 +644,7 @@ pub struct ForwardRecord {
 /// A media file copied next to the export: what the exported message points at instead of its placeholder text.
 #[derive(Clone, Debug, Default)]
 pub struct MediaRef {
-    /// `image`, `voice`, `video` or `emoji`.
+    /// `image`, `voice`, `video`, `emoji` or `file`.
     pub kind: &'static str,
     /// Path of the file relative to the export file, with `/` separators.
     pub relative_path: String,

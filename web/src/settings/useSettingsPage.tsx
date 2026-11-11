@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Gear, Plugs } from '@phosphor-icons/react';
 import { WEB, type Health } from '../api/backend';
 import { onAuth, setToken, token } from '../api/client';
+import { MediaChips } from '../exports/ExportCards';
 import { Segmented } from '../Segmented';
 import { backendDetail } from '../shell/Connection';
 import type { Page, Shell } from '../shell/page';
@@ -83,7 +84,8 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
       {connected && <ServeOptions />}
       {connected && <><AiSetting profile={profile} onSaved={reload} /><CacheSetting /></>}
       <div className="setting-row"><div><h2>{t('实时消息')}</h2><p>{t('微信收到消息后几秒内显示在会话列表和打开的会话里。关掉后不再接收，左下角显示「已连接」而不是「实时」。')}</p></div><label className="toggle"><input type="checkbox" aria-label={t('实时消息')} checked={prefs.realtime} onChange={event => prefs.setRealtime(event.target.checked)} /><span /></label></div>
-      <div className="setting-row"><div><h2>{t('默认附带媒体文件')}</h2><p>{t('导出时把照片等媒体放进 media 文件夹，和导出文件一起打包成 zip。默认关闭。')}</p></div><label className="toggle"><input type="checkbox" aria-label={t('默认附带媒体文件')} checked={prefs.includeMedia} onChange={event => prefs.setIncludeMedia(event.target.checked)} /><span /></label></div>
+      <div className="setting-row setting-choice"><div><h2>{t('默认附带的媒体')}</h2><p>{t('会话页导出时把选中的媒体放进 media 文件夹，和导出文件一起打包成 zip。默认都不选。')}</p></div>
+        <MediaChips kinds={prefs.media} label={t('默认附带的媒体')} onChange={prefs.setMedia} /></div>
       <div className="setting-row setting-choice"><div><h2>{t('颜色主题')}</h2><p>{t('跟随系统时随系统的浅色、深色模式切换。只保存在这个浏览器里。')}</p></div>
         <Segmented className="theme-group" count={THEMES.length} index={THEMES.findIndex(choice => choice.value === theme)} role="group" aria-label={t('颜色主题')}>
           {THEMES.map(choice => <button type="button" key={choice.value} aria-pressed={theme === choice.value} onClick={() => setTheme(choice.value)}>{t(choice.label)}</button>)}

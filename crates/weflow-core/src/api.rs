@@ -18,6 +18,8 @@ pub struct ApiMediaOptions {
     pub voices: bool,
     pub videos: bool,
     pub emojis: bool,
+    /// The files sent and received (documents, archives …: app messages of type 6).
+    pub files: bool,
 }
 
 /// `value` with the characters no file name may hold replaced by `_` and trailing dots dropped; `fallback` when
