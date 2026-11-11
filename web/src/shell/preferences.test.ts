@@ -27,7 +27,7 @@ describe('the preferences, kept in this browser (#702)', () => {
   });
 
   it('keep only the media this page knows, in its order', () => {
-    expect(keptMedia('["file","avatar","image"]')).toEqual(['image', 'file']);
+    expect(keptMedia('["file","sticker","image"]')).toEqual(['image', 'file']);
     expect(keptMedia('not json')).toEqual([]);
     expect(keptMedia('{"image":true}')).toEqual([]);
     expect(keptMedia(null)).toEqual([]);

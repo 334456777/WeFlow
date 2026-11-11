@@ -283,8 +283,21 @@ impl Exporter<'_, '_> {
         } else {
             self.session.display_name.clone()
         };
+        let username = if msg.is_send {
+            self.my_wxid.as_str()
+        } else if self.session.is_group {
+            msg.sender_username.as_str()
+        } else {
+            self.session.id.as_str()
+        };
+        let avatar = self
+            .settings
+            .avatars
+            .get(username)
+            .map(|path| url_path(path))
+            .unwrap_or_default();
         let i = state.users.len();
-        state.users.push((name, String::new()));
+        state.users.push((name, avatar));
         state.user_ix.insert(key, i);
         i as i64
     }

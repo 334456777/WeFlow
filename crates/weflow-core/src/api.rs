@@ -20,6 +20,17 @@ pub struct ApiMediaOptions {
     pub emojis: bool,
     /// The files sent and received (documents, archives …: app messages of type 6).
     pub files: bool,
+    /// The avatars of who speaks in the conversation, for the HTML page; `None`: none.
+    pub avatars: Option<AvatarSource>,
+}
+
+/// Where an export's avatars come from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AvatarSource {
+    /// Only those WeChat keeps on this computer (`head_image.db`).
+    Local,
+    /// Those on this computer, and the others downloaded from the address in the contact.
+    Download,
 }
 
 /// `value` with the characters no file name may hold replaced by `_` and trailing dots dropped; `fallback` when

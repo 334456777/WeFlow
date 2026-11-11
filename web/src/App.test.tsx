@@ -212,7 +212,7 @@ describe('App', () => {
     expect(started).toEqual([]);
     fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
     // no media unless asked for (#342), each kind on its own (#694)
-    for (const name of ['图片', '语音', '视频', '表情', '文件']) expect(exportCard.getByRole('button', { name }).getAttribute('aria-pressed')).toBe('false');
+    for (const name of ['图片', '语音', '视频', '表情', '文件', '头像']) expect(exportCard.getByRole('button', { name }).getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
     await act(async () => {});
     // a job of the server that keeps its file

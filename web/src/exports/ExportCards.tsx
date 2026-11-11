@@ -47,7 +47,7 @@ export function FormatChips({ formats, onChange }: { formats: readonly MessageFo
 /** The media `export messages --media` copies, as the page names them. Labels are shown through t(). */
 export const MEDIA_KINDS = [
   { value: 'image', label: msg('图片') }, { value: 'voice', label: msg('语音') }, { value: 'video', label: msg('视频') },
-  { value: 'emoji', label: msg('表情') }, { value: 'file', label: msg('文件') },
+  { value: 'emoji', label: msg('表情') }, { value: 'file', label: msg('文件') }, { value: 'avatar', label: msg('头像') },
 ] as const;
 export type MediaKind = typeof MEDIA_KINDS[number]['value'];
 
@@ -60,7 +60,7 @@ export function toggleMedia(kinds: readonly MediaKind[], value: MediaKind): Medi
 export const mediaLabel = (kinds: readonly MediaKind[]) => kinds.map(k => t(MEDIA_KINDS.find(m => m.value === k)!.label)).join('、');
 
 /** What the media chips do. Shown through t(). */
-export const MEDIA_NOTE = msg('选中的媒体放进 media 文件夹，和导出文件一起打包成 zip');
+export const MEDIA_NOTE = msg('选中的媒体放进 media 文件夹，和导出文件一起打包成 zip；头像用在 HTML 页面上，本机没有的联网下载');
 
 /** The media as chips, like the formats: any of them, or none. */
 export function MediaChips({ kinds, onChange, label }: { kinds: readonly MediaKind[]; onChange(kinds: MediaKind[]): void; label: string }) {
