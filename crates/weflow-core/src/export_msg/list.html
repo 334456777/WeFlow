@@ -19,13 +19,14 @@
 <style>
 /* ============================================================ colours
    Those of the chat page. Light; dark when the system is dark and the page is not set to light, or when the page is
-   set to dark (the chat page's theme, kept in the browser) */
-:root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--me:#9df29f;--on-me:#fff;--card:#fff;--chip:#0000000d;
+   set to dark (the chat page's theme, kept in the browser). --pick, the filter picked, is one green in both: white
+   on it (light) is 4.56:1, black (dark) 4.61:1 */
+:root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--pick:#048842;--on-pick:#fff;--card:#fff;--chip:#0000000d;
   --bar:#fafafadb;--side:#f2f2f4;--hover:#0000000d;--stripe:#00000008;--sel:#07c16014;--mark:#ffe066;--red:#fa5151;color-scheme:light}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--me:#35d28d;
-  --on-me:#000;--card:#2c2c2e;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--hover:#ffffff0f;--stripe:#ffffff08;--sel:#35d28d1f;
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--pick:#048842;
+  --on-pick:#000;--card:#2c2c2e;--chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--hover:#ffffff0f;--stripe:#ffffff08;--sel:#35d28d1f;
   --mark:#b8860b;color-scheme:dark}}
-:root[data-theme=dark]{--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--me:#35d28d;--on-me:#000;--card:#2c2c2e;
+:root[data-theme=dark]{--bg:#1e1e1f;--fg:#fff;--muted:#8d8d92;--line:#ffffff14;--pick:#048842;--on-pick:#000;--card:#2c2c2e;
   --chip:#ffffff12;--bar:#1e1e1fdb;--side:#252527;--hover:#ffffff0f;--stripe:#ffffff08;--sel:#35d28d1f;--mark:#b8860b;color-scheme:dark}
 
 /* ============================================================ base */
@@ -57,8 +58,8 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .tools{flex:none;display:flex;align-items:center;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line);overflow-x:auto}
 .chip{flex:none;border:0;border-radius:14px;padding:4px 12px;background:var(--chip);font-size:13px;color:var(--muted)}
 .chip b{font-weight:500;margin-left:4px;opacity:.7}
-.chip[aria-pressed=true]{background:var(--me);color:var(--on-me)}
-.chip[aria-pressed=true] b{opacity:.75}
+.chip[aria-pressed=true]{background:var(--pick);color:var(--on-pick)}
+.chip[aria-pressed=true] b{opacity:1}
 .spacer{flex:1}
 .sort{flex:none;border:0;background:none;font-size:12px;color:var(--muted);padding:4px 6px;border-radius:6px}
 button.sort:hover{background:var(--hover)}
