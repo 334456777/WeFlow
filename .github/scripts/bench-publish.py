@@ -94,11 +94,14 @@ def main():
     if refs:
         lines += ["- 和锚点的对比（在 issue、PR 和提交说明里写这个引用，会自动链接到查看页）："] + refs
     outputs = {}
-    # the commits the request asked for come first; two of them are a base and a head, compared when the environment
-    # holds both
-    asked = run["commits"][:len([s for s in run["request"]["commits"].split(",") if s.strip()])]
-    if len(asked) == 2 and all(c["sha"] in held["results"] for c in asked):
-        base, head = asked
+    # a request that asked for exactly two commits names them as its pair (bench_queue.py), a base and a head, compared
+    # once the environment holds both, whatever part of them this run measured
+    pair = []
+    for item in run["request"].get("pair") or []:
+        name, _, sha = item.rpartition("=")
+        pair.append({"ref": name or sha, "sha": sha})
+    if len(pair) == 2 and all(c["sha"] in held["results"] for c in pair):
+        base, head = pair
         url = f"{viewer}&base={link_name(base)}&head={link_name(head)}"
         lines.append(f"- base 对 head：`BENCH-{base['sha'][:10]}-{head['sha'][:10]}`，查看页：{url}")
         outputs = {"key": key, "url": url, "base": base["sha"], "head": head["sha"], "base_name": base["ref"],
