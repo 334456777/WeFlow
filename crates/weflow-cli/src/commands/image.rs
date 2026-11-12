@@ -68,6 +68,16 @@ pub(crate) enum ImageSubcommand {
         /// JSON array of image payloads
         payloads_json: String,
     },
+    /// Windows only: have WeChat download the original of a message's image (`weflow serve` runs the hook)
+    DownloadOriginal {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
+        session_id: String,
+        /// Local message id
+        msg_id: String,
+        /// Message create time (seconds): tells apart messages of different message databases that share the local id
+        #[arg(long)]
+        create_time: Option<i64>,
+    },
     /// Windows only: make WeChat download original-size images (image auto-download hook)
     AutoDownload {
         #[command(subcommand)]

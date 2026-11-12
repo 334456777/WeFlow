@@ -37,6 +37,19 @@ pub struct ImageRef {
     pub create_time: Option<i64>,
 }
 
+/// What `image download-original` answers: the request waits in this process's hook for WeChat's next download (`serve`
+/// runs the hook).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageOriginalRequested {
+    /// Always true.
+    pub success: bool,
+    /// Where WeChat will write the original: the `<md5>_h.dat` beside the image.
+    pub path: String,
+    /// Bytes of the original, as the message gives them.
+    pub bytes: u64,
+}
+
 /// The voice messages of a conversation (`chat voice-messages`), the newest first.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct VoiceMessages {

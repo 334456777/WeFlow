@@ -2998,6 +2998,46 @@
         }
       }
     },
+    "/api/image/download-original": {
+      "get": {
+        "operationId": "api_image_download_original",
+        "x-weflow-command": "image download-original",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageOriginalRequested"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/image/resolve-batch": {
       "get": {
         "operationId": "api_image_resolve_batch",
@@ -8786,6 +8826,31 @@
           "supported"
         ],
         "description": "What `image auto-download status` answers: the hook is not part of WeFlow."
+      },
+      "ImageOriginalRequested": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "path": {
+            "type": "string",
+            "description": "Where WeChat will write the original: the `<md5>_h.dat` beside the image."
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Bytes of the original, as the message gives them."
+          }
+        },
+        "required": [
+          "success",
+          "path",
+          "bytes"
+        ],
+        "description": "What `image download-original` answers: the request waits in this process's hook for WeChat's next download (`serve`\nruns the hook)."
       },
       "VideoInfo": {
         "type": "object",

@@ -185,6 +185,7 @@ pub(super) const METHODS: &[(&str, Rule)] = &[
     ("image resolve-batch", Rule::Fixed(Post)),
     ("image auto-download start", Rule::Fixed(Post)),
     ("image auto-download status", Rule::Fixed(Get)),
+    ("image download-original", Rule::Fixed(Post)),
     ("video info", Rule::Fixed(Get)),
     ("video parse-md5", Rule::Fixed(Get)),
     ("insight test", Rule::Fixed(Post)),

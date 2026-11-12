@@ -84,7 +84,9 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
         let name = path.join(" ");
         if let Some((_, rule)) = METHODS.iter().find(|(p, _)| *p == name) {
             let item = path_item(cmd, path, *rule, zh);
-            if in_process::COMMANDS.contains(&name.as_str()) {
+            if in_process::COMMANDS.contains(&name.as_str())
+                || in_process::SERVER.contains(&name.as_str())
+            {
                 paths.insert(
                     format!("/api/{}", path.join("/")),
                     in_process_item(&item, &name, zh),
@@ -119,12 +121,23 @@ fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
         if let Some(id) = op["operationId"].as_str().map(|id| format!("api_{id}")) {
             op["operationId"] = id.into();
         }
-        let mut note = pick(
-            zh,
-            "Runs in the server's process on databases it keeps open: much faster than the route without \
-             `/api/`, with the same parameters and answer.",
-            "在服务进程内执行，数据库保持打开：比不带 `/api/` 的路由快得多，参数和回复相同。",
-        );
+        let mut note = if in_process::SERVER.contains(&name) {
+            pick(
+                zh,
+                "Runs in the server's process, which is where the image auto-download hook is: it leaves a request \
+                 for WeChat's next download, and the original appears as `<md5>_h.dat` when WeChat makes it (`chat \
+                 image-info` then says `hd`).",
+                "在服务进程内执行，图片自动下载钩子就在这个进程里：它留下一个请求，等微信下次下载时执行，微信下载完\
+                 原图后文件以 `<md5>_h.dat` 出现（`chat image-info` 的 `hd` 随之为 true）。",
+            )
+        } else {
+            pick(
+                zh,
+                "Runs in the server's process on databases it keeps open: much faster than the route without \
+                 `/api/`, with the same parameters and answer.",
+                "在服务进程内执行，数据库保持打开：比不带 `/api/` 的路由快得多，参数和回复相同。",
+            )
+        };
         if let Some((_, en, cn)) = in_process::IN_PART.iter().find(|(n, ..)| *n == name) {
             note = format!("{note}{}{}", if zh { "" } else { " " }, pick(zh, en, cn));
         }
@@ -663,7 +676,9 @@ pub(super) fn contract() -> &'static Contract {
             for command in ["export media", "chat voice"] {
                 data.insert(command, of(generator.subschema_for::<MediaExport>()));
             }
-            use weflow_core::contract::{AutoDownloadStatus, AutoDownloadStopped, VideoMd5};
+            use weflow_core::contract::{
+                AutoDownloadStatus, AutoDownloadStopped, ImageOriginalRequested, VideoMd5,
+            };
             use weflow_core::services::{ImageBatch, ImageResult};
             for command in ["image decrypt", "image resolve-cache"] {
                 data.insert(command, of(generator.subschema_for::<ImageResult>()));
@@ -676,6 +691,10 @@ pub(super) fn contract() -> &'static Contract {
             data.insert(
                 "image auto-download status",
                 of(generator.subschema_for::<AutoDownloadStatus>()),
+            );
+            data.insert(
+                "image download-original",
+                of(generator.subschema_for::<ImageOriginalRequested>()),
             );
             data.insert(
                 "video info",
@@ -839,7 +858,7 @@ fn contract_document() -> Value {
     let mut paths = Map::new();
     for (name, data) in &c.data {
         let path = name.replace(' ', "/");
-        let route = if in_process::COMMANDS.contains(name) {
+        let route = if in_process::COMMANDS.contains(name) || in_process::SERVER.contains(name) {
             format!("/api/{path}")
         } else {
             format!("/{path}")
@@ -967,6 +986,14 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
                             "insight": {
                                 "type": "boolean",
                                 "description": pick(zh, "Whether the insight engine runs beside (--insight)", "是否同时运行灵感引擎（--insight）"),
+                            },
+                            "imageAutoDownload": {
+                                "type": "boolean",
+                                "description": pick(
+                                    zh,
+                                    "Whether the image auto-download hook runs here, which `image download-original` needs",
+                                    "是否在运行图片自动下载钩子，`image download-original` 需要它",
+                                ),
                             },
                         },
                     })),
@@ -1989,6 +2016,36 @@ mod tests {
             assert!(own["responses"]["202"].is_null());
         }
         assert!(doc["paths"]["/api/export/sessions"].is_null());
+    }
+
+    /// The `/api/` route that is no read: it asks the server's image auto-download hook for an original (#766).
+    #[test]
+    fn the_original_request_has_its_own_route() {
+        let doc = document(false);
+        let plain = &doc["paths"]["/image/download-original"]["post"];
+        let own = &doc["paths"]["/api/image/download-original"]["post"];
+        assert_eq!(plain["x-weflow-command"], "image download-original");
+        assert_eq!(own["operationId"], "api_image_download_original");
+        assert_eq!(own["x-weflow-command"], "image download-original");
+        // the message it asks for, and where its original goes
+        assert_eq!(
+            own["requestBody"]["content"]["application/json"]["schema"]["required"],
+            json!(["session-id", "msg-id"])
+        );
+        // of the parameters of every route, only `fields`
+        let shared: Vec<&Value> = own["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|p| p.get("$ref"))
+            .collect();
+        assert_eq!(shared, ["#/components/parameters/fields"]);
+        assert!(own["responses"]["202"].is_null());
+        assert_eq!(
+            own["responses"]["200"]["content"]["application/json"]["schema"]["oneOf"][0]
+                ["properties"]["data"]["$ref"],
+            "#/components/schemas/ImageOriginalRequested"
+        );
     }
 
     #[test]

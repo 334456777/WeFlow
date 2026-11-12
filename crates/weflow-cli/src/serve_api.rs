@@ -86,6 +86,9 @@ pub struct ApiConfig {
     pub farewell: Farewell,
     /// Whether the insight engine runs beside (`--insight`), as `/health` says.
     pub insight: bool,
+    /// The image auto-download hook of this process, which `/api/image/download-original` leaves its requests with
+    /// (#766); `weflow serve` starts it on Windows x64 unless it is turned off.
+    pub image_auto_download: Option<weflow_core::image_download::ImageAutoDownload>,
 }
 
 struct AppState {
@@ -167,7 +170,7 @@ fn router(cfg: ApiConfig) -> Router {
         Arc::new(Semaphore::new(cfg.max_media.max(1))),
         cfg.max_media,
     );
-    let hub = Arc::new(in_process::Hub::default());
+    let hub = Arc::new(in_process::Hub::new(cfg.image_auto_download.clone()));
     hub.warm();
     let server = status::Status::new(
         cfg.config_path.clone(),
@@ -176,6 +179,7 @@ fn router(cfg: ApiConfig) -> Router {
             max_reads: cfg.max_reads,
             max_media: cfg.max_media,
             insight: cfg.insight,
+            image_auto_download: cfg.image_auto_download.is_some(),
         },
     );
     Router::new()
@@ -584,7 +588,13 @@ async fn command_route(
         return Err(error_response(StatusCode::NOT_FOUND, "not_found", "no such command").into());
     };
     let media = in_process && in_process::MEDIA.contains(&endpoint.command_name().as_str());
-    if in_process && !media && !in_process::COMMANDS.contains(&endpoint.command_name().as_str()) {
+    // an `/api/` route that runs in this process although it is no read (the image auto-download hook, #766)
+    let server = in_process && in_process::SERVER.contains(&endpoint.command_name().as_str());
+    if in_process
+        && !media
+        && !server
+        && !in_process::COMMANDS.contains(&endpoint.command_name().as_str())
+    {
         return Err(error_response(
             StatusCode::NOT_FOUND,
             "not_found",
@@ -673,6 +683,8 @@ async fn command_route(
         let ran = std::time::Instant::now();
         let done = if media {
             media_in_process(&st.hub, entered, &given, &command, &parts.headers).await
+        } else if server {
+            server_in_process(&st.hub, entered, &given, asked.fields.as_deref()).await
         } else {
             read_in_process(&st.hub, entered, &given, &command, asked.fields.as_deref()).await
         };
@@ -805,6 +817,28 @@ async fn media_in_process(
     ControlFlow::Break(match done {
         Ok(Ok(file)) => media_response(headers, file),
         Ok(Err((doc, exit))) => in_process_document(&doc, exit, None),
+        Err(err) => failed_in_process(&err),
+    })
+}
+
+/// The answer of an `/api/` route that runs in this process although it is no read, as [`in_process::SERVER`] lists
+/// them, holding `place`; the place back when the request is not one it takes.
+async fn server_in_process(
+    hub: &Arc<in_process::Hub>,
+    place: in_process::Place,
+    given: &in_process::Given,
+    fields: Option<&[String]>,
+) -> ControlFlow<Response, in_process::Place> {
+    let Ok(request) = given.image_original() else {
+        return ControlFlow::Continue(place);
+    };
+    let hub = hub.clone();
+    let done = in_process::held(place, async move {
+        in_process::image_original(&hub, request).await
+    })
+    .await;
+    ControlFlow::Break(match done {
+        Ok((doc, exit)) => in_process_document(&doc, exit, fields),
         Err(err) => failed_in_process(&err),
     })
 }

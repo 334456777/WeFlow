@@ -285,6 +285,7 @@ const HELP: &[(&str, &str)] = &[
     ("JSON payload", "JSON 参数"),
     ("Run the AI insight engine", "运行 AI 洞察引擎"),
     ("Run the image auto-download hook (Windows only)", "运行图片自动下载钩子（仅限 Windows）"),
+    ("Windows only: have WeChat download the original of a message's image (`weflow serve` runs the hook)", "仅限 Windows：让微信下载一条消息里图片的原图（钩子由 `weflow serve` 运行）"),
     ("Show where the runtime is unpacked and its version", "显示运行时的解压位置和版本"),
     ("List the files of the embedded runtime with sizes and hashes", "列出内置运行时的文件、大小和哈希"),
     ("Create a backup of the current account", "为当前账号创建备份"),

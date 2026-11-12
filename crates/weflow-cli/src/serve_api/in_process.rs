@@ -16,6 +16,10 @@ use weflow_core::sync::MutexExt;
 
 use super::endpoints::{find_param, flag_value, Endpoint, Kind, Params};
 
+/// Commands whose `/api/` route runs in this process although it is no read: the image auto-download hook lives in the
+/// server's own process, and `image download-original` leaves its requests with it (#766).
+pub(super) const SERVER: &[&str] = &["image download-original"];
+
 /// The commands with an `/api/` route; `tests::the_list_matches_the_cli` keeps it in step with
 /// `read_of`.
 pub(super) const COMMANDS: &[&str] = &[
@@ -156,12 +160,22 @@ struct Open {
 
 /// The hub of the in-process routes, built again when the config file changes (`PUT /config/set`, another
 /// profile…). Its databases stay open across hubs: `weflow-native` keeps them per path.
-#[derive(Default)]
 pub(super) struct Hub {
     open: Mutex<Option<Open>>,
+    /// The image auto-download hook of the server's process, which `image download-original` asks (#766).
+    image_auto_download: Option<weflow_core::image_download::ImageAutoDownload>,
 }
 
 impl Hub {
+    /// A hub whose requests see the image auto-download hook of this process, when it runs one (#766).
+    pub(super) fn new(
+        image_auto_download: Option<weflow_core::image_download::ImageAutoDownload>,
+    ) -> Self {
+        Self {
+            open: Mutex::new(None),
+            image_auto_download,
+        }
+    }
     /// Builds the hub in the background, which opens the databases of a chat page (see [`hub_and_generation`]), so
     /// the first request finds them ready.
     ///
@@ -195,6 +209,10 @@ impl Hub {
             None => None,
         };
         let (hub, config) = crate::reads::open_hub()?;
+        let hub = match &self.image_auto_download {
+            Some(svc) => hub.with_image_auto_download(svc.clone()),
+            None => hub,
+        };
         // a change while the config was read is caught by the next request
         let stamp = if open.is_some() && in_use.as_ref() == Some(&config) {
             before
@@ -540,6 +558,23 @@ impl Given {
             _ => return Err(Refused),
         })
     }
+
+    /// The request of a [`SERVER`] command, `image download-original` (#766).
+    pub(super) fn image_original(&self) -> Taken<ImageOriginal> {
+        Ok(ImageOriginal {
+            session_id: self.required("session-id")?,
+            msg_id: self.required("msg-id")?,
+            create_time: self.number("create-time")?,
+        })
+    }
+}
+
+/// What `image download-original` asks for: the image of one message.
+#[derive(Debug)]
+pub(super) struct ImageOriginal {
+    session_id: String,
+    msg_id: String,
+    create_time: Option<i64>,
 }
 
 /// The file an `/api/` media route answers: a message's, or a Moments post's.
@@ -576,6 +611,25 @@ pub(super) async fn run(hub: &Hub, read: Read) -> (Value, u8) {
     };
     let done =
         tokio::task::spawn_blocking(move || crate::reads::json_document(read.run(&hub))).await;
+    done.unwrap_or_else(|err| {
+        crate::reads::json_document(Err(AppError::runtime(format!("the command failed: {err}"))))
+    })
+}
+
+/// The `--json` document and exit code of an [`ImageOriginal`] request run in this process, as a child process would
+/// print them.
+pub(super) async fn image_original(hub: &Hub, request: ImageOriginal) -> (Value, u8) {
+    let hub = match hub.get() {
+        Ok(hub) => hub,
+        Err(err) => return crate::reads::json_document(Err(err)),
+    };
+    let done = tokio::task::spawn_blocking(move || {
+        let answer = hub
+            .image_download_original(&request.session_id, &request.msg_id, request.create_time)
+            .map(|requested| serde_json::json!(requested));
+        crate::reads::json_document(answer)
+    })
+    .await;
     done.unwrap_or_else(|err| {
         crate::reads::json_document(Err(AppError::runtime(format!("the command failed: {err}"))))
     })

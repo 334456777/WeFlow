@@ -327,6 +327,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
                 config_path: hub.config_path().to_path_buf(),
                 farewell: farewell.clone(),
                 insight: command.insight,
+                image_auto_download: auto_download.clone(),
             };
             serve_api::serve(cfg, listener).await
         };

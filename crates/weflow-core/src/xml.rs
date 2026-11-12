@@ -254,6 +254,43 @@ pub fn spaced_hex_attribute<'a>(xml: &'a str, open: &str, attr: &str) -> Option<
     None
 }
 
+/// `(?i)<open[^>]*\sattr\s*=\s*['"]([^'"]*)['"]`, where `open` is an ASCII prefix such as `<img` and `attr` is ASCII:
+/// an attribute value in either kind of quotes, of a whole attribute name (white space before it, so `md5` is not
+/// found in `cdnthumbmd5`). The last match before the tag's first `>` wins, as in [`attribute`].
+pub fn spaced_attribute<'a>(xml: &'a str, open: &str, attr: &str) -> Option<&'a str> {
+    debug_assert!(open.is_ascii() && attr.is_ascii());
+    let h = xml.as_bytes();
+    let mut from = 0;
+    while let Some(p) = find_ci(xml, from, open) {
+        from = p + 1;
+        let lo = p + open.len();
+        let gt = memchr::memchr(b'>', &h[lo..]).map_or(h.len(), |r| lo + r);
+        let value = find_all_ci(&xml[..gt], lo, attr)
+            .filter(|&a| {
+                xml[lo..a]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace)
+            })
+            .filter_map(|a| {
+                let quote = assignment_end(xml, a + attr.len())?;
+                let close = match h.get(quote)? {
+                    b'\'' => b'\'',
+                    b'"' => b'"',
+                    _ => return None,
+                };
+                let start = quote + 1;
+                let end = start + memchr::memchr(close, &h[start..])?;
+                (end <= gt).then(|| &xml[start..end])
+            })
+            .last();
+        if value.is_some() {
+            return value;
+        }
+    }
+    None
+}
+
 /// `(?i)<tag>([^<]+)</tag>`: the text of the first `<tag>` that holds only text. `tag` must be ASCII.
 pub fn text_inner<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
     let (h, name) = (xml.as_bytes(), tag.as_bytes());
@@ -493,5 +530,26 @@ mod tests {
         assert_eq!(find_ci("ab", 0, "abc"), None);
         assert_eq!(find_ci("ab", 3, "a"), None);
         assert_eq!(find_ci("ab", 2, ""), Some(2));
+    }
+
+    #[test]
+    fn spaced_attribute_reads_a_whole_attribute() {
+        let img = r#"<msg><img aeskey="0123456789abcdef0123456789abcdef" cdnbigimgurl="http://x/y?a=1&amp;b=2" hdlength="2400000" cdnthumbmd5="zz" md5="aabb"/></msg>"#;
+        assert_eq!(
+            spaced_attribute(img, "<img", "cdnbigimgurl"),
+            Some("http://x/y?a=1&amp;b=2")
+        );
+        assert_eq!(spaced_attribute(img, "<img", "hdlength"), Some("2400000"));
+        // `md5` is not the `cdnthumbmd5` before it
+        assert_eq!(spaced_attribute(img, "<img", "md5"), Some("aabb"));
+        // single quotes, names of any case, and the last match before the tag's `>`
+        assert_eq!(
+            spaced_attribute("<img MD5='1' md5 = '2' >", "<IMG", "md5"),
+            Some("2")
+        );
+        assert_eq!(spaced_attribute("<img>", "<img", "md5"), None);
+        assert_eq!(spaced_attribute("<img md5=x>", "<img", "md5"), None);
+        // the value must end before the tag's `>`
+        assert_eq!(spaced_attribute("<img md5='1>", "<img", "md5"), None);
     }
 }

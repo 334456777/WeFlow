@@ -185,6 +185,17 @@ fn media_come_back_as_files_from_the_process() {
     );
     let hd_url = format!("/api/chat/image-data?{query}&variant=hd");
     assert_eq!(server.call("GET", &hd_url, "").status, 404);
+    // asking WeChat to download it needs the hook, which this server does not run (#766)
+    let requested = server.call(
+        "POST",
+        "/api/image/download-original",
+        &format!(
+            r#"{{"session-id": "wxid_bob", "msg-id": "3", "create-time": {}}}"#,
+            T0 + DAY
+        ),
+    );
+    assert_eq!(requested.status, 501, "{}", requested.body);
+    assert_eq!(requested.json()["error"]["code"], "unsupported");
     let normal_url = format!("/api/chat/image-data?{query}&variant=normal");
     assert_eq!(server.call("GET", &normal_url, "").bytes, jpeg);
     // once WeChat has downloaded it: `hd` is the original, and `normal` still the image opened

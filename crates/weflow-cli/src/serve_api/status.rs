@@ -119,6 +119,8 @@ pub(super) struct ServerInfo {
     pub(super) max_reads: usize,
     pub(super) max_media: usize,
     pub(super) insight: bool,
+    /// Whether the image auto-download hook runs here, without which no original can be asked for (#766).
+    pub(super) image_auto_download: bool,
 }
 
 impl Status {
@@ -133,6 +135,7 @@ impl Status {
                     "maxMedia": server.max_media,
                 },
                 "insight": server.insight,
+                "imageAutoDownload": server.image_auto_download,
             })),
         }
     }

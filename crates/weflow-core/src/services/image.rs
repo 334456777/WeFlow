@@ -444,6 +444,32 @@ fn lookup_bases(
     keys
 }
 
+/// The `Img` folder of an image's month: `msg/attach/<md5(session)>/<yyyy-mm>/Img`, the first of
+/// [`img::session_dirs_for_storage`] that has that month's folder; `None` when the conversation or the time is missing,
+/// or when no such folder is on this computer.
+pub(super) fn image_month_dir(
+    account_dir: &Path,
+    session_id: Option<&str>,
+    create_time: Option<i64>,
+) -> Option<PathBuf> {
+    let session = session_id.unwrap_or("").trim();
+    let month = img::year_month_from_create_time(create_time);
+    if session.is_empty() || month.is_empty() {
+        return None;
+    }
+    img::session_dirs_for_storage(session)
+        .into_iter()
+        .map(|session_dir| {
+            account_dir
+                .join("msg")
+                .join("attach")
+                .join(session_dir)
+                .join(&month)
+                .join("Img")
+        })
+        .find(|root| root.is_dir())
+}
+
 impl ServiceHub {
     /// The account directory without needing the database key.
     pub(super) fn account_dir_only(&self) -> AppResult<PathBuf> {
@@ -551,24 +577,7 @@ impl ServiceHub {
         session_id: Option<&str>,
         create_time: Option<i64>,
     ) -> Vec<String> {
-        let session = session_id.unwrap_or("").trim();
-        let month = img::year_month_from_create_time(create_time);
-        if session.is_empty() || month.is_empty() {
-            return Vec::new();
-        }
-        // the month's folder in the first of the conversation's folders that has one
-        let Some(root) = img::session_dirs_for_storage(session)
-            .into_iter()
-            .map(|session_dir| {
-                account_dir
-                    .join("msg")
-                    .join("attach")
-                    .join(session_dir)
-                    .join(&month)
-                    .join("Img")
-            })
-            .find(|root| root.is_dir())
-        else {
+        let Some(root) = image_month_dir(account_dir, session_id, create_time) else {
             return Vec::new();
         };
         let mut out: Vec<String> = Vec::new();
@@ -1573,7 +1582,7 @@ impl ServiceHub {
     }
 
     /// [`Self::image_payload_for_message`], and the message as WeChat keeps it (its XML).
-    fn image_payload_and_content(
+    pub(super) fn image_payload_and_content(
         &self,
         session_id: &str,
         msg_id: &str,
@@ -1656,6 +1665,32 @@ mod tests {
         assert_eq!(
             unsupported_image_message(None, Unsupported::NoPicture),
             "WXGF image cannot be converted: the data is damaged (no picture)"
+        );
+    }
+
+    #[test]
+    fn the_img_folder_of_a_months_image_is_under_the_conversations_folder() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-image-month");
+        let session = "wxid_month";
+        let month = img::year_month_from_create_time(Some(1_700_000_000));
+        assert!(!month.is_empty());
+        // nothing on this computer yet
+        assert_eq!(
+            image_month_dir(&dir, Some(session), Some(1_700_000_000)),
+            None
+        );
+        assert_eq!(image_month_dir(&dir, None, Some(1_700_000_000)), None);
+        assert_eq!(image_month_dir(&dir, Some(session), None), None);
+        let folder = dir
+            .join("msg")
+            .join("attach")
+            .join(img::session_dir_for_storage(session))
+            .join(&month)
+            .join("Img");
+        std::fs::create_dir_all(&folder).unwrap();
+        assert_eq!(
+            image_month_dir(&dir, Some(session), Some(1_700_000_000)),
+            Some(folder)
         );
     }
 
