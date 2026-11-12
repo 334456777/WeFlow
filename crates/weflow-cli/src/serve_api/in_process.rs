@@ -819,7 +819,7 @@ mod tests {
                 .ok()
                 .map(|(m, _)| Asked::Media(Media::Chat(m))),
             crate::Commands::Sns(sns) => match sns.command {
-                crate::SnsSubcommand::Media { url, key, .. } => {
+                crate::commands::sns::SnsSubcommand::Media { url, key, .. } => {
                     Some(Asked::Media(Media::Sns { url, key }))
                 }
                 _ => None,
@@ -938,7 +938,7 @@ mod tests {
 
     #[test]
     fn media_commands_parse_with_the_placeholder_out() {
-        use crate::{ChatSubcommand, Commands, SnsSubcommand};
+        use crate::{commands::chat::ChatSubcommand, commands::sns::SnsSubcommand, Commands};
         let endpoints = super::super::Endpoints::new();
         for name in MEDIA {
             let ep = endpoints

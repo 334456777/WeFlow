@@ -4,13 +4,16 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    checked, commands::cache::CacheCommand, commands::cache::CacheSubcommand,
-    commands::config::ConfigCommand, commands::config::ConfigSubcommand, commands::db::DbCommand,
-    commands::db::DbSubcommand, commands::runtime::RuntimeCommand,
-    commands::runtime::RuntimeSubcommand, exit_status, AnalyticsCommand, AnalyticsSubcommand,
-    AnnualSubcommand, BizSubcommand, ChatCommand, ChatSubcommand, Commands, GroupCommand,
-    GroupSubcommand, InsightCommand, InsightSubcommand, ReportCommand, ReportSubcommand,
-    SnsCommand, SnsSubcommand, VERSION,
+    checked, commands::analytics::AnalyticsCommand, commands::analytics::AnalyticsSubcommand,
+    commands::biz::BizSubcommand, commands::cache::CacheCommand, commands::cache::CacheSubcommand,
+    commands::chat::ChatCommand, commands::chat::ChatSubcommand, commands::config::ConfigCommand,
+    commands::config::ConfigSubcommand, commands::db::DbCommand, commands::db::DbSubcommand,
+    commands::group::GroupCommand, commands::group::GroupSubcommand,
+    commands::insight::InsightCommand, commands::insight::InsightSubcommand,
+    commands::report::AnnualSubcommand, commands::report::ReportCommand,
+    commands::report::ReportSubcommand, commands::runtime::RuntimeCommand,
+    commands::runtime::RuntimeSubcommand, commands::sns::SnsCommand, commands::sns::SnsSubcommand,
+    exit_status, Commands, VERSION,
 };
 use serde_json::Value;
 use weflow_core::config::{AppContext, ConfigStore};
