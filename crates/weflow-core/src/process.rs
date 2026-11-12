@@ -71,7 +71,7 @@ pub fn processes() -> Vec<Process> {
     list
 }
 
-/// Process ids of the running processes whose executable file name is one of `images` (see [`pick_pids`] for the
+/// Process ids of the running processes whose executable file name is one of `images` (see `pick_pids` for the
 /// order). Empty when the process list cannot be read.
 #[cfg(windows)]
 pub fn pids_by_image(images: &[&str]) -> Vec<u32> {

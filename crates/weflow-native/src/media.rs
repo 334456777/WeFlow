@@ -442,7 +442,7 @@ impl Account {
     ///
     /// The text is the one WeChat's own search matches: WeChat's index (`message_fts.db`) is read where it holds the
     /// messages, and the messages it does not hold yet (or every message, without an index) are matched on the same
-    /// text, told from the message ([`indexed_text`]).
+    /// text, told from the message (`indexed_text`).
     pub fn search_messages(
         &self,
         keyword: &str,

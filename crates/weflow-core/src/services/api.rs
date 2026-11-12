@@ -1020,7 +1020,7 @@ impl ServiceHub {
     }
 
     /// The avatars of the rows of a list (`export sessions`, `export contacts` with `--media avatar`) for its HTML
-    /// page, written to `media/<out name>/avatars/` beside `out` as [`Self::write_avatars`] does. Returns
+    /// page, written to `media/<out name>/avatars/` beside `out` as `write_avatars` does. Returns
     /// `{ username: path from the page }` for those written.
     pub async fn export_list_avatars(
         &self,

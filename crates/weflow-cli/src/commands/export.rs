@@ -42,6 +42,10 @@ enum ExportSubcommand {
         #[arg(long)]
         no_avatar_download: bool,
         /// Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)
+        #[expect(
+            rustdoc::invalid_html_tags,
+            reason = "the comment is the --help text, where <list> stands for the list's name"
+        )]
         #[arg(long)]
         zip: bool,
     },
@@ -66,6 +70,10 @@ enum ExportSubcommand {
         #[arg(long)]
         no_avatar_download: bool,
         /// Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)
+        #[expect(
+            rustdoc::invalid_html_tags,
+            reason = "the comment is the --help text, where <list> stands for the list's name"
+        )]
         #[arg(long)]
         zip: bool,
     },
@@ -113,6 +121,10 @@ enum ExportSubcommand {
         #[arg(long)]
         end: Option<String>,
         /// Output file; with several formats a folder, or with --zip the zip (a folder: <conversation>.zip in it)
+        #[expect(
+            rustdoc::invalid_html_tags,
+            reason = "the comment is the --help text, where <conversation> stands for the conversation's name"
+        )]
         #[arg(long)]
         out: PathBuf,
         /// txt (default), json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql; several comma separated

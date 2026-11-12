@@ -1164,7 +1164,7 @@ impl ServiceHub {
             .map_err(|err| AppError::native(err.to_string()))
     }
 
-    /// A newest-first page of a conversation for `chat messages` and `chat latest`, as [`MessageRow`]s: from the
+    /// A newest-first page of a conversation for `chat messages` and `chat latest`, as [`MessageRow`](crate::contract::MessageRow)s: from the
     /// newest message, after `offset` of them, or next to the message of a `_cursor` (`before`: the older ones;
     /// `after`: the newer ones closest to it). Every row has its own `_cursor`, to ask for the page next to it.
     pub fn message_page(
