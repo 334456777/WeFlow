@@ -4,10 +4,12 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    checked, exit_status, AnalyticsCommand, AnalyticsSubcommand, AnnualSubcommand, BizSubcommand,
-    CacheCommand, CacheSubcommand, ChatCommand, ChatSubcommand, Commands, ConfigCommand,
-    ConfigSubcommand, DbCommand, DbSubcommand, GroupCommand, GroupSubcommand, InsightCommand,
-    InsightSubcommand, ReportCommand, ReportSubcommand, RuntimeCommand, RuntimeSubcommand,
+    checked, commands::cache::CacheCommand, commands::cache::CacheSubcommand,
+    commands::config::ConfigCommand, commands::config::ConfigSubcommand, commands::db::DbCommand,
+    commands::db::DbSubcommand, commands::runtime::RuntimeCommand,
+    commands::runtime::RuntimeSubcommand, exit_status, AnalyticsCommand, AnalyticsSubcommand,
+    AnnualSubcommand, BizSubcommand, ChatCommand, ChatSubcommand, Commands, GroupCommand,
+    GroupSubcommand, InsightCommand, InsightSubcommand, ReportCommand, ReportSubcommand,
     SnsCommand, SnsSubcommand, VERSION,
 };
 use serde_json::Value;
