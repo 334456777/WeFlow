@@ -1053,7 +1053,7 @@ export const en: Record<string, string> = {
   "自动下载图片（仅 Windows）": "Download images automatically (Windows only)",
   "自动下载原图的会话": "Conversations to download originals for",
   "会话 ID，用逗号分隔": "Conversation ids, separated by commas",
-  "留空表示不自动下载，只处理网页发起的请求。": "Leave it empty to download nothing automatically; only requests from the page do.",
+  "留空表示不为任何会话下载原图。": "Leave it empty to download originals for no conversation.",
   "要填 1 到 65535 的整数。": "Enter a whole number from 1 to 65535.",
   "读不到启动选项。": "The startup options cannot be read.",
   "运行灵感引擎": "Run the insight engine",
