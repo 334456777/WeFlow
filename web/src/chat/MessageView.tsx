@@ -164,7 +164,7 @@ export function MessageView({ sessionId, message, onPreview }: {
       </div>;
     case 'link':
       return <Card href={message.linkUrl} className="link-bubble" label={message.linkTitle}>
-        <strong className="card-bubble-title clamp-2">{message.linkTitle || withoutLabel(text)}</strong>
+        <strong className="card-bubble-title"><span className="clamp-2">{message.linkTitle || withoutLabel(text)}</span></strong>
         <span className="card-bubble-body">
           {message.appMsgDesc && <span className="clamp-3">{message.appMsgDesc}</span>}
           {(message.linkThumb || message.appMsgThumbUrl) && <RemoteImage className="card-thumb" src={(message.linkThumb || message.appMsgThumbUrl)!} />}
@@ -174,7 +174,7 @@ export function MessageView({ sessionId, message, onPreview }: {
     case 'finder':
       return <Card href={message.linkUrl} className="finder-bubble" label={message.linkTitle}>
         {message.finderCoverUrl && <span className="finder-cover"><RemoteImage src={message.finderCoverUrl} /><span className="play-badge" aria-hidden="true"><Play size={18} weight="fill" /></span></span>}
-        <strong className="card-bubble-title clamp-2">{message.linkTitle || withoutLabel(text)}</strong>
+        <strong className="card-bubble-title"><span className="clamp-2">{message.linkTitle || withoutLabel(text)}</span></strong>
         <small className="card-bubble-foot"><VideoCamera size={12} />{t('视频号{value}', { value: message.finderNickname ? ' · ' + message.finderNickname : '' })}</small>
       </Card>;
     case 'record':

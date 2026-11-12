@@ -94,8 +94,7 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 /* Cards: links, Channels posts, files, chat records, contacts, places, red packets and transfers. */
 .card-bubble { display: flex; flex-direction: column; gap: var(--space-1); width: min(280px, 100%); color: inherit; text-decoration: none; font-size: var(--text-sm); }
 a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underline-offset: 3px; }
-/* a title of two lines (.clamp-2) is laid out as flex too */
-.card-bubble-title, .card-bubble-title.clamp-2 { display: flex; align-items: flex-start; gap: var(--space-1); font-weight: var(--weight-semibold); }
+.card-bubble-title { display: flex; align-items: flex-start; gap: var(--space-1); font-weight: var(--weight-semibold); }
 
 .card-bubble-title svg { margin-top: 3px; }
 .card-bubble-body { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
