@@ -1,5 +1,5 @@
 //! Statistics over the message tables. The ones over every message of a table read the few cells they need through
-//! [`crate::leaf_scan`] and count them here; a table the scan does not read is counted with grouped SQL.
+//! `leaf_scan` and count them here; a table the scan does not read is counted with grouped SQL.
 //!
 //! Dates, hours and weekdays are in local time (SQLite `localtime`), matching what WeFlow's desktop app shows.
 //! Output shapes are the ones the service layer already consumes (`total/sent/received/...`).

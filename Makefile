@@ -96,6 +96,7 @@ $(BOLD)基础命令$(RESET)
   $(CYAN)make fmt$(RESET)             格式化代码
   $(CYAN)make fmt-check$(RESET)       检查代码是否已按 rustfmt 格式化
   $(CYAN)make lint$(RESET)            Clippy 静态分析
+  $(CYAN)make rustdoc$(RESET)         生成 API 文档，rustdoc 的警告视为错误
   $(CYAN)make clean$(RESET)           清理 target/
 
 $(BOLD)安装$(RESET)
@@ -111,7 +112,7 @@ $(BOLD)跨平台编译$(RESET)
 $(BOLD)环境$(RESET)
   $(CYAN)make check-tools$(RESET)     检查并自动安装所有必要工具
   $(CYAN)make env$(RESET)             显示当前环境信息
-  $(CYAN)make ci$(RESET)              代码 CI，与 GitHub Actions 一致 (fmt-check+lint+test；文档检查另跑 make docs-check)
+  $(CYAN)make ci$(RESET)              代码 CI，与 GitHub Actions 一致 (fmt-check+lint+rustdoc+test；文档检查另跑 make docs-check)
 
 endef
 export HELP_TEXT
@@ -182,7 +183,7 @@ check-tools: check-git check-rust
 # ─────────────────────────────────────────────────────────────────────────────
 # 核心构建目标
 # ─────────────────────────────────────────────────────────────────────────────
-.PHONY: build release test check fmt fmt-check lint clean docs-check
+.PHONY: build release test check fmt fmt-check lint rustdoc clean docs-check
 
 build: check-rust
 	@printf "$(BOLD)▶ cargo build$(RESET)\n"
@@ -221,6 +222,12 @@ lint: check-rust
 	@printf "$(BOLD)▶ cargo clippy$(RESET)\n"
 	@cargo clippy --version >/dev/null 2>&1 || rustup component add clippy
 	cargo clippy --workspace --all-targets -- -D warnings
+
+# The API documentation with rustdoc's warnings as errors: a link to a private or unknown item, or a doc comment
+# read as an unclosed HTML tag, fails the check.
+rustdoc: check-rust
+	@printf "$(BOLD)▶ cargo doc$(RESET)\n"
+	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
 clean:
 	@printf "$(BOLD)▶ cargo clean$(RESET)\n"
@@ -352,7 +359,7 @@ cross-all: cross-macos cross-linux cross-windows
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: ci env
 
-ci: fmt-check lint test
+ci: fmt-check lint rustdoc test
 	@printf "$(GREEN)$(BOLD)✓ CI 全流程通过$(RESET)\n"
 
 env:

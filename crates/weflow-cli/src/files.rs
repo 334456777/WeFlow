@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use weflow_core::error::{AppError, AppResult};
+use weflow_core::export_msg::csv_cell;
 
 pub(crate) fn write_json_file(path: &Path, value: &Value) -> AppResult<()> {
     if let Some(parent) = path.parent() {
@@ -60,13 +61,13 @@ pub(crate) fn write_csv_file(path: &Path, value: &Value) -> AppResult<()> {
     if headers.is_empty() {
         out.push_str("index,value\n");
         for (idx, row) in rows.iter().enumerate() {
-            out.push_str(&format!("{idx},{}\n", csv_escape(&row.to_string())));
+            out.push_str(&format!("{idx},{}\n", csv_cell(&row.to_string())));
         }
     } else {
         out.push_str(
             &headers
                 .iter()
-                .map(|header| csv_escape(header))
+                .map(|header| csv_cell(header))
                 .collect::<Vec<_>>()
                 .join(","),
         );
@@ -87,7 +88,7 @@ pub(crate) fn write_csv_file(path: &Path, value: &Value) -> AppResult<()> {
                                     .map(ToString::to_string)
                                     .unwrap_or_else(|| value.to_string())
                             })
-                            .map(|value| csv_escape(&value))
+                            .map(|value| csv_cell(&value))
                             .unwrap_or_default()
                     })
                     .collect::<Vec<_>>()
@@ -97,12 +98,4 @@ pub(crate) fn write_csv_file(path: &Path, value: &Value) -> AppResult<()> {
         }
     }
     write_text_file(path, &out)
-}
-
-pub(crate) fn csv_escape(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
 }

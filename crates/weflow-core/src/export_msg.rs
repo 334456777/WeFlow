@@ -43,6 +43,7 @@ use format::write_pretty;
 use names::{resolve_group_nickname, DisplayPref, NameBook, Profile};
 use spool::{EntryFormat, RenderedEntries};
 
+pub use format::csv_cell;
 pub use list_html::{ListKind, ListPage};
 pub use moments_html::{MomentComment, MomentMedia, MomentMediaKind, MomentPost, MomentsPage};
 

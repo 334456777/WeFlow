@@ -1,11 +1,11 @@
 name: CI
 
-# Code changes run `make ci` (rustfmt, clippy with warnings as errors, the whole test suite) on Linux and macOS,
-# plus `make docs-check`. Changes to the READMEs or CLAUDE.md alone run docs-check.yml instead, and changes to the
-# HTML export's templates alone run html-template.yml (on main, the copies it commits run CI). Windows x64 (MSVC, a
-# release target) builds the CLI, runs the test suite and runs the CLI once, since some code (the allocator setup, the
-# platform helpers) only
-# compiles there; Windows arm64 is left to release.yml, so CI covers the three main platforms. The tests use the
+# Code changes run `make ci` (rustfmt, clippy and rustdoc with warnings as errors, the whole test suite) on Linux and
+# macOS, plus `make docs-check`. Changes to the READMEs or CLAUDE.md alone run docs-check.yml instead, and changes to
+# the HTML export's templates alone run html-template.yml (on main, the copies it commits run CI). Windows x64 (MSVC, a
+# release target) builds the CLI, checks the API documentation, runs the test suite and runs the CLI once, since some
+# code (the allocator setup, the platform helpers) only compiles there; Windows arm64 is left to release.yml, so CI
+# covers the three main platforms. The tests use the
 # dev profile like Linux and macOS: the release profile (thin LTO, one codegen unit) took ~13 minutes to compile
 # the ~20 test binaries and ~1 minute to run them.
 on:
@@ -112,14 +112,21 @@ jobs:
           rustc --version
 
       # rust-cache does not save again after an exact hit, so the key changes whenever the cached profiles do;
-      # `release-dev` holds the dependencies of both the release build and the dev-profile tests.
+      # `release-dev-doc` holds the dependencies of the release build, the dev-profile tests and the documentation.
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}-release-dev
+          key: ${{ matrix.target }}-release-dev-doc
 
       - name: Build
         shell: bash
         run: cargo build --release -p weflow-cli --target ${{ matrix.target }}
+
+      # the documentation of the code only Windows compiles, as `make rustdoc` checks it on Linux and macOS
+      - name: Documentation
+        shell: bash
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --target ${{ matrix.target }}
 
       - name: Test
         shell: bash

@@ -25,7 +25,7 @@ pub enum Unsupported {
     NoPicture,
     /// A parameter set the picture needs is missing.
     ParameterSets,
-    /// A coded picture larger than [`MAX_LUMA_SAMPLES`].
+    /// A coded picture larger than `MAX_LUMA_SAMPLES`.
     TooLarge,
     /// Samples of a bit depth a JPEG cannot be made from (outside 8 to 16 bits).
     BitDepth(u8),

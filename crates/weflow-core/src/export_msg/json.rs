@@ -378,7 +378,7 @@ pub(super) struct JsonMessage<'m> {
     pub(super) platform_message_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) reply_to_message_id: Option<String>,
-    /// The app-message and contact-card fields ([`extract_arkme_app_message_meta`],
+    /// The app-message and contact-card fields ([`extract_arkme_app_message_meta_in`],
     /// [`extract_arkme_contact_card_meta`]) and the quoted sender and text: which keys appear depends on the message
     /// XML, so they stay a JSON map, in the order they were found.
     #[serde(flatten)]

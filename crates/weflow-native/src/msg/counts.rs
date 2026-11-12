@@ -32,7 +32,7 @@ impl Account {
 
     /// `{ "YYYY-MM-DD": count }` in local time, ascending.
     ///
-    /// Only the time of each message is read, through [`leaf_scan`](crate::leaf_scan), which decrypts only the bytes
+    /// Only the time of each message is read, through `leaf_scan`, which decrypts only the bytes
     /// of each page that hold it; a table it does not read is counted through SQL.
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
         let mut counts: std::collections::BTreeMap<String, i64> = Default::default();

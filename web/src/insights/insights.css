@@ -3,6 +3,7 @@
 .insight-card.unread { cursor: pointer; }
 .insight-card header { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .insight-who { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.insight-who strong { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
 
 .insight-who span { color: var(--fg-subtle); font-size: var(--text-2xs); }
 .insight-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--state-busy); }

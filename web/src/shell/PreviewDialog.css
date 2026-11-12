@@ -59,7 +59,8 @@
 .preview-step:active:not(:disabled) { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); }
 .preview-step:disabled { box-shadow: var(--neu-disabled); color: var(--fg-subtle); cursor: not-allowed; }
 
-.preview-download.failed { color: var(--state-danger); }
+.icon-button.preview-download { box-shadow: var(--neu-raised-sm); }
+.icon-button.preview-download.failed { color: var(--state-danger); }
 /* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */
 .zoom-frame { display: flex; justify-content: center; overflow: hidden; touch-action: none; cursor: zoom-in; }
 .zoom-frame.zoomed { cursor: grab; }
@@ -73,6 +74,7 @@
   border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted); font-size: var(--text-xs);
   transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
+.original-button small { color: var(--fg-subtle); font-size: var(--text-2xs); }
 
 button.original-button:not([aria-disabled]):hover { color: var(--fg); box-shadow: var(--neu-pressed); }
 button.original-button:not([aria-disabled]):active { transform: scale(var(--press-scale)); }

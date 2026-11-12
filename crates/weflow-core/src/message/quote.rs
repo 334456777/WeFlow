@@ -313,11 +313,6 @@ pub fn is_text_quote_message_in(local_type: i64, x: &MsgXml) -> bool {
     x.app_type_twice() == "57"
 }
 
-/// Sender wxid of a quoted message, following `resolveQuotedSenderUsername`.
-pub fn quoted_sender_username(content: &str) -> Option<String> {
-    MsgXml::new(content).quoted_sender_username()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

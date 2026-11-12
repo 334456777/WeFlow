@@ -13,6 +13,7 @@ use crate::contract::{
     EmojiCount, GroupChat, GroupExported, GroupHours, GroupMedia, GroupMember, GroupRank,
     MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
+use crate::export_msg::csv_cell;
 use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
 
@@ -244,15 +245,6 @@ fn extract_owner(value: &Value, lookup: &HashMap<String, String>, depth: u32) ->
             None
         }
         _ => None,
-    }
-}
-
-/// CSV cell escaping (`escapeCsvValue`)
-fn csv_cell(v: &str) -> String {
-    if v.contains(['"', ',', '\n', '\r']) {
-        format!("\"{}\"", v.replace('"', "\"\""))
-    } else {
-        v.to_string()
     }
 }
 
