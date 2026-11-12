@@ -33,7 +33,7 @@ fn verb_name(verb: Verb) -> &'static str {
 
 /// The description, in Chinese when `zh`.
 pub(super) fn document(zh: bool) -> Value {
-    let mut cmd = crate::Cli::command();
+    let mut cmd = crate::cli::Cli::command();
     if zh {
         cmd = crate::i18n::localize_command(cmd);
     }

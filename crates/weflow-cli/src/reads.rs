@@ -3,18 +3,19 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{
-    checked, commands::analytics::AnalyticsCommand, commands::analytics::AnalyticsSubcommand,
-    commands::biz::BizSubcommand, commands::cache::CacheCommand, commands::cache::CacheSubcommand,
-    commands::chat::ChatCommand, commands::chat::ChatSubcommand, commands::config::ConfigCommand,
-    commands::config::ConfigSubcommand, commands::db::DbCommand, commands::db::DbSubcommand,
-    commands::group::GroupCommand, commands::group::GroupSubcommand,
-    commands::insight::InsightCommand, commands::insight::InsightSubcommand,
-    commands::report::AnnualSubcommand, commands::report::ReportCommand,
-    commands::report::ReportSubcommand, commands::runtime::RuntimeCommand,
-    commands::runtime::RuntimeSubcommand, commands::sns::SnsCommand, commands::sns::SnsSubcommand,
-    exit_status, Commands, VERSION,
-};
+use super::cli::Commands;
+use super::commands::analytics::{AnalyticsCommand, AnalyticsSubcommand};
+use super::commands::biz::BizSubcommand;
+use super::commands::cache::{CacheCommand, CacheSubcommand};
+use super::commands::chat::{ChatCommand, ChatSubcommand};
+use super::commands::config::{ConfigCommand, ConfigSubcommand};
+use super::commands::db::{DbCommand, DbSubcommand};
+use super::commands::group::{GroupCommand, GroupSubcommand};
+use super::commands::insight::{InsightCommand, InsightSubcommand};
+use super::commands::report::{AnnualSubcommand, ReportCommand, ReportSubcommand};
+use super::commands::runtime::{RuntimeCommand, RuntimeSubcommand};
+use super::commands::sns::{SnsCommand, SnsSubcommand};
+use super::{checked, exit_status, VERSION};
 use serde_json::Value;
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::error::{AppError, AppResult};

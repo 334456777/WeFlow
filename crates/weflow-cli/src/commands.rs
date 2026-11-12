@@ -15,5 +15,7 @@ pub(crate) mod insight;
 pub(crate) mod key;
 pub(crate) mod report;
 pub(crate) mod runtime;
+pub(crate) mod serve;
 pub(crate) mod sns;
 pub(crate) mod video;
+pub(crate) mod web;

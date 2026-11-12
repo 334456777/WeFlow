@@ -285,7 +285,7 @@ struct Endpoints(BTreeMap<String, Endpoint>);
 
 impl Endpoints {
     fn new() -> Self {
-        let mut cmd = super::Cli::command();
+        let mut cmd = crate::cli::Cli::command();
         cmd.build();
         let mut out = BTreeMap::new();
         collect(&cmd, &mut Vec::new(), &mut out);
@@ -1314,7 +1314,7 @@ async fn route(st: &AppState, req: Request) -> Response {
         let line: Vec<String> = std::iter::once(program)
             .chain(full.iter().cloned())
             .collect();
-        if let Err(err) = crate::i18n::try_parse_from::<crate::Cli>(&line) {
+        if let Err(err) = crate::i18n::try_parse_from::<crate::cli::Cli>(&line) {
             if let Some((doc, exit)) = crate::i18n::json_failure(&err) {
                 timing.stage("cmd", Some("refused in process"), ran);
                 return timing.on(in_process_document(
@@ -1835,7 +1835,7 @@ mod tests {
     }
 
     fn all_leaves() -> Vec<String> {
-        let mut cmd = super::super::Cli::command();
+        let mut cmd = crate::cli::Cli::command();
         cmd.build();
         let mut out = Vec::new();
         leaves(&cmd, &mut Vec::new(), &mut out);
@@ -1915,7 +1915,7 @@ mod tests {
 
     #[test]
     fn reserved_names_stay_free() {
-        let mut cmd = super::super::Cli::command();
+        let mut cmd = crate::cli::Cli::command();
         cmd.build();
         for sub in cmd.get_subcommands() {
             assert!(

@@ -673,12 +673,12 @@ mod tests {
 
     fn command_tree() -> Command {
         static TREE: std::sync::OnceLock<Command> = std::sync::OnceLock::new();
-        TREE.get_or_init(crate::i18n::build_command::<crate::Cli>)
+        TREE.get_or_init(crate::i18n::build_command::<crate::cli::Cli>)
             .clone()
     }
 
     /// The command line parsed by clap, as the child process does.
-    fn parse(argv: &[String]) -> Option<crate::Cli> {
+    fn parse(argv: &[String]) -> Option<crate::cli::Cli> {
         let line = ["weflow", "--json"]
             .into_iter()
             .map(String::from)
@@ -686,7 +686,7 @@ mod tests {
         command_tree()
             .try_get_matches_from(line)
             .ok()
-            .and_then(|m| crate::Cli::from_arg_matches(&m).ok())
+            .and_then(|m| crate::cli::Cli::from_arg_matches(&m).ok())
     }
 
     /// Commands of [`COMMANDS`] that run in process only with these arguments; without them, `/api/` runs them as
@@ -696,7 +696,7 @@ mod tests {
     #[test]
     fn the_list_matches_the_cli() {
         let endpoints = super::super::Endpoints::new();
-        let mut root = <crate::Cli as clap::CommandFactory>::command();
+        let mut root = <crate::cli::Cli as clap::CommandFactory>::command();
         root.build();
         for name in COMMANDS {
             let ep = endpoints
@@ -742,7 +742,7 @@ mod tests {
                         .chain(argv),
                 )
                 .ok()
-                .and_then(|m| crate::Cli::from_arg_matches(&m).ok())
+                .and_then(|m| crate::cli::Cli::from_arg_matches(&m).ok())
                 .unwrap_or_else(|| panic!("{name} does not parse"));
             assert!(
                 crate::reads::read_of(cli.command).is_ok(),
@@ -815,10 +815,10 @@ mod tests {
             return crate::reads::read_of(cli.command).ok().map(Asked::Read);
         }
         match cli.command {
-            crate::Commands::Chat(chat) => crate::reads::media_of(chat.command)
+            crate::cli::Commands::Chat(chat) => crate::reads::media_of(chat.command)
                 .ok()
                 .map(|(m, _)| Asked::Media(Media::Chat(m))),
-            crate::Commands::Sns(sns) => match sns.command {
+            crate::cli::Commands::Sns(sns) => match sns.command {
                 crate::commands::sns::SnsSubcommand::Media { url, key, .. } => {
                     Some(Asked::Media(Media::Sns { url, key }))
                 }
@@ -938,7 +938,9 @@ mod tests {
 
     #[test]
     fn media_commands_parse_with_the_placeholder_out() {
-        use crate::{commands::chat::ChatSubcommand, commands::sns::SnsSubcommand, Commands};
+        use crate::cli::Commands;
+        use crate::commands::chat::ChatSubcommand;
+        use crate::commands::sns::SnsSubcommand;
         let endpoints = super::super::Endpoints::new();
         for name in MEDIA {
             let ep = endpoints

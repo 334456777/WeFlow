@@ -478,7 +478,7 @@ mod tests {
             }
         }
         let mut missing = Vec::new();
-        walk(&build_command::<crate::Cli>(), &mut missing);
+        walk(&build_command::<crate::cli::Cli>(), &mut missing);
         missing.sort();
         missing.dedup();
         assert!(
@@ -518,7 +518,7 @@ mod tests {
             }
         }
         let mut missing = Vec::new();
-        walk(&build_command::<crate::Cli>(), "", &mut missing);
+        walk(&build_command::<crate::cli::Cli>(), "", &mut missing);
         assert!(
             missing.is_empty(),
             "no help text for:\n{}",

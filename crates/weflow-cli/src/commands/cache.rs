@@ -390,7 +390,7 @@ pub(super) fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Cli, Commands};
+    use crate::cli::{Cli, Commands};
     use clap::Parser;
 
     #[test]
