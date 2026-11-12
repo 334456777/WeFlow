@@ -1050,7 +1050,9 @@ impl ServiceHub {
         payer: &str,
         receiver: &str,
     ) -> AppResult<TransferNames> {
-        use crate::export_msg::{build_trusted_group_nicknames, resolve_group_nickname};
+        use crate::export_msg::{
+            names::build_trusted_group_nicknames, names::resolve_group_nickname,
+        };
         let wcdb = self.open_wcdb()?;
         let nicks = if chatroom_id.ends_with("@chatroom") {
             let v = wcdb.group_nicknames(chatroom_id).unwrap_or(Value::Null);

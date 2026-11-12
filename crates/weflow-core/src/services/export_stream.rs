@@ -720,7 +720,7 @@ mod tests {
                 start: None,
                 end: None,
                 sender: None,
-                display_pref: crate::export_msg::DisplayPref::Remark,
+                display_pref: crate::export_msg::names::DisplayPref::Remark,
                 excel_compact: false,
             };
             let opts = CollectOptions {
@@ -793,7 +793,7 @@ mod tests {
             start: None,
             end: None,
             sender: None,
-            display_pref: crate::export_msg::DisplayPref::Remark,
+            display_pref: crate::export_msg::names::DisplayPref::Remark,
             excel_compact: false,
         };
         let opts = CollectOptions {

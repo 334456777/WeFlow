@@ -14,7 +14,6 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
-use serde_json::ser::Formatter;
 use serde_json::{json, Map, Value};
 
 use crate::locale;
@@ -36,253 +35,22 @@ use crate::message::transfer::{
 use crate::message::xml::{extract_xml_value, rx, strip_sender_line, strip_sender_prefix, MsgXml};
 use crate::message::*;
 
+mod format;
 mod html;
 mod list_html;
 mod moments_html;
+pub mod names;
+pub(crate) mod spool;
+
+use format::{csv_cell, sql_escape, write_pretty};
+use names::{resolve_group_nickname, ContactInfo, DisplayPref, NameBook, Profile};
+use spool::{EntryFormat, RenderedEntries, SenderTally, Spool};
 
 pub use list_html::{ListKind, ListPage};
 pub use moments_html::{MomentComment, MomentMedia, MomentMediaKind, MomentPost, MomentsPage};
 
 fn chrome(zh: &'static str, en: &'static str) -> &'static str {
     locale::tr(en, zh)
-}
-
-// ─────────────────────────────── contacts / names ───────────────────────────────
-
-#[derive(Clone, Debug, Default)]
-pub struct ContactInfo {
-    pub username: String,
-    pub nickname: String,
-    pub remark: String,
-    pub alias: String,
-}
-
-impl ContactInfo {
-    pub fn from_value(username: &str, v: &Value) -> Self {
-        let s = |keys: &[&str]| {
-            keys.iter()
-                .filter_map(|k| v.get(*k).and_then(Value::as_str))
-                .find(|x| !x.is_empty())
-                .unwrap_or("")
-                .to_string()
-        };
-        ContactInfo {
-            username: {
-                let u = s(&["username", "userName"]);
-                if u.is_empty() {
-                    username.to_string()
-                } else {
-                    u
-                }
-            },
-            nickname: s(&["nickName", "nick_name", "nickname"]),
-            remark: s(&["remark"]),
-            alias: s(&["alias"]),
-        }
-    }
-
-    /// What WCDB's display-name lookup yields: remark, else nickname.
-    pub fn display_name(&self) -> String {
-        if !self.remark.is_empty() {
-            self.remark.clone()
-        } else if !self.nickname.is_empty() {
-            self.nickname.clone()
-        } else if !self.alias.is_empty() {
-            self.alias.clone()
-        } else {
-            self.username.clone()
-        }
-    }
-}
-
-type Loader<'a> = Box<dyn FnMut(&str) -> Option<ContactInfo> + 'a>;
-
-pub struct NameBook<'a> {
-    cache: HashMap<String, Option<ContactInfo>>,
-    loader: Loader<'a>,
-}
-
-impl<'a> NameBook<'a> {
-    pub fn new(loader: impl FnMut(&str) -> Option<ContactInfo> + 'a) -> Self {
-        NameBook {
-            cache: HashMap::new(),
-            loader: Box::new(loader),
-        }
-    }
-
-    #[cfg(test)]
-    fn from_map(map: HashMap<String, ContactInfo>) -> NameBook<'static> {
-        NameBook::new(move |u| map.get(u).cloned())
-    }
-
-    pub fn get(&mut self, username: &str) -> Option<ContactInfo> {
-        if let Some(found) = self.cache.get(username) {
-            return found.clone();
-        }
-        let loaded = (self.loader)(username);
-        self.cache.insert(username.to_string(), loaded.clone());
-        loaded
-    }
-
-    pub fn display_name(&mut self, username: &str) -> String {
-        match self.get(username) {
-            Some(c) => c.display_name(),
-            None => username.to_string(),
-        }
-    }
-}
-
-/// The senders of an export, in order of first appearance, and how many messages each sent (by lower-case id):
-/// what the member lists need, collected message by message.
-#[derive(Default)]
-struct SenderTally {
-    order: Vec<String>,
-    seen: HashSet<String>,
-    counts: HashMap<String, i64>,
-}
-
-impl SenderTally {
-    fn add(&mut self, sender: &str) {
-        if !sender.is_empty() && self.seen.insert(sender.to_string()) {
-            self.order.push(sender.to_string());
-        }
-        *self.counts.entry(sender.to_lowercase()).or_insert(0) += 1;
-    }
-}
-
-/// Entries of an export that are written to a file next to the output while the messages are read, then copied
-/// into the output between a header and a footer that need the totals. Removed when dropped.
-struct Spool {
-    path: std::path::PathBuf,
-    writer: Option<std::io::BufWriter<std::fs::File>>,
-    entries: usize,
-}
-
-impl Spool {
-    fn create(out: &Path) -> Result<Self> {
-        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
-        }
-        let mut name = out.as_os_str().to_os_string();
-        name.push(".part");
-        let path = std::path::PathBuf::from(name);
-        let file = std::fs::File::create(&path)?;
-        Ok(Self {
-            path,
-            writer: Some(std::io::BufWriter::with_capacity(1 << 20, file)),
-            entries: 0,
-        })
-    }
-
-    /// Appends one entry, which `write` writes, preceded by `separator` unless it is the first.
-    fn push_with(
-        &mut self,
-        separator: &str,
-        write: impl FnOnce(&mut std::io::BufWriter<std::fs::File>) -> io::Result<()>,
-    ) -> Result<()> {
-        use std::io::Write;
-        if let Some(w) = self.writer.as_mut() {
-            if self.entries > 0 {
-                w.write_all(separator.as_bytes())?;
-            }
-            write(w)?;
-        }
-        self.entries += 1;
-        Ok(())
-    }
-
-    /// Appends one entry, preceded by `separator` unless it is the first.
-    fn push(&mut self, separator: &str, entry: &[u8]) -> Result<()> {
-        use std::io::Write;
-        self.push_with(separator, |w| w.write_all(entry))
-    }
-
-    /// Appends `entry` pretty-printed as one JSON value nested `indent` spaces deep (see [`write_pretty`]),
-    /// preceded by `separator` unless it is the first.
-    fn push_json(&mut self, separator: &str, entry: &impl Serialize, indent: usize) -> Result<()> {
-        self.push_with(separator, |w| write_pretty(w, entry, indent))
-    }
-
-    /// Copies everything written so far to `out`.
-    fn copy_to(&mut self, out: &mut impl std::io::Write) -> Result<()> {
-        use std::io::Write;
-        if let Some(mut w) = self.writer.take() {
-            w.flush()?;
-        }
-        std::io::copy(&mut std::fs::File::open(&self.path)?, out)?;
-        Ok(())
-    }
-}
-
-impl Drop for Spool {
-    fn drop(&mut self) {
-        self.writer = None;
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-/// Formats whose entries do not depend on each other, so a page of them can be rendered on another thread ahead of
-/// the writer: [`Exporter::render_entries`] renders, [`Exporter::write_rendered`] writes them in order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EntryFormat {
-    Txt,
-    Sql,
-    Chatlab,
-    ChatlabJsonl,
-    /// Detailed JSON. Not arkme-json: its sender table numbers the senders in the order the messages show them.
-    Json,
-}
-
-impl EntryFormat {
-    /// Whether rendering is slow enough to be worth doing on the reading threads. A ChatLab or detailed-JSON entry
-    /// resolves names and prints a JSON object, which keeps the writer behind the readers; TXT and SQL entries are
-    /// cheap enough that the writer keeps up, and rendering them elsewhere only holds more text in flight (measured
-    /// in issue #14).
-    pub fn renders_ahead(self) -> bool {
-        matches!(self, Self::Chatlab | Self::ChatlabJsonl | Self::Json)
-    }
-
-    pub fn parse(format: &str) -> Option<Self> {
-        match format.to_ascii_lowercase().as_str() {
-            "txt" => Some(Self::Txt),
-            "sql" => Some(Self::Sql),
-            "chatlab" => Some(Self::Chatlab),
-            "chatlab-jsonl" => Some(Self::ChatlabJsonl),
-            "json" => Some(Self::Json),
-            _ => None,
-        }
-    }
-}
-
-/// A page of messages rendered ahead of writing (see [`Exporter::render_entries`]).
-#[derive(Debug, Default)]
-pub struct RenderedEntries {
-    /// The entries of the page, one after another, so a page takes a few allocations rather than one or more per
-    /// message.
-    text: Vec<u8>,
-    /// Where each entry ends in `text`, one per message, in order.
-    ends: Vec<usize>,
-    /// ChatLab: the sender of each message (the member list follows their first appearance).
-    pub senders: Vec<String>,
-    /// ChatLab: the people named inside forwarded chat histories, in order (they become members too).
-    pub record_names: Vec<String>,
-    /// Detailed JSON: the newest `create_time` of the page (the session header has the newest of all).
-    pub latest: Option<i64>,
-}
-
-impl RenderedEntries {
-    /// The entries, in order.
-    fn entries(&self) -> impl Iterator<Item = &[u8]> {
-        let starts = std::iter::once(0).chain(self.ends.iter().copied());
-        starts
-            .zip(&self.ends)
-            .map(|(start, &end)| &self.text[start..end])
-    }
-
-    /// Ends the entry written to `text` since the previous one.
-    fn end_entry(&mut self) {
-        self.ends.push(self.text.len());
-    }
 }
 
 /// The key of a detailed-JSON message's first field, whose value the writer sets (see
@@ -307,114 +75,6 @@ fn write_json_entry(w: &mut impl io::Write, entry: &[u8], local_id: usize) -> io
 
 /// Messages rendered at a time when an export is rendered and written on one thread.
 const RENDER_CHUNK: usize = 2000;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DisplayPref {
-    GroupNickname,
-    Remark,
-    Nickname,
-}
-
-impl DisplayPref {
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.trim() {
-            "group-nickname" => Some(Self::GroupNickname),
-            "remark" => Some(Self::Remark),
-            "nickname" => Some(Self::Nickname),
-            _ => None,
-        }
-    }
-
-    pub fn pick(self, wxid: &str, nickname: &str, remark: &str, group_nickname: &str) -> String {
-        let first = |vals: &[&str]| {
-            vals.iter()
-                .find(|v| !v.is_empty())
-                .map(|v| v.to_string())
-                .unwrap_or_default()
-        };
-        match self {
-            Self::GroupNickname => first(&[group_nickname, remark, nickname, wxid]),
-            Self::Remark => first(&[remark, nickname, wxid]),
-            Self::Nickname => first(&[nickname, wxid]),
-        }
-    }
-}
-
-pub fn normalize_group_nickname(value: &str) -> String {
-    let cleaned: String = value
-        .trim()
-        .chars()
-        .filter(|c| !(*c <= '\u{1f}' || *c == '\u{7f}'))
-        .collect();
-    if cleaned.is_empty() {
-        return String::new();
-    }
-    if cleaned.chars().all(|c| ",\"'“”‘’，、".contains(c)) {
-        return String::new();
-    }
-    cleaned
-}
-
-/// Keep only identities whose nickname is unambiguous (`buildTrustedGroupNicknameMap`).
-pub fn build_trusted_group_nicknames(
-    entries: impl IntoIterator<Item = (String, String)>,
-) -> HashMap<String, String> {
-    let mut buckets: HashMap<String, HashSet<String>> = HashMap::new();
-    for (id, nick) in entries {
-        let identity = id.trim().to_lowercase();
-        if identity.is_empty() {
-            continue;
-        }
-        let nickname = normalize_group_nickname(&nick);
-        if nickname.is_empty() {
-            continue;
-        }
-        buckets.entry(identity).or_default().insert(nickname);
-    }
-    buckets
-        .into_iter()
-        .filter_map(|(k, v)| {
-            if v.len() == 1 {
-                v.into_iter().next().map(|n| (k, n))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-pub fn resolve_group_nickname(map: &HashMap<String, String>, candidates: &[&str]) -> String {
-    let mut resolved = String::new();
-    let mut seen: Vec<&str> = Vec::new();
-    for c in candidates {
-        let t = c.trim();
-        if t.is_empty() || seen.contains(&t) {
-            continue;
-        }
-        seen.push(t);
-        let id = t.to_lowercase();
-        let nick = normalize_group_nickname(map.get(&id).map(String::as_str).unwrap_or(""));
-        if nick.is_empty() {
-            continue;
-        }
-        if resolved.is_empty() {
-            resolved = nick;
-        } else if resolved != nick {
-            return String::new();
-        }
-    }
-    resolved
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Profile {
-    pub wxid: String,
-    pub nickname: String,
-    pub remark: String,
-    pub alias: String,
-    pub group_nickname: String,
-    pub display_name: String,
-}
 
 // ───────────────────────────────── exporter ─────────────────────────────────
 
@@ -2418,33 +2078,6 @@ struct JsonDocument<'m> {
     group_members: Option<Vec<ArkGroupMember>>,
 }
 
-/// serde_json's compact format with every `</` inside a string written as `<\/`, so the JSON cannot close the
-/// `<script>` element it is embedded in.
-struct ScriptSafe;
-
-impl Formatter for ScriptSafe {
-    // `<` and `/` are never escaped, so a `</` of the text always lies within one fragment
-    fn write_string_fragment<W: ?Sized + io::Write>(
-        &mut self,
-        writer: &mut W,
-        fragment: &str,
-    ) -> io::Result<()> {
-        let mut rest = fragment;
-        while let Some(at) = rest.find("</") {
-            writer.write_all(&rest.as_bytes()[..=at])?;
-            writer.write_all(b"\\")?;
-            rest = &rest[at + 1..];
-        }
-        writer.write_all(rest.as_bytes())
-    }
-}
-
-/// Writes `value` as compact JSON that is safe inside a `<script>` element (see [`ScriptSafe`]).
-fn write_script_json(writer: &mut impl io::Write, value: &impl Serialize) -> io::Result<()> {
-    let mut serializer = serde_json::Serializer::with_formatter(writer, ScriptSafe);
-    value.serialize(&mut serializer).map_err(io::Error::from)
-}
-
 // ─────────────────────────────── small helpers ───────────────────────────────
 
 /// Turns detailed-JSON messages into arkme-json's compact form and numbers the senders on first sight.
@@ -2540,113 +2173,6 @@ impl ArkCompact {
     }
 }
 
-/// serde_json's pretty printing (two-space indent) for a value that sits `base` spaces deep in a document written
-/// piece by piece: every line after the first is indented by `base` more spaces.
-struct NestedPretty {
-    base: usize,
-    depth: usize,
-    has_value: bool,
-}
-
-impl NestedPretty {
-    fn new(base: usize) -> Self {
-        Self {
-            base,
-            depth: 0,
-            has_value: false,
-        }
-    }
-
-    fn new_line<W: ?Sized + io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        const SPACES: &[u8; 32] = b"                                ";
-        writer.write_all(b"\n")?;
-        let mut left = self.base + 2 * self.depth;
-        while left > 0 {
-            let n = left.min(SPACES.len());
-            writer.write_all(&SPACES[..n])?;
-            left -= n;
-        }
-        Ok(())
-    }
-}
-
-impl Formatter for NestedPretty {
-    fn begin_array<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.depth += 1;
-        self.has_value = false;
-        writer.write_all(b"[")
-    }
-
-    fn end_array<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.depth -= 1;
-        if self.has_value {
-            self.new_line(writer)?;
-        }
-        writer.write_all(b"]")
-    }
-
-    fn begin_array_value<W: ?Sized + io::Write>(
-        &mut self,
-        writer: &mut W,
-        first: bool,
-    ) -> io::Result<()> {
-        if !first {
-            writer.write_all(b",")?;
-        }
-        self.new_line(writer)
-    }
-
-    fn end_array_value<W: ?Sized + io::Write>(&mut self, _writer: &mut W) -> io::Result<()> {
-        self.has_value = true;
-        Ok(())
-    }
-
-    fn begin_object<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.depth += 1;
-        self.has_value = false;
-        writer.write_all(b"{")
-    }
-
-    fn end_object<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.depth -= 1;
-        if self.has_value {
-            self.new_line(writer)?;
-        }
-        writer.write_all(b"}")
-    }
-
-    fn begin_object_key<W: ?Sized + io::Write>(
-        &mut self,
-        writer: &mut W,
-        first: bool,
-    ) -> io::Result<()> {
-        if !first {
-            writer.write_all(b",")?;
-        }
-        self.new_line(writer)
-    }
-
-    fn begin_object_value<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        writer.write_all(b": ")
-    }
-
-    fn end_object_value<W: ?Sized + io::Write>(&mut self, _writer: &mut W) -> io::Result<()> {
-        self.has_value = true;
-        Ok(())
-    }
-}
-
-/// Writes `value` pretty-printed like `serde_json::to_string_pretty`, with every line after the first indented by
-/// `indent` spaces, for a value nested that deep in a document written piece by piece.
-fn write_pretty(
-    writer: &mut impl io::Write,
-    value: &impl Serialize,
-    indent: usize,
-) -> io::Result<()> {
-    let mut serializer = serde_json::Serializer::with_formatter(writer, NestedPretty::new(indent));
-    value.serialize(&mut serializer).map_err(io::Error::from)
-}
-
 /// 文本、图片、语音、视频、表情这几种最常见的消息（约占 9 成）不含 XML，不需要引用 / 链接 / 转账 / 系统消息的
 /// 解析（每一步都要把内容规范化、跑正则），直接给出结果；内容里带 appmsg / sysmsg / refermsg 的仍走完整流程。
 /// 结果与完整流程一致（有测试对照）。
@@ -2668,33 +2194,6 @@ fn plain_message_text(msg: &ExportMsg) -> Option<String> {
         43 => "[视频]".into(),
         _ => format_emoji_semantic_text(msg.emoji_caption.as_deref()),
     })
-}
-
-pub fn html_escape(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for c in value.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-pub fn csv_cell(value: &str) -> String {
-    if value.contains(['"', ',', '\r', '\n']) {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
-
-pub fn sql_escape(value: &str) -> String {
-    value.replace('\'', "''")
 }
 
 fn parse_record_time(value: &str) -> Option<i64> {
@@ -3379,26 +2878,6 @@ mod tests {
         assert_eq!(msgs[1]["id"], "111");
     }
 
-    /// Script-safe JSON is compact JSON with every `</` written as `<\/`, also next to escaped characters.
-    #[test]
-    fn script_json_escapes_every_closing_tag() {
-        for text in [
-            "</script>",
-            "a</b></c>",
-            "<</",
-            "\"</\"\n</",
-            "<\\/",
-            "</",
-            "plain",
-        ] {
-            let value = json!({ "b": text, "</k": [text, 1] });
-            let mut out = Vec::new();
-            write_script_json(&mut out, &value).unwrap();
-            let want = serde_json::to_string(&value).unwrap().replace("</", "<\\/");
-            assert_eq!(String::from_utf8(out).unwrap(), want, "{text:?}");
-        }
-    }
-
     #[test]
     fn sql_inserts() {
         let sql = with_exporter(false, |ex, msgs| ex.render_sql(msgs));
@@ -3471,23 +2950,6 @@ mod tests {
         let bytes = fs::read(&out).unwrap();
         assert_eq!(&bytes[..2], b"PK");
         assert!(bytes.len() > 2000);
-    }
-
-    #[test]
-    fn group_nickname_rules() {
-        let map = build_trusted_group_nicknames(vec![
-            ("WXID_A".into(), "Alpha".into()),
-            ("wxid_a".into(), "Alpha".into()),
-            ("wxid_b".into(), "X".into()),
-            ("wxid_b".into(), "Y".into()),
-            ("wxid_c".into(), "，，".into()),
-        ]);
-        assert_eq!(resolve_group_nickname(&map, &["wxid_a"]), "Alpha");
-        assert_eq!(resolve_group_nickname(&map, &["wxid_b"]), "");
-        assert_eq!(resolve_group_nickname(&map, &["wxid_c"]), "");
-        assert_eq!(DisplayPref::GroupNickname.pick("w", "n", "r", "g"), "g");
-        assert_eq!(DisplayPref::Remark.pick("w", "n", "", "g"), "n");
-        assert_eq!(DisplayPref::parse("nickname"), Some(DisplayPref::Nickname));
     }
 
     #[test]

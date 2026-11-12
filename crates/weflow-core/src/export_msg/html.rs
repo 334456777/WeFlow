@@ -30,7 +30,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use super::{chrome, html_escape, write_script_json, Exporter, Spool};
+use super::{chrome, format::html_escape, format::write_script_json, spool::Spool, Exporter};
 use crate::locale;
 use crate::message::{
     appmsg::extract_arkme_app_message_meta_in, quote::QuotedDisplay, system::clean_system_message,

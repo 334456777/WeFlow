@@ -1144,7 +1144,7 @@ impl ServiceHub {
         let format = req.format.to_ascii_lowercase();
         let before = file_stamp(out);
         let render_ahead =
-            crate::export_msg::EntryFormat::parse(&format).filter(|f| f.renders_ahead());
+            crate::export_msg::spool::EntryFormat::parse(&format).filter(|f| f.renders_ahead());
         let read = match render_ahead {
             // entries that do not depend on each other and are slow to render: the reading workers render them
             // too, this thread only writes them in order
@@ -1155,12 +1155,14 @@ impl ServiceHub {
                     req.excel_compact,
                     &wcdb,
                 )?;
-                let render: &export_stream::WithFinisher<'_, crate::export_msg::RenderedEntries> =
-                    &|body| {
-                        let mut names = name_book(&wcdb);
-                        let mut exporter = parts.exporter(&mut names);
-                        body(&mut |msgs| exporter.render_entries(entries, &msgs));
-                    };
+                let render: &export_stream::WithFinisher<
+                    '_,
+                    crate::export_msg::spool::RenderedEntries,
+                > = &|body| {
+                    let mut names = name_book(&wcdb);
+                    let mut exporter = parts.exporter(&mut names);
+                    body(&mut |msgs| exporter.render_entries(entries, &msgs));
+                };
                 export_stream::read_export_pages(&wcdb, req, &opts, render, |pages| {
                     let mut names = name_book(&wcdb);
                     let result = parts.exporter(&mut names).write_rendered(
@@ -1204,7 +1206,7 @@ impl ServiceHub {
     fn with_exporter<R>(
         &self,
         session_id: &str,
-        display_pref: crate::export_msg::DisplayPref,
+        display_pref: crate::export_msg::names::DisplayPref,
         excel_compact: bool,
         wcdb: &weflow_native::wcdb::Wcdb,
         f: impl FnOnce(&mut crate::export_msg::Exporter<'_, '_>) -> R,
@@ -1219,10 +1221,11 @@ impl ServiceHub {
     fn exporter_parts(
         &self,
         session_id: &str,
-        display_pref: crate::export_msg::DisplayPref,
+        display_pref: crate::export_msg::names::DisplayPref,
         excel_compact: bool,
         wcdb: &weflow_native::wcdb::Wcdb,
     ) -> AppResult<ExporterParts> {
+        use crate::export_msg::names::build_trusted_group_nicknames;
         use crate::export_msg::*;
         let (_, _, wxid) = self.connection_inputs()?;
         let raw_my_wxid = wxid.unwrap_or_default();
@@ -1805,7 +1808,7 @@ pub struct MessageExportRequest {
     pub start: Option<i64>,
     pub end: Option<i64>,
     pub sender: Option<String>,
-    pub display_pref: crate::export_msg::DisplayPref,
+    pub display_pref: crate::export_msg::names::DisplayPref,
     pub excel_compact: bool,
 }
 
@@ -1825,7 +1828,7 @@ struct ExporterParts {
 impl ExporterParts {
     fn exporter<'a, 'n>(
         &self,
-        names: &'a mut crate::export_msg::NameBook<'n>,
+        names: &'a mut crate::export_msg::names::NameBook<'n>,
     ) -> crate::export_msg::Exporter<'a, 'n> {
         crate::export_msg::Exporter {
             session: self.session.clone(),
@@ -1924,8 +1927,8 @@ fn no_messages(req: &MessageExportRequest) -> AppError {
 }
 
 /// Contact names looked up in `wcdb` as an export needs them (cached).
-fn name_book(wcdb: &weflow_native::wcdb::Wcdb) -> crate::export_msg::NameBook<'_> {
-    use crate::export_msg::{ContactInfo, NameBook};
+fn name_book(wcdb: &weflow_native::wcdb::Wcdb) -> crate::export_msg::names::NameBook<'_> {
+    use crate::export_msg::{names::ContactInfo, names::NameBook};
     NameBook::new(move |username: &str| {
         wcdb.contact(username)
             .ok()

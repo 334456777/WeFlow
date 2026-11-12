@@ -2847,7 +2847,7 @@ async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Va
             };
             let media_opts = parse_media_selection(&media, avatars)?;
             let parse_display = |s: &str| {
-                weflow_core::export_msg::DisplayPref::parse(s).ok_or_else(|| {
+                weflow_core::export_msg::names::DisplayPref::parse(s).ok_or_else(|| {
                     AppError::usage("--display-name must be group-nickname, remark or nickname")
                 })
             };

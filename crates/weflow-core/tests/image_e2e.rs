@@ -787,7 +787,7 @@ fn media_request(format: &str) -> weflow_core::services::MessageExportRequest {
         start: None,
         end: None,
         sender: None,
-        display_pref: weflow_core::export_msg::DisplayPref::Remark,
+        display_pref: weflow_core::export_msg::names::DisplayPref::Remark,
         excel_compact: false,
     }
 }

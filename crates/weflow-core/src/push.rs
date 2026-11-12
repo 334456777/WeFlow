@@ -867,7 +867,7 @@ impl PushEngine {
             }
         }
         let nicks = self.hub.group_nicknames_pub(chatroom_id);
-        let trusted = crate::export_msg::build_trusted_group_nicknames(nicks);
+        let trusted = crate::export_msg::names::build_trusted_group_nicknames(nicks);
         self.group_nicknames
             .insert(chatroom_id.to_string(), (trusted.clone(), Instant::now()));
         trusted
