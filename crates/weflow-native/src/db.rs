@@ -98,7 +98,7 @@ pub struct Account {
     /// Identity of the account owner (wxid, optionally with the `_xxxx` account-directory suffix);
     /// used to tell which messages were sent by the user.
     my_wxid: Option<String>,
-    pub(crate) cursors: Mutex<crate::msg::Cursors>,
+    pub(crate) cursors: Mutex<crate::msg::cursor::Cursors>,
     /// Most connections a snapshot gets for this handle's queries (see [`Account::set_read_connections`]).
     read_connections: std::sync::atomic::AtomicUsize,
     /// Queries run again because their snapshot went stale (see [`Account::stale_reruns`]).
