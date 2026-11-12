@@ -5,9 +5,16 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[cfg(feature = "alloc-stats")]
 mod alloc_stats;
+mod files;
 mod i18n;
 mod serve_api;
+mod term;
+
+use files::{
+    csv_escape, export_path, make_parent, write_csv_file, write_json_file, write_text_file,
+};
 use serde_json::{json, Value};
+use term::{align_columns, format_bytes, green, is_yes};
 use tracing_subscriber::EnvFilter;
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::contract::{
@@ -2173,100 +2180,6 @@ fn confirm_removal(heading: &str, targets: &[RemovalTarget], yes: bool) -> AppRe
     Ok(is_yes(&answer))
 }
 
-fn is_yes(answer: &str) -> bool {
-    matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
-}
-
-/// `1536` → `1.5 KB`: binary units, one decimal below 10.
-fn format_bytes(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-    let mut value = bytes as f64;
-    let mut unit = 0;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
-        value /= 1024.0;
-        unit += 1;
-    }
-    if unit == 0 {
-        format!("{bytes} B")
-    } else if value < 10.0 {
-        format!("{value:.1} {}", UNITS[unit])
-    } else {
-        format!("{value:.0} {}", UNITS[unit])
-    }
-}
-
-/// Pads the cells of `rows` into columns two spaces apart (CJK counts double); empty columns are left out. A cell
-/// of several values (one per line, `\n` between them) takes as many lines, each starting under its column's
-/// header (issue #258).
-fn align_columns(rows: &[Vec<String>]) -> Vec<String> {
-    use weflow_core::render::display_width;
-    let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
-    let widths: Vec<usize> = (0..columns)
-        .map(|i| {
-            rows.iter()
-                .filter_map(|r| r.get(i))
-                .flat_map(|c| c.lines())
-                .map(display_width)
-                .max()
-                .unwrap_or(0)
-        })
-        .collect();
-    let mut out = Vec::new();
-    for row in rows {
-        let cells: Vec<Vec<&str>> = row.iter().map(|c| c.lines().collect()).collect();
-        let height = cells.iter().map(Vec::len).max().unwrap_or(0).max(1);
-        for line in 0..height {
-            let text = cells
-                .iter()
-                .zip(&widths)
-                .filter(|&(_, &w)| w > 0)
-                .map(|(cell, &w)| {
-                    let part = cell.get(line).copied().unwrap_or("");
-                    format!("{part}{}", " ".repeat(w - display_width(part)))
-                })
-                .collect::<Vec<_>>()
-                .join("  ");
-            out.push(text.trim_end().to_string());
-        }
-    }
-    out
-}
-
-/// `text` in green on a terminal; plain when stdout is not one or NO_COLOR is set (https://no-color.org).
-fn green(text: &str) -> String {
-    use std::io::IsTerminal;
-    let color = std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
-        && std::io::stdout().is_terminal()
-        && enable_ansi();
-    if color {
-        format!("\x1b[32m{text}\x1b[0m")
-    } else {
-        text.to_string()
-    }
-}
-
-/// The Windows console shows ANSI colours only once asked to.
-#[cfg(windows)]
-fn enable_ansi() -> bool {
-    use windows_sys::Win32::System::Console::{
-        GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-        STD_OUTPUT_HANDLE,
-    };
-    // SAFETY: console calls on this process's own stdout handle; `mode` outlives the call that writes it
-    unsafe {
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        let mut mode = 0;
-        GetConsoleMode(handle, &mut mode) != 0
-            && (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0
-                || SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0)
-    }
-}
-
-#[cfg(not(windows))]
-fn enable_ansi() -> bool {
-    true
-}
-
 /// `cache list` as a table under a green header; `cache clear` / `clear-account`: what was removed.
 fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
@@ -3837,18 +3750,6 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
     Ok(json!({ "stopped": true }))
 }
 
-fn write_json_file(path: &Path, value: &Value) -> AppResult<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| {
-            AppError::runtime(format!("failed to create {}: {err}", parent.display()))
-        })?;
-    }
-    let bytes = serde_json::to_vec_pretty(value)
-        .map_err(|err| AppError::runtime(format!("failed to serialize JSON: {err}")))?;
-    std::fs::write(path, bytes)
-        .map_err(|err| AppError::runtime(format!("failed to write {}: {err}", path.display())))
-}
-
 /// A format `export sessions` and `export contacts` write a list in.
 #[derive(Clone, Copy)]
 enum ListFormat {
@@ -4043,96 +3944,6 @@ fn list_users(list: &Value) -> Vec<String> {
         .filter(|user| !user.is_empty() && seen.insert(*user))
         .map(str::to_string)
         .collect()
-}
-
-fn export_path(out: &Path, default_name: &str) -> PathBuf {
-    if out.extension().is_some() {
-        out.to_path_buf()
-    } else {
-        out.join(default_name)
-    }
-}
-
-/// The folder `path` goes into, made when it is not there: the writers of xlsx, HTML and SQL do not make it.
-fn make_parent(path: &Path) -> AppResult<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| {
-            AppError::runtime(format!("failed to create {}: {err}", parent.display()))
-        })?;
-    }
-    Ok(())
-}
-
-fn write_text_file(path: &Path, text: &str) -> AppResult<()> {
-    make_parent(path)?;
-    std::fs::write(path, text)
-        .map_err(|err| AppError::runtime(format!("failed to write {}: {err}", path.display())))
-}
-
-fn write_csv_file(path: &Path, value: &Value) -> AppResult<()> {
-    let rows = value.as_array().ok_or_else(|| {
-        AppError::runtime("CSV export expects an array; use --format json for nested data")
-    })?;
-    let mut headers = Vec::<String>::new();
-    for row in rows {
-        if let Some(object) = row.as_object() {
-            for key in object.keys() {
-                if !headers.contains(key) {
-                    headers.push(key.clone());
-                }
-            }
-        }
-    }
-
-    let mut out = String::new();
-    if headers.is_empty() {
-        out.push_str("index,value\n");
-        for (idx, row) in rows.iter().enumerate() {
-            out.push_str(&format!("{idx},{}\n", csv_escape(&row.to_string())));
-        }
-    } else {
-        out.push_str(
-            &headers
-                .iter()
-                .map(|header| csv_escape(header))
-                .collect::<Vec<_>>()
-                .join(","),
-        );
-        out.push('\n');
-        for row in rows {
-            let Some(object) = row.as_object() else {
-                continue;
-            };
-            out.push_str(
-                &headers
-                    .iter()
-                    .map(|header| {
-                        object
-                            .get(header)
-                            .map(|value| {
-                                value
-                                    .as_str()
-                                    .map(ToString::to_string)
-                                    .unwrap_or_else(|| value.to_string())
-                            })
-                            .map(|value| csv_escape(&value))
-                            .unwrap_or_default()
-                    })
-                    .collect::<Vec<_>>()
-                    .join(","),
-            );
-            out.push('\n');
-        }
-    }
-    write_text_file(path, &out)
-}
-
-fn csv_escape(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
 }
 
 /// The rows of the session list whose `username` is one of `ids`, compared exactly (#664).
@@ -4574,25 +4385,6 @@ mod tests {
     }
 
     #[test]
-    fn only_y_or_yes_confirms() {
-        for answer in ["y\n", "Y\n", "yes\r\n", " YES "] {
-            assert!(is_yes(answer), "{answer:?}");
-        }
-        for answer in ["\n", "", "n\n", "N", "no", "ye", "yy", "是"] {
-            assert!(!is_yes(answer), "{answer:?}");
-        }
-    }
-
-    #[test]
-    fn sizes_are_readable() {
-        assert_eq!(format_bytes(0), "0 B");
-        assert_eq!(format_bytes(1023), "1023 B");
-        assert_eq!(format_bytes(1536), "1.5 KB");
-        assert_eq!(format_bytes(85 << 20), "85 MB");
-        assert_eq!(format_bytes((12 << 30) / 10), "1.2 GB");
-    }
-
-    #[test]
     fn cache_clear_options_pick_their_parts() {
         let parse = |args: &[&str]| {
             let cli = Cli::try_parse_from(["weflow", "cache", "clear"].iter().chain(args)).unwrap();
@@ -4612,33 +4404,5 @@ mod tests {
         assert_eq!(parse(&["--runtime"]), [CachePart::Runtime]);
         assert_eq!(parse(&["--all"]), CachePart::ALL);
         assert_eq!(parse(&["--all", "--images"]), CachePart::ALL);
-    }
-
-    #[test]
-    fn columns_line_up_and_skip_empty_ones() {
-        let rows = vec![
-            vec!["".to_string(), "图片".to_string(), "1 KB".to_string()],
-            vec!["".to_string(), "keys".to_string(), "20 MB".to_string()],
-        ];
-        assert_eq!(align_columns(&rows), ["图片  1 KB", "keys  20 MB"]);
-    }
-
-    #[test]
-    fn a_cell_of_several_values_takes_a_line_each_under_its_column() {
-        let row = |cells: &[&str]| cells.iter().map(|c| c.to_string()).collect::<Vec<_>>();
-        let rows = vec![
-            row(&["部分", "大小", "路径"]),
-            row(&["旧运行时", "3 MB", "/a/runtime/1\n/a/runtime/longer/2"]),
-            row(&["图片", "1 KB", "/a/images"]),
-        ];
-        assert_eq!(
-            align_columns(&rows),
-            [
-                "部分      大小  路径",
-                "旧运行时  3 MB  /a/runtime/1",
-                "                /a/runtime/longer/2",
-                "图片      1 KB  /a/images",
-            ]
-        );
     }
 }
