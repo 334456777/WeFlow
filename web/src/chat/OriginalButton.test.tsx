@@ -31,13 +31,17 @@ describe('the original of a picture (#194)', () => {
     expect(onShow).toHaveBeenCalledWith(true);
   });
 
-  it('cannot be pressed until WeChat has downloaded it, and says why', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ thumb: true, normal: true, hd: false, hdBytes: 2_400_000 })));
+  it('cannot be pressed until WeChat has downloaded it, says why, and asks nothing without the server', async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ thumb: true, normal: true, hd: false, hdBytes: 2_400_000 }));
+    vi.stubGlobal('fetch', fetch);
     const onShow = vi.fn();
     render(<OriginalButton hd={hdOf()} canDownload={false} onToggle={onShow} />);
     const button = await screen.findByRole('button', { name: /还没有下载到这台电脑/ });
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(button.title).toBe('高清原图（2.3 MB）还没有下载到这台电脑：在微信里打开这张图片，点「查看原图」后再试');
+    // no hook, so nothing is asked for, and no state is said beside the button
+    expect(fetch.mock.calls).toHaveLength(1);
+    expect(document.querySelector('.original-state')).toBeNull();
     fireEvent.click(button);
     expect(onShow).not.toHaveBeenCalled();
   });
@@ -91,7 +95,7 @@ describe('asking WeChat for the original (#766)', () => {
     return { state, fetch };
   }
 
-  it('asks for it when it is missing, waits, and shows it once it has come', async () => {
+  it('asks for it when it is missing, says so beside the button, and shows it once it has come', async () => {
     vi.useFakeTimers();
     const { state, fetch } = server();
     vi.stubGlobal('fetch', fetch);
@@ -102,6 +106,8 @@ describe('asking WeChat for the original (#766)', () => {
     const waiting = screen.getByRole('button', { name: /正在下载原图/ });
     expect(waiting.getAttribute('aria-disabled')).toBe('true');
     expect(waiting.querySelector('.spin')).not.toBeNull();
+    // in words too, where a tooltip does not show
+    expect(document.querySelector('.original-state')?.textContent).toBe('正在下载原图');
     expect(fetch.mock.calls[1][0]).toBe(ASKED);
     expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'POST' });
     // WeChat downloads it at its next download, which the button looks for once in a while
@@ -111,25 +117,37 @@ describe('asking WeChat for the original (#766)', () => {
     expect(fetch.mock.calls.filter(call => String(call[0]).includes('/api/chat/image-info'))).toHaveLength(2);
   });
 
-  it('says when the server cannot ask WeChat at all', async () => {
+  it('says when the server cannot ask WeChat at all, and asks again when pressed', async () => {
     const { fetch } = server({ refuse: true });
     vi.stubGlobal('fetch', fetch);
     render(<OriginalButton hd={hdOf()} canDownload onToggle={vi.fn()} />);
-    const button = await screen.findByRole('button', { name: /没能让微信下载原图/ });
-    expect(button.getAttribute('aria-disabled')).toBe('true');
-    expect(fetch.mock.calls.filter(call => String(call[0]).includes(ASKED))).toHaveLength(1);
+    const button = await screen.findByRole('button', { name: /没能让微信下载原图，点此重试/ });
+    expect(button.getAttribute('aria-disabled')).toBeNull();
+    expect(document.querySelector('.original-state')?.textContent).toBe('没能让微信下载原图');
+    // another try leaves another request with the server
+    fireEvent.click(button);
+    await act(async () => {});
+    expect(fetch.mock.calls.filter(call => String(call[0]).includes(ASKED))).toHaveLength(2);
   });
 
-  it('gives up after a minute and says WeChat has not downloaded it', async () => {
+  it('gives up after a minute, says WeChat has not downloaded it, and asks again when pressed', async () => {
     vi.useFakeTimers();
-    const { fetch } = server();
+    const { state, fetch } = server();
     vi.stubGlobal('fetch', fetch);
-    render(<OriginalButton hd={hdOf()} canDownload onToggle={vi.fn()} />);
+    const onShow = vi.fn();
+    render(<OriginalButton hd={hdOf()} canDownload onToggle={onShow} />);
     await act(async () => {});
     expect(screen.getByRole('button', { name: /正在下载原图/ })).toBeTruthy();
     for (let i = 0; i < 30; i++) await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-    const button = screen.getByRole('button', { name: /微信还没有下载原图/ });
-    expect(button.title).toContain('在微信里打开这张图片');
+    const button = screen.getByRole('button', { name: /微信还没有下载原图，点此重试/ });
+    expect(document.querySelector('.original-state')?.textContent).toBe('微信还没有下载原图');
     expect(button.querySelector('.spin')).toBeNull();
+    // WeChat has it by now: asking again finds it and shows it
+    state.downloaded = true;
+    fireEvent.click(button);
+    // the click's update and the request that follows run on the faked clock too
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => {});
+    expect(onShow).toHaveBeenCalledWith(true);
   });
 });
