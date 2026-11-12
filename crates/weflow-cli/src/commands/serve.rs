@@ -18,9 +18,6 @@ pub(crate) struct ServeCommand {
     /// Run the AI insight engine
     #[arg(long)]
     insight: bool,
-    /// Run the image auto-download hook (Windows only)
-    #[arg(long)]
-    image_auto_download: bool,
     /// Listen address (default: 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1].
     #[expect(
         rustdoc::broken_intra_doc_links,
@@ -71,7 +68,6 @@ impl ServeCommand {
         self.max_media = self.max_media.or(saved.max_media);
         self.log_requests |= saved.log_requests == Some(true);
         self.insight |= saved.insight == Some(true);
-        self.image_auto_download |= saved.image_auto_download == Some(true);
         self.no_browser |= saved.open_browser == Some(false);
         self
     }
@@ -171,8 +167,11 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     let exe = std::env::current_exe()
         .map_err(|err| AppError::runtime(format!("cannot locate the weflow executable: {err}")))?;
 
-    let auto_download = if command.image_auto_download {
-        let svc = weflow_core::image_download::ImageAutoDownload::new(hub.runtime_dir());
+    // On Windows x64 the hook is on unless `serve_image_auto_download` is false; elsewhere it is skipped.
+    let auto_download_enabled = weflow_core::image_download::supported()
+        && hub.serve_settings().image_auto_download.unwrap_or(true);
+    let auto_download = if auto_download_enabled {
+        let svc = weflow_core::image_download::ImageAutoDownload::new();
         let started = svc.start(config_whitelist(hub));
         if started["success"] != true {
             eprintln!(
@@ -193,6 +192,10 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     } else {
         None
     };
+    let image_auto_download = auto_download
+        .as_ref()
+        .map(|svc| svc.status()["isHooked"] == true)
+        .unwrap_or(false);
 
     let insight_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     if command.insight {
@@ -216,7 +219,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         "url": format!("http://{bound}"),
         "tokenConfigured": token.is_some(),
         "insight": command.insight,
-        "imageAutoDownload": command.image_auto_download
+        "imageAutoDownload": image_auto_download
     });
     if let Some(generated) = &generated_token {
         started["generatedToken"] = json!(generated);

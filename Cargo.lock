@@ -3315,7 +3315,6 @@ dependencies = [
  "indexmap",
  "jpeg-decoder",
  "jpeg-encoder",
- "libloading",
  "md-5",
  "memchr",
  "proptest",

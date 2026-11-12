@@ -212,6 +212,8 @@ pub(crate) fn account(root: &Path) -> (PathBuf, Fixture) {
         ("db_path", fixture.account_dir.to_string_lossy().to_string()),
         ("wxid", "wxid_me_ab12".to_string()),
         ("decrypt_key", fixture.key_hex()),
+        // the tests must not hook a real WeChat on this machine
+        ("serve_image_auto_download", "false".to_string()),
     ] {
         let (exit, _, stderr) = run_cli(&home, &["config", "set", key, &value]);
         assert_eq!(exit, 0, "{stderr}");

@@ -83,7 +83,7 @@ pub struct ServeSettings {
     pub log_requests: Option<bool>,
     /// `--insight`.
     pub insight: Option<bool>,
-    /// `--image-auto-download`.
+    /// Whether to run the image auto-download hook; `None` is on.
     pub image_auto_download: Option<bool>,
     /// Whether to open the WebUI in the browser at the start; `false` is `--no-browser`.
     pub open_browser: Option<bool>,

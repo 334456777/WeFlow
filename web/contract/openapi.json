@@ -8230,7 +8230,7 @@
               "boolean",
               "null"
             ],
-            "description": "`--image-auto-download`.",
+            "description": "Whether to run the image auto-download hook; `None` is on.",
             "default": null
           },
           "open_browser": {

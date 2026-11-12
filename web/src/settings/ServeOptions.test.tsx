@@ -48,8 +48,25 @@ describe('the options weflow serve starts with (#406)', () => {
     expect(save.disabled).toBe(true);
   });
 
-  it('checks the numbers, and shows what the server refused', async () => {
-    serve({}, 'serve_host');
+  it('reads and writes the image auto-download whitelist as a JSON array', async () => {
+    const calls = serve({ autoDownloadWhitelist: ['a', 'b'] });
+    render(<ServeOptions />);
+    await act(async () => {});
+    const field = screen.getByPlaceholderText('会话 ID，用逗号分隔') as HTMLInputElement;
+    expect(field.value).toBe('a,b');
+    fireEvent.change(field, { target: { value: 'a, b ,c' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await act(async () => {});
+    expect(calls.filter(c => c.method !== 'GET')).toEqual([
+      { method: 'PUT', url: '/config/set', body: { key: 'autoDownloadWhitelist', value: '["a","b","c"]' } },
+    ]);
+    fireEvent.change(field, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await act(async () => {});
+    expect(calls.filter(c => c.method !== 'GET').at(-1)).toEqual({ method: 'DELETE', url: '/config/unset?key=autoDownloadWhitelist', body: undefined });
+  });
+
+  it('checks the numbers, and shows what the server refused', async () => {    serve({}, 'serve_host');
     render(<ServeOptions />);
     await act(async () => {});
     const save = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;

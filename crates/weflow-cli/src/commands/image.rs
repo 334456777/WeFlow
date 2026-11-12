@@ -68,7 +68,7 @@ pub(crate) enum ImageSubcommand {
         /// JSON array of image payloads
         payloads_json: String,
     },
-    /// Windows only: make WeChat download original-size images (img_helper.dll hook)
+    /// Windows only: make WeChat download original-size images (image auto-download hook)
     AutoDownload {
         #[command(subcommand)]
         command: AutoDownloadSubcommand,
