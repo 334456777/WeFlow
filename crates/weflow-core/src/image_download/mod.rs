@@ -123,6 +123,9 @@ impl ImageAutoDownload {
 
     /// `image:startAutoDownload`
     pub fn start(&self, whitelist: Vec<String>) -> Value {
+        if !supported() {
+            return json!({ "success": false, "error": "image auto download is only supported on Windows x64" });
+        }
         {
             let mut inner = self.inner.lock_or_panic();
             if let Some(hook) = inner.hook.take() {
