@@ -629,6 +629,8 @@ fn main() -> Result<()> {
             ("wxid", ACCOUNT_DIR.to_string()),
             ("decrypt_key", f.key_hex()),
             ("image_xor_key", XOR_KEY.to_string()),
+            // the dev server must not hook a real WeChat on this machine
+            ("serve_image_auto_download", "false".to_string()),
         ] {
             let out = weflow(&exe, &home)
                 .args(["config", "set", key, &value])

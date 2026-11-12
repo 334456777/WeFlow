@@ -177,7 +177,7 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
             command: ImageSubcommand::AutoDownload { command },
         }) => match command {
             AutoDownloadSubcommand::Start { whitelist } => {
-                let svc = weflow_core::image_download::ImageAutoDownload::new(hub.runtime_dir());
+                let svc = weflow_core::image_download::ImageAutoDownload::new();
                 let list = if whitelist.is_empty() {
                     config_whitelist(&hub)
                 } else {

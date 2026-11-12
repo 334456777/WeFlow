@@ -1178,7 +1178,7 @@ export interface ServeSettings {
   log_requests: boolean | null;
   /** `--insight`. */
   insight: boolean | null;
-  /** `--image-auto-download`. */
+  /** Whether to run the image auto-download hook; `None` is on. */
   image_auto_download: boolean | null;
   /** Whether to open the WebUI in the browser at the start; `false` is `--no-browser`. */
   open_browser: boolean | null;

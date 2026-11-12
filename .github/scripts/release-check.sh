@@ -84,7 +84,7 @@ case "${1:-}" in
       OBJDUMP="$(rustc --print sysroot)/lib/rustlib/$HOST/bin/llvm-objdump.exe"
       DLLS="$("$OBJDUMP" -p "$BIN" | sed -n 's/^ *DLL Name: //p' | tr -d '\r')"
       echo "weflow$EXT imports: $(tr '\n' ' ' <<< "$DLLS")"
-      if grep -qiE '^(vcruntime|msvcp)' <<< "$DLLS"; then
+      if grep -qiE '^(vcruntime|msvcp|api-ms-win-crt)' <<< "$DLLS"; then
         echo "::error::weflow$EXT imports the Visual C++ runtime: it is not linked statically (+crt-static)"
         exit 1
       fi

@@ -23,7 +23,7 @@ const NUMBERS = [
 const SWITCHES = [
   { key: 'serve_open_browser', label: msg('启动时在浏览器中打开网页'), fallback: true },
   { key: 'serve_insight', label: msg('运行灵感引擎'), fallback: false },
-  { key: 'serve_image_auto_download', label: msg('自动下载图片（仅 Windows）'), fallback: false },
+  { key: 'serve_image_auto_download', label: msg('自动下载图片（仅 Windows）'), fallback: true },
   { key: 'serve_log_requests', label: msg('每个请求在终端输出一行'), fallback: false },
 ] as const;
 

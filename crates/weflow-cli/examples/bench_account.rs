@@ -93,6 +93,8 @@ fn main() -> Result<()> {
             ("decrypt_key", weflow_native::db::hex(&KEY)),
             ("image_xor_key", bench::IMAGE_XOR_KEY.to_string()),
             ("image_aes_key", bench::IMAGE_AES_KEY.to_string()),
+            // the benchmark server must not hook a real WeChat on this machine
+            ("serve_image_auto_download", "false".to_string()),
         ] {
             let out = Command::new(&exe)
                 .env("WEFLOW_HOME", &home)
