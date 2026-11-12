@@ -75,11 +75,6 @@
   transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
 .original-button small { color: var(--fg-subtle); font-size: var(--text-2xs); }
-/* What the button is doing, said where a tooltip is out of reach (#766): downloading, or why asking again helps */
-.original-state {
-  align-self: center; min-width: 0; margin-left: var(--space-2); overflow: hidden;
-  color: var(--fg-subtle); font-size: var(--text-2xs); white-space: nowrap; text-overflow: ellipsis;
-}
 
 button.original-button:not([aria-disabled]):hover { color: var(--fg); box-shadow: var(--neu-pressed); }
 button.original-button:not([aria-disabled]):active { transform: scale(var(--press-scale)); }

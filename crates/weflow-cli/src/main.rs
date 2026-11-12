@@ -227,11 +227,6 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
                     .collect();
                 json!(hub.image_resolve_cache_batch(&payloads))
             }
-            ImageSubcommand::DownloadOriginal {
-                session_id,
-                msg_id,
-                create_time,
-            } => json!(hub.image_download_original(session_id, msg_id, *create_time)?),
         }),
         Commands::Video(command) => match &command.command {
             VideoSubcommand::Info {

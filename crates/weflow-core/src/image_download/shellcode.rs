@@ -32,44 +32,6 @@ const TEMPLATE: [u8; 0xb4] = [
 /// Where the whitelist is written in the shellcode's page.
 pub const WHITELIST_OFFSET: usize = 0x300;
 
-/// Where a pending download request waits: a `1` at the flag offset asks the shellcode to run the request's
-/// params once, on the next call, inside WeChat's own thread; the params are a whole download param object.
-pub const REQUEST_FLAG_OFFSET: usize = 0x2f8;
-pub const REQUEST_PARAM_OFFSET: usize = 0x400;
-pub const REQUEST_PARAM_LEN: usize = 0x600;
-/// Where the request's string data goes, and how much room each string gets.
-pub const REQUEST_STRING_OFFSET: usize = 0xa00;
-pub const REQUEST_STRING_ROOM: usize = 0x200;
-
-/// The param object of a pending request: the four strings' addresses and sizes, the original download type, and
-/// the file length. Every string is stored out of line, so its size is never below 16.
-pub fn request_param(
-    clientid: (u64, u64),
-    file_id: (u64, u64),
-    aeskey: (u64, u64),
-    fullpath: (u64, u64),
-    file_len: u64,
-) -> Vec<u8> {
-    let mut param = vec![0u8; REQUEST_PARAM_LEN];
-    for (i, (ptr, size)) in [clientid, file_id, aeskey, fullpath]
-        .into_iter()
-        .enumerate()
-    {
-        let base = [0x50, 0x70, 0x90, 0xb0][i];
-        param[base..base + 8].copy_from_slice(&ptr.to_le_bytes());
-        param[base + 0x10..base + 0x18].copy_from_slice(&size.to_le_bytes());
-        param[base + 0x18..base + 0x20].copy_from_slice(&size.to_le_bytes());
-    }
-    param[0xd0..0xd4].copy_from_slice(&2u32.to_le_bytes());
-    param[0xd4..0xd8].copy_from_slice(&u32::MAX.to_le_bytes());
-    param[0x198..0x1a0].copy_from_slice(&file_len.to_le_bytes());
-    param
-}
-
-/// Where the request block sits in the template: the padding after the register pops, so it runs with the entry
-/// registers restored and falls through to the original first 13 bytes.
-const REQUEST_BLOCK_OFFSET: usize = 0x83;
-
 /// The bytes that replace the target function's first 13 bytes: `mov r10, <shellcode>; jmp r10`.
 pub fn jump_to(shellcode: u64) -> [u8; 13] {
     let mut bytes = [0u8; 13];
@@ -82,26 +44,11 @@ pub fn jump_to(shellcode: u64) -> [u8; 13] {
     bytes
 }
 
-/// The shellcode for a target whose first 13 bytes are `original`, placed at `page`: the template with the request
-/// block filled in, those bytes, and a jump back to `target + 13`.
-pub fn build(original: &[u8; 13], target: u64, page: u64) -> Vec<u8> {
+/// The shellcode for a target whose first 13 bytes are `original`: the template, those bytes, and a jump back to
+/// `target + 13`.
+pub fn build(original: &[u8; 13], target: u64) -> Vec<u8> {
     let mut code = Vec::with_capacity(0xcf);
     code.extend_from_slice(&TEMPLATE);
-    let mut block = Vec::with_capacity(0x30);
-    // mov r10, page + REQUEST_FLAG_OFFSET; cmp qword [r10], 0; je around the block
-    block.extend_from_slice(&[0x49, 0xba]);
-    block.extend_from_slice(&(page + REQUEST_FLAG_OFFSET as u64).to_le_bytes());
-    block.extend_from_slice(&[0x49, 0x83, 0x3a, 0x00, 0x74, 0x21]);
-    // the flag is taken, so this call runs the request once: clear it, then call the original function through the
-    // bytes below with the request's params.
-    block.extend_from_slice(&[0x49, 0xc7, 0x02, 0x00, 0x00, 0x00, 0x00, 0x52]);
-    block.extend_from_slice(&[0x48, 0xba]);
-    block.extend_from_slice(&(page + REQUEST_PARAM_OFFSET as u64).to_le_bytes());
-    block.extend_from_slice(&[0x48, 0xb8]);
-    block.extend_from_slice(&(page + 0xb4).to_le_bytes());
-    block.extend_from_slice(&[0xff, 0xd0, 0x5a]);
-    block.resize(0x30, 0x90);
-    code[REQUEST_BLOCK_OFFSET..REQUEST_BLOCK_OFFSET + 0x30].copy_from_slice(&block);
     code.extend_from_slice(original);
     // jmp qword ptr [rip+0], with the address right after it
     code.extend_from_slice(&[0xff, 0x25, 0x00, 0x00, 0x00, 0x00]);
@@ -115,7 +62,7 @@ mod tests {
 
     #[test]
     fn shellcode_has_the_layout_the_hook_expects() {
-        let code = build(&[0xcc; 13], 0x1_0000_0000, 0x2_0000_0000);
+        let code = build(&[0xcc; 13], 0x1_0000_0000);
         assert_eq!(code.len(), 0xcf);
         assert_eq!(&code[..2], &[0x50, 0x53]);
         // the whitelist is at +0x300, reached by the lea at +0x20
@@ -128,63 +75,6 @@ mod tests {
         assert_eq!(&code[0xb4..0xc1], &[0xcc; 13]);
         assert_eq!(&code[0xc1..0xc7], &[0xff, 0x25, 0x00, 0x00, 0x00, 0x00]);
         assert_eq!(&code[0xc7..0xcf], &0x1_0000_000d_u64.to_le_bytes());
-    }
-
-    #[test]
-    fn a_request_param_carries_the_strings_and_the_original_type() {
-        let param = request_param((0x11, 40), (0x22, 194), (0x33, 32), (0x44, 150), 323492);
-        assert_eq!(param.len(), REQUEST_PARAM_LEN);
-        for (base, ptr, size) in [
-            (0x50, 0x11, 40u64),
-            (0x70, 0x22, 194),
-            (0x90, 0x33, 32),
-            (0xb0, 0x44, 150),
-        ] {
-            assert_eq!(
-                u64::from_le_bytes(param[base..base + 8].try_into().unwrap()),
-                ptr
-            );
-            assert_eq!(
-                u64::from_le_bytes(param[base + 0x10..base + 0x18].try_into().unwrap()),
-                size
-            );
-            assert_eq!(
-                u64::from_le_bytes(param[base + 0x18..base + 0x20].try_into().unwrap()),
-                size
-            );
-        }
-        assert_eq!(
-            u32::from_le_bytes(param[0xd0..0xd4].try_into().unwrap()),
-            2,
-            "the original"
-        );
-        assert_eq!(
-            u32::from_le_bytes(param[0xd4..0xd8].try_into().unwrap()),
-            u32::MAX
-        );
-        assert_eq!(
-            u64::from_le_bytes(param[0x198..0x1a0].try_into().unwrap()),
-            323492
-        );
-    }
-
-    #[test]
-    fn the_request_block_points_at_the_flag_params_and_original_bytes() {
-        let page = 0x2_0000_0000;
-        let code = build(&[0xcc; 13], 0x1_0000_0000, page);
-        assert_eq!(&code[0x83..0x85], &[0x49, 0xba]);
-        assert_eq!(
-            u64::from_le_bytes(code[0x85..0x8d].try_into().unwrap()),
-            page + REQUEST_FLAG_OFFSET as u64
-        );
-        assert_eq!(
-            u64::from_le_bytes(code[0x9d..0xa5].try_into().unwrap()),
-            page + REQUEST_PARAM_OFFSET as u64
-        );
-        assert_eq!(
-            u64::from_le_bytes(code[0xa7..0xaf].try_into().unwrap()),
-            page + 0xb4
-        );
     }
 
     #[test]
@@ -220,7 +110,7 @@ mod run_tests {
         let ret = unsafe { page.add(0x800) };
         // SAFETY: `ret` is inside the allocation.
         unsafe { *ret = 0xc3 };
-        let code = build(&[0x90; 13], ret as u64 - 13, page as u64);
+        let code = build(&[0x90; 13], ret as u64 - 13);
         // SAFETY: the page is 0x1000 bytes and the code and whitelist fit in it.
         unsafe {
             std::ptr::copy_nonoverlapping(code.as_ptr(), page, code.len());
@@ -271,64 +161,6 @@ mod run_tests {
     #[test]
     fn an_empty_whitelist_matches_nothing() {
         assert_eq!(run(b"\0\0", Some(b"convA_1_2_3"), 3), 3);
-    }
-
-    #[test]
-    fn a_pending_request_runs_the_original_function_inside_the_hook() {
-        // SAFETY: a fresh page of executable memory, freed at the end.
-        let page = unsafe {
-            VirtualAlloc(
-                std::ptr::null(),
-                0x2000,
-                MEM_COMMIT | MEM_RESERVE,
-                PAGE_EXECUTE_READWRITE,
-            )
-        } as *mut u8;
-        assert!(!page.is_null());
-        // SAFETY: the second half of the allocation.
-        let target = unsafe { page.add(0x1000) };
-        // SAFETY: inside the allocation.
-        let marker = unsafe { page.add(0x1800) };
-        // SAFETY: `marker` is inside the allocation.
-        unsafe { marker.cast::<u64>().write(0) };
-        // the fake function: 13 bytes the hook replays, then a body that counts its calls
-        for i in 0..13 {
-            // SAFETY: inside the allocation.
-            unsafe { target.add(i).write(0x90) };
-        }
-        // SAFETY: right after the 13 bytes the hook replays.
-        let body = unsafe { target.add(13) };
-
-        let mut body_code = vec![0x48, 0xb8];
-        body_code.extend_from_slice(&(marker as u64).to_le_bytes());
-        body_code.extend_from_slice(&[0x48, 0xff, 0x00, 0xc3]);
-        // SAFETY: `body` is inside the allocation and `body_code` fits.
-        unsafe { std::ptr::copy_nonoverlapping(body_code.as_ptr(), body, body_code.len()) };
-        let shellcode = build(&[0x90; 13], target as u64, page as u64);
-        // SAFETY: the page is 0x2000 bytes and the shellcode fits.
-        unsafe { std::ptr::copy_nonoverlapping(shellcode.as_ptr(), page, shellcode.len()) };
-        // a pending request: the flag and the params
-        // SAFETY: both offsets are inside the allocation.
-        unsafe {
-            page.add(REQUEST_FLAG_OFFSET).cast::<u64>().write(1);
-            page.add(REQUEST_PARAM_OFFSET).cast::<u64>().write(0);
-        }
-        // patch the fake function's entry with the jump the hook writes
-        let jump = jump_to(page as u64);
-        // SAFETY: `target` is the fake function's first 13 bytes.
-        unsafe { std::ptr::copy_nonoverlapping(jump.as_ptr(), target, 13) };
-        let mut object = [0u8; 0x200];
-        // SAFETY: the page holds the shellcode; the second argument is the object it reads.
-        let call: extern "C" fn(*mut u8, *mut u8) = unsafe { std::mem::transmute(target) };
-        call(std::ptr::null_mut(), object.as_mut_ptr());
-        // the request call and the replay of the original 13 bytes both ran the body
-        // SAFETY: `marker` is inside the allocation.
-        assert_eq!(unsafe { marker.cast::<u64>().read() }, 2);
-        // SAFETY: the flag is inside the allocation.
-        let flag = unsafe { page.add(REQUEST_FLAG_OFFSET).cast::<u64>().read() };
-        assert_eq!(flag, 0, "the flag is cleared before the request runs");
-        // SAFETY: the page was allocated above and is not used again.
-        unsafe { VirtualFree(page as *mut _, 0, MEM_RELEASE) };
     }
 
     #[test]

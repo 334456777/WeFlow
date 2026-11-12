@@ -38,8 +38,6 @@ mod imp {
         target: usize,
         original: [u8; PATCH_LEN],
         shellcode: usize,
-        /// The shellcode's page: the whitelist, and where a pending download request waits.
-        page: usize,
     }
 
     impl Hook {
@@ -81,26 +79,18 @@ mod imp {
                 return Err("Backup failed".into());
             }
 
-            // The shellcode reads the whitelist at +0x300; an empty whitelist is a single NUL.
-            let whitelist: &[u8] = if whitelist.is_empty() {
-                &[0u8][..]
-            } else {
-                whitelist
-            };
-            // The page holds the code, the whitelist, and a pending download request with its strings.
-            let size = (shellcode::REQUEST_STRING_OFFSET + 4 * shellcode::REQUEST_STRING_ROOM)
-                .max(shellcode::WHITELIST_OFFSET + whitelist.len() + 1);
+            let code = shellcode::build(&original, target);
             // SAFETY: allocating a page in the target process; freed in `uninstall`.
             let remote = unsafe {
                 VirtualAllocEx(
                     process,
                     std::ptr::null(),
-                    size,
+                    code.len()
+                        .max(shellcode::WHITELIST_OFFSET + whitelist.len() + 1),
                     MEM_COMMIT | MEM_RESERVE,
                     PAGE_EXECUTE_READWRITE,
                 )
             };
-            let code = shellcode::build(&original, target, remote as u64);
             if remote.is_null() {
                 return Err("VirtualAllocEx failed".into());
             }
@@ -122,6 +112,12 @@ mod imp {
                 return Err("Shellcode write failed".into());
             }
 
+            // The shellcode reads the whitelist at +0x300; an empty whitelist is a single NUL.
+            let whitelist = if whitelist.is_empty() {
+                &[0u8][..]
+            } else {
+                whitelist
+            };
             // SAFETY: the allocation is large enough for the whitelist at +0x300.
             let ok = unsafe {
                 WriteProcessMemory(
@@ -181,85 +177,7 @@ mod imp {
                 target: usize::try_from(target).unwrap_or(0),
                 original,
                 shellcode: remote as usize,
-                page: remote as usize,
             })
-        }
-
-        /// Leaves a download request in the shellcode's page: the next `_startDownloadMedia` call runs it once,
-        /// inside WeChat's own thread and with WeChat's own `CdnCore` instance.
-        pub fn request_original(
-            &self,
-            clientid: &str,
-            file_id: &str,
-            aeskey: &str,
-            fullpath: &str,
-            file_len: u64,
-        ) -> Result<(), String> {
-            let process = self.process as HANDLE;
-            let mut written = 0usize;
-            let mut addresses = Vec::with_capacity(4);
-            for (i, text) in [clientid, file_id, aeskey, fullpath]
-                .into_iter()
-                .enumerate()
-            {
-                let bytes = text.as_bytes();
-                if bytes.len() + 1 > shellcode::REQUEST_STRING_ROOM {
-                    return Err("request string too long".into());
-                }
-                let address = self.page as u64
-                    + (shellcode::REQUEST_STRING_OFFSET + i * shellcode::REQUEST_STRING_ROOM)
-                        as u64;
-                let mut data = bytes.to_vec();
-                data.push(0);
-                // SAFETY: the page is large enough for each string's room, and the address is the one reserved
-                // for it.
-                let ok = unsafe {
-                    WriteProcessMemory(
-                        process,
-                        address as *const c_void,
-                        data.as_ptr() as *const c_void,
-                        data.len(),
-                        &mut written,
-                    )
-                };
-                if ok == 0 {
-                    return Err("Request string write failed".into());
-                }
-                addresses.push((address, bytes.len() as u64));
-            }
-            let param = shellcode::request_param(
-                addresses[0],
-                addresses[1],
-                addresses[2],
-                addresses[3],
-                file_len,
-            );
-            // SAFETY: the page is large enough for the params, and the flag comes after them; both writes go to the
-            // process this hook is installed in.
-            unsafe {
-                let ok = WriteProcessMemory(
-                    process,
-                    (self.page + shellcode::REQUEST_PARAM_OFFSET) as *const c_void,
-                    param.as_ptr() as *const c_void,
-                    param.len(),
-                    &mut written,
-                );
-                if ok == 0 {
-                    return Err("Request write failed".into());
-                }
-                let flag = 1u64;
-                let ok = WriteProcessMemory(
-                    process,
-                    (self.page + shellcode::REQUEST_FLAG_OFFSET) as *const c_void,
-                    (&flag as *const u64) as *const c_void,
-                    8,
-                    &mut written,
-                );
-                if ok == 0 {
-                    return Err("Request flag write failed".into());
-                }
-            }
-            Ok(())
         }
 
         /// Restores the original bytes and frees the shellcode page.
@@ -493,17 +411,6 @@ mod imp {
 
     impl Hook {
         pub fn install(_pid: u32, _whitelist: &[u8]) -> Result<Self, String> {
-            Err("image auto download is only supported on Windows x64".into())
-        }
-
-        pub fn request_original(
-            &self,
-            _clientid: &str,
-            _file_id: &str,
-            _aeskey: &str,
-            _fullpath: &str,
-            _file_len: u64,
-        ) -> Result<(), String> {
             Err("image auto download is only supported on Windows x64".into())
         }
 

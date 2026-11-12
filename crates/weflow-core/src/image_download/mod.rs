@@ -168,23 +168,6 @@ impl ImageAutoDownload {
         json!({ "success": true })
     }
 
-    /// Leaves a download request for the hook: the next `_startDownloadMedia` call in WeChat runs it once, inside
-    /// WeChat's own thread.
-    pub fn request_original(
-        &self,
-        clientid: &str,
-        file_id: &str,
-        aeskey: &str,
-        fullpath: &str,
-        file_len: u64,
-    ) -> Result<(), String> {
-        let inner = self.inner.lock_or_panic();
-        match inner.hook.as_ref() {
-            Some(hook) => hook.request_original(clientid, file_id, aeskey, fullpath, file_len),
-            None => Err("the image auto-download hook is not installed".into()),
-        }
-    }
-
     /// `image:getAutoDownloadStatus`
     pub fn status(&self) -> Value {
         let inner = self.inner.lock_or_panic();

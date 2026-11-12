@@ -19,7 +19,7 @@ export interface PreviewControl {
   dialog: ReactElement;
 }
 
-export function usePreview(reducedMotion: boolean, canDownloadOriginals: boolean): PreviewControl {
+export function usePreview(reducedMotion: boolean): PreviewControl {
   const [preview, setPreview] = useState<Preview | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const shownPreview = usePresence(preview);
@@ -134,7 +134,7 @@ export function usePreview(reducedMotion: boolean, canDownloadOriginals: boolean
                 onSettled={shown.hd?.loading ? originalSettled : undefined} />
               : <PreviewVideo key={shown.src} src={shown.src} poster={shown.poster} thumb={shown.thumb} />}</div>
             <footer className="preview-foot">
-              <span className="preview-foot-side">{shown.type === 'image' && shown.hd && <OriginalButton key={shown.hd.src} hd={shown.hd} canDownload={canDownloadOriginals} onToggle={toggleOriginal} />}</span>
+              <span className="preview-foot-side">{shown.type === 'image' && shown.hd && <OriginalButton key={shown.hd.src} hd={shown.hd} onToggle={toggleOriginal} />}</span>
               {steps && <span className="preview-steps">
                 <button type="button" className="preview-step" aria-label={t('上一个')} title={t('上一个（←）')} disabled={steps.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={16} /></button>
                 <button type="button" className="preview-step" aria-label={t('下一个')} title={t('下一个（→）')} disabled={steps.index === steps.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={16} /></button>

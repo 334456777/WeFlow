@@ -18,7 +18,6 @@ pub use cleanup::{disk_usage, CachePart};
 mod footprint;
 mod group;
 mod image;
-mod image_original;
 mod insight;
 pub use image::{ImageBatch, ImagePayload, ImageResult, ImageVariant};
 pub use insight::Trigger as InsightTrigger;
@@ -64,9 +63,6 @@ pub struct ServiceHub {
     analytics_counting: std::sync::Arc<analytics::Counting>,
     image_state: std::sync::Arc<std::sync::Mutex<image::ImageState>>,
     insight_state: std::sync::Arc<std::sync::Mutex<insight::InsightState>>,
-    /// The image auto-download hook running in this process, when there is one (#766): `weflow serve` starts it, and
-    /// `image download-original` leaves its requests with it.
-    image_auto_download: Option<crate::image_download::ImageAutoDownload>,
 }
 
 impl ServiceHub {
@@ -81,17 +77,7 @@ impl ServiceHub {
             analytics_counting: Default::default(),
             image_state: Default::default(),
             insight_state: Default::default(),
-            image_auto_download: None,
         }
-    }
-
-    /// The hub with the image auto-download hook of this process, which `image download-original` asks (#766).
-    pub fn with_image_auto_download(
-        mut self,
-        image_auto_download: crate::image_download::ImageAutoDownload,
-    ) -> Self {
-        self.image_auto_download = Some(image_auto_download);
-        self
     }
 
     pub fn runtime_dir(&self) -> &Path {

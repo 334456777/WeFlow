@@ -1344,19 +1344,6 @@ export interface AutoDownloadStatus {
 }
 
 /**
- * What `image download-original` answers: the request waits in this process's hook for WeChat's next download (`serve`
- * runs the hook).
- */
-export interface ImageOriginalRequested {
-  /** Always true. */
-  success: boolean;
-  /** Where WeChat will write the original: the `<md5>_h.dat` beside the image. */
-  path: string;
-  /** Bytes of the original, as the message gives them. */
-  bytes: number;
-}
-
-/**
  * Where a message's video and its poster are (`video info`); the fields left out, as WeFlow's desktop app's
  * `VideoInfo`, when there is nothing.
  */
@@ -2174,7 +2161,6 @@ export interface Answers {
   "image auto-download start": AutoDownloadStopped;
   "image auto-download status": AutoDownloadStatus;
   "image decrypt": ImageResult;
-  "image download-original": ImageOriginalRequested;
   "image resolve-batch": ImageBatch;
   "image resolve-cache": ImageResult;
   "insight clear": InsightCleared;

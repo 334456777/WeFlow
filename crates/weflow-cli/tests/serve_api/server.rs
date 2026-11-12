@@ -17,8 +17,6 @@ fn options_saved_in_the_config_apply_where_the_command_line_gives_none() {
         ("serve_max_tasks", "3"),
         ("serve_max_reads", "9"),
         ("serve_log_requests", "true"),
-        // the tests must not hook a real WeChat, and without the hook no original can be asked for (#766)
-        ("serve_image_auto_download", "false"),
     ] {
         let out = weflow(&root)
             .args(["config", "set", key, value])
@@ -39,11 +37,6 @@ fn options_saved_in_the_config_apply_where_the_command_line_gives_none() {
     let limits = server.request("GET", "/health", &[], "").json()["limits"].clone();
     assert_eq!(limits["maxTasks"], 3);
     assert_eq!(limits["maxReads"], 5);
-    // the hook off, as the config says: no original can be asked for
-    assert_eq!(
-        server.request("GET", "/health", &[], "").json()["imageAutoDownload"],
-        false
-    );
 }
 
 #[test]
