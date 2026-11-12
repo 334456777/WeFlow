@@ -749,7 +749,7 @@ impl ServiceHub {
         let mut rows: Vec<(MsgRow, bool)> = own.into_iter().map(|m| (m, true)).collect();
         rows.extend(cards.into_iter().map(|m| {
             let from_pay =
-                crate::message::extract_xml_value(&m.content, "fromusername") == PAY_ACCOUNT;
+                crate::message::xml::extract_xml_value(&m.content, "fromusername") == PAY_ACCOUNT;
             (m, from_pay)
         }));
         rows.sort_by_key(|(m, _)| {

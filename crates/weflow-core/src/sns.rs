@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::contract::{SnsComment, SnsEmoji, SnsLivePhoto, SnsLocation, SnsMedia, SnsPost};
 use crate::image::ImageFormat;
-use crate::message::rx;
+use crate::message::xml::rx;
 
 // ───────────────────────── small JS-compat helpers ─────────────────────────
 

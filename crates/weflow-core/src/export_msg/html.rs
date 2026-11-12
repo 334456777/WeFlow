@@ -33,8 +33,8 @@ use serde_json::{Map, Value};
 use super::{chrome, html_escape, write_script_json, Exporter, Spool};
 use crate::locale;
 use crate::message::{
-    clean_system_message, decode_html_entities, extract_arkme_app_message_meta_in,
-    extract_xml_value, rx, ExportMsg, MsgXml, QuotedDisplay,
+    clean_system_message, extract_arkme_app_message_meta_in, xml::decode_html_entities,
+    xml::extract_xml_value, xml::rx, xml::MsgXml, ExportMsg, QuotedDisplay,
 };
 
 const TEMPLATE_ZH: &str = include_str!("template.zh.html");

@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use crate::chat_msg::ChatMessage;
 use crate::locale::tr;
-use crate::message::rx;
+use crate::message::xml::rx;
 
 pub const API_TIMEOUT_MS: u64 = 45_000;
 pub const API_TEMPERATURE: f64 = 0.7;

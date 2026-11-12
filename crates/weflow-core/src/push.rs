@@ -8,7 +8,7 @@ use serde_json::{json, Map, Value};
 use tokio::sync::broadcast;
 
 use crate::chat_msg::{self, ChatMessage};
-use crate::message::rx;
+use crate::message::xml::rx;
 use crate::services::ServiceHub;
 use crate::sync::MutexExt;
 

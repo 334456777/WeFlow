@@ -278,7 +278,7 @@ impl ImageResult {
 /// found in WeChat, and whether the data is damaged or in a format not supported yet.
 fn unsupported_image_message(create_time: Option<i64>, reason: crate::hevc::Unsupported) -> String {
     let what = match create_time
-        .map(crate::message::format_timestamp)
+        .map(crate::message::time::format_timestamp)
         .filter(|t| !t.is_empty())
     {
         Some(time) => format!("WXGF image sent {time}"),
@@ -1422,7 +1422,7 @@ impl ServiceHub {
         let (payload, content) = self.image_payload_and_content(session_id, msg_id, create_time)?;
         let files = self.dat_files(&payload).unwrap_or_default();
         let attr = |name: &str| -> Option<u64> {
-            let re = crate::message::rx(&format!(r#"\s{name}\s*=\s*"(\d+)""#));
+            let re = crate::message::xml::rx(&format!(r#"\s{name}\s*=\s*"(\d+)""#));
             re.captures(&content)?
                 .get(1)?
                 .as_str()
@@ -1645,7 +1645,7 @@ mod tests {
     #[test]
     fn an_unsupported_wxgf_image_says_when_it_was_sent_and_whether_it_is_damaged() {
         use crate::hevc::Unsupported;
-        let date = crate::message::format_timestamp(1_700_000_000);
+        let date = crate::message::time::format_timestamp(1_700_000_000);
         assert_eq!(
             unsupported_image_message(
                 Some(1_700_000_000),

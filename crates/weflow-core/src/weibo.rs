@@ -93,7 +93,7 @@ fn normalize_uid(input: &str) -> Result<String, String> {
     if t.len() >= 5 && t.bytes().all(|b| b.is_ascii_digit()) {
         return Ok(t.to_string());
     }
-    let re = crate::message::rx(r"(?i)(?:weibo\.com|m\.weibo\.cn)/u/(\d{5,})");
+    let re = crate::message::xml::rx(r"(?i)(?:weibo\.com|m\.weibo\.cn)/u/(\d{5,})");
     if let Some(c) = re.captures(t) {
         return Ok(c[1].to_string());
     }
@@ -106,11 +106,13 @@ fn sanitize_text(text: &str) -> String {
         .chars()
         .filter(|c| !matches!(c, '\u{200b}' | '\u{200c}' | '\u{200d}' | '\u{feff}'))
         .collect();
-    let t = crate::message::rx(r"https?://t\.cn/[A-Za-z0-9]+")
+    let t = crate::message::xml::rx(r"https?://t\.cn/[A-Za-z0-9]+")
         .replace_all(&t, " ")
         .to_string();
-    let t = crate::message::rx(r" +").replace_all(&t, " ").to_string();
-    let t = crate::message::rx(r"\n{3,}")
+    let t = crate::message::xml::rx(r" +")
+        .replace_all(&t, " ")
+        .to_string();
+    let t = crate::message::xml::rx(r"\n{3,}")
         .replace_all(&t, "\n\n")
         .to_string();
     t.trim().to_string()

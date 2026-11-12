@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 
 use crate::chat_msg::normalize_video_file_token;
-use crate::message::rx;
+use crate::message::xml::rx;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PosterFormat {

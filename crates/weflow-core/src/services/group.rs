@@ -13,7 +13,7 @@ use crate::contract::{
     EmojiCount, GroupChat, GroupExported, GroupHours, GroupMedia, GroupMember, GroupRank,
     MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
-use crate::message::rx;
+use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
 
 const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];

@@ -18,6 +18,9 @@ use serde_json::ser::Formatter;
 use serde_json::{json, Map, Value};
 
 use crate::locale;
+use crate::message::kind::{convert_message_type_in, message_type_name_in, weclone_type_name};
+use crate::message::time::{format_iso_timestamp, format_timestamp};
+use crate::message::xml::{extract_xml_value, rx, strip_sender_line, strip_sender_prefix, MsgXml};
 use crate::message::*;
 
 mod html;

@@ -1,7 +1,7 @@
 //! Small helpers the services share: JavaScript-style number parsing, file names that are safe on every platform,
 //! and which media a message export copies.
 
-use crate::message::rx;
+use crate::message::xml::rx;
 
 /// JS `parseInt(value, 10)`, NaN → `None`.
 pub fn js_parse_int(s: &str) -> Option<i64> {

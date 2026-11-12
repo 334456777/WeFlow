@@ -511,8 +511,8 @@ impl ServiceHub {
             });
         }
         let wcdb = self.open_wcdb()?;
-        let begin = crate::message::normalize_timestamp_seconds(begin as f64);
-        let end = crate::message::normalize_timestamp_seconds(end as f64);
+        let begin = crate::message::time::normalize_timestamp_seconds(begin as f64);
+        let end = crate::message::time::normalize_timestamp_seconds(end as f64);
         let options = json!({
             "begin": begin,
             "end": end,

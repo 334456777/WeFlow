@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 
 use super::*;
 use crate::chat_msg;
-use crate::message::unsigned_token;
+use crate::message::row::unsigned_token;
 
 const VOICE_SAMPLE_RATE: i32 = 24000;
 
