@@ -96,7 +96,7 @@ export function ServeOptions() {
       })}
       <label className="console-field"><span className="console-field-name">{t('自动下载原图的会话')}</span>
         <input className="console-input" type="text" spellCheck={false} placeholder={t('会话 ID，用逗号分隔')} value={form.autoDownloadWhitelist} onChange={e => set('autoDownloadWhitelist', e.target.value)} />
-        <small>{t('留空表示不自动下载，只处理网页发起的请求。')}</small></label>
+        <small>{t('留空表示不为任何会话下载原图。')}</small></label>
       <div className="ai-actions">
         <button type="submit" className="primary-button" disabled={busy || !changed || bad.length > 0}>{busy ? <CircleNotch size={14} className="spin" /> : null}{t('保存')}</button>
       </div>
