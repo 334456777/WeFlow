@@ -22,6 +22,10 @@ pub(crate) struct ServeCommand {
     #[arg(long)]
     image_auto_download: bool,
     /// Listen address (default: 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1].
+    #[expect(
+        rustdoc::broken_intra_doc_links,
+        reason = "the comment is the --help text, which writes the IPv6 loopback address as [::1]"
+    )]
     #[arg(long)]
     host: Option<String>,
     /// Listen port (default: 18108).

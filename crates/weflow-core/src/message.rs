@@ -21,10 +21,6 @@ pub mod time;
 pub mod transfer;
 pub(crate) mod xml;
 
-// Nothing in the workspace calls these; they keep the public path they had before the split.
-pub use appmsg::extract_arkme_app_message_meta;
-pub use quote::quoted_sender_username;
-
 use emoji::{
     appmsg_emoticon_md5_in, extract_emoji_md5, extract_emoji_url, format_emoji_semantic_text,
 };
@@ -83,7 +79,7 @@ pub struct ExportMsg {
     pub image_dat_name: Option<String>,
     pub emoji_cdn_url: Option<String>,
     pub emoji_md5: Option<String>,
-    /// The md5 of a sticker sent as an app message of type 8 ([`appmsg_emoticon_md5_in`]).
+    /// The md5 of a sticker sent as an app message of type 8 (`appmsg_emoticon_md5_in`).
     pub sticker_md5: Option<String>,
     pub emoji_caption: Option<String>,
     pub video_md5: Option<String>,
@@ -215,7 +211,7 @@ pub fn parse_message_content(
     )
 }
 
-/// [`parse_message_content`] of a message's [`MsgXml`].
+/// [`parse_message_content`] of a message's `MsgXml`.
 pub fn parse_message_content_in(
     x: &MsgXml,
     local_type: i64,
@@ -617,7 +613,7 @@ pub fn msg_row_timestamp(row: &MsgRow) -> i64 {
     sort_seq.max(0)
 }
 
-/// [`message_sender`] of a typed row.
+/// `message_sender` of a typed row.
 pub fn msg_row_sender(row: &MsgRow, session_id: &str, my_wxid: &str) -> String {
     message_sender(
         row.local_type,

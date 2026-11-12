@@ -150,7 +150,7 @@ struct Open {
     hub: ServiceHub,
     config: PathBuf,
     stamp: Option<Stamp>,
-    /// Counts the hubs built, so a user of [`Hub::get_counted`] tells a new hub from the one it had.
+    /// Counts the hubs built, so a user of [`Hub::hub_and_generation`] tells a new hub from the one it had.
     generation: u64,
 }
 

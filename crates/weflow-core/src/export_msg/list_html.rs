@@ -11,8 +11,8 @@ use std::io::{self, Write};
 
 use serde_json::Value;
 
+use super::format::{html_escape, write_script_json};
 use super::html::url_path;
-use super::{format::html_escape, format::write_script_json};
 use crate::locale;
 
 const LIST_ZH: &str = include_str!("list.zh.html");

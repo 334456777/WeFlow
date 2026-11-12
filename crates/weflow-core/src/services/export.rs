@@ -460,7 +460,7 @@ fn no_messages(req: &MessageExportRequest) -> AppError {
 
 /// Contact names looked up in `wcdb` as an export needs them (cached).
 fn name_book(wcdb: &weflow_native::wcdb::Wcdb) -> crate::export_msg::names::NameBook<'_> {
-    use crate::export_msg::{names::ContactInfo, names::NameBook};
+    use crate::export_msg::names::{ContactInfo, NameBook};
     NameBook::new(move |username: &str| {
         wcdb.contact(username)
             .ok()

@@ -9,11 +9,9 @@ use regex::Regex;
 
 use super::quote::QuoteInfo;
 use super::quote::QuotedDisplay;
+use super::quote::{format_quoted_reference_preview, quote_info_of, refermsg_xml};
 use super::row::unsigned_token;
-use super::{
-    quote::format_quoted_reference_preview, quote::quote_info_of, quote::refermsg_xml,
-    system::has_sysmsg,
-};
+use super::system::has_sysmsg;
 
 thread_local! {
     static RX_CACHE: RefCell<HashMap<String, Rc<Regex>>> = RefCell::new(HashMap::new());
@@ -270,7 +268,7 @@ impl<'a> MsgXml<'a> {
         unsigned_token(&extract_xml_value(self.refer_once()?, "svrid"))
     }
 
-    /// [`quoted_sender_username`](super::quoted_sender_username) of the content.
+    /// Sender wxid of the message the content quotes, following `resolveQuotedSenderUsername`.
     pub fn quoted_sender_username(&self) -> Option<String> {
         let refer = self.refer_once()?;
         let chat = extract_xml_value(refer, "chatusr");
@@ -479,11 +477,12 @@ pub(super) fn last_hex_token(text: &str, min: usize, max: usize) -> Option<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::{
-        emoji::extract_emoji_md5, emoji::extract_emoji_url, emoji::extract_loose_hex_md5,
-        media::dat_name_in_packed_info, media::extract_image_md5, media::extract_video_md5,
-        media::normalize_image_dat_name_token, system::is_readable_system_message,
+    use crate::message::emoji::{extract_emoji_md5, extract_emoji_url, extract_loose_hex_md5};
+    use crate::message::media::{
+        dat_name_in_packed_info, extract_image_md5, extract_video_md5,
+        normalize_image_dat_name_token,
     };
+    use crate::message::system::is_readable_system_message;
 
     #[test]
     fn xml_value_strips_cdata() {
@@ -544,7 +543,7 @@ mod tests {
     /// The regexes the XML scanners replace, kept as the reference they must agree with.
     mod regex_reference {
         use super::super::{last_hex_token, normalize_app_message_content, rx};
-        use crate::message::{emoji::normalize_md5, emoji::percent_decode};
+        use crate::message::emoji::{normalize_md5, percent_decode};
 
         pub fn attribute(xml: &str, tag: &str, attr: &str) -> String {
             rx(&format!(

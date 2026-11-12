@@ -34,9 +34,8 @@ use std::time::Instant;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use weflow_core::config::{AppContext, ConfigStore};
-use weflow_core::export_msg::{
-    names::ContactInfo, names::DisplayPref, names::NameBook, Exporter, SessionInfo, Settings,
-};
+use weflow_core::export_msg::names::{ContactInfo, DisplayPref, NameBook};
+use weflow_core::export_msg::{Exporter, SessionInfo, Settings};
 use weflow_core::message::{collect_rows, CollectOptions, ExportMsg};
 use weflow_core::services::{MessageExportRequest, ServiceHub};
 use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, RoomSpec, SessionSpec, T0};

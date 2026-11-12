@@ -12,11 +12,12 @@ use weflow_native::msg_row::MsgRow;
 
 use crate::api::js_parse_int;
 use crate::config::clean_account_dir_name;
-use crate::message::{
-    emoji::percent_decode, quote::extract_preferred_quoted_text, quote::refermsg_xml,
-    system::extract_readable_system_message_text, system::parse_voip_message,
-    xml::extract_xml_value, xml::looks_like_wxid, xml::rx, xml::sanitize_quoted_content,
-    xml::strip_sender_line, xml::strip_sender_prefix,
+use crate::message::emoji::percent_decode;
+use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
+use crate::message::system::{extract_readable_system_message_text, parse_voip_message};
+use crate::message::xml::{
+    extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content, strip_sender_line,
+    strip_sender_prefix,
 };
 
 // ───────────────────────── text helpers ─────────────────────────

@@ -265,7 +265,7 @@ fn verify_key_with(
     verify_key(db, raw_key)
 }
 
-/// [`verify_key`], derived once per process for each raw key and salt: the 256,000 rounds take about 0.1 s, and
+/// `verify_key`, derived once per process for each raw key and salt: the 256,000 rounds take about 0.1 s, and
 /// the same file is opened again after its snapshot was dropped, or by two threads at once. A thread asking for keys
 /// another one is deriving waits for them instead of deriving them too, and keys handed over by the process that
 /// started this one ([`import_keys`]) are not derived at all.

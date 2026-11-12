@@ -8,7 +8,7 @@
 //! The newest committed WAL frames are copied when the snapshot is opened, so a connection sees one state of the
 //! database. WeChat keeps writing while we read, though: a checkpoint can copy WAL frames that are newer than our copy
 //! into the main file, and a page read after that would mix two states. The wal-index (`-shm`, plain SQLite format)
-//! says how far checkpoints have gone; every read from the main file is followed by a check ([`ChangeGuard`]) and a
+//! says how far checkpoints have gone; every read from the main file is followed by a check (`ChangeGuard`) and a
 //! read that may be newer than the snapshot fails and marks the snapshot stale. [`crate::db`] then opens a
 //! fresh snapshot and runs the query again.
 

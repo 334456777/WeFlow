@@ -22,11 +22,13 @@ mod status;
 pub use status::Farewell;
 pub mod ui;
 
-use std::path::PathBuf;
+use std::ops::ControlFlow;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use axum::body::to_bytes;
+use axum::body::{to_bytes, Body};
 use axum::extract::{Request, State};
+use axum::http::request::Parts;
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Router;
@@ -39,7 +41,7 @@ use answer::{
     media_response, only_fields,
 };
 use child::{run, server_lang, status_for, status_for_exit};
-use endpoints::{find_param, text_of, Endpoints, Params};
+use endpoints::{find_param, text_of, Endpoint, Endpoints, Params};
 use http::{
     authorized, compression, cors, error_response, generate_token, json_body, local_host,
     method_not_allowed, query_pairs, redirect, url_decode,
@@ -245,7 +247,7 @@ async fn dispatch(State(st): State<Arc<AppState>>, req: Request) -> Response {
 }
 
 /// What a request spent its time on besides the total, for `Server-Timing` (issue #158): kept in the answer's
-/// extensions by [`route`], written out by [`dispatch`].
+/// extensions by [`command_route`], written out by [`dispatch`].
 #[derive(Clone, Default)]
 struct Timing(Vec<String>);
 
@@ -337,17 +339,171 @@ pub(super) struct FileOut {
     dir: Option<PathBuf>,
 }
 
+impl FileOut {
+    /// Where `?return=file` finds the file `command` writes: the `out` the request gives, or else a folder of the
+    /// request's own under `files_dir`, which `params` is then given as `out`.
+    fn new(
+        files_dir: &Path,
+        endpoint: &Endpoint,
+        command: &str,
+        params: &mut Params,
+    ) -> Result<Self, Refused> {
+        let Some((default_out, field)) = files::file_command(command) else {
+            return Err(bad_request(&format!(
+                "`{command}` does not write a single file, so return=file is not available for it"
+            ))
+            .into());
+        };
+        let given = params
+            .iter()
+            .find(|(k, _)| find_param(endpoint, k).is_some_and(|p| p.name == "out"))
+            .and_then(|(_, v)| v.first())
+            .map(text_of);
+        Ok(match given {
+            Some(out) => Self {
+                out,
+                field,
+                dir: None,
+            },
+            None => {
+                let dir = files_dir.join(&generate_token()[..16]);
+                let out = if default_out.is_empty() {
+                    dir.clone()
+                } else {
+                    dir.join(default_out)
+                };
+                let out = out.to_string_lossy().into_owned();
+                params.insert("out".into(), vec![Value::String(out.clone())]);
+                Self {
+                    out,
+                    field,
+                    dir: Some(dir),
+                }
+            }
+        })
+    }
+}
+
+/// Makes the folder the server chose for the file of `?return=file`, once the command is sure to run.
+fn make_folder(file_out: Option<&FileOut>) -> Result<(), Refused> {
+    let Some(dir) = file_out.and_then(|f| f.dir.as_ref()) else {
+        return Ok(());
+    };
+    std::fs::create_dir_all(dir).map_err(|err| {
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "runtime_error",
+            &format!("failed to create {}: {err}", dir.display()),
+        )
+        .into()
+    })
+}
+
+/// The answer to a request refused before its command runs; boxed, as a [`Response`] is large for an `Err`.
+type Refused = Box<Response>;
+
+/// What a request to a command asks for besides the command's own parameters.
+struct Asked {
+    /// `?std=`.
+    std: Std,
+    /// `?return=file`: the file the command wrote instead of its `--json` document.
+    want_file: bool,
+    /// `?fields=`: the columns of the `--json` document to answer.
+    fields: Option<Vec<String>>,
+    /// `Prefer: respond-async`: run the command as a job.
+    background: bool,
+}
+
+impl Asked {
+    /// Takes the request's own parameters out of `params`, leaving the command's.
+    fn take(params: &mut Params, headers: &HeaderMap) -> Result<Self, Refused> {
+        params.remove("access_token");
+        let std = match params.remove("std").and_then(|v| v.into_iter().next()) {
+            None => Std::Json,
+            Some(v) => match text_of(&v).as_str() {
+                "in" => Std::In,
+                "out" => Std::Out,
+                "err" => Std::Err,
+                other => {
+                    return Err(bad_request(&format!(
+                        "unknown std value `{other}`; expected in, out or err"
+                    ))
+                    .into())
+                }
+            },
+        };
+        let want_file = match params.remove("return").and_then(|v| v.into_iter().next()) {
+            None => false,
+            Some(v) => match text_of(&v).as_str() {
+                "json" => false,
+                "file" => true,
+                other => {
+                    return Err(bad_request(&format!(
+                        "unknown return value `{other}`; expected json or file"
+                    ))
+                    .into())
+                }
+            },
+        };
+        let fields = params.remove("fields").map(|values| field_names(&values));
+        Ok(Self {
+            std,
+            want_file,
+            fields,
+            background: prefers_async(headers),
+        })
+    }
+}
+
 async fn route(st: &AppState, req: Request) -> Response {
     let (parts, body) = req.into_parts();
+    if let Some(resp) = open_route(st, &parts).await {
+        return resp;
+    }
+    let query = query_pairs(parts.uri.query());
+    if !authorized(&st.cfg.token, &parts.headers, &query) {
+        return error_response(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "invalid or missing access token",
+        );
+    }
+    match parts.uri.path() {
+        "/openapi.json" => openapi_route(st, &parts.method),
+        "/api/push/messages" => push_route(st, &parts, &query),
+        path => {
+            let segments: Vec<String> = path
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .map(url_decode)
+                .collect();
+            if segments.first().is_some_and(|s| s == "jobs") {
+                let last_event_id = parts
+                    .headers
+                    .get("last-event-id")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.trim().parse().ok());
+                job_routes::route(&st.jobs, &parts.method, &segments, last_event_id).await
+            } else {
+                command_route(st, parts, body, query, &segments)
+                    .await
+                    .unwrap_or_else(|refused| *refused)
+            }
+        }
+    }
+}
+
+/// The routes that need no token: the server's state, and the WebUI.
+async fn open_route(st: &AppState, parts: &Parts) -> Option<Response> {
     let path = parts.uri.path();
     if path == "/health" {
-        return json_body(StatusCode::OK, st.status.health().to_string());
+        return Some(json_body(StatusCode::OK, st.status.health().to_string()));
     }
     if path == "/health/events" {
         if parts.method != Method::GET {
-            return method_not_allowed(&[Get]);
+            return Some(method_not_allowed(&[Get]));
         }
-        return status::events(st.status.clone(), &st.cfg.farewell);
+        return Some(status::events(st.status.clone(), &st.cfg.farewell));
     }
     // the WebUI's files need no token: the page brings it in its address
     if let Some(rest) = path
@@ -355,14 +511,14 @@ async fn route(st: &AppState, req: Request) -> Response {
         .filter(|r| r.is_empty() || r.starts_with('/'))
     {
         let shown = st.cfg.ui.read_or_panic().clone();
-        return match &shown {
+        return Some(match &shown {
             Some(dir) => ui::serve(dir, &parts.method, rest, parts.uri.query()).await,
             None => error_response(
                 StatusCode::NOT_FOUND,
                 "not_found",
                 "no WebUI is served; start serve with --ui-dir <a built WebUI>",
             ),
-        };
+        });
     }
     if path == "/" && st.cfg.ui.read_or_panic().is_some() && parts.method == Method::GET {
         let to = format!(
@@ -373,70 +529,63 @@ async fn route(st: &AppState, req: Request) -> Response {
                 .map(|q| format!("?{q}"))
                 .unwrap_or_default()
         );
-        return redirect(StatusCode::FOUND, &to);
+        return Some(redirect(StatusCode::FOUND, &to));
     }
-    let query = query_pairs(parts.uri.query());
-    if !authorized(&st.cfg.token, &parts.headers, &query) {
-        return error_response(
-            StatusCode::UNAUTHORIZED,
-            "unauthorized",
-            "invalid or missing access token",
-        );
+    None
+}
+
+/// `/openapi.json`, in the server's language, as every answer (#433).
+fn openapi_route(st: &AppState, method: &Method) -> Response {
+    if *method != Method::GET {
+        return method_not_allowed(&[Get]);
     }
-    if path == "/openapi.json" {
-        if parts.method != Method::GET {
-            return method_not_allowed(&[Get]);
-        }
-        // in the server's language, as every answer (#433)
-        let doc = st.openapi.get_or_init(|| {
-            openapi::document(weflow_core::locale::current() == weflow_core::locale::Lang::Zh)
-                .to_string()
-        });
-        return json_body(StatusCode::OK, doc.clone());
+    let doc = st.openapi.get_or_init(|| {
+        openapi::document(weflow_core::locale::current() == weflow_core::locale::Lang::Zh)
+            .to_string()
+    });
+    json_body(StatusCode::OK, doc.clone())
+}
+
+/// `/api/push/messages`: the event stream of new messages.
+fn push_route(st: &AppState, parts: &Parts, query: &[(String, String)]) -> Response {
+    if parts.method != Method::GET {
+        return method_not_allowed(&[Get]);
     }
-    if path == "/api/push/messages" {
-        if parts.method != Method::GET {
-            return method_not_allowed(&[Get]);
-        }
-        // EventSource sends the header when it reconnects; a page that opens a new one passes the query
-        let last_id = parts
-            .headers
-            .get("last-event-id")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string)
-            .or_else(|| {
-                query
-                    .iter()
-                    .find(|(k, _)| k == "last-event-id")
-                    .map(|(_, v)| v.clone())
-            })
-            .and_then(|v| v.trim().parse().ok())
-            .unwrap_or(0);
-        return st
-            .push
-            .stream(st.hub.clone(), last_id, st.status.clone(), &st.cfg.farewell);
-    }
-    let segments: Vec<String> = path
-        .split('/')
-        .filter(|s| !s.is_empty())
-        .map(url_decode)
-        .collect();
-    if segments.first().is_some_and(|s| s == "jobs") {
-        let last_event_id = parts
-            .headers
-            .get("last-event-id")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.trim().parse().ok());
-        return job_routes::route(&st.jobs, &parts.method, &segments, last_event_id).await;
-    }
+    // EventSource sends the header when it reconnects; a page that opens a new one passes the query
+    let last_id = parts
+        .headers
+        .get("last-event-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+        .or_else(|| {
+            query
+                .iter()
+                .find(|(k, _)| k == "last-event-id")
+                .map(|(_, v)| v.clone())
+        })
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0);
+    st.push
+        .stream(st.hub.clone(), last_id, st.status.clone(), &st.cfg.farewell)
+}
+
+/// The route of a command, at its command path: run in a child process, or in this process under `/api/`. `Err` is
+/// the answer to a request refused before its command runs.
+async fn command_route(
+    st: &AppState,
+    parts: Parts,
+    body: Body,
+    query: Vec<(String, String)>,
+    segments: &[String],
+) -> Result<Response, Refused> {
     // `/api/<command path>`: the same command, run in this process (in_process)
     let in_process = segments.first().is_some_and(|s| s == "api");
     let Some(endpoint) = st.endpoints.get(&segments[in_process as usize..]) else {
-        return error_response(StatusCode::NOT_FOUND, "not_found", "no such command");
+        return Err(error_response(StatusCode::NOT_FOUND, "not_found", "no such command").into());
     };
     let media = in_process && in_process::MEDIA.contains(&endpoint.command_name().as_str());
     if in_process && !media && !in_process::COMMANDS.contains(&endpoint.command_name().as_str()) {
-        return error_response(
+        return Err(error_response(
             StatusCode::NOT_FOUND,
             "not_found",
             &format!(
@@ -444,78 +593,25 @@ async fn route(st: &AppState, req: Request) -> Response {
                 endpoint.command_name(),
                 endpoint.path.join("/")
             ),
-        );
+        )
+        .into());
     }
 
-    let mut params = Params::new();
-    for (k, v) in query {
-        params.entry(k).or_default().push(Value::String(v));
-    }
-    if parts.method != Method::GET && parts.method != Method::HEAD {
-        let bytes = match to_bytes(body, MAX_BODY).await {
-            Ok(b) => b,
-            Err(_) => {
-                return error_response(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "invalid_arguments",
-                    "request body too large",
-                )
-            }
-        };
-        if !bytes.iter().all(u8::is_ascii_whitespace) {
-            match serde_json::from_slice::<Value>(&bytes) {
-                Ok(Value::Object(map)) => {
-                    for (k, v) in map {
-                        if v.is_null() {
-                            params.remove(&k);
-                        } else {
-                            params.insert(k, vec![v]);
-                        }
-                    }
-                }
-                _ => return bad_request("the request body must be a JSON object"),
-            }
-        }
-    }
-    params.remove("access_token");
-    let std = match params.remove("std").and_then(|v| v.into_iter().next()) {
-        None => Std::Json,
-        Some(v) => match text_of(&v).as_str() {
-            "in" => Std::In,
-            "out" => Std::Out,
-            "err" => Std::Err,
-            other => {
-                return bad_request(&format!(
-                    "unknown std value `{other}`; expected in, out or err"
-                ))
-            }
-        },
-    };
-    let want_file = match params.remove("return").and_then(|v| v.into_iter().next()) {
-        None => false,
-        Some(v) => match text_of(&v).as_str() {
-            "json" => false,
-            "file" => true,
-            other => {
-                return bad_request(&format!(
-                    "unknown return value `{other}`; expected json or file"
-                ))
-            }
-        },
-    };
-    let fields = params.remove("fields").map(|values| field_names(&values));
-    let background = prefers_async(&parts.headers);
-    if fields.is_some() && (std != Std::Json || want_file || background || media) {
-        return bad_request(
+    let mut params = request_params(query, &parts.method, body).await?;
+    let asked = Asked::take(&mut params, &parts.headers)?;
+    if asked.fields.is_some()
+        && (asked.std != Std::Json || asked.want_file || asked.background || media)
+    {
+        return Err(bad_request(
             "fields picks the columns of a --json document answered right away: not with std, return=file, \
              `Prefer: respond-async` or a media route",
-        );
+        ).into());
     }
-    if in_process && (std != Std::Json || want_file || background) {
-        return bad_request(
+    if in_process && (asked.std != Std::Json || asked.want_file || asked.background) {
+        return Err(bad_request(
             "/api/ answers the --json document right away: std, return=file and `Prefer: respond-async` are for \
              the routes without /api/",
-        );
+        ).into());
     }
 
     // a media route reads, whatever the command does without /api/
@@ -525,63 +621,43 @@ async fn route(st: &AppState, req: Request) -> Response {
         endpoint.verb(&params)
     };
     match verb {
-        Some(verb) if verb.method() != parts.method => return method_not_allowed(&[verb]),
+        Some(verb) if verb.method() != parts.method => {
+            return Err(method_not_allowed(&[verb]).into())
+        }
         None if !endpoint.verbs().iter().any(|v| v.method() == parts.method) => {
-            return method_not_allowed(&endpoint.verbs())
+            return Err(method_not_allowed(&endpoint.verbs()).into())
         }
         _ => {}
     }
 
     let command = endpoint.command_name();
-    let mut file_out = None;
-    if want_file {
-        if std != Std::Json {
-            return bad_request("return=file cannot be combined with std");
+    let file_out = if asked.want_file {
+        if asked.std != Std::Json {
+            return Err(bad_request("return=file cannot be combined with std").into());
         }
-        let Some((default_out, field)) = files::file_command(&command) else {
-            return bad_request(&format!(
-                "`{command}` does not write a single file, so return=file is not available for it"
-            ));
-        };
-        let given = params
-            .iter()
-            .find(|(k, _)| find_param(endpoint, k).is_some_and(|p| p.name == "out"))
-            .and_then(|(_, v)| v.first())
-            .map(text_of);
-        file_out = Some(match given {
-            Some(out) => FileOut {
-                out,
-                field,
-                dir: None,
-            },
-            None => {
-                let dir = st.cfg.files_dir.join(&generate_token()[..16]);
-                let out = if default_out.is_empty() {
-                    dir.clone()
-                } else {
-                    dir.join(default_out)
-                };
-                let out = out.to_string_lossy().into_owned();
-                params.insert("out".into(), vec![Value::String(out.clone())]);
-                FileOut {
-                    out,
-                    field,
-                    dir: Some(dir),
-                }
-            }
-        });
-    }
+        Some(FileOut::new(
+            &st.cfg.files_dir,
+            endpoint,
+            &command,
+            &mut params,
+        )?)
+    } else {
+        None
+    };
 
     if media
         && params
             .keys()
             .any(|k| find_param(endpoint, k).is_some_and(|p| p.name == "out"))
     {
-        return bad_request("an /api/ media route answers with the file itself: leave out `out`");
+        return Err(bad_request(
+            "an /api/ media route answers with the file itself: leave out `out`",
+        )
+        .into());
     }
-    if let Err(message) = endpoint.check(&params) {
-        return bad_request(&message);
-    }
+    endpoint
+        .check(&params)
+        .map_err(|message| bad_request(&message))?;
     let mut timing = Timing::default();
     // `/api/`: the typed read of the request, run in this process (#397). A request it does not take goes to a child
     // process, which answers it as the terminal does, in the place the request waited for.
@@ -590,140 +666,203 @@ async fn route(st: &AppState, req: Request) -> Response {
         let line = if media { &st.media } else { &st.api_reads };
         let waited = std::time::Instant::now();
         let Some(entered) = line.enter(WAIT).await else {
-            return busy_line(media);
+            return Err(busy_line(media).into());
         };
         timing.stage("wait", Some("in line for a place"), waited);
         let given = in_process::Given::new(endpoint, &params);
         let ran = std::time::Instant::now();
-        let hub = st.hub.clone();
-        if media {
-            if let Ok(asked) = given.media(&command) {
-                let done =
-                    in_process::held(entered, async move { in_process::media(&hub, asked).await })
-                        .await;
+        let done = if media {
+            media_in_process(&st.hub, entered, &given, &command, &parts.headers).await
+        } else {
+            read_in_process(&st.hub, entered, &given, &command, asked.fields.as_deref()).await
+        };
+        match done {
+            ControlFlow::Break(answer) => {
                 timing.stage("cmd", Some("in process"), ran);
-                return timing.on(match done {
-                    Ok(Ok(file)) => media_response(&parts.headers, file),
-                    Ok(Err((doc, exit))) => in_process_document(&doc, exit, None),
-                    Err(err) => failed_in_process(&err),
-                });
+                return Ok(timing.on(answer));
             }
-        } else if let Ok(read) = given.read(&command) {
-            let done =
-                in_process::held(entered, async move { in_process::run(&hub, read).await }).await;
-            timing.stage("cmd", Some("in process"), ran);
-            return timing.on(match done {
-                Ok((doc, exit)) => in_process_document(&doc, exit, fields.as_deref()),
-                Err(err) => failed_in_process(&err),
-            });
+            ControlFlow::Continue(entered) => place = Some(entered),
         }
-        place = Some(entered);
     }
     if media {
         // satisfies the command line of the child process; nothing is written there
         params.insert("out".into(), vec![Value::String("-".into())]);
     }
-    let argv = match endpoint.argv(&params) {
-        Ok(a) => a,
-        Err(message) => return bad_request(&message),
-    };
+    let argv = endpoint
+        .argv(&params)
+        .map_err(|message| bad_request(&message))?;
     let mut full = vec!["--json".to_string()];
-    if background {
+    if asked.background {
         full.push("--progress".into());
     }
     full.extend(argv.iter().cloned());
-    if std == Std::In {
+    if asked.std == Std::In {
         let shown: Vec<String> = std::iter::once("weflow".to_string()).chain(full).collect();
-        return json_body(
+        return Ok(json_body(
             StatusCode::OK,
             json!({ "argv": shown, "stdin": Value::Null }).to_string(),
-        );
+        ));
     }
     // an `/api/` request its typed read did not take and clap refuses too: answered here with clap's error, as the
     // child process would print it, without starting one (#432)
-    if place.is_some() && !background {
+    if place.is_some() && !asked.background {
         let ran = std::time::Instant::now();
-        // the program's name as the child's would be, which its usage line shows (`weflow.exe` on Windows)
-        let program = std::env::current_exe()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| "weflow".into());
-        let line: Vec<String> = std::iter::once(program)
-            .chain(full.iter().cloned())
-            .collect();
-        if let Err(err) = crate::i18n::try_parse_from::<crate::cli::Cli>(&line) {
-            if let Some((doc, exit)) = crate::i18n::json_failure(&err) {
-                timing.stage("cmd", Some("refused in process"), ran);
-                return timing.on(in_process_document(
-                    &doc,
-                    u8::try_from(exit).unwrap_or(1),
-                    None,
-                ));
-            }
+        if let Some(refused) = refused_by_clap(&full) {
+            timing.stage("cmd", Some("refused in process"), ran);
+            return Ok(timing.on(refused));
         }
     }
     // the child answers in the server's language, as a read in process does, whatever the request's
     // `Accept-Language` and whatever `weflow lang` was set to since the server started (#433)
     let lang = server_lang();
     let limit = st.limit(verb);
-    // the folder the server chose for the file, made once the command is sure to run
-    let make_folder =
-        |file_out: &Option<FileOut>| match file_out.as_ref().and_then(|f| f.dir.as_ref()) {
-            Some(dir) => std::fs::create_dir_all(dir).err().map(|err| {
-                error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "runtime_error",
-                    &format!("failed to create {}: {err}", dir.display()),
-                )
-            }),
-            None => None,
-        };
-    if background {
-        if std != Std::Json {
-            return bad_request(
+    if asked.background {
+        if asked.std != Std::Json {
+            return Err(bad_request(
                 "std=out and std=err are answered right away; send them without `Prefer: respond-async`",
-            );
+            ).into());
         }
-        if let Some(failed) = make_folder(&file_out) {
-            return failed;
-        }
+        make_folder(file_out.as_ref())?;
         let job = st
             .jobs
             .start(st.cfg.exe.clone(), full, lang, limit.clone(), file_out);
-        return job_routes::accepted(&job);
+        return Ok(job_routes::accepted(&job));
     }
     let (_permit, _running) = match place {
         Some((admitted, running)) => (admitted, Some(running)),
         None => {
             let Ok(permit) = limit.clone().try_acquire_owned() else {
-                return busy(verb == Some(Post));
+                return Err(busy(verb == Some(Post)).into());
             };
             (permit, None)
         }
     };
-    if let Some(failed) = make_folder(&file_out) {
-        return failed;
-    }
-    let args = if std == Std::Json { &full } else { &argv };
+    make_folder(file_out.as_ref())?;
+    let args = if asked.std == Std::Json { &full } else { &argv };
     let ran = std::time::Instant::now();
-    let output = match run(&st.cfg.exe, args, lang).await {
-        Ok(o) => o,
-        Err(err) => {
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "runtime_error",
-                &format!("failed to run weflow: {err}"),
-            )
-        }
-    };
+    let output = run(&st.cfg.exe, args, lang).await.map_err(|err| {
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "runtime_error",
+            &format!("failed to run weflow: {err}"),
+        )
+    })?;
     timing.stage("cmd", Some("child process"), ran);
+    Ok(timing.on(child_answer(st, &command, output, asked, file_out).await))
+}
+
+/// The parameters of a request to a command: its query's, and over them the keys of its JSON body (`null` removes
+/// one).
+async fn request_params(
+    query: Vec<(String, String)>,
+    method: &Method,
+    body: Body,
+) -> Result<Params, Refused> {
+    let mut params = Params::new();
+    for (k, v) in query {
+        params.entry(k).or_default().push(Value::String(v));
+    }
+    if *method == Method::GET || *method == Method::HEAD {
+        return Ok(params);
+    }
+    let bytes = to_bytes(body, MAX_BODY).await.map_err(|_| {
+        error_response(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "invalid_arguments",
+            "request body too large",
+        )
+    })?;
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok(params);
+    }
+    let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(&bytes) else {
+        return Err(bad_request("the request body must be a JSON object").into());
+    };
+    for (k, v) in map {
+        if v.is_null() {
+            params.remove(&k);
+        } else {
+            params.insert(k, vec![v]);
+        }
+    }
+    Ok(params)
+}
+
+/// The answer of an `/api/` media route, read in this process holding `place`; the place back when the typed read
+/// does not take the request.
+async fn media_in_process(
+    hub: &Arc<in_process::Hub>,
+    place: in_process::Place,
+    given: &in_process::Given,
+    command: &str,
+    headers: &HeaderMap,
+) -> ControlFlow<Response, in_process::Place> {
+    let Ok(asked) = given.media(command) else {
+        return ControlFlow::Continue(place);
+    };
+    let hub = hub.clone();
+    let done = in_process::held(place, async move { in_process::media(&hub, asked).await }).await;
+    ControlFlow::Break(match done {
+        Ok(Ok(file)) => media_response(headers, file),
+        Ok(Err((doc, exit))) => in_process_document(&doc, exit, None),
+        Err(err) => failed_in_process(&err),
+    })
+}
+
+/// The answer of an `/api/` read, run in this process holding `place`; the place back when the typed read does not
+/// take the request.
+async fn read_in_process(
+    hub: &Arc<in_process::Hub>,
+    place: in_process::Place,
+    given: &in_process::Given,
+    command: &str,
+    fields: Option<&[String]>,
+) -> ControlFlow<Response, in_process::Place> {
+    let Ok(read) = given.read(command) else {
+        return ControlFlow::Continue(place);
+    };
+    let hub = hub.clone();
+    let done = in_process::held(place, async move { in_process::run(&hub, read).await }).await;
+    ControlFlow::Break(match done {
+        Ok((doc, exit)) => in_process_document(&doc, exit, fields),
+        Err(err) => failed_in_process(&err),
+    })
+}
+
+/// clap's error for the command line `full` (without the program), as a child process would print it, when clap
+/// refuses it.
+fn refused_by_clap(full: &[String]) -> Option<Response> {
+    // the program's name as the child's would be, which its usage line shows (`weflow.exe` on Windows)
+    let program = std::env::current_exe()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "weflow".into());
+    let line: Vec<String> = std::iter::once(program)
+        .chain(full.iter().cloned())
+        .collect();
+    let err = crate::i18n::try_parse_from::<crate::cli::Cli>(&line).err()?;
+    let (doc, exit) = crate::i18n::json_failure(&err)?;
+    Some(in_process_document(
+        &doc,
+        u8::try_from(exit).unwrap_or(1),
+        None,
+    ))
+}
+
+/// The answer of `command`, run in a child process that printed `output`.
+async fn child_answer(
+    st: &AppState,
+    command: &str,
+    output: std::process::Output,
+    asked: Asked,
+    file_out: Option<FileOut>,
+) -> Response {
     // killed by a signal: no exit code
     let exit = output.status.code().unwrap_or(-1);
-    let mut resp = match std {
+    let mut resp = match asked.std {
         Std::Json => match serde_json::from_slice::<Value>(&output.stdout) {
             Ok(doc) => {
                 let status = status_for(&doc, exit);
-                if status == StatusCode::OK && matches!(command.as_str(), "web use" | "web update")
-                {
+                if status == StatusCode::OK && matches!(command, "web use" | "web update") {
                     show_chosen(&st.cfg, &doc);
                 }
                 match file_out {
@@ -741,7 +880,7 @@ async fn route(st: &AppState, req: Request) -> Response {
                             ),
                         }
                     }
-                    _ => match &fields {
+                    _ => match &asked.fields {
                         Some(fields) => document_response(
                             &doc,
                             status,
@@ -767,7 +906,7 @@ async fn route(st: &AppState, req: Request) -> Response {
             }
         },
         Std::Out | Std::Err => {
-            let (key, bytes) = if std == Std::Out {
+            let (key, bytes) = if asked.std == Std::Out {
                 ("stdout", &output.stdout)
             } else {
                 ("stderr", &output.stderr)
@@ -779,7 +918,7 @@ async fn route(st: &AppState, req: Request) -> Response {
     };
     resp.headers_mut()
         .insert("x-weflow-exit-code", HeaderValue::from(exit));
-    timing.on(resp)
+    resp
 }
 
 /// Shows at `/ui/` the version `web use` or `web update` chose (`data.version` of its answer), when the page follows
