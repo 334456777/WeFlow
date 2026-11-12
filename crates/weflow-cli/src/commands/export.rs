@@ -4,16 +4,14 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 
-use crate::files::{
-    csv_escape, export_path, make_parent, write_csv_file, write_json_file, write_text_file,
-};
+use crate::files::{export_path, make_parent, write_csv_file, write_json_file, write_text_file};
 
 use super::analytics::day_span;
 use serde_json::{json, Value};
 use weflow_core::contract::{ExportWritten, MessagesBundle, MessagesFolder, MessagesZip};
 use weflow_core::dates::date_range_args;
 use weflow_core::error::{AppError, AppResult};
-use weflow_core::export_msg::{ListKind, ListPage};
+use weflow_core::export_msg::{csv_cell, ListKind, ListPage};
 use weflow_core::services::ServiceHub;
 
 #[derive(Args, Debug)]
@@ -230,12 +228,11 @@ pub(crate) async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> A
             let path = export_path(&out, &format!("footprint.{extension}"));
             make_parent(&path)?;
             if extension == "csv" {
-                let cell = |v: &Value| {
-                    csv_escape(&v.as_str().map_or_else(|| v.to_string(), str::to_string))
-                };
+                let cell =
+                    |v: &Value| csv_cell(&v.as_str().map_or_else(|| v.to_string(), str::to_string));
                 let mut csv = headers
                     .iter()
-                    .map(|h| csv_escape(h))
+                    .map(|h| csv_cell(h))
                     .collect::<Vec<_>>()
                     .join(",")
                     + "\n";

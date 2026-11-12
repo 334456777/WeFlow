@@ -165,7 +165,7 @@ pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
 }
 
 #[cfg(test)]
-mod export_tests {
+mod tests {
 
     #[test]
     fn atomic_writes_replace_the_file_and_leave_no_temporary_file() {

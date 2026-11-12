@@ -15,8 +15,8 @@ use std::io::{self, Write};
 use serde::ser::{SerializeSeq, Serializer};
 use serde::Serialize;
 
+use super::format::{html_escape, write_script_json};
 use super::html::url_path;
-use super::{format::html_escape, format::write_script_json};
 use crate::locale;
 
 const MOMENTS_ZH: &str = include_str!("moments.zh.html");

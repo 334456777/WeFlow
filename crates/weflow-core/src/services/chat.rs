@@ -14,7 +14,8 @@ use crate::contract::{
     SessionTables, TabCounts, TransferNames, VoiceMessages,
 };
 use crate::error::{AppError, AppResult};
-use crate::message::{appmsg::app_message_kind, collect_rows, CollectOptions, ExportMsg};
+use crate::message::appmsg::app_message_kind;
+use crate::message::{collect_rows, CollectOptions, ExportMsg};
 use weflow_native::media::SessionRow;
 use weflow_native::msg::table_name_for;
 use weflow_native::msg_row::MsgRow;
@@ -1051,9 +1052,7 @@ impl ServiceHub {
         payer: &str,
         receiver: &str,
     ) -> AppResult<TransferNames> {
-        use crate::export_msg::{
-            names::build_trusted_group_nicknames, names::resolve_group_nickname,
-        };
+        use crate::export_msg::names::{build_trusted_group_nicknames, resolve_group_nickname};
         let wcdb = self.open_wcdb()?;
         let nicks = if chatroom_id.ends_with("@chatroom") {
             let v = wcdb.group_nicknames(chatroom_id).unwrap_or(Value::Null);

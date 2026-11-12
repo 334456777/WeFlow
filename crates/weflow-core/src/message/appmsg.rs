@@ -27,7 +27,7 @@ fn first_non_empty(n: &str, tags: &[&str]) -> String {
         .unwrap_or_default()
 }
 
-/// What [`extract_arkme_app_message_meta`] works out before it reads any field.
+/// What [`extract_arkme_app_message_meta_in`] works out before it reads any field.
 struct AppMessageClass {
     /// The normalized content.
     n: String,
@@ -39,20 +39,12 @@ struct AppMessageClass {
     kind: Option<&'static str>,
 }
 
-/// `appMsgKind` of [`extract_arkme_app_message_meta`], without reading the other fields.
+/// `appMsgKind` of [`extract_arkme_app_message_meta_in`], without reading the other fields.
 pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> {
     classify_app_message(&MsgXml::new(content), local_type)?.kind
 }
 
-/// `extractArkmeAppMessageMeta` — extra structured fields for `arkme-json` / `json`.
-pub fn extract_arkme_app_message_meta(
-    content: &str,
-    local_type: i64,
-) -> Option<Map<String, Value>> {
-    extract_arkme_app_message_meta_in(&MsgXml::new(content), local_type)
-}
-
-/// [`extract_arkme_app_message_meta`] of a message's [`MsgXml`].
+/// `extractArkmeAppMessageMeta` of a message's [`MsgXml`] — extra structured fields for `arkme-json` / `json`.
 pub fn extract_arkme_app_message_meta_in(
     x: &MsgXml,
     local_type: i64,
@@ -60,7 +52,7 @@ pub fn extract_arkme_app_message_meta_in(
     app_message_fields(classify_app_message(x, local_type)?, local_type, x)
 }
 
-/// [`extract_arkme_app_message_meta`] of a quote or a link; `None` for every other message, whose fields are not
+/// [`extract_arkme_app_message_meta_in`] of a quote or a link; `None` for every other message, whose fields are not
 /// read.
 pub fn quote_or_link_app_message_meta_in(
     x: &MsgXml,
@@ -85,7 +77,7 @@ pub fn quote_or_link_app_message_meta_in(
     app_message_fields(class, local_type, x)
 }
 
-/// The first part of [`extract_arkme_app_message_meta`]; `None` when the message has no meta at all.
+/// The first part of [`extract_arkme_app_message_meta_in`]; `None` when the message has no meta at all.
 fn classify_app_message(x: &MsgXml, local_type: i64) -> Option<AppMessageClass> {
     if x.content().is_empty() {
         return None;
@@ -144,7 +136,7 @@ fn classify_app_message(x: &MsgXml, local_type: i64) -> Option<AppMessageClass> 
     })
 }
 
-/// The fields of [`extract_arkme_app_message_meta`] for a message `class` describes.
+/// The fields of [`extract_arkme_app_message_meta_in`] for a message `class` describes.
 fn app_message_fields(
     class: AppMessageClass,
     local_type: i64,
@@ -373,7 +365,7 @@ mod tests {
     #[test]
     fn arkme_meta_kinds() {
         let xml = "<msg><appmsg><title>Song</title><type>3</type><songname>S</songname><singername>Z</singername><musicurl>https://m</musicurl></appmsg></msg>";
-        let meta = extract_arkme_app_message_meta(xml, 49).unwrap();
+        let meta = extract_arkme_app_message_meta_in(&MsgXml::new(xml), 49).unwrap();
         assert_eq!(meta["appMsgKind"], "music");
         assert_eq!(meta["musicSinger"], "Z");
         let card = "<msg username=\"wxid_x\" nickname=\"Nick\" sex=\"1\" city=\"SH\"/>";
@@ -446,7 +438,7 @@ mod tests {
                 s = s.replace('<', "&lt;").replace('>', "&gt;");
             }
             let t = LOCAL_TYPES[rng.random_range(0..LOCAL_TYPES.len())];
-            let whole = extract_arkme_app_message_meta(&s, t);
+            let whole = extract_arkme_app_message_meta_in(&MsgXml::new(&s), t);
             let kind = app_message_kind(&s, t);
             assert_eq!(
                 kind,

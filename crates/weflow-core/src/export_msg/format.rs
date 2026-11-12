@@ -157,6 +157,8 @@ pub fn html_escape(value: &str) -> String {
     out
 }
 
+/// A CSV cell (`escapeCsvValue`): in quotes, with its quotes doubled, when it holds a quote, a comma or a line
+/// break; as it is otherwise.
 pub fn csv_cell(value: &str) -> String {
     if value.contains(['"', ',', '\r', '\n']) {
         format!("\"{}\"", value.replace('"', "\"\""))

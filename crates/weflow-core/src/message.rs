@@ -21,10 +21,6 @@ pub mod time;
 pub mod transfer;
 pub(crate) mod xml;
 
-// Nothing in the workspace calls these; they keep the public path they had before the split.
-pub use appmsg::extract_arkme_app_message_meta;
-pub use quote::quoted_sender_username;
-
 use emoji::{
     appmsg_emoticon_md5_in, extract_emoji_md5, extract_emoji_url, format_emoji_semantic_text,
 };

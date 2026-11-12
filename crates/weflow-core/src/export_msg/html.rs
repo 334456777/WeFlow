@@ -30,12 +30,15 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use super::{chrome, format::html_escape, format::write_script_json, spool::Spool, Exporter};
+use super::format::{html_escape, write_script_json};
+use super::spool::Spool;
+use super::{chrome, Exporter};
 use crate::locale;
-use crate::message::{
-    appmsg::extract_arkme_app_message_meta_in, quote::QuotedDisplay, system::clean_system_message,
-    xml::decode_html_entities, xml::extract_xml_value, xml::rx, xml::MsgXml, ExportMsg,
-};
+use crate::message::appmsg::extract_arkme_app_message_meta_in;
+use crate::message::quote::QuotedDisplay;
+use crate::message::system::clean_system_message;
+use crate::message::xml::{decode_html_entities, extract_xml_value, rx, MsgXml};
+use crate::message::ExportMsg;
 
 const TEMPLATE_ZH: &str = include_str!("template.zh.html");
 const TEMPLATE_EN: &str = include_str!("template.en.html");
