@@ -59,7 +59,9 @@ export function App() {
     const timer = window.setTimeout(() => setToast(''), FEEDBACK_MS);
     return () => window.clearTimeout(timer);
   }, [toast]);
-  const { open: openPreview, dialog: previewDialog } = usePreview(prefs.reducedMotion);
+  // the original of a picture can be asked for only where the server runs the image auto-download hook (#766)
+  const canDownloadOriginals = backend.state === 'ready' && backend.health.imageAutoDownload === true;
+  const { open: openPreview, dialog: previewDialog } = usePreview(prefs.reducedMotion, canDownloadOriginals);
   const consoleRef = useRef<HTMLElement>(null);
 
   // another server or account (#198): what was read for the one before goes

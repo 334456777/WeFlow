@@ -1,6 +1,6 @@
 // Messages, people and media of a conversation (the wiki's command API page). Messages come parsed by the
 // server as the desktop app parses them (`chat messages --parsed`), so the page reads no WeChat XML.
-import { apiUrl, get, token, type Params } from './client';
+import { apiUrl, call, get, token, type Params } from './client';
 import type * as Contract from './contract.gen';
 
 const MESSAGE_KEYS = [
@@ -79,6 +79,15 @@ export type ImageInfo = Contract.ImageInfo;
 
 export function getImageInfo(sessionId: string, localId: number, createTime: number, signal?: AbortSignal): Promise<ImageInfo> {
   return get<ImageInfo>('api/chat/image-info', { 'session-id': sessionId, 'msg-id': localId, 'create-time': createTime }, signal);
+}
+
+/**
+ * `image download-original` (#766): has WeChat download the original of a message's picture, through the hook the server
+ * runs. The request waits for WeChat's next download, so the original is there only later: `getImageInfo` says when its
+ * `hd` is.
+ */
+export function requestOriginal(sessionId: string, localId: number, createTime: number, signal?: AbortSignal): Promise<Contract.ImageOriginalRequested> {
+  return call<Contract.ImageOriginalRequested>('POST', 'api/image/download-original', { 'session-id': sessionId, 'msg-id': localId, 'create-time': createTime }, signal);
 }
 
 /**

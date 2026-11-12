@@ -16,6 +16,8 @@ export interface Health {
   limits?: { maxTasks?: number; maxReads?: number; maxMedia?: number };
   /** Whether the insight engine runs beside (`--insight`). */
   insight?: boolean;
+  /** Whether the server can have WeChat download originals, through its image auto-download hook (#766). */
+  imageAutoDownload?: boolean;
   /** The language of the server's answers (#439), which the page shows itself in; older servers do not say. */
   lang?: 'zh' | 'en';
 }
