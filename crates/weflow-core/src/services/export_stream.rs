@@ -279,7 +279,7 @@ impl PageSource<'_> {
             // drop other senders' rows before parsing them
             .filter(|row| {
                 sender.is_none_or(|f| {
-                    crate::message::is_same_wxid(
+                    crate::message::transfer::is_same_wxid(
                         &crate::message::msg_row_sender(
                             row,
                             self.opts.session_id,
@@ -291,9 +291,9 @@ impl PageSource<'_> {
             })
             .collect();
         let mut msgs = crate::message::collect_rows(rows, self.opts);
-        if msgs.iter().any(super::is_sticker) {
+        if msgs.iter().any(super::export::is_sticker) {
             let table = self.captions.get_or_init(self.load_captions);
-            super::attach_emoji_captions(table, &mut msgs);
+            super::export::attach_emoji_captions(table, &mut msgs);
         }
         Ok(ParsedPage {
             scanned,
@@ -720,7 +720,7 @@ mod tests {
                 start: None,
                 end: None,
                 sender: None,
-                display_pref: crate::export_msg::DisplayPref::Remark,
+                display_pref: crate::export_msg::names::DisplayPref::Remark,
                 excel_compact: false,
             };
             let opts = CollectOptions {
@@ -793,7 +793,7 @@ mod tests {
             start: None,
             end: None,
             sender: None,
-            display_pref: crate::export_msg::DisplayPref::Remark,
+            display_pref: crate::export_msg::names::DisplayPref::Remark,
             excel_compact: false,
         };
         let opts = CollectOptions {

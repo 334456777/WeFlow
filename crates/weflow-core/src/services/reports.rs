@@ -13,7 +13,7 @@ use crate::contract::{
     FriendCount, LongestStreak, LostFriend, MidnightKing, MonthlyTopFriend, MutualFriend, PeakDay,
     PhraseCount, ResponseSpeed, SocialInitiative, YearFirstChat,
 };
-use crate::message::rx;
+use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
 
 const CONVERSATION_GAP: i64 = 3600;

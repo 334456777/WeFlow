@@ -7,6 +7,7 @@ import type { OpenAt, Page, Shell } from '../shell/page';
 import { Connected, ScrollPage } from '../shell/panels';
 import { FootprintAi, FootprintExport, FootprintPage } from './Footprint';
 import { t } from '../i18n';
+import './footprint.css';
 
 export function useFootprintPage(shell: Shell, openAt: OpenAt): Page {
   const [range, setRange] = useState<FootprintRange>(() => presetRanges()[0]);

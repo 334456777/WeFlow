@@ -14,7 +14,8 @@ use crate::contract::{
     SessionTables, TabCounts, TransferNames, VoiceMessages,
 };
 use crate::error::{AppError, AppResult};
-use crate::message::{app_message_kind, collect_rows, CollectOptions, ExportMsg};
+use crate::message::{appmsg::app_message_kind, collect_rows, CollectOptions, ExportMsg};
+use weflow_native::media::SessionRow;
 use weflow_native::msg::table_name_for;
 use weflow_native::msg_row::MsgRow;
 
@@ -511,8 +512,8 @@ impl ServiceHub {
             });
         }
         let wcdb = self.open_wcdb()?;
-        let begin = crate::message::normalize_timestamp_seconds(begin as f64);
-        let end = crate::message::normalize_timestamp_seconds(end as f64);
+        let begin = crate::message::time::normalize_timestamp_seconds(begin as f64);
+        let end = crate::message::time::normalize_timestamp_seconds(end as f64);
         let options = json!({
             "begin": begin,
             "end": end,
@@ -992,7 +993,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let ids: Vec<String> = match session_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => vec![s.to_string()],
-            None => crate::services::extract_session_ids(&wcdb.sessions().map_err(native)?),
+            None => crate::services::chat::extract_session_ids(&wcdb.sessions().map_err(native)?),
         };
         let code = match media_type {
             "image" => 1,
@@ -1050,7 +1051,9 @@ impl ServiceHub {
         payer: &str,
         receiver: &str,
     ) -> AppResult<TransferNames> {
-        use crate::export_msg::{build_trusted_group_nicknames, resolve_group_nickname};
+        use crate::export_msg::{
+            names::build_trusted_group_nicknames, names::resolve_group_nickname,
+        };
         let wcdb = self.open_wcdb()?;
         let nicks = if chatroom_id.ends_with("@chatroom") {
             let v = wcdb.group_nicknames(chatroom_id).unwrap_or(Value::Null);
@@ -1101,4 +1104,320 @@ impl ServiceHub {
             receiver_name: resolve(receiver),
         })
     }
+}
+
+impl ServiceHub {
+    pub fn sessions(&self) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.sessions()
+            .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    /// The list `export sessions` writes: [`Self::sessions`] with each conversation's `display_name` (the contact's
+    /// remark, else its nickname, else its WeChat ID, else the username) after its `username`.
+    pub fn sessions_with_names(&self) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        let sessions = wcdb
+            .sessions()
+            .map_err(|err| AppError::native(err.to_string()))?;
+        let Value::Array(rows) = sessions else {
+            return Ok(sessions);
+        };
+        let users: Vec<String> = rows
+            .iter()
+            .filter_map(|row| row["username"].as_str().map(str::to_string))
+            .collect();
+        let names = serde_json::to_string(&users)
+            .ok()
+            .and_then(|list| wcdb.display_names(&list).ok())
+            .unwrap_or(Value::Null);
+        let rows = rows
+            .into_iter()
+            .map(|row| {
+                let Value::Object(fields) = row else {
+                    return row;
+                };
+                let name = fields
+                    .get("username")
+                    .and_then(Value::as_str)
+                    .and_then(|user| names.get(user))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let mut named = serde_json::Map::with_capacity(fields.len() + 1);
+                for (key, value) in fields {
+                    let after = key == "username";
+                    named.insert(key, value);
+                    if after {
+                        named.insert("display_name".into(), name.clone());
+                    }
+                }
+                Value::Object(named)
+            })
+            .collect();
+        Ok(Value::Array(rows))
+    }
+
+    /// `limit` messages of a conversation from `offset` on, in the order of `chat messages`.
+    pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> AppResult<Vec<MsgRow>> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.messages(session_id, limit, offset)
+            .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    /// A newest-first page of a conversation for `chat messages` and `chat latest`, as [`MessageRow`]s: from the
+    /// newest message, after `offset` of them, or next to the message of a `_cursor` (`before`: the older ones;
+    /// `after`: the newer ones closest to it). Every row has its own `_cursor`, to ask for the page next to it.
+    pub fn message_page(
+        &self,
+        session_id: &str,
+        limit: i32,
+        offset: i32,
+        before: Option<&str>,
+        after: Option<&str>,
+    ) -> AppResult<Value> {
+        let rows = self.message_page_rows(session_id, limit, offset, before, after)?;
+        Ok(json!(rows
+            .into_iter()
+            .map(crate::contract::MessageRow::from)
+            .collect::<Vec<_>>()))
+    }
+
+    /// [`message_page`](Self::message_page) as typed rows (#492).
+    pub fn message_page_rows(
+        &self,
+        session_id: &str,
+        limit: i32,
+        offset: i32,
+        before: Option<&str>,
+        after: Option<&str>,
+    ) -> AppResult<Vec<MsgRow>> {
+        use weflow_native::msg::{MsgPos, PageFrom};
+        let pos = |token: &str| {
+            MsgPos::parse(token).ok_or_else(|| {
+                AppError::usage(format!(
+                    "`{token}` is not a message cursor; pass the `_cursor` of a message"
+                ))
+            })
+        };
+        let from = match (before, after) {
+            (Some(token), _) => Some(PageFrom::Before(pos(token)?)),
+            (None, Some(token)) => Some(PageFrom::After(pos(token)?)),
+            (None, None) => None,
+        };
+        let wcdb = self.open_wcdb()?;
+        match from {
+            Some(from) => wcdb.messages_from(session_id, limit, from),
+            None => wcdb.messages(session_id, limit, offset),
+        }
+        .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    /// `chat messages --since`: the `limit` messages sent at `seconds` (Unix time) or later, the earliest ones, still
+    /// newest first, each with its `_cursor`: where a chat window jumps to a day, then pages both ways from.
+    pub fn message_page_since(
+        &self,
+        session_id: &str,
+        limit: i32,
+        seconds: i64,
+    ) -> AppResult<Vec<MsgRow>> {
+        use weflow_native::msg::{MsgPos, PageFrom};
+        self.open_wcdb()?
+            .messages_from(session_id, limit, PageFrom::After(MsgPos::at_time(seconds)))
+            .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    /// Typed rows of one conversation as the chat window shows them, each with its `_cursor` (#492).
+    pub fn parsed_rows(
+        &self,
+        rows: Vec<MsgRow>,
+        session_id: &str,
+    ) -> Vec<crate::contract::ParsedMessage> {
+        let cursors: Vec<String> = rows.iter().map(|r| r.pos().token()).collect();
+        crate::chat_msg::map_msg_rows(rows, session_id, &self.wmy())
+            .into_iter()
+            .zip(cursors)
+            .map(|(message, cursor)| crate::contract::ParsedMessage {
+                message,
+                cursor: Some(cursor),
+                session_id: None,
+            })
+            .collect()
+    }
+
+    /// `chat message --parsed`: the message a lookup found, parsed as a page's are and with its `_cursor`, so a
+    /// chat window can open its conversation there (issue #200).
+    pub fn parsed_lookup(
+        &self,
+        row: MsgRow,
+        session_id: &str,
+    ) -> Option<crate::contract::ParsedMessage> {
+        self.parsed_rows(vec![row], session_id).pop()
+    }
+
+    /// `chat search`: the hits, newest first.
+    pub fn search(
+        &self,
+        keyword: &str,
+        session_id: Option<&str>,
+        limit: i32,
+        offset: i32,
+        begin: i32,
+        end: i32,
+    ) -> AppResult<Vec<SessionRow>> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.search(keyword, session_id, limit, offset, begin, end)
+            .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    /// `chat search --parsed`: each hit as the chat window shows it, with its `_cursor`, to page its conversation
+    /// from, and its `_session_id`.
+    pub fn parsed_hits(&self, hits: Vec<SessionRow>) -> Vec<crate::contract::ParsedMessage> {
+        let my = self.wmy();
+        hits.into_iter()
+            .map(|hit| {
+                let cursor = hit.row.pos().token();
+                let table_name = weflow_native::msg::table_name_for(&hit.session_id);
+                crate::contract::ParsedMessage {
+                    message: crate::chat_msg::map_msg_row(hit.row, &table_name, &my),
+                    cursor: Some(cursor),
+                    session_id: Some(hit.session_id),
+                }
+            })
+            .collect()
+    }
+
+    pub fn contacts(&self) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.contacts()
+            .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    pub fn contact(&self, username: &str) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.contact(username)
+            .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    pub fn update_message(
+        &self,
+        session_id: &str,
+        local_id: i64,
+        create_time: i32,
+        content: &str,
+    ) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.update_message(session_id, local_id, create_time, content)
+            .map_err(AppError::from_native)
+    }
+
+    pub fn delete_message(
+        &self,
+        session_id: &str,
+        local_id: i64,
+        create_time: i32,
+        db_path_hint: Option<&str>,
+    ) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.delete_message(session_id, local_id, create_time, db_path_hint)
+            .map_err(AppError::from_native)
+    }
+
+    pub fn anti_revoke(
+        &self,
+        action: &str,
+        sessions: &[String],
+    ) -> AppResult<crate::contract::AntiRevokeResults> {
+        let wcdb = self.open_wcdb()?;
+        let mut results = Vec::new();
+        let mut first_error = None;
+        for session_id in sessions {
+            let result = match action {
+                "check" => wcdb.anti_revoke_check(session_id),
+                "install" => wcdb.anti_revoke_install(session_id),
+                "uninstall" => wcdb.anti_revoke_uninstall(session_id),
+                _ => Err(anyhow::anyhow!("unknown anti revoke action")),
+            };
+            match result {
+                Ok(data) => results.push(crate::contract::AntiRevokeResult {
+                    session_id: session_id.clone(),
+                    success: true,
+                    data: Some(data),
+                    error: None,
+                }),
+                Err(err) => {
+                    results.push(crate::contract::AntiRevokeResult {
+                        session_id: session_id.clone(),
+                        success: false,
+                        data: None,
+                        error: Some(err.to_string()),
+                    });
+                    first_error.get_or_insert(err);
+                }
+            }
+        }
+        // Per-session results are kept for partial failures, but when every session failed the command itself failed
+        // (otherwise a script reading only `success` would treat a refused operation as done).
+        if !results.is_empty() && results.iter().all(|r| !r.success) {
+            return Err(AppError::from_native(
+                first_error.unwrap_or_else(|| anyhow::anyhow!("anti-revoke failed")),
+            ));
+        }
+        Ok(crate::contract::AntiRevokeResults { results })
+    }
+
+    pub fn contact_type_counts(&self) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.contact_type_counts()
+            .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    pub fn group_members(&self, chatroom_id: &str) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        let members = wcdb
+            .group_members(chatroom_id)
+            .map_err(|err| AppError::native(err.to_string()))?;
+        let nicknames = wcdb.group_nicknames(chatroom_id).unwrap_or(Value::Null);
+        let count = wcdb.group_member_count(chatroom_id).unwrap_or(Value::Null);
+        Ok(json!({
+            "chatroomId": chatroom_id,
+            "members": members,
+            "nicknames": nicknames,
+            "count": count
+        }))
+    }
+}
+
+pub(crate) fn extract_session_ids(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(session_id_from_value)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn session_id_from_value(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_string());
+    }
+    let object = value.as_object()?;
+    for key in [
+        "session_id",
+        "sessionId",
+        "id",
+        "username",
+        "userName",
+        "talker",
+        "strUsrName",
+    ] {
+        if let Some(text) = object.get(key).and_then(Value::as_str) {
+            if !text.trim().is_empty() {
+                return Some(text.to_string());
+            }
+        }
+    }
+    None
 }

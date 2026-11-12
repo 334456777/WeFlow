@@ -57,7 +57,7 @@ export function fly(from: HTMLElement, change: () => void, to: () => HTMLElement
  * shrinks back under it as it flies out (#194): the frame's box goes from the thumbnail's to its place (`open`) or
  * back (`close`), and the frame drawn in it is scaled and moved with the picture (#339), so that its part around the
  * picture stays under the picture all the way and the rest comes out of where the picture comes from. Marks the page
- * for the styles that play it (app.css) and returns what takes the marks off once it has played.
+ * for the styles that play it (shell/PreviewDialog.css) and returns what takes the marks off once it has played.
  */
 export function frameFlight(mode: 'open' | 'close', frame: HTMLElement, media: HTMLElement, thumb: DOMRect): () => void {
   const root = document.documentElement;
@@ -75,7 +75,7 @@ export function frameFlight(mode: 'open' | 'close', frame: HTMLElement, media: H
 type Box = Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>;
 
 /**
- * The boxes of a frame flight, for app.css: the thumbnail's (`--fly-*`), the frame's size (`--frame-w`, `--frame-h`),
+ * The boxes of a frame flight, for shell/PreviewDialog.css: the thumbnail's (`--fly-*`), the frame's size (`--frame-w`, `--frame-h`),
  * and the scale and shift that put the frame's picture `media` on the thumbnail (`--frame-s*`, `--frame-t*`), from the
  * frame's own corner.
  */

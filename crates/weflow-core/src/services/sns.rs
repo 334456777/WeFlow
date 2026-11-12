@@ -1578,3 +1578,168 @@ fn export_post_json(p: &SnsPost, saved: &[SavedMedia], arkme: bool) -> Value {
     }
     Value::Object(o)
 }
+
+impl ServiceHub {
+    pub(crate) fn sns_block_delete(&self, action: &str) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        let result = match action {
+            "check" => wcdb.sns_block_delete_check(),
+            "install" => wcdb.sns_block_delete_install(),
+            "uninstall" => wcdb.sns_block_delete_uninstall(),
+            _ => Err(anyhow::anyhow!("unknown sns block-delete action")),
+        };
+        result.map_err(AppError::from_native)
+    }
+
+    pub(crate) fn sns_delete(&self, post_id: &str) -> AppResult<Value> {
+        let wcdb = self.open_wcdb()?;
+        wcdb.sns_delete_post(post_id).map_err(AppError::from_native)
+    }
+
+    pub async fn sns_download_image(
+        &self,
+        url: &str,
+        out: Option<&Path>,
+    ) -> AppResult<crate::contract::SnsImageDownload> {
+        use crate::contract::{SnsImageDownload, SnsImageInline, SnsImageSaved};
+        let client = crate::http_client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|err| AppError::runtime(format!("failed to create HTTP client: {err}")))?;
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|err| AppError::runtime(format!("failed to download image: {err}")))?;
+        if !response.status().is_success() {
+            return Err(AppError::runtime(format!(
+                "image download failed with status {}",
+                response.status()
+            )));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|err| AppError::runtime(format!("failed to read image response: {err}")))?;
+        let data = bytes.to_vec();
+
+        let profile = self.profile()?;
+        let xor_key = profile.image_xor_key.and_then(|k| u8::try_from(k).ok());
+        let aes_key_bytes = profile
+            .image_aes_key
+            .as_deref()
+            .and_then(crate::decrypt::parse_aes_key);
+
+        let version = crate::decrypt::detect_dat_version(&data);
+        let (final_data, ext) = match xor_key {
+            Some(xor_key) if version > 0 => {
+                let result = crate::decrypt::decrypt_dat(&data, xor_key, aes_key_bytes.as_ref())
+                    .map_err(|err| AppError::runtime(err.to_string()))?;
+                (result.data, result.ext)
+            }
+            _ => {
+                let ext = crate::decrypt::detect_image_extension(&data).to_string();
+                (data, ext)
+            }
+        };
+
+        if let Some(out_path) = out {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|err| {
+                    AppError::runtime(format!("failed to create {}: {err}", parent.display()))
+                })?;
+            }
+            std::fs::write(out_path, &final_data).map_err(|err| {
+                AppError::runtime(format!("failed to write {}: {err}", out_path.display()))
+            })?;
+            Ok(SnsImageDownload::Saved(SnsImageSaved {
+                url: url.to_string(),
+                out: out_path.to_path_buf(),
+                ext,
+                size: final_data.len(),
+            }))
+        } else {
+            use base64::Engine as _;
+            let data = format!(
+                "data:image/{};base64,{}",
+                ext.trim_start_matches('.'),
+                base64::engine::general_purpose::STANDARD.encode(&final_data)
+            );
+            Ok(SnsImageDownload::Inline(SnsImageInline {
+                url: url.to_string(),
+                ext,
+                size: final_data.len(),
+                data,
+            }))
+        }
+    }
+
+    pub fn biz_accounts(&self) -> AppResult<Value> {
+        let contacts = self.contacts()?;
+        let sessions = self.sessions()?;
+        let accounts = crate::biz::filter_official_contacts(&contacts, &sessions);
+        Ok(json!({ "accounts": accounts }))
+    }
+
+    pub fn biz_messages(
+        &self,
+        username: &str,
+        limit: i32,
+        offset: i32,
+    ) -> AppResult<crate::contract::BizMessages> {
+        let messages = self.messages(username, limit, offset)?;
+        Ok(crate::contract::BizMessages {
+            username: username.to_string(),
+            messages: crate::biz::parse_biz_messages(&messages),
+        })
+    }
+
+    /// The WeChat Pay notices among `limit` messages from `offset` on, newest first: the messages of the WeChat Pay
+    /// account and the service notices, where WeChat keeps its cards. Other messages are left out, so a page may
+    /// hold fewer records than `limit`: `hasMore` says whether there are messages past this page.
+    pub fn biz_pay_records(
+        &self,
+        limit: i32,
+        offset: i32,
+    ) -> AppResult<crate::contract::PayRecords> {
+        const PAY_ACCOUNT: &str = "gh_3dfda90e39d6";
+        // the two conversations together are paged here, so each is read up to the end of this page
+        let upto = if limit > 0 {
+            limit.saturating_add(offset.max(0))
+        } else {
+            limit
+        };
+        let own = self.messages(PAY_ACCOUNT, upto, 0)?;
+        let cards = self.messages("notifymessage", upto, 0)?;
+        let mut rows: Vec<(MsgRow, bool)> = own.into_iter().map(|m| (m, true)).collect();
+        rows.extend(cards.into_iter().map(|m| {
+            let from_pay =
+                crate::message::xml::extract_xml_value(&m.content, "fromusername") == PAY_ACCOUNT;
+            (m, from_pay)
+        }));
+        rows.sort_by_key(|(m, _)| {
+            let at = m.pos();
+            std::cmp::Reverse((at.sort_seq, at.create_time, at.local_id))
+        });
+        let page: Vec<(MsgRow, bool)> = rows
+            .into_iter()
+            .skip(usize::try_from(offset.max(0)).unwrap_or(usize::MAX))
+            .take(
+                usize::try_from(limit)
+                    .ok()
+                    .filter(|n| *n > 0)
+                    .unwrap_or(usize::MAX),
+            )
+            .collect();
+        let read = page.len();
+        let notices: Vec<MsgRow> = page
+            .into_iter()
+            .filter_map(|(m, pay)| pay.then_some(m))
+            .collect();
+        let records = crate::biz::parse_pay_records(&notices);
+        Ok(crate::contract::PayRecords {
+            records,
+            has_more: limit > 0 && read >= limit as usize,
+        })
+    }
+}

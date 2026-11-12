@@ -9,6 +9,7 @@ import type { Friend } from './DualReport';
 import { ReportsPage } from './ReportsPage';
 import { SaveReport } from './SaveReport';
 import { t } from '../i18n';
+import './reports.css';
 
 export function useReportsPage(shell: Shell): Page {
   const { scope } = shell;

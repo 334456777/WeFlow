@@ -14,7 +14,7 @@ use weflow_core::reads::{image_variant, MediaRead, MessagePage, Read};
 use weflow_core::services::ServiceHub;
 use weflow_core::sync::MutexExt;
 
-use super::{find_param, flag_value, Endpoint, Kind, Params};
+use super::endpoints::{find_param, flag_value, Endpoint, Kind, Params};
 
 /// The commands with an `/api/` route; `tests::the_list_matches_the_cli` keeps it in step with
 /// `read_of`.
@@ -194,7 +194,7 @@ impl Hub {
             }
             None => None,
         };
-        let (hub, config) = crate::open_hub()?;
+        let (hub, config) = crate::reads::open_hub()?;
         // a change while the config was read is caught by the next request
         let stamp = if open.is_some() && in_use.as_ref() == Some(&config) {
             before
@@ -245,7 +245,7 @@ impl Given {
                 let set = values.iter().filter(|v| flag_value(v) == Some(true));
                 all.extend(set.map(|_| "true".to_string()));
             } else {
-                all.extend(super::texts(param, values));
+                all.extend(super::endpoints::texts(param, values));
             }
         }
         Self { texts }
@@ -572,11 +572,12 @@ pub(super) async fn held<T: Send + 'static>(
 pub(super) async fn run(hub: &Hub, read: Read) -> (Value, u8) {
     let hub = match hub.get() {
         Ok(hub) => hub,
-        Err(err) => return crate::json_document(Err(err)),
+        Err(err) => return crate::reads::json_document(Err(err)),
     };
-    let done = tokio::task::spawn_blocking(move || crate::json_document(read.run(&hub))).await;
+    let done =
+        tokio::task::spawn_blocking(move || crate::reads::json_document(read.run(&hub))).await;
     done.unwrap_or_else(|err| {
-        crate::json_document(Err(AppError::runtime(format!("the command failed: {err}"))))
+        crate::reads::json_document(Err(AppError::runtime(format!("the command failed: {err}"))))
     })
 }
 
@@ -602,7 +603,7 @@ pub(super) async fn media(hub: &Hub, media: Media) -> Result<MediaFile, (Value, 
         },
         Media::Sns { url, key } => sns_media(hub, &url, key.as_deref()).await,
     };
-    outcome.map_err(|err| crate::json_document(Err(err)))
+    outcome.map_err(|err| crate::reads::json_document(Err(err)))
 }
 
 /// `sns media` for a page (issue #202): an image or a video of a Moments post, fetched from WeChat's servers,
@@ -672,12 +673,12 @@ mod tests {
 
     fn command_tree() -> Command {
         static TREE: std::sync::OnceLock<Command> = std::sync::OnceLock::new();
-        TREE.get_or_init(crate::i18n::build_command::<crate::Cli>)
+        TREE.get_or_init(crate::i18n::build_command::<crate::cli::Cli>)
             .clone()
     }
 
     /// The command line parsed by clap, as the child process does.
-    fn parse(argv: &[String]) -> Option<crate::Cli> {
+    fn parse(argv: &[String]) -> Option<crate::cli::Cli> {
         let line = ["weflow", "--json"]
             .into_iter()
             .map(String::from)
@@ -685,7 +686,7 @@ mod tests {
         command_tree()
             .try_get_matches_from(line)
             .ok()
-            .and_then(|m| crate::Cli::from_arg_matches(&m).ok())
+            .and_then(|m| crate::cli::Cli::from_arg_matches(&m).ok())
     }
 
     /// Commands of [`COMMANDS`] that run in process only with these arguments; without them, `/api/` runs them as
@@ -695,7 +696,7 @@ mod tests {
     #[test]
     fn the_list_matches_the_cli() {
         let endpoints = super::super::Endpoints::new();
-        let mut root = <crate::Cli as clap::CommandFactory>::command();
+        let mut root = <crate::cli::Cli as clap::CommandFactory>::command();
         root.build();
         for name in COMMANDS {
             let ep = endpoints
@@ -741,10 +742,10 @@ mod tests {
                         .chain(argv),
                 )
                 .ok()
-                .and_then(|m| crate::Cli::from_arg_matches(&m).ok())
+                .and_then(|m| crate::cli::Cli::from_arg_matches(&m).ok())
                 .unwrap_or_else(|| panic!("{name} does not parse"));
             assert!(
-                crate::read_of(cli.command).is_ok(),
+                crate::reads::read_of(cli.command).is_ok(),
                 "{name} does not run in process"
             );
         }
@@ -778,7 +779,7 @@ mod tests {
             let begin = std::time::Instant::now();
             for _ in 0..RUNS {
                 let cli = parse(&ep.argv(std::hint::black_box(&params)).unwrap()).unwrap();
-                let _ = std::hint::black_box(crate::read_of(cli.command));
+                let _ = std::hint::black_box(crate::reads::read_of(cli.command));
             }
             let all = begin.elapsed() / RUNS;
             // what `/api/` does (#397)
@@ -811,14 +812,14 @@ mod tests {
         }
         let cli = parse(&ep.argv(&params).ok()?)?;
         if !media {
-            return crate::read_of(cli.command).ok().map(Asked::Read);
+            return crate::reads::read_of(cli.command).ok().map(Asked::Read);
         }
         match cli.command {
-            crate::Commands::Chat(chat) => crate::media_of(chat.command)
+            crate::cli::Commands::Chat(chat) => crate::reads::media_of(chat.command)
                 .ok()
                 .map(|(m, _)| Asked::Media(Media::Chat(m))),
-            crate::Commands::Sns(sns) => match sns.command {
-                crate::SnsSubcommand::Media { url, key, .. } => {
+            crate::cli::Commands::Sns(sns) => match sns.command {
+                crate::commands::sns::SnsSubcommand::Media { url, key, .. } => {
                     Some(Asked::Media(Media::Sns { url, key }))
                 }
                 _ => None,
@@ -937,7 +938,9 @@ mod tests {
 
     #[test]
     fn media_commands_parse_with_the_placeholder_out() {
-        use crate::{ChatSubcommand, Commands, SnsSubcommand};
+        use crate::cli::Commands;
+        use crate::commands::chat::ChatSubcommand;
+        use crate::commands::sns::SnsSubcommand;
         let endpoints = super::super::Endpoints::new();
         for name in MEDIA {
             let ep = endpoints

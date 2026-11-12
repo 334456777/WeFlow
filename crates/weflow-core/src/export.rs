@@ -273,7 +273,7 @@ fn format_timestamp(ts: i64) -> String {
     if ts <= 0 {
         String::new()
     } else {
-        crate::message::format_timestamp(ts)
+        crate::message::time::format_timestamp(ts)
     }
 }
 

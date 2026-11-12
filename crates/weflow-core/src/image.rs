@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, Local, TimeZone};
 
-use crate::message::rx;
+use crate::message::xml::rx;
 
 // ───────────────────────── naming ─────────────────────────
 

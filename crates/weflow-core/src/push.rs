@@ -8,7 +8,7 @@ use serde_json::{json, Map, Value};
 use tokio::sync::broadcast;
 
 use crate::chat_msg::{self, ChatMessage};
-use crate::message::rx;
+use crate::message::xml::rx;
 use crate::services::ServiceHub;
 use crate::sync::MutexExt;
 
@@ -867,7 +867,7 @@ impl PushEngine {
             }
         }
         let nicks = self.hub.group_nicknames_pub(chatroom_id);
-        let trusted = crate::export_msg::build_trusted_group_nicknames(nicks);
+        let trusted = crate::export_msg::names::build_trusted_group_nicknames(nicks);
         self.group_nicknames
             .insert(chatroom_id.to_string(), (trusted.clone(), Instant::now()));
         trusted

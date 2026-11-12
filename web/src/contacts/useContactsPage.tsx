@@ -9,6 +9,7 @@ import { ContactDetail } from './ContactDetail';
 import { ContactList } from './ContactList';
 import { useContacts } from './useContacts';
 import { locale, t } from '../i18n';
+import './contacts.css';
 
 export function useContactsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { backend, connected, scope, setMobileDetail } = shell;

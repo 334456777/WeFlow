@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::message::extract_xml_value;
+use crate::message::xml::extract_xml_value;
 
 #[derive(Debug, Clone)]
 pub struct EmojiMeta {

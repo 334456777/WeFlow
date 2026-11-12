@@ -3,7 +3,7 @@ mod common;
 
 use serde_json::Value;
 use weflow_core::api::ApiMediaOptions;
-use weflow_core::export_msg::DisplayPref;
+use weflow_core::export_msg::names::DisplayPref;
 use weflow_core::services::MessageExportRequest;
 use weflow_native::fixture::{ContactSpec, MsgSpec, SessionSpec, T0};
 

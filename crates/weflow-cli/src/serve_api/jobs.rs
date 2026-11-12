@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::sync::{broadcast, watch, Semaphore};
 use weflow_core::sync::MutexExt;
 
-use super::status_for;
+use super::child::status_for;
 
 /// Finished jobs kept for `GET /jobs`; older ones are forgotten.
 const KEEP_FINISHED: usize = 100;
@@ -469,7 +469,7 @@ async fn run_child(
     lang: &'static str,
     mut cancelled: watch::Receiver<bool>,
 ) {
-    let mut child = match super::spawn(&exe, &args, lang).await {
+    let mut child = match super::child::spawn(&exe, &args, lang).await {
         Ok(c) => c,
         Err(err) => {
             let doc = json!({

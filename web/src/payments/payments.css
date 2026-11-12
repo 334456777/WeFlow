@@ -1,0 +1,14 @@
+/* WeChat Pay: the notices of the payments page. */
+.pay-row { display: flex; flex-direction: column; }
+
+.pay-body { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.pay-body header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.pay-copy { display: flex; flex-direction: column; min-width: 0; }
+
+.pay-title { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.pay-amount { flex-shrink: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.pay-amount.refund { color: var(--state-ok); }
+.pay-lines { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.pay-lines div { display: flex; gap: var(--space-2); }
+.pay-lines dt { flex-shrink: 0; min-width: 4em; color: var(--fg-subtle); }
+.pay-lines dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }

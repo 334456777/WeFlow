@@ -9,7 +9,7 @@ use super::*;
 use crate::api::{self, ApiExportedMedia, ApiMediaOptions};
 use crate::chat_msg::{self, ChatMessage};
 use crate::contract::{Contact, ContactKind, Session};
-use crate::message::{row_field, row_int, rx};
+use crate::message::{row::row_field, row::row_int, xml::rx};
 use crate::sync::MutexExt;
 
 const FRIEND_EXCLUDE_USERNAMES: [&str; 5] =

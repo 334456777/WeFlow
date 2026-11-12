@@ -10,6 +10,7 @@ import { PaymentList } from './PaymentList';
 import { PaymentMerchants } from './PaymentMerchants';
 import { ALL_PAYMENTS, merchantsOf, usePayments, withinDays, type PayFilter } from './usePayments';
 import { t } from '../i18n';
+import './payments.css';
 
 /** `active`: the page browsed, the one the console keeps the cards of while the settings are open. */
 export function usePaymentsPage(shell: Shell, active: boolean): Page {

@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::contract::{BizArticle, BizMessage, PayRecord};
-use crate::message::extract_xml_value;
+use crate::message::xml::extract_xml_value;
 use weflow_native::msg_row::MsgRow;
 
 fn fallback_or_empty(primary: &str, extract_fn: impl FnOnce() -> String) -> String {

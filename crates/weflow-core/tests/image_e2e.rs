@@ -565,7 +565,7 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
     let r = hub.image_decrypt(&p);
     assert!(!r.success);
     assert_eq!(r.failure_kind, Some("unsupported_image"));
-    let sent = weflow_core::message::format_timestamp(1_700_000_000);
+    let sent = weflow_core::message::time::format_timestamp(1_700_000_000);
     assert_eq!(
         r.error.unwrap(),
         format!("WXGF image sent {sent} cannot be converted: the data is damaged (no picture)")
@@ -787,7 +787,7 @@ fn media_request(format: &str) -> weflow_core::services::MessageExportRequest {
         start: None,
         end: None,
         sender: None,
-        display_pref: weflow_core::export_msg::DisplayPref::Remark,
+        display_pref: weflow_core::export_msg::names::DisplayPref::Remark,
         excel_compact: false,
     }
 }

@@ -20,6 +20,7 @@ import { ServeOptions } from './ServeOptions';
 import { WebVersions } from './WebVersions';
 import type { ProfilesState } from './useProfiles';
 import { msg, t } from '../i18n';
+import './settings.css';
 
 // shown through t()
 const THEMES: { value: ThemeChoice; label: string }[] = [{ value: 'system', label: msg('跟随系统') }, { value: 'light', label: msg('浅色') }, { value: 'dark', label: msg('深色') }];

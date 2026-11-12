@@ -10,6 +10,7 @@ import { MomentPeople } from './MomentPeople';
 import { MomentsFeed } from './MomentsFeed';
 import { useMomentPeople } from './useMomentPeople';
 import { t } from '../i18n';
+import './moments.css';
 
 /** `active`: the page browsed, the one the console keeps the cards of while the settings are open. */
 export function useMomentsPage(shell: Shell, active: boolean): Page {

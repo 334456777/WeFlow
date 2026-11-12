@@ -8,7 +8,7 @@
 mod common;
 
 use serde_json::{json, Value};
-use weflow_core::export_msg::DisplayPref;
+use weflow_core::export_msg::names::DisplayPref;
 use weflow_core::services::{Freshness, MessageExportRequest};
 
 fn strs(v: &[&str]) -> Vec<String> {
