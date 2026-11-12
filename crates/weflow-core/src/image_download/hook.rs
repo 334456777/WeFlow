@@ -198,13 +198,17 @@ mod imp {
             let process = self.process as HANDLE;
             let mut written = 0usize;
             let mut addresses = Vec::with_capacity(4);
-            for (i, text) in [clientid, file_id, aeskey, fullpath].into_iter().enumerate() {
+            for (i, text) in [clientid, file_id, aeskey, fullpath]
+                .into_iter()
+                .enumerate()
+            {
                 let bytes = text.as_bytes();
                 if bytes.len() + 1 > shellcode::REQUEST_STRING_ROOM {
                     return Err("request string too long".into());
                 }
                 let address = self.page as u64
-                    + (shellcode::REQUEST_STRING_OFFSET + i * shellcode::REQUEST_STRING_ROOM) as u64;
+                    + (shellcode::REQUEST_STRING_OFFSET + i * shellcode::REQUEST_STRING_ROOM)
+                        as u64;
                 let mut data = bytes.to_vec();
                 data.push(0);
                 // SAFETY: the page is large enough for each string's room, and the address is the one reserved
@@ -224,7 +228,11 @@ mod imp {
                 addresses.push((address, bytes.len() as u64));
             }
             let param = shellcode::request_param(
-                addresses[0], addresses[1], addresses[2], addresses[3], file_len,
+                addresses[0],
+                addresses[1],
+                addresses[2],
+                addresses[3],
+                file_len,
             );
             // SAFETY: the page is large enough for the params, and the flag comes after them; both writes go to the
             // process this hook is installed in.

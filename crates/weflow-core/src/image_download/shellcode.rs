@@ -51,7 +51,10 @@ pub fn request_param(
     file_len: u64,
 ) -> Vec<u8> {
     let mut param = vec![0u8; REQUEST_PARAM_LEN];
-    for (i, (ptr, size)) in [clientid, file_id, aeskey, fullpath].into_iter().enumerate() {
+    for (i, (ptr, size)) in [clientid, file_id, aeskey, fullpath]
+        .into_iter()
+        .enumerate()
+    {
         let base = [0x50, 0x70, 0x90, 0xb0][i];
         param[base..base + 8].copy_from_slice(&ptr.to_le_bytes());
         param[base + 0x10..base + 0x18].copy_from_slice(&size.to_le_bytes());
@@ -131,14 +134,38 @@ mod tests {
     fn a_request_param_carries_the_strings_and_the_original_type() {
         let param = request_param((0x11, 40), (0x22, 194), (0x33, 32), (0x44, 150), 323492);
         assert_eq!(param.len(), REQUEST_PARAM_LEN);
-        for (base, ptr, size) in [(0x50, 0x11, 40u64), (0x70, 0x22, 194), (0x90, 0x33, 32), (0xb0, 0x44, 150)] {
-            assert_eq!(u64::from_le_bytes(param[base..base + 8].try_into().unwrap()), ptr);
-            assert_eq!(u64::from_le_bytes(param[base + 0x10..base + 0x18].try_into().unwrap()), size);
-            assert_eq!(u64::from_le_bytes(param[base + 0x18..base + 0x20].try_into().unwrap()), size);
+        for (base, ptr, size) in [
+            (0x50, 0x11, 40u64),
+            (0x70, 0x22, 194),
+            (0x90, 0x33, 32),
+            (0xb0, 0x44, 150),
+        ] {
+            assert_eq!(
+                u64::from_le_bytes(param[base..base + 8].try_into().unwrap()),
+                ptr
+            );
+            assert_eq!(
+                u64::from_le_bytes(param[base + 0x10..base + 0x18].try_into().unwrap()),
+                size
+            );
+            assert_eq!(
+                u64::from_le_bytes(param[base + 0x18..base + 0x20].try_into().unwrap()),
+                size
+            );
         }
-        assert_eq!(u32::from_le_bytes(param[0xd0..0xd4].try_into().unwrap()), 2, "the original");
-        assert_eq!(u32::from_le_bytes(param[0xd4..0xd8].try_into().unwrap()), u32::MAX);
-        assert_eq!(u64::from_le_bytes(param[0x198..0x1a0].try_into().unwrap()), 323492);
+        assert_eq!(
+            u32::from_le_bytes(param[0xd0..0xd4].try_into().unwrap()),
+            2,
+            "the original"
+        );
+        assert_eq!(
+            u32::from_le_bytes(param[0xd4..0xd8].try_into().unwrap()),
+            u32::MAX
+        );
+        assert_eq!(
+            u64::from_le_bytes(param[0x198..0x1a0].try_into().unwrap()),
+            323492
+        );
     }
 
     #[test]
