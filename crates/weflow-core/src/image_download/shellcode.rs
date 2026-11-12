@@ -285,7 +285,9 @@ mod run_tests {
             )
         } as *mut u8;
         assert!(!page.is_null());
+        // SAFETY: the second half of the allocation.
         let target = unsafe { page.add(0x1000) };
+        // SAFETY: inside the allocation.
         let marker = unsafe { page.add(0x1800) };
         // SAFETY: `marker` is inside the allocation.
         unsafe { marker.cast::<u64>().write(0) };
@@ -294,7 +296,9 @@ mod run_tests {
             // SAFETY: inside the allocation.
             unsafe { target.add(i).write(0x90) };
         }
+        // SAFETY: right after the 13 bytes the hook replays.
         let body = unsafe { target.add(13) };
+
         let mut body_code = vec![0x48, 0xb8];
         body_code.extend_from_slice(&(marker as u64).to_le_bytes());
         body_code.extend_from_slice(&[0x48, 0xff, 0x00, 0xc3]);
@@ -320,12 +324,9 @@ mod run_tests {
         // the request call and the replay of the original 13 bytes both ran the body
         // SAFETY: `marker` is inside the allocation.
         assert_eq!(unsafe { marker.cast::<u64>().read() }, 2);
-        // SAFETY: inside the allocation.
-        assert_eq!(
-            unsafe { page.add(REQUEST_FLAG_OFFSET).cast::<u64>().read() },
-            0,
-            "the flag is cleared before the request runs"
-        );
+        // SAFETY: the flag is inside the allocation.
+        let flag = unsafe { page.add(REQUEST_FLAG_OFFSET).cast::<u64>().read() };
+        assert_eq!(flag, 0, "the flag is cleared before the request runs");
         // SAFETY: the page was allocated above and is not used again.
         unsafe { VirtualFree(page as *mut _, 0, MEM_RELEASE) };
     }
