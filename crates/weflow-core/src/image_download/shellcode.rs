@@ -1,9 +1,10 @@
 //! The machine code `img_helper.dll` writes into `Weixin.dll` to make WeChat download original-size images.
 //!
 //! The hook replaces the first 13 bytes of the target function with `mov r10, <shellcode>; jmp r10`. The shellcode
-//! saves the registers, checks whether the conversation id (the first argument's `+0x50` field) is one of the
-//! whitelisted ids, and when it is, changes the download type at `+0xd0` from 3 to 2. It then runs the 13 bytes it
-//! replaced and jumps back to the instruction after them.
+//! saves the registers, checks whether the download's clientid (the second argument's `+0x50` field, which WeChat
+//! builds as `<conversation id>_<timestamp>_<number>`) starts with one of the whitelisted conversation ids followed
+//! by `_`, and when it does, changes the download type at `+0xd0` from 3 to 2. It then runs the 13 bytes it replaced
+//! and jumps back to the instruction after them.
 //!
 //! The relative jumps are fixed: the shellcode is always laid out the same way, with the whitelist at `+0x300` and
 //! the original bytes at `+0xb4`. Only the original bytes and the address they return to are filled in at run time.
@@ -11,13 +12,14 @@
 /// The shellcode up to the saved registers, with every relative jump already resolved.
 ///
 /// The whitelist is a NUL-separated, double-NUL-terminated list of conversation ids. An empty whitelist matches
-/// nothing; an entry matches only when the whole conversation id equals it.
+/// nothing; an entry matches when the clientid starts with it and the next character is `_`, the separator WeChat
+/// puts between the conversation id and the rest of the clientid.
 const TEMPLATE: [u8; 0xb4] = [
     0x50, 0x53, 0x51, 0x52, 0x56, 0x57, 0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53, 0x48, 0x81,
     0xfa, 0x00, 0x00, 0x01, 0x00, 0x72, 0x5e, 0x48, 0x8b, 0x72, 0x50, 0x48, 0x85, 0xf6, 0x74, 0x55,
     0x48, 0x8d, 0x1d, 0xd9, 0x02, 0x00, 0x00, 0x80, 0x3b, 0x00, 0x74, 0x49, 0x49, 0x89, 0xf1, 0x49,
     0x89, 0xda, 0x41, 0x8a, 0x02, 0x84, 0xc0, 0x74, 0x0d, 0x41, 0x38, 0x01, 0x75, 0x0e, 0x49, 0xff,
-    0xc1, 0x49, 0xff, 0xc2, 0xeb, 0xec, 0x41, 0x80, 0x39, 0x00, 0x74, 0x14, 0x80, 0x3b, 0x00, 0x74,
+    0xc1, 0x49, 0xff, 0xc2, 0xeb, 0xec, 0x41, 0x80, 0x39, 0x5f, 0x74, 0x14, 0x80, 0x3b, 0x00, 0x74,
     0x05, 0x48, 0xff, 0xc3, 0xeb, 0xf6, 0x48, 0xff, 0xc3, 0x80, 0x3b, 0x00, 0x74, 0x17, 0xeb, 0xcc,
     0x8b, 0x82, 0xd0, 0x00, 0x00, 0x00, 0x83, 0xf8, 0x03, 0x75, 0x0a, 0xc7, 0x82, 0xd0, 0x00, 0x00,
     0x00, 0x02, 0x00, 0x00, 0x00, 0x41, 0x5b, 0x41, 0x5a, 0x41, 0x59, 0x41, 0x58, 0x5f, 0x5e, 0x5a,
@@ -140,28 +142,31 @@ mod run_tests {
 
     #[test]
     fn a_whitelisted_conversation_gets_the_original() {
-        assert_eq!(run(b"convA\0\0", Some(b"convA"), 3), 2);
-        assert_eq!(run(b"convA\0convB\0\0", Some(b"convB"), 3), 2);
+        // WeChat builds the clientid as `<conversation id>_<timestamp>_<number>`
+        assert_eq!(run(b"convA\0\0", Some(b"convA_1792635905_32675_3"), 3), 2);
+        assert_eq!(run(b"convA\0convB\0\0", Some(b"convB_1_2_3"), 3), 2);
     }
 
     #[test]
     fn other_conversations_keep_their_download_type() {
-        assert_eq!(run(b"convA\0\0", Some(b"convB"), 3), 3);
-        assert_eq!(run(b"convA\0convB\0\0", Some(b"convC"), 3), 3);
-        // a prefix is not a match
-        assert_eq!(run(b"convA\0\0", Some(b"convAB"), 3), 3);
-        assert_eq!(run(b"convAB\0\0", Some(b"convA"), 3), 3);
+        assert_eq!(run(b"convA\0\0", Some(b"convB_1_2_3"), 3), 3);
+        assert_eq!(run(b"convA\0convB\0\0", Some(b"convC_1_2_3"), 3), 3);
+        // the entry has to be followed by `_`, not merely be a prefix
+        assert_eq!(run(b"convA\0\0", Some(b"convAB_1_2_3"), 3), 3);
+        assert_eq!(run(b"convAB\0\0", Some(b"convA_1_2_3"), 3), 3);
+        // a clientid that is only the conversation id does not match either
+        assert_eq!(run(b"convA\0\0", Some(b"convA"), 3), 3);
     }
 
     #[test]
     fn an_empty_whitelist_matches_nothing() {
-        assert_eq!(run(b"\0\0", Some(b"convA"), 3), 3);
+        assert_eq!(run(b"\0\0", Some(b"convA_1_2_3"), 3), 3);
     }
 
     #[test]
     fn only_the_normal_download_type_is_changed() {
-        assert_eq!(run(b"convA\0\0", Some(b"convA"), 2), 2);
-        assert_eq!(run(b"convA\0\0", Some(b"convA"), 1), 1);
+        assert_eq!(run(b"convA\0\0", Some(b"convA_1_2_3"), 2), 2);
+        assert_eq!(run(b"convA\0\0", Some(b"convA_1_2_3"), 1), 1);
         assert_eq!(run(b"convA\0\0", None, 3), 3);
     }
 }
