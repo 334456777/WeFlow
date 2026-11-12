@@ -37,6 +37,31 @@ pub const WHITELIST_OFFSET: usize = 0x300;
 pub const REQUEST_FLAG_OFFSET: usize = 0x2f8;
 pub const REQUEST_PARAM_OFFSET: usize = 0x400;
 pub const REQUEST_PARAM_LEN: usize = 0x600;
+/// Where the request's string data goes, and how much room each string gets.
+pub const REQUEST_STRING_OFFSET: usize = 0xa00;
+pub const REQUEST_STRING_ROOM: usize = 0x200;
+
+/// The param object of a pending request: the four strings' addresses and sizes, the original download type, and
+/// the file length. Every string is stored out of line, so its size is never below 16.
+pub fn request_param(
+    clientid: (u64, u64),
+    file_id: (u64, u64),
+    aeskey: (u64, u64),
+    fullpath: (u64, u64),
+    file_len: u64,
+) -> Vec<u8> {
+    let mut param = vec![0u8; REQUEST_PARAM_LEN];
+    for (i, (ptr, size)) in [clientid, file_id, aeskey, fullpath].into_iter().enumerate() {
+        let base = [0x50, 0x70, 0x90, 0xb0][i];
+        param[base..base + 8].copy_from_slice(&ptr.to_le_bytes());
+        param[base + 0x10..base + 0x18].copy_from_slice(&size.to_le_bytes());
+        param[base + 0x18..base + 0x20].copy_from_slice(&size.to_le_bytes());
+    }
+    param[0xd0..0xd4].copy_from_slice(&2u32.to_le_bytes());
+    param[0xd4..0xd8].copy_from_slice(&u32::MAX.to_le_bytes());
+    param[0x198..0x1a0].copy_from_slice(&file_len.to_le_bytes());
+    param
+}
 
 /// Where the request block sits in the template: the padding after the register pops, so it runs with the entry
 /// registers restored and falls through to the original first 13 bytes.
@@ -100,6 +125,20 @@ mod tests {
         assert_eq!(&code[0xb4..0xc1], &[0xcc; 13]);
         assert_eq!(&code[0xc1..0xc7], &[0xff, 0x25, 0x00, 0x00, 0x00, 0x00]);
         assert_eq!(&code[0xc7..0xcf], &0x1_0000_000d_u64.to_le_bytes());
+    }
+
+    #[test]
+    fn a_request_param_carries_the_strings_and_the_original_type() {
+        let param = request_param((0x11, 40), (0x22, 194), (0x33, 32), (0x44, 150), 323492);
+        assert_eq!(param.len(), REQUEST_PARAM_LEN);
+        for (base, ptr, size) in [(0x50, 0x11, 40u64), (0x70, 0x22, 194), (0x90, 0x33, 32), (0xb0, 0x44, 150)] {
+            assert_eq!(u64::from_le_bytes(param[base..base + 8].try_into().unwrap()), ptr);
+            assert_eq!(u64::from_le_bytes(param[base + 0x10..base + 0x18].try_into().unwrap()), size);
+            assert_eq!(u64::from_le_bytes(param[base + 0x18..base + 0x20].try_into().unwrap()), size);
+        }
+        assert_eq!(u32::from_le_bytes(param[0xd0..0xd4].try_into().unwrap()), 2, "the original");
+        assert_eq!(u32::from_le_bytes(param[0xd4..0xd8].try_into().unwrap()), u32::MAX);
+        assert_eq!(u64::from_le_bytes(param[0x198..0x1a0].try_into().unwrap()), 323492);
     }
 
     #[test]

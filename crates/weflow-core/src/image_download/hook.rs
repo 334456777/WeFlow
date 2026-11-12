@@ -87,8 +87,8 @@ mod imp {
             } else {
                 whitelist
             };
-            // The page holds the code, the whitelist, and a pending download request.
-            let size = (shellcode::REQUEST_PARAM_OFFSET + shellcode::REQUEST_PARAM_LEN)
+            // The page holds the code, the whitelist, and a pending download request with its strings.
+            let size = (shellcode::REQUEST_STRING_OFFSET + 4 * shellcode::REQUEST_STRING_ROOM)
                 .max(shellcode::WHITELIST_OFFSET + whitelist.len() + 1);
             // SAFETY: allocating a page in the target process; freed in `uninstall`.
             let remote = unsafe {
@@ -185,17 +185,49 @@ mod imp {
             })
         }
 
-        /// Leaves a download param object in the shellcode's page: the next `_startDownloadMedia` call runs it once,
-        /// inside WeChat's own thread and with WeChat's own `CdnCore` instance. `param` is a whole download param
-        /// object of at most [`shellcode::REQUEST_PARAM_LEN`] bytes.
-        pub fn request_original(&self, param: &[u8]) -> Result<(), String> {
-            if param.len() > shellcode::REQUEST_PARAM_LEN {
-                return Err("request too large".into());
-            }
+        /// Leaves a download request in the shellcode's page: the next `_startDownloadMedia` call runs it once,
+        /// inside WeChat's own thread and with WeChat's own `CdnCore` instance.
+        pub fn request_original(
+            &self,
+            clientid: &str,
+            file_id: &str,
+            aeskey: &str,
+            fullpath: &str,
+            file_len: u64,
+        ) -> Result<(), String> {
             let process = self.process as HANDLE;
             let mut written = 0usize;
-            // SAFETY: the page is large enough for the params at REQUEST_PARAM_OFFSET and the flag; both writes go
-            // to the process this hook is installed in.
+            let mut addresses = Vec::with_capacity(4);
+            for (i, text) in [clientid, file_id, aeskey, fullpath].into_iter().enumerate() {
+                let bytes = text.as_bytes();
+                if bytes.len() + 1 > shellcode::REQUEST_STRING_ROOM {
+                    return Err("request string too long".into());
+                }
+                let address = self.page as u64
+                    + (shellcode::REQUEST_STRING_OFFSET + i * shellcode::REQUEST_STRING_ROOM) as u64;
+                let mut data = bytes.to_vec();
+                data.push(0);
+                // SAFETY: the page is large enough for each string's room, and the address is the one reserved
+                // for it.
+                let ok = unsafe {
+                    WriteProcessMemory(
+                        process,
+                        address as *const c_void,
+                        data.as_ptr() as *const c_void,
+                        data.len(),
+                        &mut written,
+                    )
+                };
+                if ok == 0 {
+                    return Err("Request string write failed".into());
+                }
+                addresses.push((address, bytes.len() as u64));
+            }
+            let param = shellcode::request_param(
+                addresses[0], addresses[1], addresses[2], addresses[3], file_len,
+            );
+            // SAFETY: the page is large enough for the params, and the flag comes after them; both writes go to the
+            // process this hook is installed in.
             unsafe {
                 let ok = WriteProcessMemory(
                     process,
@@ -456,7 +488,14 @@ mod imp {
             Err("image auto download is only supported on Windows x64".into())
         }
 
-        pub fn request_original(&self, _param: &[u8]) -> Result<(), String> {
+        pub fn request_original(
+            &self,
+            _clientid: &str,
+            _file_id: &str,
+            _aeskey: &str,
+            _fullpath: &str,
+            _file_len: u64,
+        ) -> Result<(), String> {
             Err("image auto download is only supported on Windows x64".into())
         }
 
