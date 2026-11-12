@@ -20,9 +20,9 @@ use anyhow::{Context, Result};
 use serde_json::{json, Map, Value};
 use weflow_core::config::{expand_home, resolve_account_dir, ConfigStore};
 use weflow_core::decrypt::{decrypt_dat, parse_aes_key};
+use weflow_native::db::Account;
 use weflow_native::fixture::bench::{Profile, Spread};
-use weflow_native::native_db::NativeAccount;
-use weflow_native::native_msg::{table_name_for, MsgTable};
+use weflow_native::msg::{table_name_for, MsgTable};
 
 /// Offset of the account's clock from UTC, for hours and weekdays (China Standard Time).
 const TZ: i64 = 8 * 3600;
@@ -195,7 +195,7 @@ struct Messages {
 }
 
 fn read_table(
-    account: &NativeAccount,
+    account: &Account,
     part: &MsgTable,
     shard: usize,
     group: bool,
@@ -282,7 +282,7 @@ fn read_table(
     })
 }
 
-fn conversations(account: &NativeAccount) -> Result<Value> {
+fn conversations(account: &Account) -> Result<Value> {
     let shards = account.message_dbs();
     let shard_of: HashMap<PathBuf, usize> = shards
         .iter()
@@ -394,7 +394,7 @@ fn conversations(account: &NativeAccount) -> Result<Value> {
     }))
 }
 
-fn count(account: &NativeAccount, rel: &str, sql: &str) -> Value {
+fn count(account: &Account, rel: &str, sql: &str) -> Value {
     let path = account.db_path(rel);
     if !path.is_file() {
         return Value::Null;
@@ -404,7 +404,7 @@ fn count(account: &NativeAccount, rel: &str, sql: &str) -> Value {
         .map_or(Value::Null, Value::Array)
 }
 
-fn others(account: &NativeAccount) -> Result<Value> {
+fn others(account: &Account) -> Result<Value> {
     let fts_tables = account
         .query(
             &account.db_path("message/message_fts.db"),
@@ -589,7 +589,7 @@ fn main() -> Result<()> {
     } else {
         resolve_account_dir(&root.to_string_lossy(), &me)
     };
-    let account = NativeAccount::new(
+    let account = Account::new(
         root.join("db_storage"),
         profile
             .decrypt_key

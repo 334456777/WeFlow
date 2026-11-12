@@ -2,8 +2,8 @@
 //! It never opens a user's account. All mutations stay in a new temp directory.
 use std::fs::{File, FileTimes};
 use std::time::Duration;
+use weflow_native::db::Account;
 use weflow_native::fixture::{Fixture, SessionSpec, TestDir, T0};
-use weflow_native::native_db::NativeAccount;
 
 fn main() -> anyhow::Result<()> {
     let root = TestDir::new("weflow-refresh-probe");
@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     };
     write("synthetic A");
     let db = f.db_storage().join("session/session.db");
-    let account = NativeAccount::new(f.db_storage(), &f.key_hex())?;
+    let account = Account::new(f.db_storage(), &f.key_hex())?;
     let first = account.sessions()?;
     let stamp = std::fs::metadata(&db)?;
     write("synthetic B");

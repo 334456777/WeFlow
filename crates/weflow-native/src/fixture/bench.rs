@@ -31,8 +31,8 @@ use super::{
     message_table_schema, ContactSpec, Fixture, FtsSpec, HardlinkSpec, RoomSpec, SessionSpec,
     SnsPostSpec, VoiceSpec, NAME2ID_SCHEMA,
 };
-use crate::native_db::hex;
-use crate::native_msg::table_name_for;
+use crate::db::hex;
+use crate::msg::table_name_for;
 use crate::sqlcipher::testutil::{encrypt_db, encrypt_wal, plain_connection, plain_image};
 
 /// The account's own user name, and its folder (the name and four more characters, as WeChat names it).

@@ -1,4 +1,4 @@
-//! Message reading on top of [`NativeAccount`]: shard/table lookup, paging, per-day statistics
+//! Message reading on top of [`Account`]: shard/table lookup, paging, per-day statistics
 //! and cursors. Rows are read as [`MsgRow`]s.
 
 use std::collections::{HashMap, HashSet};
@@ -9,8 +9,8 @@ use anyhow::{anyhow, Context, Result};
 use md5::{Digest, Md5};
 use serde_json::{json, Map, Value};
 
+use crate::db::Account;
 use crate::msg_row::{Columns, MsgRow, RowContext};
-use crate::native_db::NativeAccount;
 
 /// A quarter of an hour in seconds: the step of the local dates of messages.
 const QUARTER: i64 = 900;
@@ -44,7 +44,7 @@ fn newest_first(a: &Key, b: &Key) -> std::cmp::Ordering {
 pub type SenderFilter<'a> = (&'a dyn Fn(&str) -> bool, bool);
 
 /// What a page read of an export cursor fails with when its keys had to be read again and the pages are no longer
-/// the same (see [`NativeAccount::open_export_cursor`]): the export has to start over.
+/// the same (see [`Account::open_export_cursor`]): the export has to start over.
 pub const KEYS_CHANGED: &str =
     "the order of the messages changed while they were read; the export has to start over";
 
@@ -56,15 +56,15 @@ static EXACT_KEY_TABLES: LazyLock<Mutex<HashSet<(PathBuf, String)>>> =
 enum CursorKeys<'a> {
     /// Every message, keys read from the rows.
     All,
-    /// The messages of some senders (see [`NativeAccount::open_message_cursor_for_senders`]).
+    /// The messages of some senders (see [`Account::open_message_cursor_for_senders`]).
     Senders(SenderFilter<'a>),
-    /// Every message, keys from the `sort_seq` index (see [`NativeAccount::open_export_cursor`]).
+    /// Every message, keys from the `sort_seq` index (see [`Account::open_export_cursor`]).
     Export,
 }
 
 #[cfg(test)]
 thread_local! {
-    /// Tables this thread read every key of ([`NativeAccount::table_keys`]).
+    /// Tables this thread read every key of ([`Account::table_keys`]).
     static TABLE_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
@@ -81,12 +81,12 @@ struct MessageCursor {
     batch: usize,
     /// The columns its pages read.
     columns: Columns,
-    /// Per table: whether its keys came from the `sort_seq` index ([`NativeAccount::open_export_cursor`]) and are
+    /// Per table: whether its keys came from the `sort_seq` index ([`Account::open_export_cursor`]) and are
     /// still to be checked against the rows.
     derived: Vec<bool>,
     range: (i64, i64),
     ascending: bool,
-    /// Held while keys are read again from the rows ([`NativeAccount::rekey`]): workers whose pages find the same
+    /// Held while keys are read again from the rows ([`Account::rekey`]): workers whose pages find the same
     /// table's keys wrong at once wait for one scan of it instead of each scanning the whole table.
     rekeying: Arc<Mutex<()>>,
 }
@@ -110,7 +110,7 @@ pub fn table_name_for(session_id: &str) -> String {
 }
 
 /// Usernames of every conversation in `session.db`.
-pub fn session_usernames(acct: &NativeAccount) -> Result<Vec<String>> {
+pub fn session_usernames(acct: &Account) -> Result<Vec<String>> {
     let rows = acct.query(&acct.session_db(), "select username from SessionTable", &[])?;
     Ok(rows
         .iter()
@@ -186,7 +186,7 @@ pub enum Ties {
     All,
 }
 
-/// Where a page of [`NativeAccount::messages_from`] starts.
+/// Where a page of [`Account::messages_from`] starts.
 #[derive(Clone, Copy, Debug)]
 pub enum PageFrom {
     /// The messages listed after this one: older ones.
@@ -198,7 +198,7 @@ pub enum PageFrom {
 /// A row's sort key (see [`MsgPos`]) and the number of its `message_<n>.db`.
 type ShardKey = ((i64, i64, i64), u32);
 
-/// Where [`NativeAccount::messages`] starts a page deep into a conversation.
+/// Where [`Account::messages`] starts a page deep into a conversation.
 enum OffsetPosition {
     /// After this message, the last one the offset skips.
     At(MsgPos),
@@ -261,7 +261,7 @@ fn is_message_db(name: &str) -> Option<u32> {
         .or_else(|| BIZ_SHARD_BASE.checked_add(numbered("biz_message_")?))
 }
 
-impl NativeAccount {
+impl Account {
     /// The message databases in `message/`, ascending by number: `message_<n>.db`, then `biz_message_<n>.db`.
     pub fn message_dbs(&self) -> Vec<PathBuf> {
         let dir = self.db_path("message");
@@ -1444,8 +1444,8 @@ impl NativeAccount {
 )]
 mod tests {
     use super::*;
+    use crate::db::hex;
     use crate::fixture::TestDir;
-    use crate::native_db::hex;
     use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
     use crate::sqlcipher::PageCipher;
     use rusqlite::{params, Connection};
@@ -1487,7 +1487,7 @@ mod tests {
     }
 
     /// Two shards: ids 1..3 in shard 0 (days 0..2), ids 1..2 in shard 1 (days 3..4); local_id overlaps on purpose.
-    fn account(tag: &str) -> (TestDir, NativeAccount) {
+    fn account(tag: &str) -> (TestDir, Account) {
         let dir = TestDir::new(&format!("weflow-msg-{tag}"));
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let cipher = PageCipher::derive(&KEY, &SALT);
@@ -1506,7 +1506,7 @@ mod tests {
         std::fs::write(dir.join("message/message_0.db"), encrypt_db(&s0, &cipher)).unwrap();
         std::fs::write(dir.join("message/message_1.db"), encrypt_db(&s1, &cipher)).unwrap();
         std::fs::write(dir.join("message/message_fts.db"), b"not a message shard").unwrap();
-        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
         (dir, acct)
     }
 
@@ -1515,10 +1515,7 @@ mod tests {
     }
 
     /// An account with `shards` of `wxid_bob`'s messages, each in its own directory.
-    fn export_world(
-        tag: &str,
-        shards: &[Vec<crate::fixture::MsgSpec>],
-    ) -> (TestDir, NativeAccount) {
+    fn export_world(tag: &str, shards: &[Vec<crate::fixture::MsgSpec>]) -> (TestDir, Account) {
         use crate::fixture::{Fixture, SessionSpec, T0};
         let root = TestDir::new(&format!("weflow-keys-{tag}"));
         let f = Fixture::new(&root, "wxid_me_ab12");
@@ -1532,17 +1529,17 @@ mod tests {
         for (i, msgs) in shards.iter().enumerate() {
             f.message_shard(i as u32, &[("wxid_bob", msgs.clone())]);
         }
-        let acct = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let acct = Account::new(f.db_storage(), &f.key_hex()).unwrap();
         (root, acct)
     }
 
-    fn cursor_state(acct: &NativeAccount, id: i64) -> (Vec<Key>, Vec<bool>) {
+    fn cursor_state(acct: &Account, id: i64) -> (Vec<Key>, Vec<bool>) {
         let cursors = acct.cursors.lock().unwrap();
         let c = &cursors.open[&id];
         (c.keys.clone(), c.derived.clone())
     }
 
-    fn page_ids(acct: &NativeAccount, id: i64) -> Result<Vec<i64>> {
+    fn page_ids(acct: &Account, id: i64) -> Result<Vec<i64>> {
         let mut ids = Vec::new();
         for page in 0.. {
             let rows = acct.fetch_message_page(id, page)?;
@@ -1586,7 +1583,7 @@ mod tests {
             encrypt_db(&plain, &cipher),
         )
         .unwrap();
-        let acct = NativeAccount::new(fixture.db_storage(), &fixture.key_hex()).unwrap();
+        let acct = Account::new(fixture.db_storage(), &fixture.key_hex()).unwrap();
         let exact = acct
             .open_message_cursor("wxid_bob", 2, true, 0, 0, false)
             .unwrap();
@@ -1797,7 +1794,7 @@ mod tests {
             msgs
         };
         f.message_shard(0, &[("wxid_bob", off(vec![]))]);
-        let acct = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let acct = Account::new(f.db_storage(), &f.key_hex()).unwrap();
         let id = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
         // WeChat writes two messages, one between the listed ones, before the first page is read
         f.message_shard(
@@ -1840,7 +1837,7 @@ mod tests {
         let spec = |text| vec![crate::fixture::MsgSpec::text(1, "gh_a", 100, text)];
         f.message_shard(0, &[("gh_a", spec("plain"))]);
         f.biz_message_db(0, &[("gh_a", spec("biz"))]);
-        let acct = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let acct = Account::new(f.db_storage(), &f.key_hex()).unwrap();
         assert_eq!(acct.message_dbs().len(), 2);
         assert_eq!(acct.message_tables("gh_a").unwrap().len(), 2);
         let rows = acct.messages("gh_a", 0, 0).unwrap();
@@ -1919,12 +1916,12 @@ mod tests {
             encrypt_db(&plain, &cipher),
         )
         .unwrap();
-        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
         // every row sorted by its key, then the page taken: rows without a sort_seq (null or 0) are keyed by
         // create_time * 1000, so here they are the newest ones
         let t = acct.message_tables("wxid_bob").unwrap().remove(0);
         let reference = |limit: i32, offset: i32| -> Vec<String> {
-            let sql = NativeAccount::select_sql(&t, "");
+            let sql = Account::select_sql(&t, "");
             let mut rows = acct.read_rows(&t, &sql, &[]).unwrap();
             rows.sort_by_key(|r| std::cmp::Reverse(r.key()));
             let page: Vec<MsgRow> = rows
@@ -2006,7 +2003,7 @@ mod tests {
 
     /// An account whose `wxid_bob` messages are `shards`, one `message_<n>.db` each: rows of (local_id, sort_seq as
     /// an SQL literal, create_time as one). Neither column has a type, so a row can store any SQLite value.
-    fn keyed_account(tag: &str, shards: &[Vec<(i64, String, String)>]) -> (TestDir, NativeAccount) {
+    fn keyed_account(tag: &str, shards: &[Vec<(i64, String, String)>]) -> (TestDir, Account) {
         let dir = TestDir::new(&format!("weflow-msg-{tag}"));
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let table = table_name_for("wxid_bob");
@@ -2044,7 +2041,7 @@ mod tests {
             )
             .unwrap();
         }
-        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
         (dir, acct)
     }
 
@@ -2319,7 +2316,7 @@ mod tests {
             encrypt_db(&plain, &cipher),
         )
         .unwrap();
-        let acct = NativeAccount::new(fixture.db_storage(), &fixture.key_hex()).unwrap();
+        let acct = Account::new(fixture.db_storage(), &fixture.key_hex()).unwrap();
         let before = odd_cell_count();
         let rows: Vec<MsgRow> = acct.messages("wxid_bob", 0, 0).unwrap();
         assert_eq!(rows.len(), 1);
@@ -2334,7 +2331,7 @@ mod tests {
         tag: &str,
         fill: &str,
         damage: impl FnOnce(&[u8], &mut Vec<u8>),
-    ) -> (TestDir, NativeAccount) {
+    ) -> (TestDir, Account) {
         let dir = TestDir::new(&format!("weflow-scan-{tag}"));
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let table = table_name_for("wxid_bob");
@@ -2351,7 +2348,7 @@ mod tests {
         let mut file = encrypt_db(&plain, &PageCipher::derive(&KEY, &SALT));
         damage(&plain, &mut file);
         std::fs::write(dir.join("message/message_0.db"), file).unwrap();
-        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
         (dir, acct)
     }
 
@@ -2396,7 +2393,7 @@ mod tests {
         let (_dir, acct) = scanned_account("stats", &fill, |_, _| {});
         let acct = acct.with_my_wxid(Some("wxid_me".into()));
         let ids = vec!["wxid_bob".to_string()];
-        let read = |acct: &NativeAccount| {
+        let read = |acct: &Account| {
             let (b, e) = (1_705_000_000, 1_720_000_000);
             (
                 acct.aggregate_stats(&ids, 0, 0).unwrap(),
@@ -2436,7 +2433,7 @@ mod tests {
         let (_dir, acct) = scanned_account("extras", &fill, |_, _| {});
         let acct = acct.with_my_wxid(Some("wxid_me".into()));
         let ids = vec!["wxid_bob".to_string()];
-        let read = |acct: &NativeAccount| {
+        let read = |acct: &Account| {
             (
                 acct.annual_report_extras(&ids, 0, 0, 1_701_000_000, 1_701_086_399)
                     .unwrap(),
@@ -2530,7 +2527,7 @@ mod tests {
             encrypt_db(&shard(&msgs, None), &cipher),
         )
         .unwrap();
-        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
         let sqlite = Connection::open_in_memory().unwrap();
         let mut want = serde_json::Map::new();
         for (_, offset, ..) in &msgs {

@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Map, Value};
 
-use crate::native_db::NativeAccount;
-use crate::native_msg::MsgTable;
+use crate::db::Account;
+use crate::msg::MsgTable;
 
 const VOICE: i64 = 34;
 const IMAGE: i64 = 3;
@@ -67,7 +67,7 @@ fn local_quarters(
     Ok(out)
 }
 
-/// Sender name, type, local hour and count of a group of messages (see [`NativeAccount::sender_groups`]).
+/// Sender name, type, local hour and count of a group of messages (see [`Account::sender_groups`]).
 type SenderGroup = (Option<String>, i64, i64, i64);
 
 /// Type, quarter hour (`create_time / 900`) and whether the owner sent it, of a message.
@@ -131,10 +131,7 @@ pub(crate) fn each_table<I: Sync, T: Send>(
 }
 
 /// The message tables of each of `session_ids`, and every one of them in that order.
-pub(crate) fn tables_of(
-    acct: &NativeAccount,
-    session_ids: &[String],
-) -> Result<Vec<Vec<MsgTable>>> {
+pub(crate) fn tables_of(acct: &Account, session_ids: &[String]) -> Result<Vec<Vec<MsgTable>>> {
     session_ids
         .iter()
         .map(|sid| acct.message_tables(sid))
@@ -184,7 +181,7 @@ fn sender_names(conn: &rusqlite::Connection) -> Result<HashMap<i64, String>> {
     Ok(names)
 }
 
-/// Sender row ids in the list [`NativeAccount::my_ids`] gives.
+/// Sender row ids in the list [`Account::my_ids`] gives.
 pub(crate) fn id_set(list: &str) -> std::collections::HashSet<i64> {
     list.split(',')
         .filter_map(|v| v.trim().parse().ok())
@@ -229,7 +226,7 @@ fn local(expr: &str) -> String {
     format!("strftime('{expr}', create_time, 'unixepoch', 'localtime')")
 }
 
-impl NativeAccount {
+impl Account {
     /// Every message of `t` with a positive time inside `begin..=end` (0: unbounded), read through the leaf scan:
     /// each thread of the scan counts its messages into an accumulator of its own (`start`, `each`), and `finish`
     /// gets them all with a connection to the database. `None` when the scan does not read the table.
@@ -928,10 +925,10 @@ mod tests {
     use super::*;
     use crate::fixture::{Fixture, TestDir, DAY, T0};
 
-    fn account(tag: &str) -> (TestDir, NativeAccount) {
+    fn account(tag: &str) -> (TestDir, Account) {
         let root = TestDir::new(&format!("weflow-stats-{tag}"));
         let f = Fixture::standard(&root);
-        let acct = NativeAccount::new(f.db_storage(), &f.key_hex())
+        let acct = Account::new(f.db_storage(), &f.key_hex())
             .unwrap()
             .with_my_wxid(Some("wxid_me_ab12".into()));
         (root, acct)

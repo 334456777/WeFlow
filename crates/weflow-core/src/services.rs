@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
+use weflow_native::media::SessionRow;
 use weflow_native::msg_row::MsgRow;
-use weflow_native::native_media::SessionRow;
 
 use crate::config::{
     clean_account_dir_name, resolve_account_dir, AppContext, ConfigStore, ProfileConfig,
@@ -259,7 +259,7 @@ impl ServiceHub {
         before: Option<&str>,
         after: Option<&str>,
     ) -> AppResult<Vec<MsgRow>> {
-        use weflow_native::native_msg::{MsgPos, PageFrom};
+        use weflow_native::msg::{MsgPos, PageFrom};
         let pos = |token: &str| {
             MsgPos::parse(token).ok_or_else(|| {
                 AppError::usage(format!(
@@ -288,7 +288,7 @@ impl ServiceHub {
         limit: i32,
         seconds: i64,
     ) -> AppResult<Vec<MsgRow>> {
-        use weflow_native::native_msg::{MsgPos, PageFrom};
+        use weflow_native::msg::{MsgPos, PageFrom};
         self.open_wcdb()?
             .messages_from(session_id, limit, PageFrom::After(MsgPos::at_time(seconds)))
             .map_err(|err| AppError::native(err.to_string()))
@@ -344,7 +344,7 @@ impl ServiceHub {
         hits.into_iter()
             .map(|hit| {
                 let cursor = hit.row.pos().token();
-                let table_name = weflow_native::native_msg::table_name_for(&hit.session_id);
+                let table_name = weflow_native::msg::table_name_for(&hit.session_id);
                 crate::contract::ParsedMessage {
                     message: crate::chat_msg::map_msg_row(hit.row, &table_name, &my),
                     cursor: Some(cursor),
@@ -495,7 +495,7 @@ impl ServiceHub {
             .ok_or_else(|| AppError::runtime("message not found"))?;
         let msg = crate::chat_msg::map_msg_row(
             row,
-            &weflow_native::native_msg::table_name_for(session_id),
+            &weflow_native::msg::table_name_for(session_id),
             &self.my_wxid_cleaned(),
         );
         if msg.local_type != 43 {
@@ -1889,11 +1889,11 @@ fn copy_atomically(from: &Path, path: &Path) -> std::io::Result<()> {
 }
 
 /// Runs an export once more when the order of its messages changed while it was read: the second run reads the keys
-/// of the tables that broke the `sort_seq` rule from their rows (see `NativeAccount::open_export_cursor`). An export
+/// of the tables that broke the `sort_seq` rule from their rows (see `Account::open_export_cursor`). An export
 /// that failed removes what it wrote, so starting over is safe.
 fn again_if_keys_changed<T>(mut export: impl FnMut() -> AppResult<T>) -> AppResult<T> {
     match export() {
-        Err(e) if e.message.contains(weflow_native::native_msg::KEYS_CHANGED) => export(),
+        Err(e) if e.message.contains(weflow_native::msg::KEYS_CHANGED) => export(),
         done => done,
     }
 }

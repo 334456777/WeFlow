@@ -325,7 +325,7 @@ impl ServiceHub {
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         max_rounds: usize,
-        mut visit: impl FnMut(&weflow_native::native_sns::SnsPost),
+        mut visit: impl FnMut(&weflow_native::sns::SnsPost),
     ) -> AppResult<()> {
         let page = 500;
         let mut offset = 0;

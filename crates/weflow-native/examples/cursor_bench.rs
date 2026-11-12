@@ -5,14 +5,14 @@
     reason = "probe code reports failure by panicking"
 )]
 use std::time::Instant;
-use weflow_native::native_db::NativeAccount;
+use weflow_native::db::Account;
 
 fn main() -> anyhow::Result<()> {
     let mut a = std::env::args().skip(1);
     let (dir, keyf, sid) = (a.next().unwrap(), a.next().unwrap(), a.next().unwrap());
     let lite = a.next().is_none_or(|v| v != "0");
     let my_wxid = a.next();
-    let acct = NativeAccount::new(
+    let acct = Account::new(
         format!("{dir}/db_storage"),
         std::fs::read_to_string(keyf)?.trim(),
     )?

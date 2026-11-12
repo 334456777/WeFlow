@@ -1015,7 +1015,7 @@ struct RowFields {
 /// `mapRowsToMessages` (the model fields the API and CLI use) of the typed rows of one conversation, which it
 /// takes: their text moves into the messages.
 pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
-    let table_name = weflow_native::native_msg::table_name_for(session_id);
+    let table_name = weflow_native::msg::table_name_for(session_id);
     rows.into_iter()
         .map(|row| map_msg_row(row, &table_name, my_wxid))
         .collect()
@@ -1056,7 +1056,7 @@ fn typed_fields(row: &mut MsgRow) -> RowFields {
 
 fn typed_source(row: &MsgRow, table_name: &str) -> SourceInfo {
     SourceInfo {
-        db_name: weflow_native::native_msg::shard_name(row.shard),
+        db_name: weflow_native::msg::shard_name(row.shard),
         table_name: table_name.to_string(),
     }
 }
@@ -1407,7 +1407,7 @@ mod tests {
             "wxid_bob",
             "wxid_me",
         );
-        let table = weflow_native::native_msg::table_name_for("wxid_bob");
+        let table = weflow_native::msg::table_name_for("wxid_bob");
         assert_eq!(m[0].message_key, format!("message_0:{table}:5"));
         assert!(
             m[1].message_key.starts_with("server:message_1:77:12:12:0:"),

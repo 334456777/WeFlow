@@ -389,7 +389,7 @@ fn keys(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
             })();
             wcdb.close_message_cursor(cursor)?;
             result?;
-            let checksum = weflow_native::native_db::hex(&digest.finalize());
+            let checksum = weflow_native::db::hex(&digest.finalize());
             let actual = (count, checksum.clone());
             let expected = if kind == "sender" {
                 &mut sender_reference
@@ -404,7 +404,7 @@ fn keys(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
                 anyhow::ensure!(count == args.messages as usize);
                 let selected = (
                     sender_count,
-                    weflow_native::native_db::hex(&sender_digest.finalize()),
+                    weflow_native::db::hex(&sender_digest.finalize()),
                 );
                 anyhow::ensure!(
                     selected == *sender_reference.get_or_insert_with(|| selected.clone()),

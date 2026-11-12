@@ -165,7 +165,7 @@ impl ServiceHub {
                 super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(34))
             {
                 let my = self.my_wxid_cleaned();
-                let table_name = weflow_native::native_msg::table_name_for(session_id);
+                let table_name = weflow_native::msg::table_name_for(session_id);
                 let m = chat_msg::map_msg_row(row, &table_name, &my);
                 // localId is not unique across tables: a non-voice hit never overrides the caller's input
                 if m.local_type == 34 {

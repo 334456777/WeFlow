@@ -1376,8 +1376,8 @@ mod tests {
     /// ends or goes on, an optional field left out, a job in each state.
     fn samples() -> Value {
         use weflow_core::contract::*;
+        use weflow_native::msg::MsgPos;
         use weflow_native::msg_row::MsgRow;
-        use weflow_native::native_msg::MsgPos;
 
         let row =
             |local_id, server_id, create_time, local_type, sort_seq, content: &str, shard| MsgRow {

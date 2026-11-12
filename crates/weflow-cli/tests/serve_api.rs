@@ -1852,7 +1852,7 @@ fn moments_media_come_from_the_cache_and_only_from_wechat() {
         .expect("the Moments cache folder");
     std::fs::create_dir_all(&folder).unwrap();
     let cached = |url: &str, ext: &str, bytes: &[u8]| {
-        let name = weflow_native::native_db::hex(&Md5::digest(url.as_bytes())) + ext;
+        let name = weflow_native::db::hex(&Md5::digest(url.as_bytes())) + ext;
         std::fs::write(folder.join(name), bytes).unwrap();
     };
     let image_url = "https://shmmsns.qpic.cn/mmsns/abc/0?token=T&idx=1";
@@ -2511,7 +2511,7 @@ fn only_a_first_line_naming_the_sender_is_taken_off_a_text() {
 fn images_of_a_username_with_a_folder_like_suffix_are_found() {
     use md5::{Digest, Md5};
     use weflow_native::fixture::{MsgSpec, DAY, T0};
-    let md5_hex = |s: &str| weflow_native::native_db::hex(&Md5::digest(s.as_bytes()));
+    let md5_hex = |s: &str| weflow_native::db::hex(&Md5::digest(s.as_bytes()));
     let root = temp_root("suffixed-session");
     let at = T0 + 6 * DAY;
     // (session, the folder its images are under, the image's md5, the image)

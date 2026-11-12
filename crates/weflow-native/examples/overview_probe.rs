@@ -1,18 +1,18 @@
 //! Read-only probe of the native backend against a real account (prints counts, never message text).
-//! usage: native_probe <account_dir> <key_file>
+//! usage: overview_probe <account_dir> <key_file>
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
     reason = "probe code reports failure by panicking"
 )]
 use std::time::Instant;
-use weflow_native::native_db::NativeAccount;
+use weflow_native::db::Account;
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let account = args.next().expect("account_dir");
     let key = std::fs::read_to_string(args.next().expect("key_file"))?;
-    let acct = NativeAccount::new(format!("{account}/db_storage"), key.trim())?;
+    let acct = Account::new(format!("{account}/db_storage"), key.trim())?;
 
     let t = Instant::now();
     acct.test_connection()?;

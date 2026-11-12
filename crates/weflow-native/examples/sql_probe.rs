@@ -5,7 +5,7 @@
     clippy::unwrap_used,
     reason = "probe code reports failure by panicking"
 )]
-use weflow_native::native_db::NativeAccount;
+use weflow_native::db::Account;
 
 fn main() -> anyhow::Result<()> {
     let mut a = std::env::args().skip(1);
@@ -15,7 +15,7 @@ fn main() -> anyhow::Result<()> {
         a.next().unwrap(),
         a.next().unwrap(),
     );
-    let acct = NativeAccount::new(
+    let acct = Account::new(
         format!("{dir}/db_storage"),
         std::fs::read_to_string(keyf)?.trim(),
     )?;

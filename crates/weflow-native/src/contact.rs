@@ -11,7 +11,7 @@ use anyhow::Result;
 use rusqlite::ToSql;
 use serde_json::{json, Map, Value};
 
-use crate::native_db::NativeAccount;
+use crate::db::Account;
 
 /// Accounts that are not people, excluded from "private" counts.
 const NOT_PRIVATE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
@@ -144,7 +144,7 @@ fn parse_group_nicknames(buf: &[u8]) -> BTreeMap<String, String> {
     out
 }
 
-impl NativeAccount {
+impl Account {
     fn contact_db(&self) -> std::path::PathBuf {
         self.db_path("contact/contact.db")
     }
@@ -401,8 +401,8 @@ fn decode_hex(s: &str) -> Vec<u8> {
 )]
 mod tests {
     use super::*;
+    use crate::db::hex;
     use crate::fixture::TestDir;
-    use crate::native_db::hex;
     use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
     use crate::sqlcipher::PageCipher;
     use rusqlite::{params, Connection};
@@ -419,7 +419,7 @@ mod tests {
         out
     }
 
-    fn account(tag: &str) -> (TestDir, NativeAccount) {
+    fn account(tag: &str) -> (TestDir, Account) {
         let dir = TestDir::new(&format!("weflow-contact-{tag}"));
         std::fs::create_dir_all(dir.join("contact")).unwrap();
         let mut ext = vec![0x08, 0x01];
@@ -515,7 +515,7 @@ mod tests {
         });
         let cipher = PageCipher::derive(&KEY, &SALT);
         std::fs::write(dir.join("contact/contact.db"), encrypt_db(&db, &cipher)).unwrap();
-        let acct = NativeAccount::new(dir.path(), &hex(&KEY)).unwrap();
+        let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
         (dir, acct)
     }
 
