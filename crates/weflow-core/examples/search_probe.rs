@@ -15,7 +15,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use std::time::Instant;
 use weflow_core::config::{expand_home, resolve_account_dir, ConfigStore};
-use weflow_native::native_db::NativeAccount;
+use weflow_native::db::Account;
 
 const KINDS: &str = "1,49,244813135921";
 const PAGE: usize = 50;
@@ -46,7 +46,7 @@ fn content(v: rusqlite::types::ValueRef<'_>) -> (String, bool) {
 /// The light scan: only the sort key and the text, matched here; `newest_first` stops at a page of hits.
 /// Returns (ms, hits, rows read, blobs inflated, ms inflating).
 fn light_scan(
-    account: &NativeAccount,
+    account: &Account,
     db: &Path,
     table: &str,
     needle: &str,
@@ -75,7 +75,7 @@ fn light_sql(table: &str, kind: &str, more: &str, order: &str) -> String {
 }
 
 fn scan(
-    account: &NativeAccount,
+    account: &Account,
     db: &Path,
     sql: &str,
     needle: &str,
@@ -113,7 +113,7 @@ type Key = (i64, i64);
 
 /// The rows of WeChat's full-text index for one conversation: key, local_type, text.
 fn fts_rows(
-    account: &NativeAccount,
+    account: &Account,
     fts: &Path,
     table: &str,
     session: &rusqlite::types::Value,
@@ -142,9 +142,9 @@ fn fts_rows(
 /// holds and how they map to the messages, how its text compares, and how fast a LIKE over its plain `_content`
 /// tables is. Only counts and timings are printed; table names are replaced by their position.
 fn fts_probe(
-    account: &NativeAccount,
+    account: &Account,
     big: &str,
-    tables: &[weflow_native::native_msg::MsgTable],
+    tables: &[weflow_native::msg::MsgTable],
     keyword: &str,
 ) -> Result<()> {
     let fts = account.db_path("message/message_fts.db");
@@ -653,7 +653,7 @@ fn main() -> Result<()> {
         Some(owner) => resolve_account_dir(&root.to_string_lossy(), owner),
         None => root,
     };
-    let account = NativeAccount::new(
+    let account = Account::new(
         root.join("db_storage"),
         profile
             .decrypt_key
@@ -666,7 +666,7 @@ fn main() -> Result<()> {
         .context("open configured account")?;
 
     let mut biggest = (0, String::new());
-    for s in weflow_native::native_msg::session_usernames(&account)? {
+    for s in weflow_native::msg::session_usernames(&account)? {
         let n = account.message_count(&s).unwrap_or(0);
         if n > biggest.0 {
             biggest = (n, s);

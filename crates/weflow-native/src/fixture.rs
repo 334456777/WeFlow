@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection};
 
-use crate::native_db::hex;
-use crate::native_msg::table_name_for;
+use crate::db::hex;
+use crate::msg::table_name_for;
 use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
 use crate::sqlcipher::PageCipher;
 

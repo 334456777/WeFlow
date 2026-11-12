@@ -1,5 +1,5 @@
 //! The rows of a conversation's `Msg_<md5>` tables (#257, #490), read by the paging, cursor and merge code of
-//! [`native_msg`](crate::native_msg) as [`MsgRow`]s: the columns typed, the content inflated and decoded once, the
+//! [`msg`](crate::msg) as [`MsgRow`]s: the columns typed, the content inflated and decoded once, the
 //! sender resolved, the database named by its shard number (#491, #492).
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use rusqlite::types::ValueRef;
 use rusqlite::Row;
 
-use crate::native_msg::{shard_of, MsgPos, MsgTable};
+use crate::msg::{shard_of, MsgPos, MsgTable};
 
 /// Which columns of a message row a query reads; the others come back empty.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,7 +66,7 @@ pub struct MsgRow {
     pub source: Option<String>,
     /// `packed_info_data` as stored; left out of lite rows.
     pub packed_info: Option<Vec<u8>>,
-    /// The number of the message database holding the row (see [`shard_name`](crate::native_msg::shard_name)).
+    /// The number of the message database holding the row (see [`shard_name`](crate::msg::shard_name)).
     pub shard: u32,
 }
 

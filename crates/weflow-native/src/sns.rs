@@ -10,7 +10,7 @@ use anyhow::Result;
 use regex::Regex;
 use serde_json::{json, Map, Value};
 
-use crate::native_db::{same_identity, NativeAccount};
+use crate::db::{same_identity, Account};
 
 #[expect(clippy::expect_used, reason = "callers pass only static patterns")]
 fn re(p: &str) -> Regex {
@@ -263,7 +263,7 @@ fn top(counts: HashMap<String, i64>, n: usize) -> Value {
     )
 }
 
-impl NativeAccount {
+impl Account {
     fn sns_db(&self) -> std::path::PathBuf {
         self.db_path("sns/sns.db")
     }
@@ -558,10 +558,10 @@ mod fixture_tests {
     use super::*;
     use crate::fixture::{Fixture, TestDir, DAY, T0};
 
-    fn account(tag: &str) -> (TestDir, NativeAccount) {
+    fn account(tag: &str) -> (TestDir, Account) {
         let root = TestDir::new(&format!("weflow-sns-{tag}"));
         let f = Fixture::standard(&root);
-        let acct = NativeAccount::new(f.db_storage(), &f.key_hex())
+        let acct = Account::new(f.db_storage(), &f.key_hex())
             .unwrap()
             .with_my_wxid(Some("wxid_me_ab12".into()));
         (root, acct)

@@ -429,10 +429,7 @@ pub struct CachedContact {
 
 /// `getTimeline` post-processing of one post as read: the addresses of its media fixed and their keys, its comments
 /// and location from its XML, the poster's name and avatar from `contact`.
-pub fn enrich_post(
-    post: weflow_native::native_sns::SnsPost,
-    contact: Option<&CachedContact>,
-) -> SnsPost {
+pub fn enrich_post(post: weflow_native::sns::SnsPost, contact: Option<&CachedContact>) -> SnsPost {
     let is_video_post = post.kind == 15;
     let video_key = extract_video_key(&post.raw_xml).or_else(|| post.video_key.clone());
     let media = post
@@ -977,8 +974,8 @@ mod tests {
         assert!(parse_location_from_xml("<location/>").is_none());
     }
 
-    fn native_post(kind: i64, raw_xml: &str) -> weflow_native::native_sns::SnsPost {
-        weflow_native::native_sns::SnsPost {
+    fn native_post(kind: i64, raw_xml: &str) -> weflow_native::sns::SnsPost {
+        weflow_native::sns::SnsPost {
             id: "1".into(),
             tid: "1".into(),
             username: "wxid_a".into(),
@@ -989,8 +986,8 @@ mod tests {
         }
     }
 
-    fn native_media(url: &str, thumb: &str, key: &str) -> weflow_native::native_sns::SnsMedia {
-        weflow_native::native_sns::SnsMedia {
+    fn native_media(url: &str, thumb: &str, key: &str) -> weflow_native::sns::SnsMedia {
+        weflow_native::sns::SnsMedia {
             url: url.into(),
             thumb: thumb.into(),
             key: Some(key.into()),
@@ -1007,7 +1004,7 @@ mod tests {
              <comment><id>2</id><nickname>B</nickname><content>d</content><refNickname>A</refNickname><refCommentId>1</refCommentId></comment>\
              </commentUserList></x>",
         );
-        post.media = vec![weflow_native::native_sns::SnsMedia {
+        post.media = vec![weflow_native::sns::SnsMedia {
             token: Some("T".into()),
             ..native_media("http://v/snsvideodownload?x=1", "http://t/150", "old")
         }];
@@ -1067,7 +1064,7 @@ mod tests {
         post.content_desc = "a\nb".into();
         post.likes = vec!["L".into()];
         post.media = enrich_post(
-            weflow_native::native_sns::SnsPost {
+            weflow_native::sns::SnsPost {
                 media: vec![
                     native_media("https://x/1.jpg", "", "k"),
                     native_media("https://x/2.jpg", "", "k"),

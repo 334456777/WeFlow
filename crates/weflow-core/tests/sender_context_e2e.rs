@@ -84,9 +84,7 @@ async fn sender_prefilter_preserves_revoker_identity_across_shards_and_paths() {
         req.sender = Some(sender.into());
         let expected: Vec<Value> = all
             .iter()
-            .filter(|m| {
-                weflow_native::native_db::same_identity(m["sender"].as_str().unwrap(), sender)
-            })
+            .filter(|m| weflow_native::db::same_identity(m["sender"].as_str().unwrap(), sender))
             .cloned()
             .collect();
         assert_eq!(expected.len(), count);

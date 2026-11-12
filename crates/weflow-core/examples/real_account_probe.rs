@@ -13,13 +13,13 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::Instant;
 use weflow_core::config::{expand_home, resolve_account_dir, ConfigStore};
-use weflow_native::native_db::NativeAccount;
+use weflow_native::db::Account;
 
 fn number(row: &Value, field: &str) -> i64 {
     row[field].as_i64().unwrap_or(0)
 }
 
-fn cursor_digest(account: &NativeAccount, cursor: i64) -> Result<(usize, String)> {
+fn cursor_digest(account: &Account, cursor: i64) -> Result<(usize, String)> {
     let mut count = 0;
     let mut hash = Sha256::new();
     let result = (|| -> Result<()> {
@@ -37,11 +37,11 @@ fn cursor_digest(account: &NativeAccount, cursor: i64) -> Result<(usize, String)
     })();
     account.close_message_cursor(cursor)?;
     result?;
-    Ok((count, weflow_native::native_db::hex(&hash.finalize())))
+    Ok((count, weflow_native::db::hex(&hash.finalize())))
 }
 
 fn measure_cursors(
-    account: &NativeAccount,
+    account: &Account,
     cases: &Path,
     output: &Path,
     runs: usize,
@@ -118,7 +118,7 @@ fn main() -> Result<()> {
         Some(owner) => resolve_account_dir(&root.to_string_lossy(), owner),
         None => root,
     };
-    let account = NativeAccount::new(
+    let account = Account::new(
         root.join("db_storage"),
         profile
             .decrypt_key
@@ -139,7 +139,7 @@ fn main() -> Result<()> {
             profile.wxid.as_deref().unwrap_or(""),
         );
     }
-    let sessions = weflow_native::native_msg::session_usernames(&account)?;
+    let sessions = weflow_native::msg::session_usernames(&account)?;
     let mut inventory = Vec::new();
     let mut total = 0i64;
     let mut mismatches = 0i64;

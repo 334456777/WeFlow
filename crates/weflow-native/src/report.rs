@@ -12,7 +12,7 @@ use std::time::Instant;
 use anyhow::Result;
 use serde_json::{json, Map, Value};
 
-use crate::native_db::NativeAccount;
+use crate::db::Account;
 
 /// A new conversation (or footprint segment) starts after this many seconds of silence.
 const GAP: i64 = 3600;
@@ -110,11 +110,11 @@ fn is_phrase(t: &str) -> bool {
 /// `create_time` and `local_id`), and the message.
 type Placed = ((i64, i64, i64), Msg);
 
-/// The longest text [`NativeAccount::extras_messages`] decrypts in a page: any longer one is read through SQL.
+/// The longest text [`Account::extras_messages`] decrypts in a page: any longer one is read through SQL.
 const LONGEST_TEXT: usize = 4096;
 
 /// What the annual report's extras take from one session's messages (see
-/// [`NativeAccount::annual_report_extras`]).
+/// [`Account::annual_report_extras`]).
 struct SessionExtras {
     /// Weekday (Monday first) × hour.
     heatmap: [[i64; 24]; 7],
@@ -200,7 +200,7 @@ impl SessionExtras {
     }
 }
 
-impl NativeAccount {
+impl Account {
     /// Chronological messages of a session inside `[begin, end]` (all shards merged).
     fn conversation(&self, session_id: &str, begin: i64, end: i64) -> Result<Vec<Msg>> {
         let mut rows: Vec<Placed> = Vec::new();
@@ -214,7 +214,7 @@ impl NativeAccount {
     /// The messages of one table inside `[begin, end]`, read through SQL, each with its place.
     fn table_messages(
         &self,
-        t: &crate::native_msg::MsgTable,
+        t: &crate::msg::MsgTable,
         mine: &str,
         begin: i64,
         end: i64,
@@ -275,12 +275,12 @@ impl NativeAccount {
     /// or compressed). Read through SQL altogether when the scan does not read the table.
     fn extras_messages(
         &self,
-        t: &crate::native_msg::MsgTable,
+        t: &crate::msg::MsgTable,
         mine: &str,
         begin: i64,
         end: i64,
     ) -> Result<Vec<Placed>> {
-        let ids = crate::native_stats::id_set(mine);
+        let ids = crate::stats::id_set(mine);
         /// A message as the scan finds it: its place, type, whether the owner sent it, and its text when kept.
         struct Found {
             key: (i64, i64, i64),
@@ -384,7 +384,7 @@ impl NativeAccount {
         for f in found.iter_mut().filter(|f| f.unread) {
             f.text = texts.remove(&f.key.2);
         }
-        // the local hour, weekday and day of each quarter of an hour (see `native_stats::time_groups`)
+        // the local hour, weekday and day of each quarter of an hour (see `stats::time_groups`)
         let quarters: std::collections::BTreeSet<i64> =
             found.iter().map(|f| f.key.1 / 900).collect();
         let list = serde_json::to_string(&quarters.iter().collect::<Vec<_>>())?;
@@ -452,7 +452,7 @@ impl NativeAccount {
             (Map::new(), Map::new(), Map::new(), Map::new());
         let mut my_texts: Vec<String> = Vec::new();
         let mut streak: Option<(String, i64, String, String)> = None;
-        let tables = crate::native_stats::tables_of(self, session_ids)?;
+        let tables = crate::stats::tables_of(self, session_ids)?;
         let mut mine: HashMap<std::path::PathBuf, String> = HashMap::new();
         for t in tables.iter().flatten() {
             if !mine.contains_key(&t.db) {
@@ -460,9 +460,9 @@ impl NativeAccount {
             }
         }
         // each session read and summed up on a thread of its own: only the sums stay in memory
-        let sessions: Vec<(&String, &Vec<crate::native_msg::MsgTable>)> =
+        let sessions: Vec<(&String, &Vec<crate::msg::MsgTable>)> =
             session_ids.iter().zip(&tables).collect();
-        let summed = crate::native_stats::each_table(&sessions, |(_, ts)| {
+        let summed = crate::stats::each_table(&sessions, |(_, ts)| {
             let mut placed: Vec<Placed> = Vec::new();
             for t in ts.iter() {
                 placed.extend(self.extras_messages(t, &mine[&t.db], begin, end)?);
@@ -668,7 +668,7 @@ impl NativeAccount {
         let (mut private_ids, mut group_ids) =
             (list("private_session_ids"), list("group_session_ids"));
         if private_ids.is_empty() && group_ids.is_empty() {
-            for u in crate::native_msg::session_usernames(self)? {
+            for u in crate::msg::session_usernames(self)? {
                 if u.ends_with("@chatroom") {
                     group_ids.push(u);
                 } else if !u.starts_with("gh_") && !NOT_PEOPLE.contains(&u.as_str()) {
@@ -877,12 +877,12 @@ mod tests {
         tag: &str,
         sessions: &[SessionSpec],
         shard: &[(&str, Vec<MsgSpec>)],
-    ) -> (TestDir, NativeAccount) {
+    ) -> (TestDir, Account) {
         let root = TestDir::new(&format!("weflow-report-{tag}"));
         let f = Fixture::new(&root, "wxid_me_ab12");
         f.session_db(sessions);
         f.message_shard(0, shard);
-        let acct = NativeAccount::new(f.db_storage(), &f.key_hex())
+        let acct = Account::new(f.db_storage(), &f.key_hex())
             .unwrap()
             .with_my_wxid(Some("wxid_me_ab12".into()));
         (root, acct)
@@ -898,7 +898,7 @@ mod tests {
         }
     }
 
-    fn dual() -> (TestDir, NativeAccount) {
+    fn dual() -> (TestDir, Account) {
         let m = |id, who: &'static str, dt: i64, text: &str| MsgSpec::text(id, who, T0 + dt, text);
         world(
             "dual",
@@ -1015,7 +1015,7 @@ mod tests {
         );
     }
 
-    fn footprint() -> (TestDir, NativeAccount) {
+    fn footprint() -> (TestDir, Account) {
         let at = |who: &str| format!("<msgsource><atuserlist>{who}</atuserlist></msgsource>");
         world(
             "footprint",
@@ -1396,7 +1396,7 @@ mod tests {
         );
     }
 
-    fn account_for_mentions() -> (TestDir, NativeAccount) {
+    fn account_for_mentions() -> (TestDir, Account) {
         let (dir, acct) = world("mentions", &[], &[]);
         (dir, acct.with_my_wxid(Some("wxid_me".into())))
     }

@@ -8,10 +8,10 @@ use anyhow::Result;
 use rusqlite::ToSql;
 use serde_json::{json, Value};
 
+use crate::db::Account;
 use crate::msg_row::MsgRow;
-use crate::native_db::NativeAccount;
 
-/// A message of [`NativeAccount::search_messages`] or [`NativeAccount::scan_media_stream`], and its conversation.
+/// A message of [`Account::search_messages`] or [`Account::scan_media_stream`], and its conversation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SessionRow {
     pub session_id: String,
@@ -231,7 +231,7 @@ fn title_of(xml: &str) -> Option<String> {
     )
 }
 
-/// Where a hit of [`NativeAccount::search_messages`] is: its table and local_id when it was scanned, its
+/// Where a hit of [`Account::search_messages`] is: its table and local_id when it was scanned, its
 /// conversation, local_id and sort_seq when it comes from WeChat's index.
 fn place(r: &Value) -> String {
     match r.get("_session").and_then(Value::as_str) {
@@ -241,7 +241,7 @@ fn place(r: &Value) -> String {
 }
 
 /// The tables a hit may be in: its own when it was scanned, those of its conversation when it comes from the index.
-fn tables_of(r: &Value, tables: &[(String, crate::native_msg::MsgTable)]) -> Vec<usize> {
+fn tables_of(r: &Value, tables: &[(String, crate::msg::MsgTable)]) -> Vec<usize> {
     match r.get("_session").and_then(Value::as_str) {
         Some(sid) => (0..tables.len())
             .filter(|&at| tables[at].0 == sid)
@@ -298,7 +298,7 @@ thread_local! {
 /// own `+` to keep SQLite on the sort_seq index, not the type index.
 const SEARCHABLE_SQL: &str = "(+m.local_type = 1 or (+m.local_type & 4294967295) = 49)";
 
-impl NativeAccount {
+impl Account {
     /// WeChat's index of this account, when it has one in the shape this reader knows.
     fn fts_index(&self) -> Option<FtsIndex> {
         let path = self.db_path("message/message_fts.db");
@@ -458,7 +458,7 @@ impl NativeAccount {
         }
         let sessions: Vec<String> = match session_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => vec![s.to_string()],
-            None => crate::native_msg::session_usernames(self)?,
+            None => crate::msg::session_usernames(self)?,
         };
         let like = format!(
             "%{}%",
@@ -541,7 +541,7 @@ impl NativeAccount {
     fn deleted_hits(
         &self,
         ranked: &[Value],
-        tables: &[(String, crate::native_msg::MsgTable)],
+        tables: &[(String, crate::msg::MsgTable)],
     ) -> Result<std::collections::HashSet<String>> {
         let mut wanted: std::collections::BTreeMap<usize, Vec<String>> = Default::default();
         let mut gone = std::collections::HashSet::new();
@@ -582,7 +582,7 @@ impl NativeAccount {
     fn search_ranked(
         &self,
         index: Option<&FtsIndex>,
-        tables: &[(String, crate::native_msg::MsgTable)],
+        tables: &[(String, crate::msg::MsgTable)],
         sessions: &[String],
         needle: &str,
         like: &str,
@@ -672,7 +672,7 @@ impl NativeAccount {
         &self,
         at: usize,
         sid: &str,
-        t: &crate::native_msg::MsgTable,
+        t: &crate::msg::MsgTable,
         needle: &str,
         like: &str,
         (begin, end): (i64, i64),
@@ -1050,10 +1050,10 @@ mod tests {
     use super::*;
     use crate::fixture::{Fixture, TestDir, DAY, T0};
 
-    fn account(tag: &str) -> (TestDir, NativeAccount) {
+    fn account(tag: &str) -> (TestDir, Account) {
         let root = TestDir::new(&format!("weflow-media-{tag}"));
         let f = Fixture::standard(&root);
-        let acct = NativeAccount::new(f.db_storage(), &f.key_hex())
+        let acct = Account::new(f.db_storage(), &f.key_hex())
             .unwrap()
             .with_my_wxid(Some("wxid_me_ab12".into()));
         (root, acct)
@@ -1236,7 +1236,7 @@ mod tests {
             all.extend(msgs.iter().map(|m| (shard, m.clone())));
             f.message_shard(shard, &[("wxid_bob", msgs)]);
         }
-        let a = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let a = Account::new(f.db_storage(), &f.key_hex()).unwrap();
         let shown = |m: &MsgSpec| match m.local_type {
             1 => Some(m.content.clone()),
             k if k & 0xffff_ffff == 49 => m
@@ -1395,7 +1395,7 @@ mod tests {
             create_time: T0 + 39,
         });
         f.message_fts_db(&groups);
-        let a = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let a = Account::new(f.db_storage(), &f.key_hex()).unwrap();
 
         let shown = |session: &str, m: &MsgSpec| -> String {
             let said = m
@@ -1636,7 +1636,7 @@ mod tests {
         use std::path::Path;
         let root = TestDir::new("weflow-media-hardlink");
         let f = Fixture::standard(&root);
-        let a = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let a = Account::new(f.db_storage(), &f.key_hex()).unwrap();
         // no index: nothing, and no failure
         assert!(a.image_hardlink_index().unwrap().is_empty());
         assert!(a

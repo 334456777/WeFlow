@@ -1,16 +1,16 @@
 pub mod cipher_vfs;
+pub mod contact;
+pub mod db;
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod fixture;
 mod leaf_scan;
+pub mod media;
+pub mod msg;
 pub mod msg_row;
-pub mod native_contact;
-pub mod native_db;
-pub mod native_media;
-pub mod native_msg;
-pub mod native_report;
-pub mod native_sns;
-pub mod native_stats;
+pub mod report;
+pub mod sns;
 pub mod sqlcipher;
+pub mod stats;
 pub mod wcdb;
 #[cfg(any(test, all(windows, target_arch = "x86_64")))]
 pub mod windows_db_key;

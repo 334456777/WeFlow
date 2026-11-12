@@ -44,7 +44,7 @@ struct Conn {
 }
 
 struct Snapshot {
-    /// Connections over `file`; one unless a handle asks for more (see [`NativeAccount::set_read_connections`]).
+    /// Connections over `file`; one unless a handle asks for more (see [`Account::set_read_connections`]).
     conns: Vec<Arc<Mutex<Conn>>>,
     file: Arc<CipherFile>,
     key: [u8; 32],
@@ -91,17 +91,17 @@ fn shared_cache() -> Arc<Mutex<Cache>> {
         .clone()
 }
 
-pub struct NativeAccount {
+pub struct Account {
     db_storage: PathBuf,
     raw_key: [u8; 32],
     cache: Arc<Mutex<Cache>>,
     /// Identity of the account owner (wxid, optionally with the `_xxxx` account-directory suffix);
     /// used to tell which messages were sent by the user.
     my_wxid: Option<String>,
-    pub(crate) cursors: Mutex<crate::native_msg::Cursors>,
-    /// Most connections a snapshot gets for this handle's queries (see [`NativeAccount::set_read_connections`]).
+    pub(crate) cursors: Mutex<crate::msg::Cursors>,
+    /// Most connections a snapshot gets for this handle's queries (see [`Account::set_read_connections`]).
     read_connections: std::sync::atomic::AtomicUsize,
-    /// Queries run again because their snapshot went stale (see [`NativeAccount::stale_reruns`]).
+    /// Queries run again because their snapshot went stale (see [`Account::stale_reruns`]).
     stale_reruns: std::sync::atomic::AtomicUsize,
 }
 
@@ -174,7 +174,7 @@ fn blob_to_string(b: &[u8]) -> String {
     }
 }
 
-impl NativeAccount {
+impl Account {
     /// `db_storage` is `<account>/db_storage`; `hex_key` is the 64-hex key from `weflow key db`.
     pub fn new(db_storage: impl Into<PathBuf>, hex_key: &str) -> Result<Self> {
         let db_storage = db_storage.into();
@@ -207,7 +207,7 @@ impl NativeAccount {
         self.stale_reruns.load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    /// Set the account owner's wxid (see [`NativeAccount::is_me`]).
+    /// Set the account owner's wxid (see [`Account::is_me`]).
     pub fn with_my_wxid(mut self, wxid: Option<String>) -> Self {
         self.my_wxid = wxid.map(|w| w.trim().to_string()).filter(|w| !w.is_empty());
         self
@@ -604,7 +604,7 @@ mod tests {
         for shard in 0..2 {
             f.message_shard(shard, &[]);
         }
-        let acct = super::NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let acct = super::Account::new(f.db_storage(), &f.key_hex()).unwrap();
         let all = acct.chat_databases();
         for rel in [
             "session/session.db",

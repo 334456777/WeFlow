@@ -1180,7 +1180,7 @@ impl ServiceHub {
         end: i64,
     ) -> AppResult<Vec<chat_msg::ChatMessage>> {
         let my_wxid = self.my_wxid_cleaned();
-        let table_name = weflow_native::native_msg::table_name_for(chatroom_id);
+        let table_name = weflow_native::msg::table_name_for(chatroom_id);
         let cursor = self.member_cursor(wcdb, chatroom_id, member, 800, true, (start, end))?;
         let mut out = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();
@@ -1247,7 +1247,7 @@ impl ServiceHub {
             false,
             (start.max(0), end.max(0)),
         )?;
-        let table_name = weflow_native::native_msg::table_name_for(chatroom_id);
+        let table_name = weflow_native::msg::table_name_for(chatroom_id);
         let mut matched: Vec<chat_msg::ChatMessage> = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();
         let mut consumed = 0usize;

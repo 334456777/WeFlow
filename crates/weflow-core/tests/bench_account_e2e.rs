@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use weflow_core::decrypt::{decrypt_dat, parse_aes_key};
+use weflow_native::db::hex;
 use weflow_native::fixture::bench::{self, BenchSpec, Profile};
-use weflow_native::native_db::hex;
 use weflow_native::sqlcipher::testutil::KEY;
 
 fn small(seed: u64) -> BenchSpec {

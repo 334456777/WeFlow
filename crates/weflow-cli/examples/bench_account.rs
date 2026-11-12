@@ -90,7 +90,7 @@ fn main() -> Result<()> {
                 bench::account_dir(&data).to_string_lossy().to_string(),
             ),
             ("wxid", bench::ACCOUNT_DIR.to_string()),
-            ("decrypt_key", weflow_native::native_db::hex(&KEY)),
+            ("decrypt_key", weflow_native::db::hex(&KEY)),
             ("image_xor_key", bench::IMAGE_XOR_KEY.to_string()),
             ("image_aes_key", bench::IMAGE_AES_KEY.to_string()),
         ] {

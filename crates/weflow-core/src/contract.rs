@@ -271,10 +271,7 @@ impl From<weflow_native::msg_row::MsgRow> for MessageRow {
             is_send: row.is_send,
             content: row.content,
             source: row.source,
-            packed_info: row
-                .packed_info
-                .as_deref()
-                .map(weflow_native::native_db::hex),
+            packed_info: row.packed_info.as_deref().map(weflow_native::db::hex),
             shard: row.shard,
             cursor,
         }
@@ -291,8 +288,8 @@ pub struct SearchHit {
     pub session_id: String,
 }
 
-impl From<weflow_native::native_media::SessionRow> for SearchHit {
-    fn from(hit: weflow_native::native_media::SessionRow) -> Self {
+impl From<weflow_native::media::SessionRow> for SearchHit {
+    fn from(hit: weflow_native::media::SessionRow) -> Self {
         Self {
             row: hit.row.into(),
             session_id: hit.session_id,
@@ -2195,7 +2192,7 @@ mod tests {
             avatar_url: Some("https://wx.qlogo.cn/b".into()),
         };
         let built = crate::sns::enrich_post(
-            weflow_native::native_sns::parse_post(2001, "wxid_bob", xml),
+            weflow_native::sns::parse_post(2001, "wxid_bob", xml),
             Some(&contact),
         );
         let post = serde_json::to_value(&built).unwrap();

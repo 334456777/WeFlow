@@ -1,6 +1,6 @@
 //! Database facade used by the service layer.
 //!
-//! Everything is served by the pure-Rust backend in [`crate::native_db`]/[`crate::native_msg`]; there is
+//! Everything is served by the pure-Rust backend in [`crate::db`]/[`crate::msg`]; there is
 //! no dependency on the closed-source `wcdb_api` library. Calls that have not been ported yet return a
 //! clear "not implemented" error instead of touching anything native. The calls refused by design keep the
 //! arguments they have always taken, unused.
@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 use serde_json::Value;
 
+use crate::db::Account;
 use crate::msg_row::MsgRow;
-use crate::native_db::NativeAccount;
 
 /// A call the backend refuses by design (it opens WeChat's databases read-only) or has not ported yet.
 /// Callers can find it with `anyhow::Error::downcast_ref` to tell it apart from a failure.
@@ -30,7 +30,7 @@ pub enum Arg<'a> {
 
 #[derive(Default)]
 pub struct Wcdb {
-    native: Option<NativeAccount>,
+    native: Option<Account>,
 }
 
 impl Wcdb {
@@ -67,7 +67,7 @@ impl Wcdb {
         Err(Unsupported(format!("{name} is not supported: the native database backend opens WeChat's databases read-only")).into())
     }
 
-    fn account(&self) -> Result<&NativeAccount> {
+    fn account(&self) -> Result<&Account> {
         self.native
             .as_ref()
             .ok_or_else(|| anyhow!("WCDB is not connected"))
@@ -106,7 +106,7 @@ impl Wcdb {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
         });
-        self.native = Some(NativeAccount::new(db_storage, hex_key)?.with_my_wxid(me));
+        self.native = Some(Account::new(db_storage, hex_key)?.with_my_wxid(me));
         Ok(())
     }
 
@@ -147,17 +147,17 @@ impl Wcdb {
         self.account()?.messages(session_id, limit, offset)
     }
 
-    /// See [`NativeAccount::messages_from`](crate::native_db::NativeAccount::messages_from).
+    /// See [`Account::messages_from`](crate::db::Account::messages_from).
     pub fn messages_from(
         &self,
         session_id: &str,
         limit: i32,
-        from: crate::native_msg::PageFrom,
+        from: crate::msg::PageFrom,
     ) -> Result<Vec<MsgRow>> {
         self.account()?.messages_from(session_id, limit, from)
     }
 
-    /// See [`NativeAccount::messages_where`].
+    /// See [`Account::messages_where`].
     pub fn messages_where(
         &self,
         session_id: &str,
@@ -169,19 +169,19 @@ impl Wcdb {
             .messages_where(session_id, since, condition, limit)
     }
 
-    /// See [`NativeAccount::message_tables_by_name`].
+    /// See [`Account::message_tables_by_name`].
     pub fn message_tables_by_name(
         &self,
-    ) -> Result<std::collections::HashMap<String, Vec<crate::native_msg::MsgTable>>> {
+    ) -> Result<std::collections::HashMap<String, Vec<crate::msg::MsgTable>>> {
         self.account()?.message_tables_by_name()
     }
 
-    /// See [`NativeAccount::typed_before`].
+    /// See [`Account::typed_before`].
     pub fn typed_before(
         &self,
-        tables: &[crate::native_msg::MsgTable],
+        tables: &[crate::msg::MsgTable],
         local_types: &[i64],
-        before: Option<(crate::native_msg::MsgPos, crate::native_msg::Ties)>,
+        before: Option<(crate::msg::MsgPos, crate::msg::Ties)>,
         range: (i64, i64),
         floor: i64,
         limit: i64,
@@ -191,7 +191,7 @@ impl Wcdb {
     }
 
     /// Opens the databases a chat page reads, at the same time (see
-    /// [`NativeAccount::warm`](crate::native_db::NativeAccount::warm)); returns how many opened.
+    /// [`Account::warm`](crate::db::Account::warm)); returns how many opened.
     pub fn warm_chat_databases(&self) -> Result<usize> {
         let account = self.account()?;
         Ok(account.warm(&account.chat_databases()))
@@ -253,7 +253,7 @@ impl Wcdb {
             .open_message_cursor(session_id, batch_size, ascending, begin, end, lite)
     }
 
-    /// The cursor of an export (see [`NativeAccount::open_export_cursor`]).
+    /// The cursor of an export (see [`Account::open_export_cursor`]).
     pub fn open_export_cursor(
         &self,
         session_id: &str,
@@ -265,7 +265,7 @@ impl Wcdb {
             .open_export_cursor(session_id, batch_size, begin, end)
     }
 
-    /// A cursor over one member's messages only (see `NativeAccount::open_message_cursor_for_senders`).
+    /// A cursor over one member's messages only (see `Account::open_message_cursor_for_senders`).
     pub fn open_message_cursor_for_senders(
         &self,
         session_id: &str,
@@ -273,7 +273,7 @@ impl Wcdb {
         ascending: bool,
         range: (i32, i32),
         lite: bool,
-        senders: crate::native_msg::SenderFilter<'_>,
+        senders: crate::msg::SenderFilter<'_>,
     ) -> Result<i64> {
         self.account()?.open_message_cursor_for_senders(
             session_id, batch_size, ascending, range, lite, senders,
@@ -285,12 +285,12 @@ impl Wcdb {
         self.account()?.fetch_message_batch(cursor)
     }
 
-    /// (messages, batch size) of a cursor (see [`NativeAccount::message_cursor_len`]).
+    /// (messages, batch size) of a cursor (see [`Account::message_cursor_len`]).
     pub fn message_cursor_len(&self, cursor: i64) -> Result<(usize, usize)> {
         self.account()?.message_cursor_len(cursor)
     }
 
-    /// Batch number `page` of a cursor, without moving it (see [`NativeAccount::fetch_message_page`]).
+    /// Batch number `page` of a cursor, without moving it (see [`Account::fetch_message_page`]).
     pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Vec<MsgRow>> {
         self.account()?.fetch_message_page(cursor, page)
     }
@@ -299,16 +299,16 @@ impl Wcdb {
         self.account()?.close_message_cursor(cursor)
     }
 
-    /// Connections a database may open for this handle's queries (see [`NativeAccount::set_read_connections`]).
+    /// Connections a database may open for this handle's queries (see [`Account::set_read_connections`]).
     pub fn set_read_connections(&self, n: usize) {
         if let Some(a) = &self.native {
             a.set_read_connections(n);
         }
     }
 
-    /// Queries run again on a fresh snapshot so far (see [`NativeAccount::stale_reruns`]).
+    /// Queries run again on a fresh snapshot so far (see [`Account::stale_reruns`]).
     pub fn stale_reruns(&self) -> usize {
-        self.native.as_ref().map_or(0, NativeAccount::stale_reruns)
+        self.native.as_ref().map_or(0, Account::stale_reruns)
     }
 
     // ── generic by-name calls (kept for callers that build their own argument lists) ──
@@ -318,17 +318,17 @@ impl Wcdb {
         match (name, args) {
             ("wcdb_get_contacts_compact", [Arg::S(payload)]) => self
                 .account()?
-                .contacts_compact(&crate::native_contact::usernames_from_json(payload)),
+                .contacts_compact(&crate::contact::usernames_from_json(payload)),
             ("wcdb_get_aggregate_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
                 self.account()?.aggregate_stats(
-                    &crate::native_contact::usernames_from_json(ids),
+                    &crate::contact::usernames_from_json(ids),
                     *b as i64,
                     *e as i64,
                 )
             }
             ("wcdb_get_annual_report_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
                 self.account()?.annual_report_stats(
-                    &crate::native_contact::usernames_from_json(ids),
+                    &crate::contact::usernames_from_json(ids),
                     *b as i64,
                     *e as i64,
                 )
@@ -348,7 +348,7 @@ impl Wcdb {
     // ── search, contacts, groups, statistics, Moments and media ──
 
     /// The messages whose text holds `keyword`, newest first, each hit with its conversation (see
-    /// [`NativeAccount::search_messages`]).
+    /// [`Account::search_messages`]).
     pub fn search(
         &self,
         keyword: &str,
@@ -357,7 +357,7 @@ impl Wcdb {
         offset: i32,
         begin: i32,
         end: i32,
-    ) -> Result<Vec<crate::native_media::SessionRow>> {
+    ) -> Result<Vec<crate::media::SessionRow>> {
         self.account()?.search_messages(
             keyword,
             session_id,
@@ -393,7 +393,7 @@ impl Wcdb {
     }
 
     /// Messages, sent and received, and the last time, of each of `session_ids` (see
-    /// [`NativeAccount::session_totals`]).
+    /// [`Account::session_totals`]).
     pub fn session_totals(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
         self.account()?
             .session_totals(session_ids, begin as i64, end as i64)
@@ -426,7 +426,7 @@ impl Wcdb {
         keyword: Option<&str>,
         start: i32,
         end: i32,
-    ) -> Result<Vec<crate::native_sns::SnsPost>> {
+    ) -> Result<Vec<crate::sns::SnsPost>> {
         self.account()?.sns_timeline(
             limit,
             offset,
@@ -514,7 +514,7 @@ impl Wcdb {
         end: i32,
         limit: i32,
         offset: i32,
-    ) -> Result<(Vec<crate::native_media::SessionRow>, bool)> {
+    ) -> Result<(Vec<crate::media::SessionRow>, bool)> {
         self.account()?.scan_media_stream(
             session_ids,
             media_type,
@@ -531,34 +531,32 @@ impl Wcdb {
 
     pub fn display_names(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
-            .display_names(&crate::native_contact::usernames_from_json(usernames_json))
+            .display_names(&crate::contact::usernames_from_json(usernames_json))
     }
 
-    /// The avatar kept on this computer for `username` (see `NativeAccount::head_image`).
+    /// The avatar kept on this computer for `username` (see `Account::head_image`).
     pub fn head_image(&self, username: &str) -> Result<Option<Vec<u8>>> {
         self.account()?.head_image(username)
     }
 
     pub fn avatar_urls(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
-            .avatar_urls(&crate::native_contact::usernames_from_json(usernames_json))
+            .avatar_urls(&crate::contact::usernames_from_json(usernames_json))
     }
 
     pub fn group_member_counts(&self, chatroom_ids_json: &str) -> Result<Value> {
         self.account()?
-            .group_member_counts(&crate::native_contact::usernames_from_json(
-                chatroom_ids_json,
-            ))
+            .group_member_counts(&crate::contact::usernames_from_json(chatroom_ids_json))
     }
 
     pub fn contact_status(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
-            .contact_status(&crate::native_contact::usernames_from_json(usernames_json))
+            .contact_status(&crate::contact::usernames_from_json(usernames_json))
     }
 
     pub fn contact_alias_map(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
-            .contact_alias_map(&crate::native_contact::usernames_from_json(usernames_json))
+            .contact_alias_map(&crate::contact::usernames_from_json(usernames_json))
     }
 
     pub fn chat_room_ext_buffer(&self, chatroom_id: &str) -> Result<Value> {
@@ -578,7 +576,7 @@ impl Wcdb {
         peak_end: i32,
     ) -> Result<Value> {
         self.account()?.annual_report_extras(
-            &crate::native_contact::usernames_from_json(session_ids_json),
+            &crate::contact::usernames_from_json(session_ids_json),
             begin as i64,
             end as i64,
             peak_begin as i64,
@@ -586,19 +584,19 @@ impl Wcdb {
         )
     }
 
-    /// Where WeChat's media index puts the images, by message md5 (see `NativeAccount::image_hardlink_index`).
+    /// Where WeChat's media index puts the images, by message md5 (see `Account::image_hardlink_index`).
     pub fn image_hardlink_index(
         &self,
     ) -> Result<std::collections::HashMap<String, Vec<std::path::PathBuf>>> {
         self.account()?.image_hardlink_index()
     }
 
-    /// Where WeChat's media index puts the video of a message md5 (see `NativeAccount::video_hardlinks`).
+    /// Where WeChat's media index puts the video of a message md5 (see `Account::video_hardlinks`).
     pub fn video_hardlinks(&self, md5: &str) -> Result<Vec<std::path::PathBuf>> {
         self.account()?.video_hardlinks(md5)
     }
 
-    /// Where WeChat's media index puts the file of a message md5 (see `NativeAccount::file_hardlinks`).
+    /// Where WeChat's media index puts the file of a message md5 (see `Account::file_hardlinks`).
     pub fn file_hardlinks(&self, md5: &str) -> Result<Vec<std::path::PathBuf>> {
         self.account()?.file_hardlinks(md5)
     }
@@ -607,7 +605,7 @@ impl Wcdb {
         self.account()?.emoticon_cdn_url(md5)
     }
 
-    /// Every sticker caption, keyed by lower-case md5 (see `NativeAccount::emoticon_captions`).
+    /// Every sticker caption, keyed by lower-case md5 (see `Account::emoticon_captions`).
     pub fn emoticon_captions(&self) -> Result<std::collections::HashMap<String, String>> {
         self.account()?.emoticon_captions()
     }
@@ -623,7 +621,7 @@ impl Wcdb {
             create_time as i64,
             local_id as i64,
             svr_id,
-            &crate::native_contact::usernames_from_json(candidates_json),
+            &crate::contact::usernames_from_json(candidates_json),
         )
     }
 
@@ -638,7 +636,7 @@ impl Wcdb {
         options_json: &str,
     ) -> Result<Value> {
         self.account()?.session_message_type_stats_batch(
-            &crate::native_contact::usernames_from_json(session_ids_json),
+            &crate::contact::usernames_from_json(session_ids_json),
             &serde_json::from_str(options_json).unwrap_or_default(),
         )
     }

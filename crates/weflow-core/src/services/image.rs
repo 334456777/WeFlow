@@ -1586,11 +1586,8 @@ impl ServiceHub {
             super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(3))?
                 .ok_or_else(|| AppError::runtime("message not found"))?;
         let my = self.my_wxid_cleaned();
-        let msg = crate::chat_msg::map_msg_row(
-            row,
-            &weflow_native::native_msg::table_name_for(session_id),
-            &my,
-        );
+        let msg =
+            crate::chat_msg::map_msg_row(row, &weflow_native::msg::table_name_for(session_id), &my);
         let raw_md5 = msg
             .image_md5
             .clone()

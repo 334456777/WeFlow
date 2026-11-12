@@ -15,8 +15,8 @@ use crate::contract::{
 };
 use crate::error::{AppError, AppResult};
 use crate::message::{app_message_kind, collect_rows, CollectOptions, ExportMsg};
+use weflow_native::msg::table_name_for;
 use weflow_native::msg_row::MsgRow;
-use weflow_native::native_msg::table_name_for;
 
 const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 pub(super) const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
@@ -54,7 +54,7 @@ pub(crate) fn message_by_local_id(
                 json!({
                     "createTime": r.create_time.unwrap_or(0),
                     "localType": r.local_type,
-                    "dbName": weflow_native::native_msg::shard_name(r.shard),
+                    "dbName": weflow_native::msg::shard_name(r.shard),
                 })
             })
             .collect();
@@ -745,7 +745,7 @@ impl ServiceHub {
     /// goes on from the `nextCursor` of this one (issue #178).
     pub fn chat_resources(&self, q: &ResourceQuery) -> AppResult<Value> {
         use std::cmp::Ordering;
-        use weflow_native::native_msg::{MsgPos, Ties};
+        use weflow_native::msg::{MsgPos, Ties};
         let wcdb = self.open_wcdb()?;
         let all_types = ["image", "video", "voice", "file"];
         let wanted: Vec<&str> = if q.types.is_empty() {
