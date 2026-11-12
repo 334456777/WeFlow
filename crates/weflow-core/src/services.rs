@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
 use weflow_native::msg_row::MsgRow;
 
 use crate::config::{clean_account_dir_name, AppContext, ConfigStore, ServeSettings};
@@ -7,11 +8,11 @@ use crate::error::{AppError, AppResult};
 
 mod account;
 mod analytics;
-mod api;
 mod backup;
 mod chat;
 mod cleanup;
 mod export;
+mod export_media;
 mod export_stream;
 pub use cleanup::{disk_usage, CachePart};
 mod footprint;
@@ -23,6 +24,7 @@ pub use insight::Trigger as InsightTrigger;
 mod key;
 mod media;
 mod reports;
+mod sessions;
 mod sns;
 mod voice;
 pub use chat::ResourceQuery;
@@ -162,6 +164,25 @@ pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
         e = b;
     }
     (b, e)
+}
+
+impl ServiceHub {
+    /// Raw configuration value (`messagePushFilterMode`, …) of the active profile.
+    pub fn config_value(&self, key: &str) -> Value {
+        self.config.get_key(Some(&self.profile_name), key)
+    }
+
+    pub fn open_wcdb_pub(&self) -> AppResult<weflow_native::wcdb::Wcdb> {
+        self.open_wcdb()
+    }
+
+    pub fn my_wxid_pub(&self) -> String {
+        self.my_wxid_cleaned()
+    }
+
+    pub fn push_avatar_dir(&self) -> PathBuf {
+        self.cache_base().join("push-avatar-files")
+    }
 }
 
 #[cfg(test)]
