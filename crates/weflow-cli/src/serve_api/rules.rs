@@ -48,8 +48,8 @@ pub(super) enum Rule {
 /// The commands the read-only database layer always refuses (`unsupported`, HTTP 501), with the methods that run
 /// them so: those that would write WeChat's databases, and `sns block-delete check`, which looks for a trigger the
 /// layer does not read. `/openapi.json` marks them `x-weflow-refused` (#217) so a client need not offer them, and
-/// gives them no `200` answer (#430). `refused_commands_are_marked_and_refused` (tests/serve_api.rs) checks both
-/// against a running server.
+/// gives them no `200` answer (#430). `refused_commands_are_marked_and_refused` (tests/serve_api/commands.rs) checks
+/// both against a running server.
 const REFUSED: &[(&str, &[Verb])] = &[
     ("chat update-message", &[Patch]),
     ("chat delete-message", &[Delete]),

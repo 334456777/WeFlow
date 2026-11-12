@@ -44,7 +44,7 @@ jpeg-encoder.workspace = true
 # the contract's tests (#400) check answers against web/contract/openapi.json; without the default features it
 # reads no schema from the network or the disk
 jsonschema = { version = "=0.60.0", default-features = false }
-# tests/serve_api.rs names Moments media the way the cache does
+# tests/serve_api/ (media.rs, contract.rs) names Moments media the way the cache does
 md-5.workspace = true
 # tests/web_versions.rs publishes WebUI packages in a registry of its own
 sha2.workspace = true
