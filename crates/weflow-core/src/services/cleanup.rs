@@ -177,11 +177,15 @@ impl ServiceHub {
                     .iter()
                     .map(|p| disk_usage(p))
                     .fold((0, 0), |(b, f), (pb, pf)| (b + pb, f + pf));
+                // the folder `unused_programs` leaves out
+                let in_use = (part == CachePart::Runtime)
+                    .then(|| self.runtime_root().join(&self.ctx.version));
                 crate::contract::CacheUsage {
                     part,
                     paths,
                     bytes,
                     files,
+                    in_use,
                 }
             })
             .collect()
