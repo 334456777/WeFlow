@@ -7,6 +7,7 @@
 //! This is the Rust replacement for `img_helper.dll`; it is compiled into `weflow.exe` and needs no Visual C++
 //! runtime.
 mod hook;
+#[cfg(all(windows, target_arch = "x86_64"))]
 mod shellcode;
 
 use std::sync::atomic::{AtomicBool, Ordering};
