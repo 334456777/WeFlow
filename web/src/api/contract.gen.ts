@@ -1093,9 +1093,13 @@ export interface RuntimeInfo {
 export interface CacheUsage {
   /** Its name, as `cache clear` takes it. */
   part: CachePart;
+  /** What `cache clear` removes; for `runtime`, the folders of other versions and earlier ffmpeg builds found. */
   paths: string[];
+  /** What `paths` take on disk. */
   bytes: number;
   files: number;
+  /** For `runtime`: the running version's folder, which `cache clear` leaves and `bytes` does not count. */
+  inUse?: string;
 }
 
 /** A part of WeFlow's cache that is listed and cleared on its own. */

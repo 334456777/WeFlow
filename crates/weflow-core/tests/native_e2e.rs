@@ -968,6 +968,15 @@ fn cache_parts_clear_on_their_own_and_all_together() {
             home.join("ffmpeg").join("b6.1.1")
         ])
     );
+    // the running version's runtime is named apart, and only the runtime row names one
+    let in_use = json!(hub.runtime_root().join("test"));
+    assert_eq!(entry("runtime")["inUse"], in_use);
+    assert_eq!(entry("runtime")["bytes"], 6);
+    assert!(list
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e["part"] == "runtime" || e.get("inUse").is_none()));
 
     let r = hub.cache_clear(&[CachePart::Images]);
     assert_eq!(r.freed_bytes, 3, "{r:?}");
@@ -980,4 +989,18 @@ fn cache_parts_clear_on_their_own_and_all_together() {
     assert!(rest.iter().all(|p| !p.exists()), "{r:?}");
     assert!(!older.exists() && !ffmpeg.exists());
     assert!(current.exists() && own.exists());
+
+    // with nothing left to clear, the row still names the runtime in use
+    let list = json!(hub.cache_list());
+    let runtime = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["part"] == "runtime")
+        .unwrap();
+    assert_eq!(
+        (&runtime["paths"], &runtime["bytes"], &runtime["inUse"]),
+        (&json!([]), &json!(0), &in_use),
+        "{runtime}"
+    );
 }

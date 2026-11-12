@@ -7912,17 +7912,23 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "What `cache clear` removes; for `runtime`, the folders of other versions and earlier ffmpeg builds found."
           },
           "bytes": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "What `paths` take on disk."
           },
           "files": {
             "type": "integer",
             "format": "uint64",
             "minimum": 0
+          },
+          "inUse": {
+            "type": "string",
+            "description": "For `runtime`: the running version's folder, which `cache clear` leaves and `bytes` does not count."
           }
         },
         "required": [
