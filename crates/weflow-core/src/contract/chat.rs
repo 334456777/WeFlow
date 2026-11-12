@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::chat_msg::ChatMessage;
-use crate::message::{app_message_kind, parse_message_content, ExportMsg};
+use crate::message::{appmsg::app_message_kind, parse_message_content, ExportMsg};
 
 /// A message of a page as the chat window shows it (`chat messages`, `chat message` and `chat search` with
 /// `parsed`).

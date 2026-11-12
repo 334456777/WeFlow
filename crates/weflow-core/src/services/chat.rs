@@ -14,7 +14,7 @@ use crate::contract::{
     SessionTables, TabCounts, TransferNames, VoiceMessages,
 };
 use crate::error::{AppError, AppResult};
-use crate::message::{app_message_kind, collect_rows, CollectOptions, ExportMsg};
+use crate::message::{appmsg::app_message_kind, collect_rows, CollectOptions, ExportMsg};
 use weflow_native::msg::table_name_for;
 use weflow_native::msg_row::MsgRow;
 

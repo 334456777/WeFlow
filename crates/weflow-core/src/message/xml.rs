@@ -7,10 +7,13 @@ use std::rc::Rc;
 
 use regex::Regex;
 
+use super::quote::QuoteInfo;
+use super::quote::QuotedDisplay;
 use super::row::unsigned_token;
-use super::QuoteInfo;
-use super::QuotedDisplay;
-use super::{format_quoted_reference_preview, has_sysmsg, quote_info_of, refermsg_xml};
+use super::{
+    quote::format_quoted_reference_preview, quote::quote_info_of, quote::refermsg_xml,
+    system::has_sysmsg,
+};
 
 thread_local! {
     static RX_CACHE: RefCell<HashMap<String, Rc<Regex>>> = RefCell::new(HashMap::new());
@@ -477,9 +480,9 @@ pub(super) fn last_hex_token(text: &str, min: usize, max: usize) -> Option<Strin
 mod tests {
     use super::*;
     use crate::message::{
-        dat_name_in_packed_info, extract_emoji_md5, extract_emoji_url, extract_image_md5,
-        extract_loose_hex_md5, extract_video_md5, is_readable_system_message,
-        normalize_image_dat_name_token,
+        emoji::extract_emoji_md5, emoji::extract_emoji_url, emoji::extract_loose_hex_md5,
+        media::dat_name_in_packed_info, media::extract_image_md5, media::extract_video_md5,
+        media::normalize_image_dat_name_token, system::is_readable_system_message,
     };
 
     #[test]
@@ -541,7 +544,7 @@ mod tests {
     /// The regexes the XML scanners replace, kept as the reference they must agree with.
     mod regex_reference {
         use super::super::{last_hex_token, normalize_app_message_content, rx};
-        use crate::message::{normalize_md5, percent_decode};
+        use crate::message::{emoji::normalize_md5, emoji::percent_decode};
 
         pub fn attribute(xml: &str, tag: &str, attr: &str) -> String {
             rx(&format!(

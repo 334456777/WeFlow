@@ -784,7 +784,7 @@ fn authorized(token: &str, headers: &HeaderMap, query: &[(String, String)]) -> b
 }
 
 fn url_decode(s: &str) -> String {
-    String::from_utf8_lossy(&weflow_core::message::percent_decode_bytes(
+    String::from_utf8_lossy(&weflow_core::message::emoji::percent_decode_bytes(
         &s.replace('+', " "),
     ))
     .into_owned()

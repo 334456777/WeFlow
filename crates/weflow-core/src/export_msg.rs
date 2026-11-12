@@ -18,8 +18,21 @@ use serde_json::ser::Formatter;
 use serde_json::{json, Map, Value};
 
 use crate::locale;
+use crate::message::appmsg::{
+    extract_arkme_app_message_meta_in, extract_arkme_contact_card_meta,
+    quote_or_link_app_message_meta_in,
+};
+use crate::message::emoji::format_emoji_semantic_text;
 use crate::message::kind::{convert_message_type_in, message_type_name_in, weclone_type_name};
+use crate::message::link::{extract_html_link_card, format_link_card_export_text, LinkStyle};
+use crate::message::quote::{
+    build_quoted_reply_text, is_quoted_reply_message, is_text_quote_message_in, QuotedDisplay,
+};
+use crate::message::system::extract_readable_system_message_text;
 use crate::message::time::{format_iso_timestamp, format_timestamp};
+use crate::message::transfer::{
+    append_transfer_desc, is_same_wxid, is_transfer_export_content, transfer_parties,
+};
 use crate::message::xml::{extract_xml_value, rx, strip_sender_line, strip_sender_prefix, MsgXml};
 use crate::message::*;
 

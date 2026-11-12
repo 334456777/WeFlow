@@ -279,7 +279,7 @@ impl PageSource<'_> {
             // drop other senders' rows before parsing them
             .filter(|row| {
                 sender.is_none_or(|f| {
-                    crate::message::is_same_wxid(
+                    crate::message::transfer::is_same_wxid(
                         &crate::message::msg_row_sender(
                             row,
                             self.opts.session_id,

@@ -1905,7 +1905,7 @@ fn check_sender(sender: Option<&str>, my_wxid: &str) -> AppResult<()> {
     let Some(sender) = sender.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(());
     };
-    if sender.len() > my_wxid.len() && crate::message::is_same_wxid(sender, my_wxid) {
+    if sender.len() > my_wxid.len() && crate::message::transfer::is_same_wxid(sender, my_wxid) {
         return Err(AppError::usage(format!(
             "--sender takes the bare wxid: use {my_wxid}, not the account folder name {sender}"
         )));

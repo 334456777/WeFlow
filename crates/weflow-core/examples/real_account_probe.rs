@@ -70,7 +70,7 @@ fn measure_cursors(
                         (0, 0),
                         false,
                         (
-                            &|name| weflow_core::message::is_same_wxid(name, owner),
+                            &|name| weflow_core::message::transfer::is_same_wxid(name, owner),
                             true,
                         ),
                     )?,

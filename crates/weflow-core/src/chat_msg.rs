@@ -13,9 +13,10 @@ use weflow_native::msg_row::MsgRow;
 use crate::api::js_parse_int;
 use crate::config::clean_account_dir_name;
 use crate::message::{
-    extract_preferred_quoted_text, extract_readable_system_message_text, parse_voip_message,
-    percent_decode, refermsg_xml, xml::extract_xml_value, xml::looks_like_wxid, xml::rx,
-    xml::sanitize_quoted_content, xml::strip_sender_line, xml::strip_sender_prefix,
+    emoji::percent_decode, quote::extract_preferred_quoted_text, quote::refermsg_xml,
+    system::extract_readable_system_message_text, system::parse_voip_message,
+    xml::extract_xml_value, xml::looks_like_wxid, xml::rx, xml::sanitize_quoted_content,
+    xml::strip_sender_line, xml::strip_sender_prefix,
 };
 
 // ───────────────────────── text helpers ─────────────────────────
@@ -97,8 +98,8 @@ pub fn message_type_label(local_type: i64) -> &'static str {
 }
 
 /// The line of a system message: what its `<sysmsg>` says in plain text, else the notice the export reads out of
-/// its XML ([`crate::message::clean_system_message`]: a revoke's notice, a template with its names filled in, a
-/// title), with the entities decoded and the sender and the XML declaration in front of it dropped.
+/// its XML ([`crate::message::system::clean_system_message`]: a revoke's notice, a template with its names filled in,
+/// a title), with the entities decoded and the sender and the XML declaration in front of it dropped.
 fn system_message_text(content: &str) -> String {
     if content.is_empty() {
         return "[系统消息]".into();
@@ -109,7 +110,7 @@ fn system_message_text(content: &str) -> String {
         return readable;
     }
     let body = strip_sender_prefix(&normalized);
-    crate::message::clean_system_message(&rx(r"(?i)<\?xml[^?]*\?>").replace_all(&body, ""))
+    crate::message::system::clean_system_message(&rx(r"(?i)<\?xml[^?]*\?>").replace_all(&body, ""))
 }
 
 fn clean_pat_message(content: &str) -> String {
@@ -1110,8 +1111,8 @@ fn chat_message(
         m.encryp_ver = js_parse_int(&xml_attr(&content, "img", "encrypver"));
         m.cdn_thumb_url = opt(xml_attr(&content, "img", "cdnthumburl"));
         m.image_dat_name = packed_info
-            .and_then(crate::message::dat_name_in_packed_info)
-            .or_else(|| crate::message::extract_image_dat_name(&content));
+            .and_then(crate::message::media::dat_name_in_packed_info)
+            .or_else(|| crate::message::media::extract_image_dat_name(&content));
         m.quoted_content = parse_media_quote(&content);
     } else if local_type == 43 {
         m.video_md5 = packed_info.and_then(video_token_in_packed).or_else(|| {

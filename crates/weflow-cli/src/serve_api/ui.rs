@@ -104,7 +104,7 @@ pub async fn serve(ui: &UiDir, method: &Method, rest: &str, query: Option<&str>)
 fn segments(rest: &str) -> Option<Vec<String>> {
     let mut out = Vec::new();
     for raw in rest.split('/').filter(|s| !s.is_empty()) {
-        let seg = String::from_utf8(weflow_core::message::percent_decode_bytes(raw)).ok()?;
+        let seg = String::from_utf8(weflow_core::message::emoji::percent_decode_bytes(raw)).ok()?;
         if seg == "."
             || seg == ".."
             || seg.contains(['/', '\\', ':', '\0'])

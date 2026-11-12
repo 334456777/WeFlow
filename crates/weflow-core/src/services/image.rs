@@ -1592,7 +1592,7 @@ impl ServiceHub {
             .image_md5
             .clone()
             .filter(|m| !m.is_empty())
-            .or_else(|| crate::message::extract_image_md5(&msg.raw_content));
+            .or_else(|| crate::message::media::extract_image_md5(&msg.raw_content));
         let dat_name = msg.image_dat_name.clone().filter(|m| !m.is_empty());
         if raw_md5.is_none() && dat_name.is_none() {
             return Err(AppError::runtime(
