@@ -38,6 +38,8 @@ mod imp {
         target: usize,
         original: [u8; PATCH_LEN],
         shellcode: usize,
+        /// The shellcode's page: the whitelist, and where a pending download request waits.
+        page: usize,
     }
 
     impl Hook {
@@ -79,18 +81,26 @@ mod imp {
                 return Err("Backup failed".into());
             }
 
-            let code = shellcode::build(&original, target);
+            // The shellcode reads the whitelist at +0x300; an empty whitelist is a single NUL.
+            let whitelist: &[u8] = if whitelist.is_empty() {
+                &[0u8][..]
+            } else {
+                whitelist
+            };
+            // The page holds the code, the whitelist, and a pending download request.
+            let size = (shellcode::REQUEST_PARAM_OFFSET + shellcode::REQUEST_PARAM_LEN)
+                .max(shellcode::WHITELIST_OFFSET + whitelist.len() + 1);
             // SAFETY: allocating a page in the target process; freed in `uninstall`.
             let remote = unsafe {
                 VirtualAllocEx(
                     process,
                     std::ptr::null(),
-                    code.len()
-                        .max(shellcode::WHITELIST_OFFSET + whitelist.len() + 1),
+                    size,
                     MEM_COMMIT | MEM_RESERVE,
                     PAGE_EXECUTE_READWRITE,
                 )
             };
+            let code = shellcode::build(&original, target, remote as u64);
             if remote.is_null() {
                 return Err("VirtualAllocEx failed".into());
             }
@@ -112,12 +122,6 @@ mod imp {
                 return Err("Shellcode write failed".into());
             }
 
-            // The shellcode reads the whitelist at +0x300; an empty whitelist is a single NUL.
-            let whitelist = if whitelist.is_empty() {
-                &[0u8][..]
-            } else {
-                whitelist
-            };
             // SAFETY: the allocation is large enough for the whitelist at +0x300.
             let ok = unsafe {
                 WriteProcessMemory(
@@ -177,7 +181,45 @@ mod imp {
                 target: usize::try_from(target).unwrap_or(0),
                 original,
                 shellcode: remote as usize,
+                page: remote as usize,
             })
+        }
+
+        /// Leaves a download param object in the shellcode's page: the next `_startDownloadMedia` call runs it once,
+        /// inside WeChat's own thread and with WeChat's own `CdnCore` instance. `param` is a whole download param
+        /// object of at most [`shellcode::REQUEST_PARAM_LEN`] bytes.
+        pub fn request_original(&self, param: &[u8]) -> Result<(), String> {
+            if param.len() > shellcode::REQUEST_PARAM_LEN {
+                return Err("request too large".into());
+            }
+            let process = self.process as HANDLE;
+            let mut written = 0usize;
+            // SAFETY: the page is large enough for the params at REQUEST_PARAM_OFFSET and the flag; both writes go
+            // to the process this hook is installed in.
+            unsafe {
+                let ok = WriteProcessMemory(
+                    process,
+                    (self.page + shellcode::REQUEST_PARAM_OFFSET) as *const c_void,
+                    param.as_ptr() as *const c_void,
+                    param.len(),
+                    &mut written,
+                );
+                if ok == 0 {
+                    return Err("Request write failed".into());
+                }
+                let flag = 1u64;
+                let ok = WriteProcessMemory(
+                    process,
+                    (self.page + shellcode::REQUEST_FLAG_OFFSET) as *const c_void,
+                    (&flag as *const u64) as *const c_void,
+                    8,
+                    &mut written,
+                );
+                if ok == 0 {
+                    return Err("Request flag write failed".into());
+                }
+            }
+            Ok(())
         }
 
         /// Restores the original bytes and frees the shellcode page.
@@ -411,6 +453,10 @@ mod imp {
 
     impl Hook {
         pub fn install(_pid: u32, _whitelist: &[u8]) -> Result<Self, String> {
+            Err("image auto download is only supported on Windows x64".into())
+        }
+
+        pub fn request_original(&self, _param: &[u8]) -> Result<(), String> {
             Err("image auto download is only supported on Windows x64".into())
         }
 
