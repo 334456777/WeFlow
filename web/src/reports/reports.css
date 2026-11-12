@@ -6,6 +6,7 @@
 
 .report-note { color: var(--fg-muted); font-size: var(--text-sm); line-height: var(--leading-sm); }
 .report-months { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(132px, 40%), 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.report-months li { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-raised-sm); font-size: var(--text-sm); }
 
 .report-months li.empty { box-shadow: var(--neu-inset); }
 .report-moments { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
@@ -15,6 +16,7 @@
 .heatmap-row { display: grid; grid-template-columns: 1.5em repeat(24, minmax(0, 1fr)); gap: 2px; align-items: center; }
 .heatmap-day { color: var(--fg-subtle); font-size: var(--text-2xs); }
 .heatmap-cell { aspect-ratio: 1; border-radius: 2px; background: var(--fg); }
+.chart-ticks.heatmap-ticks { display: grid; grid-template-columns: 1.5em repeat(24, minmax(0, 1fr)); }
 
 .report-phrases { align-items: baseline; }
 .report-pair { display: flex; margin-bottom: var(--space-2); }

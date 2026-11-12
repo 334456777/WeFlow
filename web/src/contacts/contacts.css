@@ -1,4 +1,5 @@
 /* Contacts (#205): one contact's card beside the list. */
+.segmented.contact-kinds > button { display: inline-flex; align-items: baseline; justify-content: center; gap: 3px; }
 .contact-kinds small { color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-regular); }
 .contact-card { display: flex; flex-direction: column; gap: var(--space-5); max-width: 480px; margin: var(--space-6) auto; padding: 0 var(--space-4); }
 .contact-card header { display: flex; align-items: center; gap: var(--space-4); }
