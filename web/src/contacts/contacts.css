@@ -1,0 +1,15 @@
+/* Contacts (#205): one contact's card beside the list. */
+.contact-kinds small { color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-regular); }
+.contact-card { display: flex; flex-direction: column; gap: var(--space-5); max-width: 480px; margin: var(--space-6) auto; padding: 0 var(--space-4); }
+.contact-card header { display: flex; align-items: center; gap: var(--space-4); }
+.contact-card header .avatar { width: 64px; height: 64px; font-size: var(--text-xl); }
+.contact-card h2 { font-size: var(--text-lg); font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.contact-card header p { margin-top: 2px; color: var(--fg-muted); font-size: var(--text-xs); }
+.contact-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-3) var(--space-5); margin: 0; }
+.contact-facts > div { display: contents; }
+.contact-facts dt { color: var(--fg-subtle); font-size: var(--text-xs); line-height: var(--leading-sm); }
+.contact-facts dd { min-width: 0; margin: 0; font-size: var(--text-sm); line-height: var(--leading-sm); overflow-wrap: anywhere; white-space: pre-line; }
+.contact-labels { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.contact-labels .badge { box-shadow: var(--neu-inset); }
+.contact-actions { display: flex; flex-direction: column; align-items: flex-start; }
+.contact-actions .card-note { margin-top: var(--space-2); }

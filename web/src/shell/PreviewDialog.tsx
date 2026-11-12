@@ -11,6 +11,7 @@ import { canFly, fly, frameFlight, inSight, thumbnailOf } from '../chat/previewM
 import type { ZoomControls } from '../chat/ZoomImage';
 import { prefersReducedMotion, usePresence } from '../motion';
 import { t } from '../i18n';
+import './PreviewDialog.css';
 
 export interface PreviewControl {
   open(preview: Preview): void;

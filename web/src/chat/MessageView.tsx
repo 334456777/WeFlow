@@ -36,7 +36,7 @@ export interface PreviewThumb { src: string; aspect: number }
 /** The size of a picture of that shape in the preview: as wide as fits, as the preview's own rules allow. */
 export function previewSize(thumb: PreviewThumb): CSSProperties {
   return {
-    // the room the preview's bar, corners and margins take: app.css, on .preview-dialog
+    // the room the preview's bar, corners and margins take: shell/PreviewDialog.css, on .preview-dialog
     width: 'min(960px, 100vw - var(--preview-room-x), (100dvh - var(--preview-room-y)) * ' + thumb.aspect.toFixed(4) + ')',
     aspectRatio: String(thumb.aspect),
     background: 'url(' + JSON.stringify(thumb.src) + ') center / contain no-repeat',

@@ -1,0 +1,17 @@
+/* Insights (#210): the cards of the insights page. */
+.insight-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
+.insight-card.unread { cursor: pointer; }
+.insight-card header { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.insight-who { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+
+.insight-who span { color: var(--fg-subtle); font-size: var(--text-2xs); }
+.insight-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--state-busy); }
+.insight-text { font-size: var(--text-md); line-height: var(--leading-md); white-space: pre-wrap; overflow-wrap: anywhere; }
+.insight-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.insight-actions .text-button { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+.insight-actions .text-button:disabled { color: var(--fg-subtle); cursor: default; }
+.insight-log { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2) var(--space-4); margin: 0; padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-xs); }
+.insight-log dt { color: var(--fg-subtle); font-size: var(--text-2xs); }
+.insight-log dd { margin: 0; }
+.insight-log .wide { grid-column: 1 / -1; }
+.insight-log pre { max-height: 200px; margin: 2px 0 0; overflow: auto; font-family: var(--font-mono); font-size: var(--text-2xs); white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -1,0 +1,108 @@
+/* Settings: the rows of the page, the token and the accounts, the AI model and the cache, the serve options, the
+   WebUI versions and the advanced tools. */
+.status-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--state-idle); transition: background-color var(--duration-base) var(--ease-glow); }
+
+.status-dot.done { background: var(--state-ok); }
+.status-dot.error { background: var(--state-danger); }
+
+/* A row with a wide control: on a narrow screen the control goes under its text instead of squeezing it. */
+.setting-choice { flex-wrap: wrap; }
+.setting-choice > div:first-child { flex: 1 1 240px; }
+.theme-group { width: 240px; max-width: 100%; }
+
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); max-width: 720px; padding: var(--space-4) 0; }
+
+.setting-row p { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.source-name { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; }
+
+.setting-row p + p { margin-top: var(--space-1); }
+
+.account-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+
+.account-id { font-family: var(--font-mono); font-size: var(--text-xs); }
+.account-path { overflow: hidden; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.account-state { display: inline-flex; flex-shrink: 0; margin-left: auto; align-items: center; gap: 4px; color: var(--state-danger); font-size: var(--text-xs); }
+.account-state.ok { color: var(--fg-muted); }
+.account-state.ok svg { color: var(--state-ok); }
+.account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.account-actions .token-form { flex: 1 1 320px; margin-top: 0; }
+
+.account-note { font-size: var(--text-xs); }
+/* The AI model API and the cache (#213). */
+.ai-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3) var(--space-4); margin-top: var(--space-3); }
+.ai-form .console-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ai-form .console-field-name { color: var(--fg-muted); font-size: var(--text-xs); }
+.ai-form .console-input { width: 100%; height: var(--control-md); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-inset); color: var(--fg); font-size: var(--text-sm); }
+.ai-form .console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ai-form .ai-enabled, .ai-form .ai-actions, .ai-form .account-note { grid-column: 1 / -1; }
+/* the switches of the serve options (#406), a line each */
+.serve-form .checkbox { grid-column: 1 / -1; }
+.ai-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.cache-list { display: flex; flex-direction: column; margin: var(--space-2) 0 0; padding: 0; list-style: none; }
+
+/* a part's clear plan and the note on it take a line of their own under its row (#346) */
+.cache-list > li > .account-note { flex-basis: 100%; margin: 0; }
+.cache-list .account-copy strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+
+.cache-size { flex-shrink: 0; margin-left: auto; color: var(--fg-muted); font-size: var(--text-xs); }
+/* the WebUI versions (#406): the version in use beside the heading, the actions under the list */
+.web-versions-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+
+.web-versions-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.web-versions-more { margin-top: var(--space-1); }
+.cache-list > li > .secondary-button { margin-left: auto; }
+
+.skeleton.line.account-skeleton-state { flex-shrink: 0; width: 72px; margin-left: auto; }
+
+.settings-subheading { max-width: 720px; margin: var(--space-6) 0 var(--space-3); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+/* Advanced (#217): the CLI's own tools, each a row that opens it in the command console. */
+.advanced-tools { display: flex; flex-direction: column; max-width: 720px; margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+
+.advanced-tools h3 { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.advanced-tools p { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.advanced-tools code, .console-form code, .command-item code { font-family: var(--font-mono); font-size: var(--text-2xs); }
+.advanced-tools code { color: var(--fg-subtle); }
+/* The command console: a searchable list of the commands by tag, and the form of the one chosen. */
+.command-console { display: flex; flex-direction: column; gap: var(--space-3); max-width: 720px; }
+.command-list { max-height: 320px; padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--neu-inset); }
+.command-group h4 { padding: var(--space-2) var(--space-2) var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-medium); text-transform: uppercase; }
+.command-item {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 32px; padding: 4px var(--space-2);
+  border-radius: var(--radius-sm); color: var(--fg-muted); text-align: left;
+  transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-base) var(--ease-out);
+}
+.command-item code { flex-shrink: 0; color: var(--fg); }
+.command-item:hover { box-shadow: var(--neu-raised-sm); color: var(--fg); }
+.command-item[aria-pressed='true'] { box-shadow: var(--neu-raised-sm); color: var(--fg); }
+.command-item:active { box-shadow: var(--neu-pressed); transition-duration: var(--duration-micro); }
+.command-item.refused code { color: var(--fg-subtle); text-decoration: line-through; }
+.command-summary { flex: 1; min-width: 0; font-size: var(--text-xs); }
+.command-method { flex-shrink: 0; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); }
+.console-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--neu-raised-sm); }
+.console-form h3 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.console-form h3 code { font-size: var(--text-sm); }
+.console-form header p { margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.console-description { white-space: pre-line; }
+
+.console-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3) var(--space-4); }
+.console-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.console-field.inline { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: var(--space-3); }
+.console-field.inline small { flex-basis: 100%; }
+
+.console-field-name { font-size: var(--text-xs); }
+.console-required { margin-left: 2px; color: var(--state-danger); }
+.console-input {
+  width: 100%; min-width: 0; min-height: var(--control-md); padding: 6px var(--space-3); border: 0; border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: var(--neu-inset); color: var(--fg); font-family: var(--font-mono); font-size: var(--text-xs); resize: vertical;
+}
+.console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.console-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.console-output-choice { width: 180px; margin-left: auto; }
+.console-line { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-pressed); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.console-line code { font-size: var(--text-xs); }
+.console-actions { display: flex; align-items: center; gap: var(--space-2); }
+.console-answer { display: flex; flex-direction: column; gap: var(--space-2); }
+.console-answer-head { display: flex; gap: var(--space-3); font-size: var(--text-xs); }
+.console-answer-head span { color: var(--fg-muted); }
+.console-answer.failed .console-answer-head strong { color: var(--state-danger); }
+.console-output { max-height: 360px; margin: 0; padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-family: var(--font-mono); font-size: var(--text-2xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }

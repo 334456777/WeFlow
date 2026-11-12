@@ -7,6 +7,7 @@ import { BrowserPanel, ConnectedList } from '../shell/panels';
 import { InsightClear, InsightContacts, InsightList, InsightsSummary, InsightTrigger } from './InsightViews';
 import { useInsights, type InsightFilter } from './useInsights';
 import { t } from '../i18n';
+import './insights.css';
 
 export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { backend, connected, scope, setMobileDetail } = shell;

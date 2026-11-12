@@ -1,0 +1,20 @@
+/* Chat analytics (#207): what only the analytics page draws; the blocks, charts and ranks the reports and the
+   footprint draw too stay in app.css. */
+.chart-columns { display: flex; align-items: flex-end; gap: 2px; height: 140px; }
+.chart-column { display: flex; flex: 1 1 0; align-items: flex-end; min-width: 0; height: 100%; }
+.chart-column > span { display: block; width: 100%; min-height: 1px; border-radius: 2px 2px 0 0; background: var(--fg-muted); }
+.chart-column:hover > span { background: var(--fg); }
+
+/* one grid for all the rows, so the bars line up whatever the names */
+.chart-shares { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content 3.5em; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
+.chart-shares li { display: contents; }
+.chart-shares .job-bar { margin-top: 0; }
+.chart-shares .num { text-align: right; }
+
+.rank-key { display: inline-block; width: 10px; height: 4px; margin-right: var(--space-1); border-radius: var(--radius-full); vertical-align: middle; }
+
+.excluded-list { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.member-head { display: flex; align-items: center; gap: var(--space-3); }
+
+.range-clear { margin-top: var(--space-3); }

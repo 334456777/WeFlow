@@ -38,6 +38,7 @@ import type { Jump } from './useMessages';
 import { useSearch } from './useSearch';
 import type { SessionsState } from './useSessions';
 import { t } from '../i18n';
+import './chat.css';
 
 const SAMPLE_SESSIONS: SessionsState = { status: 'ready', sessions: sampleSessions, statuses: {} };
 // Until /health has answered, neither the sample nor the real list: no sample flashes up before the real one.

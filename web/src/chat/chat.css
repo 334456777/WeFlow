@@ -1,0 +1,148 @@
+/* The chat page: the messages with their pictures, voices and cards, the search, and a conversation's details and
+   media. */
+.message-bubble {
+  max-width: min(560px, calc(100% - 48px)); padding: 6px var(--space-3); border-radius: var(--radius-xl);
+  background: var(--surface); box-shadow: var(--neu-raised-sm); font-size: var(--text-md); line-height: var(--leading-md);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+/* Received messages stand out of the page, sent ones are carved into it: told apart without their side. */
+.outgoing .message-bubble { box-shadow: var(--neu-inset); }
+.message-time { flex-shrink: 0; padding-bottom: 2px; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+/* A photo sits in a frame of the same surface, raised when received and inset when sent. */
+.photo-button { display: block; max-width: calc(100% - 48px); padding: var(--space-1); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--neu-raised-sm); }
+.outgoing .photo-button { box-shadow: var(--neu-inset); }
+.message-photo { width: 240px; max-width: 100%; aspect-ratio: 1.6973; object-fit: cover; border-radius: var(--radius-md); }
+.highlighted :is(.message-bubble, .photo-button, .emoji-sticker, .system-message) { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.file-bubble { display: flex; align-items: center; gap: var(--space-3); text-align: left; }
+.file-bubble small { display: block; color: var(--fg-muted); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+
+.history-edge {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control-md);
+  color: var(--fg-subtle); font-size: var(--text-2xs);
+}
+/*
+ * Left in the past by a jump (#199): newer messages load below, and a raised button floats at the bottom to go back
+ * to the newest ones.
+ */
+.latest-bar { position: sticky; bottom: var(--space-3); z-index: 2; display: flex; justify-content: center; margin-top: var(--space-2); pointer-events: none; }
+
+.latest-bar .secondary-button:hover { box-shadow: var(--neu-raised-hover); }
+.latest-bar .secondary-button:active { box-shadow: var(--neu-pressed); }
+.message-row.with-avatar { align-items: flex-start; }
+.message-row .message-time { align-self: flex-end; }
+
+.avatar-gap { width: 32px; flex-shrink: 0; }
+.message-body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: min(560px, calc(100% - 88px)); }
+.outgoing .message-body { align-items: flex-end; }
+.message-body > .message-bubble, .message-body > .photo-button { max-width: 100%; }
+.message-sender { margin: 0 0 2px var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+
+.system-message { max-width: 80%; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); text-align: center; overflow-wrap: anywhere; }
+
+/* Pictures and videos: WeChat's thumbnail at its own shape, within 240px; an empty frame while it loads. */
+.message-thumb { display: block; max-width: 240px; max-height: 240px; min-width: 48px; min-height: 48px; object-fit: cover; border-radius: var(--radius-md); }
+.message-thumb.loading { width: 160px; height: 120px; }
+.video-button { position: relative; }
+
+.media-missing {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1);
+  min-width: 120px; min-height: 80px; color: var(--fg-subtle); font-size: var(--text-2xs);
+}
+.emoji-sticker img { display: block; max-width: 120px; max-height: 120px; }
+
+/* Voice: a button whose length follows the duration, with a row of bars that pulse while it plays. */
+.voice-bubble { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 72px; color: var(--fg); font-size: var(--text-sm); text-align: left; }
+.voice-wave { flex: 1; height: 10px; background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 5px); opacity: .35; border-radius: 1px; }
+
+.voice-bubble.error { color: var(--fg-muted); }
+
+/* Cards: links, Channels posts, files, chat records, contacts, places, red packets and transfers. */
+.card-bubble { display: flex; flex-direction: column; gap: var(--space-1); width: min(280px, 100%); color: inherit; text-decoration: none; font-size: var(--text-sm); }
+a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underline-offset: 3px; }
+
+.card-bubble-title svg { margin-top: 3px; }
+.card-bubble-body { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.card-bubble-body > span { flex: 1; min-width: 0; }
+.card-thumb { width: 48px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-sm); }
+.card-bubble-foot { display: flex; align-items: center; gap: var(--space-1); padding-top: var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+.finder-cover { position: relative; display: block; overflow: hidden; border-radius: var(--radius-md); }
+.finder-cover img { display: block; width: 100%; max-height: 260px; object-fit: cover; }
+.record-lines { display: flex; flex-direction: column; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.record-lines > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.record-lines.open > span { white-space: pre-wrap; overflow-wrap: anywhere; }
+.record-lines:not(.open) > span:nth-child(n + 4) { display: none; }
+.contact-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.location-bubble > span { color: var(--fg-muted); font-size: var(--text-xs); }
+.money-bubble > span { color: var(--fg-muted); font-size: var(--text-xs); }
+.call-bubble { display: inline-flex; align-items: center; gap: var(--space-2); }
+.quote-bubble { display: flex; flex-direction: column; gap: var(--space-1); }
+.quote-block { padding: 2px var(--space-2); border-radius: var(--radius-sm); box-shadow: var(--neu-pressed); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); white-space: normal; }
+
+/* The export button stretches into a control group (#50): progress and cancel, then download and again. */
+.export-control { display: flex; width: 240px; max-width: 100%; margin-top: var(--space-4); }
+.export-control > .primary-button { flex: 1; min-width: 0; overflow: hidden; }
+.export-side {
+  width: 0; margin-left: 0; opacity: 0; overflow: hidden; flex-shrink: 0;
+  height: var(--control-lg); border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--neu-raised); color: var(--fg);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: width var(--spring-overlay), margin-left var(--spring-overlay),
+    opacity var(--duration-base) var(--ease-out), box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+}
+.export-side:hover { box-shadow: var(--neu-raised-hover); }
+.export-side:active { box-shadow: var(--neu-pressed); transform: scale(var(--press-scale)); }
+.export-control.expanded .export-side { width: var(--control-lg); margin-left: var(--space-3); opacity: 1; }
+
+.morph-label { display: inline-flex; align-items: center; gap: var(--space-2); animation: label-in var(--duration-base) var(--ease-out); }
+
+.search-results { margin-top: var(--space-3); }
+
+.results-count { margin-bottom: var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); }
+.results-count span { margin-left: var(--space-3); color: var(--fg-subtle); }
+
+.search-result-copy { display: flex; flex: 1; align-items: baseline; gap: var(--space-3); min-width: 0; }
+
+/* Hits of all conversations: the conversation (and sender) above the text, so long names keep the text aligned. */
+.search-result-copy.stacked { flex-direction: column; align-items: stretch; gap: 2px; }
+.search-result-copy.stacked strong { max-width: none; }
+.more-button { margin-top: var(--space-2); }
+.scope-group { width: 216px; }
+
+.search-result-copy > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }
+
+/* Conversation details and media. */
+.info-content { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.info-content h4 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.info-content p { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+
+/* the time range takes a row of its own, so its two dates stay on one line (#280) */
+.info-grid .info-wide { grid-column: 1 / -1; }
+.info-grid .info-wide dd { white-space: nowrap; }
+
+.members-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.members-head h5, .member-phrases h6 { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+
+.member-list { height: min(312px, 40dvh); margin-top: var(--space-3); border-radius: var(--radius-md); }
+.member-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; height: 52px; padding: var(--space-2); border-radius: var(--radius-md); text-align: left; }
+.member-row:hover { box-shadow: var(--neu-pressed); }
+.member-row:active { box-shadow: var(--neu-inset); }
+
+.member-copy { display: flex; flex: 1; flex-direction: column; font-size: var(--text-sm); }
+
+.member-phrases { margin-top: var(--space-3); }
+
+.media-filter { width: 100%; margin-bottom: var(--space-3); }
+.media-item > .media-icon { display: grid; flex: 0 0 72px; width: 72px; height: 48px; place-items: center; border-radius: var(--radius-xs); box-shadow: var(--neu-inset); }
+.media-more { justify-self: start; }
+
+/* Media rows are flat like the other lists; hover sinks them in place. */
+.media-item {
+  display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-2);
+  border-radius: var(--radius-xl); color: var(--fg-subtle); text-align: left;
+}
+.media-item:hover { box-shadow: var(--neu-pressed); color: var(--fg); }
+
+/* in a group whose hover hollow takes the press (HoverTrack.tsx), the item stays flat over it */
+.hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .search-result, .media-item):active:not(.selected, .active) { box-shadow: var(--neu-flat); }
+
+.media-item img { width: 72px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-xs); }
+.media-item > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }

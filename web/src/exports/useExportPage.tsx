@@ -5,6 +5,7 @@ import { BrowserPanel, ConnectedList } from '../shell/panels';
 import { batchSummary, BatchExport, DEFAULT_BATCH, SessionsExport, type BatchOptions } from './ExportCards';
 import { ExportPicker, PickedList } from './ExportPicker';
 import { t } from '../i18n';
+import './exports.css';
 
 export function useExportPage(shell: Shell): Page {
   const { connected, scope, sessionList, setMobileDetail } = shell;

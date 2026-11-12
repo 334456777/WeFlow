@@ -11,6 +11,7 @@ import { runJob, type JobsState } from '../jobs/useJobs';
 import type { Page, Shell } from '../shell/page';
 import { Connected, ScrollPage } from '../shell/panels';
 import { locale, t } from '../i18n';
+import './BackupPage.css';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || (problem instanceof Error && problem.message) || fallback;
 type Note = { text: string; error?: boolean } | null;

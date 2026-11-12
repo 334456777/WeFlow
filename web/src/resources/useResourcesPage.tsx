@@ -5,6 +5,7 @@ import type { OpenAt, Page, Shell } from '../shell/page';
 import { Connected, ScrollPage } from '../shell/panels';
 import { ALL_RESOURCES, ResourceFilterCard, resourceFilterSummary, ResourcesPage } from './ResourcesPage';
 import { t } from '../i18n';
+import './resources.css';
 
 export function useResourcesPage(shell: Shell, openAt: OpenAt): Page {
   const { scope, sessionList } = shell;

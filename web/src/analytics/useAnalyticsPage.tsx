@@ -11,6 +11,7 @@ import { ExcludedPeople, PrivateAnalytics } from './AnalyticsViews';
 import { GroupExport, GroupPicker, GroupStats, MemberView } from './GroupAnalytics';
 import { useAnalytics, useGroups } from './useAnalytics';
 import { t } from '../i18n';
+import './analytics.css';
 
 type Member = { username: string; displayName: string; avatarUrl?: string };
 

@@ -1,0 +1,19 @@
+/* The export page (#211): conversations ticked in the list, the ones picked beside it, the formats as chips. */
+.pick-row { cursor: pointer; }
+.pick-row > .checkbox { flex-shrink: 0; }
+.pick-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); }
+.pick-tools .checkbox { font-size: var(--text-xs); }
+
+.picked-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+
+.picked-copy small { color: var(--fg-subtle); font-size: var(--text-xs); }
+
+/* The formats of an export written side by side (#628): a lane each, all sweeping at once, solid once written. */
+.format-lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-3); margin: var(--space-1) 0 0; padding: 0; color: var(--fg-muted); font-size: var(--text-xs); list-style: none; }
+.format-lane-bar {
+  display: block; height: 4px; margin-top: 2px; border-radius: var(--radius-full); box-shadow: var(--neu-inset);
+  background: linear-gradient(90deg, transparent 30%, var(--fg-muted) 50%, transparent 70%) 0 0 / 300% 100%;
+  animation: shimmer var(--loop-sweep) linear infinite;
+}
+.format-lanes .done { color: var(--fg); }
+.format-lanes .done .format-lane-bar { background: var(--fg-muted); animation: none; }
