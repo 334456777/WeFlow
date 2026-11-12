@@ -27,7 +27,7 @@ const SWITCHES = [
   { key: 'serve_log_requests', label: msg('每个请求在终端输出一行'), fallback: false },
 ] as const;
 
-const KEYS = ['serve_host', ...NUMBERS.map(n => n.key), ...SWITCHES.map(s => s.key)];
+const KEYS = ['serve_host', ...NUMBERS.map(n => n.key), ...SWITCHES.map(s => s.key), 'autoDownloadWhitelist'];
 /** Each key's saved value as text: `''` when none is saved. */
 type Form = Record<string, string>;
 
@@ -62,7 +62,13 @@ export function ServeOptions() {
       for (const k of KEYS) {
         const value = form[k].trim();
         if (value === saved[k]) continue;
-        await (value ? setSetting(k, value) : unsetSetting(k));
+        if (k === 'autoDownloadWhitelist') {
+          // the config holds a JSON array; the field shows it comma-separated
+          const ids = value.split(',').map(s => s.trim()).filter(Boolean);
+          await (ids.length ? setSetting(k, JSON.stringify(ids)) : unsetSetting(k));
+        } else {
+          await (value ? setSetting(k, value) : unsetSetting(k));
+        }
         next[k] = value;
       }
       setNote({ text: t('已保存，重启 weflow serve 后生效。') });
@@ -88,6 +94,9 @@ export function ServeOptions() {
         return <label key={s.key} className="checkbox"><input type="checkbox" aria-label={t(s.label)} checked={on} onChange={e => set(s.key, e.target.checked === s.fallback ? '' : String(e.target.checked))} />
           <span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t(s.label)}</span></label>;
       })}
+      <label className="console-field"><span className="console-field-name">{t('自动下载原图的会话')}</span>
+        <input className="console-input" type="text" spellCheck={false} placeholder={t('会话 ID，用逗号分隔')} value={form.autoDownloadWhitelist} onChange={e => set('autoDownloadWhitelist', e.target.value)} />
+        <small>{t('留空表示不自动下载，只处理网页发起的请求。')}</small></label>
       <div className="ai-actions">
         <button type="submit" className="primary-button" disabled={busy || !changed || bad.length > 0}>{busy ? <CircleNotch size={14} className="spin" /> : null}{t('保存')}</button>
       </div>
