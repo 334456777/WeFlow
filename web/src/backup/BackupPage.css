@@ -6,6 +6,7 @@
 .backup-parts { display: flex; flex-direction: column; gap: var(--space-2); }
 .backup-made { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .backup-made li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-raised-sm); }
+.backup-made strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
 
 .backup-made a.secondary-button { color: inherit; text-decoration: none; }
 .backup-made .backup-failed { color: var(--state-danger); }
