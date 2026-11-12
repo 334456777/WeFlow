@@ -305,9 +305,16 @@ mod imp {
     }
 
     /// The function that downloads media: the one whose `lea reg, [rip+disp]` points at the
-    /// `_startDownloadMedia` string, starting at the nearest `push rbp` before it.
+    /// `_startDownloadMedia` string (or at the `mars::cdn::CdnCore::` prefix in front of it), starting at the
+    /// nearest `push rbp` before it.
     fn find_target(module: &[u8], base: u64) -> Option<u64> {
-        let string = find_bytes(module, b"_startDownloadMedia")?;
+        let mut string = find_bytes(module, b"_startDownloadMedia")?;
+        // The string is usually the tail of `mars::cdn::CdnCore::_startDownloadMedia`, and the `lea` points at the
+        // whole string; step back over the prefix when it is there.
+        const PREFIX: &[u8] = b"mars::cdn::CdnCore::";
+        if string >= PREFIX.len() && &module[string - PREFIX.len()..string] == PREFIX {
+            string -= PREFIX.len();
+        }
         let string_addr = base + string as u64;
         for i in 0..module.len().saturating_sub(7) {
             let b0 = module[i];
@@ -371,6 +378,17 @@ mod imp {
             module[0x10] = 0x55;
             module[0x20..0x27].copy_from_slice(&[0x48, 0x8d, 0x1d, 0x19, 0x00, 0x00, 0x00]);
             module[0x40..0x40 + 19].copy_from_slice(b"_startDownloadMedia");
+            assert_eq!(find_target(&module, 0x1000), Some(0x1010));
+        }
+
+        #[test]
+        fn finds_the_function_when_the_lea_points_at_the_whole_string() {
+            // the same, but the string is `mars::cdn::CdnCore::_startDownloadMedia` and the `lea` points at its start
+            let mut module = vec![0u8; 0x80];
+            module[0x10] = 0x55;
+            module[0x20..0x27].copy_from_slice(&[0x48, 0x8d, 0x1d, 0x19, 0x00, 0x00, 0x00]);
+            module[0x40..0x40 + 20].copy_from_slice(b"mars::cdn::CdnCore::");
+            module[0x54..0x54 + 19].copy_from_slice(b"_startDownloadMedia");
             assert_eq!(find_target(&module, 0x1000), Some(0x1010));
         }
 
