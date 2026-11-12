@@ -1,0 +1,487 @@
+//! The chat reads: conversations, contacts, messages and their pages, resources and a conversation's details.
+
+use std::collections::BTreeMap;
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use crate::chat_msg::ChatMessage;
+use crate::message::{app_message_kind, parse_message_content, ExportMsg};
+
+/// A message of a page as the chat window shows it (`chat messages`, `chat message` and `chat search` with
+/// `parsed`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct ParsedMessage {
+    #[serde(flatten)]
+    pub message: ChatMessage,
+    /// Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
+    /// It is opaque; only the server reads it.
+    #[serde(rename = "_cursor", skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    /// The conversation of a search hit.
+    #[serde(rename = "_session_id", skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+/// A conversation of `chat sessions`, newest first.
+#[derive(Clone, Debug, Default, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Session {
+    /// The other party's wxid, `…@chatroom` for a group, `gh_…` for an official account.
+    pub username: String,
+    /// WeChat's type of the conversation's row; 0 for an official account WeChat lists without one.
+    #[serde(rename = "type")]
+    pub kind: i64,
+    pub unread_count: i64,
+    /// The last message as the list shows it.
+    pub summary: String,
+    /// What the list is ordered by; 0 for an official account WeChat lists without a conversation.
+    pub sort_timestamp: i64,
+    pub last_timestamp: i64,
+    /// WeChat's type of the last message, as a message's `localType`.
+    pub last_msg_type: i64,
+    /// About how many messages the conversation has, when WeChat's row or its tables say.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_count_hint: Option<i64>,
+    /// The remark, else the nickname, else the username.
+    pub display_name: String,
+    /// In a group: who sent the last message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_msg_sender: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_sender_display_name: Option<String>,
+    /// The account's own wxid.
+    pub self_wxid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+}
+
+/// What a contact of `chat contacts --parsed` is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ContactKind {
+    Friend,
+    Group,
+    Official,
+    /// Someone who was a friend.
+    FormerFriend,
+}
+
+impl ContactKind {
+    /// The name it is serialized as (`export contacts --kind` takes the same).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Friend => "friend",
+            Self::Group => "group",
+            Self::Official => "official",
+            Self::FormerFriend => "former_friend",
+        }
+    }
+}
+
+/// A contact of `chat contacts --parsed`: the most recent conversation first, then by
+/// name. A text field is left out when it is empty.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Contact {
+    pub username: String,
+    /// The remark, else the nickname, else the WeChat ID, else the username.
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nickname: Option<String>,
+    /// The WeChat ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    /// The names of the contact's labels.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<String>>,
+    /// The signature.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail_description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: ContactKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+}
+
+/// A message as the query commands list it (`chat resources`, `chat images`, `chat media-stream`…): the main fields
+/// of its row, its text and the keys of its media. An optional field is left out when the message has none.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageView {
+    pub local_id: i64,
+    /// WeChat's id of the message, in decimal: a string, as it may pass 2^53.
+    pub server_id: String,
+    pub create_time: i64,
+    /// WeChat's type of the message, as a parsed message's `localType`.
+    pub local_type: i64,
+    /// 1 when I sent it, else 0.
+    pub is_send: i64,
+    pub sender_username: String,
+    /// The message as WeChat keeps it (often XML).
+    pub content: String,
+    /// Its text as the chat window shows it; null when it has none.
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_md5: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_dat_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_md5: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emoji_md5: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emoji_cdn_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub xml_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_ext: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_md5: Option<String>,
+    /// In bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_lat: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_lng: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_poiname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_label: Option<String>,
+    /// The kind of an app message (`link`, `file`, `music`…).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_msg_kind: Option<String>,
+}
+
+impl MessageView {
+    pub fn of(m: &ExportMsg, my_wxid: &str) -> Self {
+        let text = parse_message_content(
+            &m.content,
+            m.local_type,
+            Some(my_wxid),
+            Some(&m.sender_username),
+            m.emoji_caption.as_deref(),
+        );
+        let app_msg_kind = app_message_kind(&m.content, m.local_type).map(String::from);
+        Self {
+            local_id: m.local_id,
+            server_id: m
+                .server_id_raw
+                .clone()
+                .unwrap_or_else(|| m.server_id.to_string()),
+            create_time: m.create_time,
+            local_type: m.local_type,
+            is_send: i64::from(m.is_send),
+            sender_username: m.sender_username.clone(),
+            content: m.content.clone(),
+            text,
+            image_md5: m.image_md5.clone(),
+            image_dat_name: m.image_dat_name.clone(),
+            video_md5: m.video_md5.clone(),
+            emoji_md5: m.emoji_md5.clone(),
+            emoji_cdn_url: m.emoji_cdn_url.clone(),
+            xml_type: m.xml_type.clone(),
+            file_name: m.file_name.clone(),
+            file_ext: m.file_ext.clone(),
+            file_md5: m.file_md5.clone(),
+            file_size: m.file_size,
+            location_lat: m.location_lat,
+            location_lng: m.location_lng,
+            location_poiname: m.location_poiname.clone(),
+            location_label: m.location_label.clone(),
+            app_msg_kind,
+        }
+    }
+}
+
+/// A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`): its
+/// columns read with their types, the text inflated and decoded, the sender resolved (#257, #492).
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageRow {
+    /// Unique within its message database (`shard`), not across them.
+    pub local_id: i64,
+    /// A decimal string, as it may pass 2^53; left out when the message has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_id: Option<String>,
+    /// The type, with an app message's sub-type in the high 32 bits (`(sub << 32) | 49`).
+    pub local_type: i64,
+    /// Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_seq: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<i64>,
+    /// The sender's username; left out when WeChat's table of names has none for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    /// Whether the account's owner sent it.
+    pub is_send: bool,
+    /// The text, or the XML of a message that is not text, inflated and decoded.
+    pub content: String,
+    /// The `msgsource` XML (mentions, the group's member count, …).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// WeChat's packed info (protobuf), in lowercase hex.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub packed_info: Option<String>,
+    /// The number of the message database holding it (`message_<n>.db`, or `biz_message_<n>.db` from 16777216 on).
+    pub shard: u32,
+    /// Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
+    /// It is opaque; only the server reads it.
+    #[serde(rename = "_cursor")]
+    pub cursor: String,
+}
+
+impl From<weflow_native::msg_row::MsgRow> for MessageRow {
+    fn from(row: weflow_native::msg_row::MsgRow) -> Self {
+        let cursor = row.pos().token();
+        Self {
+            local_id: row.local_id,
+            server_id: row.server_id.map(|id| id.to_string()),
+            local_type: row.local_type,
+            sort_seq: row.sort_seq,
+            create_time: row.create_time,
+            status: row.status,
+            sender: row.sender,
+            is_send: row.is_send,
+            content: row.content,
+            source: row.source,
+            packed_info: row.packed_info.as_deref().map(weflow_native::db::hex),
+            shard: row.shard,
+            cursor,
+        }
+    }
+}
+
+/// A hit of `chat search` without `parsed`: the message as WeChat keeps it, and its conversation.
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
+pub struct SearchHit {
+    #[serde(flatten)]
+    pub row: MessageRow,
+    /// The conversation the message is in.
+    #[serde(rename = "_session_id")]
+    pub session_id: String,
+}
+
+impl From<weflow_native::media::SessionRow> for SearchHit {
+    fn from(hit: weflow_native::media::SessionRow) -> Self {
+        Self {
+            row: hit.row.into(),
+            session_id: hit.session_id,
+        }
+    }
+}
+
+/// `chat message` without `parsed`: the message as WeChat keeps it, and as the query commands list it.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct MessageLookup {
+    pub row: MessageRow,
+    /// Null when the row could not be read as a message.
+    pub message: Option<MessageView>,
+}
+
+/// What a message of `chat resources` holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceKind {
+    Image,
+    Video,
+    Voice,
+    File,
+}
+
+/// A message of `chat resources`, newest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Resource {
+    #[serde(flatten)]
+    pub message: MessageView,
+    /// Where the message stands in the listing (not in its conversation): `before` reads on from it.
+    #[serde(rename = "_cursor")]
+    pub cursor: String,
+    pub session_display_name: String,
+    pub session_id: String,
+    pub resource_type: ResourceKind,
+}
+
+/// A page of `chat resources`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourcePage {
+    pub items: Vec<Resource>,
+    pub has_more: bool,
+    /// The `_cursor` of the last item, to pass as `before` for the next page; null on the last page.
+    pub next_cursor: Option<String>,
+}
+
+/// Whether a conversation is folded and muted, of `chat statuses`, which answers one for each username asked for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatStatus {
+    pub is_folded: bool,
+    pub is_muted: bool,
+}
+
+/// How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct TabCounts {
+    #[serde(default)]
+    pub private: i64,
+    #[serde(default)]
+    pub group: i64,
+    #[serde(default)]
+    pub official: i64,
+    #[serde(default)]
+    pub former_friend: i64,
+}
+
+/// The days a conversation has messages on (`chat dates`), as `YYYY-MM-DD` in the server's time zone, oldest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDates {
+    pub session_id: String,
+    pub dates: Vec<String>,
+}
+
+/// How many messages a conversation has on each day it has any (`chat date-counts`), by `YYYY-MM-DD`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDateCounts {
+    pub session_id: String,
+    pub counts: BTreeMap<String, i64>,
+}
+
+/// Who a conversation is with and how many messages it has (`chat detail --fast`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionFacts {
+    /// The conversation's username.
+    pub wxid: String,
+    /// The remark, else the nickname, else the alias, else the username.
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nick_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    pub message_count: i64,
+}
+
+/// A conversation's details (`chat detail`): its facts, and where its messages are kept.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct SessionDetail {
+    #[serde(flatten)]
+    pub facts: SessionFacts,
+    #[serde(flatten)]
+    pub tables: SessionTables,
+}
+
+/// Where a conversation's messages are kept (`chat detail --extra`, and `chat detail` without `fast`).
+#[derive(Clone, Debug, Default, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTables {
+    /// The time of its first message; null when its tables do not say.
+    pub first_message_time: Option<i64>,
+    pub latest_message_time: Option<i64>,
+    pub message_tables: Vec<MessageTable>,
+}
+
+/// One of WeChat's tables that holds messages of a conversation.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageTable {
+    /// The database's file name, such as `message_0.db`.
+    pub db_name: String,
+    pub table_name: String,
+    pub count: i64,
+}
+
+/// A group's own message count, as `chat group-hint` saved it (all left out when there is none); with `set`, only
+/// when it was saved.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupHint {
+    /// My messages in the group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<i64>,
+    /// Unix milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
+    /// `disk`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+/// What `chat anti-revoke check` answers for each conversation asked for.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct AntiRevokeResults {
+    pub results: Vec<AntiRevokeResult>,
+}
+
+/// One conversation's anti-revoke check.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AntiRevokeResult {
+    pub session_id: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// The names a group's transfer message shows for its two sides (`chat transfer-names`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferNames {
+    pub payer_name: String,
+    pub receiver_name: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_server_id_past_2_53_keeps_every_digit_and_only_the_fields_of_the_contract_are_written() {
+        let row = weflow_native::msg_row::MsgRow {
+            local_id: 5,
+            server_id: Some(9_007_199_254_740_993),
+            create_time: Some(1700000000),
+            local_type: 49,
+            sort_seq: Some(1700000000000),
+            content: "<msg><appmsg><type>6</type><title>a.pdf</title></appmsg></msg>".into(),
+            ..Default::default()
+        };
+        let message = crate::chat_msg::map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0);
+        let doc = json!(ParsedMessage {
+            message,
+            cursor: Some("1.2.3".into()),
+            session_id: None,
+        });
+        assert_eq!(doc["serverId"], "9007199254740993");
+        assert_eq!(doc["_cursor"], "1.2.3");
+        for key in ["serverIdRaw", "dbPath", "tableName", "t49", "_session_id"] {
+            assert!(doc.get(key).is_none(), "{key} in {doc}");
+        }
+        // what the message says, without what it does not
+        assert_eq!(doc["fileName"], "a.pdf");
+        assert!(doc.get("linkUrl").is_none() && doc.get("quotedContent").is_none());
+        // the nullable fields are there
+        assert!(doc["isSend"].is_null() || doc["isSend"].is_number());
+        assert!(doc.as_object().unwrap().contains_key("senderUsername"));
+    }
+}
