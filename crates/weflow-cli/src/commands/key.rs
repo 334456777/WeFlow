@@ -84,7 +84,7 @@ pub(crate) fn handle_key(
 ) -> AppResult<Value> {
     match &command.command {
         KeySubcommand::Db { pid, timeout, save } => {
-            if std::env::var_os(serve_api::CANCEL_ON_STDIN).is_some() {
+            if std::env::var_os(serve_api::child::CANCEL_ON_STDIN).is_some() {
                 interrupt_when_stdin_ends();
             }
             let mut data = hub.key_db(*pid, *timeout)?;

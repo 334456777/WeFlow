@@ -92,8 +92,9 @@ async fn main() -> ExitCode {
         progress,
         command,
     } = i18n::parse();
-    // a command run by `serve` gets the database keys the server already derived on stdin (see `serve_api::spawn`)
-    if std::env::var_os(serve_api::KEYS_ON_STDIN).is_some() {
+    // a command run by `serve` gets the database keys the server already derived on stdin
+    // (see `serve_api::child::spawn`)
+    if std::env::var_os(serve_api::child::KEYS_ON_STDIN).is_some() {
         let mut stdin = std::io::stdin();
         let mut keys = Vec::new();
         if !std::io::IsTerminal::is_terminal(&stdin)

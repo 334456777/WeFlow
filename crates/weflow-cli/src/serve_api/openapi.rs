@@ -8,9 +8,9 @@ use clap::builder::StyledStr;
 use clap::{Arg, Command, CommandFactory};
 use serde_json::{json, Map, Value};
 
-use super::{
-    api_args, files, in_process, param_of, refused, Kind, Rule, Verb, API_VERSION, HIDDEN, METHODS,
-};
+use super::endpoints::{api_args, param_of, Kind};
+use super::rules::{refused, Rule, Verb, HIDDEN, METHODS};
+use super::{files, in_process, API_VERSION};
 
 fn pick(zh: bool, en: &str, cn: &str) -> String {
     if zh { cn } else { en }.to_string()

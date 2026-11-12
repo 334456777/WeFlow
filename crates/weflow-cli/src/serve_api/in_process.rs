@@ -14,7 +14,7 @@ use weflow_core::reads::{image_variant, MediaRead, MessagePage, Read};
 use weflow_core::services::ServiceHub;
 use weflow_core::sync::MutexExt;
 
-use super::{find_param, flag_value, Endpoint, Kind, Params};
+use super::endpoints::{find_param, flag_value, Endpoint, Kind, Params};
 
 /// The commands with an `/api/` route; `tests::the_list_matches_the_cli` keeps it in step with
 /// `read_of`.
@@ -245,7 +245,7 @@ impl Given {
                 let set = values.iter().filter(|v| flag_value(v) == Some(true));
                 all.extend(set.map(|_| "true".to_string()));
             } else {
-                all.extend(super::texts(param, values));
+                all.extend(super::endpoints::texts(param, values));
             }
         }
         Self { texts }

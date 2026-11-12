@@ -155,7 +155,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         .clone()
         .or_else(|| cfg_str("httpApiToken"));
     // without a configured token the command API makes one up
-    let generated_token = token.is_none().then(serve_api::generate_token);
+    let generated_token = token.is_none().then(serve_api::http::generate_token);
     let addr = format!("{host}:{port}")
         .parse::<std::net::SocketAddr>()
         .map_err(|err| AppError::usage(format!("invalid listen address: {err}")))?;

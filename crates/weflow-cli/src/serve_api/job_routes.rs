@@ -9,8 +9,9 @@ use axum::response::Response;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
 
+use super::http::{error_response, json_body, method_not_allowed};
 use super::jobs::{Event, Job, Jobs, Subscription};
-use super::{error_response, json_body, method_not_allowed, Verb};
+use super::rules::Verb;
 
 fn not_found() -> Response {
     error_response(StatusCode::NOT_FOUND, "not_found", "no such job")
