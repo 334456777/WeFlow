@@ -291,9 +291,9 @@ impl PageSource<'_> {
             })
             .collect();
         let mut msgs = crate::message::collect_rows(rows, self.opts);
-        if msgs.iter().any(super::is_sticker) {
+        if msgs.iter().any(super::export::is_sticker) {
             let table = self.captions.get_or_init(self.load_captions);
-            super::attach_emoji_captions(table, &mut msgs);
+            super::export::attach_emoji_captions(table, &mut msgs);
         }
         Ok(ParsedPage {
             scanned,
