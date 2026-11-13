@@ -4,13 +4,10 @@
 
 `weflow` is a native Rust command-line build of the [WeFlow](https://github.com/hicccc77/WeFlow) backend. It reads, analyzes, and exports local WeChat 4.0+ chat history directly from the terminal.
 
-- Human-readable text by default (aligned `key: value` fields and tables; errors go to stderr). Add `--json` to print a single JSON document on stdout (`{"success": true, "data": ...}`) for scripting.
-- Sessions, messages, contacts, and Moments; private and group chat analytics; annual reports and dual reports.
-- Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, and `sql`.
-- Images (`.dat` decryption), voice (SILK → WAV), video lookup, and stickers.
-- Every command over HTTP (`serve`), message push, and AI insights.
-- A web interface (WebUI) that `serve` hosts under `/ui/`; see [WebUI - Web page](https://github.com/334456777/WeFlow/wiki/WebUI#网页) on the Wiki.
-- `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `weflow lang en|zh` saves your choice.
+- Human-readable text by default; `--json` prints JSON for scripting.
+- Supports [sessions, messages](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#会话与消息), [contacts](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#联系人与群), [Moments](https://github.com/334456777/WeFlow/wiki/朋友圈), [private and group chat analytics](https://github.com/334456777/WeFlow/wiki/统计与报告), [annual reports](https://github.com/334456777/WeFlow/wiki/统计与报告#年度报告), and [dual reports](https://github.com/334456777/WeFlow/wiki/统计与报告#双人报告).
+- Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, and `sql`, plus media (images, voice, video, and stickers).
+- `weflow serve` provides an HTTP API for every command and a web interface, [WebUI](https://github.com/334456777/WeFlow/wiki/WebUI).
 
 ## Install
 
