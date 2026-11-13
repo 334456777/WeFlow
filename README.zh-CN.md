@@ -30,7 +30,7 @@ weflow --help
 weflow lang zh
 ```
 
-语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文。完整的优先级见[命令参考](https://github.com/334456777/WeFlow/wiki/命令参考#语言)。
+自动识别语言的优先级见[命令参考](https://github.com/334456777/WeFlow/wiki/命令参考#语言)。
 
 ## 首次设置与导出（必要步骤）
 
