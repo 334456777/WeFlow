@@ -8,7 +8,7 @@ import type { ChatSession } from '../api/chat';
 import { getMembers, type GroupMember } from '../api/messages';
 import { currentScope, onNewScope } from '../api/scope';
 import { Avatar } from '../Avatar';
-import { FEEDBACK_MS } from '../motion';
+import { contentIn, FEEDBACK_MS } from '../motion';
 import { dayOf, formatClock, formatDayHeading, isMine, kindOf } from './messages';
 import { MessageView, withGallery, type Preview } from './MessageView';
 import { kindOf as sessionKind } from './sessions';
@@ -127,6 +127,16 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
       pinned.current = null;
     }
   }, [id, thread.status, focus, thread.hasNewer, scroller]);
+
+  // A conversation that was not cached comes in after its skeleton: the panel's entrance played on the skeleton, so the
+  // messages come in as well. A cached one is ready at once and was brought in by the panel.
+  const wasReady = useRef<{ id: string; ready: boolean } | null>(null);
+  useEffect(() => {
+    const before = wasReady.current;
+    const ready = thread.status === 'ready';
+    wasReady.current = { id, ready };
+    if (ready && before && before.id === id && !before.ready && list.current) contentIn([list.current]);
+  }, [id, thread.status]);
 
   useEffect(() => {
     if (!marked) return;
