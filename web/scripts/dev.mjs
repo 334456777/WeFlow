@@ -47,8 +47,10 @@ if (env.WEFLOW_SERVE_URL) {
   process.exit(await page.exited);
 } else {
   // debug build: what `cargo build` has made already, and quick to make again after a change
-  const builds = [['-p', 'weflow-cli', '--bin', 'weflow'], ['-p', 'weflow-cli', '--example', chosen.example]];
-  if (chosen.profile === 'release') builds[1].push('--release');
+  // one cargo run for the debug account; the benchmark account's generator is built in release, so it is a run of its own
+  const builds = chosen.profile === 'release'
+    ? [['-p', 'weflow-cli', '--bin', 'weflow'], ['-p', 'weflow-cli', '--example', chosen.example, '--release']]
+    : [['-p', 'weflow-cli', '--bin', 'weflow', '--example', chosen.example]];
   if (!builds.every(cargo)) {
     console.error('cargo build failed');
     process.exit(1);
