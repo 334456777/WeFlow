@@ -101,7 +101,7 @@ $(BOLD)基础命令$(RESET)
 
 $(BOLD)安装$(RESET)
   $(CYAN)make install$(RESET)         将 release binary 安装到 $(INSTALL_DIR)
-  $(CYAN)make uninstall$(RESET)        从 $(INSTALL_DIR) 删除 weflow
+  $(CYAN)make uninstall$(RESET)       从 $(INSTALL_DIR) 删除 weflow
 
 $(BOLD)跨平台编译$(RESET)
   $(CYAN)make cross-macos$(RESET)     → weflow-macos-arm64     ($(TARGET_MACOS_ARM))
