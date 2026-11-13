@@ -23,6 +23,8 @@ make install
 weflow --help
 ```
 
+Uninstall: `make uninstall`
+
 ## Switching between English and Chinese
 
 ```bash

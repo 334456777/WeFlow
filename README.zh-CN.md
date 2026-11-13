@@ -22,6 +22,8 @@ make install
 weflow --help
 ```
 
+卸载：`make uninstall`
+
 ## 切换中英文
 
 ```bash
