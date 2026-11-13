@@ -8,6 +8,7 @@
 ifeq ($(OS),Windows_NT)
   PLATFORM     := windows
   BIN          := target/release/weflow.exe
+  DEBUG_BIN    := target/debug/weflow.exe
   # Forward slashes: printf would read the backslashes of a Windows path as escapes (\U of C:\Users).
   INSTALL_DIR  := $(subst \,/,$(USERPROFILE))/.cargo/bin
   GIT_INSTALL  := winget install -e --id Git.Git --accept-package-agreements --accept-source-agreements
@@ -16,8 +17,9 @@ ifeq ($(OS),Windows_NT)
      Start-Process -Wait -FilePath rustup-init.exe -ArgumentList '-y'; \
      Remove-Item rustup-init.exe"
 else
-  UNAME := $(shell uname -s)
-  BIN   := target/release/weflow
+  UNAME     := $(shell uname -s)
+  BIN       := target/release/weflow
+  DEBUG_BIN := target/debug/weflow
   ifeq ($(UNAME),Darwin)
     PLATFORM    := macos
     INSTALL_DIR := /usr/local/bin
@@ -88,7 +90,7 @@ define HELP_TEXT
 $(BOLD)WeFlow CLI v$(VERSION) — $(PLATFORM)$(RESET)
 
 $(BOLD)基础命令$(RESET)
-  $(CYAN)make build$(RESET)           当前平台 debug 构建
+  $(CYAN)make build$(RESET)           当前平台 debug 构建 → $(DEBUG_BIN)
   $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)
   $(CYAN)make test$(RESET)            运行全部测试（单元测试和端到端测试）
   $(CYAN)make check$(RESET)           cargo check（只检查，不编译）
