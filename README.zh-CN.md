@@ -8,7 +8,7 @@
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
 - 所有命令的 HTTP 接口（`serve`）、消息推送、AI 见解。
-- `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](https://github.com/334456777/WeFlow/wiki/WebUI#网页)）。
+- `serve` 在 `/ui/` 下提供网页界面（WebUI），见 Wiki 的[WebUI-网页](https://github.com/334456777/WeFlow/wiki/WebUI#网页)。
 - `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`weflow lang en|zh` 可保存选择。
 
 ## 安装
@@ -75,7 +75,7 @@ weflow chat sessions
 weflow export messages <会话 ID> --format html --out chat.html
 ```
 
-需要导出为其他格式（`txt`、`json`、`excel`、`sql` 等）、按日期或发送者筛选、连同图片等媒体一起导出，见 Wiki 的[消息导出](https://github.com/334456777/WeFlow/wiki/消息导出#格式)。
+需要导出为其他格式（`txt`、`json`、`excel`、`sql` 等）、按日期或发送者筛选、连同图片等媒体一起导出，见 Wiki 的[消息导出-格式](https://github.com/334456777/WeFlow/wiki/消息导出#格式)。
 
 也可以运行 `weflow serve`，在浏览器中打开网页界面。
 
@@ -96,7 +96,7 @@ weflow export messages <会话 ID> --format html --out chat.html
 ```
 `180 秒后自动退出` 可用 `weflow key db --timeout <秒>` 调整
 
-完整的流程和各平台的实现见 Wiki 的[密钥获取](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥)。
+完整的流程和各平台的实现见 Wiki 的[密钥获取-数据库密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥)。
 
 ## CLI 不支持的功能
 
@@ -104,7 +104,7 @@ WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不�
 `chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)设计为占位符，另有一些 WeFlow 桌面端的功能缺失
 (语音转文字、弹窗等桌面进程功能)。
 
-详细清单见[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)。
+详细清单见 Wiki 的[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)。
 
 ## 文档
 

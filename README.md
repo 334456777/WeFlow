@@ -9,7 +9,7 @@
 - Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, and `sql`.
 - Images (`.dat` decryption), voice (SILK → WAV), video lookup, and stickers.
 - Every command over HTTP (`serve`), message push, and AI insights.
-- A web interface (WebUI) that `serve` hosts under `/ui/` ([details](https://github.com/334456777/WeFlow/wiki/WebUI#网页)).
+- A web interface (WebUI) that `serve` hosts under `/ui/`; see [WebUI - Web page](https://github.com/334456777/WeFlow/wiki/WebUI#网页) on the Wiki.
 - `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `weflow lang en|zh` saves your choice.
 
 ## Install
@@ -31,7 +31,7 @@ Uninstall: `make uninstall`
 weflow lang en
 ```
 
-The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English. For the full precedence order, see the [command reference](https://github.com/334456777/WeFlow/wiki/命令参考#语言).
+For language settings and precedence, see [Command reference - Language](https://github.com/334456777/WeFlow/wiki/命令参考#语言) on the Wiki.
 
 ## First-time setup and export (required steps)
 
@@ -86,7 +86,7 @@ weflow chat sessions
 weflow export messages <conversation-id> --format html --out chat.html
 ```
 
-To export to other formats (`txt`, `json`, `excel`, `sql`, and more), filter by date or sender, or export images and other media along with the messages, see [Message export](https://github.com/334456777/WeFlow/wiki/消息导出#格式) on the Wiki.
+To export to other formats (`txt`, `json`, `excel`, `sql`, and more), filter by date or sender, or export images and other media along with the messages, see [Message export - Formats](https://github.com/334456777/WeFlow/wiki/消息导出#格式) on the Wiki.
 
 You can also run `weflow serve` to open the web interface in your browser.
 
@@ -109,13 +109,13 @@ Database key obtained and saved to the active profile
 
 The 180-second automatic exit can be adjusted with `weflow key db --timeout <seconds>`.
 
-For the full flow and how it works on each platform, see [Key acquisition](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥) on the Wiki.
+For the full flow and how it works on each platform, see [Key acquisition - Database key](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥) on the Wiki.
 
 ## What the CLI does not support
 
 The WeFlow Rust CLI ~~, since my skills aren't up to it,~~ opens databases **read-only** and never modifies WeChat databases ~~— I'm not taking the blame for that~~. Commands that would modify a database (`chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete`, and `sns delete`) are designed as placeholders. Some features of the WeFlow desktop app are also missing (desktop-process features such as voice-to-text and popups).
 
-See the [detailed list](https://github.com/334456777/WeFlow/wiki/不支持的功能).
+For the detailed list, see [Unsupported features](https://github.com/334456777/WeFlow/wiki/不支持的功能) on the Wiki.
 
 ## Documentation
 
