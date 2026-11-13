@@ -440,6 +440,8 @@ time, .num { font-variant-numeric: tabular-nums; }
    the label sits on the baseline of their first line. */
 .format-row:has(> .choice-chips) { align-items: baseline; }
 .format-row > .choice-chips { flex: 1 1 0; }
+/* a row whose chips start on the line under the label, however wide the card */
+.chips-below > .field-label { flex-basis: 100%; }
 /* a line under a row's choices, lined up with them */
 .field-note { flex-basis: 100%; padding-left: calc(56px + var(--space-3)); color: var(--fg-subtle); font-size: var(--text-xs); }
 .field-label { flex-shrink: 0; min-width: 56px; color: var(--fg-muted); font-size: var(--text-xs); }

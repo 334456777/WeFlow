@@ -12,7 +12,7 @@ import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
 import { parseDay } from '../calendar/dates';
 import type { Card } from '../CardStack';
-import { FormatChips, formatsLabel, MEDIA_NOTE, MediaChips, mediaLabel, packed, type MessageFormat } from '../exports/ExportCards';
+import { FormatChips, formatsLabel, MediaChips, mediaLabel, packed, type MessageFormat } from '../exports/ExportCards';
 import { HoverTrack } from '../HoverTrack';
 import { FormatLanes } from '../exports/FormatLanes';
 import { jobDetail } from '../jobs/TaskCenter';
@@ -215,12 +215,11 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
         <div className="form-row"><span className="field-label">{t('时间范围')}</span>{selected.live
           ? <DateRange label={t('导出的时间范围')} from={liveRange.from} to={liveRange.to} onChange={range => { setLiveRange(range); resetExport(); }} />
           : <DateRange label={t('导出的时间范围')} from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
-        <div className="form-row format-row"><span className="field-label">{t('导出格式')}</span>
+        <div className="form-row format-row chips-below"><span className="field-label">{t('导出格式')}</span>
           <FormatChips formats={formats} onChange={next => { setFormats(next); resetExport(); }} />
         </div>
-        <div className="form-row format-row"><span className="field-label">{t('附带媒体')}</span>
+        <div className="form-row format-row chips-below"><span className="field-label">{t('附带媒体')}</span>
           <MediaChips kinds={mediaKinds} label={t('附带的媒体（可多选）')} onChange={next => { setMediaKinds(next); resetExport(); }} />
-          <small className="field-note">{t(MEDIA_NOTE)}</small>
         </div>
         {selected.live && liveSession
           ? <><ExportControl stage={stage} result={exportResult} ready={formats.length > 0} onStart={exportRecords} onCancel={cancelExport} />
