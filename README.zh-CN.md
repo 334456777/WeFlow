@@ -4,7 +4,7 @@
 `weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
 - 默认输出便于阅读的文本，`--json` 参数输出 JSON 格式，方便脚本处理。
-- 支持[会话、消息](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#会话与消息)、[联系人](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#联系人与群)、[朋友圈](https://github.com/334456777/WeFlow/wiki/朋友圈)，[私聊/群聊统计分析](https://github.com/334456777/WeFlow/wiki/统计与报告)，[年度报告](https://github.com/334456777/WeFlow/wiki/统计与报告#年度报告)与[双人报告](https://github.com/334456777/WeFlow/wiki/统计与报告#双人报告)。
+- 支持[会话与消息](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#会话与消息)、[联系人](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#联系人与群)、[朋友圈](https://github.com/334456777/WeFlow/wiki/朋友圈)，[私聊/群聊统计分析](https://github.com/334456777/WeFlow/wiki/统计与报告)，[年度报告](https://github.com/334456777/WeFlow/wiki/统计与报告#年度报告)与[双人报告](https://github.com/334456777/WeFlow/wiki/统计与报告#双人报告)。
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`，也能导出图片、语音、视频和表情包。
 - `weflow serve` 提供命令的 HTTP 接口和网页界面[WebUI](https://github.com/334456777/WeFlow/wiki/WebUI)。
 
@@ -74,9 +74,7 @@ weflow export messages <会话 ID> --format html --out chat.html
 
 需要导出为其他格式（`txt`、`json`、`excel`、`sql` 等）、按日期或发送者筛选、连同图片等媒体一起导出，见 Wiki 的[消息导出-格式](https://github.com/334456777/WeFlow/wiki/消息导出#格式)。
 
-也可以运行 `weflow serve`，在浏览器中打开网页界面。
-
-`weflow config list` 查看已保存的配置，`weflow config path` 查看配置文件的位置。
+`weflow config` 管理配置文件
 
 ---
 <a id="key-db"></a>**`weflow key db` 做了什么？** <br>数据库密钥在微信打开数据库时在内存中生成，从对应内存位置提取 `decrypt_key`:
@@ -97,8 +95,7 @@ weflow export messages <会话 ID> --format html --out chat.html
 
 ## CLI 不支持的功能
 
-WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不会修改微信数据库~~有些锅我不背~~，会修改微信数据库的命令(`chat update-message`、`chat delete-message`、
-`chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)设计为占位符，另有一些 WeFlow 桌面端的功能缺失
+WeFlow Rust CLI **只读**数据库，不会修改微信数据库，会修改微信数据库的命令设计为占位符，另有一些 WeFlow 桌面端的功能缺失
 (语音转文字、弹窗等桌面进程功能)。
 
 详细清单见 Wiki 的[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)。
