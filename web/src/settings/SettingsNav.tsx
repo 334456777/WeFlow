@@ -1,7 +1,7 @@
 // The sections of the settings (#776), listed beside the one open: grouped by where what they hold is kept, each
 // with its state in a few words, so a section can be found, and its state read, without opening it.
 import type { Icon } from '@phosphor-icons/react';
-import { FileHtml, FolderOpen, Gear, HardDrives, Palette, Plugs, Sparkle, Terminal, UserCircle } from '@phosphor-icons/react';
+import { AppWindow, Broom, Gear, HardDrives, Palette, Plugs, Sparkle, TerminalWindow, UserCircle } from '@phosphor-icons/react';
 import { HoverTrack } from '../HoverTrack';
 import { msg, t } from '../i18n';
 
@@ -26,11 +26,11 @@ export const SECTION_GROUPS: { label: string; sections: Section[] }[] = [
     label: 'weflow serve', sections: [
       { id: 'serve', label: msg('启动选项'), icon: HardDrives, online: true },
       { id: 'ai', label: msg('AI 见解'), icon: Sparkle, online: true },
-      { id: 'cache', label: msg('缓存'), icon: FolderOpen, online: true },
-      { id: 'web', label: msg('网页版本'), icon: FileHtml, online: false },
+      { id: 'cache', label: msg('缓存'), icon: Broom, online: true },
+      { id: 'web', label: msg('网页版本'), icon: AppWindow, online: false },
     ],
   },
-  { label: msg('高级'), sections: [{ id: 'console', label: msg('命令控制台'), icon: Terminal, online: true }] },
+  { label: msg('高级'), sections: [{ id: 'console', label: msg('命令控制台'), icon: TerminalWindow, online: true }] },
 ];
 
 export const SECTIONS: Section[] = SECTION_GROUPS.flatMap(group => group.sections);

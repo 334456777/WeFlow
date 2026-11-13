@@ -11,7 +11,8 @@ export interface Budget {
   gzip: number;
 }
 
-export const BUDGET: Budget = { js: 700_000, gzip: 200_000 };
+// gzip at 202 kB for the settings' own icons (#777), until the page is brought back to 200 kB (#779)
+export const BUDGET: Budget = { js: 700_000, gzip: 202_000 };
 
 // as Vite counts them
 const kb = (bytes: number) => (bytes / 1000).toFixed(1) + ' kB';
