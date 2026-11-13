@@ -1,7 +1,7 @@
 # WeFlow CLI
 [English](README.md) | **简体中文**
 
-`weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 原生命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
+`weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
 - 默认输出便于阅读的文本，`--json` 参数输出 JSON 格式，方便脚本处理。
 - 支持[会话、消息](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#会话与消息)、[联系人](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#联系人与群)、[朋友圈](https://github.com/334456777/WeFlow/wiki/朋友圈)，[私聊/群聊统计分析](https://github.com/334456777/WeFlow/wiki/统计与报告)，[年度报告](https://github.com/334456777/WeFlow/wiki/统计与报告#年度报告)与[双人报告](https://github.com/334456777/WeFlow/wiki/统计与报告#双人报告)。
