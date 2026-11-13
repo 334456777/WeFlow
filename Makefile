@@ -88,7 +88,7 @@ define HELP_TEXT
 $(BOLD)WeFlow CLI v$(VERSION) — $(PLATFORM)$(RESET)
 
 $(BOLD)基础命令$(RESET)
-  $(CYAN)make build$(RESET)          当前平台 debug 构建
+  $(CYAN)make build$(RESET)           当前平台 debug 构建
   $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)
   $(CYAN)make test$(RESET)            运行全部测试（单元测试和端到端测试）
   $(CYAN)make check$(RESET)           cargo check（只检查，不编译）
