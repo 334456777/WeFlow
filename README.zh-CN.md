@@ -3,13 +3,10 @@
 
 `weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 原生命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
-- 默认输出便于阅读的文本（对齐的 `键: 值` 和表格；错误写到 stderr）。加 `--json` 则在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
-- 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
-- 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
-- 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
-- 所有命令的 HTTP 接口（`serve`）、消息推送、AI 见解。
-- `serve` 在 `/ui/` 下提供网页界面（WebUI），见 Wiki 的[WebUI-网页](https://github.com/334456777/WeFlow/wiki/WebUI#网页)。
-- `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`weflow lang en|zh` 可保存选择。
+- 默认输出便于阅读的文本，`--json` 参数输出 JSON 格式，方便脚本处理。
+- 支持会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
+- 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql` 和媒体格式（图片，语音，视频和表情包）
+- `weflow serve` 提供命令的 HTTP 接口和网页界面[WebUI](https://github.com/334456777/WeFlow/wiki/WebUI)。
 
 ## 安装
 
