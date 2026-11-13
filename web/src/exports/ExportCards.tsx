@@ -123,7 +123,7 @@ export function BatchExport({ picked, options, onChange }: {
     }
   };
   return <>
-    <div className="form-row format-row"><span className="field-label">{t('导出格式')}</span>
+    <div className="form-row format-row chips-below"><span className="field-label">{t('导出格式')}</span>
       <FormatChips formats={options.formats} onChange={formats => set({ formats })} />
     </div>
     <div className="form-row"><span className="field-label">{t('时间范围')}</span><DateRange label={t('批量导出的时间范围')} from={options.from} to={options.to} onChange={range => set(range)} /></div>
@@ -132,7 +132,7 @@ export function BatchExport({ picked, options, onChange }: {
         {NAMES.map(n => <button type="button" key={n.value} aria-pressed={options.names === n.value} onClick={() => set({ names: n.value })}>{t(n.label)}</button>)}
       </Segmented>
     </div>
-    <div className="form-row format-row"><span className="field-label">{t('附带媒体')}</span>
+    <div className="form-row format-row chips-below"><span className="field-label">{t('附带媒体')}</span>
       <MediaChips kinds={options.media} label={t('附带的媒体（可多选）')} onChange={media => set({ media })} />
     </div>
     {options.formats.includes('excel') && <label className="checkbox"><input type="checkbox" aria-label={t('Excel 精简列')} checked={options.compact} onChange={event => set({ compact: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('精简列')} <small>{t('时间、发送者、类型、内容')}</small></span></label>}

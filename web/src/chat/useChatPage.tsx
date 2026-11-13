@@ -215,10 +215,10 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
         <div className="form-row"><span className="field-label">{t('时间范围')}</span>{selected.live
           ? <DateRange label={t('导出的时间范围')} from={liveRange.from} to={liveRange.to} onChange={range => { setLiveRange(range); resetExport(); }} />
           : <DateRange label={t('导出的时间范围')} from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
-        <div className="form-row format-row"><span className="field-label">{t('导出格式')}</span>
+        <div className="form-row format-row chips-below"><span className="field-label">{t('导出格式')}</span>
           <FormatChips formats={formats} onChange={next => { setFormats(next); resetExport(); }} />
         </div>
-        <div className="form-row format-row"><span className="field-label">{t('附带媒体')}</span>
+        <div className="form-row format-row chips-below"><span className="field-label">{t('附带媒体')}</span>
           <MediaChips kinds={mediaKinds} label={t('附带的媒体（可多选）')} onChange={next => { setMediaKinds(next); resetExport(); }} />
         </div>
         {selected.live && liveSession
