@@ -55,7 +55,7 @@ weflow config set wxid wxid_xxxxxxxx
 
 > stdout: `wxid: wxid_xxxxxxxx`
 
-3. Get and save the database key (see details below)
+3. Get and save the database key ([see details below](#key-db))
 
 ```powershell
 weflow key db --save
@@ -94,7 +94,7 @@ You can also run `weflow serve` to open the web interface in your browser.
 
 ---
 
-**What does `weflow key db` do?** <br>The database key is generated in memory when WeChat opens its databases. The command extracts `decrypt_key` from that memory location:
+<a id="key-db"></a>**What does `weflow key db` do?** <br>The database key is generated in memory when WeChat opens its databases. The command extracts `decrypt_key` from that memory location:
 
 ```
 WeChat is running (pid 31912). Quit it completely first:

@@ -50,7 +50,7 @@ weflow config set wxid wxid_xxxxxxxx
 ```
 > stdout: `wxid: wxid_xxxxxxxx`
 
-3. 获取并保存数据库密钥（详细见下文）
+3. 获取并保存数据库密钥（[详细见下文](#key-db)）
 ```powershell
 weflow key db --save
 ```
@@ -82,7 +82,7 @@ weflow export messages <会话 ID> --format html --out chat.html
 `weflow config list` 查看已保存的配置，`weflow config path` 查看配置文件的位置。
 
 ---
-**`weflow key db` 做了什么？** <br>数据库密钥在微信打开数据库时在内存中生成，从对应内存位置提取 `decrypt_key`:
+<a id="key-db"></a>**`weflow key db` 做了什么？** <br>数据库密钥在微信打开数据库时在内存中生成，从对应内存位置提取 `decrypt_key`:
 
 ```
 检测到微信正在运行（pid 31912）请先完全退出微信：
