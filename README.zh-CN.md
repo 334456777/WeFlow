@@ -74,6 +74,8 @@ cp target/release/weflow .
 ./weflow export messages <会话 ID> --format html --out chat.html
 ```
 
+需要导出为其他格式（`txt`、`json`、`excel`、`sql` 等）、按日期或发送者筛选、连同图片等媒体一起导出，见 Wiki 的[消息导出](https://github.com/334456777/WeFlow/wiki/消息导出#格式)。
+
 也可以运行 `./weflow serve`，在浏览器中打开网页界面。
 
 `./weflow config list` 查看已保存的配置，`./weflow config path` 查看配置文件的位置。

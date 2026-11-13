@@ -85,6 +85,8 @@ Without `--save`, the commands print the keys instead of saving them, and you ca
 ./weflow export messages <conversation-id> --format html --out chat.html
 ```
 
+To export to other formats (`txt`, `json`, `excel`, `sql`, and more), filter by date or sender, or export images and other media along with the messages, see [Message export](https://github.com/334456777/WeFlow/wiki/消息导出#格式) on the Wiki.
+
 You can also run `./weflow serve` to open the web interface in your browser.
 
 `./weflow config list` shows the saved configuration, and `./weflow config path` shows where the configuration file lives.
