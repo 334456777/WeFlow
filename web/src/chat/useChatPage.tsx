@@ -12,7 +12,7 @@ import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
 import { parseDay } from '../calendar/dates';
 import type { Card } from '../CardStack';
-import { FormatChips, formatsLabel, MEDIA_NOTE, MediaChips, mediaLabel, packed, type MessageFormat } from '../exports/ExportCards';
+import { FormatChips, formatsLabel, MediaChips, mediaLabel, packed, type MessageFormat } from '../exports/ExportCards';
 import { HoverTrack } from '../HoverTrack';
 import { FormatLanes } from '../exports/FormatLanes';
 import { jobDetail } from '../jobs/TaskCenter';
@@ -220,7 +220,6 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
         </div>
         <div className="form-row format-row"><span className="field-label">{t('附带媒体')}</span>
           <MediaChips kinds={mediaKinds} label={t('附带的媒体（可多选）')} onChange={next => { setMediaKinds(next); resetExport(); }} />
-          <small className="field-note">{t(MEDIA_NOTE)}</small>
         </div>
         {selected.live && liveSession
           ? <><ExportControl stage={stage} result={exportResult} ready={formats.length > 0} onStart={exportRecords} onCancel={cancelExport} />
