@@ -7,7 +7,7 @@
    - 精确清理：`cargo sweep --stamp` → 正常编译一次（实际会用到的 profile 都要编译，如 `cargo build`、`cargo build --release`、`cargo test --no-run`）→ `cargo sweep --file`，删除时间戳之后没被用到的产物
    - 日常清理：`cargo sweep --time 30` 删除 30 天没用过的产物；`cargo sweep --installed` 删除已卸载工具链编译的产物
    - 首次执行任何删除命令前先加 `--dry-run` 预览；不要用 `find -delete` 自制清理，也不要为了腾空间直接 `cargo clean`
- - Windows PowerShell 终端上操作时尝试使用常用的 UNIX/Linux 命令行工具
+ - Windows PowerShell 终端上可以用常用的 UNIX/Linux 命令行工具；读文件、改文件、搜索仍用自带工具（见「注意事项」）
 
 ## 结构
 仓库由两部分组成：Rust workspace（CLI `weflow`、`weflow serve` 的命令 API 和纯 Rust 只读数据库层）和 WebUI（`web/`）。
@@ -30,7 +30,7 @@
 - 界面跟随服务端的语言（#439，`/health` 的 `lang`）：文字以中文原文作键写成 `t('…')`，英文在 `src/i18n/en.ts`（单独的 chunk，需要英文时才下载），带变量的写 `{name}`，英文的计数可写 `{n|one|other}`，模块顶层的标签用 `msg()` 标出、显示时再 `t()`；日期和星期用 `formatDate` / `relativeDay`（`Intl`）。`bun run i18n` 列出缺英文、多余的英文和还没进 `t()` 的中文，`--check` 在 CI 里拦前两种；读取的数据里的中文（如微信支付消息的标签）在那一行写 `// i18n-ignore: <原因>`
 
 ### Wiki（`wiki/`）
-GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ）是今后增添文档的新地方，也是唯一的地方：不再往仓库里新增文档文件。
+文档写在 GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ），仓库里不新增文档文件。
 - 只写中文，以技术文档为主，用正式语气书写
 - 根据 issue、PR、注释和代码本身写，要写详细
 - 只写现状，写成最终结论，不写中间过程：不写「原来/原先……」「已删除」「从未起作用」「改为」「从 X 变为 Y」、改动前后的测量对比和改动经过，这些写进 issue 和 PR；「命令-API」#版本 按版本列出破坏性改动，每项也只写一句结果
@@ -49,7 +49,7 @@ GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ）是今后增添文档
 
 ## 约定
 - 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public），GitHub Project「WeFlow」是公开 Project
-- 提交信息使用 Conventional Commits 规范，默认使用英语；Pull Request 分支名称使用 Conventional Commits 风格的 `<type>/<scope>-<description>` 格式。
+- 分支上的提交信息使用 Conventional Commits 规范，用英语；PR 用 merge commit 合并（`gh pr merge --merge`），合并提交的标题由 GitHub 取 PR 的中文标题加 `(#N)`；Pull Request 分支名称使用 Conventional Commits 风格的 `<type>/<scope>-<description>` 格式。
 - 版本与 tag 规范：版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀；tag 一律用附注 tag，不用轻量 tag（`git tag -a vX.Y.Z -m "WeFlow vX.Y.Z" <commit>`，用 `git cat-file -t vX.Y.Z` 检查，应输出 `tag`）；发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag。只想验证发版流程（改了 `release.yml`、`pgo-build.sh`、`release-check.sh` 等）而不发布时，用 `test.<名称>` tag 试跑：`gh workflow run release.yml --ref <分支> -f tag=test.<名称>`，照常构建和测试，不发布 Release、不建 tag、不跑基准，压缩包留在运行的 artifact 里（见 Wiki「发布与 CI」#试跑）。
 - API 版本（`crates/weflow-core/src/contract.rs` 的 `API_VERSION`，与 `web/package.json` 的 `weflow.apiVersion` 一致）只在会让现有客户端出错的改动时提升（路由、参数、响应、配置键）。提出升版本之前先核对：最新 `web-v*` tag 中 `web/package.json` 的 `weflow.apiVersion`，和 `origin/main` 上的 `API_VERSION`。main 已经比发布版高一个版本（升过、还没发布）时，改动并入这个版本，不再提醒升版本，只把改动记进 Wiki「命令-API」#版本 中当前版本的条目；两者相同时才提出要升
 - 严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等隐私信息上传到公开的 GitHub 仓库或写入 CLAUDE.md
@@ -59,7 +59,7 @@ GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ）是今后增添文档
   - `Backlog` 已记录但尚未排期；`Todo` 已排期待开始；`In Progress` 正在进行；`In Review` PR 已提交等待审查；`Blocked` 被依赖或外部因素阻塞（同时用 Relationships 标出阻塞来源）；`Done` 已关闭或已合并
   - 新建 Issue 或 PR 后立即加入看板并设置 Status 与 `Priority`（`P0` 紧急，立即处理；`P1` 高；`P2` 普通；`P3` 低，可随时搁置）；PR 打开时设为 `In Review`，合并或关闭后与其关联的 Issue 一起设为 `Done`
   - 用 `gh project item-add` 加入条目，用 `gh project item-edit` 改字段；重写 Status 选项会清空所有条目的状态，改选项后必须重新设置
-- Pull request 创建时及时添加 Lables（如果有对应 Development 则添加对应 Development）；PR关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 （只有这几个关键词是英文，PR描述其他部分仍然是中文）Issues；PR 标题和 PR description（PR body）必须使用中文，除非用户明确要求英文，否则不要使用英文撰写 PR description
+- Pull request 创建时及时添加 Lables（如果有对应 Development 则添加对应 Development）；PR关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 Issues；PR 标题和描述用中文，只有这几个关键词用英文；用户明确要求英文时才用英文
 - 代码按职责划分模块：一个文件只承担一类职责，新代码放进所属的模块（没有就新建），不往入口文件或已经很长的文件里追加；拆分只移动代码、调整可见性和引用路径，与功能改动分开提交，可见性用最小的范围（见 Wiki「开发指南」的[代码组织](https://github.com/334456777/WeFlow/wiki/开发指南#代码组织)）
 - 用户可能会出错，当用户出现明显错误或决策冲突时，请指出
 - 对于需要多个依赖 PR 的开发任务，请使用 `gh stack`
