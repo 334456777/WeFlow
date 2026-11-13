@@ -190,6 +190,8 @@ check-tools: check-git check-rust
 build: check-rust
 	@printf "$(BOLD)▶ cargo build$(RESET)\n"
 	cargo build -p weflow-cli
+	@printf "$(GREEN)$(BOLD)✓ 构建完成 → $(DEBUG_BIN)$(RESET)\n"
+	@ls -lh "$(DEBUG_BIN)" 2>/dev/null || true
 
 release: check-rust
 	@printf "$(BOLD)▶ cargo build --release$(RESET)\n"
