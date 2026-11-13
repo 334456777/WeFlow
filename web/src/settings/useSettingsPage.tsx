@@ -53,13 +53,14 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
 
   const health = 'health' in backend ? backend.health : null;
   const current = profiles?.find(p => p.current);
+  // a few words each, two lines at most
   const summaries: Record<SectionId, string> = {
-    connection: health ? `${backendLabel(backend)} · weflow ${health.version}` : backendLabel(backend),
-    accounts: current ? `${current.name} · ${profileState(current)}` : failed ? t('读不到账号配置') : '',
+    connection: [backendLabel(backend), health?.version].filter(Boolean).join(' · '),
+    accounts: current ? [current.name, current.complete ? t('已配置') : profileState(current)].join(' · ') : failed ? t('读不到账号配置') : '',
     appearance: [t(THEMES.find(choice => choice.value === theme)!.label), prefs.realtime ? t('实时消息') : t('不接收实时消息')].join(' · '),
-    serve: t('监听地址、并发和启动时的行为'),
-    ai: profile?.aiKey ? t('已设置 API Key') : t('还没有设置 API Key'),
-    cache: t('WeFlow 为读得更快而保存的文件'),
+    serve: t('地址、端口和并发'),
+    ai: profile?.aiKey ? t('已设置 API Key') : t('未设置 API Key'),
+    cache: t('各部分的大小和清理'),
     web: t('正在使用 {version}', { version: WEB.version }),
     console: t('CLI 工具和任意命令'),
   };
@@ -85,11 +86,11 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
         </SettingsSection>;
       case 'serve':
         return <SettingsSection title={sectionLabel(id)} lead={t('weflow serve 启动时用的选项，保存在服务端的配置文件里，重启后生效。启动命令里给出的选项优先；留空的项用灰色的默认值。')}>
-          {connected ? <ServeOptions /> : offline}
+          {connected ? <ServeOptions onAi={() => go('ai')} /> : offline}
         </SettingsSection>;
       case 'ai':
         return <SettingsSection title={sectionLabel(id)} lead={t('灵感信箱用的 AI 模型接口，保存在当前档案里。')}>
-          {connected ? <AiSetting profile={profile} onSaved={reload} /> : offline}
+          {connected ? <AiSetting profile={profile} engine={health?.insight} onSaved={reload} onServe={() => go('serve')} /> : offline}
         </SettingsSection>;
       case 'cache':
         return <SettingsSection title={sectionLabel(id)} lead={t('WeFlow 为读得更快而保存的文件。清理不会动微信自己的文件，需要时会重新生成。')}>
@@ -110,7 +111,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
   };
 
   const view = <BrowserPanel label={t('设置')} className="settings-browser" detail={mobileDetail} onBack={() => setMobileDetail(false)}
-    back={t('返回设置')} title={sectionLabel(open)} paneLabel={sectionLabel(open)} pane={pane}
+    back={t('返回设置')} title={sectionLabel(open)} paneLabel={sectionLabel(open)} pane={pane} detailKey={open}
     list={<SettingsNav open={open} summaries={summaries} connected={connected} onOpen={go} />}>
     <Sections open={open} pane={pane}>{section}</Sections>
   </BrowserPanel>;

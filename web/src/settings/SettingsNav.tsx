@@ -58,7 +58,7 @@ export function SettingsNav({ open, summaries, connected, onOpen }: {
             <span className="settings-nav-icon" aria-hidden="true"><Glyph size={18} /></span>
             <span className="conversation-copy">
               <span className="conversation-name">{t(label)}</span>
-              <span className="conversation-preview clamp-1">{idle ? t('连接后可用') : summaries[id]}</span>
+              <span className="conversation-preview clamp-2">{idle ? t('连接后可用') : summaries[id]}</span>
             </span>
           </button>;
         })}

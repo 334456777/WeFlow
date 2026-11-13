@@ -23,7 +23,7 @@ function serve(saved: Record<string, unknown>, refuse?: string) {
 describe('the options weflow serve starts with (#406)', () => {
   it('saves only what changed, a default as nothing, and warns of an address beyond this machine', async () => {
     const calls = serve({ serve_port: 8080, serve_open_browser: false });
-    render(<ServeOptions />);
+    render(<ServeOptions onAi={() => {}} />);
     await act(async () => {});
     expect((screen.getByPlaceholderText('18108') as HTMLInputElement).value).toBe('8080');
     const browser = screen.getByRole('checkbox', { name: '启动时在浏览器中打开网页' }) as HTMLInputElement;
@@ -50,7 +50,7 @@ describe('the options weflow serve starts with (#406)', () => {
 
   it('reads and writes the image auto-download whitelist as a JSON array', async () => {
     const calls = serve({ autoDownloadWhitelist: ['a', 'b'] });
-    render(<ServeOptions />);
+    render(<ServeOptions onAi={() => {}} />);
     await act(async () => {});
     const field = screen.getByPlaceholderText('会话 ID，用逗号分隔') as HTMLInputElement;
     expect(field.value).toBe('a,b');
@@ -67,7 +67,7 @@ describe('the options weflow serve starts with (#406)', () => {
   });
 
   it('checks the numbers, and shows what the server refused', async () => {    serve({}, 'serve_host');
-    render(<ServeOptions />);
+    render(<ServeOptions onAi={() => {}} />);
     await act(async () => {});
     const save = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
     fireEvent.change(screen.getByPlaceholderText('1'), { target: { value: '0' } });

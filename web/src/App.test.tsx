@@ -541,6 +541,13 @@ describe('App', () => {
     expect((screen.getByPlaceholderText('模型名称') as HTMLInputElement).value).toBe('m2');
     expect(reads()).toBe(1);
 
+    // the insight engine is a startup option, and the way there and back is beside each switch
+    fireEvent.click(screen.getByRole('button', { name: '前往启动选项' }));
+    await act(async () => {});
+    expect(screen.getByRole('region', { name: '启动选项' }).textContent).toContain('运行灵感引擎');
+    fireEvent.click(screen.getByRole('button', { name: '前往 AI 见解' }));
+    expect(screen.getByRole('region', { name: 'AI 见解' })).toBeTruthy();
+
     // left and opened anew, the settings read again
     fireEvent.click(screen.getByRole('button', { name: '聊天' }));
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
@@ -570,6 +577,7 @@ describe('App', () => {
     // the settings say how far the account is set up, in their list too, and open the setup again
     openSettings('账号');
     expect(screen.getByRole('button', { name: /^账号/ }).textContent).toBe('账号default · 还没有配置');
+    expect(screen.getByRole('button', { name: /^连接状态/ }).textContent).toBe('连接状态已连接 · 5.0.0');
     expect(screen.getByRole('region', { name: '账号' }).textContent).toContain('default当前未选择账号还没有配置');
     fireEvent.click(screen.getByRole('button', { name: '配置向导' }));
     await act(async () => {});

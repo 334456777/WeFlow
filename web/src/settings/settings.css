@@ -17,6 +17,8 @@
 .settings-nav-caption { padding: var(--space-2) var(--space-3) var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); font-weight: var(--weight-medium); }
 .conversation-row.settings-nav-row { min-height: 52px; }
 .settings-nav-row .conversation-name { font-size: var(--text-sm); }
+/* a state too long for a line wraps, a version anywhere */
+.settings-nav-row .conversation-preview { overflow-wrap: anywhere; }
 .settings-nav-icon {
   display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 32px; height: 32px;
   border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted);
@@ -27,7 +29,7 @@
 .settings-nav-row.idle .conversation-preview { color: var(--fg-subtle); }
 
 /* A section: its heading, then its groups. */
-.settings-section { display: flex; flex-direction: column; gap: var(--space-4); max-width: 680px; padding: var(--space-2) 0 var(--space-3); animation: content-in var(--duration-base) var(--ease-out); }
+.settings-section { display: flex; flex-direction: column; gap: var(--space-4); max-width: 680px; padding: var(--space-2) 0 var(--space-3); }
 .settings-section-head h2 { font-size: var(--text-lg); line-height: var(--leading-lg); font-weight: var(--weight-semibold); }
 .settings-section-head p { margin-top: 2px; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .settings-section .setting-warning { color: var(--state-danger); font-size: var(--text-xs); line-height: var(--leading-xs); }

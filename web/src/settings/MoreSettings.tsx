@@ -2,7 +2,7 @@
 // cleared after showing what goes.
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { CircleNotch, Key, Plugs, Trash } from '@phosphor-icons/react';
+import { ArrowRight, CircleNotch, Key, Plugs, Trash } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import {
   AI_KEYS, CACHE_LABELS, clearCache, getSetting, listCache, planClearCache, setSetting, testAi, unsetSetting,
@@ -20,8 +20,18 @@ const NoteLine = ({ note }: { note: Note }) => note && <p className={'account-no
 
 type AiForm = Record<(typeof AI_KEYS)[number], string> & { key: string };
 
-/** The AI model API of the insights (`ai_model_api_*`, `ai_insight_enabled`), and `insight test`. */
-export function AiSetting({ profile, onSaved }: { profile: Profile | undefined; onSaved(): void }) {
+/**
+ * The AI model API of the insights (`ai_model_api_*`, `ai_insight_enabled`), and `insight test`. Insights come by
+ * themselves only while weflow serve also runs the insight engine, a startup option: the way there is beside the switch.
+ */
+export function AiSetting({ profile, engine, onSaved, onServe }: {
+  profile: Profile | undefined;
+  /** Whether weflow serve runs the insight engine, when it says. */
+  engine: boolean | undefined;
+  onSaved(): void;
+  /** Open the startup options, where the engine is turned on. */
+  onServe(): void;
+}) {
   const [saved, setSaved] = useState<AiForm | null>(null);
   const [form, setForm] = useState<AiForm | null>(null);
   const [busy, setBusy] = useState<'save' | 'test' | null>(null);
@@ -69,9 +79,14 @@ export function AiSetting({ profile, onSaved }: { profile: Profile | undefined; 
 
   if (!form) return <SettingsGroup>{note ? <NoteLine note={note} /> : <GridSkeleton label={t('正在读取 AI 设置')} cells={4} />}</SettingsGroup>;
   return <form className="ai-form" onSubmit={save}>
-    <SettingsGroup>
+    <SettingsGroup title={t('自动生成')} note={t('这里的开关和「启动选项」里的灵感引擎都打开时才自动生成；默认只处理会话名单 aiInsightFilterList 里的会话，名单为空时不生成。')}>
       <SettingRow name={t('开启 AI 见解')} text={t('关闭时，见解引擎和 insight scan 都不生成见解；测试连接和手动生成不受影响。')}>
         <Toggle label={t('开启 AI 见解')} checked={form.ai_insight_enabled === 'true'} onChange={on => set('ai_insight_enabled', on ? 'true' : 'false')} />
+      </SettingRow>
+      <SettingRow name={t('灵感引擎')} text={engine === undefined
+        ? t('在「启动选项」里打开「运行灵感引擎」，重启 weflow serve 后生效。')
+        : engine ? t('weflow serve 正在运行灵感引擎。') : t('weflow serve 没有运行灵感引擎：在「启动选项」里打开，重启后生效。')}>
+        <button type="button" className="secondary-button" onClick={onServe}>{t('前往启动选项')}<ArrowRight size={12} /></button>
       </SettingRow>
     </SettingsGroup>
     <SettingsGroup title={t('模型接口')} note={t('API Key 只保存在服务端，网页只知道它是否已设置。')}

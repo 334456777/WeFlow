@@ -2,8 +2,8 @@
 // line does not give it, from the next start of the server. Shown by subject (#776), saved together from the bar under
 // them.
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
-import { CircleNotch } from '@phosphor-icons/react';
+import type { FormEvent, ReactNode } from 'react';
+import { ArrowRight, CircleNotch } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { getSetting, setSetting, unsetSetting } from '../api/settings';
 import { GridSkeleton } from '../Skeleton';
@@ -37,7 +37,8 @@ const wholeNumber = (text: string) => !text.trim() || (/^\d+$/.test(text.trim())
 /** A listen address only this machine reaches. */
 const loopback = (host: string) => !host || host === 'localhost' || host.startsWith('127.') || host === '::1' || host === '[::1]';
 
-export function ServeOptions() {
+/** `onAi` opens the AI insights, the other half of what makes insights come by themselves. */
+export function ServeOptions({ onAi }: { onAi(): void }) {
   const [saved, setSaved] = useState<Form | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,10 +89,11 @@ export function ServeOptions() {
   const number = (n: (typeof NUMBERS)[number]) => <label key={n.key} className="console-field"><span className="console-field-name">{t(n.label)}</span>
     <input className="console-input" type="text" inputMode="numeric" placeholder={t(n.fallback)} value={form[n.key]} onChange={e => set(n.key, e.target.value)} />
     {bad.includes(n.key) && <small className="setting-warning">{t('要填 1 到 65535 的整数。')}</small>}</label>;
-  const switchRow = (s: (typeof SWITCHES)[number]) => {
+  const switchRow = (s: (typeof SWITCHES)[number], text?: string, more?: ReactNode) => {
     const on = form[s.key] ? form[s.key] === 'true' : s.fallback;
     // the server's default is saved as nothing
-    return <SettingRow key={s.key} name={t(s.label)}>
+    return <SettingRow key={s.key} name={t(s.label)} text={text}>
+      {more}
       <Toggle label={t(s.label)} checked={on} onChange={checked => set(s.key, checked === s.fallback ? '' : String(checked))} />
     </SettingRow>;
   };
@@ -109,9 +111,10 @@ export function ServeOptions() {
     <SettingsGroup title={t('并发')}>
       <div className="settings-fields">{limits.map(number)}</div>
     </SettingsGroup>
-    <SettingsGroup title={t('启动与日志')}>{[openBrowser, logRequests].map(switchRow)}</SettingsGroup>
+    <SettingsGroup title={t('启动与日志')}>{switchRow(openBrowser)}{switchRow(logRequests)}</SettingsGroup>
     <SettingsGroup title={t('功能')}>
-      {switchRow(insight)}
+      {switchRow(insight, t('在后台自动生成见解；还要在「AI 见解」里开启并设置模型接口。'),
+        <button type="button" className="secondary-button" onClick={onAi}>{t('前往 AI 见解')}<ArrowRight size={12} /></button>)}
       {switchRow(imageDownload)}
       <label className="console-field"><span className="console-field-name">{t('自动下载原图的会话')}</span>
         <input className="console-input" type="text" spellCheck={false} placeholder={t('会话 ID，用逗号分隔')} value={form.autoDownloadWhitelist} onChange={e => set('autoDownloadWhitelist', e.target.value)} />
