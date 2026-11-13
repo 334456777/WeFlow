@@ -5,7 +5,7 @@
   max-width: min(960px + var(--preview-room-x) - 32px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
 .preview-dialog::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
 .preview-dialog[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
-.preview-content { overflow: hidden; border-radius: var(--radius-2xl); background: var(--surface); box-shadow: var(--neu-raised-overlay); animation: dialog-in var(--spring-overlay) both; }
+.preview-content { overflow: hidden; border-radius: var(--radius-2xl); background: var(--surface); box-shadow: var(--neu-raised-overlay); animation: dialog-in var(--duration-base) var(--ease-out) both; }
 .preview-dialog[data-state='closing'] .preview-content { animation: dialog-out var(--duration-exit) var(--ease-out) both; }
 /* The picture flying out of its thumbnail into the preview and back (#194): the frame grows from the thumbnail's
    shape to the picture's, the picture filling it as it goes; the backdrop and the preview's bar fade meanwhile. */

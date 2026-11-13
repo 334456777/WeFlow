@@ -162,7 +162,7 @@
 .setup-content {
   max-height: calc(100dvh - 48px); overflow: auto; padding: var(--space-4) var(--space-5) var(--space-5);
   border-radius: var(--radius-2xl); background: var(--surface); box-shadow: var(--neu-raised-overlay);
-  animation: dialog-in var(--spring-overlay) both;
+  animation: dialog-in var(--duration-base) var(--ease-out) both;
 }
 .setup-dialog[data-state='closing'] .setup-content { animation: dialog-out var(--duration-exit) var(--ease-out) both; }
 .setup-content header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
