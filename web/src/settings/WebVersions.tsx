@@ -1,11 +1,13 @@
 // The WebUI versions in the settings (#406): those kept on the server's machine, the published ones once asked for,
 // picking one (the page reloads into it when the server shows it at once) and removing the old ones.
 import { useEffect, useState } from 'react';
-import { ArrowsClockwise, CircleNotch, Plugs, Trash } from '@phosphor-icons/react';
+import type { ReactNode } from 'react';
+import { ArrowsClockwise, CircleNotch, Trash } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { WEB, type Health } from '../api/backend';
 import { listKept, listPublished, pickVersion, pruneVersions, shownVersion, type KeptVersion, type PublishedVersion } from '../api/webVersions';
 import { formatSize } from '../jobs/TaskCenter';
+import { SettingRow, SettingsGroup } from './layout';
 import { t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
@@ -110,34 +112,40 @@ export function WebVersions({ health, onReload = () => window.location.reload() 
   const list = kept ? rows(kept, published) : [];
   const latest = newest(published);
   const shown = all ? list : list.slice(0, FIRST);
-  return <div className="setting-row setting-accounts"><div>
-    <div className="web-versions-head"><h2>{t('网页版本')}</h2><span className="source-name"><Plugs size={14} />{WEB.version}</span></div>
-    <p>{t('需要 API {apiVersion}，weflow {minBackendVersion} 或更新的版本。网页和 weflow 分开发布，可以在这里换成其他版本。', { apiVersion: WEB.apiVersion, minBackendVersion: WEB.minBackendVersion })}</p>
-    {kept && list.length > 0 && <ul className="cache-list" aria-label={t('网页版本')}>
-      {shown.map(row => {
-        const current = row.version === WEB.version;
-        const unsuitable = why(row, health);
-        const tags = [
-          current && t('正在使用'),
-          !current && row.kept?.picked && t('已选定'),
-          row.version === latest && t('最新'),
-          row.kept ? t('已下载') : row.published && formatSize(row.published.size),
-        ].filter(Boolean).join(' · ');
-        return <li key={row.version}>
-          <span className="account-copy"><strong className="num">{row.version}</strong>
-            <span className="cache-text">{unsuitable ?? tags}</span></span>
-          {!current && !unsuitable && <button type="button" className="secondary-button" disabled={busy !== null} aria-label={t('换成 {version}', { version: row.version })} onClick={() => pick(row.version)}>
-            {busy === 'pick:' + row.version && <CircleNotch size={12} className="spin" />}{t('换上')}</button>}
-        </li>;
-      })}
-    </ul>}
-    {list.length > FIRST && <button type="button" className="secondary-button web-versions-more" onClick={() => setAll(v => !v)}>{all ? t('收起') : t('显示全部 {n} 个版本', { n: list.length })}</button>}
-    <div className="web-versions-actions">
+  return <>
+    <VersionInUse>
       <button type="button" className="secondary-button" disabled={busy !== null || !kept} onClick={check}>
         {busy === 'check' ? <CircleNotch size={12} className="spin" /> : <ArrowsClockwise size={12} />}{t('检查更新')}</button>
-      <button type="button" className="secondary-button" disabled={busy !== null || !kept} onClick={prune}>
-        {busy === 'prune' ? <CircleNotch size={12} className="spin" /> : <Trash size={12} />}{t('清理旧版本')}</button>
-    </div>
-    {note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
-  </div></div>;
+    </VersionInUse>
+    <SettingsGroup title={t('可以换上的版本')} note={kept && !list.length ? t('本机没有保存网页版本；检查更新后列出已发布的版本。') : t('本机保存的版本；检查更新后加上已发布的版本。')} actions={<button type="button" className="secondary-button" disabled={busy !== null || !kept} onClick={prune}>
+      {busy === 'prune' ? <CircleNotch size={12} className="spin" /> : <Trash size={12} />}{t('清理旧版本')}</button>}>
+      {kept && list.length > 0 && <ul className="cache-list" aria-label={t('网页版本')}>
+        {shown.map(row => {
+          const current = row.version === WEB.version;
+          const unsuitable = why(row, health);
+          const tags = [
+            current && t('正在使用'),
+            !current && row.kept?.picked && t('已选定'),
+            row.version === latest && t('最新'),
+            row.kept ? t('已下载') : row.published && formatSize(row.published.size),
+          ].filter(Boolean).join(' · ');
+          return <li key={row.version}>
+            <span className="account-copy"><strong className="num">{row.version}</strong>
+              <span className="cache-text">{unsuitable ?? tags}</span></span>
+            {!current && !unsuitable && <button type="button" className="secondary-button" disabled={busy !== null} aria-label={t('换成 {version}', { version: row.version })} onClick={() => pick(row.version)}>
+              {busy === 'pick:' + row.version && <CircleNotch size={12} className="spin" />}{t('换上')}</button>}
+          </li>;
+        })}
+      </ul>}
+      {list.length > FIRST && <button type="button" className="secondary-button web-versions-more" onClick={() => setAll(v => !v)}>{all ? t('收起') : t('显示全部 {n} 个版本', { n: list.length })}</button>}
+      {note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
+    </SettingsGroup>
+  </>;
+}
+
+/** The version this page is and what it needs; without the server, all there is to show. */
+export function VersionInUse({ children }: { children?: ReactNode }) {
+  return <SettingsGroup title={t('正在使用')}>
+    <SettingRow name={<span className="num">{WEB.version}</span>} text={t('需要 API {apiVersion}，weflow {minBackendVersion} 或更新的版本。', { apiVersion: WEB.apiVersion, minBackendVersion: WEB.minBackendVersion })}>{children}</SettingRow>
+  </SettingsGroup>;
 }

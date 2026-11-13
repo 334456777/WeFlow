@@ -1,5 +1,6 @@
 // The advanced part of the settings (#217): the CLI's own tools, each opened in the command console below them.
 import { ArrowRight } from '@phosphor-icons/react';
+import { SettingRow } from './layout';
 import { msg, t } from '../i18n';
 
 // shown through t()
@@ -10,10 +11,9 @@ export const TOOLS = [
 ] as const;
 
 export function AdvancedTools({ onOpen }: { onOpen(command: string): void }) {
-  return <ul className="advanced-tools">
-    {TOOLS.map(tool => <li key={tool.command}>
-      <div><h3>{t(tool.title)}</h3><p>{t(tool.text)}</p><code>weflow {tool.command}</code></div>
+  return <div className="advanced-tools">
+    {TOOLS.map(tool => <SettingRow key={tool.command} name={t(tool.title)} text={<>{t(tool.text)}<code>weflow {tool.command}</code></>}>
       <button type="button" className="secondary-button" onClick={() => onOpen(tool.command)}>{t('在控制台打开')}<ArrowRight size={12} /></button>
-    </li>)}
-  </ul>;
+    </SettingRow>)}
+  </div>;
 }

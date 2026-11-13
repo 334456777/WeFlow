@@ -2,7 +2,7 @@
 // cleared after showing what goes.
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Check, CircleNotch, Key, Plugs, Trash } from '@phosphor-icons/react';
+import { CircleNotch, Key, Plugs, Trash } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import {
   AI_KEYS, CACHE_LABELS, clearCache, getSetting, listCache, planClearCache, setSetting, testAi, unsetSetting,
@@ -11,6 +11,7 @@ import {
 import type { Profile } from '../api/setup';
 import { formatSize } from '../jobs/TaskCenter';
 import { GridSkeleton } from '../Skeleton';
+import { SaveBar, SettingRow, SettingsGroup, Toggle } from './layout';
 import { locale, t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
@@ -66,27 +67,32 @@ export function AiSetting({ profile, onSaved }: { profile: Profile | undefined; 
     finally { setBusy(null); }
   };
 
-  return <div className="setting-row setting-accounts"><div><h2>{t('AI 见解')}</h2><p>{t('灵感信箱用的 AI 模型接口。API Key 只保存在服务端，网页只知道它是否已设置。')}</p>
-    {!form ? (note ? <NoteLine note={note} /> : <GridSkeleton label={t('正在读取 AI 设置')} cells={4} />) : <form className="ai-form" onSubmit={save}>
-      <label className="console-field"><span className="console-field-name">{t('接口地址')}</span>
-        <input className="console-input" type="url" spellCheck={false} placeholder="https://api.example.com/v1" value={form.ai_model_api_base_url} onChange={e => set('ai_model_api_base_url', e.target.value)} /></label>
-      <label className="console-field"><span className="console-field-name">{t('模型')}</span>
-        <input className="console-input" type="text" spellCheck={false} placeholder={t('模型名称')} value={form.ai_model_api_model} onChange={e => set('ai_model_api_model', e.target.value)} /></label>
-      <label className="console-field"><span className="console-field-name">API Key</span>
-        <span className="token-input"><Key size={16} aria-hidden="true" /><input type="password" autoComplete="off" spellCheck={false} aria-label="API Key"
-          placeholder={profile?.aiKey ? t('已设置；留空则不修改') : t('还没有设置')} value={form.key} onChange={e => set('key', e.target.value)} /></span></label>
-      <label className="console-field"><span className="console-field-name">{t('单次回复的最多 token')}</span>
-        <input className="console-input" type="text" inputMode="numeric" placeholder={t('默认')} value={form.ai_model_api_max_tokens} onChange={e => set('ai_model_api_max_tokens', e.target.value)} />
-        {tokensBad && <small className="setting-warning">{t('要填整数。')}</small>}</label>
-      <label className="checkbox ai-enabled"><input type="checkbox" aria-label={t('开启 AI 见解')} checked={form.ai_insight_enabled === 'true'} onChange={e => set('ai_insight_enabled', e.target.checked ? 'true' : 'false')} />
-        <span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('开启 AI 见解')}</span></label>
-      <div className="ai-actions">
-        <button type="button" className="secondary-button" disabled={busy !== null || changed} title={changed ? t('先保存，再用保存的设置测试') : undefined} onClick={test}>{busy === 'test' ? <CircleNotch size={12} className="spin" /> : <Plugs size={14} />}{t('测试连接')}</button>
-        <button type="submit" className="primary-button" disabled={busy !== null || !changed || tokensBad}>{busy === 'save' ? <CircleNotch size={14} className="spin" /> : null}{t('保存')}</button>
+  if (!form) return <SettingsGroup>{note ? <NoteLine note={note} /> : <GridSkeleton label={t('正在读取 AI 设置')} cells={4} />}</SettingsGroup>;
+  return <form className="ai-form" onSubmit={save}>
+    <SettingsGroup>
+      <SettingRow name={t('开启 AI 见解')} text={t('关闭时，见解引擎和 insight scan 都不生成见解；测试连接和手动生成不受影响。')}>
+        <Toggle label={t('开启 AI 见解')} checked={form.ai_insight_enabled === 'true'} onChange={on => set('ai_insight_enabled', on ? 'true' : 'false')} />
+      </SettingRow>
+    </SettingsGroup>
+    <SettingsGroup title={t('模型接口')} note={t('API Key 只保存在服务端，网页只知道它是否已设置。')}
+      actions={<button type="button" className="secondary-button" disabled={busy !== null || changed} title={changed ? t('先保存，再用保存的设置测试') : undefined} onClick={test}>{busy === 'test' ? <CircleNotch size={12} className="spin" /> : <Plugs size={14} />}{t('测试连接')}</button>}>
+      <div className="settings-fields">
+        <label className="console-field"><span className="console-field-name">{t('接口地址')}</span>
+          <input className="console-input" type="url" spellCheck={false} placeholder="https://api.example.com/v1" value={form.ai_model_api_base_url} onChange={e => set('ai_model_api_base_url', e.target.value)} /></label>
+        <label className="console-field"><span className="console-field-name">{t('模型')}</span>
+          <input className="console-input" type="text" spellCheck={false} placeholder={t('模型名称')} value={form.ai_model_api_model} onChange={e => set('ai_model_api_model', e.target.value)} /></label>
+        <label className="console-field"><span className="console-field-name">API Key</span>
+          <span className="token-input"><Key size={16} aria-hidden="true" /><input type="password" autoComplete="off" spellCheck={false} aria-label="API Key"
+            placeholder={profile?.aiKey ? t('已设置；留空则不修改') : t('还没有设置')} value={form.key} onChange={e => set('key', e.target.value)} /></span></label>
+        <label className="console-field"><span className="console-field-name">{t('单次回复的最多 token')}</span>
+          <input className="console-input" type="text" inputMode="numeric" placeholder={t('默认')} value={form.ai_model_api_max_tokens} onChange={e => set('ai_model_api_max_tokens', e.target.value)} />
+          {tokensBad && <small className="setting-warning">{t('要填整数。')}</small>}</label>
       </div>
-      <NoteLine note={note} />
-    </form>}
-  </div></div>;
+    </SettingsGroup>
+    <SaveBar note={note ? <NoteLine note={note} /> : changed && <p className="account-note">{t('有未保存的修改。')}</p>}>
+      <button type="submit" className="primary-button" disabled={busy !== null || !changed || tokensBad}>{busy === 'save' ? <CircleNotch size={14} className="spin" /> : null}{t('保存')}</button>
+    </SaveBar>
+  </form>;
 }
 
 /** `cache list`, and `cache clear --<part>` after `--dry-run` showed what goes. */
@@ -127,9 +133,7 @@ export function CacheSetting() {
   };
   const total = parts?.reduce((sum, p) => sum + p.bytes, 0) ?? 0;
 
-  return <div className="setting-row setting-accounts"><div><h2>{t('缓存')}</h2><p>{parts
-      ? t('WeFlow 为读得更快而保存的文件，共 {size}。清理不会动微信自己的文件，需要时会重新生成。', { size: formatSize(total) })
-      : t('WeFlow 为读得更快而保存的文件。清理不会动微信自己的文件，需要时会重新生成。')}</p>
+  return <SettingsGroup title={t('缓存的文件')} note={parts && t('共 {size}', { size: formatSize(total) })}>
     {!parts ? <GridSkeleton label={t('正在读取缓存')} cells={6} /> : <ul className="cache-list">
       {parts.map(p => <li key={p.part}>
         <span className="account-copy"><strong>{CACHE_LABELS[p.part] ? t(CACHE_LABELS[p.part].title) : p.part}</strong><span className="cache-text">{CACHE_LABELS[p.part] && t(CACHE_LABELS[p.part].text)}</span></span>
@@ -141,7 +145,7 @@ export function CacheSetting() {
       </li>)}
     </ul>}
     {noted === null && <NoteLine note={note} />}
-  </div></div>;
+  </SettingsGroup>;
 }
 
 /** What `cache clear --dry-run` says would go, under the row of its part, with the way to go on. */

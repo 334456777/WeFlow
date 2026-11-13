@@ -36,8 +36,10 @@ export function ConnectedList({ backend, offline, children }: { backend: Backend
       : <div className="session-pane"><p className="session-message">{offline}</p></div>;
 }
 
-export function BrowserPanel({ label, detail, onBack, list, back, title, paneLabel, pane, children }: {
+export function BrowserPanel({ label, className, detail, onBack, list, back, title, paneLabel, pane, children }: {
   label: string;
+  /** The page's own class, for the width of its list and the like. */
+  className?: string;
   /** On a phone, the detail side is shown. */
   detail: boolean;
   onBack(): void;
@@ -51,7 +53,7 @@ export function BrowserPanel({ label, detail, onBack, list, back, title, paneLab
 }) {
   const own = useRef<HTMLDivElement>(null);
   const ref = pane ?? own;
-  return <section className={'panel browser-panel' + (detail ? ' show-detail' : '')} aria-label={label}>
+  return <section className={'panel browser-panel' + (className ? ' ' + className : '') + (detail ? ' show-detail' : '')} aria-label={label}>
     {list}
     <MobileBar label={back} title={title} onBack={onBack} />
     <div ref={ref} className="message-pane scroll-area" aria-label={paneLabel}>{children}</div>

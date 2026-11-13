@@ -629,7 +629,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .settings-heading { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
 .settings-heading h1 { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); }
 .muted { color: var(--fg-muted); font-size: var(--text-sm); }
-.source-name.warning, .setting-row p.setting-warning, .card-note.setting-warning { color: var(--state-danger); }
+.source-name.warning, .card-note.setting-warning { color: var(--state-danger); }
 /* Accounts (#215): the profiles, raised rows with the current one inset; what clearing removes, shown before it asks. */
 .accounts { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
 .account { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-raised-sm); }

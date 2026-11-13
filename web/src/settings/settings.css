@@ -1,75 +1,112 @@
-/* Settings: the rows of the page, the token and the accounts, the AI model and the cache, the serve options, the
-   WebUI versions and the advanced tools. */
+/* Settings (#776): the sections listed beside the one open; a section is groups of rows, each group raised. The token
+   and the accounts, the AI model and the cache, the serve options, the WebUI versions and the advanced tools fill them. */
 .status-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--state-idle); transition: background-color var(--duration-base) var(--ease-glow); }
 .status-dot.exporting { background: var(--state-busy); animation: pulse var(--loop-pulse) ease-in-out infinite; }
 
 .status-dot.done { background: var(--state-ok); }
 .status-dot.error { background: var(--state-danger); }
 
-/* A row with a wide control: on a narrow screen the control goes under its text instead of squeezing it. */
-.setting-choice { flex-wrap: wrap; }
-.setting-choice > div:first-child { flex: 1 1 240px; }
+/* The list of the sections: the page's title over them, a caption over each group of them, and rows as the lists of
+   the other pages have them, an icon in the place of the avatar. */
+.browser-panel.settings-browser { --list-width: 232px; }
+.settings-nav-head { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-2); padding: var(--space-5) var(--space-4) var(--space-2) var(--space-5); }
+.settings-nav-head h1 { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); }
+.conversation-list.settings-nav { flex: 1; height: auto; min-height: 0; overflow: auto; }
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-group + .settings-nav-group { margin-top: var(--space-2); }
+.settings-nav-caption { padding: var(--space-2) var(--space-3) var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); font-weight: var(--weight-medium); }
+.conversation-row.settings-nav-row { min-height: 52px; }
+.settings-nav-row .conversation-name { font-size: var(--text-sm); }
+.settings-nav-icon {
+  display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 32px; height: 32px;
+  border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted);
+  transition: color var(--duration-hover) ease;
+}
+.settings-nav-row.active .settings-nav-icon { color: var(--fg); }
+/* a section of the server while there is none */
+.settings-nav-row.idle .conversation-preview { color: var(--fg-subtle); }
+
+/* A section: its heading, then its groups. */
+.settings-section { display: flex; flex-direction: column; gap: var(--space-4); max-width: 680px; padding: var(--space-2) 0 var(--space-3); animation: content-in var(--duration-base) var(--ease-out); }
+.settings-section-head h2 { font-size: var(--text-lg); line-height: var(--leading-lg); font-weight: var(--weight-semibold); }
+.settings-section-head p { margin-top: 2px; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.settings-section .setting-warning { color: var(--state-danger); font-size: var(--text-xs); line-height: var(--leading-xs); }
+
+/* A group: rows on one subject, raised; its title a small label over them, its buttons beside it. */
+.settings-group { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
+.settings-group-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control-sm); padding-bottom: var(--space-1); }
+.settings-group-head h3 { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); font-weight: var(--weight-semibold); }
+.settings-group-head p { color: var(--fg-subtle); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.settings-group-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+.settings-group.danger .settings-group-head h3, .settings-group.danger .secondary-button:not(:disabled) { color: var(--state-danger); }
+
+/* A row: the setting's name and what it does, its control beside them. */
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); min-height: 44px; padding: var(--space-2) 0; }
+.setting-copy { flex: 1; min-width: 0; }
+.setting-copy h4 { font-size: var(--text-sm); line-height: var(--leading-sm); font-weight: var(--weight-medium); }
+.setting-copy p { margin-top: 2px; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.setting-control { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-2); }
+/* a wide control goes under its text when the room is short, instead of squeezing it */
+.setting-row.wide { flex-wrap: wrap; }
+.setting-row.wide > .setting-copy { flex: 1 1 240px; }
+.setting-row.wide > .setting-control { flex-shrink: 1; max-width: 100%; }
 .theme-group { width: 240px; max-width: 100%; }
-
-.setting-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); max-width: 720px; padding: var(--space-4) 0; }
-.setting-row h2 { font-size: var(--text-sm); font-weight: var(--weight-medium); }
-
-.setting-row p { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.settings-state { display: inline-flex; align-items: center; gap: var(--space-2); }
 .source-name { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; }
 
-.setting-row p + p { margin-top: var(--space-1); }
-/* The token (#214): typed in a hollow field, never shown back. */
-.setting-token > div { flex: 1; min-width: 0; }
-.setting-accounts > div { flex: 1; min-width: 0; }
+/* A form of several groups: their fields two to a line where they fit, and the bar that saves them, held at the
+   bottom of the pane while it scrolls. */
+.settings-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3) var(--space-4); padding: var(--space-1) 0 var(--space-2); }
+.ai-form, .serve-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.ai-form .console-field, .serve-form .console-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.serve-form .settings-group > .console-field { padding: var(--space-2) 0; }
+.ai-form .console-field-name, .serve-form .console-field-name { color: var(--fg-muted); font-size: var(--text-xs); }
+.ai-form .console-input, .serve-form .console-input {
+  width: 100%; height: var(--control-md); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: var(--neu-inset); color: var(--fg); font-size: var(--text-sm);
+}
+.ai-form .console-input:focus-visible, .serve-form .console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* held into the pane's padding below it, a little above its edge, so little of what scrolls under it shows */
+.settings-save {
+  position: sticky; bottom: calc(var(--space-2) - var(--space-4)); z-index: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm);
+}
+.settings-save-note { flex: 1 1 200px; min-width: 0; color: var(--fg-muted); }
+.settings-save-actions { display: flex; gap: var(--space-2); margin-left: auto; }
+/* a phone's pane has less padding below (app.css), and the bar over it names the section already */
+@media (max-width: 640px) {
+  .settings-save { bottom: 0; }
+  .settings-section-head h2 { display: none; }
+}
 
-.account-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-
+/* The token (#214) and the accounts (#215). */
+.settings-group .token-form { margin: var(--space-1) 0 var(--space-2); }
+.account-list { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-1) 0 var(--space-2); padding: 0; list-style: none; }
 .account-id { font-family: var(--font-mono); font-size: var(--text-xs); }
 .account-path { overflow: hidden; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .account-state { display: inline-flex; flex-shrink: 0; margin-left: auto; align-items: center; gap: 4px; color: var(--state-danger); font-size: var(--text-xs); }
 .account-state.ok { color: var(--fg-muted); }
 .account-state.ok svg { color: var(--state-ok); }
-.account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.account-actions .token-form { flex: 1 1 320px; margin-top: 0; }
-
-.account-note { font-size: var(--text-xs); }
-/* The AI model API and the cache (#213). */
-.ai-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3) var(--space-4); margin-top: var(--space-3); }
-.ai-form .console-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.ai-form .console-field-name { color: var(--fg-muted); font-size: var(--text-xs); }
-.ai-form .console-input { width: 100%; height: var(--control-md); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-inset); color: var(--fg); font-size: var(--text-sm); }
-.ai-form .console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.ai-form .ai-enabled, .ai-form .ai-actions, .ai-form .account-note { grid-column: 1 / -1; }
-/* the switches of the serve options (#406), a line each */
-.serve-form .checkbox { grid-column: 1 / -1; }
-.ai-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
-.cache-list { display: flex; flex-direction: column; margin: var(--space-2) 0 0; padding: 0; list-style: none; }
-
-/* a part's clear plan and the note on it take a line of their own under its row (#346) */
-.cache-list > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) 0; }
-.cache-list > li > .account-note { flex-basis: 100%; margin: 0; }
-.cache-list .account-copy strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
-
-.cache-size { flex-shrink: 0; margin-left: auto; color: var(--fg-muted); font-size: var(--text-xs); }
-/* the WebUI versions (#406): the version in use beside the heading, the actions under the list */
-.web-versions-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.web-versions-head h2 { margin: 0; }
-
-.web-versions-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
-.web-versions-more { margin-top: var(--space-1); }
-.cache-list > li > .secondary-button { margin-left: auto; }
-
+.token-form.account-add { max-width: none; }
+.account-note { font-size: var(--text-xs); line-height: var(--leading-xs); }
+.settings-group > .account-note { padding-bottom: var(--space-1); }
+.settings-group > .clear-plan { margin-bottom: var(--space-2); }
 .skeleton.line.account-skeleton-state { flex-shrink: 0; width: 72px; margin-left: auto; }
 
-.settings-subheading { max-width: 720px; margin: var(--space-6) 0 var(--space-3); font-size: var(--text-md); font-weight: var(--weight-semibold); }
-/* Advanced (#217): the CLI's own tools, each a row that opens it in the command console. */
-.advanced-tools { display: flex; flex-direction: column; max-width: 720px; margin: var(--space-3) 0 0; padding: 0; list-style: none; }
-.advanced-tools li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) 0; }
+/* The cache (#213) and the WebUI versions (#406): a part or a version a line, its size or state and its button at the
+   end; a part's clear plan and the note on it take a line of their own under it (#346). */
+.cache-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.cache-list > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: 44px; padding: var(--space-2) 0; }
+.cache-list > li > .account-note { flex-basis: 100%; margin: 0; }
+.cache-list .account-copy strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.cache-size { flex-shrink: 0; margin-left: auto; color: var(--fg-muted); font-size: var(--text-xs); }
+.cache-list > li > .secondary-button { margin-left: auto; }
+.web-versions-more { align-self: flex-start; margin: var(--space-1) 0 var(--space-2); }
 
-.advanced-tools h3 { font-size: var(--text-sm); font-weight: var(--weight-medium); }
-.advanced-tools p { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+/* Advanced (#217): the CLI's own tools, each a row that opens it in the command console. */
+.advanced-tools code { display: block; margin-top: 2px; color: var(--fg-subtle); }
 .advanced-tools code, .console-form code, .command-item code { font-family: var(--font-mono); font-size: var(--text-2xs); }
-.advanced-tools code { color: var(--fg-subtle); }
+.settings-group .command-console { padding: var(--space-1) 0 var(--space-2); }
 /* The command console: a searchable list of the commands by tag, and the form of the one chosen. */
 .command-console { display: flex; flex-direction: column; gap: var(--space-3); max-width: 720px; }
 .command-list { max-height: 320px; padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--neu-inset); }
