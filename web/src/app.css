@@ -373,6 +373,12 @@ time, .num { font-variant-numeric: tabular-nums; }
 .chip[aria-pressed='true'] { color: var(--fg); font-weight: var(--weight-semibold); box-shadow: var(--neu-inset); }
 /* held down, chosen or not, as deep as a chosen one held down, and shrunk like a button */
 .chip:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); transition-duration: var(--duration-micro); }
+/*
+ * A label set bold when chosen (Chip.tsx: a chip, a step of the setup) is as wide as its bold text all the time: the
+ * text again, bold, unseen and of no height, under it, so that choosing one doesn't push the ones after it along.
+ */
+.steady-label { display: inline-flex; flex-direction: column; align-items: center; }
+.steady-label::after { content: attr(data-label); height: 0; overflow: hidden; visibility: hidden; font-weight: var(--weight-semibold); }
 .payments { display: flex; flex-direction: column; gap: var(--space-3); max-width: 560px; margin: 0 auto; }
 .pay-card { display: flex; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
 .moments-filter { display: flex; flex-direction: column; gap: var(--space-1); }

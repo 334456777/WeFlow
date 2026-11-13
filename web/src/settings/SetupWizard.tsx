@@ -10,6 +10,7 @@ import {
   detectDirs, findAccounts, isDatabaseKey, saveImageKeys, serverPlatform, setConfig, testDatabase,
   type Account, type Profile,
 } from '../api/setup';
+import { SteadyLabel } from '../Chip';
 import { findJob, removeJob, runJob, type JobsState } from '../jobs/useJobs';
 import { msg, t } from '../i18n';
 
@@ -293,7 +294,7 @@ export function SetupWizard({ profile, jobs, onChanged, onDone, onClose }: {
     <ol className="setup-steps">
       {STEPS.map((s, i) => <li key={s.id}>
         <button type="button" className={'setup-step' + (done[s.id] ? ' passed' : '')} aria-current={s.id === step ? 'step' : undefined} onClick={() => setStep(s.id)}>
-          <span className="setup-step-number">{done[s.id] ? <Check size={12} weight="bold" aria-label={t('已完成')} /> : i + 1}</span>{t(s.label)}
+          <span className="setup-step-number">{done[s.id] ? <Check size={12} weight="bold" aria-label={t('已完成')} /> : i + 1}</span><SteadyLabel text={t(s.label)} />
         </button>
       </li>)}
     </ol>

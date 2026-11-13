@@ -137,6 +137,8 @@
 }
 .setup-step:hover { color: var(--fg); }
 .setup-step[aria-current='step'] { color: var(--fg); font-weight: var(--weight-semibold); box-shadow: var(--neu-inset); }
+/* the label keeps its gap to the number; the room its bold text needs goes on the right */
+.setup-step .steady-label { align-items: flex-start; }
 .setup-step:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); transition-duration: var(--duration-micro); }
 .setup-step-number {
   display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
