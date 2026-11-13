@@ -13,9 +13,9 @@
 
 ## 安装
 
-从 [Releases](https://github.com/334456777/WeFlow/releases/latest) 下载对应平台的压缩包，解压后把里面的 `weflow` 放进 `PATH` 中的目录。
+从 [Releases](https://github.com/334456777/WeFlow/releases/latest) 下载对应平台的压缩包，解压后就能使用里面的 `weflow`。
 
-也可以从源码构建并安装到 `PATH` 中的目录（macOS 和 Linux 为 `/usr/local/bin`，Windows 为 `%USERPROFILE%\.cargo\bin`，在 Git Bash 中运行）：
+也可以从源码构建并安装：
 
 ```bash
 make install

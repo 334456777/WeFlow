@@ -14,9 +14,9 @@
 
 ## Install
 
-Download the archive for your platform from [Releases](https://github.com/334456777/WeFlow/releases/latest) and unpack it to get `weflow`, then move it into a directory on your `PATH`.
+Download the archive for your platform from [Releases](https://github.com/334456777/WeFlow/releases/latest) and unpack it to get `weflow`.
 
-Or build from source and install it into a directory on your `PATH` (`/usr/local/bin` on macOS and Linux, `%USERPROFILE%\.cargo\bin` on Windows; run it from Git Bash on Windows):
+Or build from source and install:
 
 ```bash
 make install
