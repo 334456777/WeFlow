@@ -8,7 +8,7 @@
 
 /* The list of the sections: the page's title over them, a caption over each group of them, and rows as the lists of
    the other pages have them, an icon in the place of the avatar. */
-.browser-panel.settings-browser { --list-width: 232px; }
+.browser-panel.settings-browser { --list-width: 255px; }
 .settings-nav-head { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-2); padding: var(--space-5) var(--space-4) var(--space-2) var(--space-5); }
 .settings-nav-head h1 { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); }
 .conversation-list.settings-nav { flex: 1; height: auto; min-height: 0; overflow: auto; }
