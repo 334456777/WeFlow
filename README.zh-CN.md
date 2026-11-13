@@ -1,87 +1,83 @@
 # WeFlow CLI
 [English](README.md) | **简体中文**
 
-`weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 原生命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
+`weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
-- 默认输出便于阅读的文本（对齐的 `键: 值` 和表格；错误写到 stderr）。加 `--json` 则在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
-- 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
-- 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
-- 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
-- 所有命令的 HTTP 接口（`serve`）、消息推送、AI 见解。
-- `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](https://github.com/334456777/WeFlow/wiki/WebUI#网页)）。
-- `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`./weflow lang en|zh` 可保存选择。
+- 默认输出便于阅读的文本，加 `--json` 则输出 JSON，方便脚本处理。
+- 支持[会话与消息](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#会话与消息)、[联系人](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#联系人与群)、[朋友圈](https://github.com/334456777/WeFlow/wiki/朋友圈)、[私聊/群聊统计分析](https://github.com/334456777/WeFlow/wiki/统计与报告)、[年度报告](https://github.com/334456777/WeFlow/wiki/统计与报告#年度报告)与[双人报告](https://github.com/334456777/WeFlow/wiki/统计与报告#双人报告)。
+- 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`，也能导出图片、语音、视频和表情包。
+- `weflow serve` 提供所有命令的 HTTP 接口和网页界面（[WebUI](https://github.com/334456777/WeFlow/wiki/WebUI)）。
 
 ## 安装
 
 从 [Releases](https://github.com/334456777/WeFlow/releases/latest) 下载对应平台的压缩包，解压后就能使用里面的 `weflow`。
 
-也可以从源码构建：
+也可以从源码构建并安装：
 
 ```bash
-make release
-cp target/release/weflow .
-./weflow --help
+make install
+weflow --help
 ```
+
+卸载：`make uninstall`
 
 ## 切换中英文
 
 ```bash
-./weflow lang zh
+weflow lang zh
 ```
 
-语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文。完整的优先级见[命令参考](https://github.com/334456777/WeFlow/wiki/命令参考#语言)。
+语言设置及优先级见 Wiki 的[命令参考-语言](https://github.com/334456777/WeFlow/wiki/命令参考#语言)。
 
 ## 首次设置与导出（必要步骤）
 
-请**以管理员身份运行 PowerShell**，微信上至少登录过一次微信账号，发送过消息，打开过图片，支持微信 4.0 及以上版本。
+请**以管理员身份运行 PowerShell**。支持微信 4.0 及以上版本，需要至少登录过一次账号、发送过消息并打开过图片。
 
 1. 设置微信数据目录
 ```powershell
-./weflow db detect
-./weflow config set db_path "C:\Users\<你>\Documents\xwechat_files"
+weflow db detect
+weflow config set db_path "C:\Users\<你>\Documents\xwechat_files"
 ```
 > stdout: `db_path: C:\Users\<你>\Documents\xwechat_files`
 
 2. 设置你的 wxid
 ```powershell
-./weflow db wxid
-./weflow config set wxid wxid_xxxxxxxx
+weflow db wxid
+weflow config set wxid wxid_xxxxxxxx
 ```
 > stdout: `wxid: wxid_xxxxxxxx`
 
-3. 获取并保存数据库密钥（详细见下文）
+3. 获取并保存数据库密钥（[详细见下文](#key-db)）
 ```powershell
-./weflow key db --save
+weflow key db --save
 ```
 > stdout: `已获取数据库密钥，已保存到当前档案`
 
 4. 获取并保存图片密钥（目前只支持 Windows）
 ```powershell
-./weflow key image --save
+weflow key image --save
 ```
 > stdout: `已获取图片密钥，已保存到当前档案`
 
-不加 `--save` 时，命令输出密钥而不保存，可以用 `./weflow config set` 手动保存。
+不加 `--save` 时，命令输出密钥而不保存，可以用 `weflow config set` 手动保存。
 
 5. 确认数据库可以打开
 ```powershell
-./weflow db test
+weflow db test
 ```
 
 6. 尝试列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
 ```powershell
-./weflow chat sessions
-./weflow export messages <会话 ID> --format html --out chat.html
+weflow chat sessions
+weflow export messages <会话 ID> --format html --out chat.html
 ```
 
-需要导出为其他格式（`txt`、`json`、`excel`、`sql` 等）、按日期或发送者筛选、连同图片等媒体一起导出，见 Wiki 的[消息导出](https://github.com/334456777/WeFlow/wiki/消息导出#格式)。
+需要导出为其他格式（`txt`、`json`、`excel`、`sql` 等）、按日期或发送者筛选、连同图片等媒体一起导出，见 Wiki 的[消息导出-格式](https://github.com/334456777/WeFlow/wiki/消息导出#格式)。
 
-也可以运行 `./weflow serve`，在浏览器中打开网页界面。
-
-`./weflow config list` 查看已保存的配置，`./weflow config path` 查看配置文件的位置。
+`weflow config` 用于管理配置文件。
 
 ---
-**`weflow key db` 做了什么？** <br>数据库密钥在微信打开数据库时在内存中生成，从对应内存位置提取 `decrypt_key`:
+<a id="key-db"></a>**`weflow key db` 做了什么？** <br>数据库密钥在微信打开数据库时在内存中生成，命令从对应的内存位置提取 `decrypt_key`：
 
 ```
 检测到微信正在运行（pid 31912）请先完全退出微信：
@@ -93,15 +89,15 @@ cp target/release/weflow .
 等待密钥…（剩余 150 秒自动退出）
 已获取数据库密钥，已保存到当前档案
 ```
-`180 秒后自动退出` 可用 `./weflow key db --timeout <秒>` 调整
+180 秒的自动退出时间可以用 `weflow key db --timeout <秒>` 调整。
+
+完整的流程和各平台的实现见 Wiki 的[密钥获取-数据库密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥)。
 
 ## CLI 不支持的功能
 
-WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不会修改微信数据库~~有些锅我不背~~，会修改微信数据库的命令(`chat update-message`、`chat delete-message`、
-`chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)设计为占位符，另有一些 WeFlow 桌面端的功能缺失
-(语音转文字、弹窗等桌面进程功能)。
+WeFlow Rust CLI 以**只读**方式打开数据库，不会修改微信数据库；会修改数据库的命令只是占位符。WeFlow 桌面端的一些功能（语音转文字、弹窗等桌面进程功能）也没有实现。
 
-详细清单见[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)。
+详细清单见 Wiki 的[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)。
 
 ## 文档
 

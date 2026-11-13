@@ -125,19 +125,25 @@ fn relative_links_and_anchors_resolve() {
 }
 
 /// An ASCII comma next to a Han character, optionally with closing/opening brackets, emphasis marks or spaces in
-/// between (`(可选绑定), 也`).
+/// between (`(可选绑定), 也`). Link targets are left out, so an English link to a Chinese Wiki anchor
+/// (`[contacts](…#联系人与群), …`) is not a match, while a Chinese link text before a comma still is.
 #[test]
 fn commas_next_to_chinese_are_full_width() {
     let han = r"[\u{4e00}-\u{9fff}]";
     let after_han = Regex::new(&format!(r"{han}[)\]」”’*_ ]*,")).unwrap();
     let before_han = Regex::new(&format!(r",[(\[「“‘*_ ]*{han}")).unwrap();
+    let link_target = Regex::new(r"\]\([^)\s]*\)").unwrap();
     let mut files = doc_files();
     files.push(root().join("CLAUDE.md"));
     let mut problems = Vec::new();
     for file in files {
         let text = std::fs::read_to_string(&file).unwrap();
         for (i, line) in strip_code(&text).lines().enumerate() {
-            for m in after_han.find_iter(line).chain(before_han.find_iter(line)) {
+            let line = link_target.replace_all(line, "]");
+            for m in after_han
+                .find_iter(&line)
+                .chain(before_han.find_iter(&line))
+            {
                 problems.push(format!("{}:{}: \"{}\"", rel(&file), i + 1, m.as_str()));
             }
         }
