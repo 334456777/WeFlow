@@ -79,15 +79,6 @@ export function App() {
   const shell: Shell = { backend, connected, scope, sessions, sessionList, reloadSessions, jobs, profile, mobileDetail, setMobileDetail, openPreview, toast: setToast };
 
   const chat = useChatPage(shell, prefs, category);
-  // another page comes in as content does (#776), its panel kept when two pages share its shape
-  const mainRef = useRef<HTMLDivElement>(null);
-  const shownSection = useRef(section);
-  useEffect(() => {
-    if (shownSection.current === section) return;
-    shownSection.current = section;
-    const panel = mainRef.current?.querySelector(':scope > .panel');
-    if (panel) contentIn([panel]);
-  }, [section]);
   const selectSection = (value: Navigation) => {
     chat.leave(value !== 'settings');
     setSection(value); setMobileDetail(false);
@@ -127,6 +118,19 @@ export function App() {
   const cards = [exportCard, tasks, ...chatCards, ...Object.values(pages).filter(other => other !== chat).flatMap(other => other.cards ?? [])];
   const shownCards = (section === 'settings' ? pages[category] : page).shown ?? chat.shown;
   const hiddenCards = cards.map(card => card.id).filter(id => !shownCards.includes(id));
+
+  // another page comes in as content does (#776), its panel kept when two pages share its shape; the console with it
+  // when it shows other cards (not into the settings, which keep those of the records browsed before)
+  const mainRef = useRef<HTMLDivElement>(null);
+  const shownCardIds = shownCards.join(' ');
+  const shownPage = useRef({ section, cards: shownCardIds });
+  useEffect(() => {
+    const before = shownPage.current;
+    shownPage.current = { section, cards: shownCardIds };
+    if (before.section === section) return;
+    const panel = mainRef.current?.querySelector(':scope > .panel');
+    contentIn([panel, before.cards !== shownCardIds && consoleRef.current].filter((element): element is Element => Boolean(element)));
+  }, [section, shownCardIds]);
 
   return <main key={language} className={'workspace' + (fold.folded ? ' sidebar-collapsed' : '')}>
     <Sidebar section={section} onSelect={selectSection} fold={fold} backend={backend} realtime={prefs.realtime} />

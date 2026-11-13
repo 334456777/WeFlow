@@ -518,6 +518,30 @@ describe('App', () => {
     expect(text()).toContain('weflow web use');
   });
 
+  it('brings another page in, the console with it when its cards change, and another item\'s detail (#776)', async () => {
+    await renderWith(HEALTH);
+    const root = document.documentElement.style;
+    root.setProperty('--duration-base', '200ms');
+    const animated: Element[] = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (this: Element) { animated.push(this); return {} as Animation; };
+    onTestFinished(() => { Element.prototype.animate = animate; root.removeProperty('--duration-base'); });
+    const taken = () => animated.splice(0);
+    const consolePanel = document.querySelector('.console')!;
+
+    // into the settings the console keeps its cards: the panel alone
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    expect(taken()).toEqual([screen.getByRole('region', { name: '设置' })]);
+    // another section: the detail, not the panel
+    fireEvent.click(screen.getByRole('button', { name: /^外观与浏览/ }));
+    const detail = taken();
+    expect(detail.length).toBeGreaterThan(0);
+    expect(detail.every(element => element.classList.contains('settings-detail'))).toBe(true);
+    // a page of other cards: the panel and the console
+    fireEvent.click(screen.getByRole('button', { name: '通讯录' }));
+    expect(taken()).toEqual([screen.getByRole('region', { name: '通讯录' }), consolePanel]);
+  });
+
   it('keeps what was typed in a section while another is open, and reads a section as it first opens (#776)', async () => {
     const asked: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
