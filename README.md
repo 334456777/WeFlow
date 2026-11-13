@@ -10,24 +10,23 @@
 - Images (`.dat` decryption), voice (SILK → WAV), video lookup, and stickers.
 - Every command over HTTP (`serve`), message push, and AI insights.
 - A web interface (WebUI) that `serve` hosts under `/ui/` ([details](https://github.com/334456777/WeFlow/wiki/WebUI#网页)).
-- `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `./weflow lang en|zh` saves your choice.
+- `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `weflow lang en|zh` saves your choice.
 
 ## Install
 
-Download the archive for your platform from [Releases](https://github.com/334456777/WeFlow/releases/latest) and unpack it to get `weflow`.
+Download the archive for your platform from [Releases](https://github.com/334456777/WeFlow/releases/latest) and unpack it to get `weflow`, then move it into a directory on your `PATH`.
 
-Or build from source:
+Or build from source and install it into a directory on your `PATH` (`/usr/local/bin` on macOS and Linux, `%USERPROFILE%\.cargo\bin` on Windows; run it from Git Bash on Windows):
 
 ```bash
-make release
-cp target/release/weflow .
-./weflow --help
+make install
+weflow --help
 ```
 
 ## Switching between English and Chinese
 
 ```bash
-./weflow lang en
+weflow lang en
 ```
 
 The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English. For the full precedence order, see the [command reference](https://github.com/334456777/WeFlow/wiki/命令参考#语言).
@@ -39,8 +38,8 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 1. Set the WeChat data directory
 
 ```powershell
-./weflow db detect
-./weflow config set db_path "C:\Users\<you>\Documents\xwechat_files"
+weflow db detect
+weflow config set db_path "C:\Users\<you>\Documents\xwechat_files"
 ```
 
 > stdout: `db_path: C:\Users\<you>\Documents\xwechat_files`
@@ -48,8 +47,8 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 2. Set your wxid
 
 ```powershell
-./weflow db wxid
-./weflow config set wxid wxid_xxxxxxxx
+weflow db wxid
+weflow config set wxid wxid_xxxxxxxx
 ```
 
 > stdout: `wxid: wxid_xxxxxxxx`
@@ -57,7 +56,7 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 3. Get and save the database key (see details below)
 
 ```powershell
-./weflow key db --save
+weflow key db --save
 ```
 
 > stdout: `Database key obtained and saved to the active profile`
@@ -65,31 +64,31 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 4. Get and save the image keys (Windows only for now)
 
 ```powershell
-./weflow key image --save
+weflow key image --save
 ```
 
 > stdout: `Image keys obtained and saved to the active profile`
 
-Without `--save`, the commands print the keys instead of saving them, and you can save them yourself with `./weflow config set`.
+Without `--save`, the commands print the keys instead of saving them, and you can save them yourself with `weflow config set`.
 
 5. Check that the database opens
 
 ```powershell
-./weflow db test
+weflow db test
 ```
 
 6. Try to list the conversations and export one (a private chat's conversation ID is the other person's wxid; a group's is `xxx@chatroom`)
 
 ```powershell
-./weflow chat sessions
-./weflow export messages <conversation-id> --format html --out chat.html
+weflow chat sessions
+weflow export messages <conversation-id> --format html --out chat.html
 ```
 
 To export to other formats (`txt`, `json`, `excel`, `sql`, and more), filter by date or sender, or export images and other media along with the messages, see [Message export](https://github.com/334456777/WeFlow/wiki/消息导出#格式) on the Wiki.
 
-You can also run `./weflow serve` to open the web interface in your browser.
+You can also run `weflow serve` to open the web interface in your browser.
 
-`./weflow config list` shows the saved configuration, and `./weflow config path` shows where the configuration file lives.
+`weflow config list` shows the saved configuration, and `weflow config path` shows where the configuration file lives.
 
 ---
 
@@ -106,7 +105,7 @@ Waiting for the key... (exits automatically in 150 s)
 Database key obtained and saved to the active profile
 ```
 
-The 180-second automatic exit can be adjusted with `./weflow key db --timeout <seconds>`.
+The 180-second automatic exit can be adjusted with `weflow key db --timeout <seconds>`.
 
 ## What the CLI does not support
 

@@ -9,24 +9,23 @@
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
 - 所有命令的 HTTP 接口（`serve`）、消息推送、AI 见解。
 - `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](https://github.com/334456777/WeFlow/wiki/WebUI#网页)）。
-- `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`./weflow lang en|zh` 可保存选择。
+- `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`weflow lang en|zh` 可保存选择。
 
 ## 安装
 
-从 [Releases](https://github.com/334456777/WeFlow/releases/latest) 下载对应平台的压缩包，解压后就能使用里面的 `weflow`。
+从 [Releases](https://github.com/334456777/WeFlow/releases/latest) 下载对应平台的压缩包，解压后把里面的 `weflow` 放进 `PATH` 中的目录。
 
-也可以从源码构建：
+也可以从源码构建并安装到 `PATH` 中的目录（macOS 和 Linux 为 `/usr/local/bin`，Windows 为 `%USERPROFILE%\.cargo\bin`，在 Git Bash 中运行）：
 
 ```bash
-make release
-cp target/release/weflow .
-./weflow --help
+make install
+weflow --help
 ```
 
 ## 切换中英文
 
 ```bash
-./weflow lang zh
+weflow lang zh
 ```
 
 语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文。完整的优先级见[命令参考](https://github.com/334456777/WeFlow/wiki/命令参考#语言)。
@@ -37,48 +36,48 @@ cp target/release/weflow .
 
 1. 设置微信数据目录
 ```powershell
-./weflow db detect
-./weflow config set db_path "C:\Users\<你>\Documents\xwechat_files"
+weflow db detect
+weflow config set db_path "C:\Users\<你>\Documents\xwechat_files"
 ```
 > stdout: `db_path: C:\Users\<你>\Documents\xwechat_files`
 
 2. 设置你的 wxid
 ```powershell
-./weflow db wxid
-./weflow config set wxid wxid_xxxxxxxx
+weflow db wxid
+weflow config set wxid wxid_xxxxxxxx
 ```
 > stdout: `wxid: wxid_xxxxxxxx`
 
 3. 获取并保存数据库密钥（详细见下文）
 ```powershell
-./weflow key db --save
+weflow key db --save
 ```
 > stdout: `已获取数据库密钥，已保存到当前档案`
 
 4. 获取并保存图片密钥（目前只支持 Windows）
 ```powershell
-./weflow key image --save
+weflow key image --save
 ```
 > stdout: `已获取图片密钥，已保存到当前档案`
 
-不加 `--save` 时，命令输出密钥而不保存，可以用 `./weflow config set` 手动保存。
+不加 `--save` 时，命令输出密钥而不保存，可以用 `weflow config set` 手动保存。
 
 5. 确认数据库可以打开
 ```powershell
-./weflow db test
+weflow db test
 ```
 
 6. 尝试列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
 ```powershell
-./weflow chat sessions
-./weflow export messages <会话 ID> --format html --out chat.html
+weflow chat sessions
+weflow export messages <会话 ID> --format html --out chat.html
 ```
 
 需要导出为其他格式（`txt`、`json`、`excel`、`sql` 等）、按日期或发送者筛选、连同图片等媒体一起导出，见 Wiki 的[消息导出](https://github.com/334456777/WeFlow/wiki/消息导出#格式)。
 
-也可以运行 `./weflow serve`，在浏览器中打开网页界面。
+也可以运行 `weflow serve`，在浏览器中打开网页界面。
 
-`./weflow config list` 查看已保存的配置，`./weflow config path` 查看配置文件的位置。
+`weflow config list` 查看已保存的配置，`weflow config path` 查看配置文件的位置。
 
 ---
 **`weflow key db` 做了什么？** <br>数据库密钥在微信打开数据库时在内存中生成，从对应内存位置提取 `decrypt_key`:
@@ -93,7 +92,7 @@ cp target/release/weflow .
 等待密钥…（剩余 150 秒自动退出）
 已获取数据库密钥，已保存到当前档案
 ```
-`180 秒后自动退出` 可用 `./weflow key db --timeout <秒>` 调整
+`180 秒后自动退出` 可用 `weflow key db --timeout <秒>` 调整
 
 ## CLI 不支持的功能
 
