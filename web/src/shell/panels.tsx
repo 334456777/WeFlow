@@ -1,10 +1,11 @@
 // The two shapes of a page: one that scrolls as a whole under its heading, and one of two sides, a list and what is
 // picked from it, shown one at a time on a phone (#335).
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import type { Backend } from '../api/backend';
 import { MobileBar } from '../MobileNav';
+import { contentIn } from '../motion';
 import { Scrollbar } from '../Scrollbar';
 import { TokenPrompt } from '../TokenForm';
 
@@ -36,10 +37,12 @@ export function ConnectedList({ backend, offline, children }: { backend: Backend
       : <div className="session-pane"><p className="session-message">{offline}</p></div>;
 }
 
-export function BrowserPanel({ label, className, detail, onBack, list, back, title, paneLabel, pane, children }: {
+export function BrowserPanel({ label, className, detail, onBack, list, back, title, paneLabel, pane, detailKey, children }: {
   label: string;
   /** The page's own class, for the width of its list and the like. */
   className?: string;
+  /** What the detail shows (a conversation, a contact, a section): another one comes in as content does (#776). */
+  detailKey?: string | null;
   /** On a phone, the detail side is shown. */
   detail: boolean;
   onBack(): void;
@@ -53,6 +56,13 @@ export function BrowserPanel({ label, className, detail, onBack, list, back, tit
 }) {
   const own = useRef<HTMLDivElement>(null);
   const ref = pane ?? own;
+  // another page in this panel comes in whole (App), so only another item of the same page brings its detail in
+  const shown = useRef({ label, detailKey });
+  useEffect(() => {
+    const before = shown.current;
+    shown.current = { label, detailKey };
+    if (before.label === label && before.detailKey !== detailKey && ref.current) contentIn(ref.current.children);
+  }, [label, detailKey, ref]);
   return <section className={'panel browser-panel' + (className ? ' ' + className : '') + (detail ? ' show-detail' : '')} aria-label={label}>
     {list}
     <MobileBar label={back} title={title} onBack={onBack} />

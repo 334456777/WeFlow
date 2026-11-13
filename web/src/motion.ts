@@ -51,6 +51,21 @@ export function springTiming(name: SpringName, element: Element = document.docum
   return { duration: durationMs('--spring-' + name, element), easing: space < 0 ? 'linear' : value.slice(space + 1) };
 }
 
+/**
+ * Brings content in as `content-in` in app.css does (#776): from transparent and half `--enter-offset` lower, over
+ * `--duration-base` with `--ease-out`. For content that is not mounted anew, such as another page in the same panel or
+ * another item's detail in the same pane; nothing with reduced motion, where the tokens are 0.
+ */
+export function contentIn(elements: Iterable<Element>, root: Element = document.documentElement): void {
+  const duration = durationMs('--duration-base', root);
+  if (!duration) return;
+  const style = getComputedStyle(root);
+  const offset = style.getPropertyValue('--enter-offset').trim() || '0px';
+  const easing = style.getPropertyValue('--ease-out').trim() || 'ease-out';
+  const frames = [{ opacity: 0, transform: `translateY(calc(.5 * ${offset}))` }, { opacity: 1, transform: 'none' }];
+  for (const element of elements) element.animate?.(frames, { duration, easing });
+}
+
 /** How long a success mark, a notice or a located message stays marked. Kept with reduced motion. */
 export const FEEDBACK_MS = 2500;
 

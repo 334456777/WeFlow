@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
-import { durationMs, installSprings, springCss, springTiming, springs, usePresence } from './motion';
+import { contentIn, durationMs, installSprings, springCss, springTiming, springs, usePresence } from './motion';
 import type { SpringName } from './motion';
 
 afterEach(() => {
@@ -24,6 +24,27 @@ describe('durationMs', () => {
   it('reads the duration a spring token starts with', () => {
     document.documentElement.style.setProperty('--spring-settle', '500ms linear(0, 0.5, 1)');
     expect(durationMs('--spring-settle')).toBe(500);
+  });
+});
+
+describe('contentIn', () => {
+  it('brings elements in as content-in does, from the tokens, and does nothing when they are 0 (#776)', () => {
+    const element = document.createElement('div');
+    const animate = vi.fn();
+    element.animate = animate as unknown as Element['animate'];
+    const root = document.documentElement.style;
+    root.setProperty('--duration-base', '200ms');
+    root.setProperty('--enter-offset', '6px');
+    root.setProperty('--ease-out', 'cubic-bezier(.165, .84, .44, 1)');
+    contentIn([element]);
+    expect(animate).toHaveBeenCalledWith(
+      [{ opacity: 0, transform: 'translateY(calc(.5 * 6px))' }, { opacity: 1, transform: 'none' }],
+      { duration: 200, easing: 'cubic-bezier(.165, .84, .44, 1)' },
+    );
+    // reduced motion sets the durations to 0
+    root.setProperty('--duration-base', '0ms');
+    contentIn([element]);
+    expect(animate).toHaveBeenCalledTimes(1);
   });
 });
 

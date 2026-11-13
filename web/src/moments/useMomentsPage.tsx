@@ -31,7 +31,7 @@ export function useMomentsPage(shell: Shell, active: boolean): Page {
     },
   ];
   if (!live && !(active && backend.state === 'unauthorized')) return { cards };
-  const view = <BrowserPanel label={t('朋友圈浏览')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回发布者列表')} title={t('朋友圈')} paneLabel={t('朋友圈时间线')} pane={pane}
+  const view = <BrowserPanel label={t('朋友圈浏览')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回发布者列表')} title={t('朋友圈')} paneLabel={t('朋友圈时间线')} pane={pane} detailKey={filter.username}
     list={backend.state === 'unauthorized'
       ? <TokenPrompt />
       : <MomentPeople state={people} total={null} selected={filter.username} onRetry={reloadPeople}

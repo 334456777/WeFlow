@@ -20,7 +20,7 @@ import { useInsightsPage } from './insights/useInsightsPage';
 import { jobsSummary, TaskCenter } from './jobs/TaskCenter';
 import { useJobs } from './jobs/useJobs';
 import { useMomentsPage } from './moments/useMomentsPage';
-import { FEEDBACK_MS, usePresence } from './motion';
+import { contentIn, FEEDBACK_MS, usePresence } from './motion';
 import { usePaymentsPage } from './payments/usePaymentsPage';
 import { useReportsPage } from './reports/useReportsPage';
 import { useResourcesPage } from './resources/useResourcesPage';
@@ -79,6 +79,15 @@ export function App() {
   const shell: Shell = { backend, connected, scope, sessions, sessionList, reloadSessions, jobs, profile, mobileDetail, setMobileDetail, openPreview, toast: setToast };
 
   const chat = useChatPage(shell, prefs, category);
+  // another page comes in as content does (#776), its panel kept when two pages share its shape
+  const mainRef = useRef<HTMLDivElement>(null);
+  const shownSection = useRef(section);
+  useEffect(() => {
+    if (shownSection.current === section) return;
+    shownSection.current = section;
+    const panel = mainRef.current?.querySelector(':scope > .panel');
+    if (panel) contentIn([panel]);
+  }, [section]);
   const selectSection = (value: Navigation) => {
     chat.leave(value !== 'settings');
     setSection(value); setMobileDetail(false);
@@ -121,7 +130,7 @@ export function App() {
 
   return <main key={language} className={'workspace' + (fold.folded ? ' sidebar-collapsed' : '')}>
     <Sidebar section={section} onSelect={selectSection} fold={fold} backend={backend} realtime={prefs.realtime} />
-    <div className="main-area">
+    <div ref={mainRef} className="main-area">
       {page.view ?? chat.view}
       <section ref={consoleRef} className="console scroll-area" aria-label={t('操作控制台')}>
         <CardStack cards={cards} hidden={hiddenCards} storageKey="weflow.console" defaultClosed={['search', 'info', 'media']} label={t('操作控制台')} />

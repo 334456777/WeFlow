@@ -26,7 +26,7 @@ export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWit
     { id: 'insights-trigger', title: t('生成见解'), summary: name ?? '', content: <InsightTrigger session={filter.session} name={name} onDone={insights.reload} /> },
     { id: 'insights-clear', title: t('删除见解'), content: <InsightClear session={filter.session} name={name} count={count} onDone={insights.reload} /> },
   ];
-  const view = <BrowserPanel label={t('灵感信箱')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回联系人')} title={t('见解')} paneLabel={t('见解')}
+  const view = <BrowserPanel label={t('灵感信箱')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回联系人')} title={t('见解')} paneLabel={t('见解')} detailKey={filter.session}
     list={<ConnectedList backend={backend} offline={t('连接 weflow serve 后，可以在这里查看 AI 见解。')}>
       <InsightContacts state={insights.state} selected={filter.session} onRetry={insights.reload}
         keyword={filter.keyword} onKeyword={keyword => setFilter(f => ({ ...f, keyword }))}
