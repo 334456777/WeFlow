@@ -30,7 +30,7 @@ weflow --help
 weflow lang zh
 ```
 
-自动识别语言的优先级见[命令参考](https://github.com/334456777/WeFlow/wiki/命令参考#语言)。
+语言设置及优先级见 Wiki 的[命令参考](https://github.com/334456777/WeFlow/wiki/命令参考#语言)。
 
 ## 首次设置与导出（必要步骤）
 
