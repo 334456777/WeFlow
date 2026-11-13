@@ -250,6 +250,7 @@ ifeq ($(PLATFORM),windows)
 	@printf "$(GREEN)✓ 已安装到 $(INSTALL_DIR)/weflow.exe$(RESET)\n"
 else
 	@printf "$(BOLD)▶ 安装到 $(INSTALL_DIR)$(RESET)\n"
+	@sudo mkdir -p "$(INSTALL_DIR)"
 	@sudo cp "$(BIN)" "$(INSTALL_DIR)/weflow"
 	@sudo chmod +x "$(INSTALL_DIR)/weflow"
 	@printf "$(GREEN)✓ 已安装: $$(which weflow) — $$(weflow --version)$(RESET)\n"
