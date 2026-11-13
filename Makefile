@@ -256,11 +256,18 @@ else
 	@printf "$(GREEN)✓ 已安装: $$(which weflow) — $$(weflow --version)$(RESET)\n"
 endif
 
+# A missing binary is not an error; a binary that cannot be removed is, after rm's own message says why.
 uninstall:
 ifeq ($(PLATFORM),windows)
-	@rm -f "$(INSTALL_DIR)/weflow.exe" && printf "$(GREEN)✓ 已卸载$(RESET)\n" || printf "$(DIM)未找到已安装的 weflow$(RESET)\n"
+	@f="$(INSTALL_DIR)/weflow.exe"; \
+	if [ ! -e "$$f" ]; then printf "$(DIM)未找到已安装的 weflow：%s$(RESET)\n" "$$f"; \
+	elif rm -f "$$f"; then printf "$(GREEN)✓ 已卸载 %s$(RESET)\n" "$$f"; \
+	else printf "$(RED)✗ 卸载失败：%s$(RESET)\n" "$$f"; exit 1; fi
 else
-	@sudo rm -f "$(INSTALL_DIR)/weflow" && printf "$(GREEN)✓ 已卸载$(RESET)\n" || printf "$(DIM)未找到已安装的 weflow$(RESET)\n"
+	@f="$(INSTALL_DIR)/weflow"; \
+	if [ ! -e "$$f" ]; then printf "$(DIM)未找到已安装的 weflow：%s$(RESET)\n" "$$f"; \
+	elif sudo rm -f "$$f"; then printf "$(GREEN)✓ 已卸载 %s$(RESET)\n" "$$f"; \
+	else printf "$(RED)✗ 卸载失败：%s$(RESET)\n" "$$f"; exit 1; fi
 endif
 
 # ─────────────────────────────────────────────────────────────────────────────
