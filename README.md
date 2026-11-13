@@ -109,6 +109,8 @@ Database key obtained and saved to the active profile
 
 The 180-second automatic exit can be adjusted with `weflow key db --timeout <seconds>`.
 
+For the full flow and how it works on each platform, see [Key acquisition](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥) on the Wiki.
+
 ## What the CLI does not support
 
 The WeFlow Rust CLI ~~, since my skills aren't up to it,~~ opens databases **read-only** and never modifies WeChat databases ~~— I'm not taking the blame for that~~. Commands that would modify a database (`chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete`, and `sns delete`) are designed as placeholders. Some features of the WeFlow desktop app are also missing (desktop-process features such as voice-to-text and popups).

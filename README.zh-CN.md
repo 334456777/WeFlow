@@ -96,6 +96,8 @@ weflow export messages <会话 ID> --format html --out chat.html
 ```
 `180 秒后自动退出` 可用 `weflow key db --timeout <秒>` 调整
 
+完整的流程和各平台的实现见 Wiki 的[密钥获取](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥)。
+
 ## CLI 不支持的功能
 
 WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不会修改微信数据库~~有些锅我不背~~，会修改微信数据库的命令(`chat update-message`、`chat delete-message`、
