@@ -20,7 +20,7 @@ import { useInsightsPage } from './insights/useInsightsPage';
 import { jobsSummary, TaskCenter } from './jobs/TaskCenter';
 import { useJobs } from './jobs/useJobs';
 import { useMomentsPage } from './moments/useMomentsPage';
-import { FEEDBACK_MS, usePresence } from './motion';
+import { contentIn, FEEDBACK_MS, usePresence } from './motion';
 import { usePaymentsPage } from './payments/usePaymentsPage';
 import { useReportsPage } from './reports/useReportsPage';
 import { useResourcesPage } from './resources/useResourcesPage';
@@ -119,9 +119,22 @@ export function App() {
   const shownCards = (section === 'settings' ? pages[category] : page).shown ?? chat.shown;
   const hiddenCards = cards.map(card => card.id).filter(id => !shownCards.includes(id));
 
+  // another page comes in as content does (#776), its panel kept when two pages share its shape; the console with it
+  // when it shows other cards (not into the settings, which keep those of the records browsed before)
+  const mainRef = useRef<HTMLDivElement>(null);
+  const shownCardIds = shownCards.join(' ');
+  const shownPage = useRef({ section, cards: shownCardIds });
+  useEffect(() => {
+    const before = shownPage.current;
+    shownPage.current = { section, cards: shownCardIds };
+    if (before.section === section) return;
+    const panel = mainRef.current?.querySelector(':scope > .panel');
+    contentIn([panel, before.cards !== shownCardIds && consoleRef.current].filter((element): element is Element => Boolean(element)));
+  }, [section, shownCardIds]);
+
   return <main key={language} className={'workspace' + (fold.folded ? ' sidebar-collapsed' : '')}>
     <Sidebar section={section} onSelect={selectSection} fold={fold} backend={backend} realtime={prefs.realtime} />
-    <div className="main-area">
+    <div ref={mainRef} className="main-area">
       {page.view ?? chat.view}
       <section ref={consoleRef} className="console scroll-area" aria-label={t('操作控制台')}>
         <CardStack cards={cards} hidden={hiddenCards} storageKey="weflow.console" defaultClosed={['search', 'info', 'media']} label={t('操作控制台')} />

@@ -8,6 +8,9 @@ const labels: Record<Backend['state'], string> = {
   checking: msg('正在连接'), ready: msg('已连接'), offline: msg('未连接'), incompatible: msg('版本不兼容'), unauthorized: msg('需要令牌'),
 };
 
+/** The state in a word or two, as the sidebar shows it. */
+export const backendLabel = (backend: Backend) => t(labels[backend.state]);
+
 export function backendDetail(backend: Backend): string {
   switch (backend.state) {
     case 'checking': return t('正在检查 weflow serve。');
@@ -37,6 +40,6 @@ function useSteadyConnection(state: Backend['state']): boolean {
 export function Connection({ backend, realtime }: { backend: Backend; realtime: boolean }) {
   const steady = useSteadyConnection(backend.state);
   return <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}>
-    <span className="connection-dot" /><span className="connection-label">{backend.state === 'ready' && realtime ? t('实时') : t(labels[backend.state])}</span>
+    <span className="connection-dot" /><span className="connection-label">{backend.state === 'ready' && realtime ? t('实时') : backendLabel(backend)}</span>
   </div>;
 }

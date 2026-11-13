@@ -29,7 +29,7 @@ describe('settings', () => {
       if (url === '/insight/test') return json({ success: false, error: { code: 'runtime_error', message: 'HTTP 401 from the model API' } }, 500);
     });
     const onSaved = vi.fn();
-    render(<AiSetting profile={PROFILE} onSaved={onSaved} />);
+    render(<AiSetting profile={PROFILE} engine={false} onSaved={onSaved} onServe={() => {}} />);
     await act(async () => {});
     expect(calls.every(c => !c.url.includes('ai_model_api_key'))).toBe(true);
     expect((screen.getByLabelText('API Key') as HTMLInputElement).placeholder).toBe('已设置；留空则不修改');

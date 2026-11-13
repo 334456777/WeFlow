@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { CaretDown } from '@phosphor-icons/react';
-import { springTiming } from './motion';
+import { timing } from './motion';
 import { t } from './i18n';
 
 export interface Card {
@@ -108,7 +108,7 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
       held.offset = held.pointerY - held.grab - layoutTop;
       held.element.style.transform = 'translateY(' + String(held.offset) + 'px)';
     }
-    const settle = springTiming('settle');
+    const settle = timing('--duration-panel', '--ease-snap');
     for (const element of cardElements(container.current)) {
       const id = element.dataset.card!;
       const delta = (previous.tops.get(id) ?? 0) - element.getBoundingClientRect().top;
@@ -128,9 +128,9 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
     drag.current = null;
     if (!held?.active) return;
     setDragging(null);
-    // Settle into place on the settle spring.
+    // Settle into place on the snap curve.
     held.element.style.transform = '';
-    const settle = springTiming('settle');
+    const settle = timing('--duration-panel', '--ease-snap');
     if (settle.duration) held.element.animate?.([{ transform: 'translateY(' + String(held.offset) + 'px)' }, { transform: 'translateY(0)' }], settle);
   };
 

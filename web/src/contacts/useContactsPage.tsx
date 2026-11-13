@@ -30,7 +30,7 @@ export function useContactsPage(shell: Shell, active: boolean, chatWith: ChatWit
       content: <ContactsExport options={exportOptions} onChange={setExportOptions} ready={Boolean(contacts)} />,
     },
   ];
-  const view = <BrowserPanel label={t('通讯录')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回联系人列表')} title={contact?.displayName ?? t('联系人资料')} paneLabel={t('联系人资料')}
+  const view = <BrowserPanel label={t('通讯录')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回联系人列表')} title={contact?.displayName ?? t('联系人资料')} paneLabel={t('联系人资料')} detailKey={id}
     list={<ConnectedList backend={backend} offline={t('连接 weflow serve 后，可以在这里查看通讯录。')}>
       <ContactList state={state} kind={kind} onKind={setKind} selected={id} onRetry={reload}
         onSelect={username => { setId(username); setMobileDetail(true); }} />

@@ -269,7 +269,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
   const shown = ['export', 'tasks', 'search', 'info', 'media'].filter(id => !(selected.live && !liveSession && (id === 'info' || id === 'media')));
 
   const view = <BrowserPanel label={t('{category}记录浏览', { category: t(categoryLabels[category]) })} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)}
-    back={t('返回对话列表')} title={selected.live ? liveSession?.displayName ?? '' : selected.name} paneLabel={t('{name}的记录', { name: selected.name })} pane={paneRef}
+    back={t('返回对话列表')} title={selected.live ? liveSession?.displayName ?? '' : selected.name} paneLabel={t('{name}的记录', { name: selected.name })} pane={paneRef} detailKey={selected.id || null}
     list={category === 'chat'
       ? backend.state === 'unauthorized'
         ? <TokenPrompt />

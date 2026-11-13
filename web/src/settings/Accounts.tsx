@@ -1,11 +1,13 @@
 // The accounts of the settings (#215): each profile with its account and how far it is set up, switching to another,
-// adding one (then the setup), and clearing what WeFlow keeps of the current account, shown before it asks.
+// adding one (then the setup); and apart from them, as what cannot be undone (#776), clearing what WeFlow keeps of the
+// current account, shown before it asks.
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { CheckCircle, CircleNotch, Plus, Trash, Warning } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { clearAccount, planClearAccount, profileNameProblem, switchProfile, type ClearPlan, type Profile } from '../api/setup';
 import { formatSize } from '../jobs/TaskCenter';
+import { SettingRow, SettingsGroup } from './layout';
 import { t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
@@ -24,21 +26,23 @@ export function Accounts({ profiles, onChanged, onSetup }: {
   onSetup(): void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
-  const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
+  // shown under the group whose action it is about
+  const [note, setNote] = useState<{ text: string; error?: boolean; clearing?: boolean } | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [plan, setPlan] = useState<ClearPlan | null>(null);
   const current = profiles.find(p => p.current);
 
   const run = async (what: string, action: () => Promise<unknown>, done: string) => {
+    const clearing = what === 'clear';
     setBusy(what); setNote(null);
     try {
       await action();
-      setNote({ text: done });
+      setNote({ text: done, clearing });
       onChanged();
       return true;
     } catch (problem) {
-      setNote({ text: reason(problem, t('没有完成，请重试。')), error: true });
+      setNote({ text: reason(problem, t('没有完成，请重试。')), error: true, clearing });
       return false;
     } finally {
       setBusy(null);
@@ -58,53 +62,57 @@ export function Accounts({ profiles, onChanged, onSetup }: {
   const lookAtClearing = async () => {
     setBusy('plan'); setNote(null);
     try { setPlan(await planClearAccount()); }
-    catch (problem) { setNote({ text: reason(problem, t('读不到将要清除的内容。')), error: true }); }
+    catch (problem) { setNote({ text: reason(problem, t('读不到将要清除的内容。')), error: true, clearing: true }); }
     finally { setBusy(null); }
   };
   const clear = () => { void run('clear', clearAccount, t('已清除这个账号的数据，档案里的账号和密钥也已移除。')).then(ok => { if (ok) setPlan(null); }); };
+  const noteLine = note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>;
 
-  return <section className="accounts" aria-label={t('账号')}>
-    <ul className="account-list">
-      {profiles.map(p => <li key={p.name} className={'account' + (p.current ? ' current' : '')}>
-        <span className="account-copy">
-          <strong>{p.name}{p.current && <span className="badge">{t('当前')}</span>}</strong>
-          <span className="account-id">{p.wxid || t('未选择账号')}</span>
-          {p.dbPath && <span className="account-path" title={p.dbPath}>{p.dbPath}</span>}
-        </span>
-        <span className={'account-state' + (p.complete ? ' ok' : '')}>{p.complete ? <CheckCircle size={14} weight="fill" /> : <Warning size={14} />}{profileState(p)}</span>
-        {p.current
-          ? <button type="button" className="secondary-button" onClick={onSetup}>{t('配置向导')}</button>
-          : <button type="button" className="secondary-button" disabled={busy !== null} onClick={() => switchTo(p)}>{busy === 'switch:' + p.name ? <CircleNotch size={12} className="spin" /> : null}{t('切换')}</button>}
-      </li>)}
-    </ul>
+  return <>
+    <SettingsGroup title={t('配置档案')} actions={!adding && <button type="button" className="secondary-button" onClick={() => { setAdding(true); setPlan(null); }}><Plus size={14} />{t('添加账号')}</button>}>
+      <ul className="account-list">
+        {profiles.map(p => <li key={p.name} className={'account' + (p.current ? ' current' : '')}>
+          <span className="account-copy">
+            <strong>{p.name}{p.current && <span className="badge">{t('当前')}</span>}</strong>
+            <span className="account-id">{p.wxid || t('未选择账号')}</span>
+            {p.dbPath && <span className="account-path" title={p.dbPath}>{p.dbPath}</span>}
+          </span>
+          <span className={'account-state' + (p.complete ? ' ok' : '')}>{p.complete ? <CheckCircle size={14} weight="fill" /> : <Warning size={14} />}{profileState(p)}</span>
+          {p.current
+            ? <button type="button" className="secondary-button" onClick={onSetup}>{t('配置向导')}</button>
+            : <button type="button" className="secondary-button" disabled={busy !== null} onClick={() => switchTo(p)}>{busy === 'switch:' + p.name ? <CircleNotch size={12} className="spin" /> : null}{t('切换')}</button>}
+        </li>)}
+      </ul>
+      {adding && <form className="token-form account-add" onSubmit={add}>
+        <label className="token-input"><Plus size={16} aria-hidden="true" />
+          <input type="text" spellCheck={false} autoFocus aria-label={t('新档案的名称')} placeholder={t('新档案的名称，如 work')} value={name} onChange={event => setName(event.target.value)} />
+        </label>
+        <button type="submit" className="secondary-button" disabled={Boolean(problem) || busy !== null}>{t('添加并配置')}</button>
+        <button type="button" className="text-button" onClick={() => { setAdding(false); setName(''); }}>{t('取消')}</button>
+      </form>}
+      {adding && name.trim() && problem && <p className="setting-warning">{problem}</p>}
+      {!note?.clearing && noteLine}
+    </SettingsGroup>
 
-    <div className="account-actions">
-      {adding
-        ? <form className="token-form" onSubmit={add}>
-          <label className="token-input"><Plus size={16} aria-hidden="true" />
-            <input type="text" spellCheck={false} autoFocus aria-label={t('新档案的名称')} placeholder={t('新档案的名称，如 work')} value={name} onChange={event => setName(event.target.value)} />
-          </label>
-          <button type="submit" className="secondary-button" disabled={Boolean(problem) || busy !== null}>{t('添加并配置')}</button>
-          <button type="button" className="text-button" onClick={() => { setAdding(false); setName(''); }}>{t('取消')}</button>
-        </form>
-        : <button type="button" className="secondary-button" onClick={() => { setAdding(true); setPlan(null); }}><Plus size={14} />{t('添加账号')}</button>}
-      {!adding && current?.wxid && !plan && <button type="button" className="secondary-button" disabled={busy !== null} onClick={lookAtClearing}>
-        {busy === 'plan' ? <CircleNotch size={12} className="spin" /> : <Trash size={14} />}{t('清除账号数据')}</button>}
-    </div>
-    {adding && name.trim() && problem && <p className="setting-warning">{problem}</p>}
-
-    {plan && <div className="clear-plan" role="group" aria-label={t('将要清除的内容')}>
-      <p>{t('清除档案 {name} 的账号 {wxid}：删除 WeFlow 为它保存的以下文件（共 {bytes}），并从档案里移除 {keys}。微信自己的文件不会被动。', { name: current?.name ?? '', wxid: current?.wxid ?? '', bytes: formatSize(plan.bytes), keys: plan.profileKeys.join(t('、')) })}</p>
-      {plan.paths.length
-        ? <ul>{plan.paths.map(p => <li key={p.path}><span className="num">{formatSize(p.bytes)}</span><span className="account-path" title={p.path}>{p.path}</span></li>)}</ul>
-        : <p className="muted">{t('没有需要删除的文件，只会移除档案里的账号和密钥。')}</p>}
-      <div className="clear-plan-actions">
-        <button type="button" className="secondary-button" disabled={busy === 'clear'} onClick={() => setPlan(null)}>{t('取消')}</button>
-        <button type="button" className="primary-button danger" disabled={busy === 'clear'} onClick={clear}>{busy === 'clear' ? <CircleNotch size={14} className="spin" /> : <Trash size={14} />}{t('确认清除')}</button>
-      </div>
-    </div>}
-    {note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
-  </section>;
+    {current?.wxid && <SettingsGroup title={t('危险操作')} danger>
+      <SettingRow name={t('清除账号数据')} text={t('删除 WeFlow 为档案 {name} 的账号保存的文件，并从档案里移除账号和密钥。微信自己的文件不会被动。', { name: current.name })}>
+        {!plan && <button type="button" className="secondary-button" aria-label={t('清除账号数据')} disabled={busy !== null || adding} onClick={lookAtClearing}>
+          {busy === 'plan' ? <CircleNotch size={12} className="spin" /> : <Trash size={14} />}{t('清除')}</button>}
+      </SettingRow>
+      {plan && <div className="clear-plan" role="group" aria-label={t('将要清除的内容')}>
+        <p>{t('清除档案 {name} 的账号 {wxid}：删除 WeFlow 为它保存的以下文件（共 {bytes}），并从档案里移除 {keys}。微信自己的文件不会被动。', { name: current.name, wxid: current.wxid, bytes: formatSize(plan.bytes), keys: plan.profileKeys.join(t('、')) })}</p>
+        {plan.paths.length
+          ? <ul>{plan.paths.map(p => <li key={p.path}><span className="num">{formatSize(p.bytes)}</span><span className="account-path" title={p.path}>{p.path}</span></li>)}</ul>
+          : <p className="muted">{t('没有需要删除的文件，只会移除档案里的账号和密钥。')}</p>}
+        <div className="clear-plan-actions">
+          <button type="button" className="secondary-button" disabled={busy === 'clear'} onClick={() => setPlan(null)}>{t('取消')}</button>
+          <button type="button" className="primary-button danger" disabled={busy === 'clear'} onClick={clear}>{busy === 'clear' ? <CircleNotch size={14} className="spin" /> : <Trash size={14} />}{t('确认清除')}</button>
+        </div>
+      </div>}
+      {note?.clearing && noteLine}
+    </SettingsGroup>}
+    {!current?.wxid && note?.clearing && noteLine}
+  </>;
 }
 
 /** While the profiles are read (#282): rows in the shape of the accounts, so the settings do not jump. */

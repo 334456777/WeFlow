@@ -121,7 +121,7 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
   width: 0; margin-left: 0; opacity: 0; overflow: hidden; flex-shrink: 0;
   height: var(--control-lg); border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--neu-raised); color: var(--fg);
   display: inline-flex; align-items: center; justify-content: center;
-  transition: width var(--spring-overlay), margin-left var(--spring-overlay),
+  transition: width var(--duration-panel) var(--ease-snap), margin-left var(--duration-panel) var(--ease-snap),
     opacity var(--duration-base) var(--ease-out), box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
 .export-side:hover { box-shadow: var(--neu-raised-hover); }

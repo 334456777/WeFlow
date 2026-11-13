@@ -1,12 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
-import { durationMs, installSprings, springCss, springTiming, springs, usePresence } from './motion';
-import type { SpringName } from './motion';
+import { contentIn, durationMs, timing, usePresence } from './motion';
 
 afterEach(() => {
   vi.useRealTimers();
   document.documentElement.removeAttribute('style');
-  document.getElementById('weflow-springs')?.remove();
 });
 
 describe('durationMs', () => {
@@ -20,51 +18,38 @@ describe('durationMs', () => {
   it('treats a missing token as no wait', () => {
     expect(durationMs('--duration-missing')).toBe(0);
   });
+});
 
-  it('reads the duration a spring token starts with', () => {
-    document.documentElement.style.setProperty('--spring-settle', '500ms linear(0, 0.5, 1)');
-    expect(durationMs('--spring-settle')).toBe(500);
+describe('contentIn', () => {
+  it('brings elements in as content-in does, from the tokens, and does nothing when they are 0 (#776)', () => {
+    const element = document.createElement('div');
+    const animate = vi.fn();
+    element.animate = animate as unknown as Element['animate'];
+    const root = document.documentElement.style;
+    root.setProperty('--duration-base', '200ms');
+    root.setProperty('--enter-offset', '6px');
+    root.setProperty('--ease-out', 'cubic-bezier(.165, .84, .44, 1)');
+    contentIn([element]);
+    expect(animate).toHaveBeenCalledWith(
+      [{ opacity: 0, transform: 'translateY(calc(.5 * 6px))' }, { opacity: 1, transform: 'none' }],
+      { duration: 200, easing: 'cubic-bezier(.165, .84, .44, 1)' },
+    );
+    // reduced motion sets the durations to 0
+    root.setProperty('--duration-base', '0ms');
+    contentIn([element]);
+    expect(animate).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('springs', () => {
-  const names = Object.keys(springs) as SpringName[];
-
-  it('trace each spring as a duration and a linear() curve that ends at rest', () => {
-    for (const name of names) {
-      const css = springCss(name);
-      expect(css).toMatch(/^\d+ms linear\(0, .*1\)$/);
-      expect(Number.parseInt(css, 10)).toBeGreaterThan(0);
-    }
-  });
-
-  it('overshoot only where they are meant to', () => {
-    const peak = (name: SpringName) => Math.max(...springCss(name).slice(springCss(name).indexOf('(') + 1, -1).split(',').map(Number));
-    expect(peak('settle')).toBeLessThanOrEqual(1);
-    expect(peak('feedback')).toBeGreaterThan(peak('control'));
-    expect(peak('control')).toBeGreaterThan(1);
-  });
-
-  it('are written as tokens in a stylesheet ahead of every other one', () => {
-    const other = document.createElement('style');
-    document.head.append(other);
-    installSprings();
-    installSprings();
-    const style = document.getElementById('weflow-springs')!;
-    expect(document.head.firstElementChild).toBe(style);
-    expect(document.querySelectorAll('#weflow-springs')).toHaveLength(1);
-    for (const name of names) {
-      expect(style.textContent).toContain('--spring-' + name + ': ');
-      expect(style.textContent).toContain('--spring-' + name + '-duration: ' + String(Number.parseInt(springCss(name), 10)) + 'ms;');
-    }
-    other.remove();
-  });
-
-  it('give the Web Animations API a duration and an easing, and nothing to run with reduced motion', () => {
-    document.documentElement.style.setProperty('--spring-settle', '500ms linear(0, 0.5, 1)');
-    expect(springTiming('settle')).toEqual({ duration: 500, easing: 'linear(0, 0.5, 1)' });
-    document.documentElement.style.setProperty('--spring-settle', '0ms');
-    expect(springTiming('settle').duration).toBe(0);
+describe('timing', () => {
+  it('gives the Web Animations API a duration and a curve from their tokens, and nothing to run with reduced motion', () => {
+    const root = document.documentElement.style;
+    root.setProperty('--duration-panel', '300ms');
+    root.setProperty('--ease-snap', 'cubic-bezier(.32, .72, 0, 1)');
+    expect(timing('--duration-panel', '--ease-snap')).toEqual({ duration: 300, easing: 'cubic-bezier(.32, .72, 0, 1)' });
+    expect(timing('--duration-panel', '--ease-missing').easing).toBe('ease');
+    root.setProperty('--duration-panel', '0ms');
+    expect(timing('--duration-panel', '--ease-snap').duration).toBe(0);
   });
 });
 

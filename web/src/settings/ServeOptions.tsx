@@ -1,11 +1,13 @@
 // The options weflow serve starts with (#406), saved in its config file (`serve_*`): each is used when the command
-// line does not give it, from the next start of the server.
+// line does not give it, from the next start of the server. Shown by subject (#776), saved together from the bar under
+// them.
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
-import { Check, CircleNotch } from '@phosphor-icons/react';
+import type { FormEvent, ReactNode } from 'react';
+import { ArrowRight, CircleNotch } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { getSetting, setSetting, unsetSetting } from '../api/settings';
 import { GridSkeleton } from '../Skeleton';
+import { SaveBar, SettingRow, SettingsGroup, Toggle } from './layout';
 import { msg, t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
@@ -35,7 +37,8 @@ const wholeNumber = (text: string) => !text.trim() || (/^\d+$/.test(text.trim())
 /** A listen address only this machine reaches. */
 const loopback = (host: string) => !host || host === 'localhost' || host.startsWith('127.') || host === '::1' || host === '[::1]';
 
-export function ServeOptions() {
+/** `onAi` opens the AI insights, the other half of what makes insights come by themselves. */
+export function ServeOptions({ onAi }: { onAi(): void }) {
   const [saved, setSaved] = useState<Form | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,27 +83,47 @@ export function ServeOptions() {
     }
   };
 
-  return <div className="setting-row setting-accounts"><div><h2>{t('启动选项')}</h2><p>{t('weflow serve 启动时用的选项，保存在服务端的配置文件里，重启后生效。启动命令里给出的选项优先。')}</p>
-    {!form ? (note ? <p className="account-note setting-warning" role="alert">{note.text}</p> : <GridSkeleton label={t('正在读取启动选项')} cells={4} />) : <form className="ai-form serve-form" onSubmit={save}>
-      <label className="console-field"><span className="console-field-name">{t('监听地址')}</span>
-        <input className="console-input" type="text" spellCheck={false} placeholder="127.0.0.1" value={form.serve_host} onChange={e => set('serve_host', e.target.value)} />
-        {!loopback(form.serve_host.trim()) && <small className="setting-warning">{t('监听本机以外的地址时，持有令牌的人可以在这台机器上运行任何 weflow 命令。')}</small>}</label>
-      {NUMBERS.map(n => <label key={n.key} className="console-field"><span className="console-field-name">{t(n.label)}</span>
-        <input className="console-input" type="text" inputMode="numeric" placeholder={t(n.fallback)} value={form[n.key]} onChange={e => set(n.key, e.target.value)} />
-        {bad.includes(n.key) && <small className="setting-warning">{t('要填 1 到 65535 的整数。')}</small>}</label>)}
-      {SWITCHES.map(s => {
-        const on = form[s.key] ? form[s.key] === 'true' : s.fallback;
-        // the server's default is saved as nothing
-        return <label key={s.key} className="checkbox"><input type="checkbox" aria-label={t(s.label)} checked={on} onChange={e => set(s.key, e.target.checked === s.fallback ? '' : String(e.target.checked))} />
-          <span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t(s.label)}</span></label>;
-      })}
+  if (!form) {
+    return <SettingsGroup>{note ? <p className="account-note setting-warning" role="alert">{note.text}</p> : <GridSkeleton label={t('正在读取启动选项')} cells={4} />}</SettingsGroup>;
+  }
+  const number = (n: (typeof NUMBERS)[number]) => <label key={n.key} className="console-field"><span className="console-field-name">{t(n.label)}</span>
+    <input className="console-input" type="text" inputMode="numeric" placeholder={t(n.fallback)} value={form[n.key]} onChange={e => set(n.key, e.target.value)} />
+    {bad.includes(n.key) && <small className="setting-warning">{t('要填 1 到 65535 的整数。')}</small>}</label>;
+  const switchRow = (s: (typeof SWITCHES)[number], text?: string, more?: ReactNode) => {
+    const on = form[s.key] ? form[s.key] === 'true' : s.fallback;
+    // the server's default is saved as nothing
+    return <SettingRow key={s.key} name={t(s.label)} text={text}>
+      {more}
+      <Toggle label={t(s.label)} checked={on} onChange={checked => set(s.key, checked === s.fallback ? '' : String(checked))} />
+    </SettingRow>;
+  };
+  const [port, ...limits] = NUMBERS;
+  const [openBrowser, insight, imageDownload, logRequests] = SWITCHES;
+  return <form className="serve-form" onSubmit={save}>
+    <SettingsGroup title={t('网络')}>
+      <div className="settings-fields">
+        <label className="console-field"><span className="console-field-name">{t('监听地址')}</span>
+          <input className="console-input" type="text" spellCheck={false} placeholder="127.0.0.1" value={form.serve_host} onChange={e => set('serve_host', e.target.value)} /></label>
+        {number(port)}
+      </div>
+      {!loopback(form.serve_host.trim()) && <p className="setting-warning">{t('监听本机以外的地址时，持有令牌的人可以在这台机器上运行任何 weflow 命令。')}</p>}
+    </SettingsGroup>
+    <SettingsGroup title={t('并发')}>
+      <div className="settings-fields">{limits.map(number)}</div>
+    </SettingsGroup>
+    <SettingsGroup title={t('启动与日志')}>{switchRow(openBrowser)}{switchRow(logRequests)}</SettingsGroup>
+    <SettingsGroup title={t('功能')}>
+      {switchRow(insight, t('在后台自动生成见解；还要在「AI 见解」里开启并设置模型接口。'),
+        <button type="button" className="secondary-button" onClick={onAi}>{t('前往 AI 见解')}<ArrowRight size={12} /></button>)}
+      {switchRow(imageDownload)}
       <label className="console-field"><span className="console-field-name">{t('自动下载原图的会话')}</span>
         <input className="console-input" type="text" spellCheck={false} placeholder={t('会话 ID，用逗号分隔')} value={form.autoDownloadWhitelist} onChange={e => set('autoDownloadWhitelist', e.target.value)} />
         <small>{t('留空表示不为任何会话下载原图。')}</small></label>
-      <div className="ai-actions">
-        <button type="submit" className="primary-button" disabled={busy || !changed || bad.length > 0}>{busy ? <CircleNotch size={14} className="spin" /> : null}{t('保存')}</button>
-      </div>
-      {note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
-    </form>}
-  </div></div>;
+    </SettingsGroup>
+    <SaveBar note={note
+      ? <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>
+      : changed && <p className="account-note">{t('有未保存的修改，重启 weflow serve 后生效。')}</p>}>
+      <button type="submit" className="primary-button" disabled={busy || !changed || bad.length > 0}>{busy ? <CircleNotch size={14} className="spin" /> : null}{t('保存')}</button>
+    </SaveBar>
+  </form>;
 }

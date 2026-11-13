@@ -54,6 +54,12 @@ const settle = (ms: number) => act(async () => { await new Promise(resolve => se
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 const HEALTH = { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: '5.0.0', data: 'a' };
 
+/** Opens the settings at one of their sections, by its name in the list (#776), whatever its state beside it says. */
+function openSettings(section: string) {
+  fireEvent.click(screen.getByRole('button', { name: '设置' }));
+  fireEvent.click(within(screen.getByRole('navigation', { name: '设置分组' })).getByRole('button', { name: new RegExp('^' + section) }));
+}
+
 describe('App', () => {
   it('shows the workspace with the sample records while no backend is connected', async () => {
     await renderWith(null);
@@ -165,7 +171,16 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择陈屿' }));
     expect(screen.getByText('好的，周一见。', { selector: '.message-bubble' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    expect(screen.getByText('weflow serve')).toBeTruthy();
+    // the connection first, the sections of the server marked as needing it (#776)
+    expect(screen.getByRole('region', { name: '连接状态' }).textContent).toContain('weflow serve');
+    const sections = screen.getByRole('navigation', { name: '设置分组' });
+    expect(Array.from(sections.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['连接状态', '账号', '外观与浏览', '启动选项', 'AI 见解', '缓存', '网页版本', '命令控制台']);
+    expect(within(sections).getByRole('button', { name: /^启动选项/ }).textContent).toContain('连接后可用');
+    fireEvent.click(within(sections).getByRole('button', { name: /^启动选项/ }));
+    expect(screen.getByRole('region', { name: '启动选项' }).textContent).toContain('连接 weflow serve 后才能使用。');
+    fireEvent.click(screen.getByRole('button', { name: '查看连接状态' }));
+    expect(screen.getByRole('region', { name: '连接状态' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: '启动选项' })).toBeNull();
   });
 
   it('exports the open conversation as a job of the server: progress, cancel, then the file to save (#211)', async () => {
@@ -370,7 +385,7 @@ describe('App', () => {
 
   it('follows the reduce-motion switch on the root element', async () => {
     await renderWith(null);
-    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    openSettings('外观与浏览');
     fireEvent.click(screen.getByRole('checkbox', { name: '减少动画' }));
     expect(document.documentElement.classList.contains('reduced-motion')).toBe(true);
     fireEvent.click(screen.getByRole('checkbox', { name: '减少动画' }));
@@ -451,7 +466,7 @@ describe('App', () => {
     await settle(600);
 
     // turned off: the state alone, from /health/events
-    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    openSettings('外观与浏览');
     fireEvent.click(screen.getByRole('checkbox', { name: '实时消息' }));
     await act(async () => {});
     expect(opened[opened.length - 1].url).toBe('/health/events');
@@ -503,6 +518,69 @@ describe('App', () => {
     expect(text()).toContain('weflow web use');
   });
 
+  it('brings another page in, the console with it when its cards change, and another item\'s detail (#776)', async () => {
+    await renderWith(HEALTH);
+    const root = document.documentElement.style;
+    root.setProperty('--duration-base', '200ms');
+    const animated: Element[] = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (this: Element) { animated.push(this); return {} as Animation; };
+    onTestFinished(() => { Element.prototype.animate = animate; root.removeProperty('--duration-base'); });
+    const taken = () => animated.splice(0);
+    const consolePanel = document.querySelector('.console')!;
+
+    // into the settings the console keeps its cards: the panel alone
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    expect(taken()).toEqual([screen.getByRole('region', { name: '设置' })]);
+    // another section: the detail, not the panel
+    fireEvent.click(screen.getByRole('button', { name: /^外观与浏览/ }));
+    const detail = taken();
+    expect(detail.length).toBeGreaterThan(0);
+    expect(detail.every(element => element.classList.contains('settings-detail'))).toBe(true);
+    // a page of other cards: the panel and the console
+    fireEvent.click(screen.getByRole('button', { name: '通讯录' }));
+    expect(taken()).toEqual([screen.getByRole('region', { name: '通讯录' }), consolePanel]);
+  });
+
+  it('keeps what was typed in a section while another is open, and reads a section as it first opens (#776)', async () => {
+    const asked: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      asked.push(url);
+      return json({ success: true, data: url.startsWith('/api/config/get') ? null : [] });
+    }));
+    await renderWith(HEALTH);
+    const reads = () => asked.filter(url => url.includes('key=ai_model_api_model')).length;
+    expect(reads()).toBe(0);
+    openSettings('AI 见解');
+    await act(async () => {});
+    expect(reads()).toBe(1);
+    fireEvent.change(screen.getByPlaceholderText('模型名称'), { target: { value: 'm2' } });
+    expect(screen.getByText('有未保存的修改。')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^外观与浏览/ }));
+    expect(screen.queryByRole('region', { name: 'AI 见解' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^AI 见解/ }));
+    await act(async () => {});
+    expect((screen.getByPlaceholderText('模型名称') as HTMLInputElement).value).toBe('m2');
+    expect(reads()).toBe(1);
+
+    // the insight engine is a startup option, and the way there and back is beside each switch
+    fireEvent.click(screen.getByRole('button', { name: '前往启动选项' }));
+    await act(async () => {});
+    expect(screen.getByRole('region', { name: '启动选项' }).textContent).toContain('运行灵感引擎');
+    fireEvent.click(screen.getByRole('button', { name: '前往 AI 见解' }));
+    expect(screen.getByRole('region', { name: 'AI 见解' })).toBeTruthy();
+
+    // left and opened anew, the settings read again
+    fireEvent.click(screen.getByRole('button', { name: '聊天' }));
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await act(async () => {});
+    expect(screen.getByRole('region', { name: 'AI 见解' })).toBeTruthy();
+    expect((screen.getByPlaceholderText('模型名称') as HTMLInputElement).value).toBe('');
+    expect(reads()).toBe(2);
+  });
+
   it('opens the account setup by itself when the account is not set up, once a tab, and from the settings (#216)', async () => {
     let complete = false;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -520,8 +598,10 @@ describe('App', () => {
     expect(dialog()?.textContent).toBe('');
     expect(sessionStorage.getItem('weflow.setup')).toBe('dismissed');
 
-    // the settings say how far the account is set up, and open the setup again
-    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    // the settings say how far the account is set up, in their list too, and open the setup again
+    openSettings('账号');
+    expect(screen.getByRole('button', { name: /^账号/ }).textContent).toBe('账号default · 还没有配置');
+    expect(screen.getByRole('button', { name: /^连接状态/ }).textContent).toBe('连接状态已连接 · 5.0.0');
     expect(screen.getByRole('region', { name: '账号' }).textContent).toContain('default当前未选择账号还没有配置');
     fireEvent.click(screen.getByRole('button', { name: '配置向导' }));
     await act(async () => {});
@@ -533,7 +613,7 @@ describe('App', () => {
     complete = true;
     await renderWith(HEALTH);
     expect(dialog()?.textContent).toBe('');
-    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    openSettings('账号');
     // the settings read what they show as they open
     await act(async () => {});
     expect(screen.getByRole('region', { name: '账号' }).textContent).toContain('default当前wxid_aD:/x已配置，没有图片密钥');
@@ -606,7 +686,7 @@ describe('App', () => {
 
   it('switches the colour theme from the settings and remembers it (#252)', async () => {
     await renderWith(HEALTH);
-    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    openSettings('外观与浏览');
     await act(async () => {});
     const themes = screen.getByRole('group', { name: '颜色主题' });
     expect(within(themes).getByRole('button', { name: '跟随系统' }).getAttribute('aria-pressed')).toBe('true');

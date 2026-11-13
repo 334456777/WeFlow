@@ -125,7 +125,7 @@ time, .num { font-variant-numeric: tabular-nums; }
   border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--neu-raised-sm);
   /* `translate`, not `transform`, so that a press shrinks the thumb about its own centre */
   translate: calc(100% * var(--index)) 0;
-  transition: translate var(--spring-control), box-shadow var(--duration-hover) var(--ease-out), scale var(--duration-micro) var(--ease-out);
+  transition: translate var(--duration-snap) var(--ease-snap), box-shadow var(--duration-hover) var(--ease-out), scale var(--duration-micro) var(--ease-out);
 }
 .segmented > button {
   position: relative; z-index: 1; width: 100%; height: 100%;
@@ -146,7 +146,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 /* Layout. The sidebar folds into a rail of icons; the icons keep their place while the width changes. */
 .workspace {
   height: 100dvh; min-height: 520px; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  transition: grid-template-columns var(--spring-settle);
+  transition: grid-template-columns var(--duration-panel) var(--ease-snap);
 }
 .workspace.sidebar-collapsed { grid-template-columns: var(--sidebar-rail) minmax(0, 1fr); }
 .sidebar { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; min-height: 0; padding: var(--space-4) var(--space-2) var(--space-3); overflow: hidden; }
@@ -174,8 +174,8 @@ time, .num { font-variant-numeric: tabular-nums; }
 .hover-hollow {
   position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; opacity: 0; box-shadow: var(--neu-pressed);
   transform-origin: center;
-  transition: translate var(--spring-control), width var(--spring-control),
-    height var(--spring-control), opacity var(--duration-hover) ease,
+  transition: translate var(--duration-snap) var(--ease-snap), width var(--duration-snap) var(--ease-snap),
+    height var(--duration-snap) var(--ease-snap), opacity var(--duration-hover) ease,
     box-shadow var(--duration-hover) var(--ease-out), scale var(--duration-micro) var(--ease-out);
 }
 .hover-hollow[data-state='on'] { opacity: 1; }
@@ -241,7 +241,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 .conversation-row.active { box-shadow: var(--neu-inset); }
 .conversation-row.active::before {
   content: ''; position: absolute; left: 0; top: 50%; width: 3px; height: 20px; margin-top: -10px;
-  border-radius: var(--radius-full); background: var(--fg); animation: indicator-in var(--spring-control);
+  border-radius: var(--radius-full); background: var(--fg); animation: indicator-in var(--duration-snap) var(--ease-snap);
 }
 .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .avatar-initial {
@@ -423,7 +423,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 .card-header:focus-visible { outline-offset: -2px; }
 .card.dragging .card-header { cursor: grabbing; }
 .card-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); white-space: nowrap; }
-.card-caret { color: var(--fg-subtle); transition: transform var(--spring-control), color var(--duration-hover) ease; }
+.card-caret { color: var(--fg-subtle); transition: transform var(--duration-snap) var(--ease-snap), color var(--duration-hover) ease; }
 .card-header:hover .card-caret { color: var(--fg); }
 .card.collapsed .card-caret { transform: rotate(-90deg); }
 .card-summary {
@@ -431,11 +431,11 @@ time, .num { font-variant-numeric: tabular-nums; }
   color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; opacity: 0; transition: opacity var(--duration-base) var(--ease-out);
 }
 .card.collapsed .card-summary { opacity: 1; }
-.card-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--spring-overlay); }
+.card-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--duration-panel) var(--ease-snap); }
 .card.collapsed .card-body { grid-template-rows: 0fr; }
 /* The body clips only while it folds and once folded: open, the raised controls in it cast their light past its
    edges, which a clip would cut square (#354). Opening, it clips until it has opened all the way. */
-.card-inner { min-height: 0; overflow: visible; transition: overflow 0s var(--spring-overlay-duration) allow-discrete; }
+.card-inner { min-height: 0; overflow: visible; transition: overflow 0s var(--duration-panel) allow-discrete; }
 .card.collapsed .card-inner { overflow: hidden; transition-delay: 0s; }
 /* The body clips while it folds, so the content keeps 4px above it: room for the focus ring of a field at the top. */
 .card-content { container-type: inline-size; padding: var(--space-1) var(--space-4) var(--space-4); }
@@ -465,12 +465,12 @@ time, .num { font-variant-numeric: tabular-nums; }
 
 /*
  * Floating layers anchored to a control (Popover.tsx): raised at the floating level, they grow out of the control
- * on the overlay spring and leave with the exit duration.
+ * with the base duration and leave with the exit one.
  */
 .popover {
   position: fixed; z-index: 40; padding: var(--space-3); border-radius: var(--radius-lg);
   background: var(--surface); box-shadow: var(--neu-raised-float);
-  animation: popover-in var(--spring-overlay) both;
+  animation: popover-in var(--duration-base) var(--ease-out) both;
 }
 .popover[data-state='closing'] { animation: popover-out var(--duration-exit) var(--ease-out) both; }
 @keyframes popover-in { from { opacity: 0; transform: scale(var(--enter-scale)); } }
@@ -533,7 +533,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
   border-radius: var(--radius-xs); background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg);
   pointer-events: none; transition: box-shadow var(--duration-snap) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
-.checkbox-box svg { opacity: 0; transform: scale(var(--enter-scale)); transition: opacity var(--duration-snap) ease, transform var(--spring-control); }
+.checkbox-box svg { opacity: 0; transform: scale(var(--enter-scale)); transition: opacity var(--duration-snap) ease, transform var(--duration-snap) var(--ease-snap); }
 .checkbox input:checked + .checkbox-box { box-shadow: var(--neu-inset); }
 /* Held down, checked or not, the box sinks as deep as a checked one held down and shrinks a little. */
 .checkbox:active .checkbox-box, .checkbox:active input:checked + .checkbox-box {
@@ -629,7 +629,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .settings-heading { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
 .settings-heading h1 { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); }
 .muted { color: var(--fg-muted); font-size: var(--text-sm); }
-.source-name.warning, .setting-row p.setting-warning, .card-note.setting-warning { color: var(--state-danger); }
+.source-name.warning, .card-note.setting-warning { color: var(--state-danger); }
 /* Accounts (#215): the profiles, raised rows with the current one inset; what clearing removes, shown before it asks. */
 .accounts { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
 .account { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-raised-sm); }
@@ -665,7 +665,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .toggle span::after {
   content: ''; display: block; width: 16px; height: 16px; border-radius: 50%;
   background: radial-gradient(circle, var(--fg) 0 2.5px, transparent 3px) center / 0 0 no-repeat, var(--surface);
-  box-shadow: var(--neu-raised-sm); transition: transform var(--spring-control), background-size var(--spring-feedback), box-shadow var(--duration-micro) var(--ease-out);
+  box-shadow: var(--neu-raised-sm); transition: transform var(--duration-snap) var(--ease-snap), background-size var(--duration-snap) var(--ease-snap), box-shadow var(--duration-micro) var(--ease-out);
 }
 .toggle input:checked + span::after { transform: translateX(18px); background-size: 100% 100%, auto; }
 /* Held down, the knob sinks into pressed and shrinks a little where it is. */
@@ -681,7 +681,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
   position: fixed; z-index: 15; left: 50%; bottom: var(--space-5); display: flex; align-items: center; gap: var(--space-2);
   height: var(--control-lg); padding: 0 var(--space-4); border-radius: var(--radius-full);
   background: var(--surface); color: var(--fg); box-shadow: var(--neu-raised-float); font-size: var(--text-sm); white-space: nowrap;
-  transform: translateX(-50%); animation: toast-in var(--spring-feedback) both;
+  transform: translateX(-50%); animation: toast-in var(--duration-base) var(--ease-out) both;
 }
 .toast[data-state='closing'] { animation: toast-out var(--duration-exit) var(--ease-out) both; }
 
@@ -766,7 +766,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .nav-sheet {
   width: 100%; max-width: 100%; margin: auto 0 0; padding: var(--space-4) calc(var(--space-4) + env(safe-area-inset-right)) calc(var(--space-4) + env(safe-area-inset-bottom)) calc(var(--space-4) + env(safe-area-inset-left));
   border: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; background: var(--surface); box-shadow: var(--neu-raised-overlay); color: inherit;
-  animation: sheet-in var(--spring-overlay) both;
+  animation: sheet-in var(--duration-panel) var(--ease-snap) both;
 }
 .nav-sheet::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
 .nav-sheet[data-state='closing'] { animation: sheet-out var(--duration-exit) var(--ease-out) both; }

@@ -38,7 +38,7 @@ export function usePaymentsPage(shell: Shell, active: boolean): Page {
     },
   ];
   if (!live && !(active && backend.state === 'unauthorized')) return { cards };
-  const view = <BrowserPanel label={t('微信支付浏览')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回商户列表')} title={t('支付记录')} paneLabel={t('支付记录')} pane={pane}
+  const view = <BrowserPanel label={t('微信支付浏览')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回商户列表')} title={t('支付记录')} paneLabel={t('支付记录')} pane={pane} detailKey={filter.merchant}
     list={backend.state === 'unauthorized'
       ? <TokenPrompt />
       : <PaymentMerchants state={state} merchants={merchants} selected={filter.merchant} onRetry={reload}
