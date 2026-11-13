@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Check, DownloadSimple } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
 import { DateRange } from '../calendar/DateRange';
+import { Chip } from '../Chip';
 import { runJob } from '../jobs/useJobs';
 import { Segmented } from '../Segmented';
 import { nameOf } from './ExportPicker';
@@ -40,7 +41,7 @@ export const formatsLabel = (formats: readonly MessageFormat[]) => formats.map(f
 /** The formats as chips, several at once (#342). */
 export function FormatChips({ formats, onChange }: { formats: readonly MessageFormat[]; onChange(formats: MessageFormat[]): void }) {
   return <div className="choice-chips" role="group" aria-label={t('导出格式（可多选）')}>
-    {MESSAGE_FORMATS.map(f => <button type="button" key={f.value} className="chip" aria-pressed={formats.includes(f.value)} onClick={() => onChange(toggleFormat(formats, f.value))}>{f.label}</button>)}
+    {MESSAGE_FORMATS.map(f => <Chip key={f.value} label={f.label} pressed={formats.includes(f.value)} onClick={() => onChange(toggleFormat(formats, f.value))} />)}
   </div>;
 }
 
@@ -62,7 +63,7 @@ export const mediaLabel = (kinds: readonly MediaKind[]) => kinds.map(k => t(MEDI
 /** The media as chips, like the formats: any of them, or none. */
 export function MediaChips({ kinds, onChange, label }: { kinds: readonly MediaKind[]; onChange(kinds: MediaKind[]): void; label: string }) {
   return <div className="choice-chips" role="group" aria-label={label}>
-    {MEDIA_KINDS.map(k => <button type="button" key={k.value} className="chip" aria-pressed={kinds.includes(k.value)} onClick={() => onChange(toggleMedia(kinds, k.value))}>{t(k.label)}</button>)}
+    {MEDIA_KINDS.map(k => <Chip key={k.value} label={t(k.label)} pressed={kinds.includes(k.value)} onClick={() => onChange(toggleMedia(kinds, k.value))} />)}
   </div>;
 }
 

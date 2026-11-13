@@ -1,6 +1,7 @@
 // The reports page (#208): the years with messages, the latest first, then the annual report of the year picked,
 // or the dual report of it with one friend.
 import { getReportYears } from '../api/reports';
+import { Chip } from '../Chip';
 import { ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 import { AnnualReportPage, Failed } from './AnnualReport';
@@ -18,8 +19,8 @@ export function ReportsPage({ mode, year, onYear, friend, onFriend }: {
   const chosen = year ?? list[0];
   return <>
     <div className="choice-chips report-years" role="group" aria-label={t('报告的年份')}>
-      {list.map(y => <button type="button" key={y} className="chip" aria-pressed={chosen === y} onClick={() => onYear(y)}>{t('{y} 年', { y })}</button>)}
-      <button type="button" className="chip" aria-pressed={chosen === 0} onClick={() => onYear(0)}>{t('全部年份')}</button>
+      {list.map(y => <Chip key={y} label={t('{y} 年', { y })} pressed={chosen === y} onClick={() => onYear(y)} />)}
+      <Chip label={t('全部年份')} pressed={chosen === 0} onClick={() => onYear(0)} />
     </div>
     {mode === 'annual' ? <AnnualReportPage year={chosen} /> : <DualReportPage friend={friend} onFriend={onFriend} year={chosen} />}
   </>;

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { DownloadSimple } from '@phosphor-icons/react';
 import { CONTACT_FORMATS, CONTACT_KINDS, contactKindLabels, countKinds, type Contact, type ContactFormat, type ContactKind } from '../api/contacts';
+import { Chip } from '../Chip';
 import { runJob } from '../jobs/useJobs';
 import { GridSkeleton } from '../Skeleton';
 import { locale, msg, t } from '../i18n';
@@ -67,18 +68,18 @@ export function ContactsExport({ options, onChange, ready }: { options: Contacts
   return <>
     <div className="form-row format-row"><span className="field-label">{t('导出格式')}</span>
       <div className="choice-chips" role="group" aria-label={t('导出格式')}>
-        {CONTACT_FORMATS.map(f => <button type="button" key={f.value} className="chip" aria-pressed={format === f.value} onClick={() => { onChange({ ...options, format: f.value }); setNote(null); }}>{f.label}</button>)}
+        {CONTACT_FORMATS.map(f => <Chip key={f.value} label={f.label} pressed={format === f.value} onClick={() => { onChange({ ...options, format: f.value }); setNote(null); }} />)}
       </div>
     </div>
     <div className="form-row format-row"><span className="field-label">{t('导出哪些')}</span>
       <div className="choice-chips" role="group" aria-label={t('导出哪些联系人')}>
-        {CONTACT_KINDS.map(k => <button type="button" key={k} className="chip" aria-pressed={kinds.includes(k)}
-          onClick={() => { onChange({ ...options, kinds: kinds.includes(k) ? kinds.filter(x => x !== k) : [...kinds, k] }); setNote(null); }}>{t(contactKindLabels[k])}</button>)}
+        {CONTACT_KINDS.map(k => <Chip key={k} label={t(contactKindLabels[k])} pressed={kinds.includes(k)}
+          onClick={() => { onChange({ ...options, kinds: kinds.includes(k) ? kinds.filter(x => x !== k) : [...kinds, k] }); setNote(null); }} />)}
       </div>
     </div>
     {format === 'html' && <div className="form-row format-row"><span className="field-label">{t('附带媒体')}</span>
       <div className="choice-chips" role="group" aria-label={t('附带的媒体')}>
-        <button type="button" className="chip" aria-pressed={options.avatars} onClick={() => { onChange({ ...options, avatars: !options.avatars }); setNote(null); }}>{t('头像')}</button>
+        <Chip label={t('头像')} pressed={options.avatars} onClick={() => { onChange({ ...options, avatars: !options.avatars }); setNote(null); }} />
       </div>
       <small className="field-note">{t(AVATAR_NOTE)}</small>
     </div>}

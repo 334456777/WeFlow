@@ -5,6 +5,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { ArrowSquareOut, At, CircleNotch, DownloadSimple, MagnifyingGlass, Sparkle } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
+import { Chip } from '../Chip';
 import { contactList, type Contact } from '../api/contacts';
 import { currentScope } from '../api/scope';
 import { FOOTPRINT_FORMATS, footprintExport, getFootprint, presetRanges, summarizeFootprint, timeline, type Footprint, type FootprintFormat, type FootprintRange } from '../api/footprint';
@@ -38,8 +39,8 @@ export function FootprintRanges({ range, onRange }: { range: FootprintRange; onR
   const custom = !presets.some(p => p.label === range.label);
   return <div className="footprint-ranges">
     <div className="choice-chips" role="group" aria-label={t('时间范围')}>
-      {presets.map(p => <button type="button" key={p.label} className="chip" aria-pressed={range.label === p.label} onClick={() => onRange(p)}>{p.label}</button>)}
-      <button type="button" className="chip" aria-pressed={custom} onClick={() => { if (!custom) onRange({ ...range, label: range.from === range.to ? range.from : t('{from} 至 {to}', { from: range.from, to: range.to }) }); }}>{t('自定义')}</button>
+      {presets.map(p => <Chip key={p.label} label={p.label} pressed={range.label === p.label} onClick={() => onRange(p)} />)}
+      <Chip label={t('自定义')} pressed={custom} onClick={() => { if (!custom) onRange({ ...range, label: range.from === range.to ? range.from : t('{from} 至 {to}', { from: range.from, to: range.to }) }); }} />
     </div>
     {custom && <DateRange label={t('足迹的时间范围')} from={range.from} to={range.to}
       onChange={r => r.from && onRange({ from: r.from, to: r.to || r.from, label: r.to && r.to !== r.from ? t('{from} 至 {to}', { from: r.from, to: r.to }) : r.from })} />}
