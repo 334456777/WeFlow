@@ -132,7 +132,7 @@ export function iconUses(files: readonly { text: string }[]): Map<string, string
           for (const weight of weightsOfTag(tag[1])) drawn.add(weight);
         }
       }
-      for (const icon of stored) addWeights(uses, icon, drawn.size ? drawn : ICON_WEIGHTS);
+      for (const icon of stored) addWeights(uses, icon, drawn.size ? [...drawn] : ICON_WEIGHTS);
     }
     for (const match of text.matchAll(/\bicon=\{(\w+)\}/g)) {
       const icon = imported.get(match[1]);
