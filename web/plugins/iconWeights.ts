@@ -1,5 +1,8 @@
 // Phosphor icons carry the paths of six weights each, though the app draws three (#159): the build keeps those and
-// drops the others from each icon's definition, `new Map([["bold", …], ["duotone", …], …])`.
+// drops the others from each icon's definition, `new Map([["bold", …], ["duotone", …], …])`. A production build
+// then keeps, for each icon, only the weights that icon is actually drawn with.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Plugin } from 'vite';
 
 /** The weights the app draws; `iconWeights.test.ts` checks that it asks for no other. */
@@ -51,12 +54,212 @@ export function dropWeights(code: string, keep: readonly string[]): string | nul
   return code.slice(0, entries[0].from) + kept.map(e => code.slice(e.from, e.to)).join(',\n  ') + code.slice(entries.at(-1)!.to);
 }
 
+interface OpenTag {
+  /** The attributes, without the name. Empty when the tag never ends. */
+  attrs: string;
+  /** False when no `>` closes the tag: the weight cannot be known. */
+  closed: boolean;
+  /** Index just after the tag, or just after `<name` when it does not close. */
+  next: number;
+}
+
+/** The opening tag at `<` (`from`), skipping `>` inside strings and `{…}` so `=>` is not the end. */
+function openTag(text: string, from: number): OpenTag {
+  let i = from + 1;
+  while (i < text.length && /[\w$]/.test(text[i])) i++;
+  const nameEnd = i;
+  const start = i;
+  let brace = 0;
+  try {
+    while (i < text.length) {
+      const c = text[i];
+      if (c === '"' || c === "'" || c === '`') { i = skip(text, i); continue; }
+      if (c === '{') { brace++; i++; continue; }
+      if (c === '}') {
+        if (brace === 0) break;
+        brace--;
+        i++;
+        continue;
+      }
+      if (c === '>' && brace === 0) return { attrs: text.slice(start, i), closed: true, next: i + 1 };
+      i++;
+    }
+  } catch { /* an unterminated string: the tag cannot be read */ }
+  return { attrs: '', closed: false, next: nameEnd };
+}
+
+/** True when the tag itself spreads props (`{...props}`), not a spread inside an expression. */
+function spreadsProps(attrs: string): boolean {
+  let brace = 0;
+  try {
+    for (let i = 0; i < attrs.length; i++) {
+      const c = attrs[i];
+      if (c === '"' || c === "'" || c === '`') { i = skip(attrs, i) - 1; continue; }
+      if (c === '{') {
+        if (brace === 0 && attrs.slice(i + 1).trimStart().startsWith('...')) return true;
+        brace++;
+      } else if (c === '}') brace--;
+    }
+  } catch { return true; }
+  return false;
+}
+
+/**
+ * Weights named on one tag. No `weight` on a tag that ends is `regular`. A spread, an unclosed tag, or a
+ * `weight` whose value names nothing keeps every weight: the build must not drop one the page might draw.
+ */
+function drawnWeights(tag: OpenTag): string[] {
+  if (!tag.closed || spreadsProps(tag.attrs)) return [...ICON_WEIGHTS];
+  const at = tag.attrs.search(/\bweight\s*=/);
+  if (at < 0) return ['regular'];
+  let i = tag.attrs.indexOf('=', at) + 1;
+  while (i < tag.attrs.length && /\s/.test(tag.attrs[i])) i++;
+  const c = tag.attrs[i];
+  if (c === '"' || c === "'") {
+    try {
+      const end = skip(tag.attrs, i);
+      return [tag.attrs.slice(i + 1, end - 1)];
+    } catch { return [...ICON_WEIGHTS]; }
+  }
+  if (c !== '{') return [...ICON_WEIGHTS];
+  let depth = 0;
+  const start = i;
+  try {
+    for (; i < tag.attrs.length; i++) {
+      const ch = tag.attrs[i];
+      if (ch === '"' || ch === "'" || ch === '`') { i = skip(tag.attrs, i) - 1; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { i++; break; } }
+    }
+  } catch { return [...ICON_WEIGHTS]; }
+  if (depth !== 0) return [...ICON_WEIGHTS];
+  const named = [...tag.attrs.slice(start + 1, i - 1).matchAll(/['"]([A-Za-z]+)['"]/g)].map(match => match[1]);
+  // `weight={variable}` can be any of the three at runtime
+  return named.length ? named : [...ICON_WEIGHTS];
+}
+
+/** `text` with every `<name` tag removed. `visit` sees each one, including a tag that never ends. */
+function visitTags(text: string, name: string, visit: (tag: OpenTag) => void): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of text.matchAll(new RegExp(`<${name}\\b`, 'g'))) {
+    const at = match.index ?? 0;
+    out += text.slice(cursor, at);
+    const tag = openTag(text, at);
+    visit(tag);
+    cursor = tag.next;
+  }
+  return out + text.slice(cursor);
+}
+
+function phosphorImports(text: string): Map<string, string> {
+  const imported = new Map<string, string>();
+  for (const match of text.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]@phosphor-icons\/react['"]/g)) {
+    for (const raw of match[1].split(',')) {
+      const trimmed = raw.trim();
+      if (!trimmed || trimmed.startsWith('type ')) continue;
+      const spec = trimmed.match(/^(\w+)(?:\s+as\s+(\w+))?$/);
+      if (!spec) continue;
+      imported.set(spec[2] ?? spec[1], spec[1]);
+    }
+  }
+  return imported;
+}
+
+/** Source with comments, quoted text and JSX text removed, so a word in a label is not a use of an icon. */
+function codeOnly(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/`(?:\\[\s\S]|[^`\\])*`/g, '``')
+    .replace(/\/\/[^\n]*/g, ' ')
+    .replace(/>([^<{]*)</g, '><');
+}
+
+function addWeights(uses: Map<string, Set<string>>, icon: string, weights: readonly string[]): void {
+  let have = uses.get(icon);
+  if (!have) uses.set(icon, (have = new Set()));
+  for (const weight of weights) have.add(weight);
+}
+
+/**
+ * The weights each Phosphor icon is drawn with, by its export name (`Gear`). A tag with no `weight` counts as
+ * `regular`. Icons handed to the sidebar or the phone navigation take `fill` and `regular`; a page heading takes
+ * `regular`. A spread prop or a tag that does not end keeps every weight, and so does an icon used some other way.
+ */
+export function iconUses(files: readonly { text: string }[]): Map<string, string[]> {
+  const uses = new Map<string, Set<string>>();
+  for (const { text } of files) {
+    const imported = phosphorImports(text);
+    if (!imported.size) continue;
+    for (const [local, icon] of imported) {
+      const withoutTags = visitTags(text, local, tag => addWeights(uses, icon, drawnWeights(tag)));
+      let rest = withoutTags.replace(/import\s*\{[^}]+\}\s*from\s*['"]@phosphor-icons\/react['"]/g, '');
+      rest = codeOnly(rest);
+      rest = rest.replace(new RegExp(`\\bicon:\\s*${local}\\b`, 'g'), '');
+      rest = rest.replace(new RegExp(`\\bicon=\\{${local}\\}`, 'g'), '');
+      if (new RegExp(`\\b${local}\\b`).test(rest)) addWeights(uses, icon, ICON_WEIGHTS);
+    }
+    const stored: string[] = [];
+    const aliases = new Set<string>();
+    for (const match of text.matchAll(/\bicon:\s*(\w+)/g)) {
+      const local = match[1];
+      const icon = imported.get(local);
+      if (icon) stored.push(icon);
+      else aliases.add(local);
+    }
+    for (const match of text.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*[\w.]+\.icon\b/g)) aliases.add(match[1]);
+    if (stored.length && aliases.size) {
+      const drawn = new Set<string>();
+      for (const alias of aliases) visitTags(text, alias, tag => { for (const weight of drawnWeights(tag)) drawn.add(weight); });
+      for (const icon of stored) addWeights(uses, icon, drawn.size ? [...drawn] : ICON_WEIGHTS);
+    }
+    for (const match of text.matchAll(/\bicon=\{(\w+)\}/g)) {
+      const icon = imported.get(match[1]);
+      if (!icon) continue;
+      const host = text.slice(0, match.index).match(/<([A-Z]\w*)\b[^<]*$/);
+      addWeights(uses, icon, host?.[1] === 'ScrollPage' ? ['regular'] : ICON_WEIGHTS);
+    }
+  }
+  return new Map([...uses].map(([icon, weights]) => [icon, [
+    ...ICON_WEIGHTS.filter(weight => weights.has(weight)),
+    ...[...weights].filter(weight => !ICON_WEIGHTS.includes(weight)).sort(),
+  ]]));
+}
+
+/** Source files under `root` that can draw an icon. Tests are left out: they do not ship. */
+export function readIconSources(root: string): { text: string }[] {
+  const out: { text: string }[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) out.push({ text: readFileSync(path, 'utf8') });
+    }
+  };
+  walk(root);
+  return out;
+}
+
 export function iconWeights(keep: readonly string[] = ICON_WEIGHTS): Plugin {
+  let build = false;
+  let uses: Map<string, string[]> | null = null;
   return {
     name: 'weflow-icon-weights',
+    configResolved(config) {
+      build = config.command === 'build';
+    },
     transform(code, id) {
-      if (!/@phosphor-icons[\\/]react[\\/]dist[\\/]defs[\\/]/.test(id)) return null;
-      const trimmed = dropWeights(code, keep);
+      const file = id.match(/@phosphor-icons[\\/]react[\\/]dist[\\/]defs[\\/](\w+)\.es\.js/);
+      if (!file) return null;
+      // Dev keeps every drawn weight, so changing a `weight` does not wait on this transform cache.
+      let weights = keep;
+      if (build && keep === ICON_WEIGHTS) {
+        uses ??= iconUses(readIconSources(join(process.cwd(), 'src')));
+        weights = uses.get(file[1]) ?? keep;
+      }
+      const trimmed = dropWeights(code, weights);
       return trimmed === null ? null : { code: trimmed, map: null };
     },
   };
