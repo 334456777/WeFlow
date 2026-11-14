@@ -49,9 +49,10 @@
 
 ## 约定
 - 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public），GitHub Project「WeFlow」是公开 Project
-- 提交信息使用中文和 Conventional Commits 规范，信息末尾另起一行按此格式署名：`Co-Authored-By: <你的AI名称与模型版本> <noreply@厂商域名>`（例如 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` `Co-Authored-By: GPT-5 <noreply@openai.com>`），已有署名行时不要重复添加。
-- Pull Request 分支名称使用 Conventional Commits 风格的 `<type>/<scope>-<description>` 格式，合并用 merge commit （`gh pr merge --merge`），合并提交的标题由 GitHub 取 PR 的标题加 `(#N)`。
-- 版本与 tag 规范：版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀；tag 一律用附注 tag，不用轻量 tag（`git tag -a vX.Y.Z -m "WeFlow vX.Y.Z" <commit>`，用 `git cat-file -t vX.Y.Z` 检查，应输出 `tag`）；发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag。只想验证发版流程（改了 `release.yml`、`pgo-build.sh`、`release-check.sh` 等）而不发布时，用 `test.<名称>` tag 试跑：`gh workflow run release.yml --ref <分支> -f tag=test.<名称>`，照常构建和测试，不发布 Release、不建 tag、不跑基准，压缩包留在运行的 artifact 里（见 Wiki「发布与 CI」#试跑）。
+- 严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等隐私信息上传到公开的 GitHub 仓库或写入 CLAUDE.md
+- 提交信息使用中文和 Conventional Commits 规范（前缀可以是英文），信息末尾另起一行按此格式署名：`Co-Authored-By: <你的AI名称与模型版本> <noreply@厂商域名>`（例如 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`、`Co-Authored-By: GPT-5 <noreply@openai.com>`），已有署名行时不要重复添加
+- Pull Request 分支名称使用 Conventional Commits 风格的 `<type>/<scope>-<description>` 格式，合并用 merge commit（`gh pr merge --merge`），合并提交的标题由 GitHub 取 PR 的标题加 `(#N)`。
+- 版本与 tag 规范：版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀；tag 一律用附注 tag，不用轻量 tag（`git tag -a vX.Y.Z -m "WeFlow vX.Y.Z" <commit>`，用 `git cat-file -t vX.Y.Z` 检查，应输出 `tag`）；发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag。只想验证发版流程（改了 `release.yml`、`pgo-build.sh`、`release-check.sh` 等）而不发布时，用 `test.<名称>` tag 试跑：`gh workflow run release.yml --ref <分支> -f tag=test.<名称>`，照常构建和测试，不发布 Release、不建 tag、不跑基准，压缩包留在运行的 artifact 里（见 Wiki「发布与 CI」#试跑）
 - API 版本（`crates/weflow-core/src/contract.rs` 的 `API_VERSION`，与 `web/package.json` 的 `weflow.apiVersion` 一致）只在会让现有客户端出错的改动时提升（路由、参数、响应、配置键）。提出升版本之前先核对：最新 `web-v*` tag 中 `web/package.json` 的 `weflow.apiVersion`，和 `origin/main` 上的 `API_VERSION`。main 已经比发布版高一个版本（升过、还没发布）时，改动并入这个版本，不再提醒升版本，只把改动记进 Wiki「命令-API」#版本 中当前版本的条目；两者相同时才提出要升
 - GitHub Issues 根据 Lables 分类，筛选和表达状态，根据 Relationships 梳理 Issue 依赖关系（Issue dependencies），创建 Issue 时及时添加 Lables 和 Relationships （如果有对应的 Development 则添加对应 Development）
 - GitHub Issues 会有人类和其他大语言模型（LLM）参与讨论，以下情况记录到本仓库的 GitHub Issues: 被列为计划内的工作，需要多轮确认的bug，不符合当前工作的主题但是需要解决的bug，可以稍后解决的bug，被要求将不会被开展的工作，需要多轮和长时间研究思考的精益求精的要求，工作中遇到的反常/不太对劲的地方，新功能或请求，对文档的改进或补充，一些在修改代码后会经常出现的问题和需要更多信息的问题以及其他需要在本次会话之外继续跟踪的事；同时在遇到上述情况时也可以查询Issues寻找解决方法或继续跟踪评论issues
@@ -59,7 +60,7 @@
   - `Backlog` 已记录但尚未排期；`Todo` 已排期待开始；`In Progress` 正在进行；`In Review` PR 已提交等待审查；`Blocked` 被依赖或外部因素阻塞（同时用 Relationships 标出阻塞来源）；`Done` 已关闭或已合并
   - 新建 Issue 或 PR 后立即加入看板并设置 Status 与 `Priority`（`P0` 紧急，立即处理；`P1` 高；`P2` 普通；`P3` 低，可随时搁置）；PR 打开时设为 `In Review`，合并或关闭后与其关联的 Issue 一起设为 `Done`
   - 用 `gh project item-add` 加入条目，用 `gh project item-edit` 改字段；重写 Status 选项会清空所有条目的状态，改选项后必须重新设置
-- Pull request 创建时及时添加 Lables（如果有对应 Development 则添加对应 Development）；PR关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 Issues；PR 标题和描述用中文，只有这几个关键词用英文；用户明确要求英文时才用英文
+- Pull request 创建时及时添加 Lables（如果有对应 Development 则添加对应 Development）；PR关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 Issues；PR 标题和描述用中文，只有这几个关键词用英文
 - 代码按职责划分模块：一个文件只承担一类职责，新代码放进所属的模块（没有就新建），不往入口文件或已经很长的文件里追加；拆分只移动代码、调整可见性和引用路径，与功能改动分开提交，可见性用最小的范围（见 Wiki「开发指南」的[代码组织](https://github.com/334456777/WeFlow/wiki/开发指南#代码组织)）
 - 用户可能会出错，当用户出现明显错误或决策冲突时，请指出
 - 对于需要多个依赖 PR 的开发任务，请使用 `gh stack`
@@ -67,5 +68,4 @@
 
 ## 注意事项
 - 默认用中文回复，代码注释用英文
-- 严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等隐私信息上传到公开的 GitHub 仓库或写入 CLAUDE.md
 - 读文件、改文件、搜索必须使用 agent 自带的文件工具（读取、写入、编辑、按文件名查找、按内容搜索等），不要写脚本（`.sh`/`.py`/`.ps1`）或用 shell heredoc、`sed`、`echo >` 去做：修改已有文件用编辑工具（多处修改就多次调用），新建文件用写入工具；只有批量机械替换、长时间测量这类自带工具确实做不了的事才用脚本，脚本先用写入工具写成文件再运行，用完即删
