@@ -54,16 +54,102 @@ export function dropWeights(code: string, keep: readonly string[]): string | nul
   return code.slice(0, entries[0].from) + kept.map(e => code.slice(e.from, e.to)).join(',\n  ') + code.slice(entries.at(-1)!.to);
 }
 
-const WEIGHT_ATTR = /\bweight\s*=\s*(?:"([^"]*)"|'([^']*)'|\{([^}]*)\})/;
+interface OpenTag {
+  /** The attributes, without the name. Empty when the tag never ends. */
+  attrs: string;
+  /** False when no `>` closes the tag: the weight cannot be known. */
+  closed: boolean;
+  /** Index just after the tag, or just after `<name` when it does not close. */
+  next: number;
+}
 
-/** Weights named by one icon tag's attributes. No `weight` means the icon's own default, `regular`. */
-function weightsOfTag(attrs: string): string[] {
-  const found = attrs.match(WEIGHT_ATTR);
-  if (!found) return ['regular'];
-  if (found[1] != null || found[2] != null) return [found[1] ?? found[2]];
-  const named = [...found[3].matchAll(/['"]([A-Za-z]+)['"]/g)].map(match => match[1]);
+/** The opening tag at `<` (`from`), skipping `>` inside strings and `{…}` so `=>` is not the end. */
+function openTag(text: string, from: number): OpenTag {
+  let i = from + 1;
+  while (i < text.length && /[\w$]/.test(text[i])) i++;
+  const nameEnd = i;
+  const start = i;
+  let brace = 0;
+  try {
+    while (i < text.length) {
+      const c = text[i];
+      if (c === '"' || c === "'" || c === '`') { i = skip(text, i); continue; }
+      if (c === '{') { brace++; i++; continue; }
+      if (c === '}') {
+        if (brace === 0) break;
+        brace--;
+        i++;
+        continue;
+      }
+      if (c === '>' && brace === 0) return { attrs: text.slice(start, i), closed: true, next: i + 1 };
+      i++;
+    }
+  } catch { /* an unterminated string: the tag cannot be read */ }
+  return { attrs: '', closed: false, next: nameEnd };
+}
+
+/** True when the tag itself spreads props (`{...props}`), not a spread inside an expression. */
+function spreadsProps(attrs: string): boolean {
+  let brace = 0;
+  try {
+    for (let i = 0; i < attrs.length; i++) {
+      const c = attrs[i];
+      if (c === '"' || c === "'" || c === '`') { i = skip(attrs, i) - 1; continue; }
+      if (c === '{') {
+        if (brace === 0 && attrs.slice(i + 1).trimStart().startsWith('...')) return true;
+        brace++;
+      } else if (c === '}') brace--;
+    }
+  } catch { return true; }
+  return false;
+}
+
+/**
+ * Weights named on one tag. No `weight` on a tag that ends is `regular`. A spread, an unclosed tag, or a
+ * `weight` whose value names nothing keeps every weight: the build must not drop one the page might draw.
+ */
+function drawnWeights(tag: OpenTag): string[] {
+  if (!tag.closed || spreadsProps(tag.attrs)) return [...ICON_WEIGHTS];
+  const at = tag.attrs.search(/\bweight\s*=/);
+  if (at < 0) return ['regular'];
+  let i = tag.attrs.indexOf('=', at) + 1;
+  while (i < tag.attrs.length && /\s/.test(tag.attrs[i])) i++;
+  const c = tag.attrs[i];
+  if (c === '"' || c === "'") {
+    try {
+      const end = skip(tag.attrs, i);
+      return [tag.attrs.slice(i + 1, end - 1)];
+    } catch { return [...ICON_WEIGHTS]; }
+  }
+  if (c !== '{') return [...ICON_WEIGHTS];
+  let depth = 0;
+  const start = i;
+  try {
+    for (; i < tag.attrs.length; i++) {
+      const ch = tag.attrs[i];
+      if (ch === '"' || ch === "'" || ch === '`') { i = skip(tag.attrs, i) - 1; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { i++; break; } }
+    }
+  } catch { return [...ICON_WEIGHTS]; }
+  if (depth !== 0) return [...ICON_WEIGHTS];
+  const named = [...tag.attrs.slice(start + 1, i - 1).matchAll(/['"]([A-Za-z]+)['"]/g)].map(match => match[1]);
   // `weight={variable}` can be any of the three at runtime
   return named.length ? named : [...ICON_WEIGHTS];
+}
+
+/** `text` with every `<name` tag removed. `visit` sees each one, including a tag that never ends. */
+function visitTags(text: string, name: string, visit: (tag: OpenTag) => void): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of text.matchAll(new RegExp(`<${name}\\b`, 'g'))) {
+    const at = match.index ?? 0;
+    out += text.slice(cursor, at);
+    const tag = openTag(text, at);
+    visit(tag);
+    cursor = tag.next;
+  }
+  return out + text.slice(cursor);
 }
 
 function phosphorImports(text: string): Map<string, string> {
@@ -100,7 +186,7 @@ function addWeights(uses: Map<string, Set<string>>, icon: string, weights: reado
 /**
  * The weights each Phosphor icon is drawn with, by its export name (`Gear`). A tag with no `weight` counts as
  * `regular`. Icons handed to the sidebar or the phone navigation take `fill` and `regular`; a page heading takes
- * `regular`. An icon used some other way keeps every weight the app draws.
+ * `regular`. A spread prop or a tag that does not end keeps every weight, and so does an icon used some other way.
  */
 export function iconUses(files: readonly { text: string }[]): Map<string, string[]> {
   const uses = new Map<string, Set<string>>();
@@ -108,10 +194,9 @@ export function iconUses(files: readonly { text: string }[]): Map<string, string
     const imported = phosphorImports(text);
     if (!imported.size) continue;
     for (const [local, icon] of imported) {
-      for (const tag of text.matchAll(new RegExp(`<${local}\\b([^>]*)>`, 'g'))) addWeights(uses, icon, weightsOfTag(tag[1]));
-      let rest = text.replace(/import\s*\{[^}]+\}\s*from\s*['"]@phosphor-icons\/react['"]/g, '');
+      const withoutTags = visitTags(text, local, tag => addWeights(uses, icon, drawnWeights(tag)));
+      let rest = withoutTags.replace(/import\s*\{[^}]+\}\s*from\s*['"]@phosphor-icons\/react['"]/g, '');
       rest = codeOnly(rest);
-      rest = rest.replace(new RegExp(`<${local}\\b[^>]*>`, 'g'), '');
       rest = rest.replace(new RegExp(`\\bicon:\\s*${local}\\b`, 'g'), '');
       rest = rest.replace(new RegExp(`\\bicon=\\{${local}\\}`, 'g'), '');
       if (new RegExp(`\\b${local}\\b`).test(rest)) addWeights(uses, icon, ICON_WEIGHTS);
@@ -127,11 +212,7 @@ export function iconUses(files: readonly { text: string }[]): Map<string, string
     for (const match of text.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*[\w.]+\.icon\b/g)) aliases.add(match[1]);
     if (stored.length && aliases.size) {
       const drawn = new Set<string>();
-      for (const alias of aliases) {
-        for (const tag of text.matchAll(new RegExp(`<${alias}\\b([^>]*)>`, 'g'))) {
-          for (const weight of weightsOfTag(tag[1])) drawn.add(weight);
-        }
-      }
+      for (const alias of aliases) visitTags(text, alias, tag => { for (const weight of drawnWeights(tag)) drawn.add(weight); });
       for (const icon of stored) addWeights(uses, icon, drawn.size ? [...drawn] : ICON_WEIGHTS);
     }
     for (const match of text.matchAll(/\bicon=\{(\w+)\}/g)) {

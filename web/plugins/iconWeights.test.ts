@@ -45,6 +45,23 @@ describe('the icon weights (#159)', () => {
     expect(drawn(`import { Key } from '@phosphor-icons/react';\nexport const x = <span>API Key</span>;\nexport const y = <Key size={16} />;`).get('Key')).toEqual(['regular']);
     const passed = drawn(`import { Archive } from '@phosphor-icons/react';\nexport const view = host(Archive);`);
     expect(passed.get('Archive')).toEqual(['regular', 'fill', 'bold']);
+    // an arrow in the attributes is not the end of the tag, so the weight after it still counts
+    expect(drawn(`import { Play } from '@phosphor-icons/react';
+      export const x = <Play onClick={() => start()} weight="fill" />;
+    `).get('Play')).toEqual(['fill']);
+    expect(drawn(`import { Play } from '@phosphor-icons/react';
+      export const x = <Play
+        onClick={() => start()}
+        weight="fill"
+      />;
+    `).get('Play')).toEqual(['fill']);
+    // a spread, or a tag that never ends, can draw any weight
+    expect(drawn(`import { Play } from '@phosphor-icons/react';\nexport const x = <Play {...props} />;`).get('Play')).toEqual(['regular', 'fill', 'bold']);
+    expect(drawn(`import { Play } from '@phosphor-icons/react';\nexport const x = <Play weight="fill"`).get('Play')).toEqual(['regular', 'fill', 'bold']);
+    expect(drawn(`import { Gear } from '@phosphor-icons/react';
+      const items = [{ icon: Gear }];
+      export const view = items.map(item => { const Icon = item.icon; return <Icon onClick={() => open()} weight={current ? 'fill' : 'regular'} />; });
+    `).get('Gear')).toEqual(['regular', 'fill']);
   });
 
   it('keeps only the weights the pages draw', async () => {
