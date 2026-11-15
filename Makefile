@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# WeFlow Native CLI — Cross-platform Makefile
+# WeFlow CLI — Cross-platform Makefile
 # 支持平台: macOS · Linux · Windows (Git Bash / WSL)
 # 用法: make help
 # ─────────────────────────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ ifeq ($(PLATFORM),windows)
 	@powershell -NoProfile -Command "if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) { Write-Error 'curl not found. Please install it or use Windows 10 1803+.' }" || exit 1
 else
 	@command -v curl >/dev/null 2>&1 || { \
-		printf "$(RED)✗ curl 未找到$(RESET)\n"; \
+		printf "$(RED)curl 未找到$(RESET)\n"; \
 		printf "  macOS:  brew install curl\n"; \
 		printf "  Linux:  sudo apt-get install -y curl  # 或对应包管理器\n"; \
 		exit 1; \
@@ -164,7 +164,7 @@ else
 		printf "$(GREEN)  git 安装完成$(RESET)\n"; \
 	}
 endif
-	@printf "$(GREEN)✓ $(shell git --version)$(RESET)\n"
+	@printf "$(GREEN)$(shell git --version)$(RESET)\n"
 
 check-rust:
 	@command -v cargo >/dev/null 2>&1 || { \
@@ -176,8 +176,8 @@ check-rust:
 		printf "$(CYAN)  请执行: source \$$HOME/.cargo/env  (或重开终端)$(RESET)\n"; \
 		. "$$HOME/.cargo/env" 2>/dev/null || true; \
 	}
-	@printf "$(GREEN)✓ $(shell rustc --version)$(RESET)\n"
-	@printf "$(GREEN)✓ $(shell cargo --version)$(RESET)\n"
+	@printf "$(GREEN)$(shell rustc --version)$(RESET)\n"
+	@printf "$(GREEN)$(shell cargo --version)$(RESET)\n"
 
 check-tools: check-git check-rust
 	@printf "$(GREEN)$(BOLD)所有工具就绪！$(RESET)\n"
@@ -188,55 +188,55 @@ check-tools: check-git check-rust
 .PHONY: build release test check fmt fmt-check lint rustdoc clean docs-check
 
 build: check-rust
-	@printf "$(BOLD)▶ cargo build$(RESET)\n"
+	@printf "$(BOLD)cargo build$(RESET)\n"
 	cargo build -p weflow-cli
-	@printf "$(GREEN)$(BOLD)✓ 构建完成 → $(DEBUG_BIN)$(RESET)\n"
+	@printf "$(GREEN)$(BOLD)构建完成 → $(DEBUG_BIN)$(RESET)\n"
 	@ls -lh "$(DEBUG_BIN)" 2>/dev/null || true
 
 release: check-rust
-	@printf "$(BOLD)▶ cargo build --release$(RESET)\n"
+	@printf "$(BOLD)cargo build --release$(RESET)\n"
 	cargo build --release -p weflow-cli
-	@printf "$(GREEN)$(BOLD)✓ 构建完成 → $(BIN)$(RESET)\n"
+	@printf "$(GREEN)$(BOLD)构建完成 → $(BIN)$(RESET)\n"
 	@ls -lh "$(BIN)" 2>/dev/null || true
 
 test: check-rust
-	@printf "$(BOLD)▶ cargo test --workspace$(RESET)\n"
+	@printf "$(BOLD)cargo test --workspace$(RESET)\n"
 	cargo test --workspace
 
 docs-check: check-rust
-	@printf "$(BOLD)▶ 检查指定 Markdown 文档的一致性$(RESET)\n"
+	@printf "$(BOLD)检查指定 Markdown 文档的一致性$(RESET)\n"
 	cargo test -p weflow-native --test docs_consistency
 
 check: check-rust
-	@printf "$(BOLD)▶ cargo check --workspace$(RESET)\n"
+	@printf "$(BOLD)cargo check --workspace$(RESET)\n"
 	cargo check --workspace
 
 fmt: check-rust
-	@printf "$(BOLD)▶ cargo fmt$(RESET)\n"
+	@printf "$(BOLD)cargo fmt$(RESET)\n"
 	cargo fmt --all
 
 # The code follows rustfmt's default style. rustfmt is a rustup component: install it when it is missing, so the
 # check cannot pass by not running.
 fmt-check: check-rust
-	@printf "$(BOLD)▶ cargo fmt --check$(RESET)\n"
+	@printf "$(BOLD)cargo fmt --check$(RESET)\n"
 	@cargo fmt --version >/dev/null 2>&1 || rustup component add rustfmt
 	cargo fmt --all -- --check
 
 lint: check-rust
-	@printf "$(BOLD)▶ cargo clippy$(RESET)\n"
+	@printf "$(BOLD)cargo clippy$(RESET)\n"
 	@cargo clippy --version >/dev/null 2>&1 || rustup component add clippy
 	cargo clippy --workspace --all-targets -- -D warnings
 
 # The API documentation with rustdoc's warnings as errors: a link to a private or unknown item, or a doc comment
 # read as an unclosed HTML tag, fails the check.
 rustdoc: check-rust
-	@printf "$(BOLD)▶ cargo doc$(RESET)\n"
+	@printf "$(BOLD)cargo doc$(RESET)\n"
 	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
 clean:
-	@printf "$(BOLD)▶ cargo clean$(RESET)\n"
+	@printf "$(BOLD)cargo clean$(RESET)\n"
 	cargo clean
-	@printf "$(GREEN)✓ target/ 已清理$(RESET)\n"
+	@printf "$(GREEN)target/ 已清理$(RESET)\n"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 安装 / 卸载
@@ -278,7 +278,7 @@ endif
 
 _ensure-target-macos:
 ifneq ($(PLATFORM),macos)
-	@printf "$(RED)✗ 交叉编译 macOS 需要 macOS 的 SDK，请在 macOS 上运行 make cross-macos$(RESET)\n"; exit 1
+	@printf "$(RED)交叉编译 macOS 需要 macOS 的 SDK，请在 macOS 上运行 make cross-macos$(RESET)\n"; exit 1
 endif
 	@rustup target list --installed | grep -q "$(TARGET_MACOS_ARM)" || { \
 		printf "$(YELLOW)⚠ 安装编译目标 $(TARGET_MACOS_ARM)...$(RESET)\n"; \
@@ -302,7 +302,7 @@ ifeq ($(PLATFORM),linux)
 ifneq ($(CROSS_LINUX_ENV),)
 	@command -v x86_64-linux-gnu-gcc >/dev/null 2>&1 || { \
 		command -v apt-get >/dev/null 2>&1 || { \
-			printf "$(RED)✗ 需要 x86_64-linux-gnu-gcc 交叉编译器，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
+			printf "$(RED)需要 x86_64-linux-gnu-gcc 交叉编译器，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
 		printf "$(YELLOW)⚠ 安装 gcc-x86-64-linux-gnu...$(RESET)\n"; \
 		sudo apt-get install -y gcc-x86-64-linux-gnu || { printf "$(RED)  安装失败$(RESET)\n"; exit 1; }; \
 	}
@@ -324,43 +324,43 @@ endif
 ifeq ($(PLATFORM),linux)
 	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || { \
 		command -v apt-get >/dev/null 2>&1 || { \
-			printf "$(RED)✗ 需要 x86_64-w64-mingw32-gcc (mingw-w64)，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
+			printf "$(RED)需要 x86_64-w64-mingw32-gcc (mingw-w64)，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
 		printf "$(YELLOW)⚠ 安装 mingw-w64...$(RESET)\n"; \
 		sudo apt-get install -y mingw-w64 || { printf "$(RED)  安装失败$(RESET)\n"; exit 1; }; \
 	}
 endif
 
 cross-macos: check-rust _ensure-target-macos
-	@printf "$(BOLD)▶ 编译 macOS arm64$(RESET)\n"
+	@printf "$(BOLD)编译 macOS arm64$(RESET)\n"
 	cargo build --release -p weflow-cli --target $(TARGET_MACOS_ARM)
 	@cp target/$(TARGET_MACOS_ARM)/release/weflow weflow-macos-arm64
-	@printf "$(GREEN)✓ → weflow-macos-arm64 ($$(ls -lh weflow-macos-arm64 | awk '{print $$5}'))$(RESET)\n"
+	@printf "$(GREEN)→ weflow-macos-arm64 ($$(ls -lh weflow-macos-arm64 | awk '{print $$5}'))$(RESET)\n"
 
 ifeq ($(PLATFORM),windows)
 cross-linux:
 	@command -v wsl.exe >/dev/null 2>&1 || { \
-		printf "$(RED)✗ 在 Windows 上编译 Linux 版本需要 WSL: wsl --install$(RESET)\n"; exit 1; }
-	@printf "$(BOLD)▶ 编译 Linux x64（在 WSL 中）$(RESET)\n"
+		printf "$(RED)在 Windows 上编译 Linux 版本需要 WSL: wsl --install$(RESET)\n"; exit 1; }
+	@printf "$(BOLD)编译 Linux x64（在 WSL 中）$(RESET)\n"
 	MSYS_NO_PATHCONV=1 wsl.exe -e bash -lc '. "$$HOME/.cargo/env" 2>/dev/null; \
 	  command -v cargo >/dev/null || { echo "WSL 中未找到 cargo，请先在 WSL 里安装 Rust: https://rustup.rs" >&2; exit 1; }; \
 	  export CARGO_TARGET_DIR="$(WSL_TARGET_DIR)"; \
 	  if [ "$$(rustc -vV | sed -n "s/^host: //p")" = $(TARGET_LINUX_X64) ]; then target=; out=release; \
 	  else target="--target $(TARGET_LINUX_X64)"; out=$(TARGET_LINUX_X64)/release; fi; \
 	  cargo build --release -p weflow-cli $$target && cp "$$CARGO_TARGET_DIR/$$out/weflow" weflow-linux-x64'
-	@printf "$(GREEN)✓ → weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
+	@printf "$(GREEN)→ weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
 else
 cross-linux: check-rust _ensure-target-linux
-	@printf "$(BOLD)▶ 编译 Linux x64$(RESET)\n"
+	@printf "$(BOLD)编译 Linux x64$(RESET)\n"
 	$(CROSS_LINUX_ENV) cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
 	@cp target/$(TARGET_LINUX_X64)/release/weflow weflow-linux-x64
-	@printf "$(GREEN)✓ → weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
+	@printf "$(GREEN)→ weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
 endif
 
 cross-windows: check-rust _ensure-target-windows
-	@printf "$(BOLD)▶ 编译 Windows x64 ($(WIN_TARGET))$(RESET)\n"
+	@printf "$(BOLD)编译 Windows x64 ($(WIN_TARGET))$(RESET)\n"
 	$(CROSS_WINDOWS_ENV) cargo build --release -p weflow-cli --target $(WIN_TARGET)
 	@cp target/$(WIN_TARGET)/release/weflow.exe weflow-windows-x64.exe
-	@printf "$(GREEN)✓ → weflow-windows-x64.exe ($$(ls -lh weflow-windows-x64.exe | awk '{print $$5}'))$(RESET)\n"
+	@printf "$(GREEN)→ weflow-windows-x64.exe ($$(ls -lh weflow-windows-x64.exe | awk '{print $$5}'))$(RESET)\n"
 
 cross-all: cross-macos cross-linux cross-windows
 	@printf "\n$(GREEN)$(BOLD)所有平台构建完成:$(RESET)\n"
@@ -372,7 +372,7 @@ cross-all: cross-macos cross-linux cross-windows
 .PHONY: ci env
 
 ci: fmt-check lint rustdoc test
-	@printf "$(GREEN)$(BOLD)✓ CI 全流程通过$(RESET)\n"
+	@printf "$(GREEN)$(BOLD)CI 全流程通过$(RESET)\n"
 
 env:
 	@printf "$(BOLD)WeFlow 构建环境$(RESET)\n"
