@@ -39,6 +39,8 @@ bun run dev                               # http://localhost:5173/ui/
 
 运行 `bun run build` 后，可以用 `weflow serve --ui-dir web/dist` 打开构建出的网页。
 
+`bun run smoke`（#789）用无头 Chrome 试用这份构建，也就是发布出去的网页（由 Preact 渲染，而 `bun test` 用 React）：它像 `bun run dev` 一样编译并启动合成账号的 `weflow serve`，每项检查在一个新标签页里打开网页、操作，检查显示的文字和元素个数，并要求控制台没有错误。需要安装 Chrome（不在常见位置时用 `CHROME` 指定可执行文件）；失败的检查在 `target/web-smoke/` 留下截图。
+
 ## 脚本
 
 | 脚本 | 说明 |
@@ -48,6 +50,7 @@ bun run dev                               # http://localhost:5173/ui/
 | `bun test` | 运行测试（`bun:test`，DOM 由 happy-dom 提供） |
 | `bun run build` | 类型检查后构建到 `dist/` |
 | `bun run preview` | 用同样的代理预览 `dist/` |
+| `bun run smoke` | 在无头 Chrome 里对 `dist/` 做冒烟测试；`bun run smoke <词>` 只跑名字里有这个词的检查 |
 | `bun run contract` | 由 `contract/openapi.json` 生成 `src/api/contract.gen.ts`；带 `--check` 时只检查 |
 | `bun run i18n` | 列出还没有英文的界面文字、不再有文字使用的英文，以及还没经过 `t()` 的中文；带 `--check` 时前两种不为空就失败 |
-| `bun run check` | 检查契约类型和英文，再做类型检查、测试和构建，与 CI 相同（CI 另外把契约与最新发布版对比） |
+| `bun run check` | 检查契约类型和英文，再做类型检查、测试和构建，与 CI 相同（CI 另外把契约与最新发布版对比，并运行 `bun run smoke`） |

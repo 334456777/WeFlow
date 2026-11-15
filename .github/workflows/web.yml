@@ -2,16 +2,19 @@ name: WebUI
 
 # The WebUI under web/ (React + TypeScript + Vite) is built on its own, apart from the Rust workspace: changes to it
 # type-check it, run its tests and build it. The build is uploaded so a run's output can be tried with
-# `weflow serve --ui-dir`; web-release.yml publishes it (#148).
+# `weflow serve --ui-dir`; web-release.yml publishes it (#148). Beside that, the smoke test tries the build in headless
+# Chrome over a `weflow serve` of the synthetic account (#789), which a change to that account runs too.
 on:
   pull_request:
     paths:
       - "web/**"
+      - "crates/weflow-cli/examples/dev_account.rs"
       - ".github/workflows/web.yml"
   push:
     branches: [main]
     paths:
       - "web/**"
+      - "crates/weflow-cli/examples/dev_account.rs"
       - ".github/workflows/web.yml"
   workflow_dispatch:
 
@@ -98,4 +101,54 @@ jobs:
         with:
           name: weflow-web
           path: web/dist
+          retention-days: 14
+
+  # The build as it is released (rendered by Preact, while bun test runs React) in headless Chrome, the one the runner
+  # has, over a `weflow serve --ui-dir web/dist` of the synthetic account (#789): web/smoke/checks.ts
+  smoke:
+    name: smoke test of the build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust (version from rust-toolchain.toml)
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc --version
+
+      # the debug build of weflow and of the account's generator, a cache of this job's own; only main saves
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: web/package.json
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-packages-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
+          restore-keys: bun-packages-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      # the check job type-checks it
+      - name: Build
+        run: bun --bun vite build
+
+      # builds weflow and the synthetic account first (cargo build)
+      - name: Smoke test
+        run: bun run smoke
+
+      - name: Screenshots of the checks that failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-smoke-screenshots
+          path: target/web-smoke/*.png
+          if-no-files-found: ignore
           retention-days: 14

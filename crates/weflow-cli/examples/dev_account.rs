@@ -6,7 +6,8 @@
 //! `<work dir>/data` holds the account and `<work dir>/home` the WeFlow home pointing at it; both are built again only
 //! when [`VERSION`] changes. The home is printed on stdout.
 //!
-//! What is in it: private chats with a few friends (50 to 100 messages each), a group whose pictures are on this computer, some Moments, and
+//! What is in it: private chats with a few friends (50 to 100 messages each), a group whose pictures are on this computer, some Moments,
+//! the notices of the WeChat Pay account (a few payments and a refund), and
 //! 「图片测试」, a chat of one picture per case of the files WeChat keeps of it (#194): the thumbnail a chat shows
 //! (`<md5>_t.dat`), the image opened (`<md5>.dat`) and the original downloaded on View original (`<md5>_h.dat`), each
 //! there or not. Every picture is a JPEG with its file and size written on it, so which one a page shows is plain.
@@ -26,12 +27,14 @@ use anyhow::{anyhow, ensure, Context, Result};
 use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, RoomSpec, SessionSpec, SnsPostSpec};
 
 /// Bump on any change to what is built, so the account is built again.
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 /// The account's own wxid, and its folder as WeChat names it (the wxid and a suffix of four).
 const OWNER: &str = "wxid_devme";
 const ACCOUNT_DIR: &str = "wxid_devme_d3v0";
 const PICTURES: &str = "wxid_devpictures";
 const ROOM: &str = "dev_hiking@chatroom";
+/// The WeChat Pay account, whose notices `biz pay-records` reads.
+const PAY: &str = "gh_3dfda90e39d6";
 const XOR_KEY: u8 = 0x5a;
 const MINUTE: i64 = 60;
 const HOUR: i64 = 3600;
@@ -91,6 +94,40 @@ const LINES: &[&str] = &[
     "我也想去！能带上我吗",
     "当然，人多热闹",
     "晚安",
+];
+
+/// The WeChat Pay notices, newest first: days before the newest, the title and the lines WeChat writes in them.
+const PAYMENTS: &[(i64, &str, &str)] = &[
+    (
+        0,
+        "微信支付凭证",
+        "付款金额¥28.00\n支付方式零钱\n收款方楼下面馆\n交易状态支付成功",
+    ),
+    (
+        1,
+        "微信支付凭证",
+        "付款金额¥12.50\n支付方式零钱\n收款方街角便利店\n交易状态支付成功",
+    ),
+    (
+        3,
+        "退款到账通知",
+        "退款金额¥89.00\n退款方式信用卡\n商户名称山野户外用品\n退款状态已到账",
+    ),
+    (
+        6,
+        "微信支付凭证",
+        "付款金额¥356.00\n支付方式信用卡\n收款方山野户外用品\n交易状态支付成功",
+    ),
+    (
+        9,
+        "微信支付凭证",
+        "付款金额¥68.00\n支付方式零钱\n收款方周末书店\n交易状态支付成功",
+    ),
+    (
+        15,
+        "微信支付凭证",
+        "付款金额¥4.00\n支付方式零钱通\n收款方城市地铁\n交易状态支付成功",
+    ),
 ];
 
 /// Which files of a picture are on this computer.
@@ -413,6 +450,7 @@ fn build(data: &Path, now: i64) -> Result<Fixture> {
         ContactSpec::new(OWNER, 1, "我"),
         ContactSpec::new(PICTURES, 1, "图片测试"),
         ContactSpec::new(ROOM, 2, "周末爬山群"),
+        ContactSpec::new(PAY, 5, "微信支付"),
     ];
     contacts.extend(FRIENDS.iter().map(|(u, n)| ContactSpec::new(u, 1, n)));
     let members: Vec<(&'static str, &'static str)> = std::iter::once((OWNER, ""))
@@ -545,8 +583,30 @@ fn build(data: &Path, now: i64) -> Result<Fixture> {
         chats.push((user, msgs));
     }
 
+    // the WeChat Pay account, in the database WeChat keeps official accounts in: oldest first, as the others
+    let notices: Vec<MsgSpec> = PAYMENTS
+        .iter()
+        .rev()
+        .zip(1..)
+        .map(|((back, title, lines), local_id)| {
+            let xml = format!(
+                "<msg><appmsg appid=\"\" sdkver=\"0\"><title>{title}</title><des><![CDATA[{lines}]]></des>\
+                 <type>5</type></appmsg><fromusername>{PAY}</fromusername></msg>"
+            );
+            MsgSpec::text(local_id, PAY, now - back * DAY - 3 * HOUR, &xml).of_type(49)
+        })
+        .collect();
+    sessions.push(SessionSpec {
+        username: PAY,
+        summary: PAYMENTS[0].1,
+        last_timestamp: notices.last().map_or(now, |m| m.create_time),
+        unread: 0,
+        last_msg_type: 49,
+    });
+
     f.session_db(&sessions);
     f.message_shard(0, &chats);
+    f.biz_message_db(0, &[(PAY, notices)]);
     f.sns_db(&[
         SnsPostSpec {
             tid: 3001,

@@ -39,6 +39,8 @@ To open the dev server from another computer or a phone, run `bun run dev --host
 
 After `bun run build`, `weflow serve --ui-dir web/dist` opens the built page.
 
+`bun run smoke` (#789) tries that build in headless Chrome, the page as it is released (rendered by Preact, while `bun test` runs React): it builds and starts a `weflow serve` of the synthetic account as `bun run dev` does, and each check opens the page in a new tab, works it, and checks the text and the number of elements shown and that the console has no error. It needs Chrome (`CHROME` names its executable when it is not where it is usually installed); a check that fails leaves a screenshot in `target/web-smoke/`.
+
 ## Scripts
 
 | Script | |
@@ -48,6 +50,7 @@ After `bun run build`, `weflow serve --ui-dir web/dist` opens the built page.
 | `bun test` | The tests (`bun:test`, with a DOM from happy-dom) |
 | `bun run build` | Type-check, then build into `dist/` |
 | `bun run preview` | Serve `dist/` with the same proxy |
+| `bun run smoke` | The smoke test of `dist/` in headless Chrome; `bun run smoke <word>` runs only the checks with that word in their name |
 | `bun run contract` | Write `src/api/contract.gen.ts` from `contract/openapi.json`; `--check` only checks it |
 | `bun run i18n` | List the page's texts without their English, the English no text uses any more, and the Chinese not passed through `t()` yet; `--check` fails on the first two |
-| `bun run check` | Check the types of the contract and the English, type-check, test and build, as CI does (CI also compares the contract with the latest release's) |
+| `bun run check` | Check the types of the contract and the English, type-check, test and build, as CI does (CI also compares the contract with the latest release's and runs `bun run smoke`) |
