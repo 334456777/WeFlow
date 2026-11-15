@@ -159,12 +159,12 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustc --version
 
-      # reads the cache of the `ci` job on Linux (same key prefix, the dev-profile test dependencies docs-check
-      # compiles too) and never saves its own
+      # Its own cache, which docs-check.yml's job (same job id) shares: `-p weflow-native` builds the dependencies with
+      # other features than `make ci`'s `--workspace`, so the `ci` job's cache does not fit (the job took three times
+      # as long on it). Only main saves.
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ci
-          save-if: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: make docs-check
         run: make docs-check
