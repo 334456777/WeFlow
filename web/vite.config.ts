@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
 import { iconWeights } from './plugins/iconWeights.ts';
+import { viteReactAlias } from './plugins/reactAlias.ts';
 import { BUDGET, sizeBudget } from './plugins/sizeBudget.ts';
 import { WEB_META, webMeta } from './plugins/webMeta.ts';
 
@@ -29,7 +30,11 @@ export default defineConfig(({ mode }) => {
     // weflow serve hosts the WebUI under /ui/ (#146)
     base: '/ui/',
     define: { __WEFLOW_WEB__: JSON.stringify(WEB_META) },
-    plugins: [react(), iconWeights(), webMeta(), sizeBudget()],
+    resolve: { alias: viteReactAlias() },
+    optimizeDeps: { exclude: ['react', 'react-dom'] },
+    // jsxImportSource so the page's JSX is Preact's; the alias covers `react` and `react-dom` imports, including
+    // the icon package, which calls React's createElement
+    plugins: [react({ jsxImportSource: 'preact' }), iconWeights(), webMeta(), sizeBudget()],
     // Vite's own warning at the same size as the budget (#159)
     build: { chunkSizeWarningLimit: BUDGET.js / 1000 },
     server: { proxy },

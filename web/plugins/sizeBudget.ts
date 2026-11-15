@@ -1,5 +1,6 @@
 // The most JavaScript the page loads before it shows (#159): the entry chunk and what it imports at once. The build
-// fails above it, so a change that makes the page heavier says so and raises the budget on purpose.
+// fails above it, so a change that makes the page heavier says so and raises the budget on purpose. The page is
+// rendered by Preact (plugins/reactAlias.ts, #783); react-dom alone would take about 66 kB of the gzip budget.
 import type { Plugin } from 'vite';
 
 const utf8 = new TextEncoder();
