@@ -278,6 +278,11 @@ fn attach(tid: libc::pid_t, target: usize) -> io::Result<()> {
             return Err(error);
         }
     };
+    if wifexited(status) || wifsignaled(status) {
+        let _ = detach(tid);
+        // The thread exited while it was being attached; the caller skips it.
+        return Err(io::Error::from_raw_os_error(libc::ESRCH));
+    }
     if !wifstopped(status) {
         let _ = detach(tid);
         return Err(io::Error::other(
