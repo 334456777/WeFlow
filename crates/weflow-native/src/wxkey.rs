@@ -268,7 +268,7 @@ impl WxKey {
         true
     }
 
-    /// Attaches with ptrace and waits for WeChat to open its databases.
+    /// Reads WeChat's ELF image, attaches with ptrace, and waits for the key.
     pub fn get_db_key_with_tick(
         &self,
         pid: u32,
@@ -276,53 +276,32 @@ impl WxKey {
         on_status: &mut dyn FnMut(&str, i32),
         on_tick: &mut dyn FnMut(u64),
     ) -> std::result::Result<String, DbKeyError> {
-        let start = std::time::Instant::now();
-        let mut hook = crate::linux_db_key::Hook::start(pid).map_err(db_key_error)?;
+        let mut hook = crate::linux_key_helper::Hook::start(pid).map_err(db_key_error)?;
         on_status("Hook installed; log in to WeChat now", 1);
-        let mut last_tick = u64::MAX;
-        while start.elapsed() < timeout {
-            let left = timeout.saturating_sub(start.elapsed()).as_secs();
-            if left != last_tick {
-                last_tick = left;
-                on_tick(left);
+        match hook.wait(timeout, on_tick) {
+            Ok(key) => {
+                on_status("key obtained", 1);
+                Ok(key)
             }
-            match hook.poll() {
-                Ok(Some(key)) => {
-                    hook.cleanup()
-                        .map_err(|error| DbKeyError::Other(error.to_string()))?;
-                    on_status("key obtained", 1);
-                    return Ok(key);
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    let _ = hook.cleanup();
-                    return Err(db_key_error(error));
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            Err(error) => Err(db_key_error(error)),
         }
-        let diagnostics = hook.diagnostics().clone();
-        hook.cleanup()
-            .map_err(|error| DbKeyError::Other(error.to_string()))?;
-        on_status(
-            &format!(
-                "Capture diagnostics: {}",
-                serde_json::to_string(&diagnostics).unwrap_or_default()
-            ),
-            2,
-        );
-        Err(DbKeyError::Timeout)
     }
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-fn db_key_error(error: anyhow::Error) -> DbKeyError {
-    let message = error.to_string();
+fn db_key_error(message: String) -> DbKeyError {
     if message == "interrupted by user" {
         DbKeyError::Interrupted
-    } else if message.contains("ACCESS_DENIED") {
+    } else if message == "Timeout waiting for 32-byte key" {
+        DbKeyError::Timeout
+    } else if message.contains("Failed to attach to any thread")
+        || message.contains("ACCESS_DENIED")
+    {
         DbKeyError::AccessDenied(message)
-    } else if message.contains("no threads") || message.contains("is not mapped") {
+    } else if message == "CANNOT_GET_EXEC_PATH"
+        || message == "CANNOT_GET_BASE_ADDR"
+        || message.contains("Failed to open task directory")
+    {
         DbKeyError::NotReady(message)
     } else {
         DbKeyError::Other(message)

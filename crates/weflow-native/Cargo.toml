@@ -29,7 +29,7 @@ tempfile = { workspace = true, optional = true }
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Memory", "Win32_Storage_FileSystem", "Win32_System_Kernel", "Win32_System_SystemInformation", "Win32_System_Console", "Win32_System_LibraryLoader"] }
 
-# `linux_db_key` attaches to WeChat and reads its registers and memory
+# `linux_key_helper` attaches to WeChat and reads its registers and memory
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 libc = "0.2"
 

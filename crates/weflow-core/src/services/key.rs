@@ -363,7 +363,7 @@ pub fn interrupt_key_db() {
     #[cfg(all(windows, target_arch = "x86_64"))]
     weflow_native::windows_db_key::interrupt();
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    weflow_native::linux_db_key::interrupt();
+    weflow_native::linux_key_helper::interrupt();
 }
 
 fn key_db_interrupted() -> bool {

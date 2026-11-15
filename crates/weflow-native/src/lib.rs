@@ -5,7 +5,7 @@ pub mod db;
 pub mod fixture;
 mod leaf_scan;
 #[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
-pub mod linux_db_key;
+pub mod linux_key_helper;
 pub mod media;
 pub mod msg;
 pub mod msg_row;
