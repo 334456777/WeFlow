@@ -9,9 +9,9 @@ use super::ServiceHub;
 use crate::error::{AppError, AppResult};
 
 impl ServiceHub {
-    /// `key:autoGetDbKey`. On Windows WeChat only produces the key while it opens its databases, so the command
-    /// asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for the
-    /// user to click "Enter WeChat".
+    /// `key:autoGetDbKey`. WeChat only produces the key while it opens its databases, so on Windows and Linux the
+    /// command asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for
+    /// the user to click "Enter WeChat".
     pub fn key_db(
         &self,
         pid_override: Option<u32>,
@@ -52,7 +52,7 @@ impl ServiceHub {
         }
     }
 
-    /// Hooks WeChat and waits for the database key; shared by Windows and macOS.
+    /// Hooks WeChat and waits for the database key; shared by Windows, Linux and macOS.
     fn key_db_hooked(
         &self,
         wxkey: &weflow_native::wxkey::WxKey,
@@ -75,7 +75,7 @@ impl ServiceHub {
         };
         let pid = match pid_override {
             Some(pid) => pid,
-            None if cfg!(windows) => {
+            None if cfg!(any(windows, target_os = "linux")) => {
                 let found = wait_for_fresh_wechat(
                     &mut wechat_pids,
                     &mut || std::thread::sleep(std::time::Duration::from_secs(1)),
@@ -110,7 +110,7 @@ impl ServiceHub {
                 },
             )
         };
-        if !cfg!(windows) {
+        if cfg!(target_os = "macos") {
             login_phase();
         }
 
@@ -124,7 +124,9 @@ impl ServiceHub {
             }
             // wx_key's own progress messages are noise; only its errors are shown
             let mut on_status = |msg: &str, level: i32| {
-                if cfg!(windows) && msg == "Hook installed; log in to WeChat now" {
+                if cfg!(any(windows, target_os = "linux"))
+                    && msg == "Hook installed; log in to WeChat now"
+                {
                     login_phase();
                 }
                 if level == 2 {
@@ -144,9 +146,16 @@ impl ServiceHub {
                 Ok(key) => break key,
                 Err(DbKeyError::AccessDenied(detail)) => {
                     end_status_line();
-                    return Err(AppError::native(format!(
-                        "permission denied: cannot open the WeChat process (pid {pid}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({detail})"
-                    )));
+                    let hint = if cfg!(target_os = "linux") {
+                        format!(
+                            "permission denied: cannot attach to WeChat (pid {pid}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({detail})"
+                        )
+                    } else {
+                        format!(
+                            "permission denied: cannot open the WeChat process (pid {pid}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({detail})"
+                        )
+                    };
+                    return Err(AppError::native(hint));
                 }
                 Err(DbKeyError::Timeout | DbKeyError::LoginRequired) => {
                     end_status_line();
@@ -157,7 +166,7 @@ impl ServiceHub {
                 Err(DbKeyError::NotReady(_)) if remaining() > 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
-                Err(DbKeyError::Other(_)) if !cfg!(windows) && remaining() > 0 => {
+                Err(DbKeyError::Other(_)) if cfg!(target_os = "macos") && remaining() > 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 Err(other) => {
@@ -188,6 +197,53 @@ impl ServiceHub {
         };
         let wxid = self.profile().ok().and_then(|p| p.wxid.as_deref());
         crate::image_keys::acquire_image_keys(kvcomm_dirs, &account, wxid, scan_budget)
+    }
+
+    /// Image keys derived from local account directories and `kvcomm` files on Linux.
+    #[cfg_attr(
+        not(all(target_os = "linux", target_arch = "x86_64")),
+        allow(unused_variables)
+    )]
+    pub fn key_image_local(&self) -> AppResult<crate::contract::ImageLocalKeys> {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            let data = weflow_native::linux_key_helper::image_local()
+                .map_err(|error| AppError::native(error.to_string()))?;
+            serde_json::from_str(&data).map_err(|error| AppError::native(error.to_string()))
+        }
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        {
+            Err(AppError::native(
+                "`key image-local` is only available on Linux x64",
+            ))
+        }
+    }
+
+    /// An image AES key found in WeChat's memory from a ciphertext block, on Linux.
+    #[cfg_attr(
+        not(all(target_os = "linux", target_arch = "x86_64")),
+        allow(unused_variables)
+    )]
+    pub fn key_image_mem(
+        &self,
+        pid: u32,
+        ciphertext: &str,
+    ) -> AppResult<crate::contract::ImageMemKey> {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            let image_aes_key = weflow_native::linux_key_helper::image_mem(pid, ciphertext);
+            Ok(crate::contract::ImageMemKey {
+                image_aes_key,
+                pid,
+                saved: Vec::new(),
+            })
+        }
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        {
+            Err(AppError::native(
+                "`key image-mem` is only available on Linux x64",
+            ))
+        }
     }
 
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
@@ -353,6 +409,8 @@ pub fn interrupt_key_db() {
     KEY_DB_INTERRUPTED.store(true, std::sync::atomic::Ordering::Release);
     #[cfg(all(windows, target_arch = "x86_64"))]
     weflow_native::windows_db_key::interrupt();
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    weflow_native::linux_key_helper::interrupt();
 }
 
 fn key_db_interrupted() -> bool {
@@ -410,13 +468,29 @@ fn wait_for_fresh_wechat(
     }
 }
 
-/// Process ids of the running WeChat (Weixin.exe / WeChat.exe on Windows), in the order the system lists them.
+/// Process ids of the running WeChat (Weixin.exe / WeChat.exe on Windows, `wechat` on Linux), in the order the
+/// system lists them.
 fn wechat_pids() -> Vec<u32> {
     #[cfg(target_os = "windows")]
     {
         crate::process::pids_by_image(&["Weixin.exe", "WeChat.exe"])
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("pgrep")
+            .arg("-x")
+            .arg("wechat")
+            .output()
+            .ok()
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .filter_map(|line| line.trim().parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+    #[cfg(all(not(windows), not(target_os = "linux")))]
     {
         find_wechat_pid().into_iter().collect()
     }

@@ -88,6 +88,8 @@ pub(super) const METHODS: &[(&str, Rule)] = &[
     ("db wxid", Rule::Fixed(Get)),
     ("key db", Rule::Fixed(Post)),
     ("key image", Rule::Fixed(Post)),
+    ("key image-local", Rule::Fixed(Post)),
+    ("key image-mem", Rule::Fixed(Post)),
     ("key scan-image", Rule::Fixed(Post)),
     ("chat sessions", Rule::Fixed(Get)),
     ("chat messages", Rule::Fixed(Get)),
