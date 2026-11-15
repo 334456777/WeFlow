@@ -3353,6 +3353,7 @@ dependencies = [
  "anyhow",
  "cbc",
  "hmac 0.13.0",
+ "libc",
  "libloading",
  "md-5",
  "pbkdf2 0.13.0",
