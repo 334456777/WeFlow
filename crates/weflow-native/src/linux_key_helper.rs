@@ -1,8 +1,8 @@
-//! Rust port of `xkey_helper_linux`.
+//! The Rust rewrite of WeFlow's Linux key helper, in PR #796.
 //!
-//! The database modes (`db_scan`, `db_hook`) are used by `key db` in this
-//! process; `image_local` and `image_mem` back the Linux image-key commands.
-//! The command-line compatibility layer is in `cli`.
+//! `db_scan` and `db_hook` locate and capture the database key for `key db`;
+//! `image_local` and `image_mem` back the Linux image-key commands. The
+//! command-line compatibility layer is in `cli`.
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod cli;
