@@ -289,7 +289,16 @@ fn attach(tid: libc::pid_t, target: usize) -> io::Result<()> {
             "attached thread stopped for an unexpected event",
         ));
     }
-    if let Err(error) = set_breakpoint(tid, target, true) {
+    // SEIZE already stored the options; setting them again keeps a thread that
+    // TRACECLONE attached while its parent was being seized in the same path.
+    let armed = ptrace(
+        libc::PTRACE_SETOPTIONS,
+        tid,
+        0,
+        libc::PTRACE_O_TRACECLONE as usize,
+    )
+    .and_then(|()| set_breakpoint(tid, target, true));
+    if let Err(error) = armed {
         let _ = detach(tid);
         return Err(error);
     }
