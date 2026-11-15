@@ -31,17 +31,17 @@ describe('payments', () => {
     const filter = { merchant: '咖啡', from: '2026-10-01', to: '' };
     const chosen = matches(payments, filter);
 
-    expect(exportPayments(chosen, filter, 'Excel').fileName).toBe('微信支付_咖啡_2026-10-01_最近.xlsx');
+    expect((await exportPayments(chosen, filter, 'Excel')).fileName).toBe('微信支付_咖啡_2026-10-01_最近.xlsx');
     const sheet = strFromU8(unzipSync(new Uint8Array(await saved[0].arrayBuffer()))['xl/worksheets/sheet1.xml']);
     expect(sheet).toContain('<t xml:space="preserve">退款</t>');
     expect(sheet).toContain('<t xml:space="preserve">28.00</t>');
 
-    exportPayments(chosen, filter, 'JSON');
+    await exportPayments(chosen, filter, 'JSON');
     const body = JSON.parse(await saved[1].text());
     expect(body).toMatchObject({ merchant: '咖啡', count: 2, paidFen: 2800, refundedFen: 500 });
 
-    expect(exportPayments(chosen, filter, 'HTML').count).toBe(2);
+    expect((await exportPayments(chosen, filter, 'HTML')).count).toBe(2);
     expect(await saved[2].text()).toContain('2 笔 · 支出 ¥28.00 · 退款 ¥5.00');
-    expect(() => exportPayments([], filter, 'HTML')).toThrow('筛选范围内没有支付记录。');
+    await expect(exportPayments([], filter, 'HTML')).rejects.toThrow('筛选范围内没有支付记录。');
   });
 });
