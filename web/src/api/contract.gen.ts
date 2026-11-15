@@ -1498,6 +1498,31 @@ export interface CandidateSource {
   parsing: string;
 }
 
+/** What `key image-local` (Linux) answers: the accounts and keys read from local `kvcomm` files. */
+export interface ImageLocalKeys {
+  accounts: ImageLocalAccount[];
+}
+
+export interface ImageLocalAccount {
+  wxid: string;
+  keys: ImageLocalKey[];
+}
+
+export interface ImageLocalKey {
+  code: number;
+  xorKey: number;
+  aesKey: string;
+}
+
+/** What `key image-mem` (Linux) answers: the AES key found in WeChat's memory, if any. */
+export interface ImageMemKey {
+  /** The 16-byte AES key as 32 hex characters; left out when nothing matched. */
+  image_aes_key?: string;
+  pid: number;
+  /** With `save`: the profile keys written. */
+  saved?: string[];
+}
+
 /** What `key scan-image` (macOS) answers: the helper's own result. */
 export interface ScannedImageKeys {
   /** The helper's answer; `{"raw": …}` when it is not JSON. */
@@ -2179,6 +2204,8 @@ export interface Answers {
   "insight trigger": InsightReply;
   "key db": DbKey;
   "key image": ImageKeys;
+  "key image-local": ImageLocalKeys;
+  "key image-mem": ImageMemKey;
   "key scan-image": ScannedImageKeys;
   "lang": LangSaved;
   "report annual generate": AnnualReport;

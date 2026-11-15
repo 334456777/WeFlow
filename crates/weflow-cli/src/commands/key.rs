@@ -46,6 +46,18 @@ pub(crate) enum KeySubcommand {
         #[arg(long)]
         save: bool,
     },
+    /// Derive image keys from local account and kvcomm files (Linux)
+    ImageLocal,
+    /// Scan WeChat's memory for the image AES key from a ciphertext block (Linux)
+    ImageMem {
+        /// WeChat process id
+        pid: u32,
+        /// 32 hex characters of the 16-byte encrypted block
+        ciphertext: String,
+        /// Save the key to the active profile instead of printing it
+        #[arg(long)]
+        save: bool,
+    },
     /// Scan WeChat's memory for the image AES key (macOS)
     ScanImage {
         /// Account directory (user directory) to scan for the image key
@@ -133,6 +145,22 @@ pub(crate) fn handle_key(
             }
             Ok(json!(data))
         }
+        KeySubcommand::ImageLocal => Ok(json!(hub.key_image_local()?)),
+        KeySubcommand::ImageMem {
+            pid,
+            ciphertext,
+            save,
+        } => {
+            let mut data = hub.key_image_mem(*pid, ciphertext)?;
+            if *save {
+                let key = data
+                    .image_aes_key
+                    .take()
+                    .ok_or_else(|| AppError::runtime("no image AES key to save"))?;
+                data.saved = save_keys(config_path, &[("image_aes_key", json!(key))])?;
+            }
+            Ok(json!(data))
+        }
         KeySubcommand::ScanImage { user_dir } => Ok(json!(hub.key_scan_image(user_dir)?)),
     }
 }
@@ -188,6 +216,8 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
         let what = match shown {
             KeyShown::Db => tr("Database key", "数据库密钥"),
             KeyShown::Image | KeyShown::ScanImage => tr("Image keys", "图片密钥"),
+            KeyShown::ImageLocal => tr("Image keys", "图片密钥"),
+            KeyShown::ImageMem => tr("Image AES key", "图片 AES 密钥"),
         };
         let mut text = format!(
             "{}\n",
@@ -230,7 +260,19 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
             }
             Some(text)
         }
-        KeyShown::ScanImage => None,
+        KeyShown::ImageMem => {
+            let Some(key) = data["image_aes_key"].as_str() else {
+                return Some(format!(
+                    "{}\n",
+                    tr("No image AES key found", "未找到图片 AES 密钥")
+                ));
+            };
+            Some(format!(
+                "{}\nimage_aes_key: {key}\n",
+                tr("Image AES key obtained", "已获取图片 AES 密钥")
+            ))
+        }
+        KeyShown::ImageLocal | KeyShown::ScanImage => None,
     }
 }
 
@@ -301,6 +343,48 @@ mod tests {
             [PathBuf::from("net/kvcomm"), PathBuf::from("net_1/kvcomm")]
         );
         assert_eq!(scan_budget, Some(10));
+    }
+
+    #[test]
+    fn image_mem_arguments() {
+        let parse =
+            |args: &[&str]| Cli::try_parse_from(["weflow", "key", "image-mem"].iter().chain(args));
+        let Commands::Key(KeyCommand {
+            command:
+                KeySubcommand::ImageMem {
+                    pid,
+                    ciphertext,
+                    save,
+                },
+        }) = parse(&["1234", "00112233445566778899aabbccddeeff"])
+            .unwrap()
+            .command
+        else {
+            panic!("image-mem command")
+        };
+        assert_eq!(pid, 1234);
+        assert_eq!(ciphertext, "00112233445566778899aabbccddeeff");
+        assert!(!save);
+        let Commands::Key(KeyCommand {
+            command: KeySubcommand::ImageMem { save, .. },
+        }) = parse(&["1234", "00", "--save"]).unwrap().command
+        else {
+            panic!("image-mem command")
+        };
+        assert!(save);
+        assert!(parse(&["1234"]).is_err());
+    }
+
+    #[test]
+    fn image_mem_summary_shows_the_key_or_that_none_was_found() {
+        let found = keys_summary(
+            KeyShown::ImageMem,
+            &json!({ "image_aes_key": "00112233445566778899aabbccddeeff", "pid": 1 }),
+        )
+        .unwrap();
+        assert!(found.contains("image_aes_key: 00112233445566778899aabbccddeeff"));
+        let missing = keys_summary(KeyShown::ImageMem, &json!({ "pid": 1 })).unwrap();
+        assert!(missing.contains("AES") || missing.contains("图片"));
     }
 
     #[test]

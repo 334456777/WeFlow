@@ -3561,6 +3561,86 @@
         }
       }
     },
+    "/key/image-local": {
+      "get": {
+        "operationId": "api_key_image_local",
+        "x-weflow-command": "key image-local",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageLocalKeys"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/key/image-mem": {
+      "get": {
+        "operationId": "api_key_image_mem",
+        "x-weflow-command": "key image-mem",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageMemKey"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/key/scan-image": {
       "get": {
         "operationId": "api_key_scan_image",
@@ -9238,6 +9318,88 @@
           "parsing"
         ],
         "description": "A `kvcomm` file a code was read from, and how its name was read."
+      },
+      "ImageLocalKeys": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageLocalAccount"
+            }
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "description": "What `key image-local` (Linux) answers: the accounts and keys read from local `kvcomm` files."
+      },
+      "ImageLocalAccount": {
+        "type": "object",
+        "properties": {
+          "wxid": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageLocalKey"
+            }
+          }
+        },
+        "required": [
+          "wxid",
+          "keys"
+        ]
+      },
+      "ImageLocalKey": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "xorKey": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "aesKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "xorKey",
+          "aesKey"
+        ]
+      },
+      "ImageMemKey": {
+        "type": "object",
+        "properties": {
+          "image_aes_key": {
+            "type": "string",
+            "description": "The 16-byte AES key as 32 hex characters; left out when nothing matched."
+          },
+          "pid": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "saved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "With `save`: the profile keys written."
+          }
+        },
+        "required": [
+          "pid"
+        ],
+        "description": "What `key image-mem` (Linux) answers: the AES key found in WeChat's memory, if any."
       },
       "ScannedImageKeys": {
         "type": "object",

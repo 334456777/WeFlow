@@ -301,6 +301,8 @@ enum CacheShown {
 enum KeyShown {
     Db,
     Image,
+    ImageLocal,
+    ImageMem,
     ScanImage,
 }
 
@@ -327,6 +329,8 @@ impl Summary {
             Commands::Key(KeyCommand { command }) => Self::Key(match command {
                 KeySubcommand::Db { .. } => KeyShown::Db,
                 KeySubcommand::Image { .. } => KeyShown::Image,
+                KeySubcommand::ImageLocal => KeyShown::ImageLocal,
+                KeySubcommand::ImageMem { .. } => KeyShown::ImageMem,
                 KeySubcommand::ScanImage { .. } => KeyShown::ScanImage,
             }),
             _ => return None,

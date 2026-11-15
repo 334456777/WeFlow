@@ -704,10 +704,20 @@ pub(super) fn contract() -> &'static Contract {
             data.insert("web use", of(generator.subschema_for::<WebChosen>()));
             data.insert("web update", of(generator.subschema_for::<WebUpdated>()));
             data.insert("web prune", of(generator.subschema_for::<WebPruned>()));
-            use weflow_core::contract::{DbKey, DbScan, ImageKeys, ScannedImageKeys};
+            use weflow_core::contract::{
+                DbKey, DbScan, ImageKeys, ImageLocalKeys, ImageMemKey, ScannedImageKeys,
+            };
             data.insert("db scan", of(generator.subschema_for::<DbScan>()));
             data.insert("key db", of(generator.subschema_for::<DbKey>()));
             data.insert("key image", of(generator.subschema_for::<ImageKeys>()));
+            data.insert(
+                "key image-local",
+                of(generator.subschema_for::<ImageLocalKeys>()),
+            );
+            data.insert(
+                "key image-mem",
+                of(generator.subschema_for::<ImageMemKey>()),
+            );
             data.insert("key scan-image", of(generator.subschema_for::<ScannedImageKeys>()));
             use weflow_core::contract::{
                 AntiRevokeResults, ChatImages, EmojisDownloaded, GroupHint, MediaStream, MediaWritten,

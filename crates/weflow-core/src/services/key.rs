@@ -199,6 +199,53 @@ impl ServiceHub {
         crate::image_keys::acquire_image_keys(kvcomm_dirs, &account, wxid, scan_budget)
     }
 
+    /// Image keys derived from local account directories and `kvcomm` files on Linux.
+    #[cfg_attr(
+        not(all(target_os = "linux", target_arch = "x86_64")),
+        allow(unused_variables)
+    )]
+    pub fn key_image_local(&self) -> AppResult<crate::contract::ImageLocalKeys> {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            let data = weflow_native::linux_key_helper::image_local()
+                .map_err(|error| AppError::native(error.to_string()))?;
+            serde_json::from_str(&data).map_err(|error| AppError::native(error.to_string()))
+        }
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        {
+            Err(AppError::native(
+                "`key image-local` is only available on Linux x64",
+            ))
+        }
+    }
+
+    /// An image AES key found in WeChat's memory from a ciphertext block, on Linux.
+    #[cfg_attr(
+        not(all(target_os = "linux", target_arch = "x86_64")),
+        allow(unused_variables)
+    )]
+    pub fn key_image_mem(
+        &self,
+        pid: u32,
+        ciphertext: &str,
+    ) -> AppResult<crate::contract::ImageMemKey> {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            let image_aes_key = weflow_native::linux_key_helper::image_mem(pid, ciphertext);
+            Ok(crate::contract::ImageMemKey {
+                image_aes_key,
+                pid,
+                saved: Vec::new(),
+            })
+        }
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        {
+            Err(AppError::native(
+                "`key image-mem` is only available on Linux x64",
+            ))
+        }
+    }
+
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     pub fn key_scan_image(&self, user_dir: &str) -> AppResult<crate::contract::ScannedImageKeys> {
         #[cfg(target_os = "macos")]
