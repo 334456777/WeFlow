@@ -1,6 +1,8 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
+import { iconNames } from './plugins/iconNames.ts';
 import { iconWeights } from './plugins/iconWeights.ts';
+import { plainImport } from './plugins/plainImport.ts';
 import { viteReactAlias } from './plugins/reactAlias.ts';
 import { BUDGET, sizeBudget } from './plugins/sizeBudget.ts';
 import { WEB_META, webMeta } from './plugins/webMeta.ts';
@@ -34,9 +36,14 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: { exclude: ['react', 'react-dom'] },
     // jsxImportSource so the page's JSX is Preact's; the alias covers `react` and `react-dom` imports, including
     // the icon package, which calls React's createElement
-    plugins: [react({ jsxImportSource: 'preact' }), iconWeights(), webMeta(), sizeBudget()],
-    // Vite's own warning at the same size as the budget (#159)
-    build: { chunkSizeWarningLimit: BUDGET.js / 1000 },
+    plugins: [react({ jsxImportSource: 'preact' }), iconWeights(), iconNames(), plainImport(), webMeta(), sizeBudget()],
+    build: {
+      // Vite's own warning at the same size as the budget (#159)
+      chunkSizeWarningLimit: BUDGET.js / 1000,
+      // The page is one chunk and the English one imports nothing, so no `<link rel="modulepreload">` is ever
+      // written: the polyfill, which fetches those links where the browser does not, would only take up room (#783)
+      modulePreload: { polyfill: false },
+    },
     server: { proxy },
     preview: { proxy },
   };

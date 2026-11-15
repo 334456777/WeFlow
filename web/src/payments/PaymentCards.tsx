@@ -47,10 +47,10 @@ export function PaymentsExport({ payments, filter }: { payments: Payment[] | nul
   const [result, setResult] = useState<ExportResult | null>(null);
   const [error, setError] = useState('');
   useEffect(() => () => { if (result) URL.revokeObjectURL(result.downloadUrl); }, [result]);
-  const start = () => {
+  const start = async () => {
     if (!payments) return;
     setError('');
-    try { setResult(exportPayments(payments, filter, format)); } catch (problem) { setResult(null); setError(problem instanceof Error ? problem.message : t('导出失败，请重试。')); }
+    try { setResult(await exportPayments(payments, filter, format)); } catch (problem) { setResult(null); setError(problem instanceof Error ? problem.message : t('导出失败，请重试。')); }
   };
   return <>
     <p className="card-lead"><span className="clamp-1">{payments ? t('{n} 笔支付记录', { n: payments.length.toLocaleString(locale()) }) : t('支付记录')}</span></p>
