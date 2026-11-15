@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-`weflow serve` 的网页界面（#130）。用 React + TypeScript 编写，Vite 构建成静态文件，由 `weflow serve` 托管在 `/ui/` 下（#146），与 `weflow` 二进制分开发布（#148）。
+`weflow serve` 的网页界面（#130）。用 React + TypeScript 编写，Vite 构建时由 Preact 渲染成静态文件，由 `weflow serve` 托管在 `/ui/` 下（#146），与 `weflow` 二进制分开发布（#148）。
 
 本文件只说明如何开发。其他内容见 Wiki：
 

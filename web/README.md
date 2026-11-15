@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-The web interface of `weflow serve` (#130): React + TypeScript, built with Vite into static files that `weflow serve` hosts under `/ui/` (#146) and that are published apart from the `weflow` binary (#148).
+The web interface of `weflow serve` (#130): React + TypeScript, rendered by Preact in the Vite build, into static files that `weflow serve` hosts under `/ui/` (#146) and that are published apart from the `weflow` binary (#148).
 
 This file covers development only. The rest is in the wiki, in Chinese:
 
