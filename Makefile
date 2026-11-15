@@ -90,31 +90,31 @@ define HELP_TEXT
 $(BOLD)WeFlow CLI v$(VERSION) — $(PLATFORM)$(RESET)
 
 $(BOLD)基础命令$(RESET)
-  $(CYAN)make build$(RESET)           当前平台 debug 构建 → $(DEBUG_BIN)
-  $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)
-  $(CYAN)make test$(RESET)            运行全部测试（单元测试和端到端测试）
-  $(CYAN)make check$(RESET)           cargo check（只检查，不编译）
-  $(CYAN)make docs-check$(RESET)      检查指定 Markdown 文档的一致性
-  $(CYAN)make fmt$(RESET)             格式化代码
-  $(CYAN)make fmt-check$(RESET)       检查代码是否已按 rustfmt 格式化
-  $(CYAN)make lint$(RESET)            Clippy 静态分析
-  $(CYAN)make rustdoc$(RESET)         生成 API 文档，rustdoc 的警告视为错误
-  $(CYAN)make clean$(RESET)           清理 target/
+$(CYAN)make build$(RESET)           当前平台 debug 构建 → $(DEBUG_BIN)
+$(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)
+$(CYAN)make test$(RESET)            运行全部测试（单元测试和端到端测试）
+$(CYAN)make check$(RESET)           cargo check（只检查，不编译）
+$(CYAN)make docs-check$(RESET)      检查指定 Markdown 文档的一致性
+$(CYAN)make fmt$(RESET)             格式化代码
+$(CYAN)make fmt-check$(RESET)       检查代码是否已按 rustfmt 格式化
+$(CYAN)make lint$(RESET)            Clippy 静态分析
+$(CYAN)make rustdoc$(RESET)         生成 API 文档，rustdoc 的警告视为错误
+$(CYAN)make clean$(RESET)           清理 target/
 
 $(BOLD)安装$(RESET)
-  $(CYAN)make install$(RESET)         将 release binary 安装到 $(INSTALL_DIR)
-  $(CYAN)make uninstall$(RESET)       从 $(INSTALL_DIR) 删除 weflow
+$(CYAN)make install$(RESET)         将 release binary 安装到 $(INSTALL_DIR)
+$(CYAN)make uninstall$(RESET)       从 $(INSTALL_DIR) 删除 weflow
 
 $(BOLD)跨平台编译$(RESET)
-  $(CYAN)make cross-macos$(RESET)     → weflow-macos-arm64     ($(TARGET_MACOS_ARM))
-  $(CYAN)make cross-linux$(RESET)     → weflow-linux-x64       ($(TARGET_LINUX_X64))
-  $(CYAN)make cross-windows$(RESET)   → weflow-windows-x64.exe ($(WIN_TARGET))
-  $(CYAN)make cross-all$(RESET)       构建所有跨平台目标
+$(CYAN)make cross-macos$(RESET)     → weflow-macos-arm64     ($(TARGET_MACOS_ARM))
+$(CYAN)make cross-linux$(RESET)     → weflow-linux-x64       ($(TARGET_LINUX_X64))
+$(CYAN)make cross-windows$(RESET)   → weflow-windows-x64.exe ($(WIN_TARGET))
+$(CYAN)make cross-all$(RESET)       构建所有跨平台目标
 
 $(BOLD)环境$(RESET)
-  $(CYAN)make check-tools$(RESET)     检查并自动安装所有必要工具
-  $(CYAN)make env$(RESET)             显示当前环境信息
-  $(CYAN)make ci$(RESET)              代码 CI，与 GitHub Actions 一致 (fmt-check+lint+rustdoc+test；文档检查另跑 make docs-check)
+$(CYAN)make check-tools$(RESET)     检查并自动安装所有必要工具
+$(CYAN)make env$(RESET)             显示当前环境信息
+$(CYAN)make ci$(RESET)              代码 CI，与 GitHub Actions 一致 (fmt-check+lint+rustdoc+test；文档检查另跑 make docs-check)
 
 endef
 export HELP_TEXT
@@ -134,8 +134,8 @@ ifeq ($(PLATFORM),windows)
 else
 	@command -v curl >/dev/null 2>&1 || { \
 		printf "$(RED)curl 未找到$(RESET)\n"; \
-		printf "  macOS:  brew install curl\n"; \
-		printf "  Linux:  sudo apt-get install -y curl  # 或对应包管理器\n"; \
+		printf "macOS:  brew install curl\n"; \
+		printf "Linux:  sudo apt-get install -y curl  # 或对应包管理器\n"; \
 		exit 1; \
 	}
 endif
@@ -143,37 +143,37 @@ endif
 check-git:
 ifeq ($(PLATFORM),windows)
 	@command -v git >/dev/null 2>&1 || { \
-		printf "$(YELLOW)⚠ git 未找到，正在安装...$(RESET)\n"; \
-		printf "  执行: $(GIT_INSTALL)\n"; \
+		printf "$(YELLOW)git 未找到，正在安装...$(RESET)\n"; \
+		printf "执行: $(GIT_INSTALL)\n"; \
 		$(GIT_INSTALL) || { \
-			printf "$(RED)  自动安装失败，请手动安装: https://git-scm.com/download/win$(RESET)\n"; exit 1; }; \
-		printf "$(YELLOW)  安装完成，请重新打开终端使 git 生效$(RESET)\n"; \
+			printf "$(RED)自动安装失败，请手动安装: https://git-scm.com/download/win$(RESET)\n"; exit 1; }; \
+		printf "$(YELLOW)安装完成，请重新打开终端使 git 生效$(RESET)\n"; \
 	}
 else ifeq ($(PLATFORM),macos)
 	@command -v git >/dev/null 2>&1 || { \
-		printf "$(YELLOW)⚠ git 未找到，正在安装 Xcode Command Line Tools...$(RESET)\n"; \
+		printf "$(YELLOW)git 未找到，正在安装 Xcode Command Line Tools...$(RESET)\n"; \
 		xcode-select --install 2>&1 | grep -v "already installed" || true; \
-		printf "$(CYAN)  请在弹出的窗口中点击「安装」，完成后重新运行 make$(RESET)\n"; \
+		printf "$(CYAN)请在弹出的窗口中点击「安装」，完成后重新运行 make$(RESET)\n"; \
 		exit 1; \
 	}
 else
 	@command -v git >/dev/null 2>&1 || { \
-		printf "$(YELLOW)⚠ git 未找到，正在安装...$(RESET)\n"; \
+		printf "$(YELLOW)git 未找到，正在安装...$(RESET)\n"; \
 		$(GIT_INSTALL) || { \
-			printf "$(RED)  自动安装失败，请手动安装 git$(RESET)\n"; exit 1; }; \
-		printf "$(GREEN)  git 安装完成$(RESET)\n"; \
+			printf "$(RED)自动安装失败，请手动安装 git$(RESET)\n"; exit 1; }; \
+		printf "$(GREEN)git 安装完成$(RESET)\n"; \
 	}
 endif
 	@printf "$(GREEN)$(shell git --version)$(RESET)\n"
 
 check-rust:
 	@command -v cargo >/dev/null 2>&1 || { \
-		printf "$(YELLOW)⚠ Rust/Cargo 未找到，正在安装...$(RESET)\n"; \
+		printf "$(YELLOW)Rust/Cargo 未找到，正在安装...$(RESET)\n"; \
 		$(MAKE) check-curl; \
 		$(RUST_INSTALL) || { \
-			printf "$(RED)  自动安装失败，请手动访问 https://rustup.rs$(RESET)\n"; exit 1; }; \
-		printf "$(GREEN)  Rust 安装完成$(RESET)\n"; \
-		printf "$(CYAN)  请执行: source \$$HOME/.cargo/env  (或重开终端)$(RESET)\n"; \
+			printf "$(RED)自动安装失败，请手动访问 https://rustup.rs$(RESET)\n"; exit 1; }; \
+		printf "$(GREEN)Rust 安装完成$(RESET)\n"; \
+		printf "$(CYAN)请执行: source \$$HOME/.cargo/env  (或重开终端)$(RESET)\n"; \
 		. "$$HOME/.cargo/env" 2>/dev/null || true; \
 	}
 	@printf "$(GREEN)$(shell rustc --version)$(RESET)\n"
@@ -281,21 +281,21 @@ ifneq ($(PLATFORM),macos)
 	@printf "$(RED)交叉编译 macOS 需要 macOS 的 SDK，请在 macOS 上运行 make cross-macos$(RESET)\n"; exit 1
 endif
 	@rustup target list --installed | grep -q "$(TARGET_MACOS_ARM)" || { \
-		printf "$(YELLOW)⚠ 安装编译目标 $(TARGET_MACOS_ARM)...$(RESET)\n"; \
+		printf "$(YELLOW)安装编译目标 $(TARGET_MACOS_ARM)...$(RESET)\n"; \
 		rustup target add $(TARGET_MACOS_ARM); \
 	}
 
 _ensure-target-linux:
 	@rustup target list --installed | grep -q "$(TARGET_LINUX_X64)" || { \
-		printf "$(YELLOW)⚠ 安装编译目标 $(TARGET_LINUX_X64)...$(RESET)\n"; \
+		printf "$(YELLOW)安装编译目标 $(TARGET_LINUX_X64)...$(RESET)\n"; \
 		rustup target add $(TARGET_LINUX_X64); \
 	}
 ifeq ($(PLATFORM),macos)
 	@command -v x86_64-linux-gnu-gcc >/dev/null 2>&1 || { \
-		printf "$(YELLOW)⚠ 交叉编译器未找到，正在安装 x86_64-linux-gnu gcc...$(RESET)\n"; \
-		command -v brew >/dev/null 2>&1 || { printf "$(RED)  需要 Homebrew: $(BREW_INSTALL)$(RESET)\n"; exit 1; }; \
+		printf "$(YELLOW)交叉编译器未找到，正在安装 x86_64-linux-gnu gcc...$(RESET)\n"; \
+		command -v brew >/dev/null 2>&1 || { printf "$(RED)需要 Homebrew: $(BREW_INSTALL)$(RESET)\n"; exit 1; }; \
 		brew install SergioBenitez/osxct/x86_64-unknown-linux-gnu || { \
-			printf "$(RED)  安装失败，备选方案: brew install filosottile/musl-cross/musl-cross$(RESET)\n"; exit 1; }; \
+			printf "$(RED)安装失败，备选方案: brew install filosottile/musl-cross/musl-cross$(RESET)\n"; exit 1; }; \
 	}
 endif
 ifeq ($(PLATFORM),linux)
@@ -303,21 +303,21 @@ ifneq ($(CROSS_LINUX_ENV),)
 	@command -v x86_64-linux-gnu-gcc >/dev/null 2>&1 || { \
 		command -v apt-get >/dev/null 2>&1 || { \
 			printf "$(RED)需要 x86_64-linux-gnu-gcc 交叉编译器，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
-		printf "$(YELLOW)⚠ 安装 gcc-x86-64-linux-gnu...$(RESET)\n"; \
-		sudo apt-get install -y gcc-x86-64-linux-gnu || { printf "$(RED)  安装失败$(RESET)\n"; exit 1; }; \
+		printf "$(YELLOW)安装 gcc-x86-64-linux-gnu...$(RESET)\n"; \
+		sudo apt-get install -y gcc-x86-64-linux-gnu || { printf "$(RED)安装失败$(RESET)\n"; exit 1; }; \
 	}
 endif
 endif
 
 _ensure-target-windows:
 	@rustup target list --installed | grep -q "$(WIN_TARGET)" || { \
-		printf "$(YELLOW)⚠ 安装编译目标 $(WIN_TARGET)...$(RESET)\n"; \
+		printf "$(YELLOW)安装编译目标 $(WIN_TARGET)...$(RESET)\n"; \
 		rustup target add $(WIN_TARGET); \
 	}
 ifeq ($(PLATFORM),macos)
 	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || { \
-		printf "$(YELLOW)⚠ 安装 mingw-w64 交叉编译器...$(RESET)\n"; \
-		command -v brew >/dev/null 2>&1 || { printf "$(RED)  需要 Homebrew: $(BREW_INSTALL)$(RESET)\n"; exit 1; }; \
+		printf "$(YELLOW)安装 mingw-w64 交叉编译器...$(RESET)\n"; \
+		command -v brew >/dev/null 2>&1 || { printf "$(RED)需要 Homebrew: $(BREW_INSTALL)$(RESET)\n"; exit 1; }; \
 		brew install mingw-w64; \
 	}
 endif
@@ -325,8 +325,8 @@ ifeq ($(PLATFORM),linux)
 	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || { \
 		command -v apt-get >/dev/null 2>&1 || { \
 			printf "$(RED)需要 x86_64-w64-mingw32-gcc (mingw-w64)，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
-		printf "$(YELLOW)⚠ 安装 mingw-w64...$(RESET)\n"; \
-		sudo apt-get install -y mingw-w64 || { printf "$(RED)  安装失败$(RESET)\n"; exit 1; }; \
+		printf "$(YELLOW)安装 mingw-w64...$(RESET)\n"; \
+		sudo apt-get install -y mingw-w64 || { printf "$(RED)安装失败$(RESET)\n"; exit 1; }; \
 	}
 endif
 
@@ -334,7 +334,7 @@ cross-macos: check-rust _ensure-target-macos
 	@printf "$(BOLD)编译 macOS arm64$(RESET)\n"
 	cargo build --release -p weflow-cli --target $(TARGET_MACOS_ARM)
 	@cp target/$(TARGET_MACOS_ARM)/release/weflow weflow-macos-arm64
-	@printf "$(GREEN)→ weflow-macos-arm64 ($$(ls -lh weflow-macos-arm64 | awk '{print $$5}'))$(RESET)\n"
+	@printf "$(GREEN)weflow-macos-arm64 ($$(ls -lh weflow-macos-arm64 | awk '{print $$5}'))$(RESET)\n"
 
 ifeq ($(PLATFORM),windows)
 cross-linux:
@@ -347,24 +347,24 @@ cross-linux:
 	  if [ "$$(rustc -vV | sed -n "s/^host: //p")" = $(TARGET_LINUX_X64) ]; then target=; out=release; \
 	  else target="--target $(TARGET_LINUX_X64)"; out=$(TARGET_LINUX_X64)/release; fi; \
 	  cargo build --release -p weflow-cli $$target && cp "$$CARGO_TARGET_DIR/$$out/weflow" weflow-linux-x64'
-	@printf "$(GREEN)→ weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
+	@printf "$(GREEN)weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
 else
 cross-linux: check-rust _ensure-target-linux
 	@printf "$(BOLD)编译 Linux x64$(RESET)\n"
 	$(CROSS_LINUX_ENV) cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
 	@cp target/$(TARGET_LINUX_X64)/release/weflow weflow-linux-x64
-	@printf "$(GREEN)→ weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
+	@printf "$(GREEN)weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
 endif
 
 cross-windows: check-rust _ensure-target-windows
 	@printf "$(BOLD)编译 Windows x64 ($(WIN_TARGET))$(RESET)\n"
 	$(CROSS_WINDOWS_ENV) cargo build --release -p weflow-cli --target $(WIN_TARGET)
 	@cp target/$(WIN_TARGET)/release/weflow.exe weflow-windows-x64.exe
-	@printf "$(GREEN)→ weflow-windows-x64.exe ($$(ls -lh weflow-windows-x64.exe | awk '{print $$5}'))$(RESET)\n"
+	@printf "$(GREEN)weflow-windows-x64.exe ($$(ls -lh weflow-windows-x64.exe | awk '{print $$5}'))$(RESET)\n"
 
 cross-all: cross-macos cross-linux cross-windows
 	@printf "\n$(GREEN)$(BOLD)所有平台构建完成:$(RESET)\n"
-	@ls -lh weflow-macos-arm64 weflow-linux-x64 weflow-windows-x64.exe 2>/dev/null | awk '{printf "  %s  %s\n", $$5, $$9}'
+	@ls -lh weflow-macos-arm64 weflow-linux-x64 weflow-windows-x64.exe 2>/dev/null | awk '{printf "%s  %s\n", $$5, $$9}'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CI / 环境信息
@@ -376,14 +376,14 @@ ci: fmt-check lint rustdoc test
 
 env:
 	@printf "$(BOLD)WeFlow 构建环境$(RESET)\n"
-	@printf "  平台:      $(PLATFORM)\n"
-	@printf "  版本:      $(VERSION)\n"
-	@printf "  输出:      $(BIN)\n"
-	@printf "  安装目录:  $(INSTALL_DIR)\n"
+	@printf "平台:      $(PLATFORM)\n"
+	@printf "版本:      $(VERSION)\n"
+	@printf "输出:      $(BIN)\n"
+	@printf "安装目录:  $(INSTALL_DIR)\n"
 	@printf "\n$(BOLD)工具版本$(RESET)\n"
-	@command -v rustc  >/dev/null 2>&1 && printf "  rustc:   $$(rustc  --version)\n" || printf "  rustc:   $(RED)未安装$(RESET)\n"
-	@command -v cargo  >/dev/null 2>&1 && printf "  cargo:   $$(cargo  --version)\n" || printf "  cargo:   $(RED)未安装$(RESET)\n"
-	@command -v git    >/dev/null 2>&1 && printf "  git:     $$(git    --version)\n" || printf "  git:     $(RED)未安装$(RESET)\n"
-	@command -v curl   >/dev/null 2>&1 && printf "  curl:    $$(curl   --version | head -1)\n" || printf "  curl:    $(RED)未安装$(RESET)\n"
+	@command -v rustc  >/dev/null 2>&1 && printf "rustc:   $$(rustc  --version)\n" || printf "rustc:   $(RED)未安装$(RESET)\n"
+	@command -v cargo  >/dev/null 2>&1 && printf "cargo:   $$(cargo  --version)\n" || printf "cargo:   $(RED)未安装$(RESET)\n"
+	@command -v git    >/dev/null 2>&1 && printf "git:     $$(git    --version)\n" || printf "git:     $(RED)未安装$(RESET)\n"
+	@command -v curl   >/dev/null 2>&1 && printf "curl:    $$(curl   --version | head -1)\n" || printf "curl:    $(RED)未安装$(RESET)\n"
 	@printf "\n$(BOLD)已安装 Rust 目标$(RESET)\n"
-	@rustup target list --installed 2>/dev/null | sed 's/^/  /' || printf "  $(DIM)rustup 不可用$(RESET)\n"
+	@rustup target list --installed 2>/dev/null || printf "$(DIM)rustup 不可用$(RESET)\n"
