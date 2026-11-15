@@ -86,7 +86,7 @@ const HELP: &[(&str, &str)] = &[
     ("Group chat members and statistics", "群聊成员与统计"),
     ("Group chats with member counts", "带成员数的群聊"),
     ("Hook WeChat and keep the hook alive until interrupted (re-hooks after a WeChat restart)", "挂钩微信并保持挂钩直到被中断（微信重启后会重新挂钩）"),
-    ("Hook WeChat and wait for the database key (Windows: keep the command running and log in to WeChat)", "挂钩微信并等待数据库密钥（Windows：保持命令运行，并登录微信）"),
+    ("Hook WeChat and wait for the database key (Windows and Linux: keep the command running and log in to WeChat)", "挂钩微信并等待数据库密钥（Windows 和 Linux：保持命令运行，并登录微信）"),
     ("Hour / weekday / month distribution", "按小时 / 星期 / 月份的分布"),
     ("How long to wait for the key, in seconds", "等待密钥的时长（秒）"),
     ("Save the key to the active profile instead of printing it", "把密钥保存到当前档案，不输出密钥"),

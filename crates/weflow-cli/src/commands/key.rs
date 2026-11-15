@@ -19,7 +19,7 @@ pub(crate) struct KeyCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum KeySubcommand {
-    /// Hook WeChat and wait for the database key (Windows: keep the command running and log in to WeChat)
+    /// Hook WeChat and wait for the database key (Windows and Linux: keep the command running and log in to WeChat)
     Db {
         /// WeChat process id (default: the first Weixin.exe / WeChat.exe found)
         #[arg(long)]

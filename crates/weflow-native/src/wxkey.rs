@@ -1,27 +1,27 @@
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 use std::ffi::CStr;
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 use libloading::Library;
 
 // The DLL exports C++ `bool`s (see `keyService.ts`: `bool InitializeHook(uint32)` …), not `int`s.
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 type InitializeHookFn = unsafe extern "C" fn(u32) -> bool;
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 type PollKeyDataFn = unsafe extern "C" fn(*mut c_char, c_int) -> bool;
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 type CleanupHookFn = unsafe extern "C" fn() -> bool;
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 type GetLastErrorMsgFn = unsafe extern "C" fn() -> *const c_char;
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 type GetStatusMessageFn = unsafe extern "C" fn(*mut c_char, c_int, *mut c_int) -> bool;
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 pub struct WxKey {
     _lib: Option<Library>,
     initialize_hook: Option<InitializeHookFn>,
@@ -31,7 +31,7 @@ pub struct WxKey {
     get_status_message: Option<GetStatusMessageFn>,
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 impl WxKey {
     pub fn load(runtime_dir: &Path) -> Result<Self> {
         let lib_path = find_wx_key_library(runtime_dir);
@@ -255,6 +255,80 @@ impl WxKey {
     }
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub struct WxKey;
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+impl WxKey {
+    pub fn load(_runtime_dir: &Path) -> Result<Self> {
+        Ok(Self)
+    }
+
+    pub fn is_available(&self) -> bool {
+        true
+    }
+
+    /// Attaches with ptrace and waits for WeChat to open its databases.
+    pub fn get_db_key_with_tick(
+        &self,
+        pid: u32,
+        timeout: std::time::Duration,
+        on_status: &mut dyn FnMut(&str, i32),
+        on_tick: &mut dyn FnMut(u64),
+    ) -> std::result::Result<String, DbKeyError> {
+        let start = std::time::Instant::now();
+        let mut hook = crate::linux_db_key::Hook::start(pid).map_err(db_key_error)?;
+        on_status("Hook installed; log in to WeChat now", 1);
+        let mut last_tick = u64::MAX;
+        while start.elapsed() < timeout {
+            let left = timeout.saturating_sub(start.elapsed()).as_secs();
+            if left != last_tick {
+                last_tick = left;
+                on_tick(left);
+            }
+            match hook.poll() {
+                Ok(Some(key)) => {
+                    hook.cleanup()
+                        .map_err(|error| DbKeyError::Other(error.to_string()))?;
+                    on_status("key obtained", 1);
+                    return Ok(key);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    let _ = hook.cleanup();
+                    return Err(db_key_error(error));
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let diagnostics = hook.diagnostics().clone();
+        hook.cleanup()
+            .map_err(|error| DbKeyError::Other(error.to_string()))?;
+        on_status(
+            &format!(
+                "Capture diagnostics: {}",
+                serde_json::to_string(&diagnostics).unwrap_or_default()
+            ),
+            2,
+        );
+        Err(DbKeyError::Timeout)
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn db_key_error(error: anyhow::Error) -> DbKeyError {
+    let message = error.to_string();
+    if message == "interrupted by user" {
+        DbKeyError::Interrupted
+    } else if message.contains("ACCESS_DENIED") {
+        DbKeyError::AccessDenied(message)
+    } else if message.contains("no threads") || message.contains("is not mapped") {
+        DbKeyError::NotReady(message)
+    } else {
+        DbKeyError::Other(message)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum DbKeyError {
     /// The process could not be opened (needs administrator rights / a security product interferes).
@@ -282,7 +356,10 @@ impl std::fmt::Display for DbKeyError {
 }
 
 /// `isLoginRelatedText`
-#[cfg(any(not(windows), test))]
+#[cfg(any(
+    all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))),
+    test
+))]
 fn is_login_related(value: &str) -> bool {
     let n: String = value.split_whitespace().collect::<String>().to_lowercase();
     !n.is_empty()
@@ -301,7 +378,7 @@ fn is_login_related(value: &str) -> bool {
         .any(|k| n.contains(k))
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 unsafe fn take_cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
         return String::new();
@@ -309,19 +386,19 @@ unsafe fn take_cstr(ptr: *const c_char) -> String {
     CStr::from_ptr(ptr).to_string_lossy().to_string()
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 unsafe fn symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
     lib.get::<T>(name).ok().map(|sym| *sym)
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 fn load_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
     // SAFETY: each caller names an export with the function type the library declares (the `*Fn` aliases), and
     // `WxKey` keeps the library loaded for as long as it holds the copied pointers.
     unsafe { symbol::<T>(lib, name) }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
 fn find_wx_key_library(runtime_dir: &Path) -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
         let candidates = [runtime_dir.join("key/macos/universal/libwx_key.dylib")];
