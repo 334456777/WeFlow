@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
+import { iconNames } from './plugins/iconNames.ts';
 import { iconWeights } from './plugins/iconWeights.ts';
 import { viteReactAlias } from './plugins/reactAlias.ts';
 import { BUDGET, sizeBudget } from './plugins/sizeBudget.ts';
@@ -34,7 +35,7 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: { exclude: ['react', 'react-dom'] },
     // jsxImportSource so the page's JSX is Preact's; the alias covers `react` and `react-dom` imports, including
     // the icon package, which calls React's createElement
-    plugins: [react({ jsxImportSource: 'preact' }), iconWeights(), webMeta(), sizeBudget()],
+    plugins: [react({ jsxImportSource: 'preact' }), iconWeights(), iconNames(), webMeta(), sizeBudget()],
     // Vite's own warning at the same size as the budget (#159)
     build: { chunkSizeWarningLimit: BUDGET.js / 1000 },
     server: { proxy },
