@@ -1,5 +1,6 @@
-// The synthetic accounts `bun run dev` serves (#333): made by an example of weflow-cli into target/, and a
-// `weflow serve` of one on a free port of 127.0.0.1 with a token of its own. Nothing of a real WeChat account is read.
+// The synthetic accounts `bun run dev` (#333) and `bun run smoke` (#789) serve: made by an example of weflow-cli into
+// target/, and a `weflow serve` of one on a free port of 127.0.0.1 with a token of its own. Nothing of a real WeChat
+// account is read.
 import { join, resolve } from 'node:path';
 
 const web = join(import.meta.dir, '..');
@@ -45,14 +46,15 @@ export function buildAccount(chosen: Account): { weflow: string; home: string } 
   return { weflow, home: account.stdout.toString().trim() };
 }
 
-/** `weflow serve` of the WeFlow home `home` with `args`, on a free port with a random token, once it has started. */
-export async function startServe(weflow: string, home: string, args: string[]) {
+/** `weflow serve` of the WeFlow home `home` with `args` (and `env` added to its environment), on a free port with a
+ * random token, once it has started. */
+export async function startServe(weflow: string, home: string, args: string[], env: Record<string, string> = {}) {
   const probe = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } });
   const port = probe.port;
   probe.stop(true);
   const token = crypto.getRandomValues(new Uint8Array(16)).toHex();
   const serve = Bun.spawn([weflow, '--json', 'serve', ...args, '--port', String(port)], {
-    env: { ...process.env, WEFLOW_HOME: home, WEFLOW_HTTP_TOKEN: token }, stdio: ['ignore', 'ignore', 'pipe'],
+    env: { ...process.env, ...env, WEFLOW_HOME: home, WEFLOW_HTTP_TOKEN: token }, stdio: ['ignore', 'ignore', 'pipe'],
   });
   // stderr is read to the end so that the server never waits on a full pipe; its errors are passed on
   const started = Promise.withResolvers<void>();
