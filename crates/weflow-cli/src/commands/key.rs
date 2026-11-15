@@ -48,8 +48,10 @@ pub(crate) enum KeySubcommand {
     },
     /// Scan WeChat's memory for the image AES key (macOS)
     ScanImage {
-        /// Account directory (user directory) to scan for the image key
-        user_dir: String,
+        /// WeChat process id
+        pid: u32,
+        /// 16-byte image ciphertext, as 32 hex characters
+        ciphertext: String,
     },
 }
 
@@ -133,7 +135,9 @@ pub(crate) fn handle_key(
             }
             Ok(json!(data))
         }
-        KeySubcommand::ScanImage { user_dir } => Ok(json!(hub.key_scan_image(user_dir)?)),
+        KeySubcommand::ScanImage { pid, ciphertext } => {
+            Ok(json!(hub.key_scan_image(*pid, ciphertext)?))
+        }
     }
 }
 

@@ -18,6 +18,7 @@ pub mod image_download;
 pub mod image_keys;
 pub mod insight;
 pub mod isaac64;
+pub mod key_helper;
 pub mod keys;
 pub mod locale;
 pub mod media;

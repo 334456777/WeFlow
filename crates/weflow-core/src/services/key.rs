@@ -34,15 +34,7 @@ impl ServiceHub {
         }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
-            let result = weflow_native::wxkey::run_key_helper(&self.ctx.runtime_dir, &["--db-key"])
-                .map_err(|err| AppError::native(err.to_string()))?;
-            let key = result.trim().to_string();
-            Ok(crate::contract::DbKey {
-                decrypt_key: Some(key),
-                method: "key_helper".into(),
-                pid: None,
-                saved: Vec::new(),
-            })
+            return self.key_db_helper(pid_override, timeout_secs);
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
@@ -191,21 +183,32 @@ impl ServiceHub {
     }
 
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
-    pub fn key_scan_image(&self, user_dir: &str) -> AppResult<crate::contract::ScannedImageKeys> {
-        #[cfg(target_os = "macos")]
-        let expanded = crate::config::expand_home(user_dir);
+    pub fn key_scan_image(
+        &self,
+        pid: u32,
+        ciphertext: &str,
+    ) -> AppResult<crate::contract::ScannedImageKeys> {
         #[cfg(target_os = "macos")]
         {
-            let result = weflow_native::wxkey::run_image_scan_helper(
+            crate::key_helper::require_ciphertext(ciphertext).map_err(AppError::native)?;
+            let output = weflow_native::wxkey::run_image_scan_helper(
                 &self.ctx.runtime_dir,
-                &[expanded.to_string_lossy().as_ref()],
+                &[&pid.to_string(), ciphertext],
+                &|| false,
             )
             .map_err(|err| AppError::native(err.to_string()))?;
-            let parsed: Value = serde_json::from_str(&result).unwrap_or(json!({ "raw": result }));
+            let body = if output.stdout.trim().is_empty() {
+                output.stderr
+            } else {
+                output.stdout
+            };
+            let parsed: Value =
+                serde_json::from_str(body.trim()).unwrap_or(json!({ "raw": body.trim() }));
             Ok(crate::contract::ScannedImageKeys {
                 result: parsed,
                 method: "image_scan_helper".into(),
-                user_dir: user_dir.to_string(),
+                pid,
+                ciphertext: ciphertext.to_string(),
             })
         }
         #[cfg(not(target_os = "macos"))]
@@ -215,6 +218,121 @@ impl ServiceHub {
             ))
         }
     }
+
+    /// `key db` when the polling library is absent. Linux scans the hook address, then waits on it.
+    /// macOS `xkey_helper` does both. The timeout is milliseconds because that is the helper's unit.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn key_db_helper(
+        &self,
+        pid_override: Option<u32>,
+        timeout_secs: u64,
+    ) -> AppResult<crate::contract::DbKey> {
+        let pid = pid_override.or_else(find_wechat_pid).ok_or_else(|| {
+            AppError::runtime("WeChat process not found; start WeChat first or pass --pid")
+        })?;
+        if key_db_interrupted() {
+            return Err(AppError::new("user_interrupt", "interrupted by user", 130));
+        }
+        let pid_text = pid.to_string();
+        // A value below 1 makes the helper substitute its own 180 s default.
+        let timeout_ms = timeout_secs.saturating_mul(1000).max(1).to_string();
+        let stop = || key_db_interrupted();
+        #[cfg(target_os = "linux")]
+        let key = {
+            let scanned = helper_reply(
+                &self.ctx.runtime_dir,
+                &["db_scan", pid_text.as_str()],
+                &stop,
+            )?;
+            let address = match scanned {
+                crate::key_helper::HelperReply::Address(address) => address,
+                crate::key_helper::HelperReply::Failed(detail) => {
+                    return Err(AppError::native(detail));
+                }
+                crate::key_helper::HelperReply::Key(_) => {
+                    return Err(AppError::native(
+                        "db_scan returned a key instead of an address",
+                    ));
+                }
+            };
+            ask_for_login(pid);
+            let address_text = address.to_string();
+            let hooked = helper_reply(
+                &self.ctx.runtime_dir,
+                &[
+                    "db_hook",
+                    pid_text.as_str(),
+                    address_text.as_str(),
+                    timeout_ms.as_str(),
+                ],
+                &stop,
+            )?;
+            expect_database_key(hooked)?
+        };
+        #[cfg(target_os = "macos")]
+        let key = {
+            ask_for_login(pid);
+            let hooked = helper_reply(
+                &self.ctx.runtime_dir,
+                &[pid_text.as_str(), timeout_ms.as_str()],
+                &stop,
+            )?;
+            expect_database_key(hooked)?
+        };
+        Ok(crate::contract::DbKey {
+            decrypt_key: Some(key),
+            method: "key_helper".into(),
+            pid: Some(pid),
+            saved: Vec::new(),
+        })
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn helper_reply(
+    runtime_dir: &std::path::Path,
+    args: &[&str],
+    stop: &dyn Fn() -> bool,
+) -> AppResult<crate::key_helper::HelperReply> {
+    let output = weflow_native::wxkey::run_key_helper(runtime_dir, args, stop).map_err(|err| {
+        if err.to_string() == "interrupted by user" {
+            AppError::new("user_interrupt", "interrupted by user", 130)
+        } else {
+            AppError::native(err.to_string())
+        }
+    })?;
+    if output.stdout.trim().is_empty() {
+        let detail = if output.stderr.trim().is_empty() {
+            "key helper failed".to_string()
+        } else {
+            output.stderr.trim().to_string()
+        };
+        return Err(AppError::native(detail));
+    }
+    crate::key_helper::parse_helper_reply(&output.stdout).map_err(AppError::native)
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn expect_database_key(reply: crate::key_helper::HelperReply) -> AppResult<String> {
+    match reply {
+        crate::key_helper::HelperReply::Key(key) => Ok(key),
+        crate::key_helper::HelperReply::Failed(detail) => Err(AppError::native(detail)),
+        crate::key_helper::HelperReply::Address(_) => Err(AppError::native(
+            "key helper returned an address instead of a key",
+        )),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn ask_for_login(pid: u32) {
+    phase(
+        json!({ "type": "key_phase", "phase": "login", "pid": pid }),
+        if crate::locale::current() == crate::locale::Lang::Zh {
+            format!("检测到微信（pid {pid}）请在登录窗口点击「进入微信」。")
+        } else {
+            format!("WeChat found (pid {pid}). Click \"Enter WeChat\" in the login window.")
+        },
+    );
 }
 
 fn find_wechat_pid() -> Option<u32> {
@@ -248,16 +366,28 @@ fn find_wechat_pid() -> Option<u32> {
     }
     #[cfg(target_os = "linux")]
     {
-        let output = std::process::Command::new("pgrep")
-            .arg("-x")
-            .arg("wechat")
-            .output()
-            .ok()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        stdout
-            .lines()
-            .next()
-            .and_then(|line| line.trim().parse().ok())
+        for name in ["wechat", "WeChat", "xwechat"] {
+            let output = std::process::Command::new("pgrep")
+                .arg("-x")
+                .arg(name)
+                .output()
+                .ok();
+            let Some(output) = output else {
+                continue;
+            };
+            if !output.status.success() {
+                continue;
+            }
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(pid) = stdout
+                .lines()
+                .next()
+                .and_then(|line| line.trim().parse().ok())
+            {
+                return Some(pid);
+            }
+        }
+        None
     }
     #[cfg(target_os = "windows")]
     {

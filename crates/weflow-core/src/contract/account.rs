@@ -138,7 +138,10 @@ pub struct ScannedImageKeys {
     /// The helper's answer; `{"raw": …}` when it is not JSON.
     pub result: serde_json::Value,
     pub method: String,
-    pub user_dir: String,
+    /// The WeChat process that was scanned.
+    pub pid: u32,
+    /// The ciphertext that was scanned for, 32 hex characters.
+    pub ciphertext: String,
 }
 
 /// The backup `backup create` wrote.

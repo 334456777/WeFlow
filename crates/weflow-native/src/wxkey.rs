@@ -1,9 +1,11 @@
 #[cfg(not(windows))]
 use std::ffi::CStr;
+use std::io::Read;
 #[cfg(not(windows))]
 use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 #[cfg(not(windows))]
@@ -68,7 +70,11 @@ impl WxKey {
     }
 
     pub fn is_available(&self) -> bool {
-        self._lib.is_some()
+        // The dylib shipped with WeFlow exports `GetDbKey`, not this polling ABI. A library that
+        // loads without these three symbols cannot hook, so the caller falls through to `xkey_helper`.
+        self.initialize_hook.is_some()
+            && self.poll_key_data.is_some()
+            && self.cleanup_hook.is_some()
     }
 
     /// Hooks WeChat (`pid`) and waits up to `timeout` for the 64-hex-digit database key, which
@@ -331,30 +337,80 @@ fn find_wx_key_library(runtime_dir: &Path) -> Option<PathBuf> {
     }
 }
 
-pub fn run_key_helper(runtime_dir: &Path, args: &[&str]) -> Result<String> {
-    let helper = find_key_helper(runtime_dir)?;
-    let output = Command::new(&helper)
-        .args(args)
-        .output()
-        .with_context(|| format!("failed to run {}", helper.display()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("{} failed: {stderr}", helper.display()));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+/// Stdout and stderr of one helper process. `success` is whether it exited 0. A helper can exit 0
+/// and still report failure in the JSON on stdout, and a usage error exits non-zero with that JSON
+/// on stdout rather than stderr.
+#[derive(Debug)]
+pub struct HelperOutput {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
 }
 
-pub fn run_image_scan_helper(runtime_dir: &Path, args: &[&str]) -> Result<String> {
-    let helper = find_image_scan_helper(runtime_dir)?;
-    let output = Command::new(&helper)
+/// Run the database-key helper. `stop` is polled while it runs; once it returns true the process is killed
+/// and this returns `interrupted by user`.
+pub fn run_key_helper(
+    runtime_dir: &Path,
+    args: &[&str],
+    stop: &dyn Fn() -> bool,
+) -> Result<HelperOutput> {
+    run_helper(&find_key_helper(runtime_dir)?, args, stop)
+}
+
+/// Run the macOS image-scan helper. Same stop behavior as [`run_key_helper`].
+pub fn run_image_scan_helper(
+    runtime_dir: &Path,
+    args: &[&str],
+    stop: &dyn Fn() -> bool,
+) -> Result<HelperOutput> {
+    run_helper(&find_image_scan_helper(runtime_dir)?, args, stop)
+}
+
+fn run_helper(helper: &Path, args: &[&str], stop: &dyn Fn() -> bool) -> Result<HelperOutput> {
+    let mut child = Command::new(helper)
         .args(args)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .with_context(|| format!("failed to run {}", helper.display()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("{} failed: {stderr}", helper.display()));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    // Read both pipes while the process runs. A full stderr pipe (debug lines on every breakpoint)
+    // would otherwise stall the helper before it can print the key.
+    let stdout_thread = std::thread::spawn(move || read_pipe(stdout));
+    let stderr_thread = std::thread::spawn(move || read_pipe(stderr));
+    let status = loop {
+        if stop() {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+            return Err(anyhow!("interrupted by user"));
+        }
+        if let Some(status) = child
+            .try_wait()
+            .with_context(|| format!("failed to wait for {}", helper.display()))?
+        {
+            break status;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let stdout = stdout_thread.join().unwrap_or_else(|_| String::new());
+    let stderr = stderr_thread.join().unwrap_or_else(|_| String::new());
+    Ok(HelperOutput {
+        success: status.success(),
+        stdout,
+        stderr,
+    })
+}
+
+fn read_pipe(pipe: Option<impl Read>) -> String {
+    let Some(mut pipe) = pipe else {
+        return String::new();
+    };
+    let mut bytes = Vec::new();
+    let _ = pipe.read_to_end(&mut bytes);
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn find_key_helper(runtime_dir: &Path) -> Result<PathBuf> {

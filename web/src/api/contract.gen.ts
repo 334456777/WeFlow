@@ -1503,7 +1503,10 @@ export interface ScannedImageKeys {
   /** The helper's answer; `{"raw": …}` when it is not JSON. */
   result: unknown;
   method: string;
-  userDir: string;
+  /** The WeChat process that was scanned. */
+  pid: number;
+  /** The ciphertext that was scanned for, 32 hex characters. */
+  ciphertext: string;
 }
 
 /** The images of a conversation (`chat images`), the newest first, each once. */

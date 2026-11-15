@@ -9248,14 +9248,22 @@
           "method": {
             "type": "string"
           },
-          "userDir": {
-            "type": "string"
+          "pid": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The WeChat process that was scanned."
+          },
+          "ciphertext": {
+            "type": "string",
+            "description": "The ciphertext that was scanned for, 32 hex characters."
           }
         },
         "required": [
           "result",
           "method",
-          "userDir"
+          "pid",
+          "ciphertext"
         ],
         "description": "What `key scan-image` (macOS) answers: the helper's own result."
       },

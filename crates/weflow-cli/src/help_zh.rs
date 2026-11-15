@@ -147,6 +147,8 @@ const HELP: &[(&str, &str)] = &[
     ("Run the HTTP API, message push, insight and image auto-download services", "运行 HTTP API、消息推送、洞察和图片自动下载服务"),
     ("Run the silence scan once", "执行一次沉默扫描"),
     ("Scan WeChat's memory for the image AES key (macOS)", "在微信内存中扫描图片 AES 密钥（macOS）"),
+    ("WeChat process id", "微信进程 ID"),
+    ("16-byte image ciphertext, as 32 hex characters", "16 字节图片密文，写成 32 位十六进制"),
     ("Sender wxid (important in group chats)", "发送者 wxid（群聊中很重要）"),
     ("Session details (contact info, message count, message tables, first/latest time)", "会话详情（联系人信息、消息数、消息表、最早 / 最新时间）"),
     ("Sessions that anti-revoke can be installed for", "可安装防撤回的会话"),
