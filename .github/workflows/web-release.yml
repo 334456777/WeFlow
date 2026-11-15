@@ -41,6 +41,13 @@ jobs:
         with:
           bun-version-file: web/package.json
 
+      # the packages web.yml's cache holds (restore only)
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-packages-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
+          restore-keys: bun-packages-${{ runner.os }}-
+
       - name: Check the version
         id: meta
         env:

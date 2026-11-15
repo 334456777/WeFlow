@@ -139,6 +139,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+          # a tag's cache is visible to that tag only and would evict the caches of main (10 GB quota): only a
+          # manual run on main saves
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # Profile-guided (#500): an instrumented build trained on a synthetic account, then the build with its profile
       - name: Build
@@ -251,6 +254,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}-test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check formatting
         if: matrix.name == 'linux-x64'

@@ -87,7 +87,13 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustc --version
 
+      # Only main saves: the cache quota is 10 GB and every pull request's merge ref saved its own copy of each
+      # cache, which evicted the ones main reads. A failed run saves too, so a retry after a clippy or test failure
+      # does not compile everything again.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
 
       - name: make ci
         run: make ci
@@ -116,6 +122,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}-release-dev-doc
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
 
       - name: Build
         shell: bash
@@ -151,7 +159,12 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustc --version
 
+      # reads the cache of the `ci` job on Linux (same key prefix, the dev-profile test dependencies docs-check
+      # compiles too) and never saves its own
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci
+          save-if: false
 
       - name: make docs-check
         run: make docs-check

@@ -95,4 +95,5 @@ run biz accounts
 "$PROFDATA" merge -o "$WORK/weflow.profdata" "$RAW"
 cargo build --release -p weflow-cli --bin weflow --target "$TARGET" \
   --config "$(rustflag "-Cprofile-use=$(abs "$WORK")/weflow.profdata")"
-rm -rf "$GEN" "$WORK"
+# target/pgo-gen stays: rust-cache saves it, so the next run's instrumented build only compiles the workspace crates
+rm -rf "$WORK"

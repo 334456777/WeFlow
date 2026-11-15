@@ -40,7 +40,11 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustc --version
 
+      # reads the cache ci.yml's `ci` job saves on Linux (same key prefix) and never saves its own
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci
+          save-if: false
 
       - name: make docs-check
         run: make docs-check
