@@ -180,6 +180,9 @@ jobs:
           path: |
             ${{ env.ASSET }}
             ${{ env.ASSET }}.sha256
+          # what the test and release jobs download; a published release has its own copy, and a test tag's packages
+          # stay downloadable for a week
+          retention-days: 7
 
   test:
     name: Test ${{ matrix.target }}

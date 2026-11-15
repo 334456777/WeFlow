@@ -214,7 +214,8 @@ jobs:
             results/*/run.json
             results/*/summary.md
             results/*/*/result.json
-          retention-days: 30
+          # only handed to the publishing job of this run: the results live on gh-pages
+          retention-days: 7
 
       # the output of every command, for looking into a run; publishing does not wait on it
       - uses: actions/upload-artifact@v7
