@@ -1,15 +1,17 @@
 // The synthetic accounts `bun run dev` serves (#333): made by an example of weflow-cli into target/, and a
 // `weflow serve` of one on a free port of 127.0.0.1 with a token of its own. Nothing of a real WeChat account is read.
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const web = join(import.meta.dir, '..');
 const root = join(web, '..');
 const exe = process.platform === 'win32' ? '.exe' : '';
+/** Where cargo builds: `CARGO_TARGET_DIR` when it is set, as for cargo. */
+export const target = process.env.CARGO_TARGET_DIR ? resolve(root, process.env.CARGO_TARGET_DIR) : join(root, 'target');
 
 export const accounts = {
-  dev: { example: 'dev_account', dir: 'target/dev-account', profile: 'debug' },
+  dev: { example: 'dev_account', dir: 'dev-account', profile: 'debug' },
   // a debug build would take many minutes to draw and encrypt that many messages
-  bench: { example: 'bench_account', dir: 'target/bench-account', profile: 'release' },
+  bench: { example: 'bench_account', dir: 'bench-account', profile: 'release' },
 } as const;
 export type Account = (typeof accounts)[keyof typeof accounts];
 
@@ -34,9 +36,9 @@ export function buildAccount(chosen: Account): { weflow: string; home: string } 
     console.error('cargo build failed');
     process.exit(1);
   }
-  const weflow = join(root, 'target/debug/weflow' + exe);
-  const generator = join(root, `target/${chosen.profile}/examples/${chosen.example}${exe}`);
-  const account = Bun.spawnSync([generator, join(root, chosen.dir), '--weflow', weflow], {
+  const weflow = join(target, 'debug/weflow' + exe);
+  const generator = join(target, `${chosen.profile}/examples/${chosen.example}${exe}`);
+  const account = Bun.spawnSync([generator, join(target, chosen.dir), '--weflow', weflow], {
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   if (account.exitCode !== 0) process.exit(1);
