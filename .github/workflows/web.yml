@@ -38,6 +38,13 @@ jobs:
         with:
           bun-version-file: web/package.json
 
+      # the packages Bun downloads, by the lockfile (a few tens of MB)
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-packages-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
+          restore-keys: bun-packages-${{ runner.os }}-
+
       - run: bun install --frozen-lockfile
 
       # src/api/contract.gen.ts is generated from contract/openapi.json, which a test of weflow-cli keeps equal to
