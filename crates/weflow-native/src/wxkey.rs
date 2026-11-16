@@ -1,27 +1,63 @@
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 use std::ffi::CStr;
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 use libloading::Library;
 
 // The DLL exports C++ `bool`s (see `keyService.ts`: `bool InitializeHook(uint32)` …), not `int`s.
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 type InitializeHookFn = unsafe extern "C" fn(u32) -> bool;
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 type PollKeyDataFn = unsafe extern "C" fn(*mut c_char, c_int) -> bool;
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 type CleanupHookFn = unsafe extern "C" fn() -> bool;
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 type GetLastErrorMsgFn = unsafe extern "C" fn() -> *const c_char;
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 type GetStatusMessageFn = unsafe extern "C" fn(*mut c_char, c_int, *mut c_int) -> bool;
 
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 pub struct WxKey {
     _lib: Option<Library>,
     initialize_hook: Option<InitializeHookFn>,
@@ -31,7 +67,11 @@ pub struct WxKey {
     get_status_message: Option<GetStatusMessageFn>,
 }
 
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 impl WxKey {
     pub fn load(runtime_dir: &Path) -> Result<Self> {
         let lib_path = find_wx_key_library(runtime_dir);
@@ -308,6 +348,59 @@ fn db_key_error(message: String) -> DbKeyError {
     }
 }
 
+#[cfg(target_os = "macos")]
+pub struct WxKey;
+
+#[cfg(target_os = "macos")]
+impl WxKey {
+    pub fn load(_runtime_dir: &Path) -> Result<Self> {
+        Ok(Self)
+    }
+
+    pub fn is_available(&self) -> bool {
+        true
+    }
+
+    /// Locates the database-key sink with the Rust scanner, attaches with
+    /// `ptrace` and waits for the 32-byte call.
+    pub fn get_db_key_with_tick(
+        &self,
+        pid: u32,
+        timeout: std::time::Duration,
+        on_status: &mut dyn FnMut(&str, i32),
+        on_tick: &mut dyn FnMut(u64),
+    ) -> std::result::Result<String, DbKeyError> {
+        let mut hook =
+            crate::macos_key_helper::Hook::start(pid, timeout).map_err(macos_db_key_error)?;
+        on_status("Hook installed; log in to WeChat now", 1);
+        match hook.wait(on_tick) {
+            Ok(key) => {
+                on_status("key obtained", 1);
+                Ok(key)
+            }
+            Err(error) => Err(macos_db_key_error(error)),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_db_key_error(message: String) -> DbKeyError {
+    if message == "interrupted by user" {
+        DbKeyError::Interrupted
+    } else if message.starts_with("HOOK_TIMEOUT") {
+        DbKeyError::Timeout
+    } else if message.contains("task_for_pid")
+        || message.contains("ptrace_attach_failed")
+        || message.contains("ATTACH_FAILED")
+    {
+        DbKeyError::AccessDenied(message)
+    } else if message.contains("CANNOT_GET_EXEC_PATH") || message.contains("attach_wait_timeout") {
+        DbKeyError::NotReady(message)
+    } else {
+        DbKeyError::Other(message)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum DbKeyError {
     /// The process could not be opened (needs administrator rights / a security product interferes).
@@ -336,8 +429,12 @@ impl std::fmt::Display for DbKeyError {
 
 /// `isLoginRelatedText`
 #[cfg(any(
-    all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))),
-    test
+    test,
+    all(
+        not(windows),
+        not(target_os = "macos"),
+        not(all(target_os = "linux", target_arch = "x86_64"))
+    )
 ))]
 fn is_login_related(value: &str) -> bool {
     let n: String = value.split_whitespace().collect::<String>().to_lowercase();
@@ -357,7 +454,11 @@ fn is_login_related(value: &str) -> bool {
         .any(|k| n.contains(k))
 }
 
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 unsafe fn take_cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
         return String::new();
@@ -365,19 +466,31 @@ unsafe fn take_cstr(ptr: *const c_char) -> String {
     CStr::from_ptr(ptr).to_string_lossy().to_string()
 }
 
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 unsafe fn symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
     lib.get::<T>(name).ok().map(|sym| *sym)
 }
 
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 fn load_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
     // SAFETY: each caller names an export with the function type the library declares (the `*Fn` aliases), and
     // `WxKey` keeps the library loaded for as long as it holds the copied pointers.
     unsafe { symbol::<T>(lib, name) }
 }
 
-#[cfg(all(not(windows), not(all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(
+    not(windows),
+    not(target_os = "macos"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 fn find_wx_key_library(runtime_dir: &Path) -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
         let candidates = [runtime_dir.join("key/macos/universal/libwx_key.dylib")];

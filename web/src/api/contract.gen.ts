@@ -1514,7 +1514,7 @@ export interface ImageLocalKey {
   aesKey: string;
 }
 
-/** What `key image-mem` (Linux) answers: the AES key found in WeChat's memory, if any. */
+/** What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any. */
 export interface ImageMemKey {
   /** The 16-byte AES key as 32 hex characters; left out when nothing matched. */
   image_aes_key?: string;
@@ -1529,6 +1529,22 @@ export interface ScannedImageKeys {
   result: unknown;
   method: string;
   userDir: string;
+}
+
+/**
+ * What `key processes` (macOS) answers: the running WeChat clients, the main
+ * application first. Helper, AppEx and crashpad processes are left out.
+ */
+export interface WeChatProcesses {
+  processes: WeChatProcess[];
+}
+
+export interface WeChatProcess {
+  pid: number;
+  name: string;
+  path: string;
+  /** Whether it is the main client rather than a helper. */
+  main: boolean;
 }
 
 /** The images of a conversation (`chat images`), the newest first, each once. */
@@ -2206,6 +2222,7 @@ export interface Answers {
   "key image": ImageKeys;
   "key image-local": ImageLocalKeys;
   "key image-mem": ImageMemKey;
+  "key processes": WeChatProcesses;
   "key scan-image": ScannedImageKeys;
   "lang": LangSaved;
   "report annual generate": AnnualReport;

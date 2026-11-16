@@ -304,6 +304,7 @@ enum KeyShown {
     ImageLocal,
     ImageMem,
     ScanImage,
+    Processes,
 }
 
 impl Summary {
@@ -332,6 +333,7 @@ impl Summary {
                 KeySubcommand::ImageLocal => KeyShown::ImageLocal,
                 KeySubcommand::ImageMem { .. } => KeyShown::ImageMem,
                 KeySubcommand::ScanImage { .. } => KeyShown::ScanImage,
+                KeySubcommand::Processes => KeyShown::Processes,
             }),
             _ => return None,
         })

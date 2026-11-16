@@ -3641,6 +3641,46 @@
         }
       }
     },
+    "/key/processes": {
+      "get": {
+        "operationId": "api_key_processes",
+        "x-weflow-command": "key processes",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WeChatProcesses"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/key/scan-image": {
       "get": {
         "operationId": "api_key_scan_image",
@@ -9399,7 +9439,7 @@
         "required": [
           "pid"
         ],
-        "description": "What `key image-mem` (Linux) answers: the AES key found in WeChat's memory, if any."
+        "description": "What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any."
       },
       "ScannedImageKeys": {
         "type": "object",
@@ -9420,6 +9460,47 @@
           "userDir"
         ],
         "description": "What `key scan-image` (macOS) answers: the helper's own result."
+      },
+      "WeChatProcesses": {
+        "type": "object",
+        "properties": {
+          "processes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeChatProcess"
+            }
+          }
+        },
+        "required": [
+          "processes"
+        ],
+        "description": "What `key processes` (macOS) answers: the running WeChat clients, the main\napplication first. Helper, AppEx and crashpad processes are left out."
+      },
+      "WeChatProcess": {
+        "type": "object",
+        "properties": {
+          "pid": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "main": {
+            "type": "boolean",
+            "description": "Whether it is the main client rather than a helper."
+          }
+        },
+        "required": [
+          "pid",
+          "name",
+          "path",
+          "main"
+        ]
       },
       "ChatImages": {
         "type": "object",

@@ -706,6 +706,7 @@ pub(super) fn contract() -> &'static Contract {
             data.insert("web prune", of(generator.subschema_for::<WebPruned>()));
             use weflow_core::contract::{
                 DbKey, DbScan, ImageKeys, ImageLocalKeys, ImageMemKey, ScannedImageKeys,
+                WeChatProcesses,
             };
             data.insert("db scan", of(generator.subschema_for::<DbScan>()));
             data.insert("key db", of(generator.subschema_for::<DbKey>()));
@@ -719,6 +720,10 @@ pub(super) fn contract() -> &'static Contract {
                 of(generator.subschema_for::<ImageMemKey>()),
             );
             data.insert("key scan-image", of(generator.subschema_for::<ScannedImageKeys>()));
+            data.insert(
+                "key processes",
+                of(generator.subschema_for::<WeChatProcesses>()),
+            );
             use weflow_core::contract::{
                 AntiRevokeResults, ChatImages, EmojisDownloaded, GroupHint, MediaStream, MediaWritten,
                 SnsMediaFetched, VoiceCache, VoiceData, VoiceMessages, VoicesPrepared,
