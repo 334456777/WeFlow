@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiUrl, checkToken, onAuth, token } from './client';
 import { emitLive } from './live';
+import { onPresence, present } from './presence';
 import { setLang, t } from '../i18n';
 
 export interface Health {
@@ -144,7 +145,9 @@ const isLoopback = (host: string) => host === 'localhost' || host === '[::1]' ||
  * moment the stream breaks (the server stopped or crashed); a stream that stays silent past the watchdog (a
  * half-open connection: Wi-Fi gone, a NAT that forgot it) is dropped too. It connects again after 1, 2, 4 … 30 s,
  * at once when the network or the tab comes back, and on `reconnect()`. It reconnects itself rather than letting
- * `EventSource` do it, as the browser's own retry is not ours to pace and stops for good on some failures.
+ * `EventSource` do it, as the browser's own retry is not ours to pace and stops for good on some failures. A page
+ * out of view for a while, or put in the back/forward cache, holds no stream (#799, see presence.ts): the state stays
+ * as it was, and the stream goes on from the last event once the page is back.
  */
 export class Connection {
   private state: Backend = { state: 'checking' };
@@ -166,6 +169,9 @@ export class Connection {
    */
   private unauthorized = false;
   private stopAuth: (() => void) | null = null;
+  /** Whether the page may hold the stream now (see presence.ts). */
+  private present = true;
+  private stopPresence: (() => void) | null = null;
   private readonly open: (url: string) => Stream;
   private readonly loopback: boolean;
   private readonly random: () => number;
@@ -184,6 +190,8 @@ export class Connection {
     window.addEventListener('offline', this.offline);
     document.addEventListener('visibilitychange', this.visible);
     this.stopAuth = onAuth(this.auth);
+    this.stopPresence = onPresence(this.presence);
+    this.present = present();
     this.connect();
   }
 
@@ -194,6 +202,8 @@ export class Connection {
     document.removeEventListener('visibilitychange', this.visible);
     this.stopAuth?.();
     this.stopAuth = null;
+    this.stopPresence?.();
+    this.stopPresence = null;
     this.drop();
   }
 
@@ -259,7 +269,7 @@ export class Connection {
   }
 
   private connect(): void {
-    if (this.stopped) return;
+    if (this.stopped || !this.present) return;
     this.drop();
     const stream = this.open(this.url());
     this.stream = stream;
@@ -344,9 +354,16 @@ export class Connection {
 
   // A tab in the background has its timers slowed down: on coming back, connect at once unless all is well
   private readonly visible = () => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible' || !this.present) return;
     if (!('health' in this.state)) this.reconnect();
     else if (Date.now() - this.lastEvent > WATCHDOG_MS) this.reconnect();
+  };
+
+  // Away, the stream goes and nothing tries again; back, it goes on from the last event (`resumed` reads again)
+  private readonly presence = (here: boolean) => {
+    this.present = here;
+    if (here) this.reconnect();
+    else this.drop();
   };
 }
 

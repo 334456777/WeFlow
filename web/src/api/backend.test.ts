@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
 import { adviceFor, compareVersions, Connection, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
 import { call, setToken } from './client';
 import { onLive, type LiveEvent } from './live';
+import { HIDDEN_MS } from './presence';
 import { lang, languageReady } from '../i18n';
 
 const web = { name: 'weflow-web', version: '0.1.0', apiVersion: '1', minBackendVersion: '5.0.0-rc.4' };
@@ -233,6 +234,49 @@ describe('Connection (#221)', () => {
     expect(c.last().url).toBe('/health/events');
     off();
     c.live.stop();
+    sessionStorage.clear();
+  });
+
+  it('holds no stream while the page is away, and goes on from the last event once it is back (#799)', () => {
+    const setVisibility = (state: 'visible' | 'hidden') => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    sessionStorage.setItem('weflow.token', 't');
+    const heard: LiveEvent[] = [];
+    const off = onLive(event => heard.push(event));
+    const c = connection();
+    c.live.setLive(true);
+    c.last().send('hello', health);
+    c.last().emitWithId('message.new', { sessionId: 'wxid_a' }, '41');
+    const opened = c.streams.length;
+
+    // hidden a while: the stream goes, the state stays, and nothing connects meanwhile
+    setVisibility('hidden');
+    vi.advanceTimersByTime(HIDDEN_MS);
+    expect(c.last().closed).toBe(true);
+    expect(c.now()).toEqual({ state: 'ready', health });
+    window.dispatchEvent(new Event('online'));
+    c.live.reconnect();
+    vi.advanceTimersByTime(60_000);
+    expect(c.streams).toHaveLength(opened);
+    // seen again: at once, from the last event, and what came meanwhile is read
+    setVisibility('visible');
+    expect(c.streams).toHaveLength(opened + 1);
+    expect(c.last().url).toBe('/api/push/messages?access_token=t&last-event-id=41');
+    c.last().send('hello', health);
+    expect(heard.at(-1)).toEqual({ type: 'resumed' });
+
+    // into the back/forward cache: at once; shown again: back
+    window.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true }));
+    expect(c.last().closed).toBe(true);
+    window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    expect(c.streams).toHaveLength(opened + 2);
+    expect(c.last().closed).toBe(false);
+
+    off();
+    c.live.stop();
+    delete (document as { visibilityState?: unknown }).visibilityState;
     sessionStorage.clear();
   });
 
