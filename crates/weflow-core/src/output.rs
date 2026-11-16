@@ -89,7 +89,7 @@ fn human_event(event: &Value) -> String {
             "{}\n",
             tr(
                 "image auto download started (Ctrl+C to stop)",
-                "图片自动下载已启动（按 Ctrl+C 停止）"
+                "原图自动下载已启动（按 Ctrl+C 停止）"
             )
         ),
         "insight" => format!(
@@ -109,7 +109,7 @@ fn human_event(event: &Value) -> String {
             let mut services = vec![tr("HTTP API", "HTTP API")];
             for (key, en, zh) in [
                 ("insight", "insight", "洞察"),
-                ("imageAutoDownload", "image auto download", "图片自动下载"),
+                ("imageAutoDownload", "image auto download", "原图自动下载"),
             ] {
                 if enabled(key) {
                     services.push(tr(en, zh));
