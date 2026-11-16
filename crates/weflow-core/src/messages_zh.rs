@@ -7,6 +7,8 @@ const CATALOG: &[(&str, &str)] = &[
     ("Rust image-key acquisition needs kvcomm directories (none found; pass --kvcomm-dir) and a nonzero scan budget", "Rust 图片取钥需要 kvcomm 目录（未找到，请用 --kvcomm-dir 指定）和非零扫描预算"),
     ("`key image` is not supported on this platform yet", "`key image` 暂不支持此平台"),
     ("`key scan-image` is only available on macOS", "`key scan-image` 仅支持 macOS"),
+    ("`key processes` is only available on macOS", "`key processes` 仅支持 macOS"),
+    ("`key image-mem` is only available on Linux x64 and macOS", "`key image-mem` 仅支持 Linux x64 和 macOS"),
     ("No kvcomm directory could be read", "所有 kvcomm 目录均无法读取"),
     ("No candidate code found in the kvcomm filenames", "kvcomm 文件名中未找到候选 code"),
     ("No valid V2 thumbnail found in the selected account", "选定账号中未找到有效 V2 缩略图模板"),

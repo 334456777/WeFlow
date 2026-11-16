@@ -19,7 +19,7 @@ pub(crate) struct KeyCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum KeySubcommand {
-    /// Hook WeChat and wait for the database key (Windows and Linux: keep the command running and log in to WeChat)
+    /// Hook WeChat and wait for the database key (keep the command running and log in to WeChat)
     Db {
         /// WeChat process id (default: the first Weixin.exe / WeChat.exe found)
         #[arg(long)]
@@ -48,7 +48,7 @@ pub(crate) enum KeySubcommand {
     },
     /// Derive image keys from local account and kvcomm files (Linux)
     ImageLocal,
-    /// Scan WeChat's memory for the image AES key from a ciphertext block (Linux)
+    /// Scan WeChat's memory for the image AES key from a ciphertext block (Linux and macOS)
     ImageMem {
         /// WeChat process id
         pid: u32,
@@ -58,6 +58,8 @@ pub(crate) enum KeySubcommand {
         #[arg(long)]
         save: bool,
     },
+    /// List the running WeChat processes (macOS)
+    Processes,
     /// Scan WeChat's memory for the image AES key (macOS)
     ScanImage {
         /// Account directory (user directory) to scan for the image key
@@ -162,6 +164,7 @@ pub(crate) fn handle_key(
             Ok(json!(data))
         }
         KeySubcommand::ScanImage { user_dir } => Ok(json!(hub.key_scan_image(user_dir)?)),
+        KeySubcommand::Processes => Ok(json!(hub.key_processes()?)),
     }
 }
 
@@ -218,6 +221,7 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
             KeyShown::Image | KeyShown::ScanImage => tr("Image keys", "图片密钥"),
             KeyShown::ImageLocal => tr("Image keys", "图片密钥"),
             KeyShown::ImageMem => tr("Image AES key", "图片 AES 密钥"),
+            KeyShown::Processes => tr("WeChat processes", "微信进程"),
         };
         let mut text = format!(
             "{}\n",
@@ -271,6 +275,25 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
                 "{}\nimage_aes_key: {key}\n",
                 tr("Image AES key obtained", "已获取图片 AES 密钥")
             ))
+        }
+        KeyShown::Processes => {
+            let processes = data["processes"].as_array()?;
+            Some(if processes.is_empty() {
+                format!("{}\n", tr("No WeChat process found", "未找到微信进程"))
+            } else {
+                processes
+                    .iter()
+                    .map(|process| {
+                        let main = if process["main"] == true { "*" } else { " " };
+                        format!(
+                            "{main} {}  {}  {}\n",
+                            process["pid"].as_u64().unwrap_or(0),
+                            process["name"].as_str().unwrap_or(""),
+                            process["path"].as_str().unwrap_or("")
+                        )
+                    })
+                    .collect()
+            })
         }
         KeyShown::ImageLocal | KeyShown::ScanImage => None,
     }
@@ -385,6 +408,22 @@ mod tests {
         assert!(found.contains("image_aes_key: 00112233445566778899aabbccddeeff"));
         let missing = keys_summary(KeyShown::ImageMem, &json!({ "pid": 1 })).unwrap();
         assert!(missing.contains("AES") || missing.contains("图片"));
+    }
+
+    #[test]
+    fn processes_summary_lists_the_main_client() {
+        let text = keys_summary(
+            KeyShown::Processes,
+            &json!({ "processes": [
+                { "pid": 7, "name": "WeChat", "path": "/Applications/WeChat.app/Contents/MacOS/WeChat", "main": true },
+                { "pid": 9, "name": "WeChat", "path": "/Applications/WeChat.app/Contents/Frameworks/x/WeChat", "main": false }
+            ] }),
+        )
+        .unwrap();
+        assert!(text.contains("7"));
+        assert!(text.contains("WeChat.app"));
+        let empty = keys_summary(KeyShown::Processes, &json!({ "processes": [] })).unwrap();
+        assert!(empty.contains("No WeChat process") || empty.contains("未找到"));
     }
 
     #[test]

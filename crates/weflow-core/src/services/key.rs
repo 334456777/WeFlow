@@ -32,7 +32,7 @@ impl ServiceHub {
         if wxkey.is_available() {
             return self.key_db_hooked(&wxkey, pid_override, timeout_secs);
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(target_os = "linux")]
         {
             let result = weflow_native::wxkey::run_key_helper(&self.ctx.runtime_dir, &["--db-key"])
                 .map_err(|err| AppError::native(err.to_string()))?;
@@ -43,6 +43,12 @@ impl ServiceHub {
                 pid: None,
                 saved: Vec::new(),
             })
+        }
+        #[cfg(target_os = "macos")]
+        {
+            Err(AppError::native(
+                "macOS database-key helper is not available",
+            ))
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
@@ -219,9 +225,33 @@ impl ServiceHub {
         }
     }
 
-    /// An image AES key found in WeChat's memory from a ciphertext block, on Linux.
+    /// The running WeChat clients, main application first (`key processes`, macOS).
+    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+    pub fn key_processes(&self) -> AppResult<crate::contract::WeChatProcesses> {
+        #[cfg(target_os = "macos")]
+        {
+            let processes = weflow_native::macos_key_helper::wechat_processes()
+                .into_iter()
+                .map(|process| crate::contract::WeChatProcess {
+                    pid: process.pid,
+                    name: process.name,
+                    path: PathBuf::from(process.path),
+                    main: process.main,
+                })
+                .collect();
+            Ok(crate::contract::WeChatProcesses { processes })
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Err(AppError::native(
+                "`key processes` is only available on macOS",
+            ))
+        }
+    }
+
+    /// An image AES key found in WeChat's memory from a ciphertext block, on Linux and macOS.
     #[cfg_attr(
-        not(all(target_os = "linux", target_arch = "x86_64")),
+        not(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos")),
         allow(unused_variables)
     )]
     pub fn key_image_mem(
@@ -238,10 +268,23 @@ impl ServiceHub {
                 saved: Vec::new(),
             })
         }
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        #[cfg(target_os = "macos")]
+        {
+            let image_aes_key =
+                weflow_native::macos_key_helper::scan_memory_for_image_key(pid, ciphertext);
+            Ok(crate::contract::ImageMemKey {
+                image_aes_key,
+                pid,
+                saved: Vec::new(),
+            })
+        }
+        #[cfg(all(
+            not(all(target_os = "linux", target_arch = "x86_64")),
+            not(target_os = "macos")
+        ))]
         {
             Err(AppError::native(
-                "`key image-mem` is only available on Linux x64",
+                "`key image-mem` is only available on Linux x64 and macOS",
             ))
         }
     }
@@ -276,31 +319,9 @@ impl ServiceHub {
 fn find_wechat_pid() -> Option<u32> {
     #[cfg(target_os = "macos")]
     {
-        let output = std::process::Command::new("pgrep")
-            .arg("-x")
-            .arg("WeChat")
-            .output()
-            .ok()?;
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return stdout
-                .lines()
-                .next()
-                .and_then(|line| line.trim().parse().ok());
-        }
-        let output2 = std::process::Command::new("pgrep")
-            .arg("-x")
-            .arg("微信")
-            .output()
-            .ok()?;
-        if output2.status.success() {
-            let stdout = String::from_utf8_lossy(&output2.stdout);
-            return stdout
-                .lines()
-                .next()
-                .and_then(|line| line.trim().parse().ok());
-        }
-        None
+        weflow_native::macos_key_helper::wechat_processes()
+            .first()
+            .map(|process| process.pid)
     }
     #[cfg(target_os = "linux")]
     {
@@ -411,6 +432,8 @@ pub fn interrupt_key_db() {
     weflow_native::windows_db_key::interrupt();
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     weflow_native::linux_key_helper::interrupt();
+    #[cfg(target_os = "macos")]
+    weflow_native::macos_key_helper::interrupt();
 }
 
 fn key_db_interrupted() -> bool {

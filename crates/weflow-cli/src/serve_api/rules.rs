@@ -91,6 +91,7 @@ pub(super) const METHODS: &[(&str, Rule)] = &[
     ("key image-local", Rule::Fixed(Post)),
     ("key image-mem", Rule::Fixed(Post)),
     ("key scan-image", Rule::Fixed(Post)),
+    ("key processes", Rule::Fixed(Post)),
     ("chat sessions", Rule::Fixed(Get)),
     ("chat messages", Rule::Fixed(Get)),
     ("chat latest", Rule::Fixed(Get)),

@@ -151,7 +151,7 @@ pub struct ImageLocalKey {
     pub aes_key: String,
 }
 
-/// What `key image-mem` (Linux) answers: the AES key found in WeChat's memory, if any.
+/// What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ImageMemKey {
     /// The 16-byte AES key as 32 hex characters; left out when nothing matched.
@@ -171,6 +171,22 @@ pub struct ScannedImageKeys {
     pub result: serde_json::Value,
     pub method: String,
     pub user_dir: String,
+}
+
+/// What `key processes` (macOS) answers: the running WeChat clients, the main
+/// application first. Helper, AppEx and crashpad processes are left out.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct WeChatProcesses {
+    pub processes: Vec<WeChatProcess>,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct WeChatProcess {
+    pub pid: u32,
+    pub name: String,
+    pub path: PathBuf,
+    /// Whether it is the main client rather than a helper.
+    pub main: bool,
 }
 
 /// The backup `backup create` wrote.
