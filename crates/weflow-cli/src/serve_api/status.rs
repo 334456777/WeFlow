@@ -155,6 +155,8 @@ impl Status {
             "data": self.data(),
             // the language of the server's answers, which the WebUI shows itself in too (#439)
             "lang": super::server_lang(),
+            // the system of the server's computer: `windows`, `macos` or `linux`
+            "platform": std::env::consts::OS,
         });
         if let (Some(body), Some(server)) = (body.as_object_mut(), self.server.as_object()) {
             body.extend(server.clone());

@@ -3881,86 +3881,6 @@
         }
       }
     },
-    "/api/runtime/info": {
-      "get": {
-        "operationId": "api_runtime_info",
-        "x-weflow-command": "runtime info",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/RuntimeInfo"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/runtime/manifest": {
-      "get": {
-        "operationId": "api_runtime_manifest",
-        "x-weflow-command": "runtime manifest",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/RuntimeManifest"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/sns/debug-resource": {
       "get": {
         "operationId": "api_sns_debug_resource",
@@ -7992,35 +7912,6 @@
         ],
         "description": "A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys."
       },
-      "RuntimeInfo": {
-        "type": "object",
-        "properties": {
-          "homeDir": {
-            "type": "string"
-          },
-          "configPath": {
-            "type": "string"
-          },
-          "runtimeDir": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "target": {
-            "type": "string",
-            "description": "The target it was built for, such as `x86_64-pc-windows-msvc`."
-          }
-        },
-        "required": [
-          "homeDir",
-          "configPath",
-          "runtimeDir",
-          "version",
-          "target"
-        ],
-        "description": "Where `weflow` keeps its files and what it is (`runtime info`)."
-      },
       "CacheUsage": {
         "type": "object",
         "properties": {
@@ -8033,7 +7924,7 @@
             "items": {
               "type": "string"
             },
-            "description": "What `cache clear` removes; for `runtime`, the folders of other versions and earlier ffmpeg builds found."
+            "description": "What `cache clear` removes; for `runtime`, the runtime directories and ffmpeg builds earlier versions left."
           },
           "bytes": {
             "type": "integer",
@@ -8045,10 +7936,6 @@
             "type": "integer",
             "format": "uint64",
             "minimum": 0
-          },
-          "inUse": {
-            "type": "string",
-            "description": "For `runtime`: the running version's folder, which `cache clear` leaves and `bytes` does not count."
           }
         },
         "required": [
@@ -8060,17 +7947,25 @@
         "description": "One part of WeFlow's cache (`cache list`), and how much of the disk it takes."
       },
       "CachePart": {
-        "type": "string",
-        "enum": [
-          "images",
-          "voices",
-          "emojis",
-          "sns",
-          "analytics",
-          "api",
-          "keys",
-          "runtime",
-          "web"
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "images",
+              "voices",
+              "emojis",
+              "sns",
+              "analytics",
+              "api",
+              "keys",
+              "web"
+            ]
+          },
+          {
+            "type": "string",
+            "const": "runtime",
+            "description": "Runtime directories and ffmpeg builds earlier versions left in the home folder."
+          }
         ],
         "description": "A part of WeFlow's cache that is listed and cleared on its own."
       },
@@ -8950,56 +8845,6 @@
         ],
         "description": "The MD5 a video message names (`video parse-md5`); null when its XML has none."
       },
-      "RuntimeManifest": {
-        "type": "object",
-        "properties": {
-          "version": {
-            "type": "string"
-          },
-          "target": {
-            "type": "string"
-          },
-          "commit": {
-            "type": "string"
-          },
-          "entries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AssetManifestEntry"
-            }
-          }
-        },
-        "required": [
-          "version",
-          "target",
-          "commit",
-          "entries"
-        ],
-        "description": "What the binary carries (`runtime manifest`): its version, target and built-in files."
-      },
-      "AssetManifestEntry": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "size": {
-            "type": "integer",
-            "format": "uint",
-            "minimum": 0,
-            "description": "Bytes."
-          },
-          "sha256": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "path",
-          "size",
-          "sha256"
-        ],
-        "description": "A file built into the binary."
-      },
       "WebInfo": {
         "type": "object",
         "properties": {
@@ -9263,7 +9108,7 @@
           },
           "method": {
             "type": "string",
-            "description": "`wx_key` (WeChat hooked) or `key_helper`."
+            "description": "Always `wx_key`: WeChat hooked by the binary's own implementation."
           },
           "pid": {
             "type": "integer",

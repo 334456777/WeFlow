@@ -52,7 +52,6 @@ const CATALOG: &[(&str, &str)] = &[
     ("invalid value '{}' for lang; use en or zh", "lang 的值 '{}' 无效；请使用 en 或 zh"),
     ("invalid value {} for {}; use a whole number from {} to {}", "{1} 的值 {0} 无效；请使用 {2} 到 {3} 之间的整数"),
     ("the config file path must include a parent directory", "配置文件路径必须包含上级目录"),
-    ("failed to prepare runtime assets: {}", "准备运行时资源失败：{}"),
     ("failed to locate platform config directory", "无法定位系统配置目录"),
     ("expected scalar string value", "需要字符串值"),
     ("expected integer value", "需要整数值"),

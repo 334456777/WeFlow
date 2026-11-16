@@ -217,41 +217,16 @@ mod tests {
     }
 
     #[cfg(all(test, target_os = "linux", target_arch = "x86_64"))]
-    mod helper_comparison {
+    mod image_local_output {
         use super::*;
         use crate::fixture::TestDir;
-        use std::path::PathBuf;
-        use std::process::Command;
 
-        fn helper() -> PathBuf {
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../weflow-assets/assets/key/linux/x64/xkey_helper_linux")
-        }
-
-        fn run_helper(home: &Path) -> serde_json::Value {
-            let output = Command::new(helper())
-                .arg("image_local")
-                .env("HOME", home)
-                .output()
-                .unwrap();
-            assert!(output.status.success());
-            serde_json::from_slice(&output.stdout).unwrap()
-        }
-
-        fn normalize(mut value: serde_json::Value) -> serde_json::Value {
-            if let Some(accounts) = value.get_mut("accounts").and_then(|a| a.as_array_mut()) {
-                for account in accounts.iter_mut() {
-                    if let Some(keys) = account.get_mut("keys").and_then(|k| k.as_array_mut()) {
-                        keys.sort_by_key(|key| key["code"].as_u64());
-                    }
-                }
-                accounts.sort_by_key(|account| account["wxid"].as_str().map(str::to_string));
-            }
-            value
+        fn parse(home: &Path) -> serde_json::Value {
+            serde_json::from_str(&image_local_at(Some(home)).unwrap()).unwrap()
         }
 
         #[test]
-        fn matches_the_helper_on_a_synthetic_home() {
+        fn derives_the_keys_of_every_account_found() {
             let home = TestDir::new("weflow-image-local");
             std::fs::create_dir_all(home.join("Documents/xwechat_files/wxid_abc123_1234")).unwrap();
             std::fs::create_dir_all(home.join("Documents/WeChat_Data/wxid_def456")).unwrap();
@@ -261,30 +236,47 @@ mod tests {
             for name in ["key_111_a", "key_222_b", "key_abc_333_c", "not_a_key"] {
                 std::fs::File::create(kvcomm.join(name)).unwrap();
             }
-            let helper = run_helper(home.path());
-            let data = image_local_at(Some(home.path())).unwrap();
-            let ours: serde_json::Value = serde_json::from_str(&data).unwrap();
-            assert_eq!(normalize(ours), normalize(helper["data"].clone()));
+            let value = parse(home.path());
+            let accounts = value["accounts"].as_array().unwrap();
+            let wxids: Vec<&str> = accounts
+                .iter()
+                .map(|account| account["wxid"].as_str().unwrap())
+                .collect();
+            assert_eq!(wxids, ["wxid_abc123", "wxid_def456", "wxid_ghi789"]);
+            for account in accounts {
+                let wxid = account["wxid"].as_str().unwrap();
+                let keys = account["keys"].as_array().unwrap();
+                let mut codes: Vec<u32> = keys
+                    .iter()
+                    .map(|key| u32::try_from(key["code"].as_u64().unwrap()).unwrap())
+                    .collect();
+                codes.sort_unstable();
+                assert_eq!(codes, [111, 222, 333]);
+                for key in keys {
+                    let code = u32::try_from(key["code"].as_u64().unwrap()).unwrap();
+                    assert_eq!(key["xorKey"], code & 0xff);
+                    assert_eq!(key["aesKey"], md5_prefix(code, wxid));
+                }
+            }
         }
 
         #[test]
-        fn matches_the_helper_when_no_account_directory_exists() {
+        fn names_the_account_unknown_when_no_account_directory_exists() {
             let home = TestDir::new("weflow-image-local-unknown");
             let kvcomm = home.join(".xwechat/net/kvcomm");
             std::fs::create_dir_all(&kvcomm).unwrap();
             std::fs::File::create(kvcomm.join("key_42_x")).unwrap();
-            let helper = run_helper(home.path());
-            let data = image_local_at(Some(home.path())).unwrap();
-            let ours: serde_json::Value = serde_json::from_str(&data).unwrap();
-            assert_eq!(normalize(ours), normalize(helper["data"].clone()));
+            let value = parse(home.path());
+            let accounts = value["accounts"].as_array().unwrap();
+            assert_eq!(accounts.len(), 1);
+            assert_eq!(accounts[0]["wxid"], "unknown");
+            assert_eq!(accounts[0]["keys"][0]["aesKey"], md5_prefix(42, "unknown"));
         }
 
         #[test]
-        fn matches_the_helper_when_there_is_no_kvcomm_code() {
+        fn reports_a_missing_kvcomm_code() {
             let home = TestDir::new("weflow-image-local-empty");
             std::fs::create_dir_all(home.join("Documents/xwechat_files/wxid_abc")).unwrap();
-            let helper = run_helper(home.path());
-            assert_eq!(helper["result"], "ERROR:KVCOMM_NOT_FOUND");
             assert_eq!(
                 image_local_at(Some(home.path())),
                 Err("ERROR:KVCOMM_NOT_FOUND")

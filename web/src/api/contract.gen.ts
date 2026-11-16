@@ -1079,31 +1079,19 @@ export interface ProfileSummary {
   complete: boolean;
 }
 
-/** Where `weflow` keeps its files and what it is (`runtime info`). */
-export interface RuntimeInfo {
-  homeDir: string;
-  configPath: string;
-  runtimeDir: string;
-  version: string;
-  /** The target it was built for, such as `x86_64-pc-windows-msvc`. */
-  target: string;
-}
-
 /** One part of WeFlow's cache (`cache list`), and how much of the disk it takes. */
 export interface CacheUsage {
   /** Its name, as `cache clear` takes it. */
   part: CachePart;
-  /** What `cache clear` removes; for `runtime`, the folders of other versions and earlier ffmpeg builds found. */
+  /** What `cache clear` removes; for `runtime`, the runtime directories and ffmpeg builds earlier versions left. */
   paths: string[];
   /** What `paths` take on disk. */
   bytes: number;
   files: number;
-  /** For `runtime`: the running version's folder, which `cache clear` leaves and `bytes` does not count. */
-  inUse?: string;
 }
 
 /** A part of WeFlow's cache that is listed and cleared on its own. */
-export type CachePart = "images" | "voices" | "emojis" | "sns" | "analytics" | "api" | "keys" | "runtime" | "web";
+export type CachePart = "images" | "voices" | "emojis" | "sns" | "analytics" | "api" | "keys" | "web" | "runtime";
 
 /** What `cache clear` or `clear-account` would remove (`--dry-run`), for a page that asks first. */
 export interface RemovalPlan {
@@ -1364,22 +1352,6 @@ export interface VideoMd5 {
   md5: string | null;
 }
 
-/** What the binary carries (`runtime manifest`): its version, target and built-in files. */
-export interface RuntimeManifest {
-  version: string;
-  target: string;
-  commit: string;
-  entries: AssetManifestEntry[];
-}
-
-/** A file built into the binary. */
-export interface AssetManifestEntry {
-  path: string;
-  /** Bytes. */
-  size: number;
-  sha256: string;
-}
-
 /** What `web info` answers: the WebUI `serve` shows, and the versions downloaded. */
 export interface WebInfo {
   /** The version `serve` shows; null when none is downloaded. */
@@ -1463,7 +1435,7 @@ export interface ScannedAccount {
 export interface DbKey {
   /** Left out with `save`: it went to the profile instead. */
   decrypt_key?: string;
-  /** `wx_key` (WeChat hooked) or `key_helper`. */
+  /** Always `wx_key`: WeChat hooked by the binary's own implementation. */
   method: string;
   /** The WeChat process hooked (`wx_key`). */
   pid?: number;
@@ -2223,8 +2195,6 @@ export interface Answers {
   "report annual generate": AnnualReport;
   "report annual years": ReportYears;
   "report dual generate": DualReport;
-  "runtime info": RuntimeInfo;
-  "runtime manifest": RuntimeManifest;
   "sns debug-resource": SnsResourceProbe;
   "sns download-emoji": SnsEmojiSaved;
   "sns download-image": SnsImageDownload;

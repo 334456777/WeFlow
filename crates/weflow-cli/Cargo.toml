@@ -32,7 +32,6 @@ tokio = { workspace = true, features = ["process", "io-util", "fs", "sync", "tim
 tower-http = { workspace = true, features = ["compression-gzip", "compression-br"] }
 tracing-subscriber.workspace = true
 weflow-core = { path = "../weflow-core" }
-weflow-assets = { path = "../weflow-assets" }
 
 [dev-dependencies]
 # the examples report their failures with it

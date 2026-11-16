@@ -19,6 +19,7 @@ pub enum CachePart {
     Analytics,
     Api,
     Keys,
+    /// Runtime directories and ffmpeg builds earlier versions left in the home folder.
     Runtime,
     Web,
 }
@@ -135,36 +136,29 @@ impl ServiceHub {
         }
     }
 
-    /// Folder of the files `weflow serve` writes for `?return=file` requests that name no `--out`.
-    pub fn serve_files_dir(&self) -> PathBuf {
-        self.cache_base().join("serve-files")
-    }
-
-    /// Folder the embedded runtimes are unpacked into, one subfolder per version.
-    pub fn runtime_root(&self) -> PathBuf {
-        self.ctx.home_dir.join("runtime")
-    }
-
-    /// `<home>/runtime/<version>` folders left by other versions; the running version's is unpacked again on every
-    /// start, so it stays.
-    /// Programs unpacked or downloaded here that nothing runs: the runtimes of other WeFlow versions, and the ffmpeg
-    /// builds earlier versions installed in `ffmpeg/<release>/` (files of one's own in `ffmpeg/` stay).
+    /// Programs that nothing runs: runtime directories earlier versions unpacked into `runtime/`, and the ffmpeg
+    /// builds those versions installed in `ffmpeg/<release>/` (files of one's own in `ffmpeg/` stay).
     fn unused_programs(&self) -> Vec<PathBuf> {
-        let subfolders = |dir: PathBuf, keep: &str| -> Vec<PathBuf> {
+        let subfolders = |dir: PathBuf| -> Vec<PathBuf> {
             let Ok(entries) = std::fs::read_dir(dir) else {
                 return Vec::new();
             };
             let mut dirs: Vec<PathBuf> = entries
                 .filter_map(Result::ok)
-                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()) && e.file_name() != keep)
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
                 .map(|e| e.path())
                 .collect();
             dirs.sort();
             dirs
         };
-        let mut dirs = subfolders(self.runtime_root(), self.ctx.version.as_str());
-        dirs.extend(subfolders(self.ctx.home_dir.join("ffmpeg"), ""));
+        let mut dirs = subfolders(self.ctx.home_dir.join("runtime"));
+        dirs.extend(subfolders(self.ctx.home_dir.join("ffmpeg")));
         dirs
+    }
+
+    /// Folder of the files `weflow serve` writes for `?return=file` requests that name no `--out`.
+    pub fn serve_files_dir(&self) -> PathBuf {
+        self.cache_base().join("serve-files")
     }
 
     /// `weflow cache list`: every part with its paths, size and number of files.
@@ -177,15 +171,11 @@ impl ServiceHub {
                     .iter()
                     .map(|p| disk_usage(p))
                     .fold((0, 0), |(b, f), (pb, pf)| (b + pb, f + pf));
-                // the folder `unused_programs` leaves out
-                let in_use = (part == CachePart::Runtime)
-                    .then(|| self.runtime_root().join(&self.ctx.version));
                 crate::contract::CacheUsage {
                     part,
                     paths,
                     bytes,
                     files,
-                    in_use,
                 }
             })
             .collect()

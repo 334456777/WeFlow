@@ -1,218 +1,37 @@
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-use std::ffi::CStr;
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-use std::os::raw::{c_char, c_int};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use anyhow::Result;
 
-use anyhow::{anyhow, Context, Result};
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-use libloading::Library;
+/// Database-key extraction on a platform without an implementation; `is_available` is false and
+/// `key db` reports that.
+#[cfg(not(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", target_arch = "x86_64")
+)))]
+pub struct WxKey;
 
-// The DLL exports C++ `bool`s (see `keyService.ts`: `bool InitializeHook(uint32)` …), not `int`s.
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-type InitializeHookFn = unsafe extern "C" fn(u32) -> bool;
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-type PollKeyDataFn = unsafe extern "C" fn(*mut c_char, c_int) -> bool;
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-type CleanupHookFn = unsafe extern "C" fn() -> bool;
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-type GetLastErrorMsgFn = unsafe extern "C" fn() -> *const c_char;
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-type GetStatusMessageFn = unsafe extern "C" fn(*mut c_char, c_int, *mut c_int) -> bool;
-
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-pub struct WxKey {
-    _lib: Option<Library>,
-    initialize_hook: Option<InitializeHookFn>,
-    poll_key_data: Option<PollKeyDataFn>,
-    cleanup_hook: Option<CleanupHookFn>,
-    get_last_error_msg: Option<GetLastErrorMsgFn>,
-    get_status_message: Option<GetStatusMessageFn>,
-}
-
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
+#[cfg(not(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", target_arch = "x86_64")
+)))]
 impl WxKey {
-    pub fn load(runtime_dir: &Path) -> Result<Self> {
-        let lib_path = find_wx_key_library(runtime_dir);
-        match lib_path {
-            Some(path) => {
-                // SAFETY: loading runs the initializers of WeFlow's own wx_key helper, the one `find_wx_key_library`
-                // finds in the runtime directory.
-                let lib = unsafe { Library::new(&path) }
-                    .with_context(|| format!("failed to load {}", path.display()))?;
-                Ok(Self {
-                    initialize_hook: load_symbol::<InitializeHookFn>(&lib, b"InitializeHook\0"),
-                    poll_key_data: load_symbol::<PollKeyDataFn>(&lib, b"PollKeyData\0"),
-                    cleanup_hook: load_symbol::<CleanupHookFn>(&lib, b"CleanupHook\0"),
-                    get_last_error_msg: load_symbol::<GetLastErrorMsgFn>(
-                        &lib,
-                        b"GetLastErrorMsg\0",
-                    ),
-                    get_status_message: load_symbol::<GetStatusMessageFn>(
-                        &lib,
-                        b"GetStatusMessage\0",
-                    ),
-                    _lib: Some(lib),
-                })
-            }
-            None => Ok(Self {
-                _lib: None,
-                initialize_hook: None,
-                poll_key_data: None,
-                cleanup_hook: None,
-                get_last_error_msg: None,
-                get_status_message: None,
-            }),
-        }
+    pub fn new() -> Result<Self> {
+        Ok(Self)
     }
 
     pub fn is_available(&self) -> bool {
-        self._lib.is_some()
+        false
     }
 
-    /// Hooks WeChat (`pid`) and waits up to `timeout` for the 64-hex-digit database key, which
-    /// WeChat only produces while it opens its databases (i.e. while the user logs in).
-    /// `on_status` receives the DLL's status messages (`level`: 0 info, 1 success, 2 error);
-    /// `on_tick` receives the remaining seconds about once per second.
     pub fn get_db_key_with_tick(
         &self,
-        pid: u32,
-        timeout: std::time::Duration,
-        on_status: &mut dyn FnMut(&str, i32),
-        on_tick: &mut dyn FnMut(u64),
+        _pid: u32,
+        _timeout: std::time::Duration,
+        _on_status: &mut dyn FnMut(&str, i32),
+        _on_tick: &mut dyn FnMut(u64),
     ) -> std::result::Result<String, DbKeyError> {
-        let (Some(init), Some(poll), Some(cleanup)) =
-            (self.initialize_hook, self.poll_key_data, self.cleanup_hook)
-        else {
-            return Err(DbKeyError::Other("wx_key library not loaded".into()));
-        };
-        // SAFETY: `init` is `InitializeHook` of the library `self` keeps loaded, read with the type it exports; it
-        // takes a plain pid.
-        let ok = unsafe { init(pid) };
-        if !ok {
-            let error = self
-                .get_last_error_msg
-                // SAFETY: `f` is `GetLastErrorMsg` of the library `self` keeps loaded; it returns null or a
-                // NUL-terminated string, which `take_cstr` copies right away.
-                .map(|f| unsafe { take_cstr(f()) })
-                .unwrap_or_default();
-            if !error.is_empty() {
-                if error.contains("0xC0000022")
-                    || error.contains("ACCESS_DENIED")
-                    || error.contains("打开目标进程失败")
-                {
-                    return Err(DbKeyError::AccessDenied(error));
-                }
-                return Err(DbKeyError::Other(error));
-            }
-            let status = self.status_message().map(|(m, _)| m).unwrap_or_default();
-            return Err(DbKeyError::Other(if status.is_empty() {
-                "initialization failed".into()
-            } else {
-                status
-            }));
-        }
-        let start = std::time::Instant::now();
-        let mut login_hint = false;
-        const KEY_CAPACITY: c_int = 128;
-        let mut buf = vec![0u8; KEY_CAPACITY as usize];
-        let mut result = None;
-        let mut last_tick = u64::MAX;
-        while start.elapsed() < timeout {
-            let left = timeout.saturating_sub(start.elapsed()).as_secs();
-            if left != last_tick {
-                last_tick = left;
-                on_tick(left);
-            }
-            buf.iter_mut().for_each(|b| *b = 0);
-            // SAFETY: `poll` is `PollKeyData` of the library `self` keeps loaded, and `buf` is a live buffer of the
-            // `KEY_CAPACITY` bytes passed as its capacity.
-            if unsafe { poll(buf.as_mut_ptr() as *mut c_char, KEY_CAPACITY) } {
-                let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-                let key = String::from_utf8_lossy(&buf[..len]).trim().to_string();
-                if key.len() == 64 {
-                    on_status("key obtained", 1);
-                    result = Some(key);
-                    break;
-                }
-            }
-            for _ in 0..5 {
-                let Some((msg, level)) = self.status_message() else {
-                    break;
-                };
-                if !msg.is_empty() {
-                    if is_login_related(&msg) {
-                        login_hint = true;
-                    }
-                    on_status(&msg, level);
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(120));
-        }
-        // SAFETY: `cleanup` is `CleanupHook` of the library `self` keeps loaded and takes no arguments.
-        unsafe { cleanup() };
-        match result {
-            Some(k) => Ok(k),
-            None if login_hint => Err(DbKeyError::LoginRequired),
-            None => Err(DbKeyError::Timeout),
-        }
-    }
-
-    fn status_message(&self) -> Option<(String, i32)> {
-        const STATUS_CAPACITY: c_int = 256;
-        let f = self.get_status_message?;
-        let mut buf = vec![0u8; STATUS_CAPACITY as usize];
-        let mut level: c_int = 0;
-        // SAFETY: `f` is `GetStatusMessage` of the library `self` keeps loaded; `buf` is a live buffer of the
-        // capacity passed and `level` a live local.
-        if !unsafe { f(buf.as_mut_ptr() as *mut c_char, STATUS_CAPACITY, &mut level) } {
-            return None;
-        }
-        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        Some((
-            String::from_utf8_lossy(&buf[..len]).trim().to_string(),
-            level,
+        Err(DbKeyError::Other(
+            "database-key extraction is not available on this platform".into(),
         ))
     }
 }
@@ -222,7 +41,7 @@ pub struct WxKey;
 
 #[cfg(windows)]
 impl WxKey {
-    pub fn load(_runtime_dir: &Path) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(Self)
     }
     pub fn is_available(&self) -> bool {
@@ -300,7 +119,7 @@ pub struct WxKey;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl WxKey {
-    pub fn load(_runtime_dir: &Path) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(Self)
     }
 
@@ -353,7 +172,7 @@ pub struct WxKey;
 
 #[cfg(target_os = "macos")]
 impl WxKey {
-    pub fn load(_runtime_dir: &Path) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(Self)
     }
 
@@ -424,124 +243,5 @@ impl std::fmt::Display for DbKeyError {
             Self::NotReady(m) => write!(f, "{m}"),
             Self::Other(m) => write!(f, "{m}"),
         }
-    }
-}
-
-/// `isLoginRelatedText`
-#[cfg(any(
-    test,
-    all(
-        not(windows),
-        not(target_os = "macos"),
-        not(all(target_os = "linux", target_arch = "x86_64"))
-    )
-))]
-fn is_login_related(value: &str) -> bool {
-    let n: String = value.split_whitespace().collect::<String>().to_lowercase();
-    !n.is_empty()
-        && [
-            "登录",
-            "扫码",
-            "二维码",
-            "请在手机上确认",
-            "手机确认",
-            "切换账号",
-            "wechatlogin",
-            "qrcode",
-            "scan",
-        ]
-        .iter()
-        .any(|k| n.contains(k))
-}
-
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-unsafe fn take_cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        return String::new();
-    }
-    CStr::from_ptr(ptr).to_string_lossy().to_string()
-}
-
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-unsafe fn symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
-    lib.get::<T>(name).ok().map(|sym| *sym)
-}
-
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-fn load_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
-    // SAFETY: each caller names an export with the function type the library declares (the `*Fn` aliases), and
-    // `WxKey` keeps the library loaded for as long as it holds the copied pointers.
-    unsafe { symbol::<T>(lib, name) }
-}
-
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(all(target_os = "linux", target_arch = "x86_64"))
-))]
-fn find_wx_key_library(runtime_dir: &Path) -> Option<PathBuf> {
-    if cfg!(target_os = "macos") {
-        let candidates = [runtime_dir.join("key/macos/universal/libwx_key.dylib")];
-        candidates.into_iter().find(|p| p.exists())
-    } else {
-        None
-    }
-}
-
-pub fn run_key_helper(runtime_dir: &Path, args: &[&str]) -> Result<String> {
-    let helper = find_key_helper(runtime_dir)?;
-    let output = Command::new(&helper)
-        .args(args)
-        .output()
-        .with_context(|| format!("failed to run {}", helper.display()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("{} failed: {stderr}", helper.display()));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn find_key_helper(runtime_dir: &Path) -> Result<PathBuf> {
-    if cfg!(target_os = "macos") {
-        let candidates = [
-            runtime_dir.join("key/macos/universal/xkey_helper"),
-            runtime_dir.join("key/macos/xkey_helper"),
-        ];
-        candidates
-            .into_iter()
-            .find(|p| p.exists())
-            .ok_or_else(|| anyhow!("xkey_helper not found"))
-    } else if cfg!(target_os = "linux") {
-        let candidates = [runtime_dir.join("key/linux/x64/xkey_helper_linux")];
-        candidates
-            .into_iter()
-            .find(|p| p.exists())
-            .ok_or_else(|| anyhow!("xkey_helper_linux not found"))
-    } else {
-        Err(anyhow!("key helper is not available on this platform"))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn login_keywords() {
-        assert!(is_login_related("请扫码登录"));
-        assert!(is_login_related("Please scan the QR code"));
-        assert!(!is_login_related("hook installed"));
     }
 }

@@ -200,8 +200,6 @@ pub(super) const METHODS: &[(&str, Rule)] = &[
     ("insight scan", Rule::Fixed(Post)),
     ("insight footprint", Rule::Fixed(Get)),
     ("insight footprint-summary", Rule::Fixed(Post)),
-    ("runtime info", Rule::Fixed(Get)),
-    ("runtime manifest", Rule::Fixed(Get)),
     ("backup create", Rule::Fixed(Post)),
     ("backup inspect", Rule::Fixed(Get)),
     ("backup restore", Rule::Fixed(Post)),

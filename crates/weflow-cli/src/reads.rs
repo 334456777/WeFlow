@@ -13,7 +13,6 @@ use super::commands::db::{DbCommand, DbSubcommand};
 use super::commands::group::{GroupCommand, GroupSubcommand};
 use super::commands::insight::{InsightCommand, InsightSubcommand};
 use super::commands::report::{AnnualSubcommand, ReportCommand, ReportSubcommand};
-use super::commands::runtime::{RuntimeCommand, RuntimeSubcommand};
 use super::commands::sns::{SnsCommand, SnsSubcommand};
 use super::{checked, exit_status, VERSION};
 use serde_json::Value;
@@ -230,10 +229,6 @@ pub(crate) fn read_of(command: Commands) -> Result<Read, Commands> {
             ConfigSubcommand::Get { key } => Read::ConfigGet { key },
             ConfigSubcommand::Profiles => Read::ConfigProfiles,
             command => return Err(Commands::Config(ConfigCommand { command })),
-        },
-        Commands::Runtime(c) => match c.command {
-            RuntimeSubcommand::Info => Read::RuntimeInfo,
-            command => return Err(Commands::Runtime(RuntimeCommand { command })),
         },
         Commands::Db(c) => match c.command {
             DbSubcommand::Detect => Read::DbDetect,

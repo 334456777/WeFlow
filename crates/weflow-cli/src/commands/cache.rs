@@ -63,7 +63,7 @@ pub(crate) struct CacheClearArgs {
     /// Fingerprints of keys that worked (the next command checks the key again)
     #[arg(long)]
     keys: bool,
-    /// Runtimes unpacked by other WeFlow versions (the running version's stays), and the ffmpeg earlier versions installed in ffmpeg/
+    /// Runtime directories earlier versions unpacked, and the ffmpeg builds they installed in ffmpeg/
     #[arg(long)]
     runtime: bool,
     /// WebUI versions downloaded by `weflow web` and `serve` (the one `serve` needs is downloaded again)
@@ -237,7 +237,7 @@ fn cache_part_label(part: CachePart) -> &'static str {
         CachePart::Analytics => tr("analytics", "统计"),
         CachePart::Api => tr("HTTP API", "API 导出"),
         CachePart::Keys => tr("key fingerprints", "密钥指纹"),
-        CachePart::Runtime => tr("runtimes", "运行时"),
+        CachePart::Runtime => tr("old runtime files", "旧运行时文件"),
         CachePart::Web => tr("WebUI versions", "网页版本"),
     }
 }
@@ -295,16 +295,12 @@ pub(super) fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
             ];
             let mut rows: Vec<Vec<String>> = vec![header.iter().map(|h| h.to_string()).collect()];
             for (part, item) in CachePart::ALL.iter().zip(data.as_array()?) {
-                // the running version's runtime first, marked: clearing leaves it
-                let in_use = item["inUse"]
-                    .as_str()
-                    .map(|p| format!("{p} ← {}", tr("in use", "正在使用")));
-                let removable = item["paths"]
+                let paths: Vec<String> = item["paths"]
                     .as_array()?
                     .iter()
                     .filter_map(Value::as_str)
-                    .map(str::to_string);
-                let paths: Vec<String> = in_use.into_iter().chain(removable).collect();
+                    .map(str::to_string)
+                    .collect();
                 rows.push(vec![
                     cache_part_label(*part).to_string(),
                     format!("--{}", part.name()),
@@ -414,31 +410,5 @@ mod tests {
         assert_eq!(parse(&["--runtime"]), [CachePart::Runtime]);
         assert_eq!(parse(&["--all"]), CachePart::ALL);
         assert_eq!(parse(&["--all", "--images"]), CachePart::ALL);
-    }
-
-    #[test]
-    fn cache_list_marks_the_runtime_in_use() {
-        use weflow_core::locale::tr;
-        let rows: Vec<Value> = CachePart::ALL
-            .iter()
-            .map(|&part| match part {
-                CachePart::Runtime => json!({
-                    "part": "runtime", "paths": ["/h/runtime/2.0.0"], "bytes": 3, "files": 1,
-                    "inUse": "/h/runtime/2.1.0",
-                }),
-                _ => json!({ "part": part.name(), "paths": [format!("/c/{}", part.name())], "bytes": 0, "files": 0 }),
-            })
-            .collect();
-        let out = cache_summary(CacheShown::List, &Value::Array(rows)).unwrap();
-        let lines: Vec<&str> = out.lines().collect();
-        let marked = format!("/h/runtime/2.1.0 ← {}", tr("in use", "正在使用"));
-        let at = lines
-            .iter()
-            .position(|l| l.ends_with(&marked))
-            .unwrap_or_else(|| panic!("no runtime in use in\n{out}"));
-        // on the row of the part, with the folders that go under it
-        assert!(lines[at].contains("--runtime"), "{out}");
-        assert!(lines[at + 1].ends_with("/h/runtime/2.0.0"), "{out}");
-        assert_eq!(out.matches('←').count(), 1, "{out}");
     }
 }

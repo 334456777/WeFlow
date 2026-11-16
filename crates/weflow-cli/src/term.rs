@@ -131,15 +131,15 @@ mod tests {
         let row = |cells: &[&str]| cells.iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let rows = vec![
             row(&["部分", "大小", "路径"]),
-            row(&["旧运行时", "3 MB", "/a/runtime/1\n/a/runtime/longer/2"]),
+            row(&["网页版本", "3 MB", "/a/web/1\n/a/web/longer/2"]),
             row(&["图片", "1 KB", "/a/images"]),
         ];
         assert_eq!(
             align_columns(&rows),
             [
                 "部分      大小  路径",
-                "旧运行时  3 MB  /a/runtime/1",
-                "                /a/runtime/longer/2",
+                "网页版本  3 MB  /a/web/1",
+                "                /a/web/longer/2",
                 "图片      1 KB  /a/images",
             ]
         );

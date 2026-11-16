@@ -1,13 +1,15 @@
 // The account setup (#216) as a dialog over the workspace, which plays its exit before it leaves the top layer.
 import { useEffect, useRef } from 'react';
+import type { Health } from '../api/backend';
 import type { Profile } from '../api/setup';
 import type { JobsState } from '../jobs/useJobs';
 import { usePresence } from '../motion';
 import { SetupWizard } from './SetupWizard';
 import { t } from '../i18n';
 
-export function SetupDialog({ open, profile, jobs, onChanged, onClose, onDone }: {
-  open: boolean; profile: Profile | undefined; jobs: JobsState; onChanged(): void; onClose(): void; onDone(): void;
+export function SetupDialog({ open, profile, jobs, platform, onChanged, onClose, onDone }: {
+  open: boolean; profile: Profile | undefined; jobs: JobsState; platform?: Health['platform'];
+  onChanged(): void; onClose(): void; onDone(): void;
 }) {
   const shown = usePresence(open);
   const ref = useRef<HTMLDialogElement>(null);
@@ -18,6 +20,6 @@ export function SetupDialog({ open, profile, jobs, onChanged, onClose, onDone }:
   }, [shown]);
   return <dialog className="setup-dialog" ref={ref} aria-label={t('账号配置')} data-state={shown?.closing ? 'closing' : 'open'}
     onCancel={event => { event.preventDefault(); onClose(); }}>
-    {shown && <SetupWizard profile={profile} jobs={jobs} onChanged={onChanged} onClose={onClose} onDone={onDone} />}
+    {shown && <SetupWizard profile={profile} jobs={jobs} platform={platform} onChanged={onChanged} onClose={onClose} onDone={onDone} />}
   </dialog>;
 }

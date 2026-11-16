@@ -59,7 +59,6 @@ pub(super) const COMMANDS: &[&str] = &[
     "cache list",
     "config get",
     "config profiles",
-    "runtime info",
     "db detect",
     "db test",
     "db wxid",
@@ -489,7 +488,6 @@ impl Given {
                 key: self.text("key")?,
             },
             "config profiles" => Read::ConfigProfiles,
-            "runtime info" => Read::RuntimeInfo,
             "db detect" => Read::DbDetect,
             "db test" => Read::DbTest,
             "db wxid" => Read::DbWxid {

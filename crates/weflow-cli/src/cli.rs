@@ -16,7 +16,6 @@ use crate::commands::image::ImageCommand;
 use crate::commands::insight::InsightCommand;
 use crate::commands::key::KeyCommand;
 use crate::commands::report::ReportCommand;
-use crate::commands::runtime::RuntimeCommand;
 use crate::commands::sns::SnsCommand;
 use crate::commands::video::VideoCommand;
 
@@ -72,8 +71,6 @@ pub(crate) enum Commands {
     Image(ImageCommand),
     /// Run the HTTP API, message push, insight and image auto-download services
     Serve(ServeCommand),
-    /// Show the embedded runtime and manifest
-    Runtime(RuntimeCommand),
     /// Create, inspect and restore backups
     Backup(BackupCommand),
     /// Clear WeFlow's caches

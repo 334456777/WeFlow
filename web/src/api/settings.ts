@@ -34,7 +34,7 @@ export const CACHE_LABELS: Record<CachePartName, { title: string; text: string }
   analytics: { title: msg('统计'), text: msg('聊天统计的汇总，下次统计时重新计算。') },
   api: { title: msg('网页的媒体和文件'), text: msg('网页里看过的媒体、推送的头像，以及任务中心里可以下载的文件。') },
   keys: { title: msg('密钥指纹'), text: msg('校验通过的密钥；清理后，下一条命令会重新校验。') },
-  runtime: { title: msg('旧的运行时'), text: msg('其他 WeFlow 版本释放的运行时，当前版本的保留。') },
+  runtime: { title: msg('旧的运行时'), text: msg('旧版本释放的运行时目录和安装的 ffmpeg；当前版本不再创建。') },
   web: { title: msg('网页版本'), text: msg('下载过的网页版本；正在用的版本需要时会重新下载。') },
 };
 

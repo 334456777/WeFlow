@@ -78,7 +78,6 @@ pub fn hub_for_account(
     let ctx = AppContext {
         home_dir: root.join("home"),
         config_path: root.join("home/config.json"),
-        runtime_dir: root.join("runtime"),
         version: "test".into(),
     };
     std::fs::create_dir_all(&ctx.home_dir).unwrap();

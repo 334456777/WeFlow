@@ -80,10 +80,6 @@ impl ServiceHub {
         }
     }
 
-    pub fn runtime_dir(&self) -> &Path {
-        &self.ctx.runtime_dir
-    }
-
     pub fn config_path(&self) -> &Path {
         &self.ctx.config_path
     }

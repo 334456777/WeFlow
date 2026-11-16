@@ -26,18 +26,6 @@ pub struct ProfileSummary {
     pub complete: bool,
 }
 
-/// Where `weflow` keeps its files and what it is (`runtime info`).
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RuntimeInfo {
-    pub home_dir: std::path::PathBuf,
-    pub config_path: std::path::PathBuf,
-    pub runtime_dir: std::path::PathBuf,
-    pub version: String,
-    /// The target it was built for, such as `x86_64-pc-windows-msvc`.
-    pub target: String,
-}
-
 /// The default places of WeChat's data directory (`db detect`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbCandidates {
@@ -96,7 +84,7 @@ pub struct DbKey {
     /// Left out with `save`: it went to the profile instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decrypt_key: Option<String>,
-    /// `wx_key` (WeChat hooked) or `key_helper`.
+    /// Always `wx_key`: WeChat hooked by the binary's own implementation.
     pub method: String,
     /// The WeChat process hooked (`wx_key`).
     #[serde(skip_serializing_if = "Option::is_none")]

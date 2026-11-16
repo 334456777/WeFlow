@@ -935,11 +935,9 @@ fn cache_parts_clear_on_their_own_and_all_together() {
         put(hub.serve_files_dir().join("0123/voice.wav")),
         put(hub.cache_part_paths(CachePart::Keys)[0].clone()),
     ];
-    // the mock hub runs as version `test`: its runtime stays, other versions' go
-    let current = put(hub.runtime_root().join("test/t/manifest.json"));
-    let older = put(hub.runtime_root().join("2.0.0/t/manifest.json"));
-    // an ffmpeg `weflow ffmpeg install` put here once goes with them; a file of one's own beside it stays
-    let home = hub.runtime_root().parent().unwrap().to_path_buf();
+    // runtime directories and ffmpeg builds of earlier versions; a file of one's own in ffmpeg/ stays
+    let home = hub.context().home_dir.clone();
+    let older = put(home.join("runtime/2.0.0/t/manifest.json"));
     let ffmpeg = put(home.join("ffmpeg/b6.1.1/ffmpeg"));
     let own = put(home.join("ffmpeg/notes.txt"));
 
@@ -964,19 +962,10 @@ fn cache_parts_clear_on_their_own_and_all_together() {
     assert_eq!(
         entry("runtime")["paths"],
         json!([
-            hub.runtime_root().join("2.0.0"),
+            home.join("runtime").join("2.0.0"),
             home.join("ffmpeg").join("b6.1.1")
         ])
     );
-    // the running version's runtime is named apart, and only the runtime row names one
-    let in_use = json!(hub.runtime_root().join("test"));
-    assert_eq!(entry("runtime")["inUse"], in_use);
-    assert_eq!(entry("runtime")["bytes"], 6);
-    assert!(list
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|e| e["part"] == "runtime" || e.get("inUse").is_none()));
 
     let r = hub.cache_clear(&[CachePart::Images]);
     assert_eq!(r.freed_bytes, 3, "{r:?}");
@@ -988,19 +977,13 @@ fn cache_parts_clear_on_their_own_and_all_together() {
     assert_eq!(r.freed_bytes, 3 * (rest.len() as u64 + 2), "{r:?}");
     assert!(rest.iter().all(|p| !p.exists()), "{r:?}");
     assert!(!older.exists() && !ffmpeg.exists());
-    assert!(current.exists() && own.exists());
+    assert!(own.exists());
 
-    // with nothing left to clear, the row still names the runtime in use
+    // with nothing left to clear, every part takes no space
     let list = json!(hub.cache_list());
-    let runtime = list
+    assert!(list
         .as_array()
         .unwrap()
         .iter()
-        .find(|e| e["part"] == "runtime")
-        .unwrap();
-    assert_eq!(
-        (&runtime["paths"], &runtime["bytes"], &runtime["inUse"]),
-        (&json!([]), &json!(0), &in_use),
-        "{runtime}"
-    );
+        .all(|e| e["bytes"] == json!(0) && e["files"] == json!(0)));
 }
