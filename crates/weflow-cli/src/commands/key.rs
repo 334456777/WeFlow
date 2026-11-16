@@ -62,8 +62,13 @@ pub(crate) enum KeySubcommand {
     Processes,
     /// Scan WeChat's memory for the image AES key (macOS)
     ScanImage {
-        /// Account directory (user directory) to scan for the image key
-        user_dir: String,
+        /// WeChat process id
+        pid: u32,
+        /// 32 hex characters of the 16-byte encrypted block
+        ciphertext: String,
+        /// Save the key to the active profile instead of printing it
+        #[arg(long)]
+        save: bool,
     },
 }
 
@@ -163,7 +168,21 @@ pub(crate) fn handle_key(
             }
             Ok(json!(data))
         }
-        KeySubcommand::ScanImage { user_dir } => Ok(json!(hub.key_scan_image(user_dir)?)),
+        KeySubcommand::ScanImage {
+            pid,
+            ciphertext,
+            save,
+        } => {
+            let mut data = hub.key_scan_image(*pid, ciphertext)?;
+            if *save {
+                let key = data
+                    .image_aes_key
+                    .take()
+                    .ok_or_else(|| AppError::runtime("no image AES key to save"))?;
+                data.saved = save_keys(config_path, &[("image_aes_key", json!(key))])?;
+            }
+            Ok(json!(data))
+        }
         KeySubcommand::Processes => Ok(json!(hub.key_processes()?)),
     }
 }
@@ -218,9 +237,9 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
     if data.get("saved").is_some() {
         let what = match shown {
             KeyShown::Db => tr("Database key", "数据库密钥"),
-            KeyShown::Image | KeyShown::ScanImage => tr("Image keys", "图片密钥"),
+            KeyShown::Image => tr("Image keys", "图片密钥"),
             KeyShown::ImageLocal => tr("Image keys", "图片密钥"),
-            KeyShown::ImageMem => tr("Image AES key", "图片 AES 密钥"),
+            KeyShown::ImageMem | KeyShown::ScanImage => tr("Image AES key", "图片 AES 密钥"),
             KeyShown::Processes => tr("WeChat processes", "微信进程"),
         };
         let mut text = format!(
@@ -264,7 +283,7 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
             }
             Some(text)
         }
-        KeyShown::ImageMem => {
+        KeyShown::ImageMem | KeyShown::ScanImage => {
             let Some(key) = data["image_aes_key"].as_str() else {
                 return Some(format!(
                     "{}\n",
@@ -295,7 +314,7 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
                     .collect()
             })
         }
-        KeyShown::ImageLocal | KeyShown::ScanImage => None,
+        KeyShown::ImageLocal => None,
     }
 }
 
@@ -399,6 +418,30 @@ mod tests {
     }
 
     #[test]
+    fn scan_image_arguments() {
+        let parse =
+            |args: &[&str]| Cli::try_parse_from(["weflow", "key", "scan-image"].iter().chain(args));
+        let Commands::Key(KeyCommand {
+            command:
+                KeySubcommand::ScanImage {
+                    pid,
+                    ciphertext,
+                    save,
+                },
+        }) = parse(&["1234", "00112233445566778899aabbccddeeff", "--save"])
+            .unwrap()
+            .command
+        else {
+            panic!("scan-image command")
+        };
+        assert_eq!(pid, 1234);
+        assert_eq!(ciphertext, "00112233445566778899aabbccddeeff");
+        assert!(save);
+        assert!(parse(&["1234"]).is_err());
+        assert!(parse(&[]).is_err());
+    }
+
+    #[test]
     fn image_mem_summary_shows_the_key_or_that_none_was_found() {
         let found = keys_summary(
             KeyShown::ImageMem,
@@ -406,6 +449,12 @@ mod tests {
         )
         .unwrap();
         assert!(found.contains("image_aes_key: 00112233445566778899aabbccddeeff"));
+        let scanned = keys_summary(
+            KeyShown::ScanImage,
+            &json!({ "image_aes_key": "00112233445566778899aabbccddeeff", "pid": 1 }),
+        )
+        .unwrap();
+        assert_eq!(scanned, found);
         let missing = keys_summary(KeyShown::ImageMem, &json!({ "pid": 1 })).unwrap();
         assert!(missing.contains("AES") || missing.contains("图片"));
     }

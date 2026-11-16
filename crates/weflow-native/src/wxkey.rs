@@ -513,19 +513,6 @@ pub fn run_key_helper(runtime_dir: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-pub fn run_image_scan_helper(runtime_dir: &Path, args: &[&str]) -> Result<String> {
-    let helper = find_image_scan_helper(runtime_dir)?;
-    let output = Command::new(&helper)
-        .args(args)
-        .output()
-        .with_context(|| format!("failed to run {}", helper.display()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("{} failed: {stderr}", helper.display()));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
 fn find_key_helper(runtime_dir: &Path) -> Result<PathBuf> {
     if cfg!(target_os = "macos") {
         let candidates = [
@@ -544,23 +531,6 @@ fn find_key_helper(runtime_dir: &Path) -> Result<PathBuf> {
             .ok_or_else(|| anyhow!("xkey_helper_linux not found"))
     } else {
         Err(anyhow!("key helper is not available on this platform"))
-    }
-}
-
-fn find_image_scan_helper(runtime_dir: &Path) -> Result<PathBuf> {
-    if cfg!(target_os = "macos") {
-        let candidates = [
-            runtime_dir.join("key/macos/universal/image_scan_helper"),
-            runtime_dir.join("key/macos/image_scan_helper"),
-        ];
-        candidates
-            .into_iter()
-            .find(|p| p.exists())
-            .ok_or_else(|| anyhow!("image_scan_helper not found"))
-    } else {
-        Err(anyhow!(
-            "image scan helper is not available on this platform"
-        ))
     }
 }
 

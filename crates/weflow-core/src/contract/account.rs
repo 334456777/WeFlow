@@ -151,7 +151,8 @@ pub struct ImageLocalKey {
     pub aes_key: String,
 }
 
-/// What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any.
+/// What `key image-mem` (Linux x64 and macOS) and `key scan-image` (macOS)
+/// answer: the AES key found in WeChat's memory, if any.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ImageMemKey {
     /// The 16-byte AES key as 32 hex characters; left out when nothing matched.
@@ -161,16 +162,6 @@ pub struct ImageMemKey {
     /// With `save`: the profile keys written.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub saved: Vec<String>,
-}
-
-/// What `key scan-image` (macOS) answers: the helper's own result.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ScannedImageKeys {
-    /// The helper's answer; `{"raw": …}` when it is not JSON.
-    pub result: serde_json::Value,
-    pub method: String,
-    pub user_dir: String,
 }
 
 /// What `key processes` (macOS) answers: the running WeChat clients, the main

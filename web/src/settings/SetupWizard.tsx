@@ -227,7 +227,7 @@ function ImageStep({ profile, onSaved, onNext }: { profile: Profile | undefined;
       ? <p className="setup-note" aria-busy="true"><CircleNotch size={14} className="spin" /> {t('正在检查…')}</p>
       : platform === 'windows'
         ? <div className="setup-actions start"><button type="button" className="primary-button" disabled={busy} onClick={fetchKeys}><Key size={16} />{busy ? t('正在获取…') : profile?.imageKeys ? t('重新获取') : t('获取图片密钥')}</button></div>
-        : <p className="setup-note">{platform === 'macos' ? t('网页还不能在 macOS 上获取图片密钥：请在终端运行 weflow key scan-image，或者先跳过。') : t('这个平台还不能获取图片密钥，可以先跳过。')}</p>}
+        : <p className="setup-note">{platform === 'macos' ? t('网页还不能在 macOS 上获取图片密钥：请在终端运行 weflow key scan-image <pid> <密文>，或者先跳过。') : t('这个平台还不能获取图片密钥，可以先跳过。')}</p>}
     {note && <Note error={note.error}>{note.text}</Note>}
     <div className="setup-actions">
       <button type="button" className={profile?.imageKeys ? 'primary-button' : 'secondary-button'} disabled={busy} onClick={onNext}>{profile?.imageKeys ? t('下一步') : t('跳过')}</button>
