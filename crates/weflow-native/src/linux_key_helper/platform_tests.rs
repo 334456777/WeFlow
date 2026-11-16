@@ -121,11 +121,6 @@ fn target_binary() -> &'static Path {
     })
 }
 
-fn helper() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../weflow-assets/assets/key/linux/x64/xkey_helper_linux")
-}
-
 struct Target {
     child: Child,
     stdin: ChildStdin,
@@ -198,17 +193,8 @@ fn captures_the_key_from_a_synthetic_process() {
 #[test]
 fn locates_the_hook_point_in_a_real_elf_image() {
     let mut target = Target::spawn();
-    let _ = target.address();
-    let ours = scan(target.child.id()).unwrap();
-    let pid = target.child.id().to_string();
-    let output = Command::new(helper())
-        .args(["db_scan", &pid])
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    let theirs: usize = value["target_addr"].as_str().unwrap().parse().unwrap();
-    assert_eq!(ours, theirs);
+    let address = target.address();
+    assert_eq!(scan(target.child.id()).unwrap(), address);
     let mut hook = Hook::start(target.child.id()).unwrap();
     target.send("call");
     assert_eq!(target.wait_for_key(&mut hook), expected_key());
@@ -340,7 +326,7 @@ fn wxkey_captures_the_key_through_the_public_entry() {
     let _ = target.address();
     let pid = target.child.id();
     let handle = std::thread::spawn(move || {
-        let wxkey = crate::wxkey::WxKey::load(Path::new("")).unwrap();
+        let wxkey = crate::wxkey::WxKey::new().unwrap();
         assert!(wxkey.is_available());
         let mut installed = false;
         wxkey

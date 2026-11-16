@@ -142,8 +142,8 @@ export function App() {
       <Scrollbar target={consoleRef} />
     </div>
     {previewDialog}
-    <SetupDialog open={setupOpen} profile={profile} jobs={jobs} onChanged={profiles.reload} onClose={closeSetup}
-      onDone={() => { setSetupOpen(false); selectSection('chat'); }} />
+    <SetupDialog open={setupOpen} profile={profile} jobs={jobs} platform={'health' in backend ? backend.health.platform : undefined}
+      onChanged={profiles.reload} onClose={closeSetup} onDone={() => { setSetupOpen(false); selectSection('chat'); }} />
     {shownToast && <div className="toast" role="status" data-state={shownToast.closing ? 'closing' : 'open'}><CheckCircle size={16} />{shownToast.value}</div>}
   </main>;
 }

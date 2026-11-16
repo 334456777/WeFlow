@@ -99,7 +99,6 @@ fn reads_run_in_process_with_the_same_answers() {
         "/config/get?key=wxid",
         "/config/get?key=config_path",
         "/config/profiles",
-        "/runtime/info",
         "/db/detect",
         "/db/test",
         "/db/wxid",

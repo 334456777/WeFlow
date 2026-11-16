@@ -472,7 +472,7 @@ pub(super) fn contract() -> &'static Contract {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
             AnnualReport, BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, DualReport, ExportStats, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightCleared, InsightLookup, InsightMarked, InsightRecords, InsightReply, InsightScan, InsightTodayStat,
-            MemberAnalytics, MemberMessages, MessageLookup, MessageRow, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
+            MemberAnalytics, MemberMessages, MessageLookup, MessageRow, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears,
             ResourcePage, SearchHit, Session, SnsStats, SnsTimeline, SnsUsers, TransferNames, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
@@ -608,7 +608,6 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("biz messages", of(generator.subschema_for::<BizMessages>()));
         data.insert("biz pay-records", of(generator.subschema_for::<PayRecords>()));
         data.insert("config profiles", of(generator.subschema_for::<Vec<ProfileSummary>>()));
-        data.insert("runtime info", of(generator.subschema_for::<RuntimeInfo>()));
         data.insert("cache list", of(generator.subschema_for::<Vec<CacheUsage>>()));
         {
             use weflow_core::contract::{
@@ -685,10 +684,6 @@ pub(super) fn contract() -> &'static Contract {
             use weflow_core::contract::{
                 WebChosen, WebInfo, WebInstalled, WebPruned, WebPublished, WebUpdated,
             };
-            data.insert(
-                "runtime manifest",
-                of(generator.subschema_for::<weflow_assets::RuntimeManifest>()),
-            );
             data.insert("web info", of(generator.subschema_for::<WebInfo>()));
             data.insert(
                 "web list",
@@ -963,6 +958,15 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
                                     zh,
                                     "The language of the server's answers, which the WebUI shows itself in too",
                                     "服务端回复所用的语言，WebUI 也按它显示",
+                                ),
+                            },
+                            "platform": {
+                                "type": "string",
+                                "enum": ["windows", "macos", "linux"],
+                                "description": pick(
+                                    zh,
+                                    "The system of the server's computer, as the WebUI names it too",
+                                    "服务端所在计算机的系统，WebUI 也按它区分平台",
                                 ),
                             },
                             "limits": {

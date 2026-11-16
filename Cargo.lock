@@ -1599,16 +1599,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
-name = "libloading"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
-dependencies = [
- "cfg-if",
- "windows-link",
-]
-
-[[package]]
 name = "libmimalloc-sys"
 version = "0.1.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3259,19 +3249,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "weflow-assets"
-version = "6.0.0"
-dependencies = [
- "anyhow",
- "schemars",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "walkdir",
-]
-
-[[package]]
 name = "weflow-cli"
 version = "6.0.0"
 dependencies = [
@@ -3295,7 +3272,6 @@ dependencies = [
  "tokio",
  "tower-http 0.7.1",
  "tracing-subscriber",
- "weflow-assets",
  "weflow-core",
  "weflow-native",
  "weflow-silk",
@@ -3346,7 +3322,6 @@ dependencies = [
  "toml",
  "tracing",
  "walkdir",
- "weflow-assets",
  "weflow-native",
  "weflow-silk",
  "windows-sys 0.61.2",
@@ -3363,7 +3338,6 @@ dependencies = [
  "cbc",
  "hmac 0.13.0",
  "libc",
- "libloading",
  "mach2",
  "md-5",
  "pbkdf2 0.13.0",

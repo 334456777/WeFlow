@@ -180,7 +180,6 @@ pub enum Read {
         key: Option<String>,
     },
     ConfigProfiles,
-    RuntimeInfo,
     DbDetect,
     /// `db test` (and `db open`): opens the configured account with its key.
     DbTest,
@@ -482,16 +481,6 @@ impl Read {
                 })
             }
             Read::ConfigProfiles => Ok(json!(profiles_summary(&config_of(hub)?))),
-            Read::RuntimeInfo => {
-                let ctx = hub.context();
-                Ok(json!(crate::contract::RuntimeInfo {
-                    home_dir: ctx.home_dir.clone(),
-                    config_path: ctx.config_path.clone(),
-                    runtime_dir: ctx.runtime_dir.clone(),
-                    version: ctx.version.clone(),
-                    target: weflow_assets::target_triple().to_string(),
-                }))
-            }
             Read::DbDetect => Ok(json!(hub.db_detect())),
             Read::DbTest => Ok(json!(hub.db_test()?)),
             Read::DbWxid { root } => Ok(json!(hub.db_wxid(root.as_deref())?)),

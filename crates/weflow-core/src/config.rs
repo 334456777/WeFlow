@@ -15,7 +15,6 @@ use crate::error::{AppError, AppResult};
 pub struct AppContext {
     pub home_dir: PathBuf,
     pub config_path: PathBuf,
-    pub runtime_dir: PathBuf,
     pub version: String,
 }
 
@@ -36,12 +35,9 @@ impl AppContext {
             AppError::config(format!("failed to create {}: {err}", home_dir.display()))
         })?;
         let config_path = chosen.unwrap_or_else(|| home_dir.join("config.json"));
-        let runtime_dir = weflow_assets::ensure_runtime(&home_dir, &version)
-            .map_err(|err| AppError::native(format!("failed to prepare runtime assets: {err}")))?;
         Ok(Self {
             home_dir,
             config_path,
-            runtime_dir,
             version,
         })
     }

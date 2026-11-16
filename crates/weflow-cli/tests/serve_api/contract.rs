@@ -319,7 +319,6 @@ fn tool_answers_fit_the_contract() {
     let contract = contract();
     // what needs no network: the downloads (`web install`, `use`, `update`, `list --remote`) are left out
     for (verb, route, body, schema) in [
-        ("GET", "/runtime/manifest", "", "RuntimeManifest"),
         ("GET", "/web/info", "", "WebInfo"),
         ("DELETE", "/web/prune", "", "WebPruned"),
     ] {
@@ -842,7 +841,6 @@ fn answers_fit_the_contract() {
         "/api/biz/messages?username=gh_news",
         "/api/biz/pay-records",
         "/api/config/profiles",
-        "/api/runtime/info",
         "/api/cache/list",
         "/api/db/detect",
         "/api/db/wxid",

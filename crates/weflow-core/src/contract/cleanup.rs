@@ -10,14 +10,11 @@ use serde::Serialize;
 pub struct CacheUsage {
     /// Its name, as `cache clear` takes it.
     pub part: crate::services::CachePart,
-    /// What `cache clear` removes; for `runtime`, the folders of other versions and earlier ffmpeg builds found.
+    /// What `cache clear` removes; for `runtime`, the runtime directories and ffmpeg builds earlier versions left.
     pub paths: Vec<PathBuf>,
     /// What `paths` take on disk.
     pub bytes: u64,
     pub files: u64,
-    /// For `runtime`: the running version's folder, which `cache clear` leaves and `bytes` does not count.
-    #[serde(rename = "inUse", skip_serializing_if = "Option::is_none")]
-    pub in_use: Option<PathBuf>,
 }
 
 /// What `cache clear` removed.

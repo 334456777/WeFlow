@@ -27,35 +27,14 @@ impl ServiceHub {
                 "Linux database-key extraction requires x64",
             ));
         }
-        let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
-            .map_err(|err| AppError::native(err.to_string()))?;
-        if wxkey.is_available() {
-            return self.key_db_hooked(&wxkey, pid_override, timeout_secs);
+        let wxkey =
+            weflow_native::wxkey::WxKey::new().map_err(|err| AppError::native(err.to_string()))?;
+        if !wxkey.is_available() {
+            return Err(AppError::native(
+                "database-key extraction is not available on this platform",
+            ));
         }
-        #[cfg(target_os = "linux")]
-        {
-            let result = weflow_native::wxkey::run_key_helper(&self.ctx.runtime_dir, &["--db-key"])
-                .map_err(|err| AppError::native(err.to_string()))?;
-            let key = result.trim().to_string();
-            Ok(crate::contract::DbKey {
-                decrypt_key: Some(key),
-                method: "key_helper".into(),
-                pid: None,
-                saved: Vec::new(),
-            })
-        }
-        #[cfg(target_os = "macos")]
-        {
-            Err(AppError::native(
-                "macOS database-key helper is not available",
-            ))
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-        {
-            Err(AppError::native(
-                "wx_key library not found; key extraction requires the platform-specific native library"
-            ))
-        }
+        self.key_db_hooked(&wxkey, pid_override, timeout_secs)
     }
 
     /// Hooks WeChat and waits for the database key; shared by Windows, Linux and macOS.

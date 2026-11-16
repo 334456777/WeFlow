@@ -23,7 +23,6 @@ use commands::image::{AutoDownloadSubcommand, ImageCommand, ImageSubcommand};
 use commands::insight::handle_insight;
 use commands::key::{handle_key, key_summary, KeyCommand, KeySubcommand};
 use commands::report::handle_report;
-use commands::runtime::handle_runtime;
 use commands::serve::{config_whitelist, handle_serve};
 use commands::sns::handle_sns;
 use commands::video::VideoSubcommand;
@@ -156,7 +155,6 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
                 lang: code.to_string()
             }));
         }
-        Commands::Runtime(command) => return handle_runtime(&command, &ctx),
         Commands::Cache(command) => return handle_cache(&command, &ctx, &mut config),
         command => command,
     };
@@ -250,9 +248,7 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
         Commands::Web(command) => handle_web(&command, &hub).await,
         Commands::Backup(command) => handle_backup(&command, &hub),
         Commands::Biz(_) => unreachable!("a read"),
-        Commands::Runtime(_) | Commands::Cache(_) | Commands::Config(_) | Commands::Lang { .. } => {
-            unreachable!()
-        }
+        Commands::Cache(_) | Commands::Config(_) | Commands::Lang { .. } => unreachable!(),
     }
 }
 

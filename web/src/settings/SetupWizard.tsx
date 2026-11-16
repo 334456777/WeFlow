@@ -4,10 +4,11 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowClockwise, Check, CircleNotch, FolderOpen, Key, X } from '@phosphor-icons/react';
+import type { Health } from '../api/backend';
 import { ApiError } from '../api/client';
 import { isFinished, jobEventsUrl } from '../api/jobs';
 import {
-  detectDirs, findAccounts, isDatabaseKey, saveImageKeys, serverPlatform, setConfig, testDatabase,
+  detectDirs, findAccounts, isDatabaseKey, saveImageKeys, setConfig, testDatabase,
   type Account, type Profile,
 } from '../api/setup';
 import { SteadyLabel } from '../Chip';
@@ -199,15 +200,11 @@ function KeyStep({ profile, jobs, onSaved, onNext }: { profile: Profile | undefi
 }
 
 /** Step 3: `key image --save` on Windows; elsewhere the page cannot get them yet, and the step can be skipped. */
-function ImageStep({ profile, onSaved, onNext }: { profile: Profile | undefined; onSaved(): void; onNext(): void }) {
-  const [platform, setPlatform] = useState<Awaited<ReturnType<typeof serverPlatform>> | null>(null);
+function ImageStep({ profile, platform, onSaved, onNext }: {
+  profile: Profile | undefined; platform: Health['platform']; onSaved(): void; onNext(): void;
+}) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    serverPlatform(controller.signal).then(setPlatform, () => { if (!controller.signal.aborted) setPlatform('other'); });
-    return () => controller.abort();
-  }, []);
   const fetchKeys = async () => {
     setBusy(true); setNote(null);
     try {
@@ -223,7 +220,7 @@ function ImageStep({ profile, onSaved, onNext }: { profile: Profile | undefined;
   return <>
     <p className="setup-lead">{t('图片密钥用来解密聊天里的图片。没有它也能浏览文字记录，图片会显示为无法解密。')}</p>
     <p className="setup-state"><span className={'status-dot' + (profile?.imageKeys ? ' done' : '')} />{profile?.imageKeys ? t('当前档案已有图片密钥。') : t('当前档案还没有图片密钥。')}</p>
-    {platform === null
+    {platform === undefined
       ? <p className="setup-note" aria-busy="true"><CircleNotch size={14} className="spin" /> {t('正在检查…')}</p>
       : platform === 'windows'
         ? <div className="setup-actions start"><button type="button" className="primary-button" disabled={busy} onClick={fetchKeys}><Key size={16} />{busy ? t('正在获取…') : profile?.imageKeys ? t('重新获取') : t('获取图片密钥')}</button></div>
@@ -272,10 +269,12 @@ function TestStep({ onDone, onBack }: { onDone(): void; onBack(step: Step): void
   </>;
 }
 
-export function SetupWizard({ profile, jobs, onChanged, onDone, onClose }: {
+export function SetupWizard({ profile, jobs, platform, onChanged, onDone, onClose }: {
   /** The current profile as `config profiles` last said, or undefined while it is read. */
   profile: Profile | undefined;
   jobs: JobsState;
+  /** The system of the server, from `/health`; undefined while it is checked. */
+  platform?: Health['platform'];
   /** A setting was saved: read the profiles again. */
   onChanged(): void;
   onDone(): void;
@@ -301,7 +300,7 @@ export function SetupWizard({ profile, jobs, onChanged, onDone, onClose }: {
     <div className="setup-body" key={step}>
       {step === 'dir' && <DirStep profile={profile} onSaved={() => { onChanged(); next(); }} />}
       {step === 'key' && <KeyStep profile={profile} jobs={jobs} onSaved={onChanged} onNext={next} />}
-      {step === 'image' && <ImageStep profile={profile} onSaved={onChanged} onNext={next} />}
+      {step === 'image' && <ImageStep profile={profile} platform={platform} onSaved={onChanged} onNext={next} />}
       {step === 'test' && <TestStep onDone={onDone} onBack={setStep} />}
     </div>
   </div>;

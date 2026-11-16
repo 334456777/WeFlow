@@ -18,6 +18,8 @@ export interface Health {
   insight?: boolean;
   /** The language of the server's answers (#439), which the page shows itself in; older servers do not say. */
   lang?: 'zh' | 'en';
+  /** The system of the server's computer; older servers do not say. */
+  platform?: 'windows' | 'macos' | 'linux';
 }
 
 export type Backend =

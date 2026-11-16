@@ -36,13 +36,6 @@ export const testDatabase = (signal?: AbortSignal) => get<Partial<Contract.DbCon
 /** `key image --save` (Windows): the image keys from WeChat's cache, saved on the server. */
 export const saveImageKeys = () => call<Contract.ImageKeys>('POST', 'key/image', { save: true });
 
-/** `runtime info`: the server's target, to tell which ways of getting keys it has. */
-export async function serverPlatform(signal?: AbortSignal): Promise<'windows' | 'macos' | 'linux' | 'other'> {
-  const info = await get<Partial<Contract.RuntimeInfo>>('api/runtime/info', {}, signal);
-  const target = info.target ?? '';
-  return target.includes('windows') ? 'windows' : target.includes('apple') ? 'macos' : target.includes('linux') ? 'linux' : 'other';
-}
-
 /** A database key as `config set decrypt_key` takes it: 64 hexadecimal digits. */
 export const isDatabaseKey = (value: string) => /^[0-9a-fA-F]{64}$/.test(value.trim());
 
