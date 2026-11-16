@@ -1514,21 +1514,16 @@ export interface ImageLocalKey {
   aesKey: string;
 }
 
-/** What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any. */
+/**
+ * What `key image-mem` (Linux x64 and macOS) and `key scan-image` (macOS)
+ * answer: the AES key found in WeChat's memory, if any.
+ */
 export interface ImageMemKey {
   /** The 16-byte AES key as 32 hex characters; left out when nothing matched. */
   image_aes_key?: string;
   pid: number;
   /** With `save`: the profile keys written. */
   saved?: string[];
-}
-
-/** What `key scan-image` (macOS) answers: the helper's own result. */
-export interface ScannedImageKeys {
-  /** The helper's answer; `{"raw": …}` when it is not JSON. */
-  result: unknown;
-  method: string;
-  userDir: string;
 }
 
 /**
@@ -2223,7 +2218,7 @@ export interface Answers {
   "key image-local": ImageLocalKeys;
   "key image-mem": ImageMemKey;
   "key processes": WeChatProcesses;
-  "key scan-image": ScannedImageKeys;
+  "key scan-image": ImageMemKey;
   "lang": LangSaved;
   "report annual generate": AnnualReport;
   "report annual years": ReportYears;

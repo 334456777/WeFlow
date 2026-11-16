@@ -289,22 +289,21 @@ impl ServiceHub {
         }
     }
 
+    /// An image AES key found in WeChat's memory by `image_scan_helper`'s
+    /// rule, on macOS.
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
-    pub fn key_scan_image(&self, user_dir: &str) -> AppResult<crate::contract::ScannedImageKeys> {
-        #[cfg(target_os = "macos")]
-        let expanded = crate::config::expand_home(user_dir);
+    pub fn key_scan_image(
+        &self,
+        pid: u32,
+        ciphertext: &str,
+    ) -> AppResult<crate::contract::ImageMemKey> {
         #[cfg(target_os = "macos")]
         {
-            let result = weflow_native::wxkey::run_image_scan_helper(
-                &self.ctx.runtime_dir,
-                &[expanded.to_string_lossy().as_ref()],
-            )
-            .map_err(|err| AppError::native(err.to_string()))?;
-            let parsed: Value = serde_json::from_str(&result).unwrap_or(json!({ "raw": result }));
-            Ok(crate::contract::ScannedImageKeys {
-                result: parsed,
-                method: "image_scan_helper".into(),
-                user_dir: user_dir.to_string(),
+            let image_aes_key = weflow_native::image_scan_helper::scan(pid, ciphertext);
+            Ok(crate::contract::ImageMemKey {
+                image_aes_key,
+                pid,
+                saved: Vec::new(),
             })
         }
         #[cfg(not(target_os = "macos"))]

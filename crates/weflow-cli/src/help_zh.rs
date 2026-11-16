@@ -303,7 +303,6 @@ const HELP: &[(&str, &str)] = &[
     ("Key name (default: every key of the active profile)", "键名（默认：当前档案的所有键）"),
     ("Key name", "键名"),
     ("Folder to scan", "要扫描的文件夹"),
-    ("Account directory (user directory) to scan for the image key", "要扫描图片密钥的账号目录"),
     ("JSON array of image payloads", "图片参数的 JSON 数组"),
     ("Message XML", "消息 XML"),
     ("Folder to restore into", "要恢复到的文件夹"),

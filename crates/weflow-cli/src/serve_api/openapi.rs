@@ -705,8 +705,7 @@ pub(super) fn contract() -> &'static Contract {
             data.insert("web update", of(generator.subschema_for::<WebUpdated>()));
             data.insert("web prune", of(generator.subschema_for::<WebPruned>()));
             use weflow_core::contract::{
-                DbKey, DbScan, ImageKeys, ImageLocalKeys, ImageMemKey, ScannedImageKeys,
-                WeChatProcesses,
+                DbKey, DbScan, ImageKeys, ImageLocalKeys, ImageMemKey, WeChatProcesses,
             };
             data.insert("db scan", of(generator.subschema_for::<DbScan>()));
             data.insert("key db", of(generator.subschema_for::<DbKey>()));
@@ -719,7 +718,7 @@ pub(super) fn contract() -> &'static Contract {
                 "key image-mem",
                 of(generator.subschema_for::<ImageMemKey>()),
             );
-            data.insert("key scan-image", of(generator.subschema_for::<ScannedImageKeys>()));
+            data.insert("key scan-image", of(generator.subschema_for::<ImageMemKey>()));
             data.insert(
                 "key processes",
                 of(generator.subschema_for::<WeChatProcesses>()),

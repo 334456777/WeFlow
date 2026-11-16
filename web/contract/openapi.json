@@ -3701,7 +3701,7 @@
                       "const": true
                     },
                     "data": {
-                      "$ref": "#/components/schemas/ScannedImageKeys"
+                      "$ref": "#/components/schemas/ImageMemKey"
                     }
                   }
                 }
@@ -9439,27 +9439,7 @@
         "required": [
           "pid"
         ],
-        "description": "What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any."
-      },
-      "ScannedImageKeys": {
-        "type": "object",
-        "properties": {
-          "result": {
-            "description": "The helper's answer; `{\"raw\": …}` when it is not JSON."
-          },
-          "method": {
-            "type": "string"
-          },
-          "userDir": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "result",
-          "method",
-          "userDir"
-        ],
-        "description": "What `key scan-image` (macOS) answers: the helper's own result."
+        "description": "What `key image-mem` (Linux x64 and macOS) and `key scan-image` (macOS)\nanswer: the AES key found in WeChat's memory, if any."
       },
       "WeChatProcesses": {
         "type": "object",

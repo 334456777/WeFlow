@@ -978,7 +978,7 @@ export const en: Record<string, string> = {
   "正在检查…": "Checking…",
   "正在获取…": "Getting it…",
   "获取图片密钥": "Get the image key",
-  "网页还不能在 macOS 上获取图片密钥：请在终端运行 weflow key scan-image，或者先跳过。": "The page cannot get the image key on macOS yet: run weflow key scan-image in a terminal, or skip for now.",
+  "网页还不能在 macOS 上获取图片密钥：请在终端运行 weflow key scan-image <pid> <密文>，或者先跳过。": "The page cannot get the image key on macOS yet: run weflow key scan-image <pid> <ciphertext> in a terminal, or skip for now.",
   "这个平台还不能获取图片密钥，可以先跳过。": "The image key cannot be got on this platform yet; skip for now.",
   "跳过": "Skip",
   "打不开数据库。": "The database cannot be opened.",
