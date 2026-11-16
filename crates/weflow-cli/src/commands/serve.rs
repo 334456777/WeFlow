@@ -178,7 +178,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
                 "{}{}",
                 weflow_core::locale::tr(
                     "warning: image auto download not started: ",
-                    "警告：图片自动下载未启动："
+                    "警告：原图自动下载未启动："
                 ),
                 weflow_core::locale::localize(
                     started["error"]
