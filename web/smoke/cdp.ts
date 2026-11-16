@@ -178,12 +178,22 @@ export class Page {
     return [...this.requests.values()].filter(request => request.type !== 'EventSource').map(request => request.url);
   }
 
+  /** Opens `url` in the tab; fails when it has not loaded in fifteen seconds (its requests may be waiting their turn). */
   async goto(url: string): Promise<void> {
     this.loaded = Promise.withResolvers<void>();
     this.requests.clear();
+    const shown = url.replace(/token=[^&]*/, 'token=…');
     const { errorText } = await this.send('Page.navigate', { url });
-    if (errorText) throw new Error(`cannot open ${url}: ${errorText}`);
-    await this.loaded.promise;
+    if (errorText) throw new Error(`cannot open ${shown}: ${errorText}`);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${shown} did not load in 15 s`)), 15_000);
+    });
+    try {
+      await Promise.race([this.loaded.promise, late]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** The value of `fn(...args)` run in the page (awaited when it is a promise). */

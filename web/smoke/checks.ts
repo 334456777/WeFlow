@@ -3,12 +3,21 @@
 // (#787), checked by the text shown and the number of elements, never by pixels. Each check starts with the page just
 // opened in a tab of its own; the runner fails it too when the page logs an error meanwhile.
 import type { Page } from './cdp.ts';
+import { HIDDEN_MS } from '../src/api/presence.ts';
 
 export interface Check {
   name: string;
   /** On a phone's screen (390 × 844) rather than a desktop's. */
   phone?: boolean;
-  run(page: Page): Promise<void>;
+  run(page: Page, browsing: Browsing): Promise<void>;
+}
+
+/** What a check may do beyond its own tab. */
+export interface Browsing {
+  /** Where the page is opened: `/ui/` with the token, as `weflow serve` prints it. */
+  address: string;
+  /** The page in another tab of the same browser, brought to the front and connected; closed with the check's tab. */
+  open(): Promise<Page>;
 }
 
 /** The number of elements `selector` matches, waited for until `ok` takes it. */
@@ -21,6 +30,9 @@ function rows(page: Page, what: string, ok: (labels: string[]) => boolean): Prom
   return page.until(what, labels => ok(labels as string[]),
     () => [...document.querySelectorAll('.conversation-list .conversation-row')].map(row => row.getAttribute('aria-label')));
 }
+
+/** Waits for the conversation list of the records, read from the server. */
+const conversations = (page: Page) => rows(page, 'the conversations', labels => labels.includes('选择林沐'));
 
 const same = (a: unknown[], b: unknown[]) => a.length === b.length && a.every((value, i) => value === b[i]);
 
@@ -221,6 +233,29 @@ export const checks: Check[] = [
       await page.waitFor('the list again', () => (document.querySelector('.session-pane')?.getBoundingClientRect().width ?? 0) > 300);
       await page.click('.mobile-tab', '朋友圈');
       await count(page, 'the posts', 'article.moment', n => n === 3);
+    },
+  },
+  {
+    // Chrome opens six connections at most to a server, for all its tabs, and each page holds an event stream: one in
+    // the background lets go of it after a while (src/api/presence.ts)
+    name: 'tabs: eight in one browser, the newest still reads its records (#799)',
+    async run(page, browsing) {
+      await conversations(page);
+      for (let n = 2; n <= 6; n++) await conversations(await browsing.open());
+      await Bun.sleep(HIDDEN_MS + 1_000);
+      for (let n = 7; n <= 8; n++) await conversations(await browsing.open());
+    },
+  },
+  {
+    // the page left goes into the back/forward cache, where it holds no event stream
+    name: 'the page left and opened again, seven times in one tab (#799)',
+    async run(page, browsing) {
+      await conversations(page);
+      for (let n = 0; n < 7; n++) {
+        await page.goto(browsing.address);
+        await page.waitFor('the page to connect to weflow serve', () => document.querySelector('.connection.ready') !== null);
+        await conversations(page);
+      }
     },
   },
 ];

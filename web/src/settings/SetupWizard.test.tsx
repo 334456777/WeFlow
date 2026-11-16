@@ -112,6 +112,16 @@ describe('SetupWizard', () => {
     act(() => { emit('key_phase', { type: 'key_phase', phase: 'login', pid: 43 }); });
     expect(doing()).toContain('请在微信的登录窗口点击「进入微信」');
 
+    // into the back/forward cache, the page holds no stream of the job (#799); shown again, they open anew, and what
+    // the person has to do stays until the job tells it again
+    const streams = () => opened.filter(s => s.url.startsWith('/jobs/k1/events') && !s.closed).length;
+    expect(streams()).toBe(2);
+    act(() => { window.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); });
+    expect(streams()).toBe(0);
+    await act(async () => { window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true })); });
+    expect(streams()).toBe(2);
+    expect(doing()).toContain('请在微信的登录窗口点击「进入微信」');
+
     // the job's end, as its stream tells it
     jobs = [job('succeeded')];
     const done = { ...job('succeeded'), result: { success: true, data: { method: 'wx_key', saved: ['decrypt_key'] } } };

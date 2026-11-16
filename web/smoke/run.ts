@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { accounts, buildAccount, startServe, target } from '../scripts/account.ts';
-import { Browser, findChrome, type Problem } from './cdp.ts';
+import { Browser, findChrome, type Page, type Problem } from './cdp.ts';
 import { checks, englishChecks, type Check } from './checks.ts';
 
 const only = process.argv.slice(2);
@@ -27,34 +27,45 @@ const expected = (problem: Problem) => problem.source === 'network' && problem.t
   && /\/api\/chat\/image-data\?session-id=wxid_devpictures&msg-id=18&/.test(problem.text);
 
 /** Runs `check` in a new tab: whether it passed. The tab is closed after it, and with it its connections to the server
- * (a tab keeps one open for the live messages, and Chrome opens six at most to a server). */
+ * (a tab keeps one open for the live messages, and Chrome opens six at most to a server); so are the tabs the check
+ * opened besides. */
 async function attempt(browser: Browser, server: { url: string; token: string }, check: Check, shot: string): Promise<boolean> {
   const started = performance.now();
-  const page = await browser.newPage();
-  try {
+  const address = `${server.url}/ui/?token=${server.token}`;
+  const tabs: Page[] = [];
+  const open = async () => {
+    const page = await browser.newPage();
+    tabs.push(page);
     await page.send('Emulation.setDeviceMetricsOverride', check.phone ? PHONE : DESKTOP);
     // what an earlier check chose (the theme, the folded sidebar, the order of the cards) is not kept
-    await page.send('Storage.clearDataForOrigin', { origin: server.url, storageTypes: 'local_storage' });
-    await page.goto(`${server.url}/ui/?token=${server.token}`);
+    if (tabs.length === 1) await page.send('Storage.clearDataForOrigin', { origin: server.url, storageTypes: 'local_storage' });
+    await page.goto(address);
     await page.waitFor('the page to connect to weflow serve', () => document.querySelector('.connection.ready') !== null);
-    await check.run(page);
-    const problems = page.problems.filter(problem => !expected(problem));
+    return page;
+  };
+  try {
+    await check.run(await open(), { address, open });
+    const problems = tabs.flatMap(tab => tab.problems).filter(problem => !expected(problem));
     if (problems.length) throw new Error('the page logged errors:\n' + problems.map(p => `    ${p.source}: ${p.text}`).join('\n'));
     console.log(`✓ ${check.name} (${Math.round(performance.now() - started)} ms)`);
     return true;
   } catch (error) {
     console.error(`✗ ${check.name}\n  ${(error as Error).message}`);
-    const waiting = page.waiting().map(url => '    ' + url.replace(/access_token=[^&]*/, 'access_token=…'));
+    // the tab opened last, in front: where the check was
+    const page = tabs.at(-1);
+    const waiting = (page?.waiting() ?? []).map(url => '    ' + url.replace(/access_token=[^&]*/, 'access_token=…'));
     if (waiting.length) console.error('  requests still waiting:\n' + waiting.join('\n'));
     try {
-      await Bun.write(shot, await page.screenshot());
-      console.error(`  screenshot: ${shot}`);
+      if (page) {
+        await Bun.write(shot, await page.screenshot());
+        console.error(`  screenshot: ${shot}`);
+      }
     } catch {
       // the page is gone: the message says why
     }
     return false;
   } finally {
-    await page.close();
+    for (const tab of tabs) await tab.close();
   }
 }
 

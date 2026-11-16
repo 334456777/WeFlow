@@ -1,12 +1,13 @@
 // The setup of an account (#216), in four steps: the WeChat data directory and its account, the database key, the
 // image keys, and a test that the database opens. Each step runs the CLI command behind it on the server and shows
 // its reason when it fails. The keys are fetched with `--save`, so the page only learns that they are set.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowClockwise, Check, CircleNotch, FolderOpen, Key, X } from '@phosphor-icons/react';
 import type { Health } from '../api/backend';
 import { ApiError } from '../api/client';
 import { isFinished, jobEventsUrl } from '../api/jobs';
+import { onPresence, present } from '../api/presence';
 import {
   detectDirs, findAccounts, isDatabaseKey, saveImageKeys, setConfig, testDatabase,
   type Account, type Profile,
@@ -113,18 +114,22 @@ function DirStep({ profile, onSaved }: { profile: Profile | undefined; onSaved()
 
 interface KeyPhase { phase?: string; wasRunning?: boolean }
 
-/** The `key_phase` events of a `key db` job: what the person has to do in WeChat now. */
+/**
+ * The `key_phase` events of a `key db` job: what the person has to do in WeChat now. A page away holds no stream
+ * (#799, see presence.ts); back, the job sends the events it kept again, the latest phase last.
+ */
 function useKeyPhase(id: string | null): KeyPhase | null {
   const [phase, setPhase] = useState<KeyPhase | null>(null);
+  const here = useSyncExternalStore(onPresence, present);
+  useEffect(() => { setPhase(null); }, [id]);
   useEffect(() => {
-    setPhase(null);
-    if (!id || typeof EventSource === 'undefined') return;
+    if (!id || !here || typeof EventSource === 'undefined') return;
     const source = new EventSource(jobEventsUrl(id));
     source.addEventListener('key_phase', event => { try { setPhase(JSON.parse((event as MessageEvent).data) as KeyPhase); } catch { /* not JSON */ } });
     source.addEventListener('result', () => source.close());
     source.onerror = () => source.close();
     return () => source.close();
-  }, [id]);
+  }, [id, here]);
   return phase;
 }
 

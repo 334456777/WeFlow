@@ -1,9 +1,11 @@
 // The jobs of `weflow serve` (#211), shared by every page: the list of `GET /jobs`, the progress of the running
 // one from its event stream, and what this tab started them for. Tasks run one at a time on the server, so one
-// stream is open at most; the queued ones are seen to start by reading the list again while any wait.
+// stream is open at most; the queued ones are seen to start by reading the list again while any wait. A page away
+// (#799, see presence.ts) neither follows nor reads again; back, it reads the list and follows the running job anew.
 import { useEffect, useSyncExternalStore } from 'react';
 import { ApiError, type Params } from '../api/client';
 import { dropJob, getJob, isFinished, jobEventsUrl, listJobs, startJob, type Job } from '../api/jobs';
+import { onPresence, present } from '../api/presence';
 import { t } from '../i18n';
 
 /** How often the list is read again while a job waits or runs. */
@@ -74,7 +76,7 @@ export function refreshJobs(): Promise<void> {
 /** Follows the running job; `soon`: a job was just started, so the list is read again before long. */
 function follow(soon = false) {
   clearTimeout(timer);
-  if (!users) { closeStream(); return; }
+  if (!users || !present()) { closeStream(); return; }
   const running = state.jobs.find(j => j.status === 'running');
   if (stream && stream.id !== running?.id) closeStream();
   if (running && !stream && typeof EventSource !== 'undefined') openStream(running.id);
@@ -137,8 +139,9 @@ export function useJobs(enabled: boolean, scope: number): JobsState {
     if (!enabled) return;
     users += 1;
     set({ jobs: [], error: undefined });
+    const off = onPresence(here => { if (here) void refreshJobs(); else follow(); });
     void refreshJobs();
-    return () => { users -= 1; follow(); };
+    return () => { off(); users -= 1; follow(); };
   }, [enabled, scope]);
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
