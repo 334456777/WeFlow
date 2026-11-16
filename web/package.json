@@ -7,7 +7,7 @@
     "#test": "./test/index.ts"
   },
   "description": "WebUI for weflow serve",
-  "license": "CC-BY-NC-SA-4.0",
+  "license": "Unlicense",
   "weflow": {
     "apiVersion": "3",
     "minBackendVersion": "5.0.0"
