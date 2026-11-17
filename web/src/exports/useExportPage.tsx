@@ -8,7 +8,7 @@ import { t } from '../i18n';
 import './exports.css';
 
 export function useExportPage(shell: Shell): Page {
-  const { held, scope, sessionList, setMobileDetail } = shell;
+  const { records, scope, sessionList, setMobileDetail } = shell;
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const [batch, setBatch] = useState<BatchOptions>(DEFAULT_BATCH);
   useEffect(() => { setPicked(new Set()); }, [scope]);
@@ -24,7 +24,7 @@ export function useExportPage(shell: Shell): Page {
     list={<ConnectedList backend={shell.backend} offline={t('连接 weflow serve 后，可以在这里选择会话批量导出。')}>
       <ExportPicker state={shell.sessions} picked={picked} onChange={setPicked} onRetry={shell.reloadSessions} />
     </ConnectedList>}>
-    {held && <PickedList picked={pickedSessions} onRemove={id => setPicked(old => { const next = new Set(old); next.delete(id); return next; })} />}
+    {records && <PickedList picked={pickedSessions} onRemove={id => setPicked(old => { const next = new Set(old); next.delete(id); return next; })} />}
   </BrowserPanel>;
-  return { view, cards, shown: ['tasks', ...(held ? cards.map(card => card.id) : [])] };
+  return { view, cards, shown: ['tasks', ...(records ? cards.map(card => card.id) : [])] };
 }

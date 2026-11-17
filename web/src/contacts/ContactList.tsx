@@ -7,6 +7,7 @@ import { Segmented } from '../Segmented';
 import { VirtualList } from '../VirtualList';
 import type { ContactsState } from './useContacts';
 import { ListSkeleton } from '../Skeleton';
+import { SampleNote } from '../shell/sample';
 import { t } from '../i18n';
 
 const ROW_HEIGHT = 58;
@@ -61,6 +62,7 @@ export function ContactList({ state, kind, onKind, selected, onSelect, onRetry }
         {CONTACT_KINDS.map(value => <button type="button" key={value} aria-pressed={kind === value} aria-label={t('{kind} {n} 个', { kind: t(contactKindLabels[value]), n: counts[value] })}
           onClick={() => { onKind(value); setQuery(''); }}>{value === 'former_friend' ? t('曾经') : t(contactKindLabels[value])}{state.status === 'ready' && <small className="num">{counts[value]}</small>}</button>)}
       </Segmented>
+      <SampleNote />
     </div>
     {body}
   </div>;

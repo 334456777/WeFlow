@@ -8,6 +8,7 @@ import { Segmented } from '../Segmented';
 import { VirtualList, type VirtualListHandle } from '../VirtualList';
 import { filterLabels, FOLDED_ID, formatSessionTime, sessionRows, type SessionFilter, type SessionRow } from './sessions';
 import type { SessionsState } from './useSessions';
+import { SampleNote } from '../shell/sample';
 import { ListSkeleton } from '../Skeleton';
 import { t } from '../i18n';
 
@@ -34,10 +35,8 @@ function SessionItem({ row, active, now, onClick }: { row: SessionRow; active: b
   </button>;
 }
 
-export function SessionList({ state, sample, selectedId, onSelect, onRetry, officials = [], onFilter }: {
+export function SessionList({ state, selectedId, onSelect, onRetry, officials = [], onFilter }: {
   state: SessionsState;
-  /** Sample sessions, shown until a server is connected. */
-  sample: boolean;
   selectedId: string | null;
   onSelect(id: string): void;
   onRetry(): void;
@@ -112,7 +111,7 @@ export function SessionList({ state, sample, selectedId, onSelect, onRetry, offi
         : <Segmented className="session-filter" count={FILTERS.length} index={FILTERS.indexOf(filter)} role="group" aria-label={t('会话类型')}>
           {FILTERS.map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{t(filterLabels[value])}</button>)}
         </Segmented>}
-      {sample && <p className="session-note">{t('示例数据 · 连接 weflow serve 后显示真实会话')}</p>}
+      <SampleNote text={t('示例数据 · 连接 weflow serve 后显示真实会话')} />
     </div>
     {body}
   </div>;

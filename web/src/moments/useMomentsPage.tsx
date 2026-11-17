@@ -34,7 +34,7 @@ export function useMomentsPage(shell: Shell, active: boolean): Page {
   const view = <BrowserPanel label={t('朋友圈浏览')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回发布者列表')} title={t('朋友圈')} paneLabel={t('朋友圈时间线')} pane={pane} detailKey={filter.username}
     list={backend.state === 'unauthorized'
       ? <TokenPrompt />
-      : <MomentPeople state={people} total={null} selected={filter.username} onRetry={reloadPeople} sample={shell.sample}
+      : <MomentPeople state={people} total={null} selected={filter.username} onRetry={reloadPeople}
         onSelect={username => { setFilter(f => ({ ...f, username })); setMobileDetail(true); }} />}>
     {live && <MomentsFeed key={scope + ':' + JSON.stringify(filter)} filter={filter} scroller={pane} onPreview={shell.openPreview} />}
   </BrowserPanel>;

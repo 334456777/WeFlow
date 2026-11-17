@@ -18,7 +18,7 @@ const ready: SessionsState = {
 
 function Harness({ state = ready, onRetry = () => {} }: { state?: SessionsState; onRetry?: () => void }) {
   const [selected, setSelected] = useState<string | null>('wxid_a');
-  return <SessionList state={state} sample={false} selectedId={selected} onSelect={setSelected} onRetry={onRetry} />;
+  return <SessionList state={state} selectedId={selected} onSelect={setSelected} onRetry={onRetry} />;
 }
 
 const names = () => Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent);

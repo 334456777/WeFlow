@@ -20,5 +20,5 @@ export function useResourcesPage(shell: Shell, openAt: OpenAt): Page {
       <ResourcesPage key={scope} filter={filter} onPreview={shell.openPreview} onOpen={openAt} />
     </Connected>
   </ScrollPage>;
-  return { view, cards, shown: shell.held ? ['resources-filter'] : [] };
+  return { view, cards, shown: shell.records ? ['resources-filter'] : [] };
 }

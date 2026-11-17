@@ -4,11 +4,12 @@ import { useEffect, useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import type { Backend } from '../api/backend';
-import { holdsRecords } from '../api/records';
+import { recordsOf } from '../api/records';
 import { MobileBar } from '../MobileNav';
 import { pageIn } from '../motion';
 import { Scrollbar } from '../Scrollbar';
 import { TokenPrompt } from '../TokenForm';
+import { SampleNote } from './sample';
 
 export function ScrollPage({ label, icon: Glyph, tabs, scroller, children }: {
   label: string; icon: Icon; tabs?: ReactNode;
@@ -25,19 +26,19 @@ export function ScrollPage({ label, icon: Glyph, tabs, scroller, children }: {
 }
 
 /**
- * The records once connected, and those read before while the server is gone (`holdsRecords`); the token asked for
- * when the server refuses this tab's, else what the page is for.
+ * The page's records (`recordsOf`): the server's, those read before while it is gone, or the sample's, said to be so;
+ * the token asked for when the server refuses this tab's; while the server is looked for, what the page is for.
  */
 export function Connected({ backend, offline, children }: { backend: Backend; offline: string; children: ReactNode }) {
   return backend.state === 'unauthorized' ? <TokenPrompt />
-    : holdsRecords(backend) ? children
+    : recordsOf(backend) ? <><SampleNote />{children}</>
       : <p className="settings-footnote">{offline}</p>;
 }
 
-/** The same for the list side of a page of two sides. */
+/** The same for the list side of a page of two sides; the list says itself when it is the sample's (`SampleNote`). */
 export function ConnectedList({ backend, offline, children }: { backend: Backend; offline: string; children: ReactNode }) {
   return backend.state === 'unauthorized' ? <TokenPrompt />
-    : holdsRecords(backend) ? children
+    : recordsOf(backend) ? children
       : <div className="session-pane"><p className="session-message">{offline}</p></div>;
 }
 

@@ -4,13 +4,18 @@
 // A chunk of its own, loaded only then: it imports nothing of the page's but types (plugins/plainImport.ts).
 import type { SampleServer } from '../api/client';
 import type { GroupMember, MemberAnalytics, Resource, ResourceKind, Session } from '../api/contract.gen';
+import { excludeCandidates, groupHours, groupList, groupMedia, groupMessages, groupRanking, memberMessages, overall, rankings, timeSpread } from './analytics';
+import { backupManifest } from './backup';
 import { dayOf, dayEnd, dayStart, NOW } from './clock';
 import { messageOf, threads, unread, type Message } from './chats';
+import { footprint, footprintSummary } from './footprint';
+import { insightRecord, insightRecords } from './insights';
 import { pictureUrl, voiceSound } from './media';
 import { postCounts, timeline } from './moments';
 import { pushes } from './official';
 import { payRecords } from './pay';
 import { contactRows, contacts, groups, ME, nameOf, officials, people, person } from './people';
+import { annualReport, dualReport, reportYears } from './reports';
 
 type Params = Parameters<SampleServer['answer']>[2];
 
@@ -174,7 +179,7 @@ function members(params: Params) {
 /** One member's messages in a group, counted as `group member` counts them. */
 function memberStats(params: Params): MemberAnalytics {
   const username = text(params, 'username');
-  const said = (threads.get(text(params, 'chatroom-id')) ?? []).filter(m => m.senderUsername === username);
+  const said = groupMessages(text(params, 'chatroom-id'), text(params, 'start'), text(params, 'end')).filter(m => m.senderUsername === username);
   const of = (type: number) => said.filter(m => m.localType % BASE === type).length;
   const hours: Record<string, number> = {};
   const types: Record<string, number> = {};
@@ -259,6 +264,26 @@ const routes: Record<string, Route> = {
   'GET api/sns/timeline': snsTimeline,
   'GET api/sns/post-counts': () => postCounts(),
   'GET api/sns/stats': () => ({ totalPosts: timeline.length, totalFriends: people.filter(p => p.username !== ME).length, myPosts: postCounts()[ME] ?? 0 }),
+  'GET api/analytics/overall': () => overall(),
+  'GET api/analytics/rankings': params => rankings(number(params, 'limit') ?? 20),
+  'GET api/analytics/time': () => timeSpread(),
+  'GET api/analytics/excluded': () => [],
+  'GET api/analytics/exclude-candidates': () => excludeCandidates(),
+  'GET api/group/list': () => groupList(),
+  'GET api/group/ranking': params => groupRanking(text(params, 'chatroom-id'), text(params, 'start'), text(params, 'end'), number(params, 'limit') ?? 20),
+  'GET api/group/hours': params => groupHours(text(params, 'chatroom-id'), text(params, 'start'), text(params, 'end')),
+  'GET api/group/media': params => groupMedia(text(params, 'chatroom-id'), text(params, 'start'), text(params, 'end')),
+  'GET api/group/member-messages': params => memberMessages(text(params, 'chatroom-id'), text(params, 'username'), text(params, 'start'), text(params, 'end'),
+    number(params, 'cursor') ?? 0, number(params, 'limit') ?? 50),
+  'GET api/report/annual/years': () => reportYears(),
+  // a report is generated, which the command API takes as a POST (#336): it changes nothing
+  'POST report/annual/generate': params => annualReport(number(params, 'year') ?? 0),
+  'POST report/dual/generate': params => dualReport(text(params, 'friend'), number(params, 'year') ?? 0),
+  'GET api/insight/footprint': params => footprint(text(params, 'start'), text(params, 'end')),
+  'POST insight/footprint-summary': params => footprintSummary(text(params, 'payload-json')),
+  'GET insight/records': params => insightRecords(text(params, 'keyword'), text(params, 'session'), number(params, 'offset') ?? 0, number(params, 'limit') ?? 50),
+  'GET api/insight/get': params => insightRecord(text(params, 'id')),
+  'GET backup/inspect': () => backupManifest(),
 };
 
 export const server: SampleServer = {

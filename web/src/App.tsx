@@ -35,6 +35,7 @@ import { useSettingsPage } from './settings/useSettingsPage';
 import type { OpenAt, Page, Shell } from './shell/page';
 import { usePreferences } from './shell/preferences';
 import { usePreview } from './shell/PreviewDialog';
+import { SampleContext } from './shell/sample';
 import { Sidebar, useSidebarFold } from './shell/Sidebar';
 import type { Category, Navigation } from './types';
 
@@ -148,7 +149,7 @@ export function App() {
     pageIn([panel, before.cards !== shownCardIds && consoleRef.current].filter((element): element is Element => Boolean(element)));
   }, [section, shownCardIds]);
 
-  return <main key={language} className={'workspace' + (fold.folded ? ' sidebar-collapsed' : '')}>
+  return <SampleContext.Provider value={sample}><main key={language} className={'workspace' + (fold.folded ? ' sidebar-collapsed' : '')}>
     <Sidebar section={section} onSelect={selectSection} fold={fold} backend={backend} realtime={prefs.realtime} />
     <div ref={mainRef} className="main-area">
       {page.view ?? chat.view}
@@ -161,5 +162,5 @@ export function App() {
     <SetupDialog open={setupOpen} profile={profile} jobs={jobs} platform={'health' in backend ? backend.health.platform : undefined}
       onChanged={profiles.reload} onClose={closeSetup} onDone={() => { setSetupOpen(false); selectSection('chat'); }} />
     {shownToast && <div className="toast" role="status" data-state={shownToast.closing ? 'closing' : 'open'}><CheckCircle size={16} />{shownToast.value}</div>}
-  </main>;
+  </main></SampleContext.Provider>;
 }

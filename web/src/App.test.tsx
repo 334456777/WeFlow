@@ -92,6 +92,19 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('这是示例数据，连接 weflow serve 后才能这样做。'));
   });
 
+  it('shows the sample on every page that shows records, said to be the sample (#879)', async () => {
+    await renderWith(null);
+    await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '通讯录' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '查看林沐' })).toBeTruthy());
+    expect(screen.getByText('示例数据 · 连接 weflow serve 后显示真实记录')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '灵感信箱' }));
+    await waitFor(() => expect(screen.getByRole('article', { name: '林沐的见解' }).textContent).toContain('bun run shots'));
+    fireEvent.click(screen.getByRole('button', { name: '聊天分析' }));
+    await waitFor(() => expect(document.querySelector('.analytics-page')?.textContent).toContain('只统计私聊'));
+    expect(screen.getByText('示例数据 · 连接 weflow serve 后显示真实记录')).toBeTruthy();
+  });
+
   it('keeps official accounts in the chat list rather than a sidebar entry of their own', async () => {
     await renderWith(null);
     const nav = screen.getByRole('navigation', { name: '主导航' });

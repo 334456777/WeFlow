@@ -7,20 +7,19 @@ import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
 import type { Merchant, PaymentsState } from './usePayments';
 import { ListSkeleton } from '../Skeleton';
+import { SampleNote } from '../shell/sample';
 import { locale, t } from '../i18n';
 
 const ROW_HEIGHT = 58;
 const ALL = '\u0000all';
 
-export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry, sample = false }: {
+export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry }: {
   state: PaymentsState;
   /** The payees of the days chosen. */
   merchants: Merchant[];
   selected: string | null;
   onSelect(merchant: string | null): void;
   onRetry(): void;
-  /** The payments are the sample's (#879). */
-  sample?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const rows = useMemo(() => {
@@ -63,7 +62,7 @@ export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry
       <div className="search-input session-search"><MagnifyingGlass size={16} aria-hidden="true" />
         <input type="search" aria-label={t('搜索商户')} placeholder={t('搜索商户')} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
-      {sample && <p className="session-note">{t('示例数据 · 连接 weflow serve 后显示真实记录')}</p>}
+      <SampleNote />
     </div>
     {body}
   </div>;

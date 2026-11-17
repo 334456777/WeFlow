@@ -203,7 +203,7 @@ export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
     back={t('返回对话列表')} title={name} paneLabel={t('{name}的记录', { name })} pane={paneRef} detailKey={session?.username ?? null}
     list={backend.state === 'unauthorized'
       ? <TokenPrompt />
-      : <SessionList state={records ? shell.sessions : CHECKING} sample={sample} selectedId={session?.username ?? null} onSelect={selectConversation} onRetry={shell.reloadSessions}
+      : <SessionList state={records ? shell.sessions : CHECKING} selectedId={session?.username ?? null} onSelect={selectConversation} onRetry={shell.reloadSessions}
         officials={officials} onFilter={filter => { if (filter === 'official') setOfficialsWanted(true); }} />}>
     {session
       ? kindOf(session.username) === 'official'
