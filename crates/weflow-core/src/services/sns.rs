@@ -34,6 +34,8 @@ pub(crate) struct SnsState {
     /// The client for WeChat's media servers, kept so that requests reuse their connections (#202): a page asks
     /// for a screen of pictures at once, and a new client per picture redid DNS and TLS every time.
     client: Option<reqwest::Client>,
+    /// The client for the sticker hosts whose certificate names another host (#814), kept as `client` is.
+    unchecked_client: Option<reqwest::Client>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -595,21 +597,32 @@ impl ServiceHub {
 
     // ── media download / decrypt ──
 
-    fn sns_http_client(&self, insecure: bool) -> AppResult<reqwest::Client> {
-        if !insecure {
-            if let Some(client) = self.sns_state.lock_or_panic().client.clone() {
-                return Ok(client);
+    /// The client for WeChat's media servers, which checks certificates; or, `unchecked`, the one for the sticker
+    /// hosts whose certificate names another host (`http_client::sticker_certificate_unchecked`, #814). Each is made
+    /// once and kept.
+    fn sns_http_client(&self, unchecked: bool) -> AppResult<reqwest::Client> {
+        let kept = |state: &mut SnsState| {
+            if unchecked {
+                state.unchecked_client.clone()
+            } else {
+                state.client.clone()
             }
+        };
+        if let Some(client) = kept(&mut self.sns_state.lock_or_panic()) {
+            return Ok(client);
         }
         let client = crate::http_client::builder()
             .timeout(Duration::from_secs(15))
-            .danger_accept_invalid_certs(insecure)
+            .danger_accept_invalid_certs(unchecked)
             .build()
             .map_err(|e| AppError::runtime(format!("failed to create HTTP client: {e}")))?;
-        if !insecure {
-            self.sns_state.lock_or_panic().client = Some(client.clone());
-        }
-        Ok(client)
+        let mut state = self.sns_state.lock_or_panic();
+        let slot = if unchecked {
+            &mut state.unchecked_client
+        } else {
+            &mut state.client
+        };
+        Ok(slot.get_or_insert(client).clone())
     }
 
     /// `fetchAndDecryptImage`: downloads a Moments image/video, decrypting with the ISAAC64 key.
@@ -803,45 +816,35 @@ impl ServiceHub {
 
     // ── emoji ──
 
+    /// The file at `target_url`, saved in `dir` as `<cache_key>.<its kind>`. Certificates are checked but on the
+    /// sticker hosts whose certificate names another host (#814); the client follows redirects itself.
     async fn download_raw(&self, target_url: &str, cache_key: &str, dir: &Path) -> Option<PathBuf> {
-        let client = self.sns_http_client(true).ok()?;
-        let mut url = target_url.replace("&amp;", "&");
-        for _ in 0..5 {
-            let resp = client
-                .get(&url)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 MicroMessenger/7.0.20.1781(0x67001431)")
-                .header("Accept", "*/*")
-                .send()
-                .await
-                .ok()?;
-            let code = resp.status().as_u16();
-            if [301, 302, 303, 307].contains(&code) {
-                let loc = resp.headers().get("location")?.to_str().ok()?.to_string();
-                url = if loc.starts_with("http") {
-                    loc
-                } else {
-                    let base = reqwest::Url::parse(&url).ok()?;
-                    format!("{}://{}{}", base.scheme(), base.host_str()?, loc)
-                };
-                continue;
-            }
-            if code != 200 {
-                return None;
-            }
-            let bytes = resp.bytes().await.ok()?;
-            if bytes.is_empty() {
-                return None;
-            }
-            let ext = if sns::is_valid_image_buffer(&bytes) {
-                sns::image_ext_from_buffer(&bytes)
-            } else {
-                ".bin"
-            };
-            let path = dir.join(format!("{cache_key}{ext}"));
-            std::fs::write(&path, &bytes).ok()?;
-            return Some(path);
+        let url = target_url.replace("&amp;", "&");
+        let unchecked = crate::http_client::sticker_certificate_unchecked(&url);
+        let resp = self
+            .sns_http_client(unchecked)
+            .ok()?
+            .get(&url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 MicroMessenger/7.0.20.1781(0x67001431)")
+            .header("Accept", "*/*")
+            .send()
+            .await
+            .ok()?;
+        if resp.status() != reqwest::StatusCode::OK {
+            return None;
         }
-        None
+        let bytes = resp.bytes().await.ok()?;
+        if bytes.is_empty() {
+            return None;
+        }
+        let ext = if sns::is_valid_image_buffer(&bytes) {
+            sns::image_ext_from_buffer(&bytes)
+        } else {
+            ".bin"
+        };
+        let path = dir.join(format!("{cache_key}{ext}"));
+        std::fs::write(&path, &bytes).ok()?;
+        Some(path)
     }
 
     /// `downloadSnsEmoji`: cached download of a comment emoji, decrypting with the AES key when needed.

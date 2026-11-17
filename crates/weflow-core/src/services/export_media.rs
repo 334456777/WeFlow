@@ -34,8 +34,10 @@ impl ServiceHub {
                 return Ok(p);
             }
         }
+        // certificates are checked but on the sticker hosts whose certificate names another host (#814)
         let client = crate::http_client::builder()
             .timeout(std::time::Duration::from_secs(10))
+            .danger_accept_invalid_certs(crate::http_client::sticker_certificate_unchecked(cdn_url))
             .build()
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let mut url = cdn_url.to_string();
