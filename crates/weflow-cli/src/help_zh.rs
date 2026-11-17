@@ -8,7 +8,7 @@ const HELP: &[(&str, &str)] = &[
     ("A page of one member's messages (newest first)", "某位成员的一页消息（最新在前）"),
     ("AI footprint summary; takes the JSON payload {rangeLabel, summary, privateSegments, mentionGroups}", "AI 足迹总结；接收 JSON 载荷 {rangeLabel, summary, privateSegments, mentionGroups}"),
     ("AI insights", "AI 洞察"),
-    ("Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run)", "HTTP API 的访问令牌（默认：配置中的 `http_api_token`；未配置时命令 API 每次启动生成一个）"),
+    ("Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run). An empty one counts as none", "HTTP API 的访问令牌（默认：配置中的 `http_api_token`；未配置时命令 API 每次启动生成一个）。空值视为未给出"),
     ("Tasks (`POST` commands: exports, keys, backups…) the command API runs at once; more are queued or refused (default: 1)", "命令 API 同时运行的任务数（`POST` 命令：导出、取钥、备份等）；超出的排队或被拒绝（默认：1）"),
     ("Other commands the command API runs at once (default: the number of CPUs)", "命令 API 同时运行的其他命令数（默认：CPU 核数）"),
     ("Images and voices the command API's /api/ media routes decode at once; more wait in line (default: the number of CPUs)", "命令 API 的 /api/ 媒体路由同时解码的图片和语音数；超出的排队等待（默认：CPU 核数）"),
