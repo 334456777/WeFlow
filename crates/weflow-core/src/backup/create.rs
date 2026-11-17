@@ -101,8 +101,9 @@ fn create_backup_watched(
         name.push(format!(".{}.weflow-partial", std::process::id()));
         PathBuf::from(name)
     };
+    // a failure names the file asked for, not the temporary one beside it
     let file =
-        fs::File::create(&partial).with_context(|| format!("create {}", partial.display()))?;
+        fs::File::create(&partial).with_context(|| format!("create {}", out_path.display()))?;
     let excluded: Vec<PathBuf> = [out_path, &partial]
         .into_iter()
         .filter_map(identity)

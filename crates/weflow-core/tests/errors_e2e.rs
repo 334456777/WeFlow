@@ -1,4 +1,8 @@
 //! A command that cannot write where it was told says where and why (#816): the path, and what the system answered.
+#![expect(
+    clippy::unwrap_used,
+    reason = "the helpers fail the test by panicking"
+)]
 
 mod common;
 
@@ -55,6 +59,33 @@ fn a_message_export_that_cannot_write_says_where_and_why() {
             .unwrap_err();
         assert_says(&err, &folder, &why, format);
     }
+}
+
+#[test]
+fn a_backup_that_cannot_be_written_or_read_says_where_and_why() {
+    let (root, hub) = common::mock_hub("errors-backup");
+    let (folder, _) = blocked(&root);
+    let options = weflow_core::backup::BackupOptions::default();
+    let out = folder.join("b.zip");
+    // a backup makes no folder: the file is created where it is asked for, or not at all
+    let why = std::fs::File::create(&out).unwrap_err().to_string();
+    let err = hub.backup_create(&out, &options).unwrap_err();
+    assert_says(&err, &out, &why, "backup create");
+    let err = hub
+        .backup_restore(&root.join("a-file"), &folder)
+        .unwrap_err();
+    assert!(
+        err.message
+            .contains(&root.join("a-file").display().to_string())
+            && err.message.contains("is not a zip archive: "),
+        "backup restore of a file that is no zip: {}",
+        err.message
+    );
+
+    let missing = root.join("missing.zip");
+    let why = std::fs::File::open(&missing).unwrap_err().to_string();
+    let err = hub.backup_inspect(&missing).unwrap_err();
+    assert_says(&err, &missing, &why, "backup inspect");
 }
 
 #[test]
