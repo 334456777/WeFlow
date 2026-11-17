@@ -355,6 +355,19 @@ fn export_world(
     weflow_core::services::ServiceHub,
     std::path::PathBuf,
 ) {
+    let (root, hub, img_dir, _) = export_world_with_fixture(tag);
+    (root, hub, img_dir)
+}
+
+/// [`export_world`], with the fixture, so that another hub can open the same account as a later process would.
+fn export_world_with_fixture(
+    tag: &str,
+) -> (
+    TestDir,
+    weflow_core::services::ServiceHub,
+    std::path::PathBuf,
+    weflow_native::fixture::Fixture,
+) {
     use weflow_native::fixture::{MsgSpec, SessionSpec, T0};
     let (root, hub, fixture) = common::custom_hub_with(
         tag,
@@ -399,7 +412,7 @@ fn export_world(
         .join(&month)
         .join("Img");
     std::fs::create_dir_all(&img_dir).unwrap();
-    (root, hub, img_dir)
+    (root, hub, img_dir, fixture)
 }
 
 #[tokio::test]
@@ -679,6 +692,83 @@ async fn export_media_reports_thumbnail_only_images() {
         "the note explains what thumbOnly means"
     );
     assert_eq!(r["files"][0]["isThumb"], true);
+}
+
+/// An image exported while only its thumbnail was on disk, then opened in WeChat: the next export takes the image
+/// WeChat downloaded, not the thumbnail cached by the first one, in the same process and in a later one (#858).
+#[tokio::test]
+async fn an_image_downloaded_after_its_thumbnail_was_cached_is_exported_whole() {
+    let md5 = "aabbccddeeff00112233445566778899";
+    let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
+    let thumb = jpeg(1500, 12);
+    let full = jpeg(3000, 13);
+    let export = |hub: &weflow_core::services::ServiceHub, out: std::path::PathBuf| {
+        let hub = hub.clone();
+        async move {
+            serde_json::to_value(
+                hub.export_media(Some("wxid_bob"), &out, "image", None, None)
+                    .await
+                    .unwrap(),
+            )
+            .unwrap()
+        }
+    };
+    // `<md5>.dat` written next to the thumbnail, with the folder's time moved on as a later write would
+    let download = |img_dir: &std::path::Path| {
+        std::fs::write(
+            img_dir.join(format!("{md5}.dat")),
+            encrypt_v2(&full, &key, 0x5a),
+        )
+        .unwrap();
+        open_dir_to_set_times(img_dir)
+            .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
+            .unwrap();
+    };
+
+    for later_process in [false, true] {
+        let (root, hub, img_dir, fixture) =
+            export_world_with_fixture(&format!("img-thumb-then-full-{later_process}"));
+        std::fs::write(
+            img_dir.join(format!("{md5}_t.dat")),
+            encrypt_v2(&thumb, &key, 0x5a),
+        )
+        .unwrap();
+        let first = export(&hub, root.join("first")).await;
+        assert_eq!(first["thumbOnly"], 1, "{first}");
+        assert_eq!(
+            std::fs::read(first["files"][0]["path"].as_str().unwrap()).unwrap(),
+            thumb
+        );
+
+        download(&img_dir);
+        let hub = if later_process {
+            common::hub_for_account(
+                &root,
+                &fixture.account_dir,
+                &fixture.key_hex(),
+                "wxid_me_ab12",
+                |p| {
+                    p.image_xor_key = Some(0x5a);
+                    p.image_aes_key = Some(KEY.into());
+                },
+            )
+        } else {
+            hub
+        };
+        let second = export(&hub, root.join("second")).await;
+        assert_eq!(
+            (second["exported"].as_i64(), second["thumbOnly"].as_i64()),
+            (Some(1), Some(0)),
+            "later process {later_process}: {second}"
+        );
+        let path = second["files"][0]["path"].as_str().unwrap();
+        assert_eq!(
+            std::fs::read(path).unwrap(),
+            full,
+            "later process {later_process}"
+        );
+        assert_eq!(second["files"][0]["isThumb"], false);
+    }
 }
 
 #[tokio::test]

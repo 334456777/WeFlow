@@ -182,6 +182,22 @@ impl Rendition {
             Self::Original
         }
     }
+
+    /// The rendition a file of the decrypted-image cache was decrypted from, by the suffix
+    /// [`img::cache_output_path`] gives it: `_hd`, a thumbnail's `_t`, `.t` or `_thumb`, else the original.
+    fn of_cached(path: &str) -> Self {
+        let stem = Path::new(path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if stem.ends_with("_hd") {
+            Self::Hd
+        } else if ["_t", ".t", "_thumb"].iter().any(|s| stem.ends_with(s)) {
+            Self::Thumbnail
+        } else {
+            Self::Original
+        }
+    }
 }
 
 #[derive(Default, Clone, Debug)]
@@ -811,6 +827,10 @@ impl ServiceHub {
                 if !allow_thumbnail && !img::is_hd_dat_path(&cached) {
                     continue;
                 }
+                // a thumbnail is what was on disk then: the full image may have been downloaded since (#858)
+                if Rendition::of(&cached) == Rendition::Thumbnail {
+                    continue;
+                }
                 return Some(cached);
             }
         }
@@ -1160,7 +1180,6 @@ impl ServiceHub {
             return ImageResult::fail("no account or database path configured", "not_found");
         };
         let allow_fallback = p.allow_cache_index != Some(false);
-        let mut fallback_to_thumbnail = false;
         let dat = if p.force {
             match self.resolve_dat_path(
                 &account_dir,
@@ -1172,19 +1191,15 @@ impl ServiceHub {
                 },
             ) {
                 Some(d) => Some(d),
-                None => {
-                    let d = self.resolve_dat_path(
-                        &account_dir,
-                        p,
-                        DatSearch {
-                            allow_thumbnail: true,
-                            skip_resolved_cache: false,
-                            allow_dat_name_fallback: allow_fallback,
-                        },
-                    );
-                    fallback_to_thumbnail = d.is_some();
-                    d
-                }
+                None => self.resolve_dat_path(
+                    &account_dir,
+                    p,
+                    DatSearch {
+                        allow_thumbnail: true,
+                        skip_resolved_cache: false,
+                        allow_dat_name_fallback: allow_fallback,
+                    },
+                ),
             }
         } else {
             self.resolve_dat_path(
@@ -1225,12 +1240,11 @@ impl ServiceHub {
             );
         }
 
-        let prefer_hd = p.force && !fallback_to_thumbnail;
+        let prefer_hd = p.force && Rendition::of(&dat) == Rendition::Hd;
         if let Some(existing) = self.find_cached_output(&dat, p.session_id.as_deref(), prefer_hd) {
-            let is_hd = img::is_hd_path(&existing);
-            // With --force a cached thumbnail is re-decrypted in case the HD file has appeared since; when `dat` is
-            // already the best file on disk (`fallback_to_thumbnail`) the cached output is that very rendition.
-            if !(p.force && !is_hd && !fallback_to_thumbnail) {
+            // a cached output decrypted from a lesser rendition than `dat` (a thumbnail cached before WeChat
+            // downloaded the image, #858) is replaced by decrypting `dat`
+            if Rendition::of_cached(&existing) <= Rendition::of(&dat) {
                 self.cache_resolved_paths(
                     cache_key,
                     p.image_md5.as_deref(),
