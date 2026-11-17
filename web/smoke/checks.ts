@@ -107,7 +107,7 @@ export const checks: Check[] = [
       await navigate(page, '设置', '设置');
       await page.click('.settings-nav-row', '外观与浏览');
       const theme = () => {
-        const [r, g, b] = getComputedStyle(document.body).backgroundColor.match(/\d+/g)!.map(Number);
+        const [r, g, b] = getComputedStyle(document.documentElement).backgroundColor.match(/\d+/g)!.map(Number);
         return {
           theme: document.documentElement.dataset.theme,
           pressed: document.querySelector('.theme-group button[aria-pressed="true"]')?.textContent,
@@ -200,6 +200,51 @@ export const checks: Check[] = [
           delete document.documentElement.dataset.shapes;
           document.getElementById('shapes-check')?.remove();
         });
+      }
+    },
+  },
+  {
+    // no skin decorates yet: the page is given a skin's tokens of its own (Backdrop.tsx, motion.ts pageIn)
+    name: 'decoration: under the page and out of the way, another at each page turn, the skin’s page-in; still with reduced motion (#832)',
+    async run(page) {
+      await conversations(page);
+      // none for neumorphism
+      const none = await page.eval(() => document.querySelectorAll('.backdrop').length);
+      if (none) throw new Error(`${none} decoration layers under neumorphism`);
+      await page.eval(() => {
+        const style = document.createElement('style');
+        style.id = 'backdrop-check';
+        style.textContent = ':root { --backdrop-count: 2; --page-in: probe-in 400ms linear; } @keyframes probe-in { from { opacity: .5; } }';
+        document.head.append(style);
+      });
+      const state = () => {
+        const layer = document.querySelector<HTMLElement>('.backdrop');
+        const look = layer && getComputedStyle(layer);
+        const panel = document.querySelector('.main-area > .panel')!;
+        return {
+          layer: layer && look ? [layer.getAttribute('aria-hidden'), look.position, look.zIndex, look.pointerEvents].join(' ') : 'none',
+          turn: layer?.dataset.turn,
+          playing: panel.getAnimations().some(animation => (animation as CSSAnimation).animationName === 'probe-in'),
+          // given back to the style sheets once over
+          own: (panel as HTMLElement).style.animation,
+          page: panel.getAttribute('aria-label'),
+        };
+      };
+      try {
+        // the layer comes at the next turn, the second decoration up
+        await page.click('.sidebar .nav-item', '朋友圈');
+        const shown = await page.until('the next decoration, the page brought in by the skin', s => s.page === '朋友圈浏览' && s.turn === '1' && s.playing, state);
+        if (shown.layer !== 'true fixed -1 none') throw new Error('the decoration: ' + shown.layer);
+        await page.until('the page in, its animation given back', s => !s.playing && s.own === '', state);
+        await page.click('.sidebar .nav-item', '微信支付');
+        await page.until('the decoration after it, the first again, the page in', s => s.page === '微信支付浏览' && s.turn === '0' && !s.playing, state);
+        // reduced motion: no animation, and the decoration stays
+        await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        await page.click('.sidebar .nav-item', '聊天');
+        const still = await page.until('the records again', s => Boolean(s.page?.endsWith('记录浏览')), state);
+        if (still.turn !== '0' || still.playing) throw new Error('with reduced motion: ' + JSON.stringify(still));
+      } finally {
+        await page.eval(() => document.getElementById('backdrop-check')?.remove());
       }
     },
   },

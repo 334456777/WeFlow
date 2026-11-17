@@ -4,7 +4,12 @@
 // browser's localStorage apart from the theme's; the skin in force is `data-skin` on <html>. index.html sets it before
 // the first paint by the same rules and, for a skin other than the default, hides the page (`data-skin-pending`) until
 // its sheet is here, so the page never shows in the default skin first.
-import { useState } from 'react';
+//
+// The pictures a skin's sheet draws (a decoration, a texture) come with it: the build puts one under 4 KB into the
+// sheet as data:, a larger one beside it under /ui/assets/, fetched once a rule of the skin's shows it; `url(…?inline)`
+// puts a picture into the sheet whatever its size, as one shown in an exported report must be (reports/reportFiles.ts
+// copies the sheets, not the files beside them).
+import { useState, useSyncExternalStore } from 'react';
 import { msg } from './i18n';
 
 export type ThemeName = 'light' | 'dark';
@@ -68,6 +73,14 @@ function fetchSheet(skin: Skin): Promise<boolean> {
 }
 
 let asked = 0;
+const putOn = new Set<() => void>();
+
+/** The skin on the page (`data-skin`), anew when another is put on: for what is drawn by script as the skin says
+ * (Backdrop.tsx). */
+export function useSkinOn(): string {
+  const read = () => document.documentElement.dataset.skin ?? DEFAULT_SKIN;
+  return useSyncExternalStore(listener => { putOn.add(listener); return () => { putOn.delete(listener); }; }, read, read);
+}
 
 /** Puts `skin` on the page once its sheet is here, or the default skin if the sheet cannot be fetched; and shows the
  * page if the first paint hid it. What a later call asks for wins over this one. Resolves to the skin put on. */
@@ -80,6 +93,7 @@ export async function applySkin(skin: Skin): Promise<Skin> {
   root.dataset.skin = shown.id;
   if (shown.shapes) root.dataset.shapes = ''; else delete root.dataset.shapes;
   delete root.dataset.skinPending;
+  for (const listener of putOn) listener();
   return shown;
 }
 

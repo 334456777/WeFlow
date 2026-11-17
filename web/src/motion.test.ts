@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
-import { contentIn, durationMs, timing, usePresence } from './motion';
+import { contentIn, durationMs, pageIn, timing, usePresence } from './motion';
+import { usePageTurn } from './pageTurn';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -38,6 +39,48 @@ describe('contentIn', () => {
     root.setProperty('--duration-base', '0ms');
     contentIn([element]);
     expect(animate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('pageIn', () => {
+  it('turns the page and brings elements in as content does, or by the skin’s own animation; neither with reduced motion (#832)', () => {
+    const element = document.createElement('div');
+    const animate = vi.fn();
+    element.animate = animate as unknown as Element['animate'];
+    const root = document.documentElement.style;
+    root.setProperty('--duration-base', '200ms');
+    const turned = vi.fn();
+    const { unmount } = renderHook(() => { turned(usePageTurn()); });
+    const turns = () => turned.mock.lastCall![0] as number;
+    const start = turns();
+
+    act(() => pageIn([element]));
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(turns()).toBe(start + 1);
+
+    // the skin's animation, played from its start, and given back to the style sheets when it ends
+    root.setProperty('--page-in', 'paper-in 200ms steps(3)');
+    act(() => pageIn([element]));
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(element.style.animation).toBe('paper-in 200ms steps(3)');
+    expect(turns()).toBe(start + 2);
+    const inner = element.appendChild(document.createElement('span'));
+    inner.dispatchEvent(new Event('animationend', { bubbles: true }));
+    expect(element.style.animation).toBe('paper-in 200ms steps(3)');
+    element.dispatchEvent(new Event('animationend'));
+    expect(element.style.animation).toBe('');
+
+    // content that comes in without turning a page
+    act(() => pageIn([element], { turn: false }));
+    expect(element.style.animation).toBe('paper-in 200ms steps(3)');
+    expect(turns()).toBe(start + 2);
+    element.dispatchEvent(new Event('animationend'));
+
+    root.setProperty('--duration-base', '0ms');
+    act(() => pageIn([element]));
+    expect(element.style.animation).toBe('');
+    expect(turns()).toBe(start + 2);
+    unmount();
   });
 });
 

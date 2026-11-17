@@ -1,6 +1,7 @@
 // Motion helpers (#193). Durations and curves live in styles/tokens.css; scripts read them from there so the
 // 「减少动画」 switch and `prefers-reduced-motion` (both set the durations to 0ms) apply to scripts too.
 import { useEffect, useState } from 'react';
+import { turnPage } from './pageTurn';
 
 /**
  * A duration token and a curve token (`--duration-panel`, `--ease-snap`) as the Web Animations API takes them; a
@@ -21,6 +22,47 @@ export function contentIn(elements: Iterable<Element>, root: Element = document.
   const offset = getComputedStyle(root).getPropertyValue('--enter-offset').trim() || '0px';
   const frames = [{ opacity: 0, transform: `translateY(calc(.5 * ${offset}))` }, { opacity: 1, transform: 'none' }];
   for (const element of elements) element.animate?.(frames, options);
+}
+
+/** The end of an animation pageIn played on an element, which then gives its `animation` back to its style sheets. */
+const pageInEnds = new WeakMap<Element, (event: Event) => void>();
+
+/**
+ * Brings in another page, or another item's detail in a page (#776, #832), and tells the skin: the page turns
+ * (pageTurn.ts), which changes its decoration (Backdrop.tsx), and the elements come in by the skin's own animation,
+ * `--page-in` (an `animation`, its keyframes in the skin's sheet), or as contentIn brings them where it has none.
+ * Nothing with reduced motion: no animation, and the decoration stays as it is. Nothing waits for it either (#780).
+ * `turn: false` for content that comes in without another page taking a page's place: a detail where there was none
+ * (the first item, picked as a page opens).
+ */
+export function pageIn(elements: Iterable<Element>, { turn = true, root = document.documentElement }: { turn?: boolean; root?: Element } = {}): void {
+  if (!durationMs('--duration-base', root)) return;
+  if (turn) turnPage();
+  const own = getComputedStyle(root).getPropertyValue('--page-in').trim();
+  if (!own || own === 'none') {
+    contentIn(elements, root);
+    return;
+  }
+  for (const element of elements) {
+    if (!(element instanceof HTMLElement)) continue;
+    const before = pageInEnds.get(element);
+    if (before) { element.removeEventListener('animationend', before); element.removeEventListener('animationcancel', before); }
+    const end = (event: Event) => {
+      // an animation inside it ends too, and bubbles up
+      if (event.target !== element) return;
+      element.removeEventListener('animationend', end);
+      element.removeEventListener('animationcancel', end);
+      pageInEnds.delete(element);
+      element.style.animation = '';
+    };
+    pageInEnds.set(element, end);
+    element.addEventListener('animationend', end);
+    element.addEventListener('animationcancel', end);
+    // from its start again when another turn comes before it ends
+    element.style.animation = 'none';
+    void element.offsetWidth;
+    element.style.animation = own;
+  }
 }
 
 /** How long a success mark, a notice or a located message stays marked. Kept with reduced motion. */

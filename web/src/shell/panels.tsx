@@ -5,7 +5,7 @@ import type { ReactNode, RefObject } from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import type { Backend } from '../api/backend';
 import { MobileBar } from '../MobileNav';
-import { contentIn } from '../motion';
+import { pageIn } from '../motion';
 import { Scrollbar } from '../Scrollbar';
 import { TokenPrompt } from '../TokenForm';
 
@@ -41,7 +41,8 @@ export function BrowserPanel({ label, className, detail, onBack, list, back, tit
   label: string;
   /** The page's own class, for the width of its list and the like. */
   className?: string;
-  /** What the detail shows (a conversation, a contact, a section): another one comes in as content does (#776). */
+  /** What the detail shows (a conversation, a contact, a section): another one comes in as a page does (pageIn, #776,
+   * #832). */
   detailKey?: string | null;
   /** On a phone, the detail side is shown. */
   detail: boolean;
@@ -61,7 +62,8 @@ export function BrowserPanel({ label, className, detail, onBack, list, back, tit
   useEffect(() => {
     const before = shown.current;
     shown.current = { label, detailKey };
-    if (before.label === label && before.detailKey !== detailKey && ref.current) contentIn(ref.current.children);
+    // a detail where there was none (the first item, picked as the page opens) comes in, but turns no page
+    if (before.label === label && before.detailKey !== detailKey && ref.current) pageIn(ref.current.children, { turn: Boolean(before.detailKey) });
   }, [label, detailKey, ref]);
   return <section className={'panel browser-panel' + (className ? ' ' + className : '') + (detail ? ' show-detail' : '')} aria-label={label}>
     {list}
