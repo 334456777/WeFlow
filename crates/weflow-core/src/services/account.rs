@@ -183,7 +183,7 @@ fn find_accounts(root: &Path) -> Vec<(String, PathBuf)> {
 
 fn default_db_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(home) = dirs::home_dir() {
+    if let Some(home) = crate::sudo_caller::home_dir() {
         if cfg!(target_os = "macos") {
             candidates.push(home.join("Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat"));
             candidates.push(home.join("Library/Application Support/com.tencent.xinWeChat"));

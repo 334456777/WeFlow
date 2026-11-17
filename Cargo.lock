@@ -3301,6 +3301,7 @@ dependencies = [
  "indexmap",
  "jpeg-decoder",
  "jpeg-encoder",
+ "libc",
  "md-5",
  "memchr",
  "proptest",

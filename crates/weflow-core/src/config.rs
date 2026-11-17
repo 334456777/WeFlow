@@ -31,6 +31,8 @@ impl AppContext {
         } else {
             default_home_dir()?
         };
+        // under `sudo`, what root makes here goes back to the caller when the command ends (#855)
+        crate::sudo_caller::adopt(&home_dir);
         crate::private_files::create_dir_all(&home_dir).map_err(|err| {
             AppError::config(format!("failed to create {}: {err}", home_dir.display()))
         })?;
@@ -559,12 +561,13 @@ pub fn resolve_account_dir(db_path: &str, wxid: &str) -> PathBuf {
     direct
 }
 
+/// `path` with a leading `~` replaced by the home folder of the user this runs for (the caller's under `sudo`).
 pub fn expand_home(path: &str) -> PathBuf {
     if path == "~" {
-        return dirs::home_dir().unwrap_or_else(|| PathBuf::from(path));
+        return crate::sudo_caller::home_dir().unwrap_or_else(|| PathBuf::from(path));
     }
     if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
+        if let Some(home) = crate::sudo_caller::home_dir() {
             return home.join(rest);
         }
     }
@@ -658,13 +661,14 @@ pub fn set_saved_config_path(path: &Path) -> AppResult<()> {
         .map_err(|err| AppError::config(format!("failed to write {}: {err}", pointer.display())))
 }
 
+/// `WEFLOW_HOME`, else `weflow` in the config folder of the user this runs for (the caller's under `sudo`, #855).
 fn default_home_dir() -> AppResult<PathBuf> {
     if let Ok(home) = env::var("WEFLOW_HOME") {
         if !home.trim().is_empty() {
             return Ok(PathBuf::from(home));
         }
     }
-    dirs::config_dir()
+    crate::sudo_caller::config_dir()
         .map(|dir| dir.join("weflow"))
         .ok_or_else(|| AppError::config("failed to locate platform config directory"))
 }
