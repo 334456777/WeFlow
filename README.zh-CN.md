@@ -95,6 +95,8 @@ weflow export messages <会话 ID> --format html --out chat.html
 
 完整的流程和各平台的实现见 Wiki 的[密钥获取-数据库密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥)。
 
+Windows 上的完整步骤（下载与校验、管理员终端、数据目录不在默认位置时的处理、网页界面）见 Wiki 的 [Windows 首次设置](https://github.com/334456777/WeFlow/wiki/Windows-首次设置)。
+
 ## CLI 不支持的功能
 
 WeFlow Rust CLI 以**只读**方式打开数据库，不会修改微信数据库；会修改数据库的命令只是占位符。WeFlow 桌面端的一些功能（语音转文字、弹窗等桌面进程功能）也没有实现。
