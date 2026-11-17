@@ -398,10 +398,10 @@ pub async fn call_api(
             } else if e.is_timeout() {
                 tr("API request timed out", "API 请求超时").to_string()
             } else {
-                e.to_string()
+                crate::http_client::failure(e)
             }
         })?;
-    let data = resp.text().await.map_err(|e| e.to_string())?;
+    let data = resp.text().await.map_err(crate::http_client::failure)?;
     let head: String = data.chars().take(200).collect();
     let parsed: Value = serde_json::from_str(&data).map_err(|_| {
         fill(
@@ -440,10 +440,11 @@ pub async fn send_telegram(token: &str, chat_id: &str, text: &str) -> Result<(),
             if e.is_timeout() {
                 tr("Telegram request timed out", "Telegram 请求超时").to_string()
             } else {
-                e.to_string()
+                // the bot token is in the address
+                crate::http_client::failure(e)
             }
         })?;
-    let data = resp.text().await.map_err(|e| e.to_string())?;
+    let data = resp.text().await.map_err(crate::http_client::failure)?;
     let v: Value = serde_json::from_str(&data).map_err(|_| {
         fill(
             tr("Response parse failed: {v0}", "响应解析失败: {v0}"),

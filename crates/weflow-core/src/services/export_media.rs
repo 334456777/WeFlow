@@ -46,7 +46,7 @@ impl ServiceHub {
                 .get(&url)
                 .send()
                 .await
-                .map_err(|e| AppError::runtime(format!("{e:#}")))?;
+                .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
             let code = resp.status().as_u16();
             if code == 301 || code == 302 {
                 if let Some(loc) = resp.headers().get("location").and_then(|v| v.to_str().ok()) {
@@ -60,7 +60,7 @@ impl ServiceHub {
             let bytes = resp
                 .bytes()
                 .await
-                .map_err(|e| AppError::runtime(format!("{e:#}")))?;
+                .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
             if bytes.is_empty() {
                 return Err(AppError::runtime("download failed"));
             }
