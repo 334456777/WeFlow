@@ -46,9 +46,11 @@ function serve(routes: Record<string, (call: Call) => Response>) {
   return calls;
 }
 
-function Wizard({ profile, onChanged = () => {}, onDone = () => {} }: { profile: Profile; onChanged?(): void; onDone?(): void }) {
+function Wizard({ profile, platform, onChanged = () => {}, onDone = () => {} }: {
+  profile: Profile; platform?: 'windows' | 'macos' | 'linux'; onChanged?(): void; onDone?(): void;
+}) {
   const jobs = useJobs(true, 0);
-  return <SetupWizard profile={profile} jobs={jobs} onChanged={onChanged} onDone={onDone} onClose={() => {}} />;
+  return <SetupWizard profile={profile} jobs={jobs} platform={platform} onChanged={onChanged} onDone={onDone} onClose={() => {}} />;
 }
 
 describe('SetupWizard', () => {
@@ -143,6 +145,32 @@ describe('SetupWizard', () => {
     await act(async () => {});
     expect(calls.find(c => c.method === 'PUT')?.body).toEqual({ key: 'decrypt_key', value: 'ab'.repeat(32) });
     expect((field as HTMLInputElement).value).toBe('');
+  });
+
+  it('gets the image keys from the cache on Windows and Linux, and from memory on macOS', async () => {
+    const keyed = { ...PROFILE, dbPath: 'D:/x', wxid: 'wxid_a', decryptKey: true };
+    let saved = ['image_aes_key', 'image_xor_key'];
+    const calls = serve({
+      'POST /key/image': () => ok({ verified: true, saved: ['image_xor_key', 'image_aes_key'] }),
+      'POST /key/image-mem': () => ok({ pid: 7, saved }),
+    });
+    const fetched = async (platform: 'windows' | 'macos' | 'linux') => {
+      cleanup();
+      render(<Wizard profile={keyed} platform={platform} />);
+      await act(async () => {});
+      fireEvent.click(screen.getByRole('button', { name: '获取图片密钥' }));
+      await act(async () => {});
+      const call = calls.at(-1)!;
+      return [call.url, call.body, screen.getByText(/密钥/, { selector: '.setup-note' }).textContent];
+    };
+    expect(await fetched('linux')).toEqual(['/key/image', { save: true }, '已获取图片密钥，并用本机的图片验证过。']);
+    expect(await fetched('windows')).toEqual(['/key/image', { save: true }, '已获取图片密钥，并用本机的图片验证过。']);
+    expect(await fetched('macos')).toEqual(['/key/image-mem', { save: true }, '已获取图片密钥，并用本机的图片验证过。']);
+    // without a thumbnail that confirms the XOR key, only the AES key is saved, and the page says what to do
+    saved = ['image_aes_key'];
+    const [, , aesOnly] = await fetched('macos');
+    expect(aesOnly).toContain('没有取得 XOR 密钥');
+    expect(screen.getByRole('alert')).toBeTruthy();
   });
 
   it('tests the database last, and says where to go back to when it fails', async () => {

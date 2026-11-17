@@ -33,8 +33,12 @@ export const setConfig = (key: string, value: string) => call<Contract.ConfigWri
 /** `db test`: opens the configured database with its key. */
 export const testDatabase = (signal?: AbortSignal) => get<Partial<Contract.DbConnection>>('api/db/test', {}, signal);
 
-/** `key image --save` (Windows): the image keys from WeChat's cache, saved on the server. */
+/** `key image --save` (Windows and Linux): the image keys from WeChat's cache, saved on the server. */
 export const saveImageKeys = () => call<Contract.ImageKeys>('POST', 'key/image', { save: true });
+
+/** `key image-mem --save` (macOS): scans the running WeChat with a thumbnail of the account; `saved` names
+ * `image_xor_key` too when a thumbnail confirmed it. */
+export const saveImageMemKeys = () => call<Contract.ImageMemKey>('POST', 'key/image-mem', { save: true });
 
 /** A database key as `config set decrypt_key` takes it: 64 hexadecimal digits. */
 export const isDatabaseKey = (value: string) => /^[0-9a-fA-F]{64}$/.test(value.trim());

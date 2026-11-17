@@ -249,44 +249,46 @@ impl ServiceHub {
         }
     }
 
-    /// An image AES key found in WeChat's memory from a ciphertext block, on Linux and macOS.
-    #[cfg_attr(
-        not(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos")),
-        allow(unused_variables)
-    )]
+    /// An image AES key found in WeChat's memory from a ciphertext block, on Linux and macOS. `pid` defaults to the
+    /// running WeChat. Without `ciphertext` the block comes from the newest thumbnails of the configured account,
+    /// which also give the XOR key when one of them decodes with the pair.
     pub fn key_image_mem(
         &self,
-        pid: u32,
-        ciphertext: &str,
+        pid: Option<u32>,
+        ciphertext: Option<&str>,
     ) -> AppResult<crate::contract::ImageMemKey> {
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            let image_aes_key = weflow_native::linux_key_helper::image_mem(pid, ciphertext);
-            Ok(crate::contract::ImageMemKey {
-                image_aes_key,
-                pid,
-                saved: Vec::new(),
-            })
-        }
-        #[cfg(target_os = "macos")]
-        {
-            let image_aes_key =
-                weflow_native::macos_key_helper::scan_memory_for_image_key(pid, ciphertext);
-            Ok(crate::contract::ImageMemKey {
-                image_aes_key,
-                pid,
-                saved: Vec::new(),
-            })
-        }
-        #[cfg(all(
-            not(all(target_os = "linux", target_arch = "x86_64")),
-            not(target_os = "macos")
-        ))]
-        {
-            Err(AppError::native(
+        if !IMAGE_MEM_SUPPORTED {
+            return Err(AppError::native(
                 "`key image-mem` is only available on Linux x64 and macOS",
-            ))
+            ));
         }
+        let pid = match pid {
+            Some(pid) => pid,
+            None => find_wechat_pid().ok_or_else(|| {
+                AppError::runtime(
+                    "WeChat process not found; start WeChat and log in, or give its pid",
+                )
+            })?,
+        };
+        let (image_aes_key, image_xor_key) = match ciphertext {
+            Some(ciphertext) => (scan_image_memory(pid, ciphertext), None),
+            None => {
+                let samples = crate::image_keys::memory_samples(&self.account_dir_only()?)?;
+                let aes = crate::image_keys::aes_from_samples(&samples, |ciphertext| {
+                    scan_image_memory(pid, ciphertext)
+                });
+                let xor = aes
+                    .as_deref()
+                    .and_then(|aes| crate::image_keys::xor_from_samples(&samples, aes));
+                (aes, xor)
+            }
+        };
+        Ok(crate::contract::ImageMemKey {
+            image_aes_key,
+            image_xor_key,
+            pid,
+            saved: Vec::new(),
+        })
     }
 
     /// An image AES key found in WeChat's memory by `image_scan_helper`'s
@@ -302,6 +304,7 @@ impl ServiceHub {
             let image_aes_key = weflow_native::image_scan_helper::scan(pid, ciphertext);
             Ok(crate::contract::ImageMemKey {
                 image_aes_key,
+                image_xor_key: None,
                 pid,
                 saved: Vec::new(),
             })
@@ -337,6 +340,33 @@ fn macos_hook_failed(detail: &str, last: bool) -> Option<String> {
             "cannot hook WeChat ({detail}); quit WeChat completely and restart the Mac before trying again, as more tries can set off macOS's protection"
         )
     })
+}
+
+/// Whether `key image-mem` can read WeChat's memory here.
+const IMAGE_MEM_SUPPORTED: bool = cfg!(any(
+    all(target_os = "linux", target_arch = "x86_64"),
+    target_os = "macos"
+));
+
+/// The image AES key that a 16-byte `ciphertext` block (32 hex characters) decrypts with, searched in the writable
+/// memory of WeChat's process `pid`; always `None` where [`IMAGE_MEM_SUPPORTED`] is false.
+#[cfg_attr(
+    not(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos")),
+    expect(unused_variables, reason = "no memory scanner on this platform")
+)]
+fn scan_image_memory(pid: u32, ciphertext: &str) -> Option<String> {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        weflow_native::linux_key_helper::image_mem(pid, ciphertext)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        weflow_native::macos_key_helper::scan_memory_for_image_key(pid, ciphertext)
+    }
+    #[cfg(not(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos")))]
+    {
+        None
+    }
 }
 
 fn find_wechat_pid() -> Option<u32> {

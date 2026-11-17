@@ -31,12 +31,12 @@ pub(crate) enum KeySubcommand {
         #[arg(long)]
         save: bool,
     },
-    /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template)
+    /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template; Windows and Linux x64)
     Image {
         /// Account directory to search for templates (default: the configured account directory)
         #[arg(long)]
         user_dir: Option<String>,
-        /// kvcomm directories (repeat for net, net_1, etc.; default on Windows: the existing xwechat net*/kvcomm directories)
+        /// kvcomm directories (repeat for net, net_1, etc.; default on Windows and Linux x64: the existing xwechat net*/kvcomm directories)
         #[arg(long, action = clap::ArgAction::Append)]
         kvcomm_dir: Vec<PathBuf>,
         /// Maximum filesystem entries scanned for templates in the selected account (default: 10000)
@@ -50,11 +50,11 @@ pub(crate) enum KeySubcommand {
     ImageLocal,
     /// Scan WeChat's memory for the image AES key from a ciphertext block (Linux and macOS)
     ImageMem {
-        /// WeChat process id
-        pid: u32,
-        /// 32 hex characters of the 16-byte encrypted block
-        ciphertext: String,
-        /// Save the key to the active profile instead of printing it
+        /// WeChat process id (default: the running WeChat)
+        pid: Option<u32>,
+        /// 32 hex characters of the 16-byte encrypted block (default: from the newest thumbnails of the configured account, which also give the XOR key)
+        ciphertext: Option<String>,
+        /// Save the keys to the active profile instead of printing them
         #[arg(long)]
         save: bool,
     },
@@ -122,9 +122,9 @@ pub(crate) fn handle_key(
             scan_budget,
             save,
         } => {
-            if !cfg!(windows) {
+            if kvcomm_dir.is_empty() && !weflow_core::image_keys::HAS_DEFAULT_KVCOMM_DIRS {
                 return Err(AppError::native(
-                    "`key image` is not supported on this platform yet",
+                    "`key image` does not know where WeChat keeps its kvcomm cache on this platform; pass --kvcomm-dir, or use `key image-mem --save` on macOS",
                 ));
             }
             let mut directories: Vec<_> = kvcomm_dir
@@ -158,13 +158,20 @@ pub(crate) fn handle_key(
             ciphertext,
             save,
         } => {
-            let mut data = hub.key_image_mem(*pid, ciphertext)?;
+            let mut data = hub.key_image_mem(*pid, ciphertext.as_deref())?;
             if *save {
-                let key = data
-                    .image_aes_key
-                    .take()
-                    .ok_or_else(|| AppError::runtime("no image AES key to save"))?;
-                data.saved = save_keys(config_path, &[("image_aes_key", json!(key))])?;
+                let aes = data.image_aes_key.take().ok_or_else(|| {
+                    AppError::runtime(
+                        "no image AES key found in WeChat's memory; open a few images in WeChat, then try again",
+                    )
+                })?;
+                let mut keys = vec![("image_aes_key", json!(aes))];
+                keys.extend(
+                    data.image_xor_key
+                        .take()
+                        .map(|xor| ("image_xor_key", json!(xor))),
+                );
+                data.saved = save_keys(config_path, &keys)?;
             }
             Ok(json!(data))
         }
@@ -250,6 +257,13 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
             KeyShown::Db => tr("Database key", "数据库密钥"),
             KeyShown::Image => tr("Image keys", "图片密钥"),
             KeyShown::ImageLocal => tr("Image keys", "图片密钥"),
+            KeyShown::ImageMem | KeyShown::ScanImage
+                if data["saved"]
+                    .as_array()
+                    .is_some_and(|saved| saved.iter().any(|key| key == "image_xor_key")) =>
+            {
+                tr("Image keys", "图片密钥")
+            }
             KeyShown::ImageMem | KeyShown::ScanImage => tr("Image AES key", "图片 AES 密钥"),
             KeyShown::Processes => tr("WeChat processes", "微信进程"),
         };
@@ -301,10 +315,16 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
                     tr("No image AES key found", "未找到图片 AES 密钥")
                 ));
             };
-            Some(format!(
-                "{}\nimage_aes_key: {key}\n",
-                tr("Image AES key obtained", "已获取图片 AES 密钥")
-            ))
+            Some(match data["image_xor_key"].as_u64() {
+                Some(xor) => format!(
+                    "{}\nimage_xor_key: {xor}\nimage_aes_key: {key}\n",
+                    tr("Image keys obtained", "已获取图片密钥")
+                ),
+                None => format!(
+                    "{}\nimage_aes_key: {key}\n",
+                    tr("Image AES key obtained", "已获取图片 AES 密钥")
+                ),
+            })
         }
         KeyShown::Processes => {
             let processes = data["processes"].as_array()?;
@@ -415,17 +435,27 @@ mod tests {
         else {
             panic!("image-mem command")
         };
-        assert_eq!(pid, 1234);
-        assert_eq!(ciphertext, "00112233445566778899aabbccddeeff");
+        assert_eq!(pid, Some(1234));
+        assert_eq!(
+            ciphertext.as_deref(),
+            Some("00112233445566778899aabbccddeeff")
+        );
         assert!(!save);
+        // both may be left out: the running WeChat and a thumbnail of the account
         let Commands::Key(KeyCommand {
-            command: KeySubcommand::ImageMem { save, .. },
-        }) = parse(&["1234", "00", "--save"]).unwrap().command
+            command:
+                KeySubcommand::ImageMem {
+                    pid,
+                    ciphertext,
+                    save,
+                },
+        }) = parse(&["--save"]).unwrap().command
         else {
             panic!("image-mem command")
         };
+        assert_eq!((pid, ciphertext), (None, None));
         assert!(save);
-        assert!(parse(&["1234"]).is_err());
+        assert!(parse(&["not-a-pid"]).is_err());
     }
 
     #[test]
@@ -468,6 +498,23 @@ mod tests {
         assert_eq!(scanned, found);
         let missing = keys_summary(KeyShown::ImageMem, &json!({ "pid": 1 })).unwrap();
         assert!(missing.contains("AES") || missing.contains("图片"));
+        let pair = keys_summary(
+            KeyShown::ImageMem,
+            &json!({ "image_aes_key": "00112233445566778899aabbccddeeff", "image_xor_key": 55, "pid": 1 }),
+        )
+        .unwrap();
+        assert!(pair.contains("image_xor_key: 55\n"), "{pair}");
+        let aes_only = keys_summary(
+            KeyShown::ImageMem,
+            &json!({ "saved": ["image_aes_key"], "pid": 1 }),
+        )
+        .unwrap();
+        let both = keys_summary(
+            KeyShown::ImageMem,
+            &json!({ "saved": ["image_aes_key", "image_xor_key"], "pid": 1 }),
+        )
+        .unwrap();
+        assert_ne!(aes_only, both, "saving the XOR key too says so");
     }
 
     #[test]

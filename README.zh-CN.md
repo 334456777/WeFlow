@@ -53,7 +53,7 @@ weflow key db --save
 ```
 > stdout: `已获取数据库密钥，已保存到当前档案`
 
-4. 获取并保存图片密钥（目前只支持 Windows）
+4. 获取并保存图片密钥（Windows 和 Linux x64；macOS 上先登录微信并打开几张图片，再运行 `weflow key image-mem --save`，见 Wiki 的[图片密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥)）
 ```powershell
 weflow key image --save
 ```

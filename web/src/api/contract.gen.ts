@@ -1498,6 +1498,11 @@ export interface ImageLocalKey {
 export interface ImageMemKey {
   /** The 16-byte AES key as 32 hex characters; left out when nothing matched. */
   image_aes_key?: string;
+  /**
+   * `key image-mem` without a ciphertext: the XOR key a thumbnail of the account decodes with together with the
+   * AES key; left out when no thumbnail has an XOR tail that verifies.
+   */
+  image_xor_key?: number;
   pid: number;
   /** With `save`: the profile keys written. */
   saved?: string[];
