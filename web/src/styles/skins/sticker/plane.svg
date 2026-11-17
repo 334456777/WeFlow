@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="360" viewBox="0 0 180 360">
+  <filter id="drawn" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".04" numOctaves="2" seed="21" result="wobble"/>
+    <feDisplacementMap in="SourceGraphic" in2="wobble" scale="4" result="line"/>
+    <feTurbulence type="fractalNoise" baseFrequency="1.1" seed="14" result="grit"/>
+    <feColorMatrix in="grit" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1.7 0 0 0 1.6" result="crayon"/>
+    <feComposite in="line" in2="crayon" operator="in"/>
+  </filter>
+  <g filter="url(#drawn)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- the sun -->
+    <g stroke="#2a1e18">
+      <circle cx="122" cy="70" r="24" fill="#f6cd62" stroke-width="1.8"/>
+      <path d="M122 30 v-12 M122 110 v12 M82 70 h-12 M162 70 h12 M94 42 l-8 -8 M150 98 l8 8 M150 42 l8 -8 M94 98 l-8 8" stroke="#f6cd62" stroke-width="4"/>
+      <path d="M113 66 q3 -4 6 0 M127 66 q3 -4 6 0 M114 78 q8 7 16 0" fill="none" stroke-width="1.6"/>
+    </g>
+    <!-- the plane's loop, dashed -->
+    <path d="M10 330 C40 300 20 250 60 246 C104 242 104 296 74 292 C44 288 60 236 96 218 C116 208 130 206 140 200" fill="none" stroke="#fff4e4" stroke-width="2" stroke-dasharray="6 7"/>
+    <!-- the paper plane -->
+    <path d="M140 200 L178 168 L152 214 Z" fill="#fff4e4" stroke="#2a1e18" stroke-width="1.6"/>
+    <path d="M140 200 L178 168 L150 204 L146 220 Z" fill="#9dd3da" stroke="#2a1e18" stroke-width="1.6"/>
+    <path d="M150 204 L178 168" stroke="#2a1e18" stroke-width="1.2" fill="none"/>
+    <!-- birds -->
+    <path d="M30 150 q6 -8 12 0 q6 -8 12 0" fill="none" stroke="#2a1e18" stroke-width="1.6"/>
+    <path d="M62 176 q4 -6 8 0 q4 -6 8 0" fill="none" stroke="#2a1e18" stroke-width="1.3"/>
+    <!-- a heart and sparkles -->
+    <path d="M32 54 c-6 -10 -20 -2 -12 8 l12 12 l12 -12 c8 -10 -6 -18 -12 -8 Z" fill="#f4afa0" stroke="#2a1e18" stroke-width="1.5"/>
+    <path d="M150 270 l2.5 8 l8 2.5 l-8 2.5 l-2.5 8 l-2.5 -8 l-8 -2.5 l8 -2.5 Z" fill="#fff4e4" stroke="#2a1e18" stroke-width="1"/>
+    <path d="M22 230 l1.5 5 l5 1.5 l-5 1.5 l-1.5 5 l-1.5 -5 l-5 -1.5 l5 -1.5 Z" fill="#f6cd62"/>
+    <path d="M118 330 l1.5 5 l5 1.5 l-5 1.5 l-1.5 5 l-1.5 -5 l-5 -1.5 l5 -1.5 Z" fill="#fff4e4"/>
+    <circle cx="80" cy="120" r="2" fill="#fff4e4"/>
+    <circle cx="164" cy="230" r="1.6" fill="#fff4e4"/>
+  </g>
+</svg>

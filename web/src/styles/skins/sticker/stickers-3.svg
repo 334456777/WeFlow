@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="1.5" dy="3" stdDeviation="1.6" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <g stroke="#fffdf7" stroke-width="7" stroke-linejoin="round" paint-order="stroke">
+    <!-- a sun, smiling -->
+    <g transform="translate(70 74) rotate(8)" filter="url(#lift)">
+      <path d="M0 -40 L8 -26 L24 -32 L23 -16 L39 -12 L28 0 L39 12 L23 16 L24 32 L8 26 L0 40 L-8 26 L-24 32 L-23 16 L-39 12 L-28 0 L-39 -12 L-23 -16 L-24 -32 L-8 -26 Z" fill="#f6b27e"/>
+      <circle r="20" fill="#f6cd62" stroke="none"/>
+      <g stroke="none" fill="#2a1e18"><circle cx="-7" cy="-3" r="2.4"/><circle cx="7" cy="-3" r="2.4"/></g>
+      <path d="M-7 6 q7 7 14 0" fill="none" stroke="#2a1e18" stroke-width="2" stroke-linecap="round" paint-order="normal"/>
+    </g>
+    <!-- a moon -->
+    <g transform="translate(152 140) rotate(-16)" filter="url(#lift)">
+      <path d="M10 -24 A26 26 0 1 0 10 24 A30 30 0 0 1 10 -24 Z" fill="#b7b5e8"/>
+    </g>
+    <!-- a little star -->
+    <g transform="translate(74 192) rotate(18)" filter="url(#lift)">
+      <path d="M0 -24 L6.4 -8.8 L22.8 -7.4 L10.3 3.4 L14.1 19.4 L0 10.9 L-14.1 19.4 L-10.3 3.4 L-22.8 -7.4 L-6.4 -8.8 Z" fill="#9dd3da"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="1.5" dy="3" stdDeviation="1.6" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <g stroke="#fffdf7" stroke-width="7" stroke-linejoin="round" paint-order="stroke">
+    <!-- a speech bubble, typing -->
+    <g transform="translate(70 70) rotate(-10)" filter="url(#lift)">
+      <path d="M-34 -18 Q-34 -26 -26 -26 L26 -26 Q34 -26 34 -18 L34 10 Q34 18 26 18 L-6 18 L-20 30 L-16 18 L-26 18 Q-34 18 -34 10 Z" fill="#fff4e4"/>
+      <g stroke="none" fill="#2a1e18"><circle cx="-14" cy="-4" r="4"/><circle cx="0" cy="-4" r="4"/><circle cx="14" cy="-4" r="4"/></g>
+    </g>
+    <!-- a letter, sealed with a heart -->
+    <g transform="translate(150 134) rotate(12)" filter="url(#lift)">
+      <path d="M-30 -20 L30 -20 L30 20 L-30 20 Z" fill="#9dd3da"/>
+      <path d="M-30 -20 L0 4 L30 -20" fill="none" stroke="#fffdf7" stroke-width="3" paint-order="normal"/>
+      <path d="M0 14 C-12 6 -10 -4 0 2 C10 -4 12 6 0 14 Z" fill="#e8735f" stroke="none"/>
+    </g>
+    <!-- two notes -->
+    <g transform="translate(74 188) rotate(-6)" filter="url(#lift)">
+      <path d="M-14 12 V-22 L18 -28 V6" fill="none" stroke-width="10"/>
+      <ellipse cx="-20" cy="14" rx="10" ry="8" fill="#b7b5e8"/>
+      <ellipse cx="12" cy="8" rx="10" ry="8" fill="#b7b5e8"/>
+      <path d="M-11 13 V-22 L21 -28 V7 M-11 -12 L21 -18" fill="none" stroke="#2a1e18" stroke-width="3" stroke-linecap="round" paint-order="normal"/>
+      <g stroke="none"><ellipse cx="-20" cy="14" rx="9" ry="7" fill="#b7b5e8"/><ellipse cx="12" cy="8" rx="9" ry="7" fill="#b7b5e8"/></g>
+    </g>
+  </g>
+</svg>

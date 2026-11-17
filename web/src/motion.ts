@@ -27,17 +27,24 @@ export function contentIn(elements: Iterable<Element>, root: Element = document.
 /** The end of an animation pageIn played on an element, which then gives its `animation` back to its style sheets. */
 const pageInEnds = new WeakMap<Element, (event: Event) => void>();
 
+/** Whether `element` runs an animation of the name `event` is about: a CSS animation, as getAnimations() lists it. */
+function stillRuns(element: Element, event: Event): boolean {
+  const name = (event as AnimationEvent).animationName;
+  return Boolean(element.getAnimations?.().some(animation => 'animationName' in animation && animation.animationName === name && animation.playState === 'running'));
+}
+
 /**
  * Brings in another page, or another item's detail in a page (#776, #832), and tells the skin: the page turns
  * (pageTurn.ts), which changes its decoration (Backdrop.tsx), and the elements come in by the skin's own animation,
  * `--page-in` (an `animation`, its keyframes in the skin's sheet), or as contentIn brings them where it has none.
  * Nothing with reduced motion: no animation, and the decoration stays as it is. Nothing waits for it either (#780).
- * `turn: false` for content that comes in without another page taking a page's place: a detail where there was none
- * (the first item, picked as a page opens).
+ * `detail` for another item's detail in the same page, which turns the page but leaves what is stuck on it; `turn:
+ * false` for content that comes in without another page taking a page's place: a detail where there was none (the
+ * first item, picked as a page opens).
  */
-export function pageIn(elements: Iterable<Element>, { turn = true, root = document.documentElement }: { turn?: boolean; root?: Element } = {}): void {
+export function pageIn(elements: Iterable<Element>, { turn = true, detail = false, root = document.documentElement }: { turn?: boolean; detail?: boolean; root?: Element } = {}): void {
   if (!durationMs('--duration-base', root)) return;
-  if (turn) turnPage();
+  if (turn) turnPage({ detail });
   const own = getComputedStyle(root).getPropertyValue('--page-in').trim();
   if (!own || own === 'none') {
     contentIn(elements, root);
@@ -50,6 +57,9 @@ export function pageIn(elements: Iterable<Element>, { turn = true, root = docume
     const end = (event: Event) => {
       // an animation inside it ends too, and bubbles up
       if (event.target !== element) return;
+      // Started again before it ended (below), the animation is cancelled first, and the browser says so only at its
+      // next frame, once it runs again: that is not the end of the one running.
+      if (event.type === 'animationcancel' && stillRuns(element, event)) return;
       element.removeEventListener('animationend', end);
       element.removeEventListener('animationcancel', end);
       pageInEnds.delete(element);

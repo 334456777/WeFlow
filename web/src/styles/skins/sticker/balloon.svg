@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="360" viewBox="0 0 180 360">
+  <filter id="drawn" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".04" numOctaves="2" seed="29" result="wobble"/>
+    <feDisplacementMap in="SourceGraphic" in2="wobble" scale="4" result="line"/>
+    <feTurbulence type="fractalNoise" baseFrequency="1.1" seed="5" result="grit"/>
+    <feColorMatrix in="grit" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1.7 0 0 0 1.6" result="crayon"/>
+    <feComposite in="line" in2="crayon" operator="in"/>
+  </filter>
+  <clipPath id="envelope"><path d="M88 40 C130 40 146 76 136 108 C128 132 108 146 100 162 L76 162 C68 146 48 132 40 108 C30 76 46 40 88 40 Z"/></clipPath>
+  <clipPath id="far"><path d="M-10 300 Q50 250 110 290 Q150 268 190 286 V360 H-10 Z"/></clipPath>
+  <g filter="url(#drawn)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- small clouds and birds -->
+    <path d="M18 54 C8 54 8 42 18 42 C18 32 34 30 38 38 C46 32 58 38 54 48 C62 50 60 58 52 58 Z" fill="#fff1df" stroke="#2a1e18" stroke-width="1.4"/>
+    <path d="M140 196 C130 196 130 184 140 184 C140 174 156 172 160 180 C168 174 180 180 176 190 C184 192 182 200 174 200 Z" fill="#fff1df" stroke="#2a1e18" stroke-width="1.4"/>
+    <path d="M136 30 q5 -7 10 0 q5 -7 10 0 M20 196 q4 -6 8 0 q4 -6 8 0" fill="none" stroke="#2a1e18" stroke-width="1.4"/>
+    <!-- the balloon, in stripes -->
+    <path d="M88 40 C130 40 146 76 136 108 C128 132 108 146 100 162 L76 162 C68 146 48 132 40 108 C30 76 46 40 88 40 Z" fill="#f4afa0"/>
+    <g clip-path="url(#envelope)">
+      <path d="M58 30 C48 80 60 130 76 170 L88 170 C80 130 74 80 78 30 Z M98 30 C102 80 96 130 88 170 L100 170 C116 130 128 80 118 30 Z" fill="#f6cd62"/>
+      <path d="M78 30 C74 80 80 130 88 170 C96 130 102 80 98 30 Z" fill="#9dd3da"/>
+      <path d="M30 96 H150" stroke="#fff4e4" stroke-width="3" fill="none"/>
+    </g>
+    <path d="M88 40 C130 40 146 76 136 108 C128 132 108 146 100 162 L76 162 C68 146 48 132 40 108 C30 76 46 40 88 40 Z" fill="none" stroke="#2a1e18" stroke-width="1.8"/>
+    <path d="M78 162 L80 186 M98 162 L96 186" stroke="#2a1e18" stroke-width="1.3" fill="none"/>
+    <path d="M76 186 L100 186 L98 204 L78 204 Z" fill="#c98b5e" stroke="#2a1e18" stroke-width="1.6"/>
+    <path d="M78 194 H98" stroke="#2a1e18" stroke-width="1" fill="none"/>
+    <!-- the hills, near and far -->
+    <path d="M-10 300 Q50 250 110 290 Q150 268 190 286 V360 H-10 Z" fill="#5b6aa8"/>
+    <g clip-path="url(#far)" fill="none" stroke="#8f9bd8" stroke-width="3">
+      <path d="M-10 296 L60 270 M0 312 L100 276 M20 326 L150 280 M60 340 L190 292 M110 352 L190 318"/>
+    </g>
+    <path d="M-10 300 Q50 250 110 290 Q150 268 190 286" fill="none" stroke="#2a1e18" stroke-width="1.6"/>
+    <path d="M-10 330 Q60 298 120 326 Q160 316 190 322 V360 H-10 Z" fill="#a9d9b6" stroke="#2a1e18" stroke-width="1.8"/>
+    <path d="M30 336 l4 -10 l4 10 M120 340 l4 -10 l4 10 M150 336 l3 -8 l3 8" fill="none" stroke="#5f9d72" stroke-width="2"/>
+    <!-- sparkles -->
+    <path d="M150 120 l2 6.5 l6.5 2 l-6.5 2 l-2 6.5 l-2 -6.5 l-6.5 -2 l6.5 -2 Z" fill="#fff4e4" stroke="#2a1e18" stroke-width="1"/>
+    <path d="M24 126 l1.5 5 l5 1.5 l-5 1.5 l-1.5 5 l-1.5 -5 l-5 -1.5 l5 -1.5 Z" fill="#f6cd62"/>
+  </g>
+</svg>

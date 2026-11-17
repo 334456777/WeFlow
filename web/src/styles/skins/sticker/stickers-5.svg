@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="1.5" dy="3" stdDeviation="1.6" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <g stroke="#fffdf7" stroke-width="7" stroke-linejoin="round" paint-order="stroke">
+    <!-- a cat's face -->
+    <g transform="translate(70 74) rotate(-8)" filter="url(#lift)">
+      <path d="M-30 -8 L-26 -36 L-8 -22 Q0 -24 8 -22 L26 -36 L30 -8 Q34 26 0 28 Q-34 26 -30 -8 Z" fill="#f6b27e"/>
+      <g stroke="none">
+        <path d="M-23 -27 L-12 -20 L-22 -14 Z M23 -27 L12 -20 L22 -14 Z" fill="#f4afa0"/>
+        <circle cx="-10" cy="0" r="3" fill="#2a1e18"/><circle cx="10" cy="0" r="3" fill="#2a1e18"/>
+        <circle cx="-18" cy="9" r="3.5" fill="#f4afa0"/><circle cx="18" cy="9" r="3.5" fill="#f4afa0"/>
+        <path d="M-2 6 L2 6 L0 9 Z" fill="#2a1e18"/>
+      </g>
+      <path d="M0 9 q-4 5 -8 2 M0 9 q4 5 8 2 M-34 2 h-8 M-34 8 l-8 3 M34 2 h8 M34 8 l8 3" fill="none" stroke="#2a1e18" stroke-width="1.6" stroke-linecap="round" paint-order="normal"/>
+    </g>
+    <!-- a fish -->
+    <g transform="translate(148 132) rotate(-18)" filter="url(#lift)">
+      <path d="M-26 0 Q-6 -22 18 -4 L32 -16 L30 0 L32 16 L18 4 Q-6 22 -26 0 Z" fill="#9dd3da"/>
+      <g stroke="none"><circle cx="-14" cy="-3" r="2.6" fill="#2a1e18"/></g>
+      <path d="M-2 -10 q5 10 0 20 M6 -8 q4 8 0 16" fill="none" stroke="#5c9aa6" stroke-width="1.8" stroke-linecap="round" paint-order="normal"/>
+    </g>
+    <!-- a paw -->
+    <g transform="translate(72 190) rotate(14)" filter="url(#lift)">
+      <path d="M0 2 C14 2 20 16 14 22 C8 27 -8 27 -14 22 C-20 16 -14 2 0 2 Z M-20 -6 a6.5 8 -20 1 1 0.1 0 Z M-7 -16 a6.5 8.5 0 1 1 0.1 0 Z M8 -16 a6.5 8.5 0 1 1 0.1 0 Z M21 -6 a6.5 8 20 1 1 0.1 0 Z" fill="#f4afa0"/>
+    </g>
+  </g>
+</svg>

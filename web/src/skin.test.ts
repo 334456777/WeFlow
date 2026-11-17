@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from '#test';
 import { applySkin, DEFAULT_SKIN, savedSkin, SKIN_KEY, SKINS, type Skin, useSkin } from './skin';
 
 const root = document.documentElement;
+/** The skins this page has; each test's own come after them and go after it. */
+const BUILT_IN = SKINS.length;
 
 /** Another skin, whose sheet arrives or fails when told to; each test names its own, as a sheet is fetched once. */
 function another(id: string, shapes?: boolean) {
@@ -28,7 +30,7 @@ beforeEach(() => {
   localStorage.clear(); delete root.dataset.skin; delete root.dataset.skinPending; delete root.dataset.shapes;
   document.head.querySelectorAll('style[data-skin]').forEach(sheet => sheet.remove());
 });
-afterEach(() => { cleanup(); SKINS.splice(1); });
+afterEach(() => { cleanup(); SKINS.splice(BUILT_IN); });
 
 describe('the skin (#830)', () => {
   it('is the default without a choice, and for a skin this page does not have', () => {

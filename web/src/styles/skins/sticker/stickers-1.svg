@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="1.5" dy="3" stdDeviation="1.6" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <g stroke="#fffdf7" stroke-width="7" stroke-linejoin="round" paint-order="stroke">
+    <!-- a star -->
+    <g transform="translate(62 68) rotate(-10)" filter="url(#lift)">
+      <path d="M0 -42 L11.2 -15.4 L39.9 -13 L18.1 5.9 L24.7 34 L0 19 L-24.7 34 L-18.1 5.9 L-39.9 -13 L-11.2 -15.4 Z" fill="#f6cd62"/>
+      <g stroke="none" fill="#2a1e18"><circle cx="-7" cy="0" r="2.6"/><circle cx="7" cy="0" r="2.6"/></g>
+      <path d="M-5 8 q5 5 10 0" fill="none" stroke="#2a1e18" stroke-width="2" paint-order="normal"/>
+    </g>
+    <!-- a heart -->
+    <g transform="translate(150 122) rotate(12)" filter="url(#lift)">
+      <path d="M0 24 C-36 0 -28 -32 0 -15 C28 -32 36 0 0 24 Z" fill="#f4afa0"/>
+      <path d="M-14 -12 q-6 4 -5 11" fill="none" stroke="#fff4e4" stroke-width="3" stroke-linecap="round" paint-order="normal"/>
+    </g>
+    <!-- a tick -->
+    <g transform="translate(72 186) rotate(-6)" filter="url(#lift)">
+      <circle r="26" fill="#a9d9b6"/>
+      <path d="M-12 0 l8 9 l16 -18" fill="none" stroke="#2a1e18" stroke-width="4.5" stroke-linecap="round" paint-order="normal"/>
+    </g>
+  </g>
+</svg>

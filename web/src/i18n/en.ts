@@ -1035,6 +1035,7 @@ export const en: Record<string, string> = {
   "颜色主题": "Theme",
   "皮肤": "Skin",
   "新拟态": "Neumorphism",
+  "贴纸": "Paper stickers",
   "与颜色主题分开选择，浅色、深色都有。": "Chosen apart from the theme; it comes in light and dark.",
   "「{skin}」只有{theme}，选另一种颜色主题时也是{theme}。": "{skin} comes in {theme} only: in the other theme it stays {theme}.",
   "只保存在这个浏览器里。": "Kept in this browser only.",

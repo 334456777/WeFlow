@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="1.5" dy="3" stdDeviation="1.6" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <g stroke="#fffdf7" stroke-width="7" stroke-linejoin="round" paint-order="stroke">
+    <!-- a flower -->
+    <g transform="translate(68 72) rotate(-14) scale(1.4)" filter="url(#lift)">
+      <!-- the white margin of all the petals first, then the petals, so that none covers another -->
+      <g fill="#fffdf7" stroke-width="5">
+        <circle cy="-15" r="13"/><circle cx="14.3" cy="-4.6" r="13"/><circle cx="8.8" cy="12.1" r="13"/>
+        <circle cx="-8.8" cy="12.1" r="13"/><circle cx="-14.3" cy="-4.6" r="13"/>
+      </g>
+      <g fill="#f4afa0" stroke="none">
+        <circle cy="-15" r="13"/><circle cx="14.3" cy="-4.6" r="13"/><circle cx="8.8" cy="12.1" r="13"/>
+        <circle cx="-8.8" cy="12.1" r="13"/><circle cx="-14.3" cy="-4.6" r="13"/>
+      </g>
+      <circle r="10" fill="#f6cd62" stroke="none"/>
+      <g stroke="none" fill="#2a1e18"><circle cx="-4" cy="-1" r="1.8"/><circle cx="4" cy="-1" r="1.8"/></g>
+    </g>
+    <!-- a leaf -->
+    <g transform="translate(150 132) rotate(20)" filter="url(#lift)">
+      <path d="M-24 14 C-18 -16 12 -24 26 -20 C22 8 -2 20 -24 14 Z" fill="#a9d9b6"/>
+      <path d="M-18 10 C-6 0 6 -8 18 -14" fill="none" stroke="#5f9d72" stroke-width="2" stroke-linecap="round" paint-order="normal"/>
+    </g>
+    <!-- a paper plane -->
+    <g transform="translate(74 190) rotate(-8)" filter="url(#lift)">
+      <path d="M-26 6 L28 -20 L4 22 Z" fill="#fff4e4"/>
+      <path d="M-26 6 L28 -20 L-6 10 L-10 26 Z" fill="#9dd3da"/>
+    </g>
+  </g>
+</svg>

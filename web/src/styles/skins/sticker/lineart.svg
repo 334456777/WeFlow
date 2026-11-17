@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="360" viewBox="0 0 180 360">
+  <!-- drawn with a light gel pen: one line, a little unsteady, and a few colours dabbed in -->
+  <filter id="pen" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="31" result="wobble"/>
+    <feDisplacementMap in="SourceGraphic" in2="wobble" scale="3"/>
+  </filter>
+  <g filter="url(#pen)" stroke="#fff4e4" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- a lamp hanging from above, lit -->
+    <path d="M118 0 V96"/>
+    <path d="M102 112 Q104 96 118 96 Q132 96 134 112 Z" fill="#f6cd62" fill-opacity=".85"/>
+    <path d="M110 120 l-6 8 M118 122 v10 M126 120 l6 8" stroke-dasharray="3 4"/>
+    <!-- the plant: three leaves on their stems -->
+    <path d="M60 262 C54 232 40 222 34 212 M62 262 C68 230 86 214 94 204 M61 262 C61 226 60 196 62 176"/>
+    <path d="M34 212 C10 208 6 180 26 172 C40 168 48 190 34 212 Z" fill="#a9d9b6" fill-opacity=".7"/>
+    <path d="M30 206 C26 194 24 186 26 178 M24 196 l-6 -2 M28 188 l-7 -4"/>
+    <path d="M94 204 C118 206 126 178 106 168 C92 162 82 186 94 204 Z" fill="#a9d9b6" fill-opacity=".7"/>
+    <path d="M98 198 C102 186 104 178 104 170 M102 188 l7 -3 M104 180 l6 -4"/>
+    <path d="M62 176 C40 168 40 138 62 128 C84 138 84 168 62 176 Z" fill="#a9d9b6" fill-opacity=".7"/>
+    <path d="M62 172 V134 M62 160 l-8 -6 M62 160 l8 -6 M62 148 l-7 -6 M62 148 l7 -6"/>
+    <!-- its pot -->
+    <path d="M34 262 H88 L82 302 H40 Z" fill="#f6b27e" fill-opacity=".8"/>
+    <path d="M32 262 H90 V270 H32 Z"/>
+    <path d="M44 282 q6 -4 12 0 t12 0 t12 0"/>
+    <!-- the books under it -->
+    <path d="M18 302 H104 V318 H18 Z" fill="#f4afa0" fill-opacity=".75"/>
+    <path d="M12 318 H112 V336 H12 Z" fill="#9dd3da" fill-opacity=".75"/>
+    <path d="M26 302 V318 M96 318 V336 M24 326 H48"/>
+    <!-- a mug beside, steaming -->
+    <path d="M124 304 H156 L153 336 H127 Z" fill="#b7b5e8" fill-opacity=".7"/>
+    <path d="M156 310 q12 0 10 10 q-2 8 -12 8"/>
+    <path d="M132 296 c-4 -6 4 -10 0 -16 M144 296 c-4 -6 4 -10 0 -16"/>
+    <!-- a line under it all, and stars -->
+    <path d="M4 340 H176"/>
+    <path d="M28 52 l2 6 l6 2 l-6 2 l-2 6 l-2 -6 l-6 -2 l6 -2 Z M154 160 l1.6 4.8 l4.8 1.6 l-4.8 1.6 l-1.6 4.8 l-1.6 -4.8 l-4.8 -1.6 l4.8 -1.6 Z" fill="#fff4e4"/>
+    <path d="M58 72 a3 3 0 1 0 0.1 0 M150 40 a2.4 2.4 0 1 0 0.1 0"/>
+  </g>
+</svg>

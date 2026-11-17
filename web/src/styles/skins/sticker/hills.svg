@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="360" viewBox="0 0 180 360">
+  <filter id="drawn" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".04" numOctaves="2" seed="25" result="wobble"/>
+    <feDisplacementMap in="SourceGraphic" in2="wobble" scale="4" result="line"/>
+    <feTurbulence type="fractalNoise" baseFrequency="1.1" seed="16" result="grit"/>
+    <feColorMatrix in="grit" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1.7 0 0 0 1.6" result="crayon"/>
+    <feComposite in="line" in2="crayon" operator="in"/>
+  </filter>
+  <clipPath id="far"><path d="M-10 236 Q30 206 70 226 Q112 196 190 222 V360 H-10 Z"/></clipPath>
+  <clipPath id="middle"><path d="M-10 262 Q40 236 92 256 Q140 236 190 250 V360 H-10 Z"/></clipPath>
+  <clipPath id="near"><path d="M-10 290 Q50 264 110 286 Q150 274 190 282 V360 H-10 Z"/></clipPath>
+  <clipPath id="sun"><circle cx="112" cy="94" r="24"/></clipPath>
+  <g filter="url(#drawn)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- the sun, its rays in short strokes -->
+    <path d="M112 58 v-12 M112 130 v12 M76 94 h-12 M148 94 h12 M87 69 l-8 -8 M137 119 l8 8 M137 69 l8 -8 M87 119 l-8 8" stroke="#f6b27e" stroke-width="4" fill="none"/>
+    <circle cx="112" cy="94" r="24" fill="#f6cd62"/>
+    <g clip-path="url(#sun)" stroke="#f6b27e" stroke-width="2.4" fill="none">
+      <path d="M86 104 L110 72 M92 112 L122 74 M100 118 L132 80 M110 120 L138 88"/>
+    </g>
+    <circle cx="112" cy="94" r="24" fill="none" stroke="#2a1e18" stroke-width="1.8"/>
+    <!-- clouds and birds -->
+    <path d="M20 140 C8 140 8 126 20 126 C20 114 38 112 42 122 C50 114 66 120 62 132 C70 134 68 142 60 142 Z" fill="#fff1df" stroke="#2a1e18" stroke-width="1.5"/>
+    <path d="M24 138 L36 132 M34 140 L50 132" stroke="#f4afa0" stroke-width="2.2" fill="none"/>
+    <path d="M118 170 C110 170 110 160 118 160 C118 152 132 150 135 158 C142 152 154 158 150 166 C156 168 154 172 148 172 Z" fill="#fff1df" stroke="#2a1e18" stroke-width="1.4"/>
+    <path d="M34 60 q6 -8 12 0 q6 -8 12 0 M60 82 q4 -6 8 0 q4 -6 8 0" fill="none" stroke="#2a1e18" stroke-width="1.5"/>
+    <!-- the far hills -->
+    <path d="M-10 236 Q30 206 70 226 Q112 196 190 222 V360 H-10 Z" fill="#5b6aa8"/>
+    <g clip-path="url(#far)" stroke="#8f9bd8" stroke-width="3" fill="none">
+      <path d="M-10 240 L50 214 M-4 256 L84 222 M10 270 L120 214 M40 280 L160 212 M90 284 L190 226 M140 280 L190 254"/>
+    </g>
+    <path d="M-10 236 Q30 206 70 226 Q112 196 190 222" fill="none" stroke="#2a1e18" stroke-width="1.7"/>
+    <!-- the middle hill, its house and trees -->
+    <path d="M-10 262 Q40 236 92 256 Q140 236 190 250 V360 H-10 Z" fill="#8f9bd8"/>
+    <g clip-path="url(#middle)" stroke="#b7b5e8" stroke-width="3" fill="none">
+      <path d="M-10 270 L60 244 M0 286 L100 250 M30 296 L140 250 M80 300 L190 252 M130 300 L190 274"/>
+    </g>
+    <path d="M-10 262 Q40 236 92 256 Q140 236 190 250" fill="none" stroke="#2a1e18" stroke-width="1.7"/>
+    <path d="M118 262 V242 L132 230 L146 242 V262 Z" fill="#fff4e4" stroke="#2a1e18" stroke-width="1.6"/>
+    <path d="M113 245 L132 226 L151 245" fill="none" stroke="#e8735f" stroke-width="5"/>
+    <path d="M113 245 L132 226 L151 245" fill="none" stroke="#2a1e18" stroke-width="1.4"/>
+    <rect x="122" y="244" width="8" height="8" fill="#f6cd62" stroke="#2a1e18" stroke-width="1.2"/>
+    <rect x="135" y="248" width="7" height="14" fill="#c98b5e" stroke="#2a1e18" stroke-width="1.2"/>
+    <path d="M140 230 V220 h5 V234" fill="#e8735f" stroke="#2a1e18" stroke-width="1.2"/>
+    <path d="M143 214 c-4 -6 4 -9 0 -15" fill="none" stroke="#fff4e4" stroke-width="1.6"/>
+    <path d="M38 262 L48 234 L58 262 Z M62 260 L70 240 L78 260 Z" fill="#5f9d72" stroke="#2a1e18" stroke-width="1.4"/>
+    <path d="M48 262 v6 M70 260 v6" stroke="#2a1e18" stroke-width="1.6"/>
+    <!-- the near hill, the path winding down to the house -->
+    <path d="M-10 290 Q50 264 110 286 Q150 274 190 282 V360 H-10 Z" fill="#a9d9b6"/>
+    <g clip-path="url(#near)" stroke="#5f9d72" stroke-width="2" fill="none">
+      <path d="M14 300 l4 -8 l4 8 M44 292 l3 -7 l3 7 M150 300 l4 -8 l4 8 M170 296 l3 -7 l3 7 M24 330 l4 -8 l4 8 M160 330 l3 -7 l3 7 M60 344 l4 -8 l4 8"/>
+    </g>
+    <path d="M138 262 C128 276 146 290 120 304 C96 318 108 334 84 360" fill="none" stroke="#fff4e4" stroke-width="9"/>
+    <path d="M138 262 C128 276 146 290 120 304 C96 318 108 334 84 360" fill="none" stroke="#c98b5e" stroke-width="1.2" stroke-dasharray="3 6"/>
+    <path d="M-10 290 Q50 264 110 286 Q150 274 190 282" fill="none" stroke="#2a1e18" stroke-width="1.7"/>
+    <!-- flowers in the grass -->
+    <g stroke="#2a1e18" stroke-width="1.1">
+      <circle cx="30" cy="316" r="4.5" fill="#f4afa0"/><circle cx="58" cy="306" r="4" fill="#f6cd62"/>
+      <circle cx="146" cy="318" r="4.5" fill="#b7b5e8"/><circle cx="168" cy="340" r="4" fill="#f4afa0"/>
+      <circle cx="40" cy="342" r="4" fill="#f6cd62"/>
+    </g>
+    <!-- sparkles -->
+    <path d="M154 40 l2 6.5 l6.5 2 l-6.5 2 l-2 6.5 l-2 -6.5 l-6.5 -2 l6.5 -2 Z" fill="#fff4e4" stroke="#2a1e18" stroke-width="1"/>
+    <path d="M70 32 l1.5 5 l5 1.5 l-5 1.5 l-1.5 5 l-1.5 -5 l-5 -1.5 l5 -1.5 Z" fill="#f6cd62"/>
+  </g>
+</svg>

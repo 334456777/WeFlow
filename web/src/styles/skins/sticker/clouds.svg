@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="360" viewBox="0 0 180 360">
+  <filter id="drawn" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="7" result="wobble"/>
+    <feDisplacementMap in="SourceGraphic" in2="wobble" scale="4" result="line"/>
+    <feTurbulence type="fractalNoise" baseFrequency="1.1" seed="2" result="grit"/>
+    <feColorMatrix in="grit" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1.7 0 0 0 1.6" result="crayon"/>
+    <feComposite in="line" in2="crayon" operator="in"/>
+  </filter>
+  <clipPath id="cloud">
+    <path d="M18 300 C2 300 0 270 20 266 C14 240 40 226 58 238 C60 206 98 196 114 222 C130 200 168 210 162 242 C182 248 182 282 160 290 C164 304 150 312 136 306 C120 318 96 318 84 308 C70 318 44 318 36 306 C28 310 20 308 18 300 Z"/>
+  </clipPath>
+  <g filter="url(#drawn)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- the moon and the stars over the cloud -->
+    <path d="M128 52 a26 26 0 1 0 22 40 a21 21 0 1 1 -22 -40 Z" fill="#f6cd62" stroke="#2a1e18" stroke-width="1.6"/>
+    <path d="M40 40 l2.5 8 l8 2.5 l-8 2.5 l-2.5 8 l-2.5 -8 l-8 -2.5 l8 -2.5 Z" fill="#fff4e4" stroke="#2a1e18" stroke-width="1"/>
+    <path d="M78 98 l1.8 6 l6 1.8 l-6 1.8 l-1.8 6 l-1.8 -6 l-6 -1.8 l6 -1.8 Z" fill="#fff4e4"/>
+    <path d="M24 150 l1.5 5 l5 1.5 l-5 1.5 l-1.5 5 l-1.5 -5 l-5 -1.5 l5 -1.5 Z" fill="#f6cd62"/>
+    <path d="M156 150 l1.5 5 l5 1.5 l-5 1.5 l-1.5 5 l-1.5 -5 l-5 -1.5 l5 -1.5 Z" fill="#fff4e4"/>
+    <circle cx="104" cy="160" r="2" fill="#fff4e4"/>
+    <circle cx="58" cy="124" r="1.6" fill="#fff4e4"/>
+    <circle cx="150" cy="124" r="1.6" fill="#f6cd62"/>
+    <!-- the cloud, cream, shaded peach and indigo from below in crayon strokes -->
+    <path d="M18 300 C2 300 0 270 20 266 C14 240 40 226 58 238 C60 206 98 196 114 222 C130 200 168 210 162 242 C182 248 182 282 160 290 C164 304 150 312 136 306 C120 318 96 318 84 308 C70 318 44 318 36 306 C28 310 20 308 18 300 Z" fill="#fff1df"/>
+    <g clip-path="url(#cloud)" fill="none" stroke-width="3.2">
+      <path d="M0 262 L60 236 M0 276 L80 242 M4 290 L110 246 M16 302 L140 250 M40 312 L170 258 M80 318 L184 272 M120 320 L184 292" stroke="#f4afa0"/>
+      <path d="M10 306 L70 284 M36 316 L120 288 M90 320 L170 292 M130 320 L184 300" stroke="#8f9bd8"/>
+    </g>
+    <path d="M18 300 C2 300 0 270 20 266 C14 240 40 226 58 238 C60 206 98 196 114 222 C130 200 168 210 162 242 C182 248 182 282 160 290 C164 304 150 312 136 306 C120 318 96 318 84 308 C70 318 44 318 36 306 C28 310 20 308 18 300 Z" fill="none" stroke="#2a1e18" stroke-width="1.8"/>
+    <path d="M58 238 C56 248 60 256 66 260 M114 222 C110 232 112 240 118 244 M20 266 C26 270 30 274 32 280" fill="none" stroke="#2a1e18" stroke-width="1.3"/>
+    <!-- a small cloud aside -->
+    <path d="M122 186 C112 186 112 172 122 172 C122 160 140 158 144 168 C152 162 164 168 160 178 C168 182 164 190 156 190 Z" fill="#fff1df" stroke="#2a1e18" stroke-width="1.5"/>
+  </g>
+</svg>

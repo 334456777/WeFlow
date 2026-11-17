@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, describe, expect, it, onTestFinished, vi } from '#test';
 import { App } from './App';
 import { setToken } from './api/client';
-import { SKIN_KEY, SKINS } from './skin';
+import { SKIN_KEY, SKINS, type Skin } from './skin';
 
 afterEach(() => {
   cleanup();
@@ -764,20 +764,20 @@ describe('App', () => {
     fireEvent.click(within(themes).getByRole('button', { name: '跟随系统' }));
     expect(localStorage.getItem('weflow.theme')).toBeNull();
     expect(document.documentElement.dataset.theme).toBe('light');
-    // with the one skin there is, nothing to choose
-    expect(screen.queryByRole('group', { name: '皮肤' })).toBeNull();
   });
 
-  it('switches the skin from the settings once there is another, and says it has one theme only (#830)', async () => {
-    SKINS.push({ id: 'paper', label: '纸', themes: ['light'], sheet: async () => ({ default: '' }) });
+  it('switches the skin from the settings, and says when one has one theme only (#830)', async () => {
+    const paper: Skin = { id: 'paper', label: '纸', themes: ['light'], sheet: async () => ({ default: '' }) };
+    SKINS.push(paper);
     onTestFinished(() => {
-      SKINS.splice(1); localStorage.removeItem(SKIN_KEY); delete document.documentElement.dataset.skin;
+      SKINS.splice(SKINS.indexOf(paper), 1); localStorage.removeItem(SKIN_KEY); delete document.documentElement.dataset.skin;
       document.head.querySelectorAll('style[data-skin]').forEach(sheet => sheet.remove());
     });
     await renderWith(HEALTH);
     openSettings('外观与浏览');
     await act(async () => {});
     const skins = screen.getByRole('group', { name: '皮肤' });
+    expect(within(skins).getAllByRole('button').map(button => button.textContent)).toEqual(['新拟态', '贴纸', '纸']);
     expect(within(skins).getByRole('button', { name: '新拟态' }).getAttribute('aria-pressed')).toBe('true');
     await act(async () => fireEvent.click(within(skins).getByRole('button', { name: '纸' })));
     expect(within(skins).getByRole('button', { name: '纸' }).getAttribute('aria-pressed')).toBe('true');

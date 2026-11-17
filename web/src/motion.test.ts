@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { contentIn, durationMs, pageIn, timing, usePresence } from './motion';
-import { usePageTurn } from './pageTurn';
+import { type PageTurns, usePageTurn } from './pageTurn';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -51,19 +51,21 @@ describe('pageIn', () => {
     root.setProperty('--duration-base', '200ms');
     const turned = vi.fn();
     const { unmount } = renderHook(() => { turned(usePageTurn()); });
-    const turns = () => turned.mock.lastCall![0] as number;
+    const turns = () => turned.mock.lastCall![0] as PageTurns;
     const start = turns();
+    // so many turns and pages since the start
+    const since = (turn: number, page: number) => ({ turn: start.turn + turn, page: start.page + page });
 
     act(() => pageIn([element]));
     expect(animate).toHaveBeenCalledTimes(1);
-    expect(turns()).toBe(start + 1);
+    expect(turns()).toEqual(since(1, 1));
 
     // the skin's animation, played from its start, and given back to the style sheets when it ends
     root.setProperty('--page-in', 'paper-in 200ms steps(3)');
     act(() => pageIn([element]));
     expect(animate).toHaveBeenCalledTimes(1);
     expect(element.style.animation).toBe('paper-in 200ms steps(3)');
-    expect(turns()).toBe(start + 2);
+    expect(turns()).toEqual(since(2, 2));
     const inner = element.appendChild(document.createElement('span'));
     inner.dispatchEvent(new Event('animationend', { bubbles: true }));
     expect(element.style.animation).toBe('paper-in 200ms steps(3)');
@@ -73,13 +75,28 @@ describe('pageIn', () => {
     // content that comes in without turning a page
     act(() => pageIn([element], { turn: false }));
     expect(element.style.animation).toBe('paper-in 200ms steps(3)');
-    expect(turns()).toBe(start + 2);
-    element.dispatchEvent(new Event('animationend'));
+    expect(turns()).toEqual(since(2, 2));
+
+    // another item's detail in the same page: a turn, but no other page
+    act(() => pageIn([element], { detail: true }));
+    expect(turns()).toEqual(since(3, 2));
+
+    // another page before it ends: the browser cancels it to start it again and says so once it runs again, which
+    // stops nothing; cancelled for good (the element hidden), it is given back
+    act(() => pageIn([element]));
+    const cancel = () => element.dispatchEvent(Object.assign(new Event('animationcancel'), { animationName: 'paper-in' }));
+    const runs = (playState: string) => { element.getAnimations = () => [{ animationName: 'paper-in', playState }] as unknown as Animation[]; };
+    runs('running');
+    cancel();
+    expect(element.style.animation).toBe('paper-in 200ms steps(3)');
+    runs('idle');
+    cancel();
+    expect(element.style.animation).toBe('');
 
     root.setProperty('--duration-base', '0ms');
     act(() => pageIn([element]));
     expect(element.style.animation).toBe('');
-    expect(turns()).toBe(start + 2);
+    expect(turns()).toEqual(since(4, 3));
     unmount();
   });
 });
