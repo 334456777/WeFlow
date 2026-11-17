@@ -32,7 +32,7 @@ For language settings and precedence, see [Command reference - Language](https:/
 
 ## First-time setup and export (required steps)
 
-**Run PowerShell as administrator.** WeChat 4.0 and later are supported. You need to have logged in to an account at least once, sent messages, and opened images.
+WeChat 4.0 and later are supported. You need to have logged in to an account at least once, sent messages, and opened images. The steps below use Windows as the example: **run PowerShell as administrator.** For Linux, see [Linux first-time setup](https://github.com/334456777/WeFlow/wiki/Linux-首次设置) in the Wiki.
 
 1. Set the WeChat data directory
 ```powershell

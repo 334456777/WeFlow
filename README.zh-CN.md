@@ -31,7 +31,7 @@ weflow lang zh
 
 ## 首次设置与导出（必要步骤）
 
-请**以管理员身份运行 PowerShell**。支持微信 4.0 及以上版本，需要至少登录过一次账号、发送过消息并打开过图片。
+支持微信 4.0 及以上版本，需要至少登录过一次账号、发送过消息并打开过图片。下面的步骤以 Windows 为例，请**以管理员身份运行 PowerShell**。Linux 步骤见 Wiki 的 [Linux 首次设置](https://github.com/334456777/WeFlow/wiki/Linux-首次设置)。
 
 1. 设置微信数据目录
 ```powershell
