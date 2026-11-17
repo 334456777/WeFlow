@@ -4,6 +4,7 @@
  * fields and selections inset, a held button pressed; the page and list rows are flat, and rows show their
  * hover and selection inside themselves so lists stay as dense as before.
  */
+@layer app {
 * { box-sizing: border-box; }
 html { background: var(--surface); }
 /*
@@ -556,7 +557,6 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
   .date-range { width: 100%; }
   .date-field { flex: 1; }
   .format-group { flex: 1 1 100%; width: auto; }
-  .export-control { width: 100%; }
 }
 /* Task timeline. */
 .task-list { margin: 0; padding: 0; list-style: none; }
@@ -615,12 +615,13 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 /* Rows and navigation: hover sinks them a little; held down, chosen or not, as deep as a chosen one held down. */
 .nav-item:active, .conversation-row:active, .search-result:active, .media-item:active { box-shadow: var(--neu-inset-pressed); transition-duration: var(--duration-micro); }
 /*
- * What is already sunk (a selection, a toggle that is on, a checked box, a sent photo) sinks further when held
- * down, instead of staying as it is or rising to pressed (#253). After every press rule above, so it wins.
+ * What is already sunk (a selection, a toggle that is on, a checked box) sinks further when held down, instead of
+ * staying as it is or rising to pressed (#253); a sent photo does too (chat.css). After every press rule above, so it
+ * wins.
  */
 .icon-button.on:active, .nav-item.selected:active, .conversation-row.active:active,
 .calendar-day.chosen:active:not([aria-disabled]), .calendar-choice.chosen:active:not(:disabled),
-.checkbox:active input:checked + .checkbox-box, .outgoing .photo-button:active {
+.checkbox:active input:checked + .checkbox-box {
   box-shadow: var(--neu-inset-pressed); transition-duration: var(--duration-micro);
 }
 
@@ -629,7 +630,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .settings-heading { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
 .settings-heading h1 { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); }
 .muted { color: var(--fg-muted); font-size: var(--text-sm); }
-.source-name.warning, .card-note.setting-warning { color: var(--state-danger); }
+.card-note.setting-warning { color: var(--state-danger); }
 /* Accounts (#215): the profiles, raised rows with the current one inset; what clearing removes, shown before it asks. */
 .accounts { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
 .account { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-raised-sm); }
@@ -741,9 +742,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
   .console { overflow: visible; }
   .search-date-row { flex-wrap: wrap; gap: var(--space-2); }
   .search-result { flex-wrap: wrap; row-gap: 0; }
-  .search-result-copy { flex-basis: calc(100% - 40px); }
   .settings-panel { height: auto; padding: var(--space-4); }
-  .file-preview { min-width: 0; padding: var(--space-6); }
   .toast { max-width: calc(100vw - 32px); bottom: calc(var(--tab-bar, 60px) + var(--space-4) + env(safe-area-inset-bottom)); }
 }
 .mobile-bar { align-items: center; gap: var(--space-2); flex-shrink: 0; padding: var(--space-2) var(--space-3) var(--space-1) var(--space-2); }
@@ -794,8 +793,9 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 
 /* Reduced motion: the tokens drop every duration to 0ms; looping effects stop, the spinner keeps turning. */
 @media (prefers-reduced-motion: reduce) {
-  .connection.checking .connection-dot, .status-dot, .skeleton, .format-lane-bar { animation: none; }
+  .connection.checking .connection-dot, .skeleton { animation: none; }
   .message-pane { scroll-behavior: auto; }
 }
-:root.reduced-motion .connection.checking .connection-dot, :root.reduced-motion .status-dot, :root.reduced-motion .skeleton, :root.reduced-motion .format-lane-bar { animation: none; }
+:root.reduced-motion .connection.checking .connection-dot, :root.reduced-motion .skeleton { animation: none; }
 :root.reduced-motion .message-pane { scroll-behavior: auto; }
+}

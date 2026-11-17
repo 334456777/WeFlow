@@ -1,10 +1,16 @@
 /* Settings (#776): the sections listed beside the one open; a section is groups of rows, each group raised. The token
    and the accounts, the AI model and the cache, the serve options, the WebUI versions and the advanced tools fill them. */
+@layer pages {
 .status-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--state-idle); transition: background-color var(--duration-base) var(--ease-glow); }
 .status-dot.exporting { background: var(--state-busy); animation: pulse var(--loop-pulse) ease-in-out infinite; }
 
 .status-dot.done { background: var(--state-ok); }
 .status-dot.error { background: var(--state-danger); }
+/* reduced motion: the pulse stops, as the loading placeholders' sweep does (app.css) */
+@media (prefers-reduced-motion: reduce) {
+  .status-dot { animation: none; }
+}
+:root.reduced-motion .status-dot { animation: none; }
 
 /* The list of the sections: the page's title over them, a caption over each group of them, and rows as the lists of
    the other pages have them, an icon in the place of the avatar. */
@@ -55,6 +61,7 @@
 .theme-group { width: 240px; max-width: 100%; }
 .settings-state { display: inline-flex; align-items: center; gap: var(--space-2); }
 .source-name { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; }
+.source-name.warning { color: var(--state-danger); }
 
 /* A form of several groups: their fields two to a line where they fit, and the bar that saves them, held at the
    bottom of the pane while it scrolls. */
@@ -208,3 +215,4 @@
 .setup-manual .token-form { margin-top: var(--space-2); }
 .setup-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 .setup-actions.start { justify-content: flex-start; margin-top: 0; }
+}

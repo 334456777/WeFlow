@@ -1,4 +1,5 @@
 /* The resource browser (#206): the filters and the tiles grouped by month. */
+@layer pages {
 .resource-types { width: min(420px, 100%); margin-bottom: var(--space-5); }
 .resource-filter { display: flex; flex-direction: column; gap: var(--space-3); }
 .resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: var(--space-4) var(--space-3); }
@@ -30,3 +31,4 @@
 
 .resource-end { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-top: var(--space-5); }
 @media (max-width: 640px) { .resource-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: var(--space-3) var(--space-2); } }
+}

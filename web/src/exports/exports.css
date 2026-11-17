@@ -1,4 +1,5 @@
 /* The export page (#211): conversations ticked in the list, the ones picked beside it, the formats as chips. */
+@layer pages {
 .pick-row { cursor: pointer; }
 .pick-row > .checkbox { flex-shrink: 0; }
 .pick-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); }
@@ -18,3 +19,9 @@
 }
 .format-lanes .done { color: var(--fg); }
 .format-lanes .done .format-lane-bar { background: var(--fg-muted); animation: none; }
+/* reduced motion: the sweep stops, as the loading placeholders' does (app.css) */
+@media (prefers-reduced-motion: reduce) {
+  .format-lane-bar { animation: none; }
+}
+:root.reduced-motion .format-lane-bar { animation: none; }
+}

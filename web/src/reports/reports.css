@@ -1,4 +1,5 @@
 /* Annual report (#208): the analytics page's blocks, a large number to open, the moments as raised tiles. */
+@layer pages {
 .report-years { margin-top: var(--space-4); }
 
 .report-hero { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-6); border-radius: var(--radius-lg); box-shadow: var(--neu-raised); }
@@ -26,3 +27,4 @@
 .report-exchange li.mine { align-self: flex-end; box-shadow: var(--neu-inset); }
 .report-likes { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-8); }
 .report-likes > div { display: flex; flex-direction: column; gap: var(--space-2); }
+}
