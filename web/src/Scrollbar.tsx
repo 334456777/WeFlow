@@ -1,9 +1,9 @@
 // A scrollbar drawn by the page over its scroll area (`.scroll-area` hides the browser's): it takes no width, so
 // content does not shift when it appears, and it looks like the rest of the page (the skin's scrollbar role, #828).
 // Render it right after the scroll area, in the same positioned parent; it places itself along its right edge.
-// It also fades the area's top and bottom edges while there is more to scroll that way (#194): a layer in
-// `--fade-color`, the colour under the area (every surface has the page's colour in neumorphism, #220), so it works
-// on panels with shadows too, which a mask would clip.
+// It also fades the area's top and bottom edges while there is more to scroll that way (#194, #831): a frame over the
+// area, of its size, its corners and its clip whatever they are, holds a band at each edge, which app.css paints with
+// what lies under the area and shows while there is more beyond that edge (`shown`).
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
@@ -12,9 +12,6 @@ const INSET = 4;
 const MIN_THUMB = 24;
 /** How long the bar stays after the last scroll. */
 const LINGER_MS = 900;
-/** Kept clear of the area's rounded corners by the fades; at the top and bottom they start at the edge, where a gap
- * would let a strip of content show. */
-const FADE_INSET = 2;
 /** Sent to the scroll area when a person starts dragging the thumb, which is not inside it: the area's own pointer
  * events do not see that the person is scrolling (a chat window lets go of its bottom on it). */
 export const SCROLL_INTENT = 'weflow:scroll-intent';
@@ -27,8 +24,7 @@ function hovered(element: Element) {
 export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> }) {
   const track = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLDivElement>(null);
-  const fadeTop = useRef<HTMLDivElement>(null);
-  const fadeBottom = useRef<HTMLDivElement>(null);
+  const fades = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const area = target.current;
@@ -40,23 +36,22 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
     let linger = 0;
 
     const fade = () => {
-      const top = fadeTop.current;
-      const bottom = fadeBottom.current;
-      if (!top || !bottom) return;
+      const frame = fades.current;
+      if (!frame) return;
+      const [top, bottom] = frame.firstElementChild!.children;
       const overflow = room > 1 && area.clientHeight > 0;
+      frame.classList.toggle('scrollable', overflow);
       top.classList.toggle('shown', overflow && area.scrollTop > 1);
       bottom.classList.toggle('shown', overflow && area.scrollTop < room - 1);
       if (!overflow) return;
-      const left = area.offsetLeft + area.clientLeft + FADE_INSET + 'px';
-      const width = Math.max(0, area.clientWidth - 2 * FADE_INSET) + 'px';
-      top.style.left = bottom.style.left = left;
-      top.style.width = bottom.style.width = width;
-      top.style.top = area.offsetTop + area.clientTop + 'px';
-      bottom.style.top = area.offsetTop + area.clientTop + area.clientHeight - bottom.offsetHeight + 'px';
-      // the area's rounded corners, less the inset, so the fades end where its hollow does (#347)
-      const radius = Math.max(0, parseFloat(getComputedStyle(area).borderTopLeftRadius) - FADE_INSET || 0) + 'px';
-      top.style.borderRadius = `${radius} ${radius} 0 0`;
-      bottom.style.borderRadius = `0 0 ${radius} ${radius}`;
+      frame.style.left = area.offsetLeft + area.clientLeft + 'px';
+      frame.style.top = area.offsetTop + area.clientTop + 'px';
+      frame.style.width = area.clientWidth + 'px';
+      frame.style.height = area.clientHeight + 'px';
+      // the area's shape, whatever the skin makes it: its corners and its clip
+      const shape = getComputedStyle(area);
+      frame.style.borderRadius = shape.borderRadius;
+      frame.style.clipPath = shape.clipPath;
     };
     const place = () => {
       const { scrollHeight, clientHeight, scrollTop } = area;
@@ -149,8 +144,9 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
   }, [target]);
 
   return <>
-    <div ref={fadeTop} className="scroll-fade top" aria-hidden="true" />
-    <div ref={fadeBottom} className="scroll-fade bottom" aria-hidden="true" />
+    <div ref={fades} className="scroll-fades" aria-hidden="true">
+      <div><div className="scroll-fade top" /><div className="scroll-fade bottom" /></div>
+    </div>
     <div ref={track} className="scrollbar" aria-hidden="true"><div ref={thumb} className="scrollbar-thumb" /></div>
   </>;
 }

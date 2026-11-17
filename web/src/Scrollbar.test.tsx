@@ -45,12 +45,16 @@ describe('Scrollbar', () => {
     } finally { restore(); }
   });
 
-  it('fades the edges there is more beyond, and neither when nothing overflows', () => {
+  it('fades the edges there is more beyond, and neither when nothing overflows (#831)', () => {
     let restore = sized(400, 1200);
     try {
       const { container, getByTestId, unmount } = render(<Area />);
-      const shown = () => ['top', 'bottom'].filter(side => container.querySelector('.scroll-fade.' + side)!.classList.contains('shown'));
       const area = getByTestId('area');
+      const frame = container.querySelector<HTMLElement>('.scroll-fades')!;
+      const shown = () => ['top', 'bottom'].filter(side => frame.querySelector('.scroll-fade.' + side)!.classList.contains('shown'));
+      // over the area, as tall as it (the test's areas have no width)
+      expect(frame.classList.contains('scrollable')).toBe(true);
+      expect(frame.style.height).toBe('400px');
       expect(shown()).toEqual(['bottom']);
       area.scrollTop = 300;
       fireEvent.scroll(area);
@@ -61,8 +65,9 @@ describe('Scrollbar', () => {
       unmount();
       restore();
       restore = sized(400, 400);
-      const again = render(<Area />);
-      expect(again.container.querySelectorAll('.scroll-fade.shown')).toHaveLength(0);
+      const again = render(<Area />).container;
+      expect(again.querySelector('.scroll-fades')!.classList.contains('scrollable')).toBe(false);
+      expect(again.querySelectorAll('.scroll-fade.shown')).toHaveLength(0);
     } finally { restore(); }
   });
 

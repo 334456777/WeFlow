@@ -103,8 +103,12 @@
   --shadow-none: var(--neu-flat);
   /* The page under everything (html, body); may be a picture. */
   --page-bg: var(--neu-surface);
-  /* The colour the edges of a scroll area fade into (app.css .scroll-fade): what lies under the area. */
-  --fade-color: var(--neu-surface);
+  /*
+   * What lies under a scroll area, which its edges fade into (app.css .scroll-fade): the page or the panel. A skin whose
+   * page or panels are a picture gives the same picture here, fixed to the viewport (`background-attachment: fixed`)
+   * on both so that the two line up; set on a container (a panel, the console), it holds for the areas in it.
+   */
+  --fade-bg: var(--neu-surface);
 
   /* The main action (.primary-button), and a button as big where it stands for one (the export's side buttons). */
   --button-bg: var(--neu-surface);

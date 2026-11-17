@@ -50,14 +50,27 @@ time, .num { font-variant-numeric: tabular-nums; }
   opacity: 0; transition: opacity var(--duration-panel) var(--ease-out);
 }
 .scrollbar.scrollable { display: block; }
-/* The edges of a scroll area fade while there is more that way (#194): eased, not a straight ramp, and gone at the end. */
+/*
+ * The edges of a scroll area fade while there is more that way (#194, #831). Over the area lies a frame of its size
+ * and its shape (Scrollbar.tsx copies its corners and its clip), with a band at its top and one at its bottom, 28px
+ * each, painted with what lies under the area (`--fade-bg`, a picture as well as a colour) and masked to fade away from
+ * the edge, eased rather than a straight ramp. The bands keep 2px clear down each side and round their corners 2px
+ * less, along the rim of a hollow area: they lie in a box 2px larger at the top and the bottom with a clear border of
+ * 2px, whose inside is the area less its sides and whose inner corners are the area's, 2px in. The bands, not the
+ * area's content, carry the mask: in a scroll area with a mask, Chrome loads no lazy picture before it is in sight.
+ */
+.scroll-fades { position: absolute; z-index: 1; display: none; pointer-events: none; }
+.scroll-fades.scrollable { display: block; }
+.scroll-fades > div {
+  position: absolute; inset: -2px 0; overflow: hidden; border: 2px solid transparent; border-radius: inherit;
+}
 .scroll-fade {
-  position: absolute; z-index: 1; height: 28px; pointer-events: none; opacity: 0;
+  position: absolute; left: 0; right: 0; height: 28px; background: var(--fade-bg); opacity: 0;
   transition: opacity var(--duration-hover) var(--ease-out);
 }
+.scroll-fade.top { top: 0; mask-image: linear-gradient(to bottom, #000, rgb(0 0 0 / .72) 30%, rgb(0 0 0 / .28) 65%, transparent); }
+.scroll-fade.bottom { bottom: 0; mask-image: linear-gradient(to top, #000, rgb(0 0 0 / .72) 30%, rgb(0 0 0 / .28) 65%, transparent); }
 .scroll-fade.shown { opacity: 1; }
-.scroll-fade.top { background: linear-gradient(to bottom, var(--fade-color) 0%, color-mix(in srgb, var(--fade-color) 72%, transparent) 30%, color-mix(in srgb, var(--fade-color) 28%, transparent) 65%, transparent 100%); }
-.scroll-fade.bottom { background: linear-gradient(to top, var(--fade-color) 0%, color-mix(in srgb, var(--fade-color) 72%, transparent) 30%, color-mix(in srgb, var(--fade-color) 28%, transparent) 65%, transparent 100%); }
 .scrollbar.active, .scrollbar.hover, .scrollbar.dragging { opacity: 1; transition-duration: var(--duration-hover); }
 .scrollbar-thumb {
   position: absolute; top: 0; right: 2px; width: 6px; border-radius: var(--radius-full);
