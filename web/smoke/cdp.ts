@@ -184,6 +184,20 @@ export class Page {
     return [...this.requests.values()].filter(request => request.type !== 'EventSource').map(request => request.url);
   }
 
+  /** The paths of the event streams the page holds open, each one of Chrome's six connections to the server (#799). */
+  streams(): string[] {
+    return [...this.requests.values()].filter(request => request.type === 'EventSource').map(request => new URL(request.url).pathname);
+  }
+
+  /** `document.visibilityState`, or `unknown` when the page does not answer within a second (frozen, gone). */
+  async visibility(): Promise<string> {
+    try {
+      return await Promise.race([this.eval(() => document.visibilityState as string), Bun.sleep(1_000).then(() => 'unknown')]);
+    } catch {
+      return 'unknown';
+    }
+  }
+
   /** Opens `url` in the tab; fails when it has not loaded in fifteen seconds (its requests may be waiting their turn). */
   async goto(url: string): Promise<void> {
     this.loaded = Promise.withResolvers<void>();

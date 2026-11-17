@@ -55,6 +55,12 @@ async function attempt(browser: Browser, server: { url: string; token: string },
     const page = tabs.at(-1);
     const waiting = (page?.waiting() ?? []).map(url => '    ' + url.replace(/access_token=[^&]*/, 'access_token=…'));
     if (waiting.length) console.error('  requests still waiting:\n' + waiting.join('\n'));
+    // with several tabs, the connections they hold (#878)
+    if (tabs.length > 1) {
+      const held = await Promise.all(tabs.map(async (tab, i) =>
+        `    tab ${i + 1} (${await tab.visibility()}): ${tab.streams().join(', ') || 'no event stream'}`));
+      console.error('  the tabs:\n' + held.join('\n'));
+    }
     try {
       if (page) {
         await Bun.write(shot, await page.screenshot());
