@@ -1,4 +1,5 @@
 /* Preview dialog: comes in from 95% with a small rise, leaves faster. */
+@layer pages {
 .preview-dialog {
   /* the room the frame takes around the picture: the bar above, the footer below, the hollow and the margins (#341) */
   --preview-room-x: 72px; --preview-room-y: 184px;
@@ -59,8 +60,7 @@
 .preview-step:active:not(:disabled) { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); }
 .preview-step:disabled { box-shadow: var(--neu-disabled); color: var(--fg-subtle); cursor: not-allowed; }
 
-.icon-button.preview-download { box-shadow: var(--neu-raised-sm); }
-.icon-button.preview-download.failed { color: var(--state-danger); }
+.preview-download.failed { color: var(--state-danger); }
 /* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */
 .zoom-frame { display: flex; justify-content: center; overflow: hidden; touch-action: none; cursor: zoom-in; }
 .zoom-frame.zoomed { cursor: grab; }
@@ -82,6 +82,10 @@ button.original-button:not([aria-disabled]):active { transform: scale(var(--pres
 .original-button.shown { box-shadow: var(--neu-inset); color: var(--fg); }
 .preview-content header small { margin-left: var(--space-2); color: var(--fg-subtle); font-weight: var(--weight-regular); }
 .file-preview { min-width: 320px; padding: var(--space-8) var(--space-8) var(--space-6); text-align: center; }
+@media (max-width: 640px) {
+  .file-preview { min-width: 0; padding: var(--space-6); }
+}
 .file-preview > svg { margin: 0 auto var(--space-3); color: var(--fg-subtle); }
 .file-preview h3 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .file-preview p { margin-top: var(--space-2); color: var(--fg-muted); font-size: var(--text-xs); }
+}

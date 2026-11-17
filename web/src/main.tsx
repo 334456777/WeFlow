@@ -1,10 +1,11 @@
+// first: tokens.css states the order of the cascade layers, which holds only before any rule of a layer
+import './styles/tokens.css';
+import './app.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { adoptToken } from './api/client';
 import { App } from './App';
 import { languageReady } from './i18n';
-import './styles/tokens.css';
-import './app.css';
 
 adoptToken();
 

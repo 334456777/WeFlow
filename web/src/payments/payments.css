@@ -1,4 +1,5 @@
 /* WeChat Pay: the notices of the payments page. */
+@layer pages {
 .pay-row { display: flex; flex-direction: column; }
 
 .pay-body { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); min-width: 0; }
@@ -13,3 +14,4 @@
 .pay-lines div { display: flex; gap: var(--space-2); }
 .pay-lines dt { flex-shrink: 0; min-width: 4em; color: var(--fg-subtle); }
 .pay-lines dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+}

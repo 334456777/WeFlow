@@ -25,6 +25,7 @@
     "contract": "bun scripts/contract.ts",
     "i18n": "bun scripts/i18n.ts",
     "smoke": "bun smoke/run.ts",
+    "shots": "bun smoke/shots.ts",
     "check": "bun scripts/contract.ts --check && bun scripts/i18n.ts --check && bun run typecheck && bun test && bun --bun vite build"
   },
   "dependencies": {

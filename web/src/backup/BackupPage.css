@@ -1,4 +1,5 @@
 /* Database backup (#212): two blocks in the page's column, made of the settings' rows and forms. */
+@layer pages {
 .backup-page { display: flex; flex-direction: column; gap: var(--space-6); max-width: 720px; margin-top: var(--space-4); }
 .backup-block { display: flex; flex-direction: column; gap: var(--space-3); }
 .backup-block h2 { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-md); font-weight: var(--weight-semibold); }
@@ -13,3 +14,4 @@
 /* what a backup lacks (#817): a line of its own under the row's buttons */
 .backup-made .backup-gap { flex-basis: 100%; margin: 0; }
 .backup-manifest { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--neu-inset); }
+}

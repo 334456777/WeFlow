@@ -1,4 +1,5 @@
 /* Annual report (#208): the analytics page's blocks, a large number to open, the moments as raised tiles. */
+@layer pages {
 .report-years { margin-top: var(--space-4); }
 
 .report-hero { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-6); border-radius: var(--radius-lg); box-shadow: var(--neu-raised); }
@@ -16,7 +17,7 @@
 .heatmap-row { display: grid; grid-template-columns: 1.5em repeat(24, minmax(0, 1fr)); gap: 2px; align-items: center; }
 .heatmap-day { color: var(--fg-subtle); font-size: var(--text-2xs); }
 .heatmap-cell { aspect-ratio: 1; border-radius: 2px; background: var(--fg); }
-.chart-ticks.heatmap-ticks { display: grid; grid-template-columns: 1.5em repeat(24, minmax(0, 1fr)); }
+.heatmap-ticks { display: grid; grid-template-columns: 1.5em repeat(24, minmax(0, 1fr)); }
 
 .report-phrases { align-items: baseline; }
 .report-pair { display: flex; margin-bottom: var(--space-2); }
@@ -26,3 +27,4 @@
 .report-exchange li.mine { align-self: flex-end; box-shadow: var(--neu-inset); }
 .report-likes { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-8); }
 .report-likes > div { display: flex; flex-direction: column; gap: var(--space-2); }
+}

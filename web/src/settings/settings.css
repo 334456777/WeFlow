@@ -1,21 +1,27 @@
 /* Settings (#776): the sections listed beside the one open; a section is groups of rows, each group raised. The token
    and the accounts, the AI model and the cache, the serve options, the WebUI versions and the advanced tools fill them. */
+@layer pages {
 .status-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--state-idle); transition: background-color var(--duration-base) var(--ease-glow); }
 .status-dot.exporting { background: var(--state-busy); animation: pulse var(--loop-pulse) ease-in-out infinite; }
 
 .status-dot.done { background: var(--state-ok); }
 .status-dot.error { background: var(--state-danger); }
+/* reduced motion: the pulse stops, as the loading placeholders' sweep does (app.css) */
+@media (prefers-reduced-motion: reduce) {
+  .status-dot { animation: none; }
+}
+:root.reduced-motion .status-dot { animation: none; }
 
 /* The list of the sections: the page's title over them, a caption over each group of them, and rows as the lists of
    the other pages have them, an icon in the place of the avatar. */
-.browser-panel.settings-browser { --list-width: 255px; }
+.settings-browser { --list-width: 255px; }
 .settings-nav-head { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-2); padding: var(--space-5) var(--space-4) var(--space-2) var(--space-5); }
 .settings-nav-head h1 { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); }
-.conversation-list.settings-nav { flex: 1; height: auto; min-height: 0; overflow: auto; }
+.settings-nav { flex: 1; height: auto; min-height: 0; overflow: auto; }
 .settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
 .settings-nav-group + .settings-nav-group { margin-top: var(--space-2); }
 .settings-nav-caption { padding: var(--space-2) var(--space-3) var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); font-weight: var(--weight-medium); }
-.conversation-row.settings-nav-row { min-height: 52px; }
+.settings-nav-row { min-height: 52px; }
 .settings-nav-row .conversation-name { font-size: var(--text-sm); }
 /* a state too long for a line wraps, a version anywhere */
 .settings-nav-row .conversation-preview { overflow-wrap: anywhere; }
@@ -55,6 +61,7 @@
 .theme-group { width: 240px; max-width: 100%; }
 .settings-state { display: inline-flex; align-items: center; gap: var(--space-2); }
 .source-name { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; }
+.source-name.warning { color: var(--state-danger); }
 
 /* A form of several groups: their fields two to a line where they fit, and the bar that saves them, held at the
    bottom of the pane while it scrolls. */
@@ -89,11 +96,11 @@
 .account-state { display: inline-flex; flex-shrink: 0; margin-left: auto; align-items: center; gap: 4px; color: var(--state-danger); font-size: var(--text-xs); }
 .account-state.ok { color: var(--fg-muted); }
 .account-state.ok svg { color: var(--state-ok); }
-.token-form.account-add { max-width: none; }
+.account-add { max-width: none; }
 .account-note { font-size: var(--text-xs); line-height: var(--leading-xs); }
 .settings-group > .account-note { padding-bottom: var(--space-1); }
 .settings-group > .clear-plan { margin-bottom: var(--space-2); }
-.skeleton.line.account-skeleton-state { flex-shrink: 0; width: 72px; margin-left: auto; }
+.account-skeleton-state { flex-shrink: 0; width: 72px; margin-left: auto; }
 
 /* The cache (#213) and the WebUI versions (#406): a part or a version a line, its size or state and its button at the
    end; a part's clear plan and the note on it take a line of their own under it (#346). */
@@ -208,3 +215,4 @@
 .setup-manual .token-form { margin-top: var(--space-2); }
 .setup-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 .setup-actions.start { justify-content: flex-start; margin-top: 0; }
+}

@@ -1,5 +1,6 @@
 /* The chat page: the messages with their pictures, voices and cards, the search, and a conversation's details and
    media. */
+@layer pages {
 .conversation-foot { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .conversation-foot .conversation-preview { flex: 1; min-width: 0; }
 .muted-icon { color: var(--fg-subtle); }
@@ -45,6 +46,8 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 /* A photo sits in a frame of the same surface, raised when received and inset when sent. */
 .photo-button { display: block; max-width: calc(100% - 48px); padding: var(--space-1); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--neu-raised-sm); }
 .outgoing .photo-button { box-shadow: var(--neu-inset); }
+/* held down, a sent one sinks further, as what is already sunk does (#253) */
+.outgoing .photo-button:active { box-shadow: var(--neu-inset-pressed); transition-duration: var(--duration-micro); }
 .message-photo { width: 240px; max-width: 100%; aspect-ratio: 1.6973; object-fit: cover; border-radius: var(--radius-md); }
 .highlighted :is(.message-bubble, .photo-button, .emoji-sticker, .system-message) { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 .file-bubble { display: flex; align-items: center; gap: var(--space-3); text-align: left; }
@@ -127,6 +130,10 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .export-side:hover { box-shadow: var(--neu-raised-hover); }
 .export-side:active { box-shadow: var(--neu-pressed); transform: scale(var(--press-scale)); }
 .export-control.expanded .export-side { width: var(--control-lg); margin-left: var(--space-3); opacity: 1; }
+/* in a narrow card, as wide as the card (#254) */
+@container (max-width: 340px) {
+  .export-control { width: 100%; }
+}
 
 .morph-label { display: inline-flex; align-items: center; gap: var(--space-2); animation: label-in var(--duration-base) var(--ease-out); }
 
@@ -136,6 +143,10 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .results-count span { margin-left: var(--space-3); color: var(--fg-subtle); }
 
 .search-result-copy { display: flex; flex: 1; align-items: baseline; gap: var(--space-3); min-width: 0; }
+/* on a phone a hit wraps (app.css) and its text fills the line beside the icon */
+@media (max-width: 640px) {
+  .search-result-copy { flex-basis: calc(100% - 40px); }
+}
 
 /* Hits of all conversations: the conversation (and sender) above the text, so long names keep the text aligned. */
 .search-result-copy strong { flex-shrink: 0; max-width: 40%; color: var(--fg-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); }
@@ -168,7 +179,7 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 
 .member-copy { display: flex; flex: 1; flex-direction: column; font-size: var(--text-sm); }
 .member-copy small { color: var(--fg-subtle); font-size: var(--text-2xs); }
-.badge.member-badge { display: inline-flex; align-items: center; flex-shrink: 0; gap: var(--space-1); white-space: nowrap; }
+.member-badge { display: inline-flex; align-items: center; flex-shrink: 0; gap: var(--space-1); white-space: nowrap; }
 
 .member-phrases { margin-top: var(--space-3); }
 .member-phrases ul { display: grid; gap: var(--space-1); margin-top: var(--space-1); }
@@ -179,12 +190,12 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .media-item > .media-icon { display: grid; flex: 0 0 72px; width: 72px; height: 48px; place-items: center; border-radius: var(--radius-xs); box-shadow: var(--neu-inset); }
 .media-more { justify-self: start; }
 
-/* Media rows are flat like the other lists; hover sinks them in place. */
+/* Media rows are flat like the other lists; the list's hover hollow (HoverTrack.tsx) sinks under the one hovered. */
 .media-item {
   display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-2);
   border-radius: var(--radius-xl); color: var(--fg-subtle); text-align: left;
 }
-.media-item:hover { box-shadow: var(--neu-pressed); color: var(--fg); }
+.media-item:hover { color: var(--fg); }
 
 /* in a group whose hover hollow takes the press (HoverTrack.tsx), the item stays flat over it */
 .hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .search-result, .media-item):active:not(.selected, .active) { box-shadow: var(--neu-flat); }
@@ -192,3 +203,4 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .media-item img { width: 72px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-xs); }
 .media-item > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }
 .media-item small { display: block; color: var(--fg-muted); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+}

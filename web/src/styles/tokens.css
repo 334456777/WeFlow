@@ -3,6 +3,16 @@
  * shadows, durations or curves. Sizes and motion follow the parameters studied in open-claude-ui (#191); the
  * surfaces are neumorphic in neutral grey (#220).
  */
+
+/*
+ * The cascade layers (#827), from the lowest: these tokens, app.css (what the pages share), the pages' own sheets and a
+ * skin's. A rule of a later layer wins over one of an earlier layer whatever their specificity, so a page's rule
+ * overrides a shared one without a longer selector, and a skin's overrides both. The order is stated here before any
+ * rule, main.tsx loads this sheet first, and every rule of a sheet is in that sheet's layer (styles/layers.test.ts).
+ */
+@layer tokens, app, pages, skin;
+
+@layer tokens {
 :root {
   color-scheme: light;
 
@@ -217,4 +227,5 @@
   --duration-micro: 0ms; --duration-snap: 0ms; --duration-base: 0ms; --duration-panel: 0ms;
   --duration-page: 0ms; --duration-hover: 0ms; --duration-exit: 0ms;
   --press-scale: 1; --press-scale-sm: 1; --enter-scale: 1; --enter-offset: 0px;
+}
 }
