@@ -14,7 +14,10 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
-use weflow_core::image_keys::{account_identities, acquire_image_keys, collect_codes};
+use weflow_core::image_keys::{
+    account_identities, acquire_image_keys, aes_from_samples, ciphertext_hex, collect_codes,
+    memory_samples, xor_from_samples,
+};
 use weflow_core::keys::{derive_image_keys, scan_templates};
 
 fn jpeg() -> Vec<u8> {
@@ -47,6 +50,33 @@ fn encrypt(plain: &[u8], code: u32, identity: &str, xor_len: usize) -> Vec<u8> {
 fn sample(dir: &Path, name: &str, code: u32, wxid: &str, xor_len: usize) {
     fs::create_dir_all(dir).unwrap();
     fs::write(dir.join(name), encrypt(&jpeg(), code, wxid, xor_len)).unwrap();
+}
+
+/// `key image-mem` without a ciphertext: the newest thumbnail's first AES block goes to the memory scan, and the XOR
+/// key comes from a sample's tail only once the pair decodes it.
+#[test]
+fn memory_scan_takes_its_ciphertext_and_the_xor_key_from_the_samples() {
+    let root = common::temp_dir("image-memory-samples");
+    assert_eq!(
+        memory_samples(&root).unwrap_err().code,
+        "image_key_no_template"
+    );
+    sample(&root.join("a"), "1_t.dat", 123, "wxid_me", 64);
+    let (xor, aes) = derive_image_keys(123, "wxid_me");
+    let samples = memory_samples(&root).unwrap();
+    let expected = ciphertext_hex(&samples[0]);
+    let found = aes_from_samples(&samples, |cipher| (cipher == expected).then(|| aes.clone()));
+    assert_eq!(found.as_deref(), Some(aes.as_str()));
+    assert_eq!(xor_from_samples(&samples, &aes), Some(xor));
+    let (_, other) = derive_image_keys(124, "wxid_me");
+    assert_eq!(xor_from_samples(&samples, &other), None);
+    // no XOR tail: the AES key alone
+    let bare = common::temp_dir("image-memory-no-tail");
+    sample(&bare, "1_t.dat", 123, "wxid_me", 0);
+    assert_eq!(
+        xor_from_samples(&memory_samples(&bare).unwrap(), &aes),
+        None
+    );
 }
 
 #[test]

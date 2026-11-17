@@ -268,17 +268,45 @@ pub fn acquire_image_keys(
     })
 }
 
-/// Windows: the existing `%APPDATA%\Tencent\xwechat\net*\kvcomm` directories (`net`, `net_1`, ...).
-/// Other platforms have no known location, so callers must pass directories explicitly.
+/// The `xwechat` directories of Linux WeChat under the home directory, the same places `key image-local` reads.
+const LINUX_XWECHAT_ROOTS: [&str; 3] = [
+    ".xwechat",
+    "Documents/WeChat_Data/home/.xwechat",
+    "Documents/.xwechat",
+];
+
+/// Whether this platform has a known `kvcomm` location, so `key image` can run without `--kvcomm-dir`.
+pub const HAS_DEFAULT_KVCOMM_DIRS: bool = cfg!(any(
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+));
+
+/// The existing `net*/kvcomm` directories (`net`, `net_1`, ...) of WeChat's `xwechat` directory: on Windows
+/// `%APPDATA%\Tencent\xwechat`, on Linux x64 the [`LINUX_XWECHAT_ROOTS`] under the home directory. Other platforms
+/// have no known location, so callers must pass directories explicitly.
 pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
-    if !cfg!(windows) {
+    if cfg!(windows) {
+        let Some(appdata) = std::env::var_os("APPDATA") else {
+            return Vec::new();
+        };
+        return net_kvcomm_dirs(&Path::new(&appdata).join("Tencent").join("xwechat"));
+    }
+    if !HAS_DEFAULT_KVCOMM_DIRS {
         return Vec::new();
     }
-    let Some(appdata) = std::env::var_os("APPDATA") else {
+    let Some(home) = std::env::var_os("HOME") else {
         return Vec::new();
     };
-    let base = Path::new(&appdata).join("Tencent").join("xwechat");
-    let Ok(entries) = std::fs::read_dir(base) else {
+    let dirs: BTreeSet<_> = LINUX_XWECHAT_ROOTS
+        .iter()
+        .flat_map(|root| net_kvcomm_dirs(&Path::new(&home).join(root)))
+        .collect();
+    dirs.into_iter().collect()
+}
+
+/// The `net*/kvcomm` directories under `xwechat`, sorted.
+fn net_kvcomm_dirs(xwechat: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(xwechat) else {
         return Vec::new();
     };
     let mut dirs: Vec<_> = entries
@@ -289,4 +317,108 @@ pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
         .collect();
     dirs.sort();
     dirs
+}
+
+/// How many of the newest thumbnails `key image-mem` scans WeChat's memory with when no ciphertext is given; each
+/// scan reads all of WeChat's writable memory.
+pub const MEMORY_SCAN_TRIES: usize = 3;
+
+/// The newest V2 thumbnails of `account`, newest first: the ciphertext `key image-mem` scans WeChat's memory with,
+/// and the samples the XOR key is checked against.
+///
+/// # Errors
+///
+/// `image_key_no_template` when the account has no V2 thumbnail within the scan budget.
+pub fn memory_samples(account: &Path) -> AppResult<Vec<crate::keys::ImageTemplate>> {
+    let scan = scan_templates(account, DEFAULT_SCAN_BUDGET, TEMPLATE_LIMIT);
+    if scan.templates.is_empty() {
+        let diagnostics = serde_json::to_value(&scan).unwrap_or(Value::Null);
+        return Err(AppError::new(
+            "image_key_no_template",
+            "No valid V2 thumbnail found in the selected account; open a few images in WeChat first",
+            4,
+        )
+        .with_details(json!({ "scan": diagnostics })));
+    }
+    Ok(scan.templates)
+}
+
+/// The first AES block of `sample` as the 32 hex characters `key image-mem` takes.
+pub fn ciphertext_hex(sample: &crate::keys::ImageTemplate) -> String {
+    sample.cipher.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The AES key `scan` finds with the ciphertext of the newest of `samples`, trying up to [`MEMORY_SCAN_TRIES`]
+/// distinct ones.
+pub fn aes_from_samples(
+    samples: &[crate::keys::ImageTemplate],
+    mut scan: impl FnMut(&str) -> Option<String>,
+) -> Option<String> {
+    let mut tried = BTreeSet::new();
+    samples
+        .iter()
+        .filter(|sample| tried.insert(sample.cipher))
+        .take(MEMORY_SCAN_TRIES)
+        .find_map(|sample| scan(&ciphertext_hex(sample)))
+}
+
+/// The XOR key of `aes`: a value the tail of a sample reads as the JPEG end marker, kept only when that sample then
+/// decodes as a whole JPEG with both keys.
+pub fn xor_from_samples(samples: &[crate::keys::ImageTemplate], aes: &str) -> Option<u8> {
+    samples.iter().find_map(|sample| {
+        let xor = sample.tail_xor?;
+        (verify_derived_aes_key(aes, &sample.cipher) && verify_pair(&sample.path, aes, xor))
+            .then_some(xor)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keys::ImageTemplate;
+
+    fn sample(cipher: u8) -> ImageTemplate {
+        ImageTemplate {
+            path: PathBuf::from(format!("{cipher}_t.dat")),
+            cipher: [cipher; 16],
+            tail_xor: None,
+            modified: None,
+        }
+    }
+
+    #[test]
+    fn net_kvcomm_dirs_lists_each_net_directory_with_a_kvcomm() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-kvcomm-dirs");
+        for name in ["net_1/kvcomm", "net/kvcomm", "other/kvcomm", "net_2"] {
+            std::fs::create_dir_all(dir.join(name)).unwrap();
+        }
+        assert_eq!(
+            net_kvcomm_dirs(&dir),
+            [
+                dir.join("net").join("kvcomm"),
+                dir.join("net_1").join("kvcomm")
+            ]
+        );
+        assert!(net_kvcomm_dirs(&dir.join("missing")).is_empty());
+    }
+
+    #[test]
+    fn aes_from_samples_tries_a_few_distinct_ciphertexts_newest_first() {
+        let samples = [sample(1), sample(1), sample(2), sample(3), sample(4)];
+        let mut tried = Vec::new();
+        let found = aes_from_samples(&samples, |cipher| {
+            tried.push(cipher.to_string());
+            None
+        });
+        assert_eq!(found, None);
+        assert_eq!(
+            tried,
+            ["01".repeat(16), "02".repeat(16), "03".repeat(16)],
+            "duplicates skipped, at most {MEMORY_SCAN_TRIES} scans"
+        );
+        let found = aes_from_samples(&samples, |cipher| {
+            cipher.starts_with("02").then(|| "key".to_string())
+        });
+        assert_eq!(found.as_deref(), Some("key"));
+    }
 }

@@ -9272,6 +9272,13 @@
             "type": "string",
             "description": "The 16-byte AES key as 32 hex characters; left out when nothing matched."
           },
+          "image_xor_key": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "`key image-mem` without a ciphertext: the XOR key a thumbnail of the account decodes with together with the\nAES key; left out when no thumbnail has an XOR tail that verifies."
+          },
           "pid": {
             "type": "integer",
             "format": "uint32",
