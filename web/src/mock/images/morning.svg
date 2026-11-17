@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#ff7e5f"/></linearGradient></defs>
+  <rect width="400" height="400" fill="url(#s)"/>
+  <circle cx="200" cy="250" r="80" fill="#fff2b3"/>
+  <path d="M0 300c60-30 120-30 200 0s140 30 200 0v100H0z" fill="#3f8f6b"/>
+  <path d="M0 330c80-24 160-20 240 6s120 24 160 4v60H0z" fill="#2f7356"/>
+  <g fill="#e94e3c"><circle cx="70" cy="300" r="10"/><circle cx="92" cy="310" r="8"/><circle cx="330" cy="318" r="9"/></g>
+  <text x="200" y="110" text-anchor="middle" font-family="serif" font-size="64" font-weight="700" fill="#c0392b" stroke="#fff6e0" stroke-width="4" paint-order="stroke">早上好</text>
+  <text x="200" y="160" text-anchor="middle" font-family="serif" font-size="26" fill="#7a2e1f">天天开心 · 平安喜乐</text>
+</svg>

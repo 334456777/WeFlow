@@ -1,5 +1,5 @@
-// The sample's chat analytics: three years of private chats with the people of WeFlow, counted as `analytics` counts
-// them, and the groups' statistics counted from the sample's own group messages.
+// The sample's chat analytics: three years of private chats with the people of WeFlow and of the account's life,
+// counted as `analytics` counts them, and the groups' statistics counted from the sample's own group messages.
 import type { ChatMessage, ContactRank, ExcludeCandidate, GroupChat, GroupRank, MediaCount, OverallStatistics, TimeDistribution } from '../api/contract.gen';
 import { ago, dayEnd, dayStart, NOW } from './clock';
 import { threads, type Message } from './chats';
@@ -7,9 +7,12 @@ import { groups, ME, people, person } from './people';
 
 /** Messages with each friend over the years: sent by me, received. */
 const PRIVATE: [username: string, sent: number, received: number][] = [
-  ['wxid_sample_linmu', 4_620, 5_200], ['wxid_sample_chenyu', 3_980, 4_432], ['wxid_sample_zhouzhou', 2_910, 3_393],
-  ['wxid_sample_xuzhiyuan', 2_240, 2_630], ['wxid_sample_hexi', 1_506, 1_750], ['wxid_sample_gunan', 1_420, 1_560],
-  ['wxid_sample_songxiaoman', 780, 864], ['wxid_sample_shenxinghe', 188, 214], ['wxid_sample_chenyiwei', 130, 158],
+  // the one the chat says is first, with the thirty thousand messages it speaks of
+  ['wxid_sample_xiaolu', 15_820, 16_596], ['wxid_sample_linmu', 4_620, 5_200], ['wxid_sample_chenyu', 3_980, 4_432],
+  ['wxid_sample_mom', 2_960, 3_870], ['wxid_sample_zhouzhou', 2_910, 3_393], ['wxid_sample_xuzhiyuan', 2_240, 2_630],
+  ['wxid_sample_ajie', 1_680, 1_720], ['wxid_sample_hexi', 1_506, 1_750], ['wxid_sample_gunan', 1_420, 1_560],
+  ['wxid_sample_teacherchen', 402, 610], ['wxid_sample_songxiaoman', 780, 864], ['wxid_sample_youzi', 320, 388],
+  ['wxid_sample_shenxinghe', 188, 214], ['wxid_sample_chenyiwei', 130, 158],
 ];
 
 const lastWith = (username: string): number | null => {

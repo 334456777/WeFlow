@@ -1,8 +1,13 @@
 // The sample's pictures, by name, and the sound its voice messages play.
 import benchChart from './images/bench-chart.svg';
+import calligraphy from './images/calligraphy.svg';
+import dinner from './images/dinner.svg';
 import exportHtml from './images/export-html.svg';
+import flowers from './images/flowers.svg';
 import logo from './images/logo.svg';
 import meetup from './images/meetup.svg';
+import morning from './images/morning.svg';
+import pingpong from './images/pingpong.svg';
 import release from './images/release.svg';
 import skinSketch from './images/skin-sketch.svg';
 import sticker from './images/sticker.svg';
@@ -11,8 +16,8 @@ import webuiDark from './images/webui-dark.svg';
 import webuiLight from './images/webui-light.svg';
 
 export const pictures = {
-  'bench-chart': benchChart, 'export-html': exportHtml, logo, meetup, release, 'skin-sketch': skinSketch, sticker, street,
-  'webui-dark': webuiDark, 'webui-light': webuiLight,
+  'bench-chart': benchChart, calligraphy, dinner, 'export-html': exportHtml, flowers, logo, meetup, morning, pingpong, release,
+  'skin-sketch': skinSketch, sticker, street, 'webui-dark': webuiDark, 'webui-light': webuiLight,
 };
 
 export type Picture = keyof typeof pictures;

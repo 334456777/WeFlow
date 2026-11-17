@@ -1,5 +1,5 @@
-// The sample's official accounts and their pushes: WeFlow's release notes, and articles on Rust and interface design;
-// WeChat Pay's account pushes the payment notices.
+// The sample's official accounts and their pushes: WeFlow's release notes, articles on Rust and interface design, a
+// calligraphy lesson a day and the health tips the family forwards; WeChat Pay's account pushes the payment notices.
 import type { BizMessage } from '../api/contract.gen';
 import { ago } from './clock';
 import { pictureUrl } from './media';
@@ -37,6 +37,13 @@ export const pushes = new Map<string, BizMessage[]>([
   ['gh_sample_uidesign', [
     push(8, ago(6, 1, 0), article('新拟态之后：可裁剪的外形层', '按钮的底色和阴影交给 ::before，页面只写布局', REPO, pictureUrl('skin-sketch'))),
     push(7, ago(13, 1, 0), article('层叠层让样式不再互相覆盖', 'tokens、app、pages、roles、skin，后面的层总是胜出', REPO, pictureUrl('webui-dark'))),
+  ]],
+  ['gh_sample_calligraphy', [
+    push(52, ago(0, 7, 0), article('每日一字：永', '「永」字八法，一个字里有楷书的八种基本笔画', 'https://example.com/calligraphy', pictureUrl('calligraphy'))),
+    push(51, ago(1, 7, 0), article('临帖的第一年，先求像，再求不像', '读帖、摹帖、临帖、背帖，一步一步来', 'https://example.com/calligraphy')),
+  ]],
+  ['gh_sample_health', [
+    push(77, ago(1, 13, 0), article('秋冬季节这样喝水最养生', '早上一杯温水，晚上少喝浓茶……', 'https://example.com/health', pictureUrl('morning'))),
   ]],
   [WXPAY, payRecords.slice(0, 6).map((record, i) => ({
     localId: 900 - i, createTime: record.timestamp, title: record.title, description: record.description, url: '', cover: '', contentList: [],

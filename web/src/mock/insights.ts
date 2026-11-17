@@ -1,11 +1,18 @@
-// The sample's AI insights: what the insight engine noticed in the chats about WeFlow, with how each was written.
+// The sample's AI insights: what the insight engine noticed in the chats, about WeFlow and about the account's own life,
+// with how each was written.
 import type { InsightContact, InsightRecord, InsightSummary } from '../api/contract.gen';
-import { ago, dayOf, NOW } from './clock';
+import { ago, at, dayOf, NOW } from './clock';
 import { ME, nameOf } from './people';
 
 interface Written { id: string; session: string; at: number; reason: 'activity' | 'silence' | 'test'; text: string; read: boolean }
 
 const written: Written[] = [
+  { id: 'sample-insight-9', session: 'wxid_sample_xiaolu', at: at(1, '23:45'), reason: 'activity', read: false,
+    text: '小鹿第二次说「你上次也这么说」了。纪念日的假已经请好、花也订了，这次的「马上就睡」可以先做到。' },
+  { id: 'sample-insight-8', session: 'wxid_sample_mom', at: at(1, '20:05'), reason: 'activity', read: false,
+    text: '妈妈问周末回不回家吃饭，还说要带上小鹿，已经答应了。可以提前问问家里缺什么，顺路带上；外婆的语音也可以再拷一份给家里。' },
+  { id: 'sample-insight-7', session: 'wxid_sample_ajie', at: ago(2, 4, 30), reason: 'silence', read: true,
+    text: '阿杰约了下周乒乓球单挑，输的人请奶茶。毕业十年的聚会也定在下周六，可以把 404 寝室的老照片找出来带上。' },
   { id: 'sample-insight-6', session: 'wxid_sample_linmu', at: ago(0, 0, 40), reason: 'activity', read: false,
     text: '林沐刚发来浅色版的截图，准备提 PR。可以提醒跑一下 bun run shots 前后对比，再一起看看控制台卡片的间距。' },
   { id: 'sample-insight-5', session: 'wxid_sample_zhouzhou', at: ago(0, 1, 30), reason: 'activity', read: false,
@@ -26,7 +33,8 @@ const summaryOf = (w: Written): InsightSummary => ({
 
 /** A page of `insight records`: of everyone or one conversation, found by words, newest first. */
 export function insightRecords(keyword: string, session: string, offset: number, limit: number) {
-  const matching = written.filter(w => (!session || w.session === session) && (!keyword || w.text.includes(keyword) || nameOf(w.session).includes(keyword)));
+  const matching = written.filter(w => (!session || w.session === session) && (!keyword || w.text.includes(keyword) || nameOf(w.session).includes(keyword)))
+    .sort((a, b) => b.at - a.at);
   const counts = new Map<string, number>();
   for (const w of written) counts.set(w.session, (counts.get(w.session) ?? 0) + 1);
   const contacts: InsightContact[] = [...counts].map(([sessionId, count]) => ({ sessionId, displayName: nameOf(sessionId), count }));

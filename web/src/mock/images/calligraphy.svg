@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 560" width="420" height="560">
+  <rect width="420" height="560" fill="#efe6d2"/>
+  <g fill="none" stroke="#c9a789" stroke-width="1.5">
+    <path d="M40 40h340v480H40z"/><path d="M210 40v480M40 160h340M40 280h340M40 400h340"/>
+  </g>
+  <g stroke="#e3cdb6" stroke-width="1" stroke-dasharray="5 5">
+    <path d="M125 40v480M295 40v480M40 100h340M40 220h340M40 340h340M40 460h340"/>
+  </g>
+  <g font-family="KaiTi, STKaiti, 'Kaiti SC', 'AR PL UKai CN', 'Noto Serif CJK SC', serif" font-size="92" fill="#1d1a17" text-anchor="middle">
+    <text x="295" y="132">永</text><text x="295" y="252">和</text><text x="295" y="372">九</text><text x="295" y="492">年</text>
+    <text x="125" y="132">岁</text><text x="125" y="252">在</text><text x="125" y="372">癸</text><text x="125" y="492">丑</text>
+  </g>
+  <rect x="58" y="478" width="34" height="34" rx="3" fill="#c0392b"/>
+  <text x="75" y="502" font-family="KaiTi, STKaiti, serif" font-size="18" fill="#f6e3d6" text-anchor="middle">远</text>
+</svg>

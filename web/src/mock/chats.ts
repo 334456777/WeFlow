@@ -1,9 +1,11 @@
-// The sample's conversations: friends and groups talking about WeFlow and its WebUI, in every kind of message the
-// chat window shows. Each is written as it happened, one message after another, its times counted back from now.
+// The sample's conversations: friends and groups talking about WeFlow and its WebUI, and the account's own life (whom it
+// loves, its family, table tennis, calligraphy, a reading group, old roommates), in every kind of message the chat
+// window shows. Each is written as it happened, one message after another, its times counted back from now; what one
+// chat says, another (or the Moments, the payments, the reports) often answers.
 import type { ParsedMessage } from '../api/contract.gen';
-import { ago } from './clock';
+import { ago, at, daysSince } from './clock';
 import { pictureUrl, type Picture } from './media';
-import { DESIGN, DEV, ME, USERS } from './people';
+import { CALLIGRAPHY, DESIGN, DEV, DORM, FAMILY, ME, MINDFUL, PINGPONG, USERS } from './people';
 
 export type Message = ParsedMessage & { _cursor: string };
 
@@ -27,9 +29,9 @@ const file = (from: string, fileName: string, fileSize: number, gap = 1): Draft 
   from, gap, localType: app(6), text: '[文件] ' + fileName,
   extra: { appMsgKind: 'file', fileName, fileSize, fileExt: fileName.split('.').pop() },
 });
-const link = (from: string, linkTitle: string, appMsgDesc: string, linkUrl: string, gap = 1, appMsgAppName = 'GitHub'): Draft => ({
+const link = (from: string, linkTitle: string, appMsgDesc: string, linkUrl: string, gap = 1, appMsgAppName = 'GitHub', thumb: Picture = 'logo'): Draft => ({
   from, gap, localType: app(5), text: '[链接] ' + linkTitle,
-  extra: { appMsgKind: 'link', linkTitle, appMsgDesc, linkUrl, linkThumb: pictureUrl('logo'), appMsgAppName },
+  extra: { appMsgKind: 'link', linkTitle, appMsgDesc, linkUrl, linkThumb: pictureUrl(thumb), appMsgAppName },
 });
 const quote = (from: string, text: string, quotedSender: string, quotedContent: string, gap = 1): Draft => ({
   from, gap, localType: app(57), text, extra: { appMsgKind: 'quote', quotedSender, quotedContent },
@@ -83,6 +85,19 @@ const SONG = 'wxid_sample_songxiaoman';
 const GU = 'wxid_sample_gunan';
 const SHEN = 'wxid_sample_shenxinghe';
 const WEI = 'wxid_sample_chenyiwei';
+const LU = 'wxid_sample_xiaolu';
+const MOM = 'wxid_sample_mom';
+const DAD = 'wxid_sample_dad';
+const AUNT = 'wxid_sample_aunt';
+const UNCLE = 'wxid_sample_uncle';
+const YOUZI = 'wxid_sample_youzi';
+const COACH = 'wxid_sample_coachzhou';
+const AJIE = 'wxid_sample_ajie';
+const QING = 'wxid_sample_qingqing';
+const TEACHER = 'wxid_sample_teacherchen';
+const JING = 'wxid_sample_jingguan';
+const LAOMA = 'wxid_sample_laoma';
+const BING = 'wxid_sample_dabing';
 
 const REPO = 'https://github.com/334456777/WeFlow';
 const WIKI = REPO + '/wiki';
@@ -300,6 +315,8 @@ export const threads = new Map<string, Message[]>([
     file(ME, 'weflow-6.0.0-windows-x64.zip', 10_066_329, 30),
     file(ME, 'WebUI 设计稿.pdf', 3_250_585, 5),
     say(ME, '发版前检查：tag 用附注 tag，git cat-file -t 应该输出 tag', 2),
+    at(2, '11:50'),
+    say(ME, '备忘：纪念日记得订花 🌷，再订一家能看到湖的餐厅'),
   ])],
 
   [SONG, thread(SONG, [
@@ -309,10 +326,175 @@ export const threads = new Map<string, Message[]>([
     say(SONG, '找到了，serve 跑起来了', 20),
     pic(SONG, 'webui-dark', 0),
   ])],
+
+  // the account's own life
+  [LU, thread(LU, [
+    at(3, '17:40'),
+    say(LU, '今晚吃什么'),
+    say(ME, '你决定', 2),
+    say(LU, '那就巷子里那家面', 1),
+    place(LU, '巷子里的面馆', '梧桐巷 7 号', 0),
+    at(2, '00:52'),
+    say(LU, '都这么晚了还不睡'),
+    say(ME, '发版前最后一个 bug', 3),
+    say(LU, '你上次也这么说', 1),
+    sticker(LU, 0),
+    at(2, '08:30'),
+    say(LU, '纪念日那天别加班啊'),
+    say(ME, '早就请好假了', 4),
+    say(LU, '这还差不多', 1),
+    say(LU, '对了，你那个 WeFlow 能导出我们俩的聊天记录吗', 30),
+    say(ME, '能，还能生成双人报告', 2),
+    say(LU, '我们居然聊了三万多条', 6),
+    say(LU, '年度报告里我排第几', 0),
+    say(ME, '第一，一直是第一', 1),
+    say(LU, '哼，算你识相 😤', 1),
+    at(1, '23:20'),
+    say(LU, '示例数据改得怎么样了'),
+    say(ME, '在加我们的聊天记录', 2),
+    say(LU, '那示例里的那个爱人是不是我', 1),
+    say(ME, '除了你还能是谁', 1),
+    say(LU, '…早点睡', 3),
+    say(ME, '好，马上', 1),
+    say(LU, '你上次也这么说', 1),
+  ])],
+
+  [MOM, thread(MOM, [
+    at(6, '07:50'),
+    voice(MOM, 59),
+    voice(MOM, 42, 0),
+    say(MOM, '天冷了，记得穿秋裤', 1),
+    say(ME, '知道啦', 40),
+    at(4, '20:10'),
+    say(MOM, '你外婆的语音还在我手机的微信里，换手机会不会就没了'),
+    say(ME, '不会，我用 WeFlow 帮你导出来存好', 6),
+    say(MOM, 'WeFlow 是什么', 1),
+    say(ME, '我在做的一个软件，能把微信的聊天记录存到电脑上', 2),
+    say(MOM, '你自己做的？真厉害 👍', 1),
+    at(3, '21:30'),
+    file(ME, '外婆的语音.zip', 19_084_492),
+    say(ME, '都转成 MP3 了，电脑和手机上都能听', 0),
+    voice(MOM, 8, 25),
+    say(MOM, '听到你外婆的声音，眼泪都下来了', 1),
+    say(ME, '以后都不会丢了', 2),
+    at(1, '19:20'),
+    say(MOM, '周末回家吃饭吗'),
+    say(MOM, '带上小鹿', 0),
+    say(ME, '回！', 12),
+    pic(MOM, 'dinner', 3),
+    say(MOM, '先给你们看看菜单 😄', 0),
+  ])],
+
+  [FAMILY, thread(FAMILY, [
+    at(5, '06:58'),
+    pic(DAD, 'morning'),
+    say(AUNT, '早上好', 4),
+    say(UNCLE, '早', 6),
+    at(3, '15:20'),
+    say(YOUZI, '我考上研究生了！！！'),
+    redPacket(AUNT, '恭喜小柚', 1),
+    redPacket(UNCLE, '好样的', 1),
+    redPacket(ME, '恭喜恭喜', 1),
+    say(DAD, '👍👍👍', 2),
+    say(MOM, '晚上一起吃饭庆祝', 3),
+    at(2, '20:05'),
+    say(UNCLE, '听说阿远会把微信聊天记录导出来？'),
+    say(UNCLE, '那我们群里说的话是不是都被记下来了 😂', 0),
+    say(AUNT, '[捂脸]', 2),
+    say(ME, '只存在我自己的电脑上，放心，不会给别人看', 3),
+    say(UNCLE, '那我以后发言注意点', 2),
+    say(YOUZI, '二舅终于不转养生文章了吗', 1),
+    at(1, '09:40'),
+    link(UNCLE, '秋冬季节这样喝水最养生', '早上一杯温水，晚上少喝浓茶……', 'https://example.com/health', 0, '健康生活小贴士', 'morning'),
+    say(YOUZI, '……', 5),
+    ago(0, 0, 50),
+    say(MOM, '周末都回家吃饭，我做红烧肉'),
+    say(LU, '好的阿姨！', 3),
+    say(YOUZI, '我也要来', 1),
+    sticker(DAD, 4),
+  ])],
+
+  [PINGPONG, thread(PINGPONG, [
+    at(daysSince(3) + 2, '12:10'),
+    say(COACH, '本周三晚上七点，体育馆二楼，老规矩接龙'),
+    say(AJIE, '#接龙\n周三乒乓球\n\n1. 周教练\n2. 阿杰', 3),
+    say(ME, '#接龙\n周三乒乓球\n\n1. 周教练\n2. 阿杰\n3. 阿远', 5),
+    say(QING, '#接龙\n周三乒乓球\n\n1. 周教练\n2. 阿杰\n3. 阿远\n4. 青青', 8),
+    at(daysSince(3), '21:05'),
+    pic(COACH, 'pingpong'),
+    say(COACH, '今天阿远的反手拉得不错', 1),
+    say(AJIE, '是不是写 Rust 练出来的，手腕灵活', 1),
+    say(ME, '主要是对手发挥得好 😏', 2),
+    say(AJIE, '？？？下周单挑', 1),
+    say(COACH, '场地费一人 20，我先垫了', 6),
+    transfer(ME, '¥20.00', '场地费', 2),
+    at(daysSince(3), '22:30'),
+    say(AJIE, '下周谁输了谁请奶茶'),
+    say(ME, '再加一条：输的人帮我测一下 WeFlow', 3),
+    say(AJIE, '那我宁愿请奶茶', 1),
+    say(COACH, '哈哈哈哈', 2),
+  ])],
+
+  [CALLIGRAPHY, thread(CALLIGRAPHY, [
+    at(8, '20:00'),
+    say(TEACHER, '本周作业：临《兰亭序》前三行，周日前交'),
+    say(QING, '收到', 5),
+    say(ME, '收到', 20),
+    at(4, '21:40'),
+    pic(ME, 'calligraphy'),
+    say(ME, '老师，这周的作业', 0),
+    say(TEACHER, '结构比上周稳了。捺画再舒展一些，收笔不要急', 30),
+    say(ME, '好的，谢谢老师', 2),
+    say(TEACHER, '写字和做事一样，急不得', 1),
+    say(QING, '阿远的字越来越有样子了', 6),
+    at(3, '09:15'),
+    say(TEACHER, '下周上课带毛毡和宣纸，墨我这里有'),
+    say(ME, '老师，我做的那个软件叫 WeFlow，flow 就是流水的意思', 15),
+    say(TEACHER, '难怪你的笔画越写越流畅 😄', 4),
+    say(TEACHER, '上善若水', 0),
+  ])],
+
+  [MINDFUL, thread(MINDFUL, [
+    at(9, '12:05'),
+    say(JING, '今天的练习：吃饭的时候只吃饭，不看手机'),
+    say(LU, '打卡 ✅', 30),
+    say(ME, '我先把这条消息发完再开始', 1),
+    say(JING, '🙏 觉察到想发消息的念头，也是练习', 3),
+    at(4, '22:30'),
+    say(ME, '最近把十年的聊天记录导出来看了一遍'),
+    say(ME, '很多当时觉得天大的烦恼，现在都想不起来了', 0),
+    say(JING, '记录会留下，烦恼会过去', 5),
+    say(QING, '这句可以写成书法作品了', 2),
+    say(LU, '那些说过的晚安也都还在吗', 4),
+    say(ME, '都在', 1),
+  ])],
+
+  [DORM, thread(DORM, [
+    at(10, '22:10'),
+    say(AJIE, '毕业十年了，聚一下？'),
+    say(LAOMA, '必须的', 2),
+    say(BING, '我在外地，视频连线', 9),
+    say(ME, '我把我们群这十年的聊天记录导出来了，三万多条', 5),
+    say(LAOMA, '快把我当年那些黑历史删了', 1),
+    say(ME, '删不了，WeFlow 是只读的 😂', 1),
+    record(AJIE, '404 寝室的聊天记录', [
+      '老马：今晚谁去图书馆占座',
+      '大兵：我在网吧',
+      '阿杰：熄灯了，别打游戏了',
+      '老马：最后一局',
+    ], 3),
+    say(BING, '哈哈哈哈哈这都有', 1),
+    at(6, '21:00'),
+    say(AJIE, '定了，下周六老地方'),
+    place(AJIE, '学校东门烧烤', '大学路 12 号', 0),
+    redPacket(LAOMA, '聚会经费', 4),
+  ])],
 ]);
 
 /** How many messages each conversation has not been read, as the list shows. */
-export const unread: Record<string, number> = { [DEV]: 3, [LIN]: 1, [ZHOU]: 2, [DESIGN]: 0, [USERS]: 6 };
+export const unread: Record<string, number> = {
+  [DEV]: 3, [LIN]: 1, [ZHOU]: 2, [DESIGN]: 0, [USERS]: 6, [LU]: 1, [FAMILY]: 4, [CALLIGRAPHY]: 3, [MINDFUL]: 12, [DORM]: 5,
+};
 
 /** A message of a conversation by its local id. */
 export const messageOf = (session: string, localId: number): Message | undefined =>
