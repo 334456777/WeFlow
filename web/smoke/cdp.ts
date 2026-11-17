@@ -212,10 +212,10 @@ export class Page {
   }
 
   /**
-   * Runs `fn(...args)` in the page until `ok` takes its value, and returns that value. After ten seconds it fails
-   * with `what` and the last value: what the page showed instead.
+   * Runs `fn(...args)` in the page (awaited when it is a promise) until `ok` takes its value, and returns that value.
+   * After ten seconds it fails with `what` and the last value: what the page showed instead.
    */
-  async until<T, A extends unknown[] = []>(what: string, ok: (value: T) => boolean, fn: (...args: A) => T, ...args: A): Promise<T> {
+  async until<T, A extends unknown[] = []>(what: string, ok: (value: T) => boolean, fn: (...args: A) => T | Promise<T>, ...args: A): Promise<T> {
     const deadline = Date.now() + 10_000;
     for (;;) {
       const value = await this.eval(fn, ...args);
@@ -226,7 +226,7 @@ export class Page {
   }
 
   /** {@link until} the value is truthy. */
-  waitFor<T, A extends unknown[] = []>(what: string, fn: (...args: A) => T, ...args: A): Promise<NonNullable<T>> {
+  waitFor<T, A extends unknown[] = []>(what: string, fn: (...args: A) => T | Promise<T>, ...args: A): Promise<NonNullable<T>> {
     return this.until(what, Boolean, fn, ...args) as Promise<NonNullable<T>>;
   }
 
@@ -242,11 +242,15 @@ export class Page {
 
   /**
    * A click with the mouse in the middle of the first element `selector` matches whose text or label has `text`, once
-   * nothing covers that point: an element out of view is scrolled to first (a list may scroll it back, so it is
-   * measured again until it stays).
+   * it stays in place and nothing covers that point: an element out of view is scrolled to first (a list may scroll
+   * it back, so it is measured again until it stays).
    */
   async click(selector: string, text?: string): Promise<void> {
-    const point = await this.point(selector, text);
+    await this.clickAt(await this.point(selector, text));
+  }
+
+  /** A click with the mouse at `point`, on whatever is there. */
+  async clickAt(point: { x: number; y: number }): Promise<void> {
     await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
     await this.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
     await this.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
@@ -270,14 +274,20 @@ export class Page {
     await this.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', clickCount: 1 });
   }
 
-  /** Where {@link click} clicks the element: its middle, once nothing covers it. */
+  /**
+   * Where {@link click} clicks the element: its middle, once it has not moved for 50 ms (a list scrolling smoothly to
+   * the element focused, #844) and nothing covers it.
+   */
   point(selector: string, text?: string): Promise<{ x: number; y: number }> {
-    return this.waitFor(`${selector}${text ? ` with 「${text}」` : ''} to click`, (selector, text) => {
+    return this.waitFor(`${selector}${text ? ` with 「${text}」` : ''} to click`, async (selector, text) => {
       const element = [...document.querySelectorAll<HTMLElement>(selector)]
         .find(element => !text || (element.textContent ?? '').includes(text) || element.getAttribute('aria-label')?.includes(text));
       if (!element) return null;
+      const was = element.getBoundingClientRect();
+      await new Promise(resolve => setTimeout(resolve, 50));
       const box = element.getBoundingClientRect();
       if (!box.width || !box.height) return null;
+      if (box.x !== was.x || box.y !== was.y) return null;
       const x = box.x + box.width / 2, y = box.y + box.height / 2;
       const hit = document.elementFromPoint(x, y);
       if (hit && element.contains(hit)) return { x, y };

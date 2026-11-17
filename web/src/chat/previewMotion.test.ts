@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from '#test';
 import { previewSize } from './MessageView';
-import { canFly, fly, frameVars, MEDIA_NAME, thumbnailOf } from './previewMotion';
+import { canFly, fly, FRAME_NAME, frameFlight, frameVars, MEDIA_NAME, thumbnailOf } from './previewMotion';
 
 afterEach(() => { document.body.innerHTML = ''; Reflect.deleteProperty(document, 'startViewTransition'); });
 
@@ -59,9 +59,33 @@ describe('the preview flying from its thumbnail (#194)', () => {
     expect(change).toHaveBeenCalledTimes(1);
     expect(seen).toEqual(['before: ' + MEDIA_NAME, 'after:  / ' + MEDIA_NAME]);
     done();
-    await flight;
+    expect(await flight).toBe(true);
     expect(to.style.viewTransitionName).toBe('');
     expect(from.style.viewTransitionName).toBe('');
+  });
+
+  it('leaves the names to a flight that cuts it short (#844)', async () => {
+    document.body.innerHTML = '<img id="media"><img id="thumb">';
+    const media = document.getElementById('media')!;
+    const thumb = document.getElementById('thumb')!;
+    const ends: (() => void)[] = [];
+    Object.defineProperty(document, 'startViewTransition', {
+      configurable: true,
+      value: (update: () => void) => {
+        update();
+        return { finished: new Promise<void>(resolve => { ends.push(resolve); }) };
+      },
+    });
+    // flying back into the thumbnail, then opened from that same thumbnail again before it has landed
+    const back = fly(media, () => {}, () => thumb);
+    expect(thumb.style.viewTransitionName).toBe(MEDIA_NAME);
+    const again = fly(thumb, () => {}, () => media);
+    ends[0]();
+    expect(await back).toBe(false);
+    expect(media.style.viewTransitionName).toBe(MEDIA_NAME);
+    ends[1]();
+    expect(await again).toBe(true);
+    expect([media.style.viewTransitionName, thumb.style.viewTransitionName]).toEqual(['', '']);
   });
 });
 
@@ -79,5 +103,24 @@ describe('the frame flying with the picture (#339)', () => {
     };
     expect([at('x'), at('y')]).toEqual([thumb.left, thumb.top]);
     expect(media.width * 0.25).toBe(thumb.width);
+  });
+
+  it('keeps the marks of a frame flight begun before the last one ended (#844)', () => {
+    document.body.innerHTML = '<section id="frame"><img id="media"></section>';
+    const frame = document.getElementById('frame')!;
+    const media = document.getElementById('media')!;
+    const root = document.documentElement;
+    const thumb = new DOMRect(10, 20, 100, 75);
+    const opened = frameFlight('open', frame, media, thumb);
+    // closed while it still flies in: the close's marks stay when the opening ends
+    const closed = frameFlight('close', frame, media, thumb);
+    opened();
+    expect(root.dataset.flight).toBe('close');
+    expect(root.style.getPropertyValue('--fly-x')).toBe('10px');
+    expect(frame.style.viewTransitionName).toBe(FRAME_NAME);
+    closed();
+    expect(root.dataset.flight).toBeUndefined();
+    expect(root.style.getPropertyValue('--fly-x')).toBe('');
+    expect(frame.style.viewTransitionName).toBe('');
   });
 });
