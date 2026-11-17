@@ -19,7 +19,7 @@ pub enum PtraceAccess {
     Disabled,
 }
 
-/// The access this process has now, from [`PTRACE_SCOPE`] and `/proc/self/status`.
+/// The access this process has now, from `/proc/sys/kernel/yama/ptrace_scope` and `/proc/self/status`.
 #[must_use]
 pub fn ptrace_access() -> PtraceAccess {
     let scope = std::fs::read_to_string(PTRACE_SCOPE).ok();
