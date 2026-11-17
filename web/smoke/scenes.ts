@@ -104,7 +104,8 @@ export const scenes: Scene[] = [
       await page.type('原图');
       await page.press('Enter');
       await page.untilTexts('the results', '.search-results .search-result', texts => texts.length === 5);
-      await page.click('#card-media');
+      // the console at its top: where the clicks left it scrolled depends on when the cards finished opening
+      await page.eval(() => { document.querySelector('.console')!.scrollTop = 0; });
       await shoot();
     },
   },

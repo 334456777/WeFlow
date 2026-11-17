@@ -20,6 +20,9 @@ const DESKTOP = { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false 
 const PHONE = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
 /** Tabs shot at once, each in a window of its own. */
 const AT_ONCE = 3;
+/** Drawn the same way every time: in software on one thread, in sRGB. Else the edge of a rounded shadow differs by a
+ * shade at a pixel or two from one run to the next. */
+const STEADY = ['--disable-gpu', '--num-raster-threads=1', '--disable-partial-raster', '--force-color-profile=srgb'];
 
 const out = join(target, 'web-shots');
 const args = process.argv.slice(2);
@@ -75,7 +78,7 @@ async function shoot(name: string, only: string[]): Promise<void> {
   const { weflow: built, home } = buildAccount(accounts.dev);
   const weflow = pinned(built);
   console.log('served by ' + Bun.spawnSync([weflow, '--version']).stdout.toString().trim() + ' (' + weflow + ')');
-  const browser = await Browser.launch(findChrome(), join(out, 'profile'));
+  const browser = await Browser.launch(findChrome(), join(out, 'profile'), STEADY);
   const { serve, url, token } = await startServe(weflow, home, ['--ui-dir', dist, '--no-browser'], { WEFLOW_LANG: 'zh' });
   const started = performance.now();
   let failed = 0, shots = 0, next = 0;

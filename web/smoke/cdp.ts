@@ -44,14 +44,14 @@ export class Browser {
     });
   }
 
-  /** Chrome headless on a debugging port it picks, with an empty profile in `profile` (removed on close). */
-  static async launch(chrome: string, profile: string): Promise<Browser> {
+  /** Chrome headless on a debugging port it picks, with an empty profile in `profile` (removed on close), and `flags`. */
+  static async launch(chrome: string, profile: string, flags: string[] = []): Promise<Browser> {
     rmSync(profile, { recursive: true, force: true });
     mkdirSync(profile, { recursive: true });
     const process = Bun.spawn([
       chrome, '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
       '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-extensions',
-      '--disable-sync', '--password-store=basic', '--use-mock-keychain', '--mute-audio', 'about:blank',
+      '--disable-sync', '--password-store=basic', '--use-mock-keychain', '--mute-audio', ...flags, 'about:blank',
     ], { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' });
     // Chrome writes the address of its debugging endpoint on stderr; the rest is read and dropped
     const address = await new Promise<string>((resolve, reject) => {
