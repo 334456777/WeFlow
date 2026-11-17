@@ -8100,6 +8100,10 @@
               "null"
             ],
             "description": "Null when `config unset config_path` finds no default place for it."
+          },
+          "didYouMean": {
+            "type": "string",
+            "description": "For `config set` of a key WeFlow does not read but spelt almost as one it does (`decrypt_ky`), that one:\nthe key was saved as it was typed all the same. Left out otherwise."
           }
         },
         "required": [

@@ -280,7 +280,8 @@ fn print_response(response: &weflow_core::output::CliResponse<Value>, summary: O
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Summary {
     Cache(CacheShown),
-    /// `config set`, `unset` and `clear`, which succeed silently: the config file path is not news.
+    /// `config set`, `unset` and `clear`, which succeed silently: the config file path is not news. A key spelt almost
+    /// as one WeFlow reads is named.
     ConfigSaved,
     DbDetect,
     DbWxid,

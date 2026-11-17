@@ -1138,6 +1138,11 @@ export interface AccountCleared {
 export interface ConfigWritten {
   /** Null when `config unset config_path` finds no default place for it. */
   configPath: string | null;
+  /**
+   * For `config set` of a key WeFlow does not read but spelt almost as one it does (`decrypt_ky`), that one:
+   * the key was saved as it was typed all the same. Left out otherwise.
+   */
+  didYouMean?: string;
 }
 
 /** WeFlow's config file (`config list`): the profiles and the settings shared by all of them. */

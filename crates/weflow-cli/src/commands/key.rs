@@ -192,7 +192,18 @@ pub(crate) fn key_summary(summary: Summary, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
     match summary {
         Summary::Cache(shown) => cache_summary(shown, data),
-        Summary::ConfigSaved => Some(String::new()),
+        // silent unless the key is spelt almost as one WeFlow reads (#813)
+        Summary::ConfigSaved => Some(match data["didYouMean"].as_str() {
+            Some(known) => format!(
+                "{}\n",
+                tr(
+                    "Saved, but WeFlow does not read this key; did you mean {known}?",
+                    "已保存，但 WeFlow 不读取这个键；是否想写 {known}？"
+                )
+                .replace("{known}", known)
+            ),
+            None => String::new(),
+        }),
         Summary::DbDetect => {
             // only the directories that exist, named like the setting that takes them
             let found: Vec<&str> = data["candidates"]
