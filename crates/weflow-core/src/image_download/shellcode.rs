@@ -74,6 +74,28 @@ pub fn build(original: &[u8; 13], target: u64) -> Vec<u8> {
     code
 }
 
+/// The most hooks put one on another that [`original_bytes`] reads through.
+const MOST_STACKED: usize = 16;
+
+/// The function's own first 13 bytes, under the hook whose shellcode is at `shellcode` and any it was put on
+/// (#809): each shellcode keeps the bytes it replaced, which are the jump of the hook before it, down to the
+/// function's start (`push rbp`). `read(address)` gives [`LEN`] bytes of the process at `address`. `None` when a
+/// layer is not what [`build`] makes for `target`, cannot be read, or the layers do not end within reason.
+pub fn original_bytes(
+    mut read: impl FnMut(u64) -> Option<Vec<u8>>,
+    target: u64,
+    mut shellcode: u64,
+) -> Option<[u8; 13]> {
+    for _ in 0..MOST_STACKED {
+        let replaced = replaced_bytes(&read(shellcode)?, target)?;
+        match jump_target(&replaced) {
+            Some(below) => shellcode = below,
+            None => return (replaced[0] == 0x55).then_some(replaced),
+        }
+    }
+    None
+}
+
 /// The 13 bytes a hook of `target` replaced, read back from its shellcode `code`: `None` unless `code` is what
 /// [`build`] makes for `target` (the same template and a jump back to `target + 13`), so that the code of another
 /// program is never taken for it (#809).
@@ -155,6 +177,51 @@ mod tests {
         other[0] = 0xcc;
         assert_eq!(replaced_bytes(&other, 0x7ff8_1000), None);
         assert_eq!(replaced_bytes(&code[..LEN - 1], 0x7ff8_1000), None);
+    }
+
+    /// Hooks put one on another, as a real WeChat held three of them (#809): the function's own bytes are under the
+    /// last of them.
+    #[test]
+    fn the_original_bytes_are_read_through_hooks_put_one_on_another() {
+        let target = 0x7ff8_1000;
+        let original = [
+            0x55, 0x41, 0x56, 0x56, 0x57, 0x53, 0x48, 0x81, 0xec, 0x00, 0x03, 0x00, 0x00,
+        ];
+        // the first hook keeps the function's bytes, each later one the jump of the one before it
+        let mut pages = std::collections::HashMap::new();
+        pages.insert(0x1_0000_u64, build(&original, target));
+        pages.insert(0x2_0000, build(&jump_to(0x1_0000), target));
+        pages.insert(0x3_0000, build(&jump_to(0x2_0000), target));
+        let read = |pages: &std::collections::HashMap<u64, Vec<u8>>| {
+            let pages = pages.clone();
+            move |at: u64| pages.get(&at).cloned()
+        };
+        assert_eq!(
+            original_bytes(read(&pages), target, 0x3_0000),
+            Some(original)
+        );
+        assert_eq!(
+            original_bytes(read(&pages), target, 0x1_0000),
+            Some(original)
+        );
+
+        // a layer that is gone, of another function, or another program's, and a loop: nothing is taken
+        let mut gone = pages.clone();
+        gone.remove(&0x1_0000);
+        assert_eq!(original_bytes(read(&gone), target, 0x3_0000), None);
+        let mut elsewhere = pages.clone();
+        elsewhere.insert(0x2_0000, build(&jump_to(0x1_0000), target + 0x40));
+        assert_eq!(original_bytes(read(&elsewhere), target, 0x3_0000), None);
+        let mut foreign = pages.clone();
+        foreign.get_mut(&0x2_0000).unwrap()[0] = 0xcc;
+        assert_eq!(original_bytes(read(&foreign), target, 0x3_0000), None);
+        let mut looped = pages.clone();
+        looped.insert(0x1_0000, build(&jump_to(0x3_0000), target));
+        assert_eq!(original_bytes(read(&looped), target, 0x3_0000), None);
+        // what the first hook kept must be a function's start
+        let mut not_a_start = pages;
+        not_a_start.insert(0x1_0000, build(&[0x90; 13], target));
+        assert_eq!(original_bytes(read(&not_a_start), target, 0x3_0000), None);
     }
 }
 

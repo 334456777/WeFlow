@@ -79,13 +79,15 @@ mod imp {
                         read_remote(process, target, &mut original).ok_or("Backup failed")?;
                         (target, original)
                     }
-                    // The bytes the earlier hook replaced are in its shellcode: they become ours, and its jump is
-                    // overwritten by ours below. Its page stays, as its own `weflow` may still run and free it.
+                    // The function's own bytes are in the shellcode of the earlier hook, or of the first of the
+                    // hooks put one on another: they become ours, and the jump there is overwritten by ours below.
+                    // Their pages stay, as their own `weflow` may still run and free them.
                     Start::Hooked { at, shellcode } => {
-                        let mut code = [0u8; shellcode::LEN];
-                        read_remote(process, shellcode, &mut code)
-                            .and_then(|()| shellcode::replaced_bytes(&code, at))
-                            .filter(|original| original[0] == 0x55)
+                        let read = |address: u64| {
+                            let mut code = vec![0u8; shellcode::LEN];
+                            read_remote(process, address, &mut code).map(|()| code)
+                        };
+                        shellcode::original_bytes(read, at, shellcode)
                             .map(|original| (at, original))
                             .ok_or("Target function is hooked by another program")?
                     }
