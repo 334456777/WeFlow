@@ -1509,7 +1509,7 @@
                     },
                     "data": {
                       "type": "object",
-                      "description": "Each username asked for, with whether its conversation is folded and muted",
+                      "description": "Each username asked for, with whether its conversation is folded, muted and pinned",
                       "additionalProperties": {
                         "$ref": "#/components/schemas/ChatStatus"
                       }
@@ -5429,13 +5429,18 @@
           },
           "isMuted": {
             "type": "boolean"
+          },
+          "isPinned": {
+            "type": "boolean",
+            "description": "Pinned to the top of WeChat's conversation list (#885)."
           }
         },
         "required": [
           "isFolded",
-          "isMuted"
+          "isMuted",
+          "isPinned"
         ],
-        "description": "Whether a conversation is folded and muted, of `chat statuses`, which answers one for each username asked for."
+        "description": "Whether a conversation is folded, muted and pinned (`chat statuses` answers one for each username asked for)."
       },
       "TabCounts": {
         "type": "object",

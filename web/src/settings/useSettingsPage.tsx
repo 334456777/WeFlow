@@ -71,7 +71,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
   const section = (id: SectionId): ReactNode => {
     switch (id) {
       case 'connection':
-        return <SettingsSection title={sectionLabel(id)} lead={t('连接到 weflow serve 后读取本机记录；未连接时显示示例数据。')}>
+        return <SettingsSection title={sectionLabel(id)} lead={t('连接到 weflow serve 后读取本机记录；连接过再断开时保留已读到的记录，从未连接时显示示例数据。')}>
           <ConnectionSettings backend={backend} recheck={recheck} />
         </SettingsSection>;
       case 'accounts':

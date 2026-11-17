@@ -10,6 +10,7 @@ import { formatSessionTime } from '../chat/sessions';
 import { HoverTrack } from '../HoverTrack';
 import { GridSkeleton, ListSkeleton, MomentsSkeleton } from '../Skeleton';
 import type { InsightsState } from './useInsights';
+import { SampleNote } from '../shell/sample';
 import { locale, t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
@@ -57,6 +58,7 @@ export function InsightContacts({ state, selected, onSelect, keyword, onKeyword,
         <input type="search" aria-label={t('搜索见解')} placeholder={t('搜索见解或联系人，回车搜索')} value={typed}
           onChange={event => { setTyped(event.target.value); if (!event.target.value && keyword) onKeyword(''); }} />
       </div>
+      <SampleNote />
     </form>
     {body}
   </div>;

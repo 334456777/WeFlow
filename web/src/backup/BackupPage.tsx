@@ -1,6 +1,6 @@
 // The database backup page (#212): a backup made as a job of the server and saved from the browser, the backups this
 // tab made, and what a backup on the server's computer holds or restoring it into a folder there.
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Archive, ArrowCounterClockwise, Check, CircleNotch, DownloadSimple, FolderOpen, MagnifyingGlass } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
@@ -10,6 +10,7 @@ import { formatSize, jobLine } from '../jobs/TaskCenter';
 import { runJob, type JobsState } from '../jobs/useJobs';
 import type { Page, Shell } from '../shell/page';
 import { Connected, ScrollPage } from '../shell/panels';
+import { SampleContext } from '../shell/sample';
 import { locale, t } from '../i18n';
 import './BackupPage.css';
 
@@ -34,7 +35,9 @@ const backupPath = (job: Job) => {
 export function BackupPage({ jobs }: { jobs: JobsState }) {
   const [parts, setParts] = useState<BackupChoice>({ images: false, videos: false, files: false, emojis: false });
   const [note, setNote] = useState<Note>(null);
-  const [path, setPath] = useState('');
+  // the sample's backup (#879), to look at as one would a backup on the server's computer
+  const sample = useContext(SampleContext);
+  const [path, setPath] = useState(sample ? 'weflow-backup.zip' : '');
   const [target, setTarget] = useState('');
   const [manifest, setManifest] = useState<{ path: string; value: BackupManifest } | null>(null);
   const [busy, setBusy] = useState<'create' | 'inspect' | 'restore' | null>(null);

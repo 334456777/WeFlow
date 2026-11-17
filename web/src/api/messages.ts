@@ -1,6 +1,6 @@
 // Messages, people and media of a conversation (the wiki's command API page). Messages come parsed by the
 // server as the desktop app parses them (`chat messages --parsed`), so the page reads no WeChat XML.
-import { apiUrl, get, token, type Params } from './client';
+import { get, mediaAddress, token, type Params } from './client';
 import type * as Contract from './contract.gen';
 
 const MESSAGE_KEYS = [
@@ -87,7 +87,7 @@ export function getImageInfo(sessionId: string, localId: number, createTime: num
  */
 export function mediaUrl(kind: 'image-data' | 'voice-data' | 'video-data', sessionId: string, message: ParsedMessage, extra: Params = {}): string {
   const bearer = token();
-  return apiUrl('api/chat/' + kind, {
+  return mediaAddress('api/chat/' + kind, {
     'session-id': sessionId, 'msg-id': message.localId, 'create-time': message.createTime, ...extra,
     ...(bearer ? { access_token: bearer } : {}),
   });

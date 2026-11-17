@@ -533,7 +533,7 @@ pub(super) fn contract() -> &'static Contract {
             "chat statuses",
             by_id(
                 of(generator.subschema_for::<ChatStatus>()),
-                "Each username asked for, with whether its conversation is folded and muted",
+                "Each username asked for, with whether its conversation is folded, muted and pinned",
             ),
         );
         data.insert(

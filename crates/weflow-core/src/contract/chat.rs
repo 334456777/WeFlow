@@ -324,12 +324,14 @@ pub struct ResourcePage {
     pub next_cursor: Option<String>,
 }
 
-/// Whether a conversation is folded and muted, of `chat statuses`, which answers one for each username asked for.
+/// Whether a conversation is folded, muted and pinned (`chat statuses` answers one for each username asked for).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatStatus {
     pub is_folded: bool,
     pub is_muted: bool,
+    /// Pinned to the top of WeChat's conversation list (#885).
+    pub is_pinned: bool,
 }
 
 /// How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them.

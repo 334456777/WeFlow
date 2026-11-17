@@ -12,8 +12,8 @@ import { locale, t } from '../i18n';
 import './contacts.css';
 
 export function useContactsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
-  const { backend, connected, scope, setMobileDetail } = shell;
-  const [state, reload] = useContacts(active && connected, scope);
+  const { backend, records, scope, setMobileDetail } = shell;
+  const [state, reload] = useContacts(active && records, scope);
   const [kind, setKind] = useState<ContactKind>('friend');
   const [id, setId] = useState<string | null>(null);
   useEffect(() => { setId(null); }, [scope]);
@@ -35,10 +35,10 @@ export function useContactsPage(shell: Shell, active: boolean, chatWith: ChatWit
       <ContactList state={state} kind={kind} onKind={setKind} selected={id} onRetry={reload}
         onSelect={username => { setId(username); setMobileDetail(true); }} />
     </ConnectedList>}>
-    {connected && (contact
+    {records && (contact
       ? <ContactDetail key={contact.username} contact={contact} canChat={shell.sessionList.some(s => s.username === contact.username)}
         onChat={() => chatWith(contact.username)} />
       : <div className="pane-message">{contacts && <p>{t('选择左侧的一个联系人。')}</p>}</div>)}
   </BrowserPanel>;
-  return { view, cards, shown: ['tasks', ...(connected ? cards.map(card => card.id) : [])] };
+  return { view, cards, shown: ['tasks', ...(records ? cards.map(card => card.id) : [])] };
 }

@@ -225,13 +225,20 @@ fn dates_counts_statuses_and_tab_counts() {
     );
 
     let st = json!(hub
-        .chat_statuses(&strs(&["room1@chatroom", "wxid_bob"]))
+        .chat_statuses(&strs(&["room1@chatroom", "wxid_bob", "wxid_carol"]))
         .unwrap());
     assert_eq!(
         st["room1@chatroom"],
-        json!({"isFolded": true, "isMuted": true})
+        json!({"isFolded": true, "isMuted": true, "isPinned": false})
     );
-    assert_eq!(st["wxid_bob"], json!({"isFolded": false, "isMuted": false}));
+    assert_eq!(
+        st["wxid_bob"],
+        json!({"isFolded": false, "isMuted": false, "isPinned": false})
+    );
+    assert_eq!(
+        st["wxid_carol"],
+        json!({"isFolded": false, "isMuted": false, "isPinned": true})
+    );
 
     let tabs = json!(hub.chat_tab_counts().unwrap());
     assert_eq!(tabs["group"], 1);

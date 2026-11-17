@@ -8,6 +8,7 @@ import type { SessionsState } from '../chat/useSessions';
 import { Segmented } from '../Segmented';
 import { VirtualList } from '../VirtualList';
 import { ListSkeleton } from '../Skeleton';
+import { SampleNote } from '../shell/sample';
 import { locale, t } from '../i18n';
 
 const ROW_HEIGHT = 58;
@@ -90,6 +91,7 @@ export function ExportPicker({ state, picked, onChange, onRetry }: {
         <label className="checkbox"><input type="checkbox" aria-label={t('全选当前列出的会话')} checked={allShown} disabled={!shown.length} onChange={toggleShown} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('全选当前列出的 {length} 个', { length: shown.length.toLocaleString(locale()) })}</span></label>
         {picked.size > 0 && <button type="button" className="text-button" onClick={() => onChange(new Set())}>{t('清空（已选 {size}）', { size: picked.size })}</button>}
       </div>}
+      <SampleNote />
     </div>
     {body}
   </div>;

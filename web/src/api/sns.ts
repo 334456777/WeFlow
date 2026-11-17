@@ -1,6 +1,6 @@
 // Moments (#202): the timeline (`sns timeline`), who posts and how often (`sns post-counts`), the totals
 // (`sns stats`), all read in the server's process, and the images and videos of a post (`/api/sns/media`).
-import { apiUrl, get, token, type Params } from './client';
+import { get, mediaAddress, token, type Params } from './client';
 import type * as Contract from './contract.gen';
 
 /** A post, its pictures and videos (addresses on WeChat's servers and the key to them), its comments and where it
@@ -73,7 +73,7 @@ export function isVideo(media: SnsMedia): boolean {
  */
 export function snsMediaUrl(url: string, key: string | undefined, postType: number): string {
   const bearer = token();
-  return apiUrl('api/sns/media', {
+  return mediaAddress('api/sns/media', {
     url,
     ...(key && postType !== 7 ? { key } : {}),
     ...(bearer ? { access_token: bearer } : {}),

@@ -1,5 +1,5 @@
 // The Moments page (#202): who posts beside the timeline, narrowed to a poster, words and days by its console card.
-// Not connected, the sample is shown in the chat page's browser instead.
+// The posts are the server's, or the sample's while no server has answered (#879).
 import { useEffect, useRef, useState } from 'react';
 import { NO_FILTER, type SnsFilter } from '../api/sns';
 import type { Page, Shell } from '../shell/page';
@@ -15,7 +15,7 @@ import './moments.css';
 /** `active`: the page browsed, the one the console keeps the cards of while the settings are open. */
 export function useMomentsPage(shell: Shell, active: boolean): Page {
   const { backend, scope, setMobileDetail } = shell;
-  const live = active && shell.connected;
+  const live = active && shell.records;
   const [filter, setFilter] = useState<SnsFilter>(NO_FILTER);
   useEffect(() => { setFilter(NO_FILTER); }, [scope]);
   const [people, reloadPeople] = useMomentPeople(live, scope, shell.sessionList[0]?.selfWxid);

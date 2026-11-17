@@ -296,10 +296,12 @@ export interface Resource {
 /** What a message of `chat resources` holds. */
 export type ResourceKind = "image" | "video" | "voice" | "file";
 
-/** Whether a conversation is folded and muted, of `chat statuses`, which answers one for each username asked for. */
+/** Whether a conversation is folded, muted and pinned (`chat statuses` answers one for each username asked for). */
 export interface ChatStatus {
   isFolded: boolean;
   isMuted: boolean;
+  /** Pinned to the top of WeChat's conversation list (#885). */
+  isPinned: boolean;
 }
 
 /** How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them. */
@@ -2173,7 +2175,7 @@ export interface Answers {
   /** With `parsed=true`, the hits, each with its `_session_id`, as the chat window shows them; else as WeChat keeps them, each with its `_cursor` */
   "chat search": ParsedMessage[] | SearchHit[];
   "chat sessions": Session[];
-  /** Each username asked for, with whether its conversation is folded and muted */
+  /** Each username asked for, with whether its conversation is folded, muted and pinned */
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
   "chat transfer-names": TransferNames;

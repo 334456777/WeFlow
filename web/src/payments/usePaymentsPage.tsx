@@ -1,5 +1,5 @@
-// The WeChat Pay page (#204): all the notices read once, narrowed by payee and days here. Not connected, the sample
-// is shown in the chat page's browser instead.
+// The WeChat Pay page (#204): all the notices read once, narrowed by payee and days here. The notices are
+// the server's, or the sample's while no server has answered (#879).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Page, Shell } from '../shell/page';
 import { BrowserPanel } from '../shell/panels';
@@ -15,7 +15,7 @@ import './payments.css';
 /** `active`: the page browsed, the one the console keeps the cards of while the settings are open. */
 export function usePaymentsPage(shell: Shell, active: boolean): Page {
   const { backend, scope, setMobileDetail } = shell;
-  const live = active && shell.connected;
+  const live = active && shell.records;
   const [filter, setFilter] = useState<PayFilter>(ALL_PAYMENTS);
   useEffect(() => { setFilter(ALL_PAYMENTS); }, [scope]);
   const [state, reload] = usePayments(live, scope);

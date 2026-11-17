@@ -16,10 +16,10 @@ import './analytics.css';
 type Member = { username: string; displayName: string; avatarUrl?: string };
 
 export function useAnalyticsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
-  const { connected, scope } = shell;
+  const { records, scope } = shell;
   const [mode, setMode] = useState<'private' | 'group'>('private');
-  const [analytics, reloadAnalytics] = useAnalytics(active && mode === 'private' && connected, scope);
-  const [groups, reloadGroups] = useGroups(active && mode === 'group' && connected, scope);
+  const [analytics, reloadAnalytics] = useAnalytics(active && mode === 'private' && records, scope);
+  const [groups, reloadGroups] = useGroups(active && mode === 'group' && records, scope);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [member, setMember] = useState<Member | null>(null);
   const [range, setRange] = useState<DayRange>({ from: '', to: '' });
@@ -52,5 +52,5 @@ export function useAnalyticsPage(shell: Shell, active: boolean, chatWith: ChatWi
           canChat={username => shell.sessionList.some(s => s.username === username)} onChat={chatWith} />}
     </Connected>
   </ScrollPage>;
-  return { view, cards, shown: connected ? (mode === 'group' ? ['analytics-range', 'group-export', 'tasks'] : ['analytics-excluded']) : [] };
+  return { view, cards, shown: records ? (mode === 'group' ? ['analytics-range', 'group-export', 'tasks'] : ['analytics-excluded']) : [] };
 }

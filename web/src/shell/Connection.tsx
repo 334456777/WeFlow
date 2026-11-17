@@ -9,12 +9,14 @@ const labels: Record<Backend['state'], string> = {
 };
 
 /** The state in a word or two, as the sidebar shows it. */
-export const backendLabel = (backend: Backend) => t(labels[backend.state]);
+export const backendLabel = (backend: Backend) => backend.state === 'offline' && backend.held ? t('已断开') : t(labels[backend.state]);
 
 export function backendDetail(backend: Backend): string {
   switch (backend.state) {
     case 'checking': return t('正在检查 weflow serve。');
-    case 'offline': return t('没有找到 weflow serve，请先运行 weflow serve。');
+    case 'offline': return backend.held
+      ? t('与 weflow serve 的连接断开了，正在重新连接；页面上是断开前读到的记录。')
+      : t('没有找到 weflow serve，请先运行 weflow serve。');
     case 'incompatible': return t('{reason}。', { reason: backend.reason });
     case 'unauthorized': return t('weflow serve 在运行，但拒绝了这个标签页的令牌。');
     case 'ready': return t('已连接 weflow serve。');

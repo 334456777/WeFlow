@@ -130,7 +130,7 @@ pub(crate) enum ChatSubcommand {
         /// Conversation ids
         sessions: Vec<String>,
     },
-    /// Folded / muted state of sessions
+    /// Folded / muted / pinned state of sessions
     Statuses {
         /// Conversation usernames
         usernames: Vec<String>,

@@ -25,7 +25,8 @@ export interface Health {
 
 export type Backend =
   | { state: 'checking' }
-  | { state: 'offline' }
+  /** `held`: the server was ready before it went, so the records read from it stay shown until it is back. */
+  | { state: 'offline'; held?: true }
   | { state: 'ready'; health: Health }
   | { state: 'incompatible'; health: Health; reason: string; advice: string }
   /** The server is there and suits this page, but refuses the token of this tab (#214). */
@@ -338,7 +339,8 @@ export class Connection {
   /** The stream broke or went silent: offline now, and another try after the wait. */
   private lost(): void {
     this.drop();
-    this.set({ state: 'offline' });
+    const now = this.state;
+    this.set(now.state === 'ready' || (now.state === 'offline' && now.held) ? { state: 'offline', held: true } : { state: 'offline' });
     if (this.stopped) return;
     this.retry = setTimeout(() => this.connect(), retryDelay(this.attempt, this.random));
     this.attempt += 1;

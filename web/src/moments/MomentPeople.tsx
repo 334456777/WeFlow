@@ -5,6 +5,7 @@ import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
 import type { MomentPerson, PeopleState } from './useMomentPeople';
 import { ListSkeleton } from '../Skeleton';
+import { SampleNote } from '../shell/sample';
 import { t } from '../i18n';
 
 const ROW_HEIGHT = 58;
@@ -52,6 +53,7 @@ export function MomentPeople({ state, total, selected, onSelect, onRetry }: {
       <div className="search-input session-search"><MagnifyingGlass size={16} aria-hidden="true" />
         <input type="search" aria-label={t('搜索发布者')} placeholder={t('搜索发布者')} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
+      <SampleNote />
     </div>
     {body}
   </div>;

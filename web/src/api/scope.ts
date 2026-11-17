@@ -3,10 +3,11 @@
 // kept is forgotten, and an answer to a request of the old scope is not kept.
 //
 // A new scope starts when the server's `data` (in `hello` and each `heartbeat` of `/health/events`: it changes with
-// each start of `weflow serve` and with its configuration, so with the account) is not the one seen before, and
-// when the server comes back after it was gone.
+// each start of `weflow serve` and with its configuration, so with the account) is not the one seen before, when the
+// server comes back after it was gone, and when the sample's records (#879) take the place of a server's.
 import { useEffect, useRef, useState } from 'react';
 import type { Backend } from './backend';
+import { recordsOf } from './records';
 
 let scope = 0;
 const forgetters = new Set<() => void>();
@@ -26,21 +27,23 @@ export function newScope(): void {
 
 /** The scope for the backend's state as `useBackend` checks it: a new one when the data may have changed. */
 export function useScope(backend: Backend): number {
-  const seen = useRef<{ data: string | null; lost: boolean } | null>(null);
+  const seen = useRef<{ data: string | null; lost: boolean; sample: boolean } | null>(null);
   const [current, setCurrent] = useState(currentScope);
   useEffect(() => {
     if (backend.state === 'checking') return;
+    const last = seen.current;
+    const start = () => { newScope(); setCurrent(currentScope()); };
     if (backend.state !== 'ready') {
-      if (seen.current) seen.current.lost = true;
+      const sample = recordsOf(backend) === 'sample';
+      seen.current = { data: last?.data ?? null, lost: true, sample };
+      // the sample after a server's records: what was read from the server goes
+      if (last && !last.sample && sample) start();
       return;
     }
     const data = backend.health.data ?? null;
-    const last = seen.current;
-    seen.current = { data, lost: false };
-    if (last && (last.lost || last.data !== data)) {
-      newScope();
-      setCurrent(currentScope());
-    }
+    seen.current = { data, lost: false, sample: false };
+    // a server after the sample comes as one back after it was gone
+    if (last && (last.lost || last.data !== data)) start();
   }, [backend]);
   return current;
 }

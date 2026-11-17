@@ -7,6 +7,7 @@ import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
 import type { Merchant, PaymentsState } from './usePayments';
 import { ListSkeleton } from '../Skeleton';
+import { SampleNote } from '../shell/sample';
 import { locale, t } from '../i18n';
 
 const ROW_HEIGHT = 58;
@@ -61,6 +62,7 @@ export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry
       <div className="search-input session-search"><MagnifyingGlass size={16} aria-hidden="true" />
         <input type="search" aria-label={t('搜索商户')} placeholder={t('搜索商户')} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
+      <SampleNote />
     </div>
     {body}
   </div>;

@@ -24,5 +24,5 @@ export function useFootprintPage(shell: Shell, openAt: OpenAt): Page {
         keyword={keyword} onKeyword={setKeyword} onOpen={openAt} onData={setData} />
     </Connected>
   </ScrollPage>;
-  return { view, cards, shown: shell.connected ? ['footprint-ai', 'footprint-export', 'tasks'] : [] };
+  return { view, cards, shown: shell.records ? ['footprint-ai', 'footprint-export', 'tasks'] : [] };
 }

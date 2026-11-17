@@ -4,6 +4,8 @@
 .conversation-foot { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .conversation-foot .conversation-preview { flex: 1; min-width: 0; }
 .muted-icon { color: var(--fg-subtle); }
+/* a conversation pinned in WeChat (#885), beside its name */
+.pinned-icon { flex: none; margin-right: var(--space-1); color: var(--fg-subtle); }
 /* Unread messages: a small count, or only a dot for a muted conversation. Not a status colour. */
 .unread-count {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; flex-shrink: 0;
@@ -11,7 +13,6 @@
   color: var(--fg); font-size: var(--text-2xs); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums;
 }
 .unread-dot { width: 8px; height: 8px; flex-shrink: 0; margin: 0 5px; border-radius: 50%; background: var(--fg-subtle); }
-.session-note { color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
 .folded-head { display: flex; align-items: center; gap: var(--space-2); height: var(--control-sm); font-size: var(--text-sm); }
 .folded-head .num { color: var(--fg-subtle); font-size: var(--text-xs); }
 .biz-feed { display: flex; flex-direction: column; gap: var(--space-4); max-width: 520px; margin: 0 auto; }
