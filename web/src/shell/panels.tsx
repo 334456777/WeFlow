@@ -68,7 +68,7 @@ export function BrowserPanel({ label, className, detail, onBack, list, back, tit
     const before = shown.current;
     shown.current = { label, detailKey };
     // a detail where there was none (the first item, picked as the page opens) comes in, but turns no page
-    if (before.label === label && before.detailKey !== detailKey && ref.current) pageIn(ref.current.children, { turn: Boolean(before.detailKey) });
+    if (before.label === label && before.detailKey !== detailKey && ref.current) pageIn(ref.current.children, { turn: Boolean(before.detailKey), detail: true });
   }, [label, detailKey, ref]);
   return <section className={'panel browser-panel' + (className ? ' ' + className : '') + (detail ? ' show-detail' : '')} aria-label={label}>
     {list}

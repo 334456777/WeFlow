@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="1.5" dy="3" stdDeviation="1.6" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <g stroke="#fffdf7" stroke-width="7" stroke-linejoin="round" paint-order="stroke">
+    <!-- a cup of coffee, steaming -->
+    <g transform="translate(68 72) rotate(-6)" filter="url(#lift)">
+      <path d="M-24 -6 L24 -6 L20 26 Q18 32 12 32 L-12 32 Q-18 32 -20 26 Z M24 2 q14 0 12 12 q-2 10 -14 8" fill="#fff4e4"/>
+      <path d="M-22 4 L22 4 L20 14 L-20 14 Z" fill="#c98b5e" stroke="none"/>
+      <g stroke="none" fill="#2a1e18"><circle cx="-7" cy="20" r="2.2"/><circle cx="7" cy="20" r="2.2"/></g>
+      <path d="M-8 -14 c-5 -6 5 -10 0 -18 M4 -14 c-5 -6 5 -10 0 -18" fill="none" stroke="#fffdf7" stroke-width="3.5" stroke-linecap="round" paint-order="normal"/>
+    </g>
+    <!-- a doughnut -->
+    <g transform="translate(150 132) rotate(16)" filter="url(#lift)">
+      <circle r="28" fill="#f6cd62"/>
+      <path d="M-24 -6 Q-26 -24 -6 -26 Q14 -28 24 -10 Q28 4 20 8 Q12 4 4 10 Q-6 14 -12 6 Q-20 4 -24 -6 Z" fill="#f4afa0" stroke="none"/>
+      <circle r="9" fill="#fff4e4" stroke="#fffdf7" stroke-width="3"/>
+      <path d="M-14 -16 l4 2 M8 -20 l2 4 M16 -6 l-4 2 M-18 -2 l3 -3 M2 -14 l-3 3" stroke="#fffdf7" stroke-width="2.4" stroke-linecap="round" paint-order="normal"/>
+      <path d="M-4 -20 l3 2 M12 -12 l2 3" stroke="#9dd3da" stroke-width="2.4" stroke-linecap="round" paint-order="normal"/>
+    </g>
+    <!-- two cherries -->
+    <g transform="translate(74 188) rotate(-10)" filter="url(#lift)">
+      <path d="M-12 8 Q-6 -16 4 -26 Q8 -10 14 8" fill="none" stroke-width="9"/>
+      <path d="M-12 8 Q-6 -16 4 -26 Q8 -10 14 8" fill="none" stroke="#5f9d72" stroke-width="3" paint-order="normal"/>
+      <path d="M4 -26 q12 -6 18 2 q-10 6 -18 -2 Z" fill="#a9d9b6"/>
+      <circle cx="-12" cy="14" r="12" fill="#e8735f"/>
+      <circle cx="14" cy="14" r="12" fill="#e8735f"/>
+      <g stroke="none" fill="#fffdf7"><circle cx="-16" cy="9" r="3"/><circle cx="10" cy="9" r="3"/></g>
+    </g>
+  </g>
+</svg>

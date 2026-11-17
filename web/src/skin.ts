@@ -37,6 +37,7 @@ export const DEFAULT_SKIN = 'neumorphism';
  * `skin` layer under `:root[data-skin='<id>']` (styles/layers.test.ts). */
 export const SKINS: Skin[] = [
   { id: DEFAULT_SKIN, label: msg('新拟态'), themes: ['light', 'dark'] },
+  { id: 'sticker', label: msg('贴纸'), themes: ['light', 'dark'], sheet: () => import('./styles/skins/sticker.css?inline'), shapes: true },
 ];
 
 export const SKIN_KEY = 'weflow.skin';

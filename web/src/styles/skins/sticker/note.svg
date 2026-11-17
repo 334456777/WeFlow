@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="2" dy="4" stdDeviation="2.4" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <filter id="pen" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".05" numOctaves="2" seed="13" result="wobble"/>
+    <feDisplacementMap in="SourceGraphic" in2="wobble" scale="2.5"/>
+  </filter>
+  <!-- a second note, behind -->
+  <g transform="translate(140 168) rotate(-10)" filter="url(#lift)">
+    <path d="M-34 -34 H34 V22 L22 34 H-34 Z" fill="#9dd3da"/>
+    <path d="M22 34 L24 24 L34 22 Z" fill="#7bb9c2"/>
+    <g filter="url(#pen)" fill="none" stroke="#2a1e18" stroke-width="1.6" stroke-linecap="round">
+      <path d="M-22 -16 q5 -5 10 0 t10 0 t10 0 M-22 -4 q5 -5 10 0 t10 0 M-22 8 q5 -5 10 0 t10 0 t10 0"/>
+    </g>
+  </g>
+  <!-- the note: a list, two of it done -->
+  <g transform="translate(88 96) rotate(5)">
+    <g filter="url(#lift)">
+      <path d="M-56 -56 H56 V40 L40 56 H-56 Z" fill="#f7e08f"/>
+    </g>
+    <rect x="-56" y="-56" width="112" height="16" fill="#efd16e" opacity=".7"/>
+    <path d="M40 56 L43 43 L56 40 Z" fill="#e2c25c"/>
+    <g filter="url(#pen)" fill="none" stroke="#2a1e18" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-42" y="-30" width="11" height="11" rx="1.5"/>
+      <path d="M-40 -25 l3 4 l8 -10" stroke="#e8735f" stroke-width="2.4"/>
+      <path d="M-24 -24 q5 -5 10 0 t10 0 t10 0 t10 0 t10 0"/>
+      <rect x="-42" y="-8" width="11" height="11" rx="1.5"/>
+      <path d="M-40 -3 l3 4 l8 -10" stroke="#e8735f" stroke-width="2.4"/>
+      <path d="M-24 -2 q5 -5 10 0 t10 0 t10 0 t10 0"/>
+      <rect x="-42" y="14" width="11" height="11" rx="1.5"/>
+      <path d="M-24 20 q5 -5 10 0 t10 0 t10 0"/>
+      <path d="M22 26 l2.5 6 l6.5 1 l-5 4 l1.5 6.5 l-5.5 -3.5 l-5.5 3.5 l1.5 -6.5 l-5 -4 l6.5 -1 Z" fill="#f6b27e"/>
+    </g>
+    <!-- the pin -->
+    <circle cx="0" cy="-50" r="7" fill="#e8735f" filter="url(#lift)"/>
+    <circle cx="-2" cy="-52" r="2.2" fill="#fffdf7" opacity=".8"/>
+  </g>
+</svg>

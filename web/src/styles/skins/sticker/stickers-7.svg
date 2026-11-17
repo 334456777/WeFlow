@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="1.5" dy="3" stdDeviation="1.6" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <g stroke="#fffdf7" stroke-width="7" stroke-linejoin="round" paint-order="stroke">
+    <!-- a rainbow between two clouds -->
+    <g transform="translate(72 76) rotate(-8)" filter="url(#lift)">
+      <path d="M-40 12 A40 40 0 0 1 40 12 L28 12 A28 28 0 0 0 -28 12 Z" fill="#f4afa0"/>
+      <path d="M-32 12 A32 32 0 0 1 32 12 L22 12 A22 22 0 0 0 -22 12 Z" fill="#f6cd62" stroke="none"/>
+      <path d="M-24 12 A24 24 0 0 1 24 12 L16 12 A16 16 0 0 0 -16 12 Z" fill="#9dd3da" stroke="none"/>
+      <path d="M-50 18 a9 9 0 0 1 8 -14 a10 10 0 0 1 18 4 a8 8 0 0 1 2 12 Z M50 18 a9 9 0 0 0 -8 -14 a10 10 0 0 0 -18 4 a8 8 0 0 0 -2 12 Z" fill="#fff4e4"/>
+    </g>
+    <!-- an umbrella -->
+    <g transform="translate(150 136) rotate(14)" filter="url(#lift)">
+      <path d="M-30 0 Q-28 -28 0 -30 Q28 -28 30 0 Q22 -6 15 0 Q8 -6 0 0 Q-8 -6 -15 0 Q-22 -6 -30 0 Z" fill="#b7b5e8"/>
+      <path d="M0 -30 Q-8 -14 -15 0 M0 -30 Q8 -14 15 0" fill="none" stroke="#8d8ac8" stroke-width="1.8" paint-order="normal"/>
+      <path d="M0 0 V22 q0 8 -8 6" fill="none" stroke-width="8"/>
+      <path d="M0 0 V22 q0 8 -8 6" fill="none" stroke="#2a1e18" stroke-width="3" stroke-linecap="round" paint-order="normal"/>
+    </g>
+    <!-- a mushroom -->
+    <g transform="translate(72 190) rotate(-12)" filter="url(#lift)">
+      <path d="M-10 0 L10 0 Q14 22 6 26 L-6 26 Q-14 22 -10 0 Z" fill="#fff4e4"/>
+      <path d="M-30 4 Q-30 -26 0 -28 Q30 -26 30 4 Q0 10 -30 4 Z" fill="#e8735f"/>
+      <g stroke="none" fill="#fffdf7"><circle cx="-14" cy="-12" r="5"/><circle cx="8" cy="-18" r="4"/><circle cx="18" cy="-4" r="3.5"/><circle cx="-2" cy="-4" r="3"/></g>
+      <g stroke="none" fill="#2a1e18"><circle cx="-4" cy="12" r="1.8"/><circle cx="4" cy="12" r="1.8"/></g>
+    </g>
+  </g>
+</svg>

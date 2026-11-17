@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="2" dy="4" stdDeviation="2.4" flood-color="#60260e" flood-opacity=".35"/>
+  </filter>
+  <filter id="pen" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".05" numOctaves="2" seed="9" result="wobble"/>
+    <feDisplacementMap in="SourceGraphic" in2="wobble" scale="2.5"/>
+  </filter>
+  <clipPath id="photo"><rect x="-46" y="-56" width="92" height="92"/></clipPath>
+  <pattern id="stripes" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(-50)">
+    <rect width="8" height="8" fill="#a9d9b6"/><rect width="3.5" height="8" fill="#fffdf7" opacity=".45"/>
+  </pattern>
+  <!-- a second photo, behind -->
+  <g transform="translate(134 98) rotate(12)" filter="url(#lift)">
+    <rect x="-38" y="-44" width="76" height="90" rx="2" fill="#fffdf7"/>
+    <rect x="-32" y="-38" width="64" height="62" fill="#b7b5e8"/>
+    <path d="M-32 10 Q-10 -6 8 6 Q20 0 32 4 V24 H-32 Z" fill="#3e4c8f"/>
+    <circle cx="14" cy="-20" r="7" fill="#fff4e4"/>
+  </g>
+  <!-- the photo: the sun going down over the sea -->
+  <g transform="translate(86 116) rotate(-7)">
+    <g filter="url(#lift)"><rect x="-54" y="-64" width="108" height="130" rx="2" fill="#fffdf7"/></g>
+    <g clip-path="url(#photo)">
+      <rect x="-46" y="-56" width="92" height="92" fill="#f4afa0"/>
+      <rect x="-46" y="-56" width="92" height="30" fill="#f6b27e" opacity=".6"/>
+      <circle cx="12" cy="-6" r="16" fill="#f6cd62"/>
+      <rect x="-46" y="6" width="92" height="30" fill="#3e4c8f"/>
+      <path d="M-40 14 h20 M-8 20 h26 M24 14 h16 M-30 28 h22" stroke="#9dd3da" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M-34 6 L-22 6 L-24 0 L-32 0 Z M-28 0 V-14 L-20 -2 Z" fill="#2a1e18"/>
+    </g>
+    <!-- written on its margin, in pen -->
+    <g filter="url(#pen)" fill="none" stroke="#2a1e18" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M-38 52 q5 -7 10 0 t10 0 t10 0 t10 0"/>
+      <path d="M26 54 C18 47 20 42 26 46 C32 42 34 47 26 54 Z" fill="#e8735f"/>
+    </g>
+    <!-- held on by a strip of tape, torn at both ends -->
+    <path d="M-26 -70 L-22 -74 L-18 -70 L22 -72 L26 -76 L30 -72 L30 -56 L26 -52 L22 -56 L-18 -54 L-22 -50 L-26 -54 Z" fill="url(#stripes)" opacity=".85" transform="rotate(5)"/>
+  </g>
+</svg>

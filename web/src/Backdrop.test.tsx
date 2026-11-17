@@ -23,6 +23,17 @@ describe('Backdrop (#832)', () => {
     expect(turnOf()).toBe((before + 1) % 3);
     act(() => { turnPage(); turnPage(); });
     expect(turnOf()).toBe(before);
+
+    // another item's detail turns the decoration, but not the page
+    const pageOf = () => Number(layer().dataset.page);
+    const page = pageOf();
+    const shown = layer();
+    act(() => turnPage({ detail: true }));
+    expect(layer()).not.toBe(shown);
+    expect(turnOf()).toBe((before + 1) % 3);
+    expect(pageOf()).toBe(page);
+    act(() => turnPage());
+    expect(pageOf()).toBe((page + 1) % 3);
   });
 
   it('is not there for a skin without decorations, and comes with a skin that has them', async () => {

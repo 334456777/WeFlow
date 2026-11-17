@@ -1,0 +1,501 @@
+/*
+ * Stickers (#784): paper stickers on a sheet of Claude's clay-orange paper, after the crayon drawing in #784. The page
+ * is the paper, its fine grain drawn over its colour; the panels and cards are cream sheets laid on it. What can be
+ * pressed is a sticker: cut by hand with a ragged edge, a white margin round it, stuck on at a slant and floating a
+ * little over the paper, each of its own pastel colour; the main action and a selection are the clay orange. Under the
+ * pointer a sticker lifts, held down it sinks onto the paper. The rows of a list are flat; a chosen one is under a
+ * strip of washi tape. Under the page a crayon drawing changes at each page turn, drawn in a few frames, and a page
+ * comes in the same way, frame by frame, as hand-drawn animation does.
+ *
+ * Dark is the night of the same drawing: indigo paper, navy sheets, stickers of deeper colours.
+ *
+ * Its raw tokens are `--sticker-`. A sticker's colour, outline, slant and edge come from its seed (styles/roles.css),
+ * which is worked out on each element, so the rules that read it are on the elements, not on the root.
+ *
+ * The words on the stickers, the navigation and the headings are in a hand: ZCOOL KuaiLe (SIL Open Font License 1.1,
+ * sticker/OFL.txt; from github.com/google/fonts, ofl/zcoolkuaile), cut down to the ASCII and to the Chinese characters
+ * and punctuation of the page's own text (src/, its sample data and tests left out) with fontTools:
+ *   pyftsubset ZCOOLKuaiLe-Regular.ttf --text-file=<those characters> --unicodes=U+0020-007E --flavor=woff
+ *     --layout-features='*' --no-hinting --desubroutinize --output-file=sticker/zcool-kuaile.woff
+ * A character it lacks (a name, a word added to the page since) is drawn in the page's own font.
+ */
+@layer skin {
+@font-face {
+  font-family: 'WeFlow Sticker';
+  src: url('./sticker/zcool-kuaile.woff') format('woff');
+  font-display: swap;
+}
+:root[data-skin='sticker'] {
+  --sticker-ink: #2a1e18;
+  --sticker-clay: #d97757;
+  --sticker-page: #e08a6c;
+  --sticker-sheet: #fbf6ec;
+  --sticker-well: #f3eadc;
+  --sticker-edge: #fffdf7;
+  --sticker-line: rgb(42 30 24 / .78);
+  --sticker-faint: rgb(42 30 24 / .14);
+  --sticker-shade: rgb(96 38 14 / .34);
+  --sticker-grain: url('./sticker/grain.svg');
+  /*
+   * A sticker's colour: this lightness and chroma, its hue by its seed; and the tape's. The chroma is the most that
+   * keeps every hue inside sRGB at that lightness: Chrome blends a colour outside it wrongly along a clipped edge.
+   */
+  --sticker-tint-l: .865;
+  --sticker-tint-c: .065;
+  --sticker-tape-l: .86;
+  --sticker-tape-c: .068;
+  --sticker-tape-a: .8;
+  --sticker-stripe: rgb(255 255 255 / .18);
+  /* the sheet's colour, laid over a picture printed on the sheet to make it faint */
+  --sticker-veil: rgb(251 246 236 / .55);
+  /* How deep a sticker's edge is cut in, at most. */
+  --sticker-cut: 3.5px;
+  --sticker-hand: 'WeFlow Sticker', var(--font-sans);
+
+  --fg: var(--sticker-ink);
+  --fg-muted: #43342c;
+  --fg-subtle: #64503f;
+  --focus-ring: var(--sticker-ink);
+  --overlay: rgb(42 30 24 / .55);
+  --state-ok: #2f8a55;
+  --state-busy: #a8731a;
+  --state-idle: #8b7b70;
+  --state-danger: #a8392b;
+  --accent: var(--sticker-clay);
+  --on-accent: var(--sticker-ink);
+
+  /* Every shadow of a role in the same two layers, so that one state moves into another. */
+  --shadow-none: 0 0 0 0 transparent, 0 0 0 0 transparent;
+  --page-bg: var(--sticker-grain) 0 0 / 160px fixed, var(--sticker-page);
+  --fade-bg: var(--sticker-grain) 0 0 / 160px fixed, var(--sticker-page);
+  /* the decorations take 24 turns to come round (below) */
+  --backdrop-count: 24;
+  --page-in: sticker-page-in var(--duration-page) both;
+
+  /* The stickers: their fill and their sheen; their colour, edge, slant and float are on the elements, below. */
+  --button-bg: var(--sticker-grain) 0 0 / 160px, var(--sticker-clay);
+  --button-shadow: inset 0 0 0 999px transparent, inset 0 1px 0 rgb(255 255 255 / .35);
+  --button-shadow-hover: inset 0 0 0 999px rgb(255 255 255 / .1), inset 0 1px 0 rgb(255 255 255 / .45);
+  --button-shadow-pressed: inset 0 0 0 999px rgb(96 38 14 / .08), inset 0 1px 0 rgb(255 255 255 / .2);
+  --button-shadow-disabled: inset 0 0 0 999px rgb(251 246 236 / .55), inset 0 1px 0 transparent;
+  --control-shadow: var(--button-shadow);
+  --control-shadow-hover: var(--button-shadow-hover);
+  --control-shadow-pressed: var(--button-shadow-pressed);
+  --control-shadow-disabled: var(--button-shadow-disabled);
+  --control-bg-on: var(--button-bg);
+  --control-fg-on: var(--fg);
+  --control-shadow-on: var(--button-shadow);
+  --control-shadow-on-pressed: var(--button-shadow-pressed);
+  --option-shadow: var(--button-shadow);
+  --option-shadow-hover: var(--button-shadow-hover);
+  --option-shadow-pressed: var(--button-shadow-pressed);
+  --option-shadow-disabled: var(--button-shadow-disabled);
+  --option-bg-selected: var(--button-bg);
+  --option-fg-selected: var(--fg);
+  --option-shadow-selected: var(--button-shadow);
+  --button-tilt: 2deg;
+  --control-tilt: 3deg;
+  --option-tilt: 4deg;
+
+  /* The rows: flat, a tint of their tape under the pointer and held down, the tape itself chosen (on the elements). */
+  --row-shadow: inset 0 0 0 999px transparent;
+  --row-shadow-selected: inset 0 0 0 999px transparent;
+  --row-fg-selected: var(--fg);
+  --row-hover-track: none;
+
+  --field-bg: var(--sticker-well);
+  --field-shadow: inset 0 0 0 1.5px var(--sticker-line), inset 0 0 0 999px var(--sticker-well);
+  --check-bg: var(--sticker-well);
+  --check-shadow: inset 0 0 0 1.5px var(--sticker-line), 1px 1.5px 0 var(--sticker-shade);
+  --check-shadow-pressed: inset 0 0 0 1.5px var(--sticker-line), 0 0 0 transparent;
+  --check-bg-on: var(--sticker-clay);
+  --check-fg-on: var(--sticker-ink);
+  --check-shadow-on: inset 0 0 0 1.5px var(--sticker-line), 1px 1.5px 0 var(--sticker-shade);
+  --track-shadow: inset 0 0 0 1.5px var(--sticker-line), inset 0 0 0 999px var(--sticker-well);
+  --thumb-bg: var(--sticker-clay);
+  --thumb-fg: var(--sticker-ink);
+  --thumb-shadow: 0 0 0 2px var(--sticker-edge), 1px 2px 2px var(--sticker-shade);
+  --thumb-shadow-pressed: 0 0 0 2px var(--sticker-edge), 0 0 0 transparent;
+  --scrollbar-bg: var(--sticker-clay);
+  --scrollbar-shadow: 0 0 0 1.5px var(--sticker-edge);
+  --scrollbar-shadow-pressed: 0 0 0 1.5px var(--sticker-edge);
+  --panel-bg: var(--sticker-sheet);
+  --panel-shadow: 0 0 0 1px var(--sticker-faint), 0 2px 0 rgb(96 38 14 / .1), 0 18px 34px -18px var(--sticker-shade);
+  --card-bg: var(--sticker-sheet);
+  --card-shadow: 0 0 0 1.5px var(--sticker-faint), 2px 3px 0 rgb(96 38 14 / .1);
+  --card-bg-marked: #fde3d4;
+  --card-shadow-marked: 0 0 0 1.5px var(--sticker-line), 2px 3px 0 rgb(96 38 14 / .16);
+  --bubble-bg: #fffdf8;
+  --bubble-shadow: 0 0 0 1.5px var(--sticker-line), 2px 3px 0 rgb(42 30 24 / .14);
+  --bubble-bg-own: #fbd7c5;
+  --bubble-shadow-own: 0 0 0 1.5px var(--sticker-line), 2px 3px 0 rgb(96 38 14 / .2);
+  --bubble-shadow-own-pressed: 0 0 0 1.5px var(--sticker-line), 0 0 0 transparent;
+  --well-shadow: inset 0 0 0 1.5px var(--sticker-faint), inset 0 3px 6px -3px var(--sticker-shade);
+  --well-shadow-shallow: inset 3px 0 0 var(--sticker-clay), inset 0 0 0 999px rgb(217 119 87 / .08);
+  --skeleton-shadow: inset 0 0 0 999px rgb(42 30 24 / .07);
+  --skeleton-sweep: rgb(255 255 255 / .65);
+  --badge-bg: #f6cd62;
+  --badge-shadow: 0 0 0 1.5px var(--sticker-edge), 1px 2px 1px var(--sticker-shade);
+  --tag-shadow: inset 0 0 0 1.2px var(--sticker-line);
+  --float-bg: var(--sticker-sheet);
+  --float-shadow: 0 0 0 1.5px var(--sticker-line), 3px 4px 0 rgb(42 30 24 / .16), 0 18px 36px -12px var(--sticker-shade);
+  --dialog-bg: var(--sticker-sheet);
+  --dialog-shadow: 0 0 0 1.5px var(--sticker-line), 4px 6px 0 rgb(0 0 0 / .2), 0 24px 48px -16px rgb(0 0 0 / .4);
+  --tab-bar-bg: var(--sticker-sheet);
+  --tab-bar-shadow: 0 -1.5px 0 var(--sticker-faint), 0 -8px 18px -12px var(--sticker-shade);
+}
+
+:root[data-skin='sticker'][data-theme='dark'] {
+  --sticker-ink: #f3e9da;
+  --sticker-clay: #a64a2c;
+  --sticker-page: #2a3060;
+  --sticker-sheet: #1c2040;
+  --sticker-well: #232850;
+  --sticker-edge: #f6ead7;
+  --sticker-line: rgb(243 233 218 / .62);
+  --sticker-faint: rgb(243 233 218 / .12);
+  --sticker-shade: rgb(2 4 16 / .6);
+  /* the paper's light fibres, fainter on the dark */
+  --sticker-grain: url('./sticker/grain-night.svg');
+  --sticker-tint-l: .4;
+  --sticker-tint-c: .068;
+  --sticker-tape-l: .44;
+  --sticker-tape-c: .074;
+  --sticker-tape-a: .85;
+  --sticker-stripe: rgb(255 255 255 / .07);
+  --sticker-veil: rgb(28 32 64 / .6);
+
+  --fg-muted: #cdbfae;
+  --fg-subtle: #ab9f90;
+  --overlay: rgb(6 8 24 / .7);
+  --state-ok: #4cc985;
+  --state-busy: #e0b453;
+  --state-idle: #7d7f99;
+  --state-danger: #f08a7a;
+
+  --button-shadow: inset 0 0 0 999px transparent, inset 0 1px 0 rgb(255 255 255 / .16);
+  --button-shadow-hover: inset 0 0 0 999px rgb(255 255 255 / .07), inset 0 1px 0 rgb(255 255 255 / .22);
+  --button-shadow-pressed: inset 0 0 0 999px rgb(0 0 0 / .14), inset 0 1px 0 rgb(255 255 255 / .08);
+  --button-shadow-disabled: inset 0 0 0 999px rgb(28 32 64 / .6), inset 0 1px 0 transparent;
+  --panel-shadow: 0 0 0 1px var(--sticker-faint), 0 2px 0 rgb(0 0 0 / .2), 0 18px 34px -18px var(--sticker-shade);
+  --card-bg-marked: #3b2d48;
+  --card-shadow: 0 0 0 1.5px var(--sticker-faint), 2px 3px 0 rgb(0 0 0 / .2);
+  --card-shadow-marked: 0 0 0 1.5px var(--sticker-line), 2px 3px 0 rgb(0 0 0 / .25);
+  --bubble-bg: #2a3060;
+  --bubble-shadow: 0 0 0 1.5px var(--sticker-line), 2px 3px 0 rgb(0 0 0 / .3);
+  --bubble-bg-own: #6b3524;
+  --bubble-shadow-own: 0 0 0 1.5px var(--sticker-line), 2px 3px 0 rgb(0 0 0 / .3);
+  --well-shadow-shallow: inset 3px 0 0 #e08a6c, inset 0 0 0 999px rgb(217 119 87 / .1);
+  --skeleton-shadow: inset 0 0 0 999px rgb(243 233 218 / .06);
+  --skeleton-sweep: rgb(255 255 255 / .08);
+  --badge-bg: #3f4479;
+  --dialog-shadow: 0 0 0 1.5px var(--sticker-line), 4px 6px 0 rgb(0 0 0 / .35), 0 24px 48px -16px rgb(0 0 0 / .6);
+}
+
+/* Written by hand: what is on a sticker, the navigation (the sidebar, the phone's tabs), the options of a segmented
+   control, a date field and the headings. */
+:root[data-skin='sticker'] :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option,
+  .segmented > button, .date-field, .nav-item, .mobile-tab, .card-title, h1, h2, h3) {
+  font-family: var(--sticker-hand);
+}
+
+/* What lies under a scroll area in a panel is the sheet, not the paper of the page (app.css .scroll-fade). */
+:root[data-skin='sticker'] .panel { --fade-bg: var(--sticker-sheet); }
+
+/*
+ * A sticker: its colour, the hand-cut outline of its fill (a polygon a few pixels inside its box, every corner and
+ * notch by its seed), the white margin round that outline (four drop shadows, each one widening the last) and its
+ * shadow on the paper, as far below it as it floats. The pseudo-random numbers are its seed stretched and wrapped.
+ */
+:root[data-skin='sticker'] :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option) {
+  --sticker-r1: mod(var(--seed) * 3.7 + .13, 1);
+  --sticker-r2: mod(var(--seed) * 5.3 + .71, 1);
+  --sticker-r3: mod(var(--seed) * 7.9 + .37, 1);
+  --sticker-r4: mod(var(--seed) * 11.3 + .59, 1);
+  --sticker-r5: mod(var(--seed) * 13.1 + .03, 1);
+  --sticker-r6: mod(var(--seed) * 17.7 + .83, 1);
+  --sticker-outline: polygon(
+    calc(var(--sticker-cut) * (.4 + .6 * var(--sticker-r1))) calc(var(--sticker-cut) * (.4 + .6 * var(--sticker-r2))),
+    calc(17% + 3% * var(--sticker-r4)) calc(var(--sticker-cut) * .15 * var(--sticker-r3)),
+    calc(33% + 4% * var(--sticker-r5)) calc(var(--sticker-cut) * (.55 + .45 * var(--sticker-r4))),
+    calc(50% + 3% * var(--sticker-r6)) calc(var(--sticker-cut) * .15 * var(--sticker-r5)),
+    calc(66% + 4% * var(--sticker-r1)) calc(var(--sticker-cut) * (.55 + .45 * var(--sticker-r6))),
+    calc(83% + 3% * var(--sticker-r2)) calc(var(--sticker-cut) * .15 * var(--sticker-r1)),
+    calc(100% - var(--sticker-cut) * (.4 + .6 * var(--sticker-r3))) calc(var(--sticker-cut) * (.4 + .6 * var(--sticker-r4))),
+    calc(100% - var(--sticker-cut) * .15 * var(--sticker-r5)) calc(30% + 8% * var(--sticker-r6)),
+    calc(100% - var(--sticker-cut) * (.55 + .45 * var(--sticker-r2))) calc(62% + 8% * var(--sticker-r3)),
+    calc(100% - var(--sticker-cut) * (.4 + .6 * var(--sticker-r6))) calc(100% - var(--sticker-cut) * (.4 + .6 * var(--sticker-r5))),
+    calc(82% - 3% * var(--sticker-r3)) calc(100% - var(--sticker-cut) * .15 * var(--sticker-r4)),
+    calc(65% - 4% * var(--sticker-r2)) calc(100% - var(--sticker-cut) * (.55 + .45 * var(--sticker-r1))),
+    calc(48% - 3% * var(--sticker-r4)) calc(100% - var(--sticker-cut) * .15 * var(--sticker-r2)),
+    calc(32% - 4% * var(--sticker-r6)) calc(100% - var(--sticker-cut) * (.55 + .45 * var(--sticker-r3))),
+    calc(15% - 3% * var(--sticker-r1)) calc(100% - var(--sticker-cut) * .15 * var(--sticker-r6)),
+    calc(var(--sticker-cut) * (.4 + .6 * var(--sticker-r5))) calc(100% - var(--sticker-cut) * (.4 + .6 * var(--sticker-r1))),
+    calc(var(--sticker-cut) * (.55 + .45 * var(--sticker-r4))) calc(66% - 8% * var(--sticker-r2)),
+    calc(var(--sticker-cut) * .15 * var(--sticker-r3)) calc(34% - 8% * var(--sticker-r5))
+  );
+  --sticker-float: 2.5px;
+  --sticker-stuck: drop-shadow(1.6px 0 0 var(--sticker-edge)) drop-shadow(-1.6px 0 0 var(--sticker-edge))
+    drop-shadow(0 1.6px 0 var(--sticker-edge)) drop-shadow(0 -1.6px 0 var(--sticker-edge))
+    drop-shadow(calc(var(--sticker-float) * .4) var(--sticker-float) calc(var(--sticker-float) * .8) var(--sticker-shade));
+  --button-clip: var(--sticker-outline);
+  --control-clip: var(--sticker-outline);
+  --option-clip: var(--sticker-outline);
+  --button-drop: var(--sticker-stuck);
+  --control-drop: var(--sticker-stuck);
+  --option-drop: var(--sticker-stuck);
+  --control-bg: var(--sticker-grain) 0 0 / 160px, oklch(var(--sticker-tint-l) var(--sticker-tint-c) calc(var(--seed) * 360));
+  --option-bg: var(--control-bg);
+  /* the float moves with the rest: roles.css moves only the fill and the shadow */
+  transition: var(--transition, filter var(--duration-hover) var(--ease-out), box-shadow var(--duration-hover) var(--ease-out),
+    color var(--duration-hover) ease, scale var(--duration-micro) var(--ease-out));
+}
+:root[data-skin='sticker'] :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option)::before {
+  border-radius: var(--radius-sm);
+}
+:root[data-skin='sticker'] :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option):where(:hover:not(:disabled, [aria-disabled='true'])) {
+  --sticker-float: 6px;
+}
+:root[data-skin='sticker'] :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option):where(:active:not(:disabled, [aria-disabled='true'])) {
+  --sticker-float: .5px;
+  transition-duration: var(--duration-micro);
+}
+:root[data-skin='sticker'] :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option):where(:disabled) {
+  --sticker-float: 0px;
+}
+/* A switch: off, its thumb a plain sticker in an empty track; on, the clay one in a track tinted clay. */
+:root[data-skin='sticker'] .toggle { --thumb-bg: var(--sticker-sheet); }
+:root[data-skin='sticker'] .toggle:has(input:checked) {
+  --thumb-bg: var(--sticker-clay);
+  --track-shadow: inset 0 0 0 1.5px var(--sticker-line), inset 0 0 0 999px color-mix(in srgb, var(--sticker-clay) 35%, var(--sticker-well));
+}
+/* A main action that destroys something is a cream sticker with the danger in its words. */
+:root[data-skin='sticker'] :where(.primary-button.danger) { --button-bg: var(--sticker-grain) 0 0 / 160px, var(--sticker-sheet); }
+
+/*
+ * A row: under the pointer, held down and chosen, under its tape, striped and torn at both ends (its outline), a
+ * little askew by its seed.
+ */
+:root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row) {
+  --sticker-r1: mod(var(--seed) * 3.7 + .13, 1);
+  --sticker-r2: mod(var(--seed) * 5.3 + .71, 1);
+  --sticker-tape: oklch(var(--sticker-tape-l) var(--sticker-tape-c) calc(var(--seed) * 360 + 20));
+  /* under the pointer and held down, the row is under its tape already (below), with nothing over it */
+  --row-shadow-hover: inset 0 0 0 999px transparent;
+  --row-shadow-pressed: inset 0 0 0 999px transparent;
+  --row-shadow-tracked: var(--row-shadow-hover);
+  --row-shadow-tracked-pressed: var(--row-shadow-pressed);
+  /* the tape's colour; its stripes are laid over it on the shape layer, below */
+  --row-bg-selected: color-mix(in srgb, var(--sticker-tape) calc(100% * var(--sticker-tape-a)), transparent);
+  --row-clip: polygon(
+    5px calc(3px * var(--sticker-r1)), calc(100% - 5px) calc(3px * var(--sticker-r2)),
+    100% 10%, calc(100% - 5px) 24%, 100% 38%, calc(100% - 5px) 52%, 100% 66%, calc(100% - 5px) 80%, 100% 94%,
+    calc(100% - 5px) calc(100% - 3px * var(--sticker-r1)), 5px calc(100% - 3px * var(--sticker-r2)),
+    0 90%, 5px 76%, 0 62%, 5px 48%, 0 34%, 5px 20%, 0 6%
+  );
+  /*
+   * The press and the stripes (below) move as one: in at once as the row is held down, out more slowly as it is let
+   * go. The tape under the pointer comes and goes at once, its coming shown by its being laid (below), not by a fade.
+   */
+  transition: var(--transition, color var(--duration-hover) ease, scale var(--duration-panel) var(--ease-out),
+    --sticker-band var(--duration-panel) var(--ease-out));
+}
+:root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row):where(:active:not(:disabled, [aria-disabled='true'])) {
+  transition-duration: var(--duration-micro);
+}
+:root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row)::before { border-radius: 2px; }
+/*
+ * Under the pointer, a row other than the chosen one has its tape laid along it from the left, as one pulls tape off
+ * the roll: a mask over its shape layer with a sharp edge, all of it shown once the tape is down. It takes no time
+ * with reduced motion.
+ */
+@property --sticker-unroll { syntax: '<percentage>'; inherits: false; initial-value: 100%; }
+:root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row):where(:hover:not(:disabled, [aria-disabled='true'], .selected, .active, .chosen, [aria-current='page'], [aria-current='step']))::before {
+  mask-image: linear-gradient(90deg, #000 var(--sticker-unroll), transparent 0);
+  animation: sticker-unroll var(--duration-hover) var(--ease-snap) both;
+}
+@keyframes sticker-unroll {
+  from { --sticker-unroll: 0%; }
+  to { --sticker-unroll: 100%; }
+}
+/*
+ * Under the pointer, held down or chosen, a row is under its tape, with stripes across it: light bands every 11px and,
+ * between them, the tape's own colour, `--sticker-band` of it. The stripes give with the press: held down, each band
+ * of the colour narrows to half as the row shrinks, both its long edges moving towards its middle; let go, they open
+ * out again as the row comes back to its size. A row chosen without a press has its stripes at once.
+ */
+@property --sticker-band { syntax: '<length>'; inherits: false; initial-value: 6px; }
+:root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row):where(:hover, :active, .selected, .active, .chosen, [aria-current='page'], [aria-current='step']):where(:not(:disabled, [aria-disabled='true']))::before {
+  background:
+    repeating-linear-gradient(-55deg, var(--sticker-stripe) 0 calc(5.5px - var(--sticker-band) / 2),
+      transparent calc(5.5px - var(--sticker-band) / 2) calc(5.5px + var(--sticker-band) / 2),
+      var(--sticker-stripe) calc(5.5px + var(--sticker-band) / 2) 11px),
+    var(--row-bg-selected);
+}
+:root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row):where(:active:not(:disabled, [aria-disabled='true']))::before {
+  --sticker-band: 3px;
+}
+
+/*
+ * What the page is decorated with, a different one at each turn (Backdrop.tsx's `data-turn`, which the root reads with
+ * :has() to pass it on to the decorations below):
+ *   - at the foot of the sidebar, a picture, one of eight: crayon drawings (kites, a cloud by night, a house in the
+ *     hills, roofs and wires, a paper plane, a lighthouse by the sea, a balloon over the hills), a gel-pen drawing;
+ *   - at the foot of the console, seen where its cards leave room, one of twelve: a set of stickers (eight of them),
+ *     postage stamps, two photos taped down, notes pinned up, stamps pressed in ink;
+ *   - over the page's panel, two strips of washi tape at its top, a pattern of four each, at an angle and in a place
+ *     of chance. They hold the panel, not what is in it: they are stuck on anew only when another page comes in from
+ *     the sidebar (`data-page`), and stay as they are while another item's detail comes in under them.
+ * The three take turns apart, so that the same three come back only after 24 turns. The chance is `--sticker-luck`,
+ * a number in [0, 1) of each page, stepping by the golden ratio so that the pages spread over it evenly; the tapes
+ * stretch it into a few numbers of their own with mod(), each by a whole factor (1, 2, 4, 7, 9) whose steps, the
+ * factor times .618 or -.382 less its whole part, stay far from 0 and 1: otherwise one page would differ little from
+ * the next, and a tape drift instead of jumping. `--sticker-tape-in`, the animation that sticks them on,
+ * changes its name from one page to the next, which plays it again.
+ */
+:root[data-skin='sticker'] {
+  --sticker-drawing: url('./sticker/kites.svg');
+  --sticker-set: url('./sticker/stickers-1.svg');
+  --sticker-corner-a: var(--sticker-washi-1);
+  --sticker-corner-b: var(--sticker-washi-3);
+  --sticker-luck: .45;
+  --sticker-tape-in: sticker-tape-a;
+  /* the tapes: stripes, dots, a check and diagonals, each on a colour you see the paper through */
+  --sticker-washi-1: repeating-linear-gradient(90deg, rgb(255 253 247 / .45) 0 4px, transparent 4px 10px), rgb(244 175 160 / .85);
+  --sticker-washi-2: radial-gradient(circle, rgb(255 253 247 / .75) 0 1.8px, transparent 2.2px) 0 0 / 8px 8px, rgb(157 211 218 / .85);
+  --sticker-washi-3: linear-gradient(90deg, rgb(255 253 247 / .35) 50%, transparent 0) 0 0 / 10px 10px,
+    linear-gradient(rgb(255 253 247 / .35) 50%, transparent 0) 0 0 / 10px 10px, rgb(169 217 182 / .85);
+  --sticker-washi-4: repeating-linear-gradient(-45deg, rgb(255 253 247 / .45) 0 3px, transparent 3px 8px), rgb(246 205 98 / .85);
+}
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='1'], [data-turn='9'], [data-turn='17'])) { --sticker-drawing: url('./sticker/clouds.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='2'], [data-turn='10'], [data-turn='18'])) { --sticker-drawing: url('./sticker/hills.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='3'], [data-turn='11'], [data-turn='19'])) { --sticker-drawing: url('./sticker/roofs.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='4'], [data-turn='12'], [data-turn='20'])) { --sticker-drawing: url('./sticker/plane.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='5'], [data-turn='13'], [data-turn='21'])) { --sticker-drawing: url('./sticker/lineart.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='6'], [data-turn='14'], [data-turn='22'])) { --sticker-drawing: url('./sticker/sea.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='7'], [data-turn='15'], [data-turn='23'])) { --sticker-drawing: url('./sticker/balloon.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='1'], [data-turn='13'])) { --sticker-set: url('./sticker/postage.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='2'], [data-turn='14'])) { --sticker-set: url('./sticker/stickers-2.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='3'], [data-turn='15'])) { --sticker-set: url('./sticker/stickers-3.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='4'], [data-turn='16'])) { --sticker-set: url('./sticker/polaroid.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='5'], [data-turn='17'])) { --sticker-set: url('./sticker/stickers-4.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='6'], [data-turn='18'])) { --sticker-set: url('./sticker/stickers-5.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='7'], [data-turn='19'])) { --sticker-set: url('./sticker/note.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='8'], [data-turn='20'])) { --sticker-set: url('./sticker/stickers-6.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='9'], [data-turn='21'])) { --sticker-set: url('./sticker/stickers-7.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='10'], [data-turn='22'])) { --sticker-set: url('./sticker/inkstamp.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-turn='11'], [data-turn='23'])) { --sticker-set: url('./sticker/stickers-8.svg'); }
+:root[data-skin='sticker']:has(.backdrop:is([data-page='1'], [data-page='5'], [data-page='9'], [data-page='13'], [data-page='17'], [data-page='21'])) {
+  --sticker-corner-a: var(--sticker-washi-2); --sticker-corner-b: var(--sticker-washi-4);
+}
+:root[data-skin='sticker']:has(.backdrop:is([data-page='2'], [data-page='6'], [data-page='10'], [data-page='14'], [data-page='18'], [data-page='22'])) {
+  --sticker-corner-a: var(--sticker-washi-3); --sticker-corner-b: var(--sticker-washi-1);
+}
+:root[data-skin='sticker']:has(.backdrop:is([data-page='3'], [data-page='7'], [data-page='11'], [data-page='15'], [data-page='19'], [data-page='23'])) {
+  --sticker-corner-a: var(--sticker-washi-4); --sticker-corner-b: var(--sticker-washi-2);
+}
+:root[data-skin='sticker']:has(.backdrop[data-page='1']) { --sticker-luck: .618; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='2']) { --sticker-luck: .236; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='3']) { --sticker-luck: .854; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='4']) { --sticker-luck: .472; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='5']) { --sticker-luck: .09; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='6']) { --sticker-luck: .708; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='7']) { --sticker-luck: .326; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='8']) { --sticker-luck: .944; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='9']) { --sticker-luck: .562; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='10']) { --sticker-luck: .18; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='11']) { --sticker-luck: .798; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='12']) { --sticker-luck: .416; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='13']) { --sticker-luck: .034; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='14']) { --sticker-luck: .652; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='15']) { --sticker-luck: .27; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='16']) { --sticker-luck: .888; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='17']) { --sticker-luck: .506; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='18']) { --sticker-luck: .124; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='19']) { --sticker-luck: .742; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='20']) { --sticker-luck: .36; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='21']) { --sticker-luck: .978; --sticker-tape-in: sticker-tape-b; }
+:root[data-skin='sticker']:has(.backdrop[data-page='22']) { --sticker-luck: .596; --sticker-tape-in: sticker-tape-a; }
+:root[data-skin='sticker']:has(.backdrop[data-page='23']) { --sticker-luck: .214; --sticker-tape-in: sticker-tape-b; }
+
+/* The picture and the stickers, under the page; a new pair drawn in a few frames, from the bottom up. */
+:root[data-skin='sticker'] .backdrop {
+  background: var(--sticker-drawing) left 8px bottom 56px / 168px auto no-repeat,
+    var(--sticker-set) right 28px bottom 20px / 170px auto no-repeat;
+  animation: sticker-draw var(--duration-page) steps(5, jump-end) both;
+}
+/*
+ * The tapes, over the page's panel, torn at both ends: one slanting across its top left corner, one across its top
+ * edge short of the right corner, which is where the scrollbars of its scroll areas run (Scrollbar.tsx), so that the
+ * tape never lies over one. Each lies a little differently on each page, by the page's luck, and is slapped on in a few
+ * frames. They take no pointer. The panel's right edge is beside the console, or at the right of the window once the
+ * console has gone under the records.
+ */
+:root[data-skin='sticker'] .main-area::before, :root[data-skin='sticker'] .main-area::after {
+  content: ''; position: absolute; z-index: 2; height: 22px; pointer-events: none;
+  clip-path: polygon(4px 0, calc(100% - 4px) 0, 100% 20%, calc(100% - 4px) 40%, 100% 60%, calc(100% - 4px) 80%, 100% 100%,
+    4px 100%, 0 80%, 4px 60%, 0 40%, 4px 20%);
+  animation: var(--sticker-tape-in) var(--duration-base) steps(3, jump-end) both;
+}
+/* across the corner, at -56° to -25°, its middle up to 6px either way of 8px inside the corner */
+:root[data-skin='sticker'] .main-area::before {
+  top: calc(var(--gutter) + env(safe-area-inset-top) - 3px + (mod(var(--sticker-luck) * 7, 1) - .5) * 8px);
+  left: calc(var(--gutter) + env(safe-area-inset-left) - 31px + (mod(var(--sticker-luck) * 4, 1) - .5) * 12px);
+  width: 78px; rotate: calc(-40.5deg + (var(--sticker-luck) - .5) * 31deg); background: var(--sticker-corner-a);
+}
+/* along the top edge, at -7° to 7°, 56px to 72px long, its right end 26px to 86px short of the right edge */
+:root[data-skin='sticker'] .main-area::after {
+  --sticker-short: calc(26px + mod(var(--sticker-luck) * 9, 1) * 60px);
+  top: calc(var(--gutter) + env(safe-area-inset-top) - 9px + (mod(var(--sticker-luck) * 4, 1) - .5) * 6px);
+  width: calc(56px + mod(var(--sticker-luck) * 2, 1) * 16px);
+  right: calc(2 * var(--gutter) + var(--console-width) + var(--sticker-short));
+  rotate: calc((mod(var(--sticker-luck) * 7, 1) - .5) * 14deg); background: var(--sticker-corner-b);
+}
+@media (max-width: 960px) {
+  :root[data-skin='sticker'] .main-area::after { right: calc(var(--gutter) + env(safe-area-inset-right) + var(--sticker-short)); }
+}
+/* stuck on: pressed down from a little above the paper; two of the same, so that a change of name plays it again */
+@keyframes sticker-tape-a {
+  from { opacity: 0; scale: 1.25; }
+  to { opacity: 1; scale: 1; }
+}
+@keyframes sticker-tape-b {
+  from { opacity: 0; scale: 1.25; }
+  to { opacity: 1; scale: 1; }
+}
+/*
+ * On a phone the page's panel covers all of the paper but its edges, and the console's decoration would peep out under
+ * the tab bar: the decoration of the turn is printed faintly in the panel's bottom corner instead, under its content
+ * (a veil of the sheet's colour over it), so that a row over it stays legible.
+ */
+@media (max-width: 640px) {
+  /* the page, as tall as its content there and as wide as the window, would stick out at a slant and scroll sideways;
+     so would the tapes over its corners, which the window cuts off instead */
+  :root[data-skin='sticker'] { --page-in: sticker-page-rise var(--duration-page) both; }
+  :root[data-skin='sticker'] .main-area { overflow-x: clip; }
+  :root[data-skin='sticker'] .backdrop { background-size: 168px auto, 0 0; }
+  :root[data-skin='sticker'] .main-area > .panel {
+    --panel-bg: linear-gradient(var(--sticker-veil), var(--sticker-veil)) right 10px bottom 10px / 100px 120px no-repeat,
+      var(--sticker-set) right 10px bottom 10px / 100px 120px no-repeat, var(--sticker-sheet);
+  }
+}
+@keyframes sticker-draw {
+  from { clip-path: inset(100% 0 0 0); }
+  to { clip-path: inset(0); }
+}
+/* A page comes in as drawn on twos: a few held frames, rising and swaying into place; seen from the first frame, so that
+   no frame shows an empty page. */
+@keyframes sticker-page-in {
+  0% { opacity: .4; translate: 0 12px; rotate: -.6deg; animation-timing-function: steps(2, jump-end); }
+  40% { opacity: 1; translate: 0 -3px; rotate: .4deg; animation-timing-function: steps(2, jump-end); }
+  75% { opacity: 1; translate: 0 1px; rotate: -.15deg; animation-timing-function: steps(1, jump-end); }
+  100% { opacity: 1; translate: 0 0; rotate: 0deg; }
+}
+/* the same frames upright, for a page as wide as the window */
+@keyframes sticker-page-rise {
+  0% { opacity: .4; translate: 0 12px; animation-timing-function: steps(2, jump-end); }
+  40% { opacity: 1; translate: 0 -3px; animation-timing-function: steps(2, jump-end); }
+  75% { opacity: 1; translate: 0 1px; animation-timing-function: steps(1, jump-end); }
+  100% { opacity: 1; translate: 0 0; }
+}
+}
