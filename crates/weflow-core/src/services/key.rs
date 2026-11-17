@@ -11,7 +11,8 @@ use crate::error::{AppError, AppResult};
 impl ServiceHub {
     /// `key:autoGetDbKey`. WeChat only produces the key while it opens its databases, so on Windows and Linux the
     /// command asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for
-    /// the user to click "Enter WeChat".
+    /// the user to click "Enter WeChat". On macOS it hooks the running WeChat. Everywhere the login prompt
+    /// follows the installed hook.
     pub fn key_db(
         &self,
         pid_override: Option<u32>,
@@ -99,10 +100,6 @@ impl ServiceHub {
                 },
             )
         };
-        if cfg!(target_os = "macos") {
-            login_phase();
-        }
-
         // the macOS hook is tried again once at most: more tries can set off the system's protection (#806)
         let mut tried_again = false;
         let key = loop {
@@ -113,11 +110,10 @@ impl ServiceHub {
                 end_status_line();
                 return Err(timeout_error());
             }
-            // wx_key's own progress messages are noise; only its errors are shown
+            // wx_key's own progress messages are noise; only its errors are shown, and the login prompt waits
+            // until the hook is in place (#872)
             let mut on_status = |msg: &str, level: i32| {
-                if cfg!(any(windows, target_os = "linux"))
-                    && msg == "Hook installed; log in to WeChat now"
-                {
+                if msg == "Hook installed; log in to WeChat now" {
                     login_phase();
                 }
                 if level == 2 {
