@@ -1,8 +1,5 @@
 //! A command that cannot write where it was told says where and why (#816): the path, and what the system answered.
-#![expect(
-    clippy::unwrap_used,
-    reason = "the helpers fail the test by panicking"
-)]
+#![expect(clippy::unwrap_used, reason = "the helpers fail the test by panicking")]
 
 mod common;
 
