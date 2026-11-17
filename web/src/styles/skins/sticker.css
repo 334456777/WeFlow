@@ -16,7 +16,9 @@
  * sticker/OFL.txt; from github.com/google/fonts, ofl/zcoolkuaile), cut down to the ASCII and to the Chinese characters
  * and punctuation of the page's own text (src/, its sample data and tests left out) with fontTools:
  *   pyftsubset ZCOOLKuaiLe-Regular.ttf --text-file=<those characters> --unicodes=U+0020-007E --flavor=woff
- *     --layout-features='*' --no-hinting --desubroutinize --output-file=sticker/zcool-kuaile.woff
+ *     --layout-features='*' --no-hinting --desubroutinize --name-IDs=0,1,2,3,4,5,6,13,14
+ *     --output-file=sticker/zcool-kuaile.woff
+ * keeping in its names the copyright notice (0) and the licence (13, 14), which the font is not to go without.
  * A character it lacks (a name, a word added to the page since) is drawn in the page's own font.
  */
 @layer skin {
