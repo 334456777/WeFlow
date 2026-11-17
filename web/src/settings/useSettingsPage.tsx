@@ -9,6 +9,7 @@ import { backendLabel } from '../shell/Connection';
 import type { Page, Shell } from '../shell/page';
 import { BrowserPanel } from '../shell/panels';
 import type { Preferences } from '../shell/preferences';
+import { SKINS, useSkin } from '../skin';
 import { useTheme } from '../theme';
 import { Accounts, AccountsSkeleton, profileState } from './Accounts';
 import { AdvancedTools } from './AdvancedTools';
@@ -45,6 +46,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
   const { backend, connected, profile, mobileDetail, setMobileDetail } = shell;
   // held here, as the page is there all the time: a theme that follows the system keeps following it
   const [theme, setTheme] = useTheme();
+  const [skin, setSkin] = useSkin();
   const [open, setOpen] = useState<SectionId>('connection');
   const pane = useRef<HTMLDivElement>(null);
   const go = useCallback((id: SectionId) => { setOpen(id); setMobileDetail(true); }, [setMobileDetail]);
@@ -57,7 +59,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
   const summaries: Record<SectionId, string> = {
     connection: [backendLabel(backend), health?.version].filter(Boolean).join(' · '),
     accounts: current ? [current.name, current.complete ? t('已配置') : profileState(current)].join(' · ') : failed ? t('读不到账号配置') : '',
-    appearance: [t(THEMES.find(choice => choice.value === theme)!.label), prefs.realtime ? t('实时消息') : t('不接收实时消息')].join(' · '),
+    appearance: [SKINS.length > 1 ? t(skin.label) : '', t(THEMES.find(choice => choice.value === theme)!.label), prefs.realtime ? t('实时消息') : t('不接收实时消息')].filter(Boolean).join(' · '),
     serve: t('地址、端口和并发'),
     ai: profile?.aiKey ? t('已设置 API Key') : t('未设置 API Key'),
     cache: t('各部分的大小和清理'),
@@ -82,7 +84,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
         </SettingsSection>;
       case 'appearance':
         return <SettingsSection title={sectionLabel(id)} lead={t('只保存在这个浏览器里。')}>
-          <AppearanceSettings prefs={prefs} theme={theme} setTheme={setTheme} />
+          <AppearanceSettings prefs={prefs} theme={theme} setTheme={setTheme} skin={skin} setSkin={setSkin} />
         </SettingsSection>;
       case 'serve':
         return <SettingsSection title={sectionLabel(id)} lead={t('weflow serve 启动时用的选项，保存在服务端的配置文件里，重启后生效。启动命令里给出的选项优先；留空的项用灰色的默认值。')}>

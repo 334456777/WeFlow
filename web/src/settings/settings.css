@@ -58,7 +58,7 @@
 .setting-row.wide { flex-wrap: wrap; }
 .setting-row.wide > .setting-copy { flex: 1 1 240px; }
 .setting-row.wide > .setting-control { flex-shrink: 1; max-width: 100%; }
-.theme-group { width: 240px; max-width: 100%; }
+.theme-group, .skin-group { width: 240px; max-width: 100%; }
 .settings-state { display: inline-flex; align-items: center; gap: var(--space-2); }
 .source-name { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; }
 .source-name.warning { color: var(--state-danger); }

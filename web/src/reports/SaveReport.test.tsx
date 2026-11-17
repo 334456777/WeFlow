@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from '#test';
 import { reportHtml, reportSvg, withoutPictures } from './reportFiles';
 import { SaveReport } from './SaveReport';
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.innerHTML = ''; document.documentElement.removeAttribute('style'); });
+afterEach(() => {
+  cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.innerHTML = '';
+  for (const name of ['style', 'data-theme', 'data-skin']) document.documentElement.removeAttribute(name);
+});
 
 function report(): HTMLElement {
   const article = document.createElement('article');
@@ -31,6 +34,12 @@ describe('saving a report', () => {
     expect(html).toContain('<article class="report" aria-label="2025 年的年度报告">');
     expect(html).not.toContain('qlogo');
     expect(html).toContain('a &lt; b &amp; "c"');
+  });
+
+  it('names the theme and the skin in use on the copy’s root, where a skin’s rules look for them (#830)', () => {
+    Object.assign(document.documentElement.dataset, { theme: 'dark', skin: 'neumorphism' });
+    expect(reportHtml(report(), 'x')).toContain('<html lang="zh-CN" data-theme="dark" data-skin="neumorphism"><head>');
+    expect(reportSvg(report(), 600).svg).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" data-theme="dark" data-skin="neumorphism" width="600"/);
   });
 
   it('draws it as an SVG of XHTML, the size it takes', () => {

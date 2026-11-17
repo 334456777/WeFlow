@@ -9,7 +9,9 @@
  *   - its own raw tokens, prefixed with its name (`--neu-` for neumorphism), which no other sheet uses;
  *   - the roles: what each kind of control or surface looks like in each of its states, named by what it is for (a
  *     button, a row, a field, a card, …) and not by how the skin draws it. Pages use the roles only.
- * Neumorphism (styles/neumorphism.css) is the default skin and gives all of them; it lists the roles.
+ * Neumorphism (styles/neumorphism.css) is the default skin and gives all of them; it lists the roles. Another skin is
+ * a sheet of styles/skins/ in the `skin` layer, all of it under `:root[data-skin='<id>']`, fetched when it is chosen
+ * (skin.ts); it overrides what it changes and keeps the default skin's tokens for the rest.
  */
 
 /*
@@ -94,6 +96,12 @@
  * its colours for both.
  */
 :root[data-theme='dark'] { color-scheme: dark; }
+
+/*
+ * The skin (#830): `data-skin` on <html>, set like the theme (index.html, skin.ts). While the sheet of a skin other than
+ * the default is on its way, nothing of the page shows, rather than the page in the default skin.
+ */
+:root[data-skin-pending] body { visibility: hidden; }
 
 /* The system setting and the 「减少动画」 switch both make every transition immediate. */
 @media (prefers-reduced-motion: reduce) {

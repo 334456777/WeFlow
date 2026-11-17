@@ -39,13 +39,22 @@ export function withoutPictures(report: HTMLElement): HTMLElement {
 
 const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
+/** The theme and the skin in use (#830) as attributes of the copy's root, so that the rules of a skin's sheet, which
+ * are under `:root[data-skin]`, hold there too. */
+function looks(): string {
+  const { theme, skin } = document.documentElement.dataset;
+  return [['data-theme', theme], ['data-skin', skin]]
+    .filter(([, value]) => value)
+    .map(([name, value]) => ' ' + name + '="' + escape(value!).replaceAll('"', '&quot;') + '"').join('');
+}
+
 /** Styles of the copy itself: the page scrolls as a document, the report sits in a column on the page. */
 const OWN_CSS = 'html, body { height: auto; overflow: auto; } body { padding: 24px 16px; } .report-export { max-width: 880px; margin: 0 auto; } .report-export .report { margin-top: 0; }';
 
 /** The report as a page of its own. */
 export function reportHtml(report: HTMLElement, title: string): string {
   const copy = withoutPictures(report);
-  return '<!doctype html>\n<html lang="' + locale() + '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+  return '<!doctype html>\n<html lang="' + locale() + '"' + looks() + '><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
     + '<title>' + escape(title) + '</title><style>' + pageCss().replaceAll('</style', '<\\/style') + '\n' + OWN_CSS + '</style></head>'
     + '<body style="' + escape(themeVariables()).replaceAll('"', '&quot;') + '"><main class="report-export">' + copy.outerHTML + '</main></body></html>\n';
 }
@@ -66,7 +75,8 @@ export function reportSvg(report: HTMLElement, width: number): { svg: string; he
   const height = Math.ceil(frame.getBoundingClientRect().height) || report.scrollHeight + 48;
   probe.remove();
   const body = new XMLSerializer().serializeToString(frame);
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '"><foreignObject x="0" y="0" width="100%" height="100%">' + body + '</foreignObject></svg>';
+  // the SVG is the root of the picture, where `:root` is
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"' + looks() + ' width="' + width + '" height="' + height + '"><foreignObject x="0" y="0" width="100%" height="100%">' + body + '</foreignObject></svg>';
   return { svg, height };
 }
 

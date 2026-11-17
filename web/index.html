@@ -8,12 +8,19 @@
     <link rel="icon" href="data:," />
     <title>WeFlow · 记录工作台</title>
     <script>
-      // The theme in force before the first paint (#252); src/theme.ts keeps it afterwards, by the same rules.
+      // The theme (#252) and the skin (#830) in force before the first paint; src/theme.ts and src/skin.ts keep them
+      // afterwards, by the same rules. A skin other than the default comes with a style sheet of its own, which
+      // src/skin.ts fetches: until it is here the page stays hidden (styles/tokens.css), 3 s at most.
       (function () {
-        var choice = null;
-        try { choice = localStorage.getItem('weflow.theme'); } catch (e) {}
+        var root = document.documentElement, choice = null, skin = null;
+        try { choice = localStorage.getItem('weflow.theme'); skin = localStorage.getItem('weflow.skin'); } catch (e) {}
         var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        root.dataset.theme = dark ? 'dark' : 'light';
+        root.dataset.skin = skin || 'neumorphism';
+        if (skin && skin !== 'neumorphism') {
+          root.dataset.skinPending = '';
+          setTimeout(function () { delete root.dataset.skinPending; }, 3000);
+        }
       })();
     </script>
   </head>
