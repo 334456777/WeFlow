@@ -19,6 +19,11 @@ const FADE_INSET = 2;
  * events do not see that the person is scrolling (a chat window lets go of its bottom on it). */
 export const SCROLL_INTENT = 'weflow:scroll-intent';
 
+/** Whether the pointer is over `element`; false where `:hover` cannot be asked. */
+function hovered(element: Element) {
+  try { return element.matches(':hover'); } catch { return false; }
+}
+
 export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> }) {
   const track = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLDivElement>(null);
@@ -98,6 +103,8 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
     area.addEventListener('scroll', onScroll, { passive: true });
     area.addEventListener('pointerenter', enter);
     area.addEventListener('pointerleave', leave);
+    // a pointer already over a new area (another page in the same panel, #836) sends it no `pointerenter`
+    if (hovered(area)) bar.classList.add('hover');
 
     // Dragging the thumb scrolls in proportion. Only the thumb takes the pointer: the strip beside it would cover
     // the right edge of rows and bubbles.
@@ -127,6 +134,9 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
       resize?.disconnect();
       children.disconnect();
       window.clearTimeout(linger);
+      // the bar outlives the area when a panel shows another page (#836): what it showed for this one ends here, as
+      // the timer that would have hidden it is gone
+      bar.classList.remove('active', 'hover', 'dragging');
       area.removeEventListener('scroll', onScroll);
       area.removeEventListener('pointerenter', enter);
       area.removeEventListener('pointerleave', leave);
