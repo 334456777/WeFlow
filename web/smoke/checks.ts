@@ -42,7 +42,7 @@ async function navigate(page: Page, label: string, panel: string): Promise<void>
 }
 
 /** The picture of 「图片测试」 whose message is `id` (dev_account.rs: ① is 2, ⑧ is 16), opened in the preview. */
-const picture = (id: number) => `.message-row:has(img.message-thumb[src*="msg-id=${id}&"]) button[aria-label="预览图片"]`;
+export const picture = (id: number) => `.message-row:has(img.message-thumb[src*="msg-id=${id}&"]) button[aria-label="预览图片"]`;
 
 export const checks: Check[] = [
   {

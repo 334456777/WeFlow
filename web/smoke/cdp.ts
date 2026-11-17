@@ -91,11 +91,16 @@ export class Browser {
     return () => { this.listeners.delete(listener); };
   }
 
-  /** A new tab, attached to on the same connection. */
-  async newPage(): Promise<Page> {
-    const { targetId } = await this.send('Target.createTarget', { url: 'about:blank' });
+  /**
+   * A new tab, attached to on the same connection. `isolated`: in a window and a browser context of its own, with its
+   * own storage and connections, and shown however many others are open (only the front tab of a window is visible);
+   * the context goes with the tab.
+   */
+  async newPage({ isolated = false } = {}): Promise<Page> {
+    const context = isolated ? (await this.send('Target.createBrowserContext')).browserContextId as string : undefined;
+    const { targetId } = await this.send('Target.createTarget', { url: 'about:blank', ...(context ? { browserContextId: context, newWindow: true } : {}) });
     const { sessionId } = await this.send('Target.attachToTarget', { targetId, flatten: true });
-    const page = new Page(this, targetId, sessionId);
+    const page = new Page(this, targetId, sessionId, context);
     await page.init();
     return page;
   }
@@ -132,7 +137,8 @@ export class Page {
   private readonly requests = new Map<string, { url: string; type: string }>();
   private readonly unlisten: () => void;
 
-  constructor(private readonly browser: Browser, private readonly targetId: string, private readonly sessionId: string) {
+  constructor(private readonly browser: Browser, private readonly targetId: string, private readonly sessionId: string,
+    private readonly context?: string) {
     this.unlisten = browser.on(message => {
       if (message.sessionId !== sessionId) return;
       const params = message.params;
@@ -240,7 +246,33 @@ export class Page {
    * measured again until it stays).
    */
   async click(selector: string, text?: string): Promise<void> {
-    const point = await this.waitFor(`${selector}${text ? ` with 「${text}」` : ''} to click`, (selector, text) => {
+    const point = await this.point(selector, text);
+    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+    await this.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+    await this.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+  }
+
+  /** The mouse moved over the middle of the element, found as {@link click} finds it, and left there. */
+  async hover(selector: string, text?: string): Promise<void> {
+    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...await this.point(selector, text) });
+  }
+
+  /** The left button pressed in the middle of the element, found as {@link click} finds it, and held down. */
+  async hold(selector: string, text?: string): Promise<void> {
+    const point = await this.point(selector, text);
+    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+    await this.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+  }
+
+  /** The button held down by {@link hold} carried to `at` and let go there: what was pressed gets no click. */
+  async letGo(at: { x: number; y: number }): Promise<void> {
+    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at, button: 'left', buttons: 1 });
+    await this.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', clickCount: 1 });
+  }
+
+  /** Where {@link click} clicks the element: its middle, once nothing covers it. */
+  point(selector: string, text?: string): Promise<{ x: number; y: number }> {
+    return this.waitFor(`${selector}${text ? ` with 「${text}」` : ''} to click`, (selector, text) => {
       const element = [...document.querySelectorAll<HTMLElement>(selector)]
         .find(element => !text || (element.textContent ?? '').includes(text) || element.getAttribute('aria-label')?.includes(text));
       if (!element) return null;
@@ -252,9 +284,6 @@ export class Page {
       if (y < 0 || y > innerHeight || x < 0 || x > innerWidth || !hit) element.scrollIntoView({ block: 'center', inline: 'center' });
       return null;
     }, selector, text ?? '');
-    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
-    await this.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
-    await this.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
   }
 
   /** Turns the mouse wheel over the middle of the element `selector` matches: `deltaY` below 0 scrolls up. */
@@ -286,16 +315,18 @@ export class Page {
     await this.press('Backspace');
   }
 
-  async screenshot(): Promise<Uint8Array> {
-    const { data } = await this.send('Page.captureScreenshot', { format: 'png' });
+  /** The viewport as a PNG, or only `clip` of it (in CSS pixels). */
+  async screenshot(clip?: { x: number; y: number; width: number; height: number }): Promise<Uint8Array> {
+    const { data } = await this.send('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}) });
     return Uint8Array.fromBase64(data);
   }
 
-  /** Closes the tab, and with it the page's connections. */
+  /** Closes the tab, and with it the page's connections; an isolated tab's context too. */
   async close(): Promise<void> {
     this.unlisten();
     try {
       await this.browser.send('Target.closeTarget', { targetId: this.targetId });
+      if (this.context) await this.browser.send('Target.disposeBrowserContext', { browserContextId: this.context });
     } catch {
       // gone already
     }
