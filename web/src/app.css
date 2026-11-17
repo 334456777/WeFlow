@@ -153,6 +153,11 @@ time, .num { font-variant-numeric: tabular-nums; }
 .nav-item.selected { font-weight: var(--weight-semibold); }
 .nav-label { transition: opacity var(--duration-base) var(--ease-out); }
 
+/* Under a skin with shapes, a role's shape layer (styles/roles.css) lies in it: positioned where it stands, unless its
+   page positions it otherwise (this layer is below the pages'). */
+:where(:root[data-shapes]) :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option, .nav-item, .conversation-row, .as-row) {
+  position: relative;
+}
 /*
  * The hover hollow that slides (HoverTrack.tsx, #232): in a group it draws the rows' hover in their place. It lies
  * under the items (first in the group, the items positioned after it) and slides with the snap curve, like the
@@ -161,8 +166,10 @@ time, .num { font-variant-numeric: tabular-nums; }
  */
 .hover-track-host { position: relative; }
 :where(.hover-track-host) > :where(:not(.hover-hollow)) { position: relative; }
+/* A skin without it (`--row-hover-track: none`) has the rows show their own hover. */
 .hover-hollow {
-  position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; opacity: 0; box-shadow: var(--row-shadow-hover);
+  position: absolute; top: 0; left: 0; display: var(--row-hover-track); width: 0; height: 0; pointer-events: none; opacity: 0;
+  box-shadow: var(--row-shadow-hover);
   transform-origin: center;
   transition: translate var(--duration-snap) var(--ease-snap), width var(--duration-snap) var(--ease-snap),
     height var(--duration-snap) var(--ease-snap), opacity var(--duration-hover) ease,

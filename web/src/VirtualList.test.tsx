@@ -1,7 +1,7 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, describe, expect, it } from '#test';
-import { VirtualList, type VirtualListHandle } from './VirtualList';
+import { keySeed, VirtualList, type VirtualListHandle } from './VirtualList';
 
 afterEach(cleanup);
 
@@ -29,5 +29,23 @@ describe('VirtualList', () => {
     expect(texts).not.toContain('row 0');
     act(() => ref.current!.scrollToIndex(995));
     expect(list.scrollTop).toBe(1001 * 58 - 580);
+  });
+
+  it('gives each row a seed of its item’s key, the same wherever the row is drawn (#831)', () => {
+    const ref = createRef<VirtualListHandle>();
+    const { container } = render(<VirtualList ref={ref} items={items} rowHeight={58} keyOf={item => item} renderRow={item => <span>{item}</span>} />);
+    const seedOf = (text: string) => {
+      const row = Array.from(container.querySelectorAll<HTMLElement>('.virtual-row')).find(row => row.textContent === text)!;
+      return Number(row.style.getPropertyValue('--key-seed'));
+    };
+    const before = seedOf('row 3');
+    expect(before).toBe(keySeed('row 3'));
+    expect(before).toBeGreaterThanOrEqual(0);
+    expect(before).toBeLessThan(1);
+    expect(seedOf('row 4')).not.toBe(before);
+    const list = container.querySelector('.virtual-list') as HTMLElement;
+    Object.defineProperty(list, 'clientHeight', { value: 580, configurable: true });
+    act(() => ref.current!.scrollToIndex(12));
+    expect(seedOf('row 3')).toBe(before);
   });
 });

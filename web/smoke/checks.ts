@@ -154,6 +154,56 @@ export const checks: Check[] = [
     },
   },
   {
+    // no skin has shapes yet: the page is given a skin's attribute and tokens of its own (styles/roles.css)
+    name: 'shapes: a button drawn by its layer, clipped there and not itself, its hover too; chips turned each its own way (#831)',
+    async run(page) {
+      await conversations(page);
+      await page.eval(() => {
+        document.documentElement.dataset.shapes = '';
+        const style = document.createElement('style');
+        style.id = 'shapes-check';
+        style.textContent = ':root { --button-clip: polygon(0 0, 100% 4px, 100% 100%, 0 calc(100% - 4px)); '
+          + '--button-drop: drop-shadow(0 2px 2px rgb(0 0 0 / .3)); --option-tilt: 3deg; --row-hover-track: none; }';
+        document.head.append(style);
+      });
+      try {
+        const look = () => {
+          const shadow = (name: string) => {
+            const probe = document.body.appendChild(document.createElement('div'));
+            probe.style.boxShadow = `var(${name})`;
+            const value = getComputedStyle(probe).boxShadow;
+            probe.remove();
+            return value;
+          };
+          const button = document.querySelector('.primary-button')!;
+          const own = getComputedStyle(button), layer = getComputedStyle(button, '::before');
+          return {
+            own: [own.position, own.isolation, own.clipPath, own.backgroundColor, own.boxShadow, own.filter.startsWith('drop-shadow')].join(' '),
+            layer: [layer.content, layer.clipPath.startsWith('polygon'), layer.backgroundColor !== 'rgba(0, 0, 0, 0)'].join(' '),
+            lift: layer.boxShadow === shadow('--button-shadow') ? 'rest' : layer.boxShadow === shadow('--button-shadow-hover') ? 'hover' : layer.boxShadow,
+            // the export's formats, side by side
+            turns: [...document.querySelector('.chip')!.parentElement!.querySelectorAll(':scope > .chip')].map(chip => parseFloat(getComputedStyle(chip).rotate)),
+            hollow: getComputedStyle(document.querySelector('.hover-hollow')!).display,
+          };
+        };
+        // the button's own shadow fades out as the layer takes it
+        const drawn = await page.until('the button drawn by its layer, not itself', s => s.lift === 'rest'
+          && s.own === 'relative isolate none rgba(0, 0, 0, 0) none true' && s.layer === '"" true true', look);
+        if (drawn.turns.length < 5 || drawn.turns.some(turn => !(Math.abs(turn) <= 3)) || new Set(drawn.turns).size < drawn.turns.length) {
+          throw new Error('the chips’ turns: ' + drawn.turns.join(', '));
+        }
+        if (drawn.hollow !== 'none') throw new Error('the hover hollow of a skin without one: ' + drawn.hollow);
+        await page.hover('.primary-button');
+        await page.until('the button’s hover on its layer', s => s.lift === 'hover', look);
+      } finally {
+        await page.eval(() => {
+          delete document.documentElement.dataset.shapes;
+          document.getElementById('shapes-check')?.remove();
+        });
+      }
+    },
+  },
+  {
     name: 'picture preview: opened, the one before, closed with Escape and the close button, opened as it flies back',
     async run(page) {
       await count(page, 'the messages of 图片测试', '[aria-label="图片测试的记录"] .message-row', n => n === 18);
