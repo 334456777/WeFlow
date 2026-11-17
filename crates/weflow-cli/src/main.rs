@@ -15,7 +15,9 @@ use commands::analytics::handle_analytics;
 use commands::backup::handle_backup;
 use commands::cache::{handle_cache, CacheCommand, CacheSubcommand};
 use commands::chat::handle_chat;
-use commands::config::{apply_progress_settings, handle_config, ConfigCommand, ConfigSubcommand};
+use commands::config::{
+    apply_progress_settings, handle_config, warn_if_open_to_others, ConfigCommand, ConfigSubcommand,
+};
 use commands::db::{handle_db, DbCommand, DbSubcommand};
 use commands::export::handle_export;
 use commands::group::handle_group;
@@ -135,6 +137,16 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(format!("{err:#}")))?;
 
     apply_progress_settings(&config, progress);
+    if matches!(
+        command,
+        Commands::Config(ConfigCommand {
+            command: ConfigSubcommand::Path
+        }) | Commands::Db(DbCommand {
+            command: DbSubcommand::Test
+        })
+    ) {
+        warn_if_open_to_others(&ctx);
+    }
 
     let command = match read_of(command) {
         Ok(read) => return read.run(&ServiceHub::new(ctx, config)),
