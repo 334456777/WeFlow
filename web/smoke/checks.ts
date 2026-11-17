@@ -25,6 +25,19 @@ function count(page: Page, what: string, selector: string, ok: (n: number) => bo
   return page.until(what, ok, selector => document.querySelectorAll(selector).length, selector);
 }
 
+/** Waits until none of `tabs`, all in the background, holds an event stream any more (presence.ts); fails when one
+ * still does well after `HIDDEN_MS`, saying which. */
+async function released(tabs: Page[]): Promise<void> {
+  const deadline = Date.now() + HIDDEN_MS + 20_000;
+  while (tabs.some(tab => tab.streams().length)) {
+    if (Date.now() > deadline) {
+      const held = tabs.flatMap((tab, i) => tab.streams().length ? [`tab ${i + 1}: ${tab.streams().join(', ')}`] : []);
+      throw new Error(`tabs in the background still hold their event streams ${HIDDEN_MS / 1000 + 20} s on: ${held.join('; ')}`);
+    }
+    await Bun.sleep(200);
+  }
+}
+
 /** The labels of the rows of the list on the left (conversations, posters, merchants), in order. */
 function rows(page: Page, what: string, ok: (labels: string[]) => boolean): Promise<(string | null)[]> {
   return page.until(what, labels => ok(labels as string[]),
@@ -388,8 +401,15 @@ export const checks: Check[] = [
     name: 'tabs: eight in one browser, the newest still reads its records (#799)',
     async run(page, browsing) {
       await conversations(page);
-      for (let n = 2; n <= 6; n++) await conversations(await browsing.open());
-      await Bun.sleep(HIDDEN_MS + 1_000);
+      const tabs = [page];
+      for (let n = 2; n <= 6; n++) {
+        const tab = await browsing.open();
+        await conversations(tab);
+        tabs.push(tab);
+      }
+      // the five behind the newest let go HIDDEN_MS after they were hidden, or later where Chrome slows down the timers
+      // of a busy machine's background tabs (#878)
+      await released(tabs.slice(0, -1));
       for (let n = 7; n <= 8; n++) await conversations(await browsing.open());
     },
   },
