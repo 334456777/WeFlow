@@ -103,8 +103,12 @@
   --shadow-none: var(--neu-flat);
   /* The page under everything (html, body); may be a picture. */
   --page-bg: var(--neu-surface);
-  /* The colour the edges of a scroll area fade into (app.css .scroll-fade): what lies under the area. */
-  --fade-color: var(--neu-surface);
+  /*
+   * What lies under a scroll area, which its edges fade into (app.css .scroll-fade): the page or the panel. A skin whose
+   * page or panels are a picture gives the same picture here, fixed to the viewport (`background-attachment: fixed`)
+   * on both so that the two line up; set on a container (a panel, the console), it holds for the areas in it.
+   */
+  --fade-bg: var(--neu-surface);
 
   /* The main action (.primary-button), and a button as big where it stands for one (the export's side buttons). */
   --button-bg: var(--neu-surface);
@@ -147,6 +151,23 @@
   --row-bg-selected: transparent;
   --row-fg-selected: var(--fg);
   --row-shadow-selected: var(--neu-inset);
+  /*
+   * Whether a group of rows shows its hover with the sliding hollow (`--row-hover-track`: block, or none for each row
+   * to show its own); in such a group, -tracked is a row's look under the pointer and -tracked-pressed its look held
+   * down while the hollow takes the press: here the rest look, over the hollow.
+   */
+  --row-hover-track: block;
+  --row-shadow-tracked: var(--row-shadow);
+  --row-shadow-tracked-pressed: var(--row-shadow);
+  /*
+   * Shapes (styles/roles.css), in which a skin with them (skin.ts) draws a button, a control, an option and a row:
+   * -clip its outline (a clip-path), -stroke its edge (a border), -tilt how far it may turn either way (each element
+   * by its seed), -drop the filter it casts (drop shadows follow the outline). Neumorphism has none.
+   */
+  --button-clip: none; --button-stroke: none; --button-tilt: 0deg; --button-drop: none;
+  --control-clip: none; --control-stroke: none; --control-tilt: 0deg; --control-drop: none;
+  --option-clip: none; --option-stroke: none; --option-tilt: 0deg; --option-drop: none;
+  --row-clip: none; --row-stroke: none; --row-tilt: 0deg; --row-drop: none;
   /* What takes typing: a search, a token, a date, a command's arguments. */
   --field-bg: var(--neu-surface);
   --field-shadow: var(--neu-inset);

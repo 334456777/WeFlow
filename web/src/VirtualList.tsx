@@ -1,7 +1,7 @@
 // A list that renders only the rows in sight (#159): rows of one height, placed absolutely in a spacer as tall as
 // all of them, so thousands of conversations scroll without thousands of elements.
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
-import type { ForwardedRef, HTMLAttributes, ReactNode, Ref } from 'react';
+import type { CSSProperties, ForwardedRef, HTMLAttributes, ReactNode, Ref } from 'react';
 import { HoverTrack } from './HoverTrack';
 import { Scrollbar } from './Scrollbar';
 
@@ -26,6 +26,14 @@ interface Props<T> extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
 
 /** Rows drawn before the list knows its height (the first paint, or a test without layout). */
 const FALLBACK_ROWS = 20;
+
+/** A number in [0, 1) of a row's key (FNV-1a), which the seed of the elements in the row starts from (styles/roles.css,
+ * #831): their place among the rows in sight changes as the list scrolls, the item they show does not. */
+export function keySeed(key: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 0x01000193);
+  return (hash >>> 0) / 2 ** 32;
+}
 
 function VirtualListInner<T>(
   { items, rowHeight, keyOf, renderRow, overscan = 6, padding = 0, track, className, ...rest }: Props<T>,
@@ -74,7 +82,9 @@ function VirtualListInner<T>(
   const rows: ReactNode[] = [];
   for (let i = first; i < last; i++) {
     const item = items[i];
-    rows.push(<div key={keyOf(item)} className="virtual-row" style={{ transform: `translateY(${padding + i * rowHeight}px)`, height: rowHeight }}>{renderRow(item, i)}</div>);
+    const key = keyOf(item);
+    const style = { transform: `translateY(${padding + i * rowHeight}px)`, height: rowHeight, '--key-seed': String(keySeed(key)) } as CSSProperties;
+    rows.push(<div key={key} className="virtual-row" style={style}>{renderRow(item, i)}</div>);
   }
   return <><div ref={scroller} className={'virtual-list ' + (className ?? '')} onScroll={onScroll} {...rest}>
     <div className="virtual-space" style={{ height: 2 * padding + items.length * rowHeight }}>{track && <HoverTrack items={track} />}{rows}</div>

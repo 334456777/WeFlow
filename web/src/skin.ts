@@ -21,6 +21,9 @@ export interface Skin {
    * the build loads without preloading anything (plugins/plainImport.ts). None for the default skin, which comes with
    * the main sheet. */
   sheet?: () => Promise<{ default: string }>;
+  /** Draws the buttons, controls, options and rows with shape layers (styles/roles.css, #831): `data-shapes` on
+   * <html> while it is on. */
+  shapes?: boolean;
 }
 
 export const DEFAULT_SKIN = 'neumorphism';
@@ -75,6 +78,7 @@ export async function applySkin(skin: Skin): Promise<Skin> {
   if (turn !== asked) return skinOf(root.dataset.skin);
   const shown = fetched ? skin : SKINS[0];
   root.dataset.skin = shown.id;
+  if (shown.shapes) root.dataset.shapes = ''; else delete root.dataset.shapes;
   delete root.dataset.skinPending;
   return shown;
 }

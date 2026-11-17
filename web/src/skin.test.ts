@@ -5,11 +5,11 @@ import { applySkin, DEFAULT_SKIN, savedSkin, SKIN_KEY, SKINS, type Skin, useSkin
 const root = document.documentElement;
 
 /** Another skin, whose sheet arrives or fails when told to; each test names its own, as a sheet is fetched once. */
-function another(id: string) {
+function another(id: string, shapes?: boolean) {
   let loads = 0;
   let settle: { resolve(): void; reject(): void } | null = null;
   const skin: Skin = {
-    id, label: id, themes: ['light'],
+    id, label: id, themes: ['light'], shapes,
     sheet: () => {
       loads += 1;
       return new Promise((resolve, reject) => { settle = { resolve: () => resolve({ default: `:root[data-skin='${id}'] { --x: 1; }` }), reject }; });
@@ -25,7 +25,7 @@ function another(id: string) {
 }
 
 beforeEach(() => {
-  localStorage.clear(); delete root.dataset.skin; delete root.dataset.skinPending;
+  localStorage.clear(); delete root.dataset.skin; delete root.dataset.skinPending; delete root.dataset.shapes;
   document.head.querySelectorAll('style[data-skin]').forEach(sheet => sheet.remove());
 });
 afterEach(() => { cleanup(); SKINS.splice(1); });
@@ -78,6 +78,17 @@ describe('the skin (#830)', () => {
     await act(async () => result.current[1](DEFAULT_SKIN));
     expect(localStorage.getItem(SKIN_KEY)).toBeNull();
     expect(root.dataset.skin).toBe(DEFAULT_SKIN);
+  });
+
+  it('turns on the shape layers with a skin that has them, and off with one that has none (#831)', async () => {
+    const stickers = another('stickers', true);
+    const ready = applySkin(stickers.skin);
+    expect(root.dataset.shapes).toBeUndefined();
+    await stickers.arrive();
+    await ready;
+    expect(root.dataset.shapes).toBe('');
+    await applySkin(SKINS[0]);
+    expect(root.dataset.shapes).toBeUndefined();
   });
 
   it('takes the last choice when an earlier one’s sheet comes after it', async () => {

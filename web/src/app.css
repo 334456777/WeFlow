@@ -50,14 +50,27 @@ time, .num { font-variant-numeric: tabular-nums; }
   opacity: 0; transition: opacity var(--duration-panel) var(--ease-out);
 }
 .scrollbar.scrollable { display: block; }
-/* The edges of a scroll area fade while there is more that way (#194): eased, not a straight ramp, and gone at the end. */
+/*
+ * The edges of a scroll area fade while there is more that way (#194, #831). Over the area lies a frame of its size
+ * and its shape (Scrollbar.tsx copies its corners and its clip), with a band at its top and one at its bottom, 28px
+ * each, painted with what lies under the area (`--fade-bg`, a picture as well as a colour) and masked to fade away from
+ * the edge, eased rather than a straight ramp. The bands keep 2px clear down each side and round their corners 2px
+ * less, along the rim of a hollow area: they lie in a box 2px larger at the top and the bottom with a clear border of
+ * 2px, whose inside is the area less its sides and whose inner corners are the area's, 2px in. The bands, not the
+ * area's content, carry the mask: in a scroll area with a mask, Chrome loads no lazy picture before it is in sight.
+ */
+.scroll-fades { position: absolute; z-index: 1; display: none; pointer-events: none; }
+.scroll-fades.scrollable { display: block; }
+.scroll-fades > div {
+  position: absolute; inset: -2px 0; overflow: hidden; border: 2px solid transparent; border-radius: inherit;
+}
 .scroll-fade {
-  position: absolute; z-index: 1; height: 28px; pointer-events: none; opacity: 0;
+  position: absolute; left: 0; right: 0; height: 28px; background: var(--fade-bg); opacity: 0;
   transition: opacity var(--duration-hover) var(--ease-out);
 }
+.scroll-fade.top { top: 0; mask-image: linear-gradient(to bottom, #000, rgb(0 0 0 / .72) 30%, rgb(0 0 0 / .28) 65%, transparent); }
+.scroll-fade.bottom { bottom: 0; mask-image: linear-gradient(to top, #000, rgb(0 0 0 / .72) 30%, rgb(0 0 0 / .28) 65%, transparent); }
 .scroll-fade.shown { opacity: 1; }
-.scroll-fade.top { background: linear-gradient(to bottom, var(--fade-color) 0%, color-mix(in srgb, var(--fade-color) 72%, transparent) 30%, color-mix(in srgb, var(--fade-color) 28%, transparent) 65%, transparent 100%); }
-.scroll-fade.bottom { background: linear-gradient(to top, var(--fade-color) 0%, color-mix(in srgb, var(--fade-color) 72%, transparent) 30%, color-mix(in srgb, var(--fade-color) 28%, transparent) 65%, transparent 100%); }
 .scrollbar.active, .scrollbar.hover, .scrollbar.dragging { opacity: 1; transition-duration: var(--duration-hover); }
 .scrollbar-thumb {
   position: absolute; top: 0; right: 2px; width: 6px; border-radius: var(--radius-full);
@@ -140,6 +153,11 @@ time, .num { font-variant-numeric: tabular-nums; }
 .nav-item.selected { font-weight: var(--weight-semibold); }
 .nav-label { transition: opacity var(--duration-base) var(--ease-out); }
 
+/* Under a skin with shapes, a role's shape layer (styles/roles.css) lies in it: positioned where it stands, unless its
+   page positions it otherwise (this layer is below the pages'). */
+:where(:root[data-shapes]) :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option, .nav-item, .conversation-row, .as-row) {
+  position: relative;
+}
 /*
  * The hover hollow that slides (HoverTrack.tsx, #232): in a group it draws the rows' hover in their place. It lies
  * under the items (first in the group, the items positioned after it) and slides with the snap curve, like the
@@ -148,8 +166,10 @@ time, .num { font-variant-numeric: tabular-nums; }
  */
 .hover-track-host { position: relative; }
 :where(.hover-track-host) > :where(:not(.hover-hollow)) { position: relative; }
+/* A skin without it (`--row-hover-track: none`) has the rows show their own hover. */
 .hover-hollow {
-  position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; opacity: 0; box-shadow: var(--row-shadow-hover);
+  position: absolute; top: 0; left: 0; display: var(--row-hover-track); width: 0; height: 0; pointer-events: none; opacity: 0;
+  box-shadow: var(--row-shadow-hover);
   transform-origin: center;
   transition: translate var(--duration-snap) var(--ease-snap), width var(--duration-snap) var(--ease-snap),
     height var(--duration-snap) var(--ease-snap), opacity var(--duration-hover) ease,
@@ -213,7 +233,8 @@ time, .num { font-variant-numeric: tabular-nums; }
   position: relative; display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; flex-shrink: 0;
   padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); text-align: left;
 }
-.conversation-row.active::before {
+/* the selection bar; a row's ::before is its shape under a skin with shapes (styles/roles.css) */
+.conversation-row.active::after {
   content: ''; position: absolute; left: 0; top: 50%; width: 3px; height: 20px; margin-top: -10px;
   border-radius: var(--radius-full); background: var(--row-fg-selected); animation: indicator-in var(--duration-snap) var(--ease-snap);
 }
@@ -469,15 +490,17 @@ time, .num { font-variant-numeric: tabular-nums; }
 .calendar-day.chosen { font-weight: var(--weight-semibold); }
 .calendar-day.quiet:not(.chosen, .between) { color: var(--fg-subtle); }
 .calendar-day[aria-disabled] { color: var(--fg-subtle); opacity: .45; cursor: default; }
-.calendar-day.today::before, .calendar-day.marked::after {
+/* Today's bar and a marked day's dot, placed in the day by its number's pseudo-elements: the day's own ::before is its
+   shape under a skin with shapes (styles/roles.css). */
+.calendar-day.today > span::before, .calendar-day.marked > span::after {
   content: ''; position: absolute; left: 50%; transform: translateX(-50%); background: currentColor; pointer-events: none;
 }
 .calendar-day.today { font-weight: var(--weight-semibold); }
-.calendar-day.today::before { top: 8px; width: 12px; height: 2px; border-radius: var(--radius-full); }
-.calendar-day.marked::after { bottom: 5px; width: 4px; height: 4px; border-radius: 50%; opacity: .7; }
+.calendar-day.today > span::before { top: 8px; width: 12px; height: 2px; border-radius: var(--radius-full); }
+.calendar-day.marked > span::after { bottom: 5px; width: 4px; height: 4px; border-radius: 50%; opacity: .7; }
 /* The busier the day, the bigger its dot (chat date-counts, in three steps). */
-.calendar-day[data-heat='1']::after { width: 3px; height: 3px; }
-.calendar-day[data-heat='3']::after { width: 6px; height: 6px; bottom: 4px; }
+.calendar-day[data-heat='1'] > span::after { width: 3px; height: 3px; }
+.calendar-day[data-heat='3'] > span::after { width: 6px; height: 6px; bottom: 4px; }
 .calendar-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .calendar-choice {
   height: 44px; border-radius: var(--radius-md); font-size: var(--text-sm); font-variant-numeric: tabular-nums;

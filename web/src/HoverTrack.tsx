@@ -35,7 +35,13 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
       hollow.style.height = at.height + 'px';
       // `translate`, not `transform`: it applies before `scale`, so a press shrinks the hollow about its own centre
       hollow.style.translate = `${x}px ${y}px`;
-      hollow.style.borderRadius = getComputedStyle(item).borderRadius;
+      // the item's outline, whatever the skin makes it (#831): its corners, its clip (on the item, or on its shape
+      // layer under a skin with shapes, styles/roles.css) and its turn
+      const shape = getComputedStyle(item);
+      const clip = shape.clipPath && shape.clipPath !== 'none' ? shape.clipPath : getComputedStyle(item, '::before').clipPath;
+      hollow.style.borderRadius = shape.borderRadius;
+      hollow.style.clipPath = clip ?? '';
+      hollow.style.rotate = shape.rotate ?? '';
       if (!slide) { void hollow.offsetWidth; hollow.style.transition = ''; }
     };
     const show = (item: HTMLElement) => {
