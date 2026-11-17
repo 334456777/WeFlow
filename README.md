@@ -72,6 +72,7 @@ Without `--save`, the commands only print the keys; you can save them yourself w
 ```powershell
 weflow db test
 ```
+> stdout: `accountDir: C:\Users\<you>\Documents\xwechat_files\wxid_xxxxxxxx_xxxx`<br>`connected: true`
 
 6. Try listing the conversations and exporting the chat history (a private chat's conversation ID is the other person's wxid; a group's is `xxx@chatroom`)
 ```powershell
