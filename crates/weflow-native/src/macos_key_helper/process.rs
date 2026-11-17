@@ -170,10 +170,8 @@ mod tests {
         let capacity = pid_capacity(494);
         assert!(capacity >= 494, "room for {capacity} pids");
         assert_eq!(pids_written(475, capacity), 475);
-        assert_eq!(
-            pids_written(capacity as libc::c_int + 10, capacity),
-            capacity
-        );
+        // Never more than the buffer holds.
+        assert_eq!(pids_written(700, 600), 600);
         assert_eq!(pids_written(-1, capacity), 0);
         assert_eq!(pid_capacity(-1), 0);
         assert_eq!(pid_capacity(0), 64);
