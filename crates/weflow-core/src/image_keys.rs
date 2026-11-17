@@ -283,7 +283,7 @@ pub const HAS_DEFAULT_KVCOMM_DIRS: bool = cfg!(any(
 
 /// The existing `net*/kvcomm` directories (`net`, `net_1`, ...) of WeChat's `xwechat` directory: on Windows
 /// `%APPDATA%\Tencent\xwechat`, on Linux x64 the `xwechat` directories under the home directory that
-/// `key image-local` also reads. Other platforms
+/// `key image-local` also reads (the caller's under `sudo`, #861). Other platforms
 /// have no known location, so callers must pass directories explicitly.
 pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
     if cfg!(windows) {
@@ -295,12 +295,12 @@ pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
     if !HAS_DEFAULT_KVCOMM_DIRS {
         return Vec::new();
     }
-    let Some(home) = std::env::var_os("HOME") else {
+    let Some(home) = crate::sudo_caller::home_dir() else {
         return Vec::new();
     };
     let dirs: BTreeSet<_> = LINUX_XWECHAT_ROOTS
         .iter()
-        .flat_map(|root| net_kvcomm_dirs(&Path::new(&home).join(root)))
+        .flat_map(|root| net_kvcomm_dirs(&home.join(root)))
         .collect();
     dirs.into_iter().collect()
 }

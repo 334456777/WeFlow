@@ -215,7 +215,9 @@ impl ServiceHub {
     pub fn key_image_local(&self) -> AppResult<crate::contract::ImageLocalKeys> {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         {
-            let data = weflow_native::linux_key_helper::image_local()
+            // the caller's home under `sudo`, where WeChat keeps its files (#861)
+            let home = crate::sudo_caller::home_dir();
+            let data = weflow_native::linux_key_helper::image_local_at(home.as_deref())
                 .map_err(|error| AppError::native(format!("{error:#}")))?;
             serde_json::from_str(&data).map_err(|error| AppError::native(format!("{error:#}")))
         }
