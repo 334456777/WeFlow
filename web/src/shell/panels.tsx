@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { Icon } from '@phosphor-icons/react';
-import type { Backend } from '../api/backend';
+import { holdsRecords, type Backend } from '../api/backend';
 import { MobileBar } from '../MobileNav';
 import { pageIn } from '../motion';
 import { Scrollbar } from '../Scrollbar';
@@ -23,17 +23,20 @@ export function ScrollPage({ label, icon: Glyph, tabs, scroller, children }: {
   </section><Scrollbar target={ref} /></>;
 }
 
-/** The records once connected; the token asked for when the server refuses this tab's, else what the page is for. */
+/**
+ * The records once connected, and those read before while the server is gone (`holdsRecords`); the token asked for
+ * when the server refuses this tab's, else what the page is for.
+ */
 export function Connected({ backend, offline, children }: { backend: Backend; offline: string; children: ReactNode }) {
   return backend.state === 'unauthorized' ? <TokenPrompt />
-    : backend.state === 'ready' ? children
+    : holdsRecords(backend) ? children
       : <p className="settings-footnote">{offline}</p>;
 }
 
 /** The same for the list side of a page of two sides. */
 export function ConnectedList({ backend, offline, children }: { backend: Backend; offline: string; children: ReactNode }) {
   return backend.state === 'unauthorized' ? <TokenPrompt />
-    : backend.state === 'ready' ? children
+    : holdsRecords(backend) ? children
       : <div className="session-pane"><p className="session-message">{offline}</p></div>;
 }
 

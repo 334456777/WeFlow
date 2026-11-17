@@ -12,7 +12,13 @@ import type { JobsState } from '../jobs/useJobs';
 /** What every page shares: the server, the records read once for all pages, and the parts of the screen. */
 export interface Shell {
   backend: Backend;
+  /** The server answers now: what changes it or follows it (jobs, the settings) needs this. */
   connected: boolean;
+  /**
+   * The page shows the server's records (`holdsRecords`): connected, or gone after it was, when what was read stays
+   * shown and what is not read yet is asked for (and fails, saying the server is not reached) until it is back.
+   */
+  held: boolean;
   /** Another server or account (#198): what a page read for the one before goes. */
   scope: number;
   /** The conversation list, which other pages name and open conversations from. */
@@ -34,7 +40,7 @@ export type ChatWith = (username: string) => void;
 export type OpenAt = (sessionId: string, localId: number, createTime: number) => void;
 
 export interface Page {
-  /** What the page shows beside the navigation; none for a page that shows the sample instead (not connected). */
+  /** What the page shows beside the navigation; none for a page that shows the sample instead (no records held). */
   view?: ReactNode;
   /** Its own cards of the console, given whether shown or not: the console keeps one order of them all. */
   cards?: Card[];

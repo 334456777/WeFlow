@@ -2,10 +2,11 @@
 // Claude.ai. It holds what the pages share (the server, the account, the conversation list, the jobs), opens one page
 // from another and gathers the pages' cards into the one console; each page keeps its own state (#401).
 // Records come from `weflow serve` once connected; until then the lists and the console show the sample (src/mock).
+// When the server goes after it was connected, what was read from it stays shown until it is back.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
 import { useAnalyticsPage } from './analytics/useAnalyticsPage';
-import { useBackend } from './api/backend';
+import { holdsRecords, useBackend } from './api/backend';
 import { t, useLang } from './i18n';
 import { useScope } from './api/scope';
 import { currentProfile } from './api/setup';
@@ -47,6 +48,7 @@ export function App() {
   // the server's language, once it said (#439): the pages are drawn again in it
   const language = useLang();
   const connected = backend.state === 'ready';
+  const held = holdsRecords(backend);
   const fold = useSidebarFold();
   const [section, setSection] = useState<Navigation>('chat');
   // the records browsed last, which the settings keep, with their cards in the console
@@ -73,10 +75,10 @@ export function App() {
     if (profile && !profile.complete && !setupDismissed()) setSetupOpen(true);
   }, [profile?.name, profile?.complete]);
   const closeSetup = () => { dismissSetup(); setSetupOpen(false); };
-  const [sessions, reloadSessions] = useSessions(connected, scope);
+  const [sessions, reloadSessions] = useSessions(held, scope);
   const sessionList = sessions.status === 'ready' ? sessions.sessions : [];
   const sessionNames = useMemo(() => new Map(sessionList.map(s => [s.username, s.displayName || s.username])), [sessionList]);
-  const shell: Shell = { backend, connected, scope, sessions, sessionList, reloadSessions, jobs, profile, mobileDetail, setMobileDetail, openPreview, toast: setToast };
+  const shell: Shell = { backend, connected, held, scope, sessions, sessionList, reloadSessions, jobs, profile, mobileDetail, setMobileDetail, openPreview, toast: setToast };
 
   const chat = useChatPage(shell, prefs, category);
   const selectSection = (value: Navigation) => {
@@ -105,11 +107,11 @@ export function App() {
     backup: backupPage(shell),
     settings: useSettingsPage(shell, prefs, { profiles, recheck: recheckBackend, onSetup: () => setSetupOpen(true) }),
   };
-  // a page not connected to show (Moments, WeChat Pay) shows the sample in the chat page's browser
+  // a page with no records to show (Moments, WeChat Pay) shows the sample in the chat page's browser
   const page = pages[section];
   const tasks: Card = {
     id: 'tasks', title: t('任务中心'),
-    summary: connected ? jobsSummary(jobs) : t('未连接'),
+    summary: connected ? jobsSummary(jobs) : held ? t('已断开') : t('未连接'),
     content: connected ? <TaskCenter jobs={jobs} names={sessionNames} /> : <p className="empty-text">{t('连接 weflow serve 后，导出等任务会显示在这里。')}</p>,
   };
   // every card in its first order, the task centre after the open conversation's export; the console keeps each

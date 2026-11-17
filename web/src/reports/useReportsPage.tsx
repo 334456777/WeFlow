@@ -29,5 +29,5 @@ export function useReportsPage(shell: Shell): Page {
         friend={friend} onFriend={setFriend} />
     </Connected>
   </ScrollPage>;
-  return { view, cards, shown: shell.connected ? ['report-save'] : [] };
+  return { view, cards, shown: shell.held ? ['report-save'] : [] };
 }

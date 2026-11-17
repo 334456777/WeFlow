@@ -36,7 +36,7 @@ function SessionItem({ row, active, now, onClick }: { row: SessionRow; active: b
 
 export function SessionList({ state, sample, selectedId, onSelect, onRetry, officials = [], onFilter }: {
   state: SessionsState;
-  /** Sample sessions, shown while no server is connected. */
+  /** Sample sessions, shown until a server is connected. */
   sample: boolean;
   selectedId: string | null;
   onSelect(id: string): void;

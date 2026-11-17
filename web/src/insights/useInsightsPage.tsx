@@ -10,10 +10,10 @@ import { t } from '../i18n';
 import './insights.css';
 
 export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
-  const { backend, connected, scope, setMobileDetail } = shell;
+  const { backend, held, scope, setMobileDetail } = shell;
   const [filter, setFilter] = useState<InsightFilter>({ keyword: '', session: null });
   useEffect(() => { setFilter({ keyword: '', session: null }); }, [scope]);
-  const insights = useInsights(active && connected, scope, filter);
+  const insights = useInsights(active && held, scope, filter);
   const page = insights.state.status === 'ready' ? insights.state.page : null;
   const name = filter.session ? page?.contacts.find(c => c.sessionId === filter.session)?.displayName ?? null : null;
   const count = page ? (filter.session ? page.contacts.find(c => c.sessionId === filter.session)?.count ?? 0 : page.contacts.reduce((n, c) => n + c.count, 0)) : 0;
@@ -32,8 +32,8 @@ export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWit
         keyword={filter.keyword} onKeyword={keyword => setFilter(f => ({ ...f, keyword }))}
         onSelect={session => { setFilter(f => ({ ...f, session })); setMobileDetail(true); }} />
     </ConnectedList>}>
-    {connected && <InsightList state={insights.state} narrowed={Boolean(filter.keyword || filter.session)} onRead={read} onMore={insights.more}
+    {held && <InsightList state={insights.state} narrowed={Boolean(filter.keyword || filter.session)} onRead={read} onMore={insights.more}
       canChat={session => shell.sessionList.some(s => s.username === session)} onChat={chatWith} />}
   </BrowserPanel>;
-  return { view, cards, shown: connected ? cards.map(card => card.id) : [] };
+  return { view, cards, shown: held ? cards.map(card => card.id) : [] };
 }

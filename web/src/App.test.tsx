@@ -139,6 +139,51 @@ describe('App', () => {
     expect(calls.find(url => url.startsWith('/api/chat/messages'))).toContain('session-id=wxid_a');
   });
 
+  it('keeps the records read while the server is gone, and reads them again once it is back', async () => {
+    const calls: string[] = [];
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      if (url.startsWith('/api/chat/sessions')) {
+        return json({ success: true, data: [{ username: 'wxid_a', displayName: '周舟', summary: '你好', unreadCount: 0, sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1 }] });
+      }
+      if (url.startsWith('/api/chat/messages')) {
+        return json({ success: true, data: [{ _cursor: 'c.0', localId: 1, localType: 1, createTime: 1760000000, isSend: 0, senderUsername: 'wxid_a', parsedContent: '你好' }] });
+      }
+      return json({ success: true, data: {} });
+    }));
+    render(<App />);
+    await act(async () => {});
+    await act(async () => {});
+    const shown = () => ({
+      names: Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent),
+      messages: Array.from(document.querySelectorAll('.message-pane .message-row'), row => row.textContent),
+    });
+    const before = shown();
+    expect(before.names).toEqual(['周舟']);
+    expect(before.messages[0]).toContain('你好');
+
+    // the server stops: what was read stays, said to be from before; nothing of the sample
+    serving = null;
+    act(() => opened.filter(stream => !stream.closed).at(-1)!.fail());
+    expect(screen.getByRole('status').textContent).toBe('已断开');
+    expect(shown()).toEqual(before);
+    expect(screen.queryByText('示例数据 · 连接 weflow serve 后显示真实会话')).toBeNull();
+    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);
+    // the tries that fail meanwhile change nothing
+    await settle(1300);
+    expect(shown()).toEqual(before);
+
+    // back: everything is read again, as for any server that comes back (scope.ts)
+    const read = calls.filter(url => url.startsWith('/api/chat/sessions')).length;
+    serving = HEALTH;
+    await settle(2500);
+    await act(async () => {});
+    expect(screen.getByRole('status').textContent).toBe('实时');
+    expect(calls.filter(url => url.startsWith('/api/chat/sessions')).length).toBeGreaterThan(read);
+    expect(shown().names).toEqual(['周舟']);
+  });
+
   it('says why the conversations could not be read and tries again', async () => {
     let fail = true;
     serve(HEALTH);
@@ -409,7 +454,7 @@ describe('App', () => {
     // the server stops: the stream breaks, and the tries to connect again fail
     serving = null;
     await act(async () => { opened[opened.length - 1].fail(); });
-    expect(status().textContent).toBe('未连接');
+    expect(status().textContent).toBe('已断开');
     expect(status().classList.contains('quiet')).toBe(false);
     await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
     expect(status().classList.contains('quiet')).toBe(false);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
-import { adviceFor, compareVersions, Connection, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
+import { adviceFor, compareVersions, Connection, holdsRecords, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
 import { call, setToken } from './client';
 import { onLive, type LiveEvent } from './live';
 import { HIDDEN_MS } from './presence';
@@ -87,7 +87,7 @@ describe('Connection (#221)', () => {
     c.last().send('heartbeat', { data: 'a' });
     expect(c.states).toHaveLength(1);
     c.last().fail();
-    expect(c.now()).toEqual({ state: 'offline' });
+    expect(c.now()).toEqual({ state: 'offline', held: true });
     expect(c.streams[0].closed).toBe(true);
     c.live.stop();
   });
@@ -106,12 +106,37 @@ describe('Connection (#221)', () => {
     const c = connection();
     c.last().send('hello', health);
     c.last().send('bye', { reason: 'stopped' });
-    expect(c.now()).toEqual({ state: 'offline' });
+    expect(c.now()).toEqual({ state: 'offline', held: true });
     expect(c.streams[0].closed).toBe(true);
     vi.advanceTimersByTime(1_000);
     expect(c.streams).toHaveLength(2);
     c.last().send('hello', health);
     expect(c.now().state).toBe('ready');
+    c.live.stop();
+  });
+
+  it('holds the records read only when the server goes after it was ready', () => {
+    // never there: the sample, through every try
+    const never = connection();
+    never.last().fail();
+    expect(never.now()).toEqual({ state: 'offline' });
+    expect(holdsRecords(never.now())).toBe(false);
+    never.live.stop();
+
+    const c = connection();
+    c.last().send('hello', health);
+    expect(holdsRecords(c.now())).toBe(true);
+    c.last().fail();
+    expect(holdsRecords(c.now())).toBe(true);
+    // the tries that fail meanwhile keep them
+    for (let i = 0; i < 3; i++) { vi.advanceTimersByTime(30_000); c.last().fail(); }
+    expect(c.now()).toEqual({ state: 'offline', held: true });
+    // a server that does not suit this page answers instead: what was read is not shown with it, nor after it goes
+    vi.advanceTimersByTime(30_000);
+    c.last().send('hello', { ...health, apiVersion: String(Number(__WEFLOW_WEB__.apiVersion) + 1) });
+    expect(holdsRecords(c.now())).toBe(false);
+    c.last().fail();
+    expect(c.now()).toEqual({ state: 'offline' });
     c.live.stop();
   });
 
@@ -138,7 +163,7 @@ describe('Connection (#221)', () => {
     vi.advanceTimersByTime(WATCHDOG_MS - 1);
     expect(c.now().state).toBe('ready');
     vi.advanceTimersByTime(1);
-    expect(c.now()).toEqual({ state: 'offline' });
+    expect(c.now()).toEqual({ state: 'offline', held: true });
     expect(c.streams[0].closed).toBe(true);
     vi.advanceTimersByTime(1_000);
     expect(c.streams).toHaveLength(2);
@@ -202,7 +227,7 @@ describe('Connection (#221)', () => {
     const far = connection({ loopback: false });
     far.last().send('hello', health);
     window.dispatchEvent(new Event('offline'));
-    expect(far.now()).toEqual({ state: 'offline' });
+    expect(far.now()).toEqual({ state: 'offline', held: true });
     far.live.stop();
   });
 

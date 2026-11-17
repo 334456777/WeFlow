@@ -1,4 +1,5 @@
-// Sample records the screens show while no `weflow serve` is connected (#130).
+// Sample records the screens show until a `weflow serve` is connected (#130); once one was, they show what was read
+// from it instead, also while it is gone.
 import type { ChatSession } from '../api/chat';
 import type { Category, Conversation, Message } from '../types';
 import photo from './street.svg';
@@ -91,7 +92,7 @@ export const conversations: Conversation[] = [
   },
 ];
 
-/** The sample chats as `chat sessions` rows, for the conversation list while no server is connected. */
+/** The sample chats as `chat sessions` rows, for the conversation list until a server is connected. */
 export const sampleSessions: ChatSession[] = conversations.filter(c => c.category === 'chat').map(c => {
   const last = c.messages[c.messages.length - 1];
   const time = Math.floor(new Date(last.date + 'T' + last.time + ':00').getTime() / 1000);

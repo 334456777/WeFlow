@@ -1,6 +1,7 @@
 // The chat page (#196): the conversation list, the messages of the one open, and its cards in the console: export
 // (#211), search (#199), details and media (#200). Until a server is connected it shows the sample records instead,
-// for the Moments and WeChat Pay pages as well, so the page can be seen without one.
+// for the Moments and WeChat Pay pages as well, so the page can be seen without one; once it was, what was read from
+// it stays while it is gone.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowSquareOut, DownloadSimple, FilePdf, MagnifyingGlass } from '@phosphor-icons/react';
@@ -74,11 +75,12 @@ export interface ChatPage extends Page {
 
 /** `category`: the records browsed, the chat's or the sample's of the Moments and WeChat Pay pages. */
 export function useChatPage(shell: Shell, prefs: Preferences, category: Category): ChatPage {
-  const { backend, connected, scope, sessionList, setMobileDetail, openPreview, toast } = shell;
+  const { backend, held, scope, sessionList, setMobileDetail, openPreview, toast } = shell;
   const { media: mediaKinds, setMedia: setMediaKinds, reducedMotion } = prefs;
   const includeMedia = mediaKinds.length > 0;
-  // the chat page reads `weflow serve` once it is connected; until then, and for the other pages, sample records
-  const live = category === 'chat' && (connected || backend.state === 'checking');
+  // the chat page reads `weflow serve` once it is connected, and keeps what it read while the server is gone; until
+  // then, and for the other pages, sample records
+  const live = category === 'chat' && (held || backend.state === 'checking');
   const [selectedIds, setSelectedIds] = useState<Record<Category, string>>({ chat: 'lin', moments: 'moment-lin', payments: 'payment-coffee' });
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(CURRENT_DATE);
@@ -103,7 +105,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
   useEffect(() => () => { mediaLookup.current?.abort(); }, [scope]);
   // the official accounts followed without a conversation, once the 「公众号」 filter is first chosen (#203)
   const [officialsWanted, setOfficialsWanted] = useState(false);
-  const officials = useBizAccounts(connected && officialsWanted, scope);
+  const officials = useBizAccounts(held && officialsWanted, scope);
   const liveSession = sessionList.find(session => session.username === liveId) ?? officials.find(session => session.username === liveId);
   const liveSearch = useSearch();
   // A day picked or a search hit opened: its conversation shows the messages there (#199).
@@ -273,7 +275,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
     list={category === 'chat'
       ? backend.state === 'unauthorized'
         ? <TokenPrompt />
-        : <SessionList state={connected ? shell.sessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={shell.reloadSessions}
+        : <SessionList state={held ? shell.sessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!held && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={shell.reloadSessions}
           officials={officials} onFilter={filter => { if (filter === 'official') setOfficialsWanted(true); }} />
       : <><div ref={listRef} className="conversation-list scroll-area" aria-label={t('{category}列表', { category: t(categoryLabels[category]) })} data-roving="vertical" data-roving-items=".conversation-row"><HoverTrack items=".conversation-row" />
         {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={t('选择{name}', { name: conversation.name })} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>

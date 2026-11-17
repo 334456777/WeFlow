@@ -25,7 +25,8 @@ export interface Health {
 
 export type Backend =
   | { state: 'checking' }
-  | { state: 'offline' }
+  /** `held`: the server was ready before it went, so the records read from it stay shown until it is back. */
+  | { state: 'offline'; held?: true }
   | { state: 'ready'; health: Health }
   | { state: 'incompatible'; health: Health; reason: string; advice: string }
   /** The server is there and suits this page, but refuses the token of this tab (#214). */
@@ -102,6 +103,13 @@ export function adviceFor(health: Health, web = WEB): string {
   }
   return t('请把 weflow 升级到 {want} 或更新的版本；或运行 weflow web list --remote 找一个适用于当前 weflow 的网页版本，再用 weflow web use <版本> 换上。', { want: web.minBackendVersion });
 }
+
+/**
+ * Whether the page shows the server's records: while it is ready, and while it is gone after it was ready, with what
+ * was read before it went (the sample is only for a page that has not read any).
+ */
+export const holdsRecords = (backend: Backend): boolean =>
+  backend.state === 'ready' || (backend.state === 'offline' && backend.held === true);
 
 function stateOf(health: Health): Backend {
   const reason = incompatibility(health);
@@ -338,7 +346,8 @@ export class Connection {
   /** The stream broke or went silent: offline now, and another try after the wait. */
   private lost(): void {
     this.drop();
-    this.set({ state: 'offline' });
+    const now = this.state;
+    this.set(now.state === 'ready' || (now.state === 'offline' && now.held) ? { state: 'offline', held: true } : { state: 'offline' });
     if (this.stopped) return;
     this.retry = setTimeout(() => this.connect(), retryDelay(this.attempt, this.random));
     this.attempt += 1;
