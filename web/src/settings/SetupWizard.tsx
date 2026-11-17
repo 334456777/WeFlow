@@ -9,7 +9,7 @@ import { ApiError } from '../api/client';
 import { isFinished, jobEventsUrl } from '../api/jobs';
 import { onPresence, present } from '../api/presence';
 import {
-  detectDirs, findAccounts, isDatabaseKey, saveImageKeys, saveImageMemKeys, setConfig, testDatabase,
+  detectDirs, findAccounts, isDatabaseKey, saveImageKeys, setConfig, testDatabase,
   type Account, type Profile,
 } from '../api/setup';
 import { SteadyLabel } from '../Chip';
@@ -204,23 +204,13 @@ function KeyStep({ profile, jobs, onSaved, onNext }: { profile: Profile | undefi
   </>;
 }
 
-/** Windows and Linux: `key image --save`, the keys of WeChat's cache, checked against the account's images. */
+/** `key image --save` (Windows, Linux and macOS): the keys of WeChat's cache, checked against the account's images. */
 async function fromCache(): Promise<{ text: string; error?: boolean }> {
   const saved = await saveImageKeys();
   return { text: saved.verified === false ? t('已获取图片密钥（只验证了 AES，XOR 尚未验证）。') : t('已获取图片密钥，并用本机的图片验证过。') };
 }
 
-/** macOS: `key image-mem --save`, which scans the running WeChat with a thumbnail of the account; it saves the XOR
- * key only when a thumbnail confirmed it. */
-async function fromMemory(): Promise<{ text: string; error?: boolean }> {
-  const result = await saveImageMemKeys();
-  return result.saved?.includes('image_xor_key')
-    ? { text: t('已获取图片密钥，并用本机的图片验证过。') }
-    : { text: t('只取得了 AES 密钥，没有取得 XOR 密钥：先在微信里打开几张图片，再重试。'), error: true };
-}
-
-/** Step 3: the image keys, by the way the server's system has (`fromCache`, `fromMemory`); on other systems the
- * step can only be skipped. */
+/** Step 3: the image keys from WeChat's cache (`fromCache`); on other systems the step can only be skipped. */
 function ImageStep({ profile, platform, onSaved, onNext }: {
   profile: Profile | undefined; platform: Health['platform']; onSaved(): void; onNext(): void;
 }) {
@@ -229,7 +219,7 @@ function ImageStep({ profile, platform, onSaved, onNext }: {
   const fetchKeys = async () => {
     setBusy(true); setNote(null);
     try {
-      setNote(await (platform === 'macos' ? fromMemory() : fromCache()));
+      setNote(await fromCache());
       onSaved();
     } catch (problem) {
       setNote({ text: reason(problem, t('获取图片密钥失败。')) + ' ' + t('先在微信里打开几张图片，再重试。'), error: true });
@@ -239,9 +229,7 @@ function ImageStep({ profile, platform, onSaved, onNext }: {
   };
   const supported = platform === 'windows' || platform === 'linux' || platform === 'macos';
   return <>
-    <p className="setup-lead">{t('图片密钥用来解密聊天里的图片。没有它也能浏览文字记录，图片会显示为无法解密。')}</p>
-    {platform === 'macos' && <p className="setup-lead">{t('在 macOS 上从正在运行的微信内存里查找密钥：先登录微信，并在微信里打开几张图片。')}</p>}
-    <p className="setup-state"><span className={'status-dot' + (profile?.imageKeys ? ' done' : '')} />{profile?.imageKeys ? t('当前档案已有图片密钥。') : t('当前档案还没有图片密钥。')}</p>
+    <p className="setup-lead">{t('图片密钥用来解密聊天里的图片。没有它也能浏览文字记录，图片会显示为无法解密。')}</p>    <p className="setup-state"><span className={'status-dot' + (profile?.imageKeys ? ' done' : '')} />{profile?.imageKeys ? t('当前档案已有图片密钥。') : t('当前档案还没有图片密钥。')}</p>
     {platform === undefined
       ? <p className="setup-note" aria-busy="true"><CircleNotch size={14} className="spin" /> {t('正在检查…')}</p>
       : supported

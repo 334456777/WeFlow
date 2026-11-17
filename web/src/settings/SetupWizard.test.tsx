@@ -147,12 +147,10 @@ describe('SetupWizard', () => {
     expect((field as HTMLInputElement).value).toBe('');
   });
 
-  it('gets the image keys from the cache on Windows and Linux, and from memory on macOS', async () => {
+  it('gets the image keys from the cache on Windows, Linux and macOS', async () => {
     const keyed = { ...PROFILE, dbPath: 'D:/x', wxid: 'wxid_a', decryptKey: true };
-    let saved = ['image_aes_key', 'image_xor_key'];
     const calls = serve({
       'POST /key/image': () => ok({ verified: true, saved: ['image_xor_key', 'image_aes_key'] }),
-      'POST /key/image-mem': () => ok({ pid: 7, saved }),
     });
     const fetched = async (platform: 'windows' | 'macos' | 'linux') => {
       cleanup();
@@ -165,12 +163,7 @@ describe('SetupWizard', () => {
     };
     expect(await fetched('linux')).toEqual(['/key/image', { save: true }, '已获取图片密钥，并用本机的图片验证过。']);
     expect(await fetched('windows')).toEqual(['/key/image', { save: true }, '已获取图片密钥，并用本机的图片验证过。']);
-    expect(await fetched('macos')).toEqual(['/key/image-mem', { save: true }, '已获取图片密钥，并用本机的图片验证过。']);
-    // without a thumbnail that confirms the XOR key, only the AES key is saved, and the page says what to do
-    saved = ['image_aes_key'];
-    const [, , aesOnly] = await fetched('macos');
-    expect(aesOnly).toContain('没有取得 XOR 密钥');
-    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(await fetched('macos')).toEqual(['/key/image', { save: true }, '已获取图片密钥，并用本机的图片验证过。']);
   });
 
   it('tests the database last, and says where to go back to when it fails', async () => {

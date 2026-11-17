@@ -979,8 +979,6 @@ export const en: Record<string, string> = {
   "正在检查…": "Checking…",
   "正在获取…": "Getting it…",
   "获取图片密钥": "Get the image key",
-  "在 macOS 上从正在运行的微信内存里查找密钥：先登录微信，并在微信里打开几张图片。": "On macOS the keys are looked for in the memory of the running WeChat: log in to WeChat and open a few images in it first.",
-  "只取得了 AES 密钥，没有取得 XOR 密钥：先在微信里打开几张图片，再重试。": "Only the AES key was found, not the XOR key: open a few images in WeChat, then try again.",
   "这个平台还不能获取图片密钥，可以先跳过。": "The image key cannot be got on this platform yet; skip for now.",
   "跳过": "Skip",
   "打不开数据库。": "The database cannot be opened.",

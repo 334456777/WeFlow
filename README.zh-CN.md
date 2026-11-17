@@ -55,7 +55,7 @@ weflow key db --save
 
 Linux 和 macOS 上这一步需要 root：运行 `sudo weflow key db --save`（`sudo` 找不到 `weflow` 时写完整路径）。用 sudo 运行时，WeFlow 仍使用你本人的配置，写入的文件也会交还给你，见 Wiki 的 [Linux x64 的实现](https://github.com/334456777/WeFlow/wiki/密钥获取#linux-x64-的实现)。
 
-4. 获取并保存图片密钥（Windows 和 Linux x64；macOS 上先登录微信并打开几张图片，再运行 `weflow key image-mem --save`，见 Wiki 的[图片密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥)）
+4. 获取并保存图片密钥（Windows、Linux x64 和 macOS，见 Wiki 的[图片密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥)）
 ```powershell
 weflow key image --save
 ```
