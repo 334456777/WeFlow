@@ -37,16 +37,22 @@ WeChat 4.0 and later are supported. You need to have logged in to an account at 
 1. Set the WeChat data directory
 ```powershell
 weflow db detect
-weflow config set db_path "C:\Users\<you>\Documents\xwechat_files"
 ```
 > stdout: `db_path: C:\Users\<you>\Documents\xwechat_files`
+
+```powershell
+weflow config set db_path "C:\Users\<you>\Documents\xwechat_files"
+```
 
 2. Set your wxid
 ```powershell
 weflow db wxid
-weflow config set wxid wxid_xxxxxxxx
 ```
 > stdout: `wxid: wxid_xxxxxxxx`
+
+```powershell
+weflow config set wxid wxid_xxxxxxxx
+```
 
 3. Get and save the database key ([details below](#key-db))
 ```powershell
