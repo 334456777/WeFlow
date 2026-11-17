@@ -29,6 +29,7 @@ pub mod process;
 pub mod push;
 pub mod reads;
 pub mod render;
+pub mod serve_files;
 pub mod services;
 pub mod sns;
 pub mod sync;

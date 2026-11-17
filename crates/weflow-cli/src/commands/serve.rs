@@ -202,17 +202,32 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         spawn_insight_engine(hub.clone(), insight_stop.clone());
     }
 
-    // files returned by an earlier run of the command API are not needed any more
-    let files_dir = hub.serve_files_dir();
-    if let Err(err) = std::fs::remove_dir_all(&files_dir) {
-        if err.kind() != std::io::ErrorKind::NotFound {
+    // files returned by servers that have stopped are not needed any more; another server running on this home
+    // keeps its own (#815)
+    let files_root = hub.serve_files_dir();
+    let (_, failed) = weflow_core::serve_files::remove_unheld(&files_root);
+    for failure in failed {
+        eprintln!(
+            "{}{failure}",
+            weflow_core::locale::tr("warning: cannot clear ", "警告：无法清除 ")
+        );
+    }
+    // held until the server stops, then removed with what is in it
+    let serve_files = weflow_core::serve_files::ServeFiles::hold(&files_root)
+        .map_err(|err| {
             eprintln!(
                 "{}{}: {err}",
-                weflow_core::locale::tr("warning: cannot clear ", "警告：无法清空 "),
-                files_dir.display()
+                weflow_core::locale::tr(
+                    "warning: cannot make a folder of this server's own for returned files in ",
+                    "警告：无法为本服务建立存放返回文件的文件夹："
+                ),
+                files_root.display()
             );
-        }
-    }
+        })
+        .ok();
+    let files_dir = serve_files
+        .as_ref()
+        .map_or_else(|| files_root.clone(), |held| held.dir().to_path_buf());
 
     let mut started = json!({
         "type": "server_started",

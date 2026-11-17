@@ -8,6 +8,29 @@ use serde_json::{json, Value};
 
 use super::common::{account_home, form_parts, run_cli, start, temp_root, TOKEN};
 
+/// The folders of the requests of the servers running on `home`: what is in each server's own folder under
+/// `serve-files/` (#815).
+fn request_folders(home: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(servers) = std::fs::read_dir(home.join("cache").join("serve-files")) else {
+        return Vec::new();
+    };
+    servers
+        .flatten()
+        .filter(|s| s.path().is_dir())
+        .flat_map(|s| std::fs::read_dir(s.path()).unwrap().flatten())
+        .map(|r| r.path())
+        .collect()
+}
+
+/// Waits a few seconds at most for `done`, which a server does once it has sent its answer.
+fn soon(what: &str, done: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !done() {
+        assert!(std::time::Instant::now() < deadline, "{what}");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 /// A `key db` job runs until it is cancelled (its stdin held open while it waits), then ends by itself well before
 /// it would be killed: the hook it may have set is out of WeChat first (#287). It is cancelled while it waits for
 /// WeChat, before any hook.
@@ -174,11 +197,17 @@ fn jobs_run_in_the_background() {
 fn files_come_back_with_the_result() {
     let root = temp_root("files");
     let home = account_home(&root);
-    // files of an earlier run are cleared when the server starts
-    let stale = home.join("cache").join("serve-files").join("old");
+    // files of earlier runs are cleared when the server starts: a folder of an older WeFlow, and one of a server
+    // that was killed (its lock ended with it)
+    let files = home.join("cache").join("serve-files");
+    let stale = files.join("old");
+    let killed = files.join("aaaaaaaaaaaaaaaa");
     std::fs::create_dir_all(&stale).unwrap();
+    std::fs::create_dir_all(killed.join("request")).unwrap();
+    std::fs::write(files.join("aaaaaaaaaaaaaaaa.lock"), b"").unwrap();
     let server = start(&home, &["--api-token", TOKEN]);
-    assert!(!stale.exists());
+    assert!(!stale.exists() && !killed.exists());
+    assert!(!files.join("aaaaaaaaaaaaaaaa.lock").exists());
 
     // no --out: the server picks the folder, the command names the file
     let r = server.call("POST", "/export/sessions?return=file", "");
@@ -209,7 +238,13 @@ fn files_come_back_with_the_result() {
         "{}",
         parts[1].0
     );
-    assert_eq!(parts[1].1, std::fs::read(&path).unwrap());
+    let sent: Value = serde_json::from_slice(&parts[1].1).unwrap();
+    assert!(sent.is_object() || sent.is_array(), "{sent}");
+    // sent, the file and its folder go (#815)
+    soon("the request's folder removed once sent", || {
+        !path.parent().unwrap().exists()
+    });
+    assert!(request_folders(&home).is_empty());
 
     // with --out the file is written there and sent as well
     let out = root.join("mine.zip");
@@ -243,9 +278,8 @@ fn files_come_back_with_the_result() {
         .unwrap()
         .clone();
     assert!(api["paths"].to_string().contains("serve-files"), "{api}");
-    assert!(api["files"].as_u64().unwrap() >= 1);
 
-    // a failure is the usual JSON error
+    // a failure is the usual JSON error, and leaves no folder behind
     let r = server.call(
         "POST",
         "/export/messages?return=file",
@@ -253,6 +287,15 @@ fn files_come_back_with_the_result() {
     );
     assert_eq!(r.status, 400, "{}", r.body);
     assert_eq!(r.json()["success"], false);
+    let r = server.call(
+        "POST",
+        "/export/messages?return=file",
+        r#"{"session-id": "nobody", "format": "txt"}"#,
+    );
+    assert_ne!(r.status, 200, "{}", r.body);
+    soon("the folder of a failed request removed", || {
+        request_folders(&home).is_empty()
+    });
     // only commands that write one file
     for (method, target) in [
         ("GET", "/chat/sessions?return=file"),
@@ -370,10 +413,48 @@ fn jobs_keep_the_file_they_wrote_for_the_browser() {
         404
     );
     // its folder is gone
-    let left: Vec<_> = std::fs::read_dir(home.join("cache").join("serve-files"))
-        .map(|d| d.flatten().collect())
-        .unwrap_or_default();
+    let left = request_folders(&home);
     assert!(left.is_empty(), "{left:?}");
+}
+
+/// A second server on the same home leaves the first one's files alone, and `cache clear --api` too (#815).
+#[test]
+fn servers_on_one_home_keep_each_others_files() {
+    let root = temp_root("two-servers");
+    let home = account_home(&root);
+    let first = start(&home, &["--api-token", TOKEN]);
+    let auth = format!("Bearer {TOKEN}");
+    let r = first.request(
+        "POST",
+        "/export/sessions?return=file",
+        &[("Authorization", &auth), ("Prefer", "respond-async")],
+        "",
+    );
+    assert_eq!(r.status, 202, "{}", r.body);
+    let id = r.json()["data"]["id"].as_str().unwrap().to_string();
+    soon("the job to succeed", || {
+        first.call("GET", &format!("/jobs/{id}"), "").json()["data"]["status"] == "succeeded"
+    });
+    assert_eq!(
+        first.call("GET", &format!("/jobs/{id}/file"), "").status,
+        200
+    );
+
+    let second = start(&home, &["--api-token", TOKEN]);
+    assert_eq!(
+        first.call("GET", &format!("/jobs/{id}/file"), "").status,
+        200,
+        "the second server took the first one's file"
+    );
+    let (_, stdout, _) = run_cli(&home, &["--json", "cache", "clear", "--api", "--yes"]);
+    let cleared: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(cleared["success"], true, "{stdout}");
+    assert_eq!(
+        first.call("GET", &format!("/jobs/{id}/file"), "").status,
+        200,
+        "cache clear took a running server's file"
+    );
+    drop(second);
 }
 
 /// An AI endpoint that accepts connections and never answers; reports when each one opens and closes.
