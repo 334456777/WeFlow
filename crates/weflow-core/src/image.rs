@@ -93,9 +93,10 @@ pub fn is_hd_path(path: &str) -> bool {
     stem_and_ext(path).0.ends_with("_hd")
 }
 
-/// `isThumbnailPath` (a plain substring test, as in WeFlow's desktop app).
+/// `isThumbnailPath`: a substring test of the file name, as in WeFlow's desktop app. The folders are not looked at: a
+/// conversation or a folder named like `wxid_t…` or `my_temp` does not make every image in it a thumbnail.
 pub fn is_thumbnail_path(path: &str) -> bool {
-    let l = path.to_lowercase();
+    let l = file_name_lower(path);
     l.contains("_thumb") || l.contains("_t") || l.contains(".t.")
 }
 
@@ -603,6 +604,12 @@ mod tests {
         );
         assert!(is_hd_path(&format!("/c/{MD5}_hd.png")));
         assert!(!is_hd_path(&format!("/c/{MD5}.png")));
+        assert!(is_thumbnail_path(&format!("/c/{MD5}_t.jpg")));
+        assert!(is_thumbnail_path(&format!("/c/{MD5}.t.jpg")));
+        assert!(
+            !is_thumbnail_path(&format!("/my_temp/Images/wxid_tom/{MD5}.jpg")),
+            "only the file name tells a thumbnail"
+        );
         assert_eq!(
             suffix_search_order("_t", false)[..3],
             ["_t", "_hd", "_thumb"]
