@@ -31,12 +31,12 @@ pub(crate) enum KeySubcommand {
         #[arg(long)]
         save: bool,
     },
-    /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template; Windows and Linux x64)
+    /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template; Windows, Linux x64 and macOS)
     Image {
         /// Account directory to search for templates (default: the configured account directory)
         #[arg(long)]
         user_dir: Option<String>,
-        /// kvcomm directories (repeat for net, net_1, etc.; default on Windows and Linux x64: the existing xwechat net*/kvcomm directories)
+        /// kvcomm directories (repeat for net, net_1, etc.; default on Windows, Linux x64 and macOS: WeChat's existing net*/kvcomm directories)
         #[arg(long, action = clap::ArgAction::Append)]
         kvcomm_dir: Vec<PathBuf>,
         /// Maximum filesystem entries scanned for templates in the selected account (default: 10000)
@@ -124,7 +124,7 @@ pub(crate) fn handle_key(
         } => {
             if kvcomm_dir.is_empty() && !weflow_core::image_keys::HAS_DEFAULT_KVCOMM_DIRS {
                 return Err(AppError::native(
-                    "`key image` does not know where WeChat keeps its kvcomm cache on this platform; pass --kvcomm-dir, or use `key image-mem --save` on macOS",
+                    "`key image` does not know where WeChat keeps its kvcomm cache on this platform; pass --kvcomm-dir",
                 ));
             }
             let mut directories: Vec<_> = kvcomm_dir

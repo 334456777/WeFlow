@@ -1,6 +1,6 @@
 // Chinese help text: (English doc comment, Chinese). Keep in sync with the doc comments in main.rs; a test fails on gaps.
 const HELP: &[(&str, &str)] = &[
-    ("kvcomm directories (repeat for net, net_1, etc.; default on Windows and Linux x64: the existing xwechat net*/kvcomm directories)", "kvcomm 目录（可重复传入 net、net_1 等目录；Windows 和 Linux x64 默认使用已存在的 xwechat net*/kvcomm 目录）"),
+    ("kvcomm directories (repeat for net, net_1, etc.; default on Windows, Linux x64 and macOS: WeChat's existing net*/kvcomm directories)", "kvcomm 目录（可重复传入 net、net_1 等目录；Windows、Linux x64 和 macOS 默认使用微信已存在的 net*/kvcomm 目录）"),
     ("Maximum filesystem entries scanned for templates in the selected account (default: 10000)", "在选定账号中查找模板时扫描的文件系统条目上限（默认：10000）"),
     ("Show the wxid of the account(s) in the WeChat data directory (the value for `config set wxid`)", "显示微信数据目录中账号的 wxid（即 `config set wxid` 要填的值）"),
     ("WeChat data directory (default: `db_path` from the config, else the usual locations)", "微信数据目录（默认：配置中的 `db_path`，否则在常用位置查找）"),
@@ -59,7 +59,7 @@ const HELP: &[(&str, &str)] = &[
     ("Decrypt the image of one message and write it to a file", "解密一条消息的图片并写入文件"),
     ("Copy the video of one message (as WeChat keeps it, MP4) to a file", "把一条消息的视频（微信保存的 MP4）复制到文件"),
     ("Delete insight records (all, or filtered)", "删除洞察记录（全部或按条件）"),
-    ("Derive the image keys from WeChat's kvcomm cache (verified against a .dat template; Windows and Linux x64)", "从微信的 kvcomm 缓存推导图片密钥（用 .dat 模板校验；Windows 和 Linux x64）"),
+    ("Derive the image keys from WeChat's kvcomm cache (verified against a .dat template; Windows, Linux x64 and macOS)", "从微信的 kvcomm 缓存推导图片密钥（用 .dat 模板校验；Windows、Linux x64 和 macOS）"),
     ("Detect, scan and test WeChat database locations", "检测、扫描并测试微信数据库位置"),
     ("Do not fall back to scanning by .dat name", "不回退到按 .dat 文件名扫描"),
     ("Download a Moments sticker (plain or AES-GCM encrypted)", "下载朋友圈表情（明文或 AES-GCM 加密）"),

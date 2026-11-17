@@ -275,16 +275,21 @@ const LINUX_XWECHAT_ROOTS: [&str; 3] = [
     "Documents/.xwechat",
 ];
 
+/// The directory of macOS WeChat 4 under the home directory that holds the `net*/kvcomm` directories (#869).
+const MACOS_APP_DATA: &str = "Library/Containers/com.tencent.xinWeChat/Data/Documents/app_data";
+
 /// Whether this platform has a known `kvcomm` location, so `key image` can run without `--kvcomm-dir`.
 pub const HAS_DEFAULT_KVCOMM_DIRS: bool = cfg!(any(
     windows,
+    target_os = "macos",
     all(target_os = "linux", target_arch = "x86_64")
 ));
 
-/// The existing `net*/kvcomm` directories (`net`, `net_1`, ...) of WeChat's `xwechat` directory: on Windows
-/// `%APPDATA%\Tencent\xwechat`, on Linux x64 the `xwechat` directories under the home directory that
-/// `key image-local` also reads (the caller's under `sudo`, #861). Other platforms
-/// have no known location, so callers must pass directories explicitly.
+/// The existing `net*/kvcomm` directories (`net`, `net_1`, ...) WeChat keeps: on Windows under
+/// `%APPDATA%\Tencent\xwechat`, on macOS under WeChat's `app_data` in its container, on Linux x64 under the
+/// `xwechat` directories in the home directory that `key image-local` also reads. The home directory is the
+/// caller's under `sudo` (#861). Other platforms have no known location, so callers must pass directories
+/// explicitly.
 pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
     if cfg!(windows) {
         let Some(appdata) = std::env::var_os("APPDATA") else {
@@ -298,6 +303,9 @@ pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
     let Some(home) = crate::sudo_caller::home_dir() else {
         return Vec::new();
     };
+    if cfg!(target_os = "macos") {
+        return net_kvcomm_dirs(&home.join(MACOS_APP_DATA));
+    }
     let dirs: BTreeSet<_> = LINUX_XWECHAT_ROOTS
         .iter()
         .flat_map(|root| net_kvcomm_dirs(&home.join(root)))
