@@ -401,16 +401,18 @@ export const checks: Check[] = [
     name: 'tabs: eight in one browser, the newest still reads its records (#799)',
     async run(page, browsing) {
       await conversations(page);
+      // five tabs hold five streams and leave a connection for the requests; a sixth opened before the first lets go
+      // would wait for it, up to HIDDEN_MS (#878)
       const tabs = [page];
-      for (let n = 2; n <= 6; n++) {
+      for (let n = 2; n <= 5; n++) {
         const tab = await browsing.open();
         await conversations(tab);
         tabs.push(tab);
       }
-      // the five behind the newest let go HIDDEN_MS after they were hidden, or later where Chrome slows down the timers
-      // of a busy machine's background tabs (#878)
+      // the four behind the newest let go HIDDEN_MS after they were hidden, or later where Chrome slows down the timers
+      // of a busy machine's background tabs
       await released(tabs.slice(0, -1));
-      for (let n = 7; n <= 8; n++) await conversations(await browsing.open());
+      for (let n = 6; n <= 8; n++) await conversations(await browsing.open());
     },
   },
   {
