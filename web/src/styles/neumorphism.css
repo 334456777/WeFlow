@@ -109,6 +109,13 @@
    * on both so that the two line up; set on a container (a panel, the console), it holds for the areas in it.
    */
   --fade-bg: var(--neu-surface);
+  /*
+   * The skin's decoration under the page (Backdrop.tsx): how many it takes turns with, one more at each page turn (0
+   * for none: neumorphism draws nothing there); and how another page or another item's detail comes in (pageIn in
+   * motion.ts), an `animation` of keyframes in the skin's sheet, or none for the fade and rise of content-in.
+   */
+  --backdrop-count: 0;
+  --page-in: none;
 
   /* The main action (.primary-button), and a button as big where it stands for one (the export's side buttons). */
   --button-bg: var(--neu-surface);

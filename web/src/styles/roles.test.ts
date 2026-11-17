@@ -43,7 +43,9 @@ describe('the skin’s tokens', () => {
   test('every role the skin gives is read somewhere else', () => {
     const skin = read(SKIN);
     const roles = [...declared(skin)].filter(name => !name.startsWith('--neu-') && !RESERVED.includes(name));
+    // read with var(), or by a script: getPropertyValue('--x') and the like
     const elsewhere = new Set(all.filter(path => path !== SKIN).flatMap(path => [...reads(read(path))]));
+    for (const path of scripts) for (const name of names(read(path), /['"`](--[\w-]+)['"`]/g)) elsewhere.add(name);
     expect(roles.filter(name => !elsewhere.has(name))).toEqual([]);
   });
 });

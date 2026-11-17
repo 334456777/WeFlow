@@ -6,7 +6,12 @@
  */
 @layer app {
 * { box-sizing: border-box; }
+/*
+ * The page's background is the root's, under everything; then the skin's decoration (Backdrop.tsx, #832), fixed to the
+ * window under all the content, which takes no pointer. The body has no background of its own, which would cover it.
+ */
 html { background: var(--page-bg); }
+.backdrop { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
 /*
  * Above a phone the layout fills the window and its parts scroll themselves; the page itself never does, so a part
  * a fraction of a pixel too tall (a popover near the bottom, rounding) cannot bring up the browser's scrollbar (#344).
@@ -14,7 +19,7 @@ html { background: var(--page-bg); }
  */
 @media (min-width: 641px) and (min-height: 520px) { html, body { overflow: hidden; } }
 body {
-  margin: 0; min-width: 320px; background: var(--page-bg); color: var(--fg);
+  margin: 0; min-width: 320px; color: var(--fg);
   font-family: var(--font-sans); font-size: var(--text-md); line-height: var(--leading-md);
   font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
 }
