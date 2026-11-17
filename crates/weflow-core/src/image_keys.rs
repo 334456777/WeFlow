@@ -282,7 +282,8 @@ pub const HAS_DEFAULT_KVCOMM_DIRS: bool = cfg!(any(
 ));
 
 /// The existing `net*/kvcomm` directories (`net`, `net_1`, ...) of WeChat's `xwechat` directory: on Windows
-/// `%APPDATA%\Tencent\xwechat`, on Linux x64 the [`LINUX_XWECHAT_ROOTS`] under the home directory. Other platforms
+/// `%APPDATA%\Tencent\xwechat`, on Linux x64 the `xwechat` directories under the home directory that
+/// `key image-local` also reads. Other platforms
 /// have no known location, so callers must pass directories explicitly.
 pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
     if cfg!(windows) {
