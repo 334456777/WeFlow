@@ -60,7 +60,7 @@
 .preview-step:active:not(:disabled) { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); }
 .preview-step:disabled { box-shadow: var(--neu-disabled); color: var(--fg-subtle); cursor: not-allowed; }
 
-.icon-button.preview-download.failed { color: var(--state-danger); }
+.preview-download.failed { color: var(--state-danger); }
 /* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */
 .zoom-frame { display: flex; justify-content: center; overflow: hidden; touch-action: none; cursor: zoom-in; }
 .zoom-frame.zoomed { cursor: grab; }
