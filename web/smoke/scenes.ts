@@ -51,14 +51,15 @@ async function settings(page: Page, section: string): Promise<void> {
   await page.waitFor(`the section ${section}`, section => document.querySelector('.settings-nav-row.active')?.textContent?.includes(section), section);
 }
 
-/** The element hovered, held down and let go away from it (no click), shot each time. */
-async function states(page: Page, shoot: Shoot, name: string, selector: string, text?: string, margin = 24): Promise<void> {
+/** The element hovered, held down and let go away from it (no click), shot each time; let go at `away`, by default
+ * REST, or in a dialog somewhere in it, as a click on its backdrop closes it. */
+async function states(page: Page, shoot: Shoot, name: string, selector: string, text?: string, margin = 24, away = REST): Promise<void> {
   const around = { selector, text, margin };
   await page.hover(selector, text);
   await shoot(name + '-hover', around);
   await page.hold(selector, text);
   await shoot(name + '-held', around);
-  await page.letGo(REST);
+  await page.letGo(away);
   await shoot(name + '-rest', around);
 }
 
@@ -139,6 +140,27 @@ export const scenes: Scene[] = [
       await shoot();
       await states(page, shoot, 'day', '.calendar-popover td.calendar-day:not([aria-disabled]):not(.today)', undefined, 12);
       await states(page, shoot, 'today', '.calendar-popover td.calendar-day.today', undefined, 12);
+      await states(page, shoot, 'title', '.calendar-popover button.calendar-title', undefined, 12);
+      // the months of the year, one of them chosen
+      await page.click('.calendar-popover button.calendar-title');
+      await page.waitFor('the months', () => document.querySelectorAll('.calendar-popover .calendar-choice').length === 12);
+      await states(page, shoot, 'month', '.calendar-popover .calendar-choice:not(.chosen):not(:disabled)', undefined, 12);
+      await states(page, shoot, 'month-chosen', '.calendar-popover .calendar-choice.chosen', undefined, 12);
+    },
+  },
+  {
+    name: 'states-preview',
+    async run(page, shoot) {
+      await pictures(page);
+      await page.click(picture(16));
+      await page.waitFor('⑧ in the preview', () => {
+        const img = document.querySelector<HTMLImageElement>('dialog.preview-dialog[open] .preview-stage img');
+        return img?.complete && img.naturalWidth > 0;
+      });
+      // let go on the preview's title, which reacts to nothing
+      const title = await page.point('.preview-content header');
+      await states(page, shoot, 'step', '.preview-step[aria-label="上一个"]', undefined, 12, title);
+      await states(page, shoot, 'original', '.original-button', undefined, 12, title);
     },
   },
   whole('moments', '朋友圈', page => page.until('the posts', n => n === 3, () => document.querySelectorAll('article.moment').length)),
@@ -196,6 +218,40 @@ export const scenes: Scene[] = [
       await states(page, shoot, 'checkbox-checked', '.checkbox', undefined, 12);
     },
   },
+  {
+    // the rows and controls of the pages, which the scenes above show at rest only (#829)
+    name: 'states-pages',
+    async run(page, shoot) {
+      await pictures(page);
+      await page.click('#card-search');
+      await page.click('input[aria-label="搜索此会话的消息"]');
+      await page.type('原图');
+      await page.press('Enter');
+      await page.untilTexts('the results', '.search-results .search-result', texts => texts.length === 5);
+      await states(page, shoot, 'search-result', '.search-results .search-result', undefined, 12);
+      await chat(page, '周末爬山群', n => n === 50);
+      await page.click('#card-info');
+      await page.until('the members', n => n > 3, () => document.querySelectorAll('.member-row').length);
+      // the card opens and the console moves meanwhile: the first member in view once all is still
+      await page.until('the console still, the first member in view', s => !s.moving.length && s.top >= 0 && s.bottom <= s.height, () => {
+        const moving = document.getAnimations()
+          .filter(animation => animation.playState === 'running' && animation.effect?.getTiming().iterations !== Infinity)
+          .map(animation => (animation as CSSTransition).transitionProperty ?? (animation as CSSAnimation).animationName ?? '?');
+        const row = document.querySelector('.member-row')!;
+        if (!moving.length) row.scrollIntoView({ block: 'center' });
+        const box = row.getBoundingClientRect();
+        return { moving, top: box.top, bottom: box.bottom, height: innerHeight };
+      });
+      await states(page, shoot, 'member', '.member-row', undefined, 12);
+      await go(page, '资源浏览');
+      await page.until('the tiles', n => n > 0, () => document.querySelectorAll('.resource-open').length);
+      await states(page, shoot, 'resource', '.resource-open', undefined, 16);
+      await states(page, shoot, 'group-picker', '.group-picker', undefined, 16);
+      await settings(page, '命令控制台');
+      await page.until('the commands', n => n > 3, () => document.querySelectorAll('.command-item').length);
+      await states(page, shoot, 'command', '.command-item', undefined, 8);
+    },
+  },
   { name: 'phone-list', phone: true, async run(page, shoot) { await page.until('the conversations', n => n >= 10, () => document.querySelectorAll('.conversation-row').length); await shoot(); } },
   {
     name: 'phone-chat',
@@ -210,9 +266,17 @@ export const scenes: Scene[] = [
     name: 'phone-sheet',
     phone: true,
     async run(page, shoot) {
+      await states(page, shoot, 'tab', '.mobile-tab', '朋友圈', 8);
+      await states(page, shoot, 'tab-chosen', '.mobile-tab[aria-current="page"]', undefined, 8);
       await page.click('.mobile-tab[aria-haspopup="dialog"]');
       await page.waitFor('the sheet', () => document.querySelector('dialog.nav-sheet[open]') !== null);
       await shoot();
+      // let go in the gap between the first two pages of the sheet: off the dialog itself, whose click closes it
+      const gap = await page.eval(() => {
+        const [a, b] = [...document.querySelectorAll('.nav-sheet-item')].map(item => item.getBoundingClientRect());
+        return { x: (a.right + b.left) / 2, y: a.top + a.height / 2 };
+      });
+      await states(page, shoot, 'sheet-item', '.nav-sheet-item', '设置', 12, gap);
       // again on one of its pages, that page chosen in it
       await page.click('.nav-sheet-item', '设置');
       await page.waitFor('the sheet closed', () => document.querySelector('dialog.nav-sheet') === null);
