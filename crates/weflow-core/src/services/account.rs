@@ -185,9 +185,10 @@ fn default_db_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(home) = crate::sudo_caller::home_dir() {
         if cfg!(target_os = "macos") {
-            candidates.push(home.join("Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat"));
-            candidates.push(home.join("Library/Application Support/com.tencent.xinWeChat"));
-            candidates.push(home.join("Library/Containers/com.tencent.WeChat/Data/Library/Application Support/com.tencent.WeChat"));
+            // WeChat 4 keeps its accounts in its container's Documents (#869).
+            candidates.push(
+                home.join("Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files"),
+            );
         } else if cfg!(target_os = "windows") {
             candidates.push(home.join("Documents").join("WeChat Files"));
             candidates.push(home.join("Documents").join("xwechat_files"));
