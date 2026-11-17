@@ -12,6 +12,7 @@ import { Avatar } from '../Avatar';
 import { dayOf, formatClock, formatDayHeading } from './messages';
 import { MomentsSkeleton } from '../Skeleton';
 import { t } from '../i18n';
+import { safeUrl } from '../links';
 
 interface Feed {
   status: 'loading' | 'ready' | 'error';
@@ -31,10 +32,11 @@ function Cover({ src, className }: { src: string; className: string }) {
   return <img className={className} src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
 }
 
-/** A link to an article, or plain text when the push has no address. */
+/** A link to an article, or plain text when the push has no web address. */
 function ArticleLink({ article, className, children }: { article: Pick<BizArticle, 'url' | 'title'>; className: string; children: ReactNode }) {
-  return article.url
-    ? <a className={className} href={article.url} target="_blank" rel="noreferrer noopener" aria-label={article.title || t('打开文章')}>{children}</a>
+  const url = safeUrl(article.url);
+  return url
+    ? <a className={className} href={url} target="_blank" rel="noreferrer noopener" aria-label={article.title || t('打开文章')}>{children}</a>
     : <div className={className}>{children}</div>;
 }
 

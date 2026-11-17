@@ -16,7 +16,7 @@
 .moment-play { position: absolute; top: 50%; left: 50%; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg); opacity: .9; pointer-events: none; }
 .moment-badge { position: absolute; top: 4px; left: 4px; padding: 0 var(--space-1); border-radius: var(--radius-xs); background: var(--surface); color: var(--fg); font-size: var(--text-2xs); line-height: var(--leading-2xs); opacity: .9; }
 .moment-link { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1); border-radius: var(--radius-md); box-shadow: var(--neu-inset); color: var(--fg-muted); font-size: var(--text-xs); text-decoration: none; }
-.moment-link:hover { color: var(--fg); }
+a.moment-link:hover { color: var(--fg); }
 .moment-link img, .moment-link-icon, .moment-link .moment-tile-empty { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-sm); }
 .moment-place { display: flex; align-items: center; gap: var(--space-1); color: var(--fg-subtle); font-size: var(--text-xs); }
 .moment-social { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-xs); line-height: var(--leading-xs); }

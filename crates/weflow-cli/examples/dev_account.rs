@@ -6,7 +6,8 @@
 //! `<work dir>/data` holds the account and `<work dir>/home` the WeFlow home pointing at it; both are built again only
 //! when [`VERSION`] changes. The home is printed on stdout.
 //!
-//! What is in it: private chats with a few friends (50 to 100 messages each), a group whose pictures are on this computer, some Moments,
+//! What is in it: private chats with a few friends (50 to 100 messages each, 周舟's ending with two link cards), a
+//! group whose pictures are on this computer, some Moments,
 //! the notices of the WeChat Pay account (a few payments and a refund), and
 //! 「图片测试」, a chat of one picture per case of the files WeChat keeps of it (#194): the thumbnail a chat shows
 //! (`<md5>_t.dat`), the image opened (`<md5>.dat`) and the original downloaded on View original (`<md5>_h.dat`), each
@@ -27,7 +28,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, RoomSpec, SessionSpec, SnsPostSpec};
 
 /// Bump on any change to what is built, so the account is built again.
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 /// The account's own wxid, and its folder as WeChat names it (the wxid and a suffix of four).
 const OWNER: &str = "wxid_devme";
 const ACCOUNT_DIR: &str = "wxid_devme_d3v0";
@@ -35,6 +36,8 @@ const PICTURES: &str = "wxid_devpictures";
 const ROOM: &str = "dev_hiking@chatroom";
 /// The WeChat Pay account, whose notices `biz pay-records` reads.
 const PAY: &str = "gh_3dfda90e39d6";
+/// The friend whose chat ends with two link cards (`link_cards`).
+const LINK_CARDS_FROM: &str = "wxid_devzhou";
 const XOR_KEY: u8 = 0x5a;
 const MINUTE: i64 = 60;
 const HOUR: i64 = 3600;
@@ -554,7 +557,7 @@ fn build(data: &Path, now: i64) -> Result<Fixture> {
     for (k, (user, _)) in FRIENDS.iter().enumerate() {
         let newest = now - (k as i64 + 1) * DAY;
         let count = 50 + (k as i64 * 37) % 51;
-        let msgs: Vec<MsgSpec> = (0..count)
+        let mut msgs: Vec<MsgSpec> = (0..count)
             .map(|j| {
                 let back = count - 1 - j;
                 // a talk of up to 12 messages a few minutes apart, then three days back to the one before
@@ -572,13 +575,20 @@ fn build(data: &Path, now: i64) -> Result<Fixture> {
                 )
             })
             .collect();
-        let summary = leak(msgs.last().map(|m| m.content.clone()).unwrap_or_default());
+        let mut summary = leak(msgs.last().map(|m| m.content.clone()).unwrap_or_default());
+        let mut last = (newest, 1);
+        if *user == LINK_CARDS_FROM {
+            let cards = link_cards(user, count + 1, newest + MINUTE);
+            summary = "[链接]";
+            last = (cards.last().map_or(newest, |m| m.create_time), 49);
+            msgs.extend(cards);
+        }
         sessions.push(SessionSpec {
             username: user,
             summary,
-            last_timestamp: newest,
+            last_timestamp: last.0,
             unread: 0,
-            last_msg_type: 1,
+            last_msg_type: last.1,
         });
         chats.push((user, msgs));
     }
@@ -640,6 +650,25 @@ fn build(data: &Path, now: i64) -> Result<Fixture> {
         },
     ]);
     Ok(f)
+}
+
+/// Two link cards from `user`, the latest of the chat: a web page's, which opens in a new tab, and one whose address
+/// is `javascript:`, which the page shows without a link (#818).
+fn link_cards(user: &'static str, first_id: i64, at: i64) -> Vec<MsgSpec> {
+    [
+        ("周末的路线", "https://example.com/route"),
+        ("不该打开的链接", "javascript:alert(1)"),
+    ]
+    .into_iter()
+    .zip(0..)
+    .map(|((title, url), k)| {
+        let xml = format!(
+            "<msg><appmsg appid=\"\" sdkver=\"0\"><title>{title}</title><des>{url}</des>\
+             <type>5</type><url>{url}</url></appmsg></msg>"
+        );
+        MsgSpec::text(first_id + k, user, at + k * MINUTE, &xml).of_type(49)
+    })
+    .collect()
 }
 
 fn members_of(id: i64) -> &'static str {

@@ -58,6 +58,12 @@ describe('the Moments timeline (#202)', () => {
     expect(document.querySelectorAll('.moment-tile')).toHaveLength(0);
   });
 
+  it('shows a shared address that is not a web page without a link (#818)', async () => {
+    await feed([post(1, { type: 1, media: [{ url: 'javascript:alert(1)', thumb: '', key: '5' }] })]);
+    expect(document.querySelector('.moment-link')?.textContent).toContain('javascript:alert(1)');
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
   it('reads the next page from where it ends, without showing a post twice', async () => {
     const first = Array.from({ length: SNS_PAGE }, (_, i) => post(i));
     const { fetch } = await feed(first, [post(SNS_PAGE - 1), post(SNS_PAGE), post(SNS_PAGE + 1)]);

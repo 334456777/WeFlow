@@ -260,6 +260,15 @@ fn the_webui_is_served_under_ui() {
     assert_eq!(page.headers["cache-control"], "no-cache");
     assert_eq!(page.headers["referrer-policy"], "no-referrer");
     assert_eq!(page.headers["x-content-type-options"], "nosniff");
+    assert_eq!(page.headers["x-frame-options"], "DENY");
+    let policy = &page.headers["content-security-policy"];
+    for part in [
+        "default-src 'self'",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+    ] {
+        assert!(policy.contains(part), "{part} in {policy}");
+    }
     let script = get("/ui/assets/index-a1b2.js");
     assert_eq!(script.status, 200);
     assert_eq!(script.body, "console.log(1)");

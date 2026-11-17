@@ -10,6 +10,7 @@ import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { appLabel, formatDuration, formatFileSize, kindOf, withoutLabel } from './messages';
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 import { t } from '../i18n';
+import { safeUrl } from '../links';
 
 export type Preview =
   | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb; hd?: PreviewHd }
@@ -109,8 +110,6 @@ function fileIcon(ext = '') {
   if (/^(txt|md|docx?|xlsx?|pptx?|csv)$/i.test(ext)) return <FileText size={28} />;
   return <File size={28} />;
 }
-
-const safeUrl = (url?: string) => (url && /^https?:\/\//i.test(url) ? url : undefined);
 
 /** A card bubble that opens its link in a new tab when it has one. */
 function Card({ href, className, children, label }: { href?: string; className: string; children: ReactNode; label?: string }) {
