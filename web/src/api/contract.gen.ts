@@ -1721,6 +1721,21 @@ export interface BackupCreated {
   wxid: string;
   /** Unix seconds. */
   createdAt: number;
+  /** Files of the media and stickers that could not be read and are not in it; left out when there are none. */
+  skipped?: SkippedFile[];
+  /**
+   * Databases WeChat kept writing to while they were copied, whose main file and WAL in the backup may be of two
+   * moments; left out when there are none.
+   */
+  unsettled?: string[];
+}
+
+/** A file left out of a backup because it could not be read. */
+export interface SkippedFile {
+  /** Its path in the backup, as it would have been. */
+  path: string;
+  /** What the system said. */
+  reason: string;
 }
 
 /** What a backup holds (`backup inspect`): the manifest stored in the archive. */
@@ -1733,6 +1748,16 @@ export interface BackupManifest {
   /** The WeFlow that wrote it. */
   weflow_version: string;
   entries: BackupEntry[];
+  /**
+   * Files of the media and stickers that could not be read and are not in the backup. Left out when there are
+   * none, and in a backup of an older WeFlow.
+   */
+  skipped?: SkippedFile[];
+  /**
+   * Databases (their path in the backup) WeChat kept writing to while they were copied: their main file and WAL
+   * in the backup may be of two moments. Left out when there are none.
+   */
+  unsettled?: string[];
 }
 
 /** A file in a backup. */

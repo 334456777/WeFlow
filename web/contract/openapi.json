@@ -9916,6 +9916,20 @@
             "format": "uint64",
             "minimum": 0,
             "description": "Unix seconds."
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkippedFile"
+            },
+            "description": "Files of the media and stickers that could not be read and are not in it; left out when there are none."
+          },
+          "unsettled": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Databases WeChat kept writing to while they were copied, whose main file and WAL in the backup may be of two\nmoments; left out when there are none."
           }
         },
         "required": [
@@ -9925,6 +9939,24 @@
           "createdAt"
         ],
         "description": "The backup `backup create` wrote."
+      },
+      "SkippedFile": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Its path in the backup, as it would have been."
+          },
+          "reason": {
+            "type": "string",
+            "description": "What the system said."
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "description": "A file left out of a backup because it could not be read."
       },
       "BackupManifest": {
         "type": "object",
@@ -9951,6 +9983,20 @@
             "items": {
               "$ref": "#/components/schemas/BackupEntry"
             }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkippedFile"
+            },
+            "description": "Files of the media and stickers that could not be read and are not in the backup. Left out when there are\nnone, and in a backup of an older WeFlow."
+          },
+          "unsettled": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Databases (their path in the backup) WeChat kept writing to while they were copied: their main file and WAL\nin the backup may be of two moments. Left out when there are none."
           }
         },
         "required": [

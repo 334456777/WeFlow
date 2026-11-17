@@ -94,6 +94,24 @@ describe('backup', () => {
     expect(screen.getByText(/^已开始恢复/)).toBeTruthy();
   });
 
+  it('says what a backup lacks: files it could not read, databases WeChat kept writing to (#817)', async () => {
+    const skipped = ['a', 'b', 'c', 'd'].map(n => ({ path: `msg/attach/${n}.dat`, reason: 'denied' }));
+    const jobs: JobsState = {
+      jobs: [job({ file: { name: 'backup.zip', size: 2048 }, result: { success: true, data: { out: '/srv/b.zip', skipped, unsettled: ['db_storage/message/message_0.db'] } } })],
+      labels: { j1: '备份数据库' },
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: true, data: { version: '1', created_at: 1, wxid: 'w', weflow_version: '6', entries: [], skipped: skipped.slice(0, 1) } })));
+    render(<BackupPage jobs={jobs} />);
+    const row = screen.getByRole('list', { name: '这个标签页创建的备份' }).querySelector('li')!;
+    expect([...row.querySelectorAll('.backup-gap')].map(p => p.textContent)).toEqual([
+      '4 个文件读不了，没有备份进去：msg/attach/a.dat、msg/attach/b.dat、msg/attach/c.dat等',
+      '1 个数据库在复制时一直被微信写入，备份里的数据库和它的 WAL 可能不是同一时刻的：db_storage/message/message_0.db',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: '查看内容' }));
+    await act(async () => {});
+    expect(screen.getByLabelText('备份的内容').querySelector('.backup-gap')?.textContent).toBe('1 个文件读不了，没有备份进去：msg/attach/a.dat');
+  });
+
   it('says why a backup cannot be read', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, error: { code: 'runtime_error', message: '不是 WeFlow 备份' } }, 500)));
     render(<BackupPage jobs={NONE} />);

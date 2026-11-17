@@ -1,7 +1,7 @@
 // Database backups (#212): `backup create` as a job that keeps the backup for the browser, `backup inspect` and
 // `backup restore`, which read a backup on the server's computer (the browser cannot hand one over yet).
 import { get } from './client';
-import { msg } from '../i18n';
+import { msg, t } from '../i18n';
 import type * as Contract from './contract.gen';
 
 export type BackupEntry = Contract.BackupEntry;
@@ -22,6 +22,21 @@ export function backupParams(parts: BackupChoice) {
     files: parts.files || undefined,
     emojis: parts.emojis || undefined,
   };
+}
+
+/** What a backup lacks or may not hold of one moment (#817), as `backup create` answers and its manifest keeps it. */
+export type BackupGaps = { skipped?: readonly Contract.SkippedFile[]; unsettled?: readonly string[] };
+
+/** The paths at most `shown` are listed of, the rest counted. */
+const SHOWN = 3;
+
+/** Sentences for what a backup lacks: the files left out, and the databases WeChat kept writing to while copied. */
+export function backupGaps({ skipped = [], unsettled = [] }: BackupGaps): string[] {
+  const list = (paths: readonly string[]) => paths.slice(0, SHOWN).join(t('、')) + (paths.length > SHOWN ? t('等') : '');
+  const lines: string[] = [];
+  if (skipped.length) lines.push(t('{n} 个文件读不了，没有备份进去：{paths}', { n: skipped.length, paths: list(skipped.map(s => s.path)) }));
+  if (unsettled.length) lines.push(t('{n} 个数据库在复制时一直被微信写入，备份里的数据库和它的 WAL 可能不是同一时刻的：{paths}', { n: unsettled.length, paths: list(unsettled) }));
+  return lines;
 }
 
 /** The entries of a backup by what they are: the databases, WeChat's media and WeFlow's stickers. */

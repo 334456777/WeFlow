@@ -178,6 +178,13 @@ pub struct BackupCreated {
     pub wxid: String,
     /// Unix seconds.
     pub created_at: u64,
+    /// Files of the media and stickers that could not be read and are not in it; left out when there are none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skipped: Vec<crate::backup::SkippedFile>,
+    /// Databases WeChat kept writing to while they were copied, whose main file and WAL in the backup may be of two
+    /// moments; left out when there are none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unsettled: Vec<String>,
 }
 
 /// Where `backup restore` put the files.
