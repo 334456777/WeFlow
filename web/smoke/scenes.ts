@@ -213,6 +213,12 @@ export const scenes: Scene[] = [
       await page.click('.mobile-tab[aria-haspopup="dialog"]');
       await page.waitFor('the sheet', () => document.querySelector('dialog.nav-sheet[open]') !== null);
       await shoot();
+      // again on one of its pages, that page chosen in it
+      await page.click('.nav-sheet-item', '设置');
+      await page.waitFor('the sheet closed', () => document.querySelector('dialog.nav-sheet') === null);
+      await page.click('.mobile-tab[aria-haspopup="dialog"]');
+      await page.waitFor('the sheet with 设置 chosen', () => document.querySelector('dialog.nav-sheet[open] .nav-sheet-item.selected') !== null);
+      await shoot('chosen');
     },
   },
   {
