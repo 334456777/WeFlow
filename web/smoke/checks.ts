@@ -127,6 +127,33 @@ export const checks: Check[] = [
     },
   },
   {
+    // index.html hides the page while a skin other than the default is on its way; skin.ts shows it, here at once
+    name: 'a skin kept that this page does not have: the default skin, the page shown before the first paint gives up (#830)',
+    async run(page, browsing) {
+      await page.eval(() => localStorage.setItem('weflow.skin', 'gone'));
+      try {
+        await page.goto(browsing.address);
+        await page.until('the default skin, shown within 2.5 s', s => s.skin === 'neumorphism' && !s.pending && s.shown && s.at < 2500, () => ({
+          skin: document.documentElement.dataset.skin,
+          pending: 'skinPending' in document.documentElement.dataset,
+          shown: getComputedStyle(document.body).visibility === 'visible',
+          at: performance.now(),
+        }));
+        await conversations(page);
+        // and while a skin's sheet is on its way, nothing shows
+        const hidden = await page.eval(() => {
+          document.documentElement.dataset.skinPending = '';
+          const visibility = getComputedStyle(document.body).visibility;
+          delete document.documentElement.dataset.skinPending;
+          return visibility;
+        });
+        if (hidden !== 'hidden') throw new Error('the page shows while a skin is pending: ' + hidden);
+      } finally {
+        await page.eval(() => localStorage.removeItem('weflow.skin'));
+      }
+    },
+  },
+  {
     name: 'picture preview: opened, the one before, closed with Escape and the close button',
     async run(page) {
       await count(page, 'the messages of 图片测试', '[aria-label="图片测试的记录"] .message-row', n => n === 18);
