@@ -15,6 +15,7 @@ mod locator;
 mod platform;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod process;
+mod ptrace_access;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use cli::{run_helper, run_helper_at};
@@ -24,3 +25,4 @@ pub use image_local::{image_local, image_local_at};
 pub use image_mem::image_mem;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use platform::{interrupt, Hook};
+pub use ptrace_access::{ptrace_access, PtraceAccess};

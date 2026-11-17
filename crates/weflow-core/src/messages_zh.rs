@@ -77,6 +77,9 @@ const CATALOG: &[(&str, &str)] = &[
     ("WeChat quit while the command waited for the key; reopen WeChat, then run the command again", "等待密钥时微信已退出；请重新打开微信，再运行命令"),
     ("cannot hook WeChat ({}); quit WeChat completely and restart the Mac before trying again, as more tries can set off macOS's protection", "无法挂钩微信（{}）；请彻底退出微信并重启 Mac 后再试，反复尝试可能触发 macOS 的保护机制"),
     ("permission denied: cannot open the WeChat process (pid {}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({})", "无法打开微信进程（pid {0}）。请以管理员身份运行终端，关闭可能拦截的安全软件，并确认微信本身没有以管理员身份运行。（{1}）"),
+    ("permission denied: cannot attach to WeChat (pid {}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({})", "无法附加到微信进程（pid {0}）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（{1}）"),
+    ("permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is {}. Run weflow as root, or set ptrace_scope to 0", "/proc/sys/kernel/yama/ptrace_scope 为 {} 时，weflow 无法附加到微信进程。请以 root 运行 weflow，或把 ptrace_scope 设为 0"),
+    ("permission denied: /proc/sys/kernel/yama/ptrace_scope is 3, which stops every process from attaching to WeChat, root included, until the system restarts", "/proc/sys/kernel/yama/ptrace_scope 为 3，在系统重启前任何进程（包括 root）都无法附加到微信进程"),
     ("the ciphertext must be 32 hex characters (one 16-byte block)", "密文必须是 32 个十六进制字符（一个 16 字节的块）"),
     ("permission denied: cannot read WeChat's memory (pid {}). Run weflow with sudo. ({})", "无法读取微信的内存（pid {0}）。请用 sudo 运行 weflow。（{1}）"),
     ("permission denied: cannot read WeChat's memory (pid {}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({})", "无法读取微信的内存（pid {0}）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（{1}）"),
@@ -188,6 +191,22 @@ mod tests {
             Some("--start（b）晚于 --end（a）")
         );
         assert_eq!(translate("not in the catalog"), None);
+    }
+
+    #[test]
+    fn linux_ptrace_refusals_are_translated() {
+        assert_eq!(
+            translate("permission denied: cannot attach to WeChat (pid 42). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. (Operation not permitted)").as_deref(),
+            Some("无法附加到微信进程（pid 42）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（Operation not permitted）")
+        );
+        assert_eq!(
+            translate("permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is 1. Run weflow as root, or set ptrace_scope to 0").as_deref(),
+            Some("/proc/sys/kernel/yama/ptrace_scope 为 1 时，weflow 无法附加到微信进程。请以 root 运行 weflow，或把 ptrace_scope 设为 0")
+        );
+        assert_eq!(
+            translate("permission denied: cannot read WeChat's memory (pid 42). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. (denied)").as_deref(),
+            Some("无法读取微信的内存（pid 42）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（denied）")
+        );
     }
 
     #[test]

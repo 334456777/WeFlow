@@ -27,6 +27,8 @@ impl ServiceHub {
                 "Linux database-key extraction requires x64",
             ));
         }
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        linux_ptrace_check()?;
         let wxkey = weflow_native::wxkey::WxKey::new()
             .map_err(|err| AppError::native(format!("{err:#}")))?;
         if !wxkey.is_available() {
@@ -350,6 +352,22 @@ impl ServiceHub {
     }
 }
 
+/// Ends `key db` on Linux before the user is asked to restart WeChat when this process may not attach to it, as
+/// Yama's `ptrace_scope` decides (#854).
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn linux_ptrace_check() -> AppResult<()> {
+    use weflow_native::linux_key_helper::{ptrace_access, PtraceAccess};
+    match ptrace_access() {
+        PtraceAccess::Allowed => Ok(()),
+        PtraceAccess::NeedsCapability { scope } => Err(AppError::native(format!(
+            "permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is {scope}. Run weflow as root, or set ptrace_scope to 0"
+        ))),
+        PtraceAccess::Disabled => Err(AppError::native(
+            "permission denied: /proc/sys/kernel/yama/ptrace_scope is 3, which stops every process from attaching to WeChat, root included, until the system restarts",
+        )),
+    }
+}
+
 /// The error when the hook finds nowhere to stop in this WeChat (`detail` says what was missing): WeChat had not
 /// fully started, or its version is one the hook does not know (#806).
 fn unsupported_wechat(detail: &str) -> String {
@@ -499,12 +517,19 @@ fn report_wait(event: WaitEvent) {
                 .map(u32::to_string)
                 .collect::<Vec<_>>()
                 .join(", ");
+            // the tray is at the bottom right on Windows; Linux desktops put it anywhere, or have none (WSLg)
+            let how = match (cfg!(windows), zh) {
+                (true, true) => "右下角托盘图标 → 右键 → 退出微信",
+                (true, false) => "system tray icon -> right click -> Quit WeChat",
+                (false, true) => "从托盘图标或微信的菜单中选择退出",
+                (false, false) => "choose Quit from WeChat's tray icon or its menu",
+            };
             phase(
                 json!({ "type": "key_phase", "phase": "quit_wechat", "pids": pids }),
                 if zh {
-                    format!("检测到微信正在运行（pid {list}）请先完全退出微信：\n右下角托盘图标 → 右键 → 退出微信")
+                    format!("检测到微信正在运行（pid {list}）请先完全退出微信：\n{how}")
                 } else {
-                    format!("WeChat is running (pid {list}). Quit it completely first:\nsystem tray icon -> right click -> Quit WeChat")
+                    format!("WeChat is running (pid {list}). Quit it completely first:\n{how}")
                 },
             );
         }
