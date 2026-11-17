@@ -31,12 +31,19 @@ pub const KEYS_ON_STDIN: &str = "WEFLOW_KEYS_ON_STDIN";
 /// Set for a command that ends by itself once its stdin ends (see [`ends_by_itself`]).
 pub const CANCEL_ON_STDIN: &str = "WEFLOW_CANCEL_ON_STDIN";
 
-/// Whether the command `args` runs must be let to end by itself rather than killed: `key db`, whose hook would be
-/// left in WeChat (#287). Its stdin stays open while it runs; once it ends (the job cancelled, the request or the
-/// server gone), the command takes its hook out of WeChat and ends with `user_interrupt`.
+/// Whether the command `args` runs must be let to end by itself rather than killed, as a killed one would leave its
+/// hook in WeChat: `key db` (#287) and `image auto-download start` (#809). Its stdin stays open while it runs; once it
+/// ends (the job cancelled, the request or the server gone), the command takes its hook out of WeChat and ends.
 pub(super) fn ends_by_itself(args: &[String]) -> bool {
-    let mut words = args.iter().filter(|a| !a.starts_with('-'));
-    words.next().is_some_and(|w| w == "key") && words.next().is_some_and(|w| w == "db")
+    let words: Vec<&str> = args
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .map(String::as_str)
+        .collect();
+    matches!(
+        words.as_slice(),
+        ["key", "db", ..] | ["image", "auto-download", "start", ..]
+    )
 }
 
 /// [`command`], started, with the database keys this server derived written to its stdin
@@ -161,11 +168,17 @@ mod tests {
     }
 
     #[test]
-    fn only_key_db_is_let_to_end_by_itself() {
+    fn only_the_commands_that_hook_wechat_are_let_to_end_by_themselves() {
         let line = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
         assert!(ends_by_itself(&line("--json --progress key db --save")));
         assert!(ends_by_itself(&line("--json key db --timeout 60")));
+        assert!(ends_by_itself(&line("--json image auto-download start")));
+        assert!(ends_by_itself(&line(
+            "--json image auto-download start --whitelist a@chatroom"
+        )));
         assert!(!ends_by_itself(&line("--json key image")));
         assert!(!ends_by_itself(&line("--json chat messages db")));
+        assert!(!ends_by_itself(&line("--json image auto-download status")));
+        assert!(!ends_by_itself(&line("--json image decrypt x")));
     }
 }
