@@ -26,6 +26,9 @@ rand.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# the WebUI's Content-Security-Policy names the page's inline scripts by their hash (serve_api/ui.rs); tests/web_versions.rs
+# publishes WebUI packages in a registry of its own
+sha2.workspace = true
 # `serve` runs each request of the command API in a child process
 tokio = { workspace = true, features = ["process", "io-util", "fs", "sync", "time"] }
 # `serve` compresses its JSON answers (gzip / br, from `Accept-Encoding`)
@@ -45,8 +48,6 @@ jpeg-encoder.workspace = true
 jsonschema = { version = "=0.60.0", default-features = false }
 # tests/serve_api/ (media.rs, contract.rs) names Moments media the way the cache does
 md-5.workspace = true
-# tests/web_versions.rs publishes WebUI packages in a registry of its own
-sha2.workspace = true
 zip.workspace = true
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }

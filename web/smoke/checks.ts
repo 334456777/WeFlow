@@ -218,6 +218,22 @@ export const checks: Check[] = [
     },
   },
   {
+    // 周舟's chat ends with two link cards (dev_account.rs): Preact passes any address to href as it is
+    name: 'link cards: a web page opens in a new tab, javascript: is no link (#818)',
+    async run(page) {
+      const policy = await page.eval(async () => (await fetch(location.pathname)).headers.get('content-security-policy') ?? '');
+      if (!/script-src 'self' 'sha256-[A-Za-z0-9+/]+=*';/.test(policy) || !policy.includes("frame-ancestors 'none'")) {
+        throw new Error('the page is sent without its Content-Security-Policy: ' + policy);
+      }
+      await conversations(page);
+      await page.click('.conversation-row', '周舟');
+      const pane = '[aria-label="周舟的记录"]';
+      await count(page, 'the two link cards', `${pane} .link-bubble`, n => n === 2);
+      const links = await page.eval(pane => [...document.querySelectorAll(`${pane} a`)].map(a => [a.getAttribute('href'), a.getAttribute('target')]), pane);
+      if (JSON.stringify(links) !== JSON.stringify([['https://example.com/route', '_blank']])) throw new Error('the links of the chat: ' + JSON.stringify(links));
+    },
+  },
+  {
     name: 'phone: a conversation and back, the tabs at the bottom',
     phone: true,
     async run(page) {

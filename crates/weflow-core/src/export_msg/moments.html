@@ -242,8 +242,8 @@ function hl(s) {
   while ((j = low.indexOf(Q, i)) >= 0) { out += esc(s.slice(i, j)) + "<mark>" + esc(s.slice(j, j + Q.length)) + "</mark>"; i = j + Q.length; }
   return out + esc(s.slice(i));
 }
-// a medium not saved: a tile with the address WeChat gave, to open it in the browser
-const gone = m => '<div class="cell gone">' + SVG.gone + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(T("查看媒体")) + "</a>" : esc(T("媒体已丢失"))) + "</div>";
+// a medium not saved: a tile with the address WeChat gave, to open it in the browser when it is a web page's (#818)
+const gone = m => '<div class="cell gone">' + SVG.gone + (/^https?:\/\//i.test(m.url || "") ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer">' + esc(T("查看媒体")) + "</a>" : esc(T("媒体已丢失"))) + "</div>";
 function grid(p, i) {
   const m = p.media || [];
   if (!m.length) return "";

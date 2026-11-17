@@ -52,6 +52,13 @@ describe('BizPushes (#203)', () => {
     await act(async () => { emitLive({ type: 'message.new', sessionId: 'gh_news' }); });
     expect(await screen.findByRole('link', { name: '标题 1' })).toBeTruthy();
   });
+
+  it('shows an article whose address is not a web page without a link (#818)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: true, data: { messages: [push(1, { url: 'javascript:alert(1)' })] } })));
+    render(<BizPushes session={session} />);
+    expect(await screen.findByText('标题 1')).toBeTruthy();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
 });
 
 describe('official accounts in the list (#203)', () => {

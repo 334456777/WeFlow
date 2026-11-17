@@ -320,7 +320,9 @@ const T = s => EN[s] || s;
 const $ = id => document.getElementById(id);
 const chat = $("chat"), list = $("list"), main = chat.parentNode;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// the address of a card from the records, when it is a web page's: no javascript:, file: or app scheme to click (#818)
+const web = u => (/^https?:\/\//i.test(u || "") ? u : "");
+const clamp =(v, a, b) => Math.max(a, Math.min(b, v));
 const pad = n => (n < 10 ? "0" : "") + n;
 const WEEK = ["星期日","星期一","星期二","星期三","星期四","星期五","星期六"];
 const day = t => { const d = new Date(t * 1000); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
@@ -401,7 +403,7 @@ const URL_RE = /\bhttps?:\/\/[^\s<>"'，。！？、）》】]+/g;
 function rich(s) {
   s = s == null ? "" : String(s);
   let out = "", i = 0, m; URL_RE.lastIndex = 0;
-  while ((m = URL_RE.exec(s))) { out += hl(s.slice(i, m.index)) + '<a href="' + esc(m[0]) + '" target="_blank">' + hl(m[0]) + "</a>"; i = m.index + m[0].length; }
+  while ((m = URL_RE.exec(s))) { out += hl(s.slice(i, m.index)) + '<a href="' + esc(m[0]) + '" target="_blank" rel="noopener noreferrer">' + hl(m[0]) + "</a>"; i = m.index + m[0].length; }
   return out + hl(s.slice(i));
 }
 /* plain text: what search matches and what the result list shows; a kind without words shows as a tag */
@@ -482,7 +484,7 @@ function body(m, i) {
     }
     case K.LINK: case K.APP: case K.MUSIC:
       return card("link", '<div class="in"><div class="tx"><div class="t1">' + hl(m.ti || m.l || "") + "</div>" + (m.x ? '<div class="t2">' + hl(m.x) + "</div>" : "") + "</div></div>",
-        m.k === K.MUSIC ? T("音乐") : (m.f || ""), m.l ? 'href="' + esc(m.l) + '" target="_blank"' : "");
+        m.k === K.MUSIC ? T("音乐") : (m.f || ""), web(m.l) ? 'href="' + esc(m.l) + '" target="_blank" rel="noopener noreferrer"' : "");
     case K.MINI: return card("link", '<div class="in"><div class="tx"><div class="t2" style="margin:0 0 4px">' + hl(m.f || "") + '</div><div class="t1">' + hl(m.ti || "") + "</div></div></div>", T("小程序"));
     case K.FINDER: return card("link", '<div class="in"><div class="tx"><div class="t1">' + hl(m.ti || "") + "</div>" + (m.f ? '<div class="t2">' + hl(m.f) + "</div>" : "") + "</div></div>", T("视频号"));
     case K.NOTICE: return card("link", '<div class="in"><div class="tx"><div class="t1" style="font-weight:600">' + esc(T("群公告")) + '</div><div class="t2" style="-webkit-line-clamp:6;color:var(--fg);font-size:14px">' + hl(m.x) + "</div></div></div>", "", 'data-dlg="' + i + '"');
@@ -496,7 +498,7 @@ function body(m, i) {
     }
     case K.PACKET: return card("pay rp", '<div class="in">' + SVG.packet + '<div class="tx"><div class="t1">' + hl(m.ti || "恭喜发财，大吉大利") + "</div></div></div>", T("微信红包"));
     case K.LOC: return card("loc", '<div class="in"><div class="tx"><div class="t1">' + hl(m.ti || m.x || T("位置")) + "</div>" + (m.x && m.x !== m.ti ? '<div class="t2">' + hl(m.x) + "</div>" : "") + '</div></div><div class="map">' + SVG.pin + "</div>",
-      "", m.la != null ? 'href="https://uri.amap.com/marker?position=' + m.lo + "," + m.la + '" target="_blank"' : "");
+      "", m.la != null ? 'href="https://uri.amap.com/marker?position=' + m.lo + "," + m.la + '" target="_blank" rel="noopener noreferrer"' : "");
     case K.CARD: return card("vcard", '<div class="in"><div class="av" style="background:hsl(' + hue(m.n || "") + ',45%,58%)">' + esc(Array.from(m.n || "?")[0]) + '</div><div class="tx"><div class="t1">' + hl(m.n) + "</div></div></div>", T("个人名片"));
     default: return '<div class="b">' + hl(m.x || T(PRE[m.k] || "")) + "</div>";
   }

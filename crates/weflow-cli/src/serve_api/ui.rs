@@ -9,7 +9,8 @@
 //!   is not followed.
 //! - The built assets (`/ui/assets/`, named by their content) are cached for good; everything else is asked again
 //!   each time, so a new version shows at once. The page is sent with `Referrer-Policy: no-referrer`: its address
-//!   holds the token until it removes it.
+//!   holds the token until it removes it. It also carries a `Content-Security-Policy` (#818, see
+//!   `content_security_policy`) and may not be framed.
 
 use std::path::{Path, PathBuf};
 
@@ -155,19 +156,117 @@ async fn send(ui: &UiDir, file: &Path, head: bool) -> Response {
             }),
         ),
     ];
+    let policy = (ext == "html").then(|| content_security_policy(&bytes));
     let body = if head {
         Body::empty()
     } else {
         Body::from(bytes)
     };
     let mut resp = (StatusCode::OK, headers, body).into_response();
-    if ext == "html" {
-        resp.headers_mut().insert(
+    if let Some(policy) = policy {
+        let page = resp.headers_mut();
+        page.insert(
             header::REFERRER_POLICY,
             HeaderValue::from_static("no-referrer"),
         );
+        page.insert(header::CONTENT_SECURITY_POLICY, policy);
+        page.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     }
     resp
+}
+
+/// The `Content-Security-Policy` of a page (#818). The page holds the token of the command API, so a script of someone
+/// else's in it could run any command: scripts come only from the folder, besides the page's own inline ones named by
+/// their hash (the theme set before the first paint, `web/index.html`), and the page talks to this server alone.
+/// Pictures also come from WeChat's servers (avatars, stickers, link covers; over `http:` as often as `https:`), and
+/// styles may be inline (the renderer's `style` attributes): with pictures from anywhere, a style could send out no
+/// more than a picture could. No other site may show the page in a frame.
+fn content_security_policy(html: &[u8]) -> HeaderValue {
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+
+    let scripts: String = inline_scripts(html)
+        .iter()
+        .map(|script| {
+            let digest = Sha256::digest(script);
+            let hash = base64::engine::general_purpose::STANDARD.encode(digest);
+            format!(" 'sha256-{hash}'")
+        })
+        .collect();
+    let policy = format!(
+        "default-src 'self'; script-src 'self'{scripts}; style-src 'self' 'unsafe-inline'; \
+         img-src 'self' data: blob: http: https:; media-src 'self' data: blob:; connect-src 'self'; \
+         object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    );
+    // keywords and base64 are always a valid header; were they not, no script but the folder's would run
+    HeaderValue::try_from(policy)
+        .unwrap_or_else(|_| HeaderValue::from_static("default-src 'self'; frame-ancestors 'none'"))
+}
+
+/// The text of each `<script>` of `html` without a `src`, as the browser hashes it: with its line breaks made `\n`,
+/// as the HTML parser makes them before anything else.
+fn inline_scripts(html: &[u8]) -> Vec<Vec<u8>> {
+    const OPEN: &[u8] = b"<script";
+    const CLOSE: &[u8] = b"</script";
+    let mut scripts = Vec::new();
+    let mut rest = html;
+    while let Some(start) = find_ignoring_case(rest, OPEN) {
+        let after = &rest[start + OPEN.len()..];
+        // `<scripts>` or the like is another element
+        if !after
+            .first()
+            .is_some_and(|&b| b == b'>' || b == b'/' || b.is_ascii_whitespace())
+        {
+            rest = after;
+            continue;
+        }
+        let Some(tag_end) = after.iter().position(|&b| b == b'>') else {
+            break;
+        };
+        let body = &after[tag_end + 1..];
+        let Some(end) = find_ignoring_case(body, CLOSE) else {
+            break;
+        };
+        if !has_src(&after[..tag_end]) {
+            scripts.push(normalize_newlines(&body[..end]));
+        }
+        rest = &body[end..];
+    }
+    scripts
+}
+
+fn find_ignoring_case(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window.eq_ignore_ascii_case(needle))
+}
+
+/// Whether the attributes of a start tag (what lies between its name and `>`) have a `src`: a name starts after a
+/// space or `/` and ends at one or at `=`. A script with one runs the file it names, never its text, even when the
+/// address is empty.
+fn has_src(attrs: &[u8]) -> bool {
+    let starts =
+        |at: usize| at > 0 && (attrs[at - 1] == b'/' || attrs[at - 1].is_ascii_whitespace());
+    let ends =
+        |b: Option<&u8>| b.is_none_or(|&b| b == b'/' || b == b'=' || b.is_ascii_whitespace());
+    attrs.windows(3).enumerate().any(|(at, window)| {
+        window.eq_ignore_ascii_case(b"src") && starts(at) && ends(attrs.get(at + 3))
+    })
+}
+
+/// `\r\n` and a lone `\r` made `\n`.
+fn normalize_newlines(text: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len());
+    let mut bytes = text.iter().peekable();
+    while let Some(&b) = bytes.next() {
+        if b == b'\r' {
+            bytes.next_if_eq(&&b'\n');
+            out.push(b'\n');
+        } else {
+            out.push(b);
+        }
+    }
+    out
 }
 
 fn content_type(ext: &str) -> &'static str {
@@ -219,5 +318,45 @@ mod tests {
         }
         assert_eq!(content_type("js"), "text/javascript; charset=utf-8");
         assert_eq!(content_type("exe"), "application/octet-stream");
+    }
+
+    #[test]
+    fn only_inline_scripts_are_hashed() {
+        let html = b"<!doctype html><head><script>\r\n  theme();\r\n</script>\
+            <script type=\"module\" crossorigin src=\"/ui/assets/index-a1.js\"></script>\
+            <SCRIPT data-x=\"1\">b()\r</SCRIPT><scripts>no</scripts><script src></script>\
+            <script data-src=\"x\">c()</script></head>";
+        let scripts = inline_scripts(html);
+        assert_eq!(
+            scripts,
+            [&b"\n  theme();\n"[..], b"b()\n", b"c()"],
+            "{:?}",
+            scripts
+                .iter()
+                .map(|s| String::from_utf8_lossy(s))
+                .collect::<Vec<_>>()
+        );
+        assert!(has_src(b" src=\"/x.js\""));
+        assert!(has_src(b" type=module SRC = '/x.js'"));
+        assert!(has_src(b"/src"));
+        assert!(!has_src(b" data-src=\"x\""));
+        assert!(!has_src(b" srcset=\"x\""));
+    }
+
+    #[test]
+    fn the_policy_names_the_inline_scripts_by_their_hash() {
+        // the hash of `alert(1)`, as a browser reports it for a script it refuses
+        let policy = content_security_policy(b"<script>alert(1)</script>");
+        let policy = policy.to_str().unwrap();
+        assert!(
+            policy.contains(
+                "script-src 'self' 'sha256-bhHHL3z2vDgxUt0W3dWQOrprscmda2Y5pLsLg4GF+pI=';"
+            ),
+            "{policy}"
+        );
+        assert!(policy.contains("connect-src 'self'"), "{policy}");
+        assert!(policy.contains("frame-ancestors 'none'"), "{policy}");
+        let none = content_security_policy(b"<script src=\"/x.js\"></script>");
+        assert!(none.to_str().unwrap().contains("script-src 'self';"));
     }
 }

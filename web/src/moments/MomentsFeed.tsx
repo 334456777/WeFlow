@@ -10,6 +10,7 @@ import type { Preview } from '../chat/MessageView';
 import { dayOf, formatClock, formatDayHeading } from '../chat/messages';
 import { MomentsSkeleton } from '../Skeleton';
 import { t } from '../i18n';
+import { safeUrl } from '../links';
 
 type FeedState =
   | { status: 'loading' }
@@ -109,10 +110,7 @@ export function MomentPost({ post, onPreview }: { post: SnsPost; onPreview(previ
     <div className="moment-body">
       <header><strong className="clamp-1">{name}</strong><time dateTime={new Date(post.createTime * 1000).toISOString()}>{when(post.createTime)}</time></header>
       {post.contentDesc?.trim() && <p className="moment-text">{post.contentDesc.trim()}</p>}
-      {link && <a className="moment-link" href={link.url} target="_blank" rel="noreferrer noopener">
-        {isWechatMedia(link.thumb) ? <MediaImage src={snsMediaUrl(link.thumb, link.key, post.type)} label={t('链接封面')} /> : <span className="moment-link-icon" aria-hidden="true"><LinkSimple size={20} /></span>}
-        <span className="clamp-2">{hostOf(link.url)}</span>
-      </a>}
+      {link && <SharedLink link={link} post={post} />}
       {shown.length > 0 && <div className={'moment-media count-' + Math.min(shown.length, 9)}>
         {shown.slice(0, 9).map((m, i) => <MediaTile key={i} media={m} post={post} index={i} onPreview={onPreview} />)}
       </div>}
@@ -127,7 +125,19 @@ export function MomentPost({ post, onPreview }: { post: SnsPost; onPreview(previ
   </article>;
 }
 
-const hostOf = (url: string) => { try { return new URL(url).hostname; } catch { return url; } };
+const hostOf = (url: string) => { try { return new URL(url).hostname || url; } catch { return url; } };
+
+/** The page a post shares: a link to it when its address is a web page's, else the same card without one. */
+function SharedLink({ link, post }: { link: SnsMedia; post: SnsPost }) {
+  const url = safeUrl(link.url);
+  const inner = <>
+    {isWechatMedia(link.thumb) ? <MediaImage src={snsMediaUrl(link.thumb, link.key, post.type)} label={t('链接封面')} /> : <span className="moment-link-icon" aria-hidden="true"><LinkSimple size={20} /></span>}
+    <span className="clamp-2">{hostOf(link.url)}</span>
+  </>;
+  return url
+    ? <a className="moment-link" href={url} target="_blank" rel="noreferrer noopener">{inner}</a>
+    : <div className="moment-link">{inner}</div>;
+}
 
 function MediaTile({ media, post, index, onPreview }: { media: SnsMedia; post: SnsPost; index: number; onPreview(preview: Preview): void }) {
   const video = isVideo(media);
