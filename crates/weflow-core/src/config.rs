@@ -292,6 +292,32 @@ impl ConfigStore {
         target.get_key(&key)
     }
 
+    /// Sets `key` from the text a command line gives (`config set`, #813): as it is for the keys that hold text
+    /// (paths, keys, tokens, names), so that `123456789012345678901234567890` or `1e5` stays what was typed; read as
+    /// JSON for the others (numbers, `true`/`false`, and the arrays and objects of the keys the WebUI keeps).
+    ///
+    /// # Errors
+    /// As [`Self::set_key`].
+    pub fn set_key_from_text(
+        &mut self,
+        profile: Option<&str>,
+        key: &str,
+        text: &str,
+    ) -> AppResult<()> {
+        let (_, bare) = self.split_profile_key(profile, key);
+        let value = if holds_text(key) || holds_text(&bare) {
+            Value::String(text.to_string())
+        } else {
+            serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
+        };
+        self.set_key(profile, key, value)
+    }
+
+    /// Whether `name` is a profile: one of the file's, or the active one before it holds anything.
+    fn has_profile(&self, name: &str) -> bool {
+        self.profiles.contains_key(name) || self.current_profile == name
+    }
+
     pub fn set_key(&mut self, profile: Option<&str>, key: &str, value: Value) -> AppResult<()> {
         if key == "lang" {
             let lang = as_string(value)?;
@@ -317,7 +343,22 @@ impl ConfigStore {
             return Ok(());
         }
 
+        let named_in_key = profile.is_none();
         let (profile, key) = self.split_profile_key(profile, key);
+        if let Some(name) = profile
+            .as_deref()
+            .filter(|name| named_in_key && !self.has_profile(name))
+        {
+            // `serve.port` or `defualt.wxid`: a profile is made only by `current_profile` (#813)
+            let mut message = format!(
+                "there is no profile named '{name}'; `config set current_profile {name}` makes one"
+            );
+            let setting = format!("{name}_{key}");
+            if is_known_key(&setting) {
+                message.push_str(&format!(", and the setting is written {setting}"));
+            }
+            return Err(AppError::usage(message));
+        }
         let target = self.profile_mut(profile.as_deref());
         match key.as_str() {
             "db_path" | "dbPath" => target.db_path = Some(as_string(value)?),
@@ -370,7 +411,15 @@ impl ConfigStore {
             return;
         }
 
+        let named_in_key = profile.is_none();
         let (profile, key) = self.split_profile_key(profile, key);
+        if profile
+            .as_deref()
+            .is_some_and(|name| named_in_key && !self.has_profile(name))
+        {
+            // nothing to remove, and no profile to make for it
+            return;
+        }
         let target = self.profile_mut(profile.as_deref());
         match key.as_str() {
             "db_path" | "dbPath" => target.db_path = None,
@@ -679,6 +728,131 @@ fn is_profile_key(key: &str) -> bool {
     )
 }
 
+/// The keys that hold text: taken as they are typed, never read as a number (#813).
+fn holds_text(key: &str) -> bool {
+    matches!(
+        key,
+        "db_path"
+            | "dbPath"
+            | "decrypt_key"
+            | "decryptKey"
+            | "wxid"
+            | "myWxid"
+            | "image_aes_key"
+            | "imageAesKey"
+            | "cache_path"
+            | "cachePath"
+            | "http_api_token"
+            | "httpApiToken"
+            | "ai_model_api_base_url"
+            | "aiModelApiBaseUrl"
+            | "ai_model_api_key"
+            | "aiModelApiKey"
+            | "ai_model_api_model"
+            | "aiModelApiModel"
+            | "lang"
+            | "current_profile"
+            | "currentProfile"
+            | "serve_host"
+    )
+}
+
+/// The keys of the file's own settings and of `serve`'s, besides the profiles' keys.
+const FILE_KEYS: &[&str] = &["lang", "current_profile", "currentProfile"];
+
+/// The keys of a profile WeFlow reads beside its fields, kept in `extra`.
+const EXTRA_KEYS: &[&str] = &[
+    "autoDownloadWhitelist",
+    "no_progress",
+    "progress_delay_seconds",
+    "progressDelaySeconds",
+];
+
+/// Whether `key` (without a profile) is one `config set --help` lists.
+fn is_known_key(key: &str) -> bool {
+    is_profile_key(key)
+        || FILE_KEYS.contains(&key)
+        || EXTRA_KEYS.contains(&key)
+        || key
+            .strip_prefix("serve_")
+            .is_some_and(|k| ServeSettings::KEYS.contains(&k))
+}
+
+/// For a key `config set` does not know but that is spelt almost as one it does (`decrypt_ky`, `dbpath`), which
+/// one that is (#813). Such a key is still saved, with the profile's other settings: the WebUI keeps settings of its
+/// own there.
+pub fn near_known_key(key: &str) -> Option<String> {
+    let bare = key.split_once('.').map_or(key, |(_, k)| k);
+    if is_known_key(bare) {
+        return None;
+    }
+    let plain = |k: &str| -> Vec<char> {
+        k.chars()
+            .filter(|c| *c != '_')
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    let typed = plain(bare);
+    let serve: Vec<String> = ServeSettings::KEYS
+        .iter()
+        .map(|k| format!("serve_{k}"))
+        .collect();
+    let snake = [
+        "db_path",
+        "decrypt_key",
+        "wxid",
+        "image_xor_key",
+        "image_aes_key",
+        "cache_path",
+        "http_api_token",
+        "ai_model_api_base_url",
+        "ai_model_api_key",
+        "ai_model_api_model",
+        "ai_model_api_max_tokens",
+        "ai_insight_enabled",
+        "lang",
+        "current_profile",
+        "autoDownloadWhitelist",
+        "no_progress",
+        "progress_delay_seconds",
+    ];
+    snake
+        .iter()
+        .map(|k| (*k).to_string())
+        .chain(serve)
+        .map(|k| {
+            let known = plain(&k);
+            // one slip in five letters at most, so that a short key of one's own (`name`) is not taken for `lang`
+            let near = (known.len() / 5).max(1);
+            (edit_distance(&typed, &known), near, k)
+        })
+        .filter(|(d, near, _)| d <= near)
+        .min_by_key(|(d, _, _)| *d)
+        .map(|(_, _, k)| k)
+}
+
+/// The slips that turn `a` into `b`: a letter put in, left out or changed, or two letters next to each other swapped
+/// (`serve_prot`), each counting one (the optimal string alignment distance).
+fn edit_distance(a: &[char], b: &[char]) -> usize {
+    let mut two_back: Vec<usize> = vec![0; b.len() + 1];
+    let mut previous: Vec<usize> = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        let mut current = vec![i; b.len() + 1];
+        for j in 1..=b.len() {
+            let changed = usize::from(a[i - 1] != b[j - 1]);
+            let mut slips = (previous[j - 1] + changed)
+                .min(previous[j] + 1)
+                .min(current[j - 1] + 1);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                slips = slips.min(two_back[j - 2] + 1);
+            }
+            current[j] = slips;
+        }
+        two_back = std::mem::replace(&mut previous, current);
+    }
+    previous[b.len()]
+}
+
 fn as_string(value: Value) -> AppResult<String> {
     match value {
         Value::String(s) => Ok(s),
@@ -934,6 +1108,120 @@ mod tests {
         store.unset_key(None, "serve_port");
         assert_eq!(store.get_key(None, "serve_port"), Value::Null);
         assert_eq!(store.serve.host.as_deref(), Some("0.0.0.0"));
+    }
+
+    /// `config set` keeps a key that holds text as it was typed, and reads the others as JSON (#813).
+    #[test]
+    fn text_is_kept_as_it_was_typed() {
+        let mut store = ConfigStore::default();
+        for typed in [
+            "123456789012345678901234567890",
+            "1e5",
+            "1.50",
+            "007",
+            "0x10",
+            "true",
+            "null",
+            "[1,2]",
+            "{\"a\":1}",
+        ] {
+            for key in [
+                "http_api_token",
+                "image_aes_key",
+                "default.ai_model_api_key",
+            ] {
+                store.set_key_from_text(None, key, typed).unwrap();
+                assert_eq!(store.get_key(None, key), json!(typed), "{key}={typed}");
+            }
+        }
+        store.set_key_from_text(None, "lang", "zh").unwrap();
+        store
+            .set_key_from_text(None, "serve_host", "127.0.0.1")
+            .unwrap();
+
+        store
+            .set_key_from_text(None, "image_xor_key", "53")
+            .unwrap();
+        assert_eq!(store.get_key(None, "image_xor_key"), json!(53));
+        store.set_key_from_text(None, "serve_port", "8080").unwrap();
+        assert_eq!(store.get_key(None, "serve_port"), json!(8080));
+        store
+            .set_key_from_text(None, "ai_insight_enabled", "true")
+            .unwrap();
+        assert_eq!(store.get_key(None, "ai_insight_enabled"), json!(true));
+        store
+            .set_key_from_text(None, "autoDownloadWhitelist", "[\"a@chatroom\"]")
+            .unwrap();
+        assert_eq!(
+            store.get_key(None, "autoDownloadWhitelist"),
+            json!(["a@chatroom"])
+        );
+    }
+
+    /// `<profile>.<key>` sets a key of a profile there is; it makes none, for `serve.port` reads like a setting
+    /// and `defualt.wxid` like a slip (#813).
+    #[test]
+    fn a_profile_is_not_made_by_a_key() {
+        let mut store = ConfigStore::default();
+        let err = store
+            .set_key_from_text(None, "serve.port", "8080")
+            .unwrap_err();
+        assert!(
+            err.message.contains("current_profile serve"),
+            "{}",
+            err.message
+        );
+        assert!(err.message.contains("serve_port"), "{}", err.message);
+        let err = store
+            .set_key_from_text(None, "defualt.wxid", "wxid_a")
+            .unwrap_err();
+        assert!(!err.message.contains("defualt_wxid"), "{}", err.message);
+        store.unset_key(None, "serve.port");
+        assert_eq!(
+            store.profiles.keys().collect::<Vec<_>>(),
+            ["default"],
+            "only the profile every config file starts with"
+        );
+
+        // the active profile is one before it holds anything; a profile made by `current_profile` takes keys
+        store
+            .set_key_from_text(None, "default.wxid", "wxid_a")
+            .unwrap();
+        store
+            .set_key(None, "current_profile", json!("work"))
+            .unwrap();
+        store
+            .set_key_from_text(None, "default.wxid", "wxid_b")
+            .unwrap();
+        assert_eq!(store.get_key(None, "default.wxid"), json!("wxid_b"));
+        assert_eq!(store.get_key(None, "work.wxid"), Value::Null);
+    }
+
+    #[test]
+    fn a_key_spelt_almost_as_a_known_one_is_named() {
+        for (typed, known) in [
+            ("decrypt_ky", "decrypt_key"),
+            ("dbpath", "db_path"),
+            ("work.dbpath", "db_path"),
+            ("serve_prot", "serve_port"),
+            ("decrpyt_key", "decrypt_key"),
+            ("wixd", "wxid"),
+            ("progress_delay_second", "progress_delay_seconds"),
+        ] {
+            assert_eq!(near_known_key(typed).as_deref(), Some(known), "{typed}");
+        }
+        for typed in [
+            "decrypt_key",
+            "decryptKey",
+            "work.wxid",
+            "aiFootprintEnabled",
+            "aiInsightSilenceDays",
+            "messagePushEnabled",
+            "name",
+            "custom",
+        ] {
+            assert_eq!(near_known_key(typed), None, "{typed}");
+        }
     }
 
     fn temp_dir(prefix: &str) -> weflow_native::fixture::TestDir {

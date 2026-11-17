@@ -203,6 +203,10 @@ pub struct BackupRestored {
 pub struct ConfigWritten {
     /// Null when `config unset config_path` finds no default place for it.
     pub config_path: Option<PathBuf>,
+    /// For `config set` of a key WeFlow does not read but spelt almost as one it does (`decrypt_ky`), that one:
+    /// the key was saved as it was typed all the same. Left out otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub did_you_mean: Option<String>,
 }
 
 /// The language `weflow lang` saved: `en` or `zh`.
