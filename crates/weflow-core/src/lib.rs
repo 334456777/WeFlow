@@ -33,6 +33,7 @@ pub mod render;
 pub mod serve_files;
 pub mod services;
 pub mod sns;
+pub mod sudo_caller;
 pub mod sync;
 pub mod video;
 pub mod webui;

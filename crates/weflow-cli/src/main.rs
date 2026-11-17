@@ -114,6 +114,8 @@ async fn main() -> ExitCode {
     weflow_core::output::set_progress_mode(progress);
     let summary = Summary::of(&command);
     let outcome = run(command, progress).await;
+    // under `sudo`, the config and cache files root wrote go back to the caller (#855)
+    weflow_core::sudo_caller::hand_back();
     weflow_core::output::finish_progress();
     if json {
         let (doc, exit) = json_document(outcome);

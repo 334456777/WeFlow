@@ -54,6 +54,8 @@ weflow key db --save
 ```
 > stdout: `Database key obtained and saved to the active profile`
 
+On Linux and macOS this step needs root: run `sudo weflow key db --save` (with the full path of `weflow` if `sudo` does not find it). Under `sudo`, WeFlow still uses your own config and gives the files it writes back to you; see [Linux x64](https://github.com/334456777/WeFlow/wiki/密钥获取#linux-x64-的实现) in the Wiki.
+
 4. Get and save the image keys (Windows and Linux x64; on macOS, log in to WeChat, open a few images, then run `weflow key image-mem --save`; see [Image keys](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥) in the Wiki)
 ```powershell
 weflow key image --save

@@ -118,6 +118,8 @@ impl ServiceHub {
             .filter(|p| !p.trim().is_empty())
             .map(|p| crate::config::expand_home(&p))
             .unwrap_or_else(|| self.ctx.cache_dir());
+        // under `sudo`, a cache folder of the caller's goes on being the caller's (#855)
+        crate::sudo_caller::adopt(&base);
         if !base.exists() {
             // the parts that write there report a folder they cannot make
             let _ = crate::private_files::create_dir_all(&base);
