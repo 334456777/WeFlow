@@ -250,7 +250,7 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
       </Fragment>;
     })}
     {thread.hasNewer && <div className="history-edge newer" aria-live="polite">{thread.loadingNewer ? <><CircleNotch size={14} className="spin" />{t('正在加载更新的消息')}</> : null}</div>}
-    {thread.hasNewer && <div className="latest-bar"><button type="button" className="secondary-button" onClick={reload}><ArrowDown size={14} />{t('回到最新消息')}</button></div>}
-    {!thread.hasNewer && (unseen > 0 || far) && <div className="latest-bar"><button type="button" className="secondary-button" onClick={toNewest}><ArrowDown size={14} />{unseen > 0 ? t('{n} 条新消息', { n: unseen }) : t('回到最新消息')}</button></div>}
+    {thread.hasNewer && <div className="latest-bar"><button type="button" className="secondary-button as-button" onClick={reload}><ArrowDown size={14} />{t('回到最新消息')}</button></div>}
+    {!thread.hasNewer && (unseen > 0 || far) && <div className="latest-bar"><button type="button" className="secondary-button as-button" onClick={toNewest}><ArrowDown size={14} />{unseen > 0 ? t('{n} 条新消息', { n: unseen }) : t('回到最新消息')}</button></div>}
   </div>;
 }

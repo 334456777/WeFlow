@@ -245,7 +245,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
         <div className="search-results" aria-live="polite" data-roving="vertical" data-roving-items=".search-result"><HoverTrack items=".search-result" />{submittedQuery === null
           ? <p className="empty-text">{t('输入关键词，搜索当前会话的记录。')}</p>
           : results.length
-            ? <><p className="results-count">{t('找到 {length} 条记录', { length: results.length })}<span>{t('点击可定位到消息')}</span></p>{results.map(message => <button className="search-result" type="button" key={message.id} onClick={() => setHighlighted(message.id)}><span className="search-result-copy"><strong>{message.sender}</strong><span className="clamp-1">{message.text}</span></span><time>{message.date} {message.time}</time><ArrowSquareOut size={14} /></button>)}</>
+            ? <><p className="results-count">{t('找到 {length} 条记录', { length: results.length })}<span>{t('点击可定位到消息')}</span></p>{results.map(message => <button className="search-result as-row" type="button" key={message.id} onClick={() => setHighlighted(message.id)}><span className="search-result-copy"><strong>{message.sender}</strong><span className="clamp-1">{message.text}</span></span><time>{message.date} {message.time}</time><ArrowSquareOut size={14} /></button>)}</>
             : <p className="empty-text">{t('没有找到匹配的消息，试试其他关键词或时间范围。')}</p>}</div>
       </>,
     },
@@ -262,7 +262,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
       id: 'media', title: t('媒体文件'), summary: selected.live ? t('图片、视频与文件') : t('{length} 个', { length: media.length }),
       content: selected.live
         ? (open: boolean) => liveSession ? <MediaPanel key={scope + ':' + liveSession.username} sessionId={liveSession.username} active={open} onOpen={item => openMedia(liveSession.username, item)} /> : null
-        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? openPreview({ type: 'image', src: message.asset, title: message.text }) : openPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">{t('这段记录中没有媒体文件。')}</p>}</div>,
+        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item as-row" type="button" key={message.id} onClick={() => message.asset ? openPreview({ type: 'image', src: message.asset, title: message.text }) : openPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">{t('这段记录中没有媒体文件。')}</p>}</div>,
     },
   ];
   // nothing to show of a real conversation until one is open

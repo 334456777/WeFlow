@@ -136,8 +136,8 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
             <footer className="preview-foot">
               <span className="preview-foot-side">{shown.type === 'image' && shown.hd && <OriginalButton key={shown.hd.src} hd={shown.hd} onToggle={toggleOriginal} />}</span>
               {steps && <span className="preview-steps">
-                <button type="button" className="preview-step" aria-label={t('上一个')} title={t('上一个（←）')} disabled={steps.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={16} /></button>
-                <button type="button" className="preview-step" aria-label={t('下一个')} title={t('下一个（→）')} disabled={steps.index === steps.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={16} /></button>
+                <button type="button" className="preview-step as-control press-on-hover" aria-label={t('上一个')} title={t('上一个（←）')} disabled={steps.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={16} /></button>
+                <button type="button" className="preview-step as-control press-on-hover" aria-label={t('下一个')} title={t('下一个（→）')} disabled={steps.index === steps.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={16} /></button>
               </span>}
               <span className="preview-foot-side end">{(shown.type === 'video' || /\/api\/chat\/image-data/.test(shown.src)) &&
                 <PreviewDownload key={shown.src} src={shown.src} kind={shown.type} original={shown.type === 'image' && Boolean(shown.hd?.shown)} />}</span>

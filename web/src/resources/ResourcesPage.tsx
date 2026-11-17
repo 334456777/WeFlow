@@ -132,17 +132,17 @@ function Tile({ item, onPreview, onOpen }: { item: Resource; onPreview(item: Res
   </span>;
   switch (item.resourceType) {
     case 'image':
-      return <div className="resource-tile"><button type="button" className="resource-open resource-thumb" aria-label={t('预览图片，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>
+      return <div className="resource-tile"><button type="button" className="resource-open as-control press-on-hover resource-thumb" aria-label={t('预览图片，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>
         <Thumb src={mediaUrl('image-data', sid, message, { thumb: true })} label={t('图片')} />
       </button>{caption}</div>;
     case 'video':
-      return <div className="resource-tile"><button type="button" className="resource-open resource-thumb" aria-label={t('播放视频，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>
+      return <div className="resource-tile"><button type="button" className="resource-open as-control press-on-hover resource-thumb" aria-label={t('播放视频，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>
         <Thumb src={mediaUrl('video-data', sid, message, { thumb: true })} label={t('视频')} /><span className="play-badge" aria-hidden="true"><Play size={18} weight="fill" /></span>
       </button>{caption}</div>;
     case 'voice':
-      return <div className="resource-tile"><Voice sessionId={sid} message={message} className="resource-open resource-voice" />{caption}</div>;
+      return <div className="resource-tile"><Voice sessionId={sid} message={message} className="resource-open as-control press-on-hover resource-voice" />{caption}</div>;
     default:
-      return <div className="resource-tile"><button type="button" className="resource-open resource-file" aria-label={t('{file}，{name}，{when}，在会话中定位', { file: item.fileName || t('文件'), name: nameOf(item), when })} onClick={() => onOpen(item)}>
+      return <div className="resource-tile"><button type="button" className="resource-open as-control press-on-hover resource-file" aria-label={t('{file}，{name}，{when}，在会话中定位', { file: item.fileName || t('文件'), name: nameOf(item), when })} onClick={() => onOpen(item)}>
         {/^pdf$/i.test(item.fileExt ?? '') ? <FilePdf size={32} /> : <FileText size={32} />}
         <span className="clamp-2">{item.fileName || t('文件')}</span><small className="num">{formatFileSize(item.fileSize)}</small>
       </button>{caption}</div>;
@@ -163,7 +163,7 @@ function SessionPicker({ sessions, selected, onSelect }: { sessions: readonly Ch
   const close = (focus: boolean) => { if (focus) anchor.current?.focus(); setOpen(false); };
   const pick = (username: string | null) => { onSelect(username); close(true); };
   return <>
-    <button ref={anchor} type="button" className="group-picker" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
+    <button ref={anchor} type="button" className={'group-picker as-control' + (open ? ' on' : '')} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
       {chosen ? <Avatar name={chosen.displayName || chosen.username} url={chosen.avatarUrl} /> : <span className="avatar avatar-initial" aria-hidden="true"><ChatsCircle size={20} /></span>}
       <span className="rank-copy"><strong className="clamp-1">{chosen ? chosen.displayName || chosen.username : selected ?? t('全部会话')}</strong>
         <span className="cache-text">{selected ? t('只看这个会话') : t('所有会话的资源')}</span></span>

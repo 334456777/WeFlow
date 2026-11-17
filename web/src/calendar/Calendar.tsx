@@ -88,7 +88,7 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
     <div className="calendar-head">
       <button type="button" className="icon-button small" aria-label={before} onClick={back}><CaretLeft size={14} /></button>
       {onTitle
-        ? <button type="button" className="calendar-title" aria-live="polite" onClick={onTitle}>{title}</button>
+        ? <button type="button" className="calendar-title as-row" aria-live="polite" onClick={onTitle}>{title}</button>
         : <span className="calendar-title" aria-live="polite">{title}</span>}
       <button type="button" className="icon-button small" aria-label={after} disabled={!forward} onClick={forward ?? undefined}><CaretRight size={14} /></button>
     </div>;
@@ -99,7 +99,7 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
         maxMonth && firstYear + YEARS > maxMonth.year ? null : () => shift(12 * YEARS), [t('上一组年份'), t('下一组年份')])}
       <div className="calendar-choices">
         {Array.from({ length: YEARS }, (_, i) => firstYear + i).map(y =>
-          <button type="button" key={y} className={'calendar-choice' + (y === year ? ' chosen' : '')} aria-pressed={y === year}
+          <button type="button" key={y} className={'calendar-choice as-row' + (y === year ? ' chosen' : '')} aria-pressed={y === year}
             disabled={monthDisabled(y, 0)} onClick={() => { setFocus(clampDay(addMonths(focus, (y - year) * 12), max)); setView('months'); }}>{y}</button>)}
       </div>
     </div>;
@@ -111,7 +111,7 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
         maxMonth && year >= maxMonth.year ? null : () => shift(12), [t('上一年'), t('下一年')])}
       <div className="calendar-choices">
         {Array.from({ length: 12 }, (_, m) => m).map(m =>
-          <button type="button" key={m} className={'calendar-choice' + (m === month ? ' chosen' : '')} aria-pressed={m === month}
+          <button type="button" key={m} className={'calendar-choice as-row' + (m === month ? ' chosen' : '')} aria-pressed={m === month}
             disabled={monthDisabled(year, m)} onClick={() => { move(addMonths(focus, m - month)); setView('days'); }}>{formatDate(new Date(2000, m, 1), { month: 'short' })}</button>)}
       </div>
     </div>;
@@ -131,7 +131,7 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
         const ends = Boolean(start) && (day === start || day === end);
         const between = Boolean(start && end) && day > start && day < end;
         const count = marks?.[day] ?? 0;
-        const className = 'calendar-day' + (ends ? ' chosen' : '') + (between ? ' between' : '') + (day === now ? ' today' : '')
+        const className = 'calendar-day as-row' + (ends ? ' chosen' : '') + (between ? ' between' : '') + (day === now ? ' today' : '')
           + (marks ? (count ? ' marked' : ' quiet') : '');
         return <td key={day} role="gridcell" data-day={day} data-heat={count ? heat(count) : undefined} className={className} tabIndex={day === focus ? 0 : -1}
           aria-selected={ends || between} aria-disabled={off || undefined} aria-current={day === now ? 'date' : undefined}

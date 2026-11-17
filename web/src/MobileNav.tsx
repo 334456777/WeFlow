@@ -32,11 +32,11 @@ export function MobileNav<Id extends string>({ items, tabs, current, onSelect, s
         const item = items.find(i => i.id === id)!;
         const Icon = item.icon;
         const selected = id === current;
-        return <button key={id} type="button" className="mobile-tab" aria-current={selected ? 'page' : undefined} onClick={() => onSelect(id)}>
+        return <button key={id} type="button" className="mobile-tab as-row" aria-current={selected ? 'page' : undefined} onClick={() => onSelect(id)}>
           <Icon size={22} weight={selected ? 'fill' : 'regular'} aria-hidden="true" /><span>{t(item.short ?? item.label)}</span>
         </button>;
       })}
-      <button type="button" className="mobile-tab" aria-current={chosen ? 'page' : undefined} aria-haspopup="dialog" aria-expanded={open} onClick={() => onOpen(!open)}>
+      <button type="button" className="mobile-tab as-row" aria-current={chosen ? 'page' : undefined} aria-haspopup="dialog" aria-expanded={open} onClick={() => onOpen(!open)}>
         <DotsThreeOutline size={22} weight={chosen ? 'fill' : 'regular'} aria-hidden="true" /><span>{chosen ? t(chosen.short ?? chosen.label) : t('更多')}</span>
       </button>
     </nav>
@@ -63,7 +63,7 @@ function NavSheet<Id extends string>({ items, current, open, status, onSelect, o
       {items.map(item => {
         const Icon = item.icon;
         const selected = item.id === current;
-        return <button key={item.id} type="button" className={'nav-sheet-item' + (selected ? ' selected' : '')} aria-current={selected ? 'page' : undefined} onClick={() => onSelect(item.id)}>
+        return <button key={item.id} type="button" className={'nav-sheet-item as-option' + (selected ? ' selected' : '')} aria-current={selected ? 'page' : undefined} onClick={() => onSelect(item.id)}>
           <Icon size={24} weight={selected ? 'fill' : 'regular'} aria-hidden="true" /><span>{t(item.label)}</span>
         </button>;
       })}

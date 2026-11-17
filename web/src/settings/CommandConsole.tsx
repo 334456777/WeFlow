@@ -183,7 +183,7 @@ export function CommandConsole({ pick, onPicked }: {
         : <div className="command-list scroll-area" role="list" aria-label={t('命令')}>
           {groups.length ? groups.map(([tag, list]) => <div key={tag} className="command-group" role="listitem">
             <h4>{tag}</h4>
-            {list.map(c => <button type="button" key={c.id} className={'command-item' + (c.refused ? ' refused' : '')} aria-pressed={c.id === selected} onClick={() => setSelected(c.id)}>
+            {list.map(c => <button type="button" key={c.id} className={'command-item as-row in-well' + (c.refused ? ' refused' : '')} aria-pressed={c.id === selected} onClick={() => setSelected(c.id)}>
               <code>{c.command}</code><span className="command-summary clamp-1">{c.summary}</span><span className="command-method">{c.method}</span>
             </button>)}
           </div>) : <p className="muted">{t('没有匹配的命令。')}</p>}

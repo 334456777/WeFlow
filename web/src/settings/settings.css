@@ -123,13 +123,10 @@
 .command-item {
   display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 32px; padding: 4px var(--space-2);
   border-radius: var(--radius-sm); color: var(--fg-muted); text-align: left;
-  transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-base) var(--ease-out);
 }
 .command-item code { flex-shrink: 0; color: var(--fg); }
-/* in the well of the list, the command under the pointer or chosen stands out as a button */
-.command-item:hover { box-shadow: var(--control-shadow); color: var(--fg); }
-.command-item[aria-pressed='true'] { box-shadow: var(--control-shadow); color: var(--fg); }
-.command-item:active { box-shadow: var(--control-shadow-pressed); transition-duration: var(--duration-micro); }
+/* a row in the well of the list (styles/roles.css: in-well) */
+.command-item:hover, .command-item[aria-pressed='true'] { color: var(--fg); }
 .command-item.refused code { color: var(--fg-subtle); text-decoration: line-through; }
 .command-summary { flex: 1; min-width: 0; font-size: var(--text-xs); }
 .command-method { flex-shrink: 0; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); }
@@ -180,13 +177,11 @@
 .setup-step {
   display: inline-flex; align-items: center; gap: var(--space-2); height: var(--control-sm); padding: 0 var(--space-3) 0 var(--space-1);
   border-radius: var(--radius-full); color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap;
-  transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-base) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
 .setup-step:hover { color: var(--fg); }
-.setup-step[aria-current='step'] { background: var(--row-bg-selected); color: var(--row-fg-selected); font-weight: var(--weight-semibold); box-shadow: var(--row-shadow-selected); }
+.setup-step[aria-current='step'] { font-weight: var(--weight-semibold); }
 /* the label keeps its gap to the number; the room its bold text needs goes on the right */
 .setup-step .steady-label { align-items: flex-start; }
-.setup-step:active { box-shadow: var(--row-shadow-pressed); transform: scale(var(--press-scale)); transition-duration: var(--duration-micro); }
 .setup-step-number {
   display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
   background: var(--badge-bg); box-shadow: var(--badge-shadow); font-size: var(--text-2xs); font-variant-numeric: tabular-nums;
@@ -197,13 +192,10 @@
 .setup-choices { display: flex; flex-direction: column; gap: var(--space-2); }
 .setup-choice {
   display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--control-lg); padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md); background: var(--option-bg); box-shadow: var(--option-shadow); text-align: left;
-  transition: box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+  border-radius: var(--radius-md); text-align: left;
+  /* an option (styles/roles.css); held down it shrinks as much as the small controls do */
+  --press: var(--press-scale-sm);
 }
-.setup-choice:hover { box-shadow: var(--option-shadow-hover); }
-.setup-choice[aria-pressed='true'] { background: var(--option-bg-selected); box-shadow: var(--option-shadow-selected); color: var(--option-fg-selected); }
-/* held down, chosen or not, the same */
-.setup-choice:active { box-shadow: var(--option-shadow-pressed); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro); }
 .setup-choice-copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--text-sm); }
 .setup-path { color: var(--fg-muted); font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .setup-note { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }

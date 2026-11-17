@@ -53,13 +53,11 @@
 .preview-steps { display: flex; gap: var(--space-3); }
 .preview-step {
   display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 24px; border-radius: var(--radius-full);
-  background: var(--control-bg); box-shadow: var(--control-shadow); color: var(--fg-muted);
-  transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+  color: var(--fg-muted);
 }
-/* under the pointer an arrow already looks pressed; held down, it looks as a button that is on does held down */
-.preview-step:hover:not(:disabled) { color: var(--fg); box-shadow: var(--control-shadow-pressed); }
-.preview-step:active:not(:disabled) { box-shadow: var(--control-shadow-on-pressed); transform: scale(var(--press-scale)); }
-.preview-step:disabled { box-shadow: var(--control-shadow-disabled); color: var(--fg-subtle); cursor: not-allowed; }
+/* a control that looks pressed already under the pointer (styles/roles.css: press-on-hover) */
+.preview-step:hover:not(:disabled) { color: var(--fg); }
+.preview-step:disabled { color: var(--fg-subtle); cursor: not-allowed; }
 
 .preview-download.failed { color: var(--state-danger); }
 /* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */
@@ -72,16 +70,12 @@
    while it shows, pressed again to go back (#194, #338) */
 .original-button {
   display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-md); padding: 0 var(--space-3);
-  border-radius: var(--radius-md); background: var(--control-bg); box-shadow: var(--control-shadow); color: var(--fg-muted); font-size: var(--text-xs);
-  transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+  border-radius: var(--radius-md); color: var(--fg-muted); font-size: var(--text-xs);
 }
 .original-button small { color: var(--fg-subtle); font-size: var(--text-2xs); }
-
-/* under the pointer it already looks pressed */
-button.original-button:not([aria-disabled]):hover { color: var(--fg); box-shadow: var(--control-shadow-pressed); }
-button.original-button:not([aria-disabled]):active { transform: scale(var(--press-scale)); }
-.original-button[aria-disabled] { box-shadow: var(--control-shadow-disabled); color: var(--fg-subtle); cursor: not-allowed; }
-.original-button.shown { background: var(--control-bg-on); box-shadow: var(--control-shadow-on); color: var(--control-fg-on); }
+/* a control that looks pressed already under the pointer (styles/roles.css: press-on-hover) */
+button.original-button:not([aria-disabled]):hover { color: var(--fg); }
+.original-button[aria-disabled] { color: var(--fg-subtle); cursor: not-allowed; }
 .preview-content header small { margin-left: var(--space-2); color: var(--fg-subtle); font-weight: var(--weight-regular); }
 .file-preview { min-width: 320px; padding: var(--space-8) var(--space-8) var(--space-6); text-align: center; }
 @media (max-width: 640px) {

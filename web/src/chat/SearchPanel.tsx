@@ -135,7 +135,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
           : state.status === 'error' ? <p className="empty-text">{state.error}</p>
             : state.hits.length
               ? <><p className="results-count">{state.hasMore ? t('已显示 {n} 条记录', { n: state.hits.length }) : t('找到 {length} 条记录', { length: state.hits.length })}<span>{t('点击可定位到消息')}</span></p>
-                {state.hits.map(hit => <button className="search-result" type="button" key={hit._session_id + ' ' + hit._cursor} onClick={() => onOpenHit(hit)}>
+                {state.hits.map(hit => <button className="search-result as-row" type="button" key={hit._session_id + ' ' + hit._cursor} onClick={() => onOpenHit(hit)}>
                   <span className={'search-result-copy' + (state.query?.sessionId ? '' : ' stacked')}><strong className="clamp-1">{titleOf(hit)}</strong><span className="clamp-1"><Marked text={hit.parsedContent} keyword={keyword} /></span></span>
                   <time>{dayOf(hit.createTime)} {formatClock(hit.createTime)}</time><ArrowSquareOut size={14} />
                 </button>)}

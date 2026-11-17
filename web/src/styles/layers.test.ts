@@ -6,7 +6,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const src = join(import.meta.dir, '..');
-const ORDER = '@layer tokens, app, pages, skin;';
+const ORDER = '@layer tokens, app, pages, roles, skin;';
 /** The skins other than the default, a sheet each, named by the skin (skin.ts). */
 const SKINS = 'styles/skins/';
 
@@ -68,15 +68,15 @@ describe('cascade layers', () => {
     expect(imports[0]).toBe('./styles/tokens.css');
   });
 
-  test('main.tsx loads the default skin next, before app.css', () => {
+  test('main.tsx loads the default skin next, then app.css and the roles', () => {
     const imports = [...read('main.tsx').matchAll(/^import .*?'([^']+)';$/gm)].map(match => match[1]);
-    expect(imports.slice(1, 3)).toEqual(['./styles/neumorphism.css', './app.css']);
+    expect(imports.slice(1, 4)).toEqual(['./styles/neumorphism.css', './app.css', './styles/roles.css']);
   });
 
   test('every rule is in its sheet’s layer', () => {
     // the default skin's tokens are the ground every skin builds on, so they are tokens too
     const layer = (path: string) => path === 'styles/neumorphism.css' ? 'tokens'
-      : path.startsWith(SKINS) ? 'skin' : path === 'app.css' ? 'app' : 'pages';
+      : path === 'styles/roles.css' ? 'roles' : path.startsWith(SKINS) ? 'skin' : path === 'app.css' ? 'app' : 'pages';
     const outside = sheets(src).filter(path => path !== 'styles/tokens.css')
       .filter(path => !inLayer(withoutComments(read(path)), layer(path)));
     expect(outside).toEqual([]);
