@@ -20,11 +20,8 @@
 .biz-head p { display: flex; align-items: center; gap: var(--space-1); color: var(--fg-subtle); font-size: var(--text-xs); }
 .biz-push { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-lg); background: var(--card-bg); box-shadow: var(--card-shadow); }
 .biz-push-time { align-self: center; padding: var(--space-1) 0; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
-.biz-lead, .biz-item {
-  display: flex; border-radius: var(--radius-md); color: inherit; text-decoration: none;
-  transition: box-shadow var(--duration-hover) var(--ease-out);
-}
-a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--row-shadow-hover); }
+/* an article with a link is a row to open (styles/roles.css) */
+.biz-lead, .biz-item { display: flex; border-radius: var(--radius-md); color: inherit; text-decoration: none; }
 .biz-lead { flex-direction: column; gap: var(--space-1); padding: var(--space-1) var(--space-1) var(--space-2); }
 .biz-lead-cover { width: 100%; aspect-ratio: 2.35 / 1; object-fit: cover; border-radius: var(--radius-md); }
 .biz-lead-title { padding: 0 var(--space-1); font-size: var(--text-md); font-weight: var(--weight-semibold); line-height: var(--leading-md); }
@@ -47,7 +44,7 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--row-shadow-hover); }
 .photo-button { display: block; max-width: calc(100% - 48px); padding: var(--space-1); border-radius: var(--radius-xl); background: var(--bubble-bg); box-shadow: var(--bubble-shadow); }
 .outgoing .photo-button { background: var(--bubble-bg-own); box-shadow: var(--bubble-shadow-own); }
 /* held down, a sent one takes its pressed look, as what is selected does (#253) */
-.outgoing .photo-button:active { box-shadow: var(--bubble-shadow-own-pressed); transition-duration: var(--duration-micro); }
+.outgoing .photo-button:active { box-shadow: var(--bubble-shadow-own-pressed); }
 .message-photo { width: 240px; max-width: 100%; aspect-ratio: 1.6973; object-fit: cover; border-radius: var(--radius-md); }
 .highlighted :is(.message-bubble, .photo-button, .emoji-sticker, .system-message) { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 .file-bubble { display: flex; align-items: center; gap: var(--space-3); text-align: left; }
@@ -62,10 +59,7 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--row-shadow-hover); }
  * newest ones, drawn as a main one.
  */
 .latest-bar { position: sticky; bottom: var(--space-3); z-index: 2; display: flex; justify-content: center; margin-top: var(--space-2); pointer-events: none; }
-.latest-bar .secondary-button { pointer-events: auto; background: var(--button-bg); box-shadow: var(--button-shadow); }
-
-.latest-bar .secondary-button:hover { box-shadow: var(--button-shadow-hover); }
-.latest-bar .secondary-button:active { box-shadow: var(--button-shadow-pressed); }
+.latest-bar .secondary-button { pointer-events: auto; }
 .message-row.with-avatar { align-items: flex-start; }
 .message-row .message-time { align-self: flex-end; }
 
@@ -122,13 +116,12 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .export-control > .primary-button { flex: 1; min-width: 0; overflow: hidden; }
 .export-side {
   width: 0; margin-left: 0; opacity: 0; overflow: hidden; flex-shrink: 0;
-  height: var(--control-lg); border-radius: var(--radius-full); background: var(--button-bg); box-shadow: var(--button-shadow); color: var(--fg);
+  height: var(--control-lg); border-radius: var(--radius-full); color: var(--fg);
   display: inline-flex; align-items: center; justify-content: center;
-  transition: width var(--duration-panel) var(--ease-snap), margin-left var(--duration-panel) var(--ease-snap),
-    opacity var(--duration-base) var(--ease-out), box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+  /* a button (styles/roles.css) that also grows out of the export button and fades in */
+  --transition: width var(--duration-panel) var(--ease-snap), margin-left var(--duration-panel) var(--ease-snap),
+    opacity var(--duration-base) var(--ease-out), box-shadow var(--duration-hover) var(--ease-out), scale var(--duration-micro) var(--ease-out);
 }
-.export-side:hover { box-shadow: var(--button-shadow-hover); }
-.export-side:active { box-shadow: var(--button-shadow-pressed); transform: scale(var(--press-scale)); }
 .export-control.expanded .export-side { width: var(--control-lg); margin-left: var(--space-3); opacity: 1; }
 /* in a narrow card, as wide as the card (#254) */
 @container (max-width: 340px) {
@@ -173,9 +166,6 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 
 .member-list { height: min(312px, 40dvh); margin-top: var(--space-3); border-radius: var(--radius-md); }
 .member-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; height: 52px; padding: var(--space-2); border-radius: var(--radius-md); text-align: left; }
-.member-row:hover { box-shadow: var(--row-shadow-hover); }
-/* held down, a member looks chosen: it opens their details */
-.member-row:active { box-shadow: var(--row-shadow-selected); }
 .member-row .avatar { flex-shrink: 0; width: var(--control-md); height: var(--control-md); }
 
 .member-copy { display: flex; flex: 1; flex-direction: column; font-size: var(--text-sm); }
@@ -197,9 +187,6 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
   border-radius: var(--radius-xl); color: var(--fg-subtle); text-align: left;
 }
 .media-item:hover { color: var(--fg); }
-
-/* in a group whose hover hollow takes the press (HoverTrack.tsx), the item stays at rest over it */
-.hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .search-result, .media-item):active:not(.selected, .active) { box-shadow: var(--row-shadow); }
 
 .media-item img { width: 72px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-xs); }
 .media-item > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }
