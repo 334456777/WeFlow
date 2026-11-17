@@ -24,7 +24,9 @@ const SALT_LEN: usize = 16;
 const IV_LEN: usize = 16;
 const HMAC_LEN: usize = 64;
 pub(crate) const RESERVE: usize = IV_LEN + HMAC_LEN;
-const KDF_ITER: u32 = 256_000;
+/// PBKDF2 rounds from the raw key to a page key; the macOS x86_64 DTrace probe
+/// recognizes the raw key's derivation by it.
+pub(crate) const KDF_ITER: u32 = 256_000;
 const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
 
 type Aes256CbcDec = cbc::Decryptor<Aes256>;

@@ -180,8 +180,9 @@ impl WxKey {
         true
     }
 
-    /// Locates the database-key sink with the Rust scanner, attaches with
-    /// `ptrace` and waits for the 32-byte call.
+    /// On x86_64 the key comes from DTrace watching WeChat's call to
+    /// CommonCrypto's `CCKeyDerivationPBKDF`; on ARM64 the Rust scanner finds
+    /// the database-key sink and `ptrace` stops the client there.
     pub fn get_db_key_with_tick(
         &self,
         pid: u32,
@@ -189,15 +190,31 @@ impl WxKey {
         on_status: &mut dyn FnMut(&str, i32),
         on_tick: &mut dyn FnMut(u64),
     ) -> std::result::Result<String, DbKeyError> {
-        let mut hook =
-            crate::macos_key_helper::Hook::start(pid, timeout).map_err(macos_db_key_error)?;
-        on_status("Hook installed; log in to WeChat now", 1);
-        match hook.wait(on_tick) {
-            Ok(key) => {
-                on_status("key obtained", 1);
-                Ok(key)
+        #[cfg(target_arch = "x86_64")]
+        {
+            let mut hook =
+                crate::macos_key_helper::DTraceHook::start(pid).map_err(macos_db_key_error)?;
+            on_status("Hook installed; log in to WeChat now", 1);
+            match hook.wait(timeout, on_tick) {
+                Ok(key) => {
+                    on_status("key obtained", 1);
+                    Ok(key)
+                }
+                Err(error) => Err(macos_db_key_error(error)),
             }
-            Err(error) => Err(macos_db_key_error(error)),
+        }
+        #[cfg(target_arch = "aarch64")]
+        {
+            let mut hook =
+                crate::macos_key_helper::Hook::start(pid, timeout).map_err(macos_db_key_error)?;
+            on_status("Hook installed; log in to WeChat now", 1);
+            match hook.wait(on_tick) {
+                Ok(key) => {
+                    on_status("key obtained", 1);
+                    Ok(key)
+                }
+                Err(error) => Err(macos_db_key_error(error)),
+            }
         }
     }
 }
@@ -211,6 +228,12 @@ fn macos_db_key_error(message: String) -> DbKeyError {
         DbKeyError::Timeout
     } else if let Some(reason) = message.strip_prefix("scan:") {
         DbKeyError::Unsupported(reason.to_string())
+    } else if message.starts_with("dtrace_privileges") {
+        DbKeyError::AccessDenied(message)
+    } else if message.starts_with("dtrace_probe") {
+        DbKeyError::Unsupported(message)
+    } else if message.starts_with("dtrace_start_failed") {
+        DbKeyError::Other(message)
     } else if message.contains("task_for_pid")
         || message.contains("ptrace_attach_failed")
         || message.contains("ATTACH_FAILED")

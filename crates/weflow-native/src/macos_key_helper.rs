@@ -1,16 +1,21 @@
 //! The Rust rewrite of macOS `xkey_helper`.
 //!
-//! `Hook` locates the database-key call, attaches to WeChat with `ptrace` and
-//! Mach breakpoints, and reads the 32-byte key; `scan_image_key` and
+//! On ARM64, `Hook` locates the database-key call by scanning WeChat's code,
+//! attaches to WeChat with `ptrace` and stops it there; on x86_64 the key is
+//! read from WeChat's call to CommonCrypto's `CCKeyDerivationPBKDF` with
+//! DTrace, without stopping the client. `scan_image_key` and
 //! `scan_memory_for_image_key` back the image-key scan, and `wechat_processes` lists the running client.
 //! `cli` keeps the helper's own command line, JSON and exit codes for tests.
 //!
-//! The original executable used Mach exception ports. This rewrite lets
+//! The original executable used Mach exception ports. The ARM64 rewrite lets
 //! `ptrace` report the breakpoint instead: the process stops only while the
 //! key is read, and the same register rules decide whether a hit is the
-//! database-key call.
+//! database-key call. The x86_64 path uses DTrace because the hardened
+//! runtime refuses thread state changes and code writes.
 
 mod cli;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+mod dtrace;
 #[cfg(target_os = "macos")]
 mod image_mem;
 mod locator;
@@ -21,6 +26,8 @@ mod platform;
 mod process;
 
 pub use cli::{run_helper, run_helper_at};
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub use dtrace::DTraceHook;
 #[cfg(target_os = "macos")]
 pub use image_mem::{scan_image_key, scan_memory_for_image_key};
 #[cfg(target_os = "macos")]

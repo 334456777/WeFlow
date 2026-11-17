@@ -5,6 +5,11 @@
 //! lets `ptrace` report the breakpoint: WeChat stops for the few instructions
 //! that read the key, then continues. Every exit path restores the patched
 //! instruction and detaches.
+//!
+//! x86_64 `key db` does not use this path: the hardened runtime kills a process
+//! that changes another process's thread state or code, so `dtrace.rs` reads the
+//! key from WeChat's call to `CCKeyDerivationPBKDF` instead. The breakpoint code
+//! here serves ARM64.
 
 use std::ffi::CStr;
 use std::slice;
@@ -67,7 +72,7 @@ pub fn interrupt() {
     INTERRUPTED.store(true, Ordering::Release);
 }
 
-fn interrupted() -> bool {
+pub(super) fn interrupted() -> bool {
     INTERRUPTED.load(Ordering::Acquire)
 }
 
