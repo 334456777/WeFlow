@@ -181,7 +181,7 @@ pub fn decrypt_file(
 ) -> AppResult<DecryptResult> {
     let data = std::fs::read(path)
         .map_err(|err| AppError::runtime(format!("failed to read {}: {err}", path.display())))?;
-    decrypt_dat(&data, xor_key, aes_key).map_err(|err| AppError::runtime(err.to_string()))
+    decrypt_dat(&data, xor_key, aes_key).map_err(|err| AppError::runtime(format!("{err:#}")))
 }
 
 #[cfg(test)]

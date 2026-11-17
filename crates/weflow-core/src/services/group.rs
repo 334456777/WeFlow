@@ -304,7 +304,7 @@ fn worksheet_name(name: &str) -> String {
 
 impl ServiceHub {
     fn wrap_native<T>(&self, r: anyhow::Result<T>) -> AppResult<T> {
-        r.map_err(|e| AppError::native(e.to_string()))
+        r.map_err(|e| AppError::native(format!("{e:#}")))
     }
 
     fn names_and_avatars(
@@ -1382,7 +1382,9 @@ impl ServiceHub {
             })
             .collect();
         if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| AppError::runtime(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                AppError::runtime(format!("failed to create {}: {e}", parent.display()))
+            })?;
         }
         let ext = out
             .extension()
@@ -1439,8 +1441,9 @@ impl ServiceHub {
                 .iter()
                 .map(|r| r.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(","))
                 .collect();
-            std::fs::write(out, format!("\u{feff}{}", lines.join("\n")))
-                .map_err(|e| AppError::runtime(e.to_string()))?;
+            std::fs::write(out, format!("\u{feff}{}", lines.join("\n"))).map_err(|e| {
+                AppError::runtime(format!("failed to write {}: {e}", out.display()))
+            })?;
         } else {
             use rust_xlsxwriter::{Format, FormatAlign, Workbook};
             let bold = Format::new()
@@ -1450,7 +1453,7 @@ impl ServiceHub {
             let wrap = Format::new().set_text_wrap().set_align(FormatAlign::Top);
             let mut wb = Workbook::new();
             let ws = wb.add_worksheet();
-            let x = |e: rust_xlsxwriter::XlsxError| AppError::runtime(e.to_string());
+            let x = |e: rust_xlsxwriter::XlsxError| AppError::runtime(format!("{e:#}"));
             ws.set_name(worksheet_name("成员消息记录")).map_err(x)?;
             ws.write_with_format(0, 0, "会话信息", &bold).map_err(x)?;
             ws.set_row_height(0, 24).map_err(x)?;
@@ -1491,7 +1494,9 @@ impl ServiceHub {
                         .map_err(x)?;
                 }
             }
-            wb.save(out).map_err(x)?;
+            wb.save(out).map_err(|e| {
+                AppError::runtime(format!("failed to write {}: {e}", out.display()))
+            })?;
         }
         Ok(GroupExported {
             success: true,
@@ -1592,7 +1597,9 @@ impl ServiceHub {
             ]);
         }
         if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent).map_err(|e| AppError::runtime(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                AppError::runtime(format!("failed to create {}: {e}", parent.display()))
+            })?;
         }
         let ext = out
             .extension()
@@ -1634,8 +1641,9 @@ impl ServiceHub {
                 .iter()
                 .map(|r| r.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(","))
                 .collect();
-            std::fs::write(out, format!("\u{feff}{}", lines.join("\n")))
-                .map_err(|e| AppError::runtime(e.to_string()))?;
+            std::fs::write(out, format!("\u{feff}{}", lines.join("\n"))).map_err(|e| {
+                AppError::runtime(format!("failed to write {}: {e}", out.display()))
+            })?;
         } else {
             use rust_xlsxwriter::{Format, FormatAlign, Workbook};
             let bold = Format::new()
@@ -1645,7 +1653,7 @@ impl ServiceHub {
             let wrap = Format::new().set_text_wrap().set_align(FormatAlign::Top);
             let mut wb = Workbook::new();
             let ws = wb.add_worksheet();
-            let x = |e: rust_xlsxwriter::XlsxError| AppError::runtime(e.to_string());
+            let x = |e: rust_xlsxwriter::XlsxError| AppError::runtime(format!("{e:#}"));
             ws.set_name(worksheet_name("群成员列表")).map_err(x)?;
             ws.write_with_format(0, 0, "会话信息", &bold).map_err(x)?;
             ws.set_row_height(0, 25).map_err(x)?;
@@ -1677,7 +1685,9 @@ impl ServiceHub {
                         .map_err(x)?;
                 }
             }
-            wb.save(out).map_err(x)?;
+            wb.save(out).map_err(|e| {
+                AppError::runtime(format!("failed to write {}: {e}", out.display()))
+            })?;
         }
         Ok(GroupExported {
             success: true,

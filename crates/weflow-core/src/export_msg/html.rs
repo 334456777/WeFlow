@@ -205,7 +205,7 @@ impl Exporter<'_, '_> {
         if count == 0 && !write_if_empty {
             return Ok(0);
         }
-        let mut w = io::BufWriter::with_capacity(1 << 20, File::create(out)?);
+        let mut w = super::create_output(out)?;
         self.write_page(&mut w, &state, |w| {
             spool
                 .copy_to(w)

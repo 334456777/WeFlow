@@ -27,10 +27,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let mut writer: Option<std::io::BufWriter<std::fs::File>> = None;
         for msg in msgs {
             if writer.is_none() {
-                if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-                    std::fs::create_dir_all(parent)?;
-                }
-                let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+                let mut w = super::create_output(out)?;
                 w.write_all(Self::WECLONE_HEADER.as_bytes())?;
                 writer = Some(w);
             }

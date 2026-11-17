@@ -246,7 +246,7 @@ impl ConfigStore {
         missing: impl FnOnce() -> Self,
         change: impl FnOnce(&mut Self) -> AppResult<R>,
     ) -> AppResult<R> {
-        let config_err = |err: anyhow::Error| AppError::config(err.to_string());
+        let config_err = |err: anyhow::Error| AppError::config(format!("{err:#}"));
         let _lock = lock_config(path).map_err(config_err)?;
         let mut config = if path.exists() {
             Self::load(path).map_err(config_err)?

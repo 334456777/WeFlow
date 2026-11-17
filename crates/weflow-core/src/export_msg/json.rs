@@ -289,7 +289,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         use std::io::Write;
         let session = self.json_session(count, last_ts);
         let header = self.weflow_header(arkme.is_some().then_some("arkme-json"));
-        let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+        let mut w = super::create_output(out)?;
         w.write_all(b"{\n  \"weflow\": ")?;
         write_pretty(&mut w, &header, 2)?;
         w.write_all(b",\n  \"session\": ")?;

@@ -281,7 +281,8 @@ impl ServiceHub {
             return Ok(IndexMap::new());
         }
         let wcdb = self.open_wcdb()?;
-        let payload = serde_json::to_string(&ids).map_err(|e| AppError::runtime(e.to_string()))?;
+        let payload =
+            serde_json::to_string(&ids).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let raw = wcdb.contact_status(&payload).map_err(native)?;
         Ok(ids
             .into_iter()
@@ -439,7 +440,7 @@ impl ServiceHub {
 
     pub fn chat_tab_counts(&self) -> AppResult<TabCounts> {
         serde_json::from_value(self.contact_type_counts()?)
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     fn friend_identities(&self, wcdb: &weflow_native::wcdb::Wcdb) -> HashSet<String> {
@@ -522,7 +523,8 @@ impl ServiceHub {
             "quick_mode": !include_relations && ids.len() > 1,
             "include_group_sender_count": true
         });
-        let ids_json = serde_json::to_string(&ids).map_err(|e| AppError::runtime(e.to_string()))?;
+        let ids_json =
+            serde_json::to_string(&ids).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let native_rows = wcdb
             .session_message_type_stats_batch(&ids_json, &options.to_string())
             .unwrap_or(Value::Null);
@@ -540,7 +542,7 @@ impl ServiceHub {
             Value::Null
         } else {
             let groups_json =
-                serde_json::to_string(&groups).map_err(|e| AppError::runtime(e.to_string()))?;
+                serde_json::to_string(&groups).map_err(|e| AppError::runtime(format!("{e:#}")))?;
             wcdb.group_member_counts(&groups_json)
                 .unwrap_or(Value::Null)
         };
@@ -674,7 +676,7 @@ impl ServiceHub {
             })?;
         }
         let bytes = serde_json::to_vec_pretty(&Value::Object(hints))
-            .map_err(|e| AppError::runtime(e.to_string()))?;
+            .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         std::fs::write(&path, bytes)
             .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
         Ok(GroupHint {
@@ -1110,7 +1112,7 @@ impl ServiceHub {
     pub fn sessions(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.sessions()
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     /// The list `export sessions` writes: [`Self::sessions`] with each conversation's `display_name` (the contact's
@@ -1119,7 +1121,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let sessions = wcdb
             .sessions()
-            .map_err(|err| AppError::native(err.to_string()))?;
+            .map_err(|err| AppError::native(format!("{err:#}")))?;
         let Value::Array(rows) = sessions else {
             return Ok(sessions);
         };
@@ -1161,7 +1163,7 @@ impl ServiceHub {
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> AppResult<Vec<MsgRow>> {
         let wcdb = self.open_wcdb()?;
         wcdb.messages(session_id, limit, offset)
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     /// A newest-first page of a conversation for `chat messages` and `chat latest`, as [`MessageRow`](crate::contract::MessageRow)s: from the
@@ -1209,7 +1211,7 @@ impl ServiceHub {
             Some(from) => wcdb.messages_from(session_id, limit, from),
             None => wcdb.messages(session_id, limit, offset),
         }
-        .map_err(|err| AppError::native(err.to_string()))
+        .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     /// `chat messages --since`: the `limit` messages sent at `seconds` (Unix time) or later, the earliest ones, still
@@ -1223,7 +1225,7 @@ impl ServiceHub {
         use weflow_native::msg::{MsgPos, PageFrom};
         self.open_wcdb()?
             .messages_from(session_id, limit, PageFrom::After(MsgPos::at_time(seconds)))
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     /// Typed rows of one conversation as the chat window shows them, each with its `_cursor` (#492).
@@ -1266,7 +1268,7 @@ impl ServiceHub {
     ) -> AppResult<Vec<SessionRow>> {
         let wcdb = self.open_wcdb()?;
         wcdb.search(keyword, session_id, limit, offset, begin, end)
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     /// `chat search --parsed`: each hit as the chat window shows it, with its `_cursor`, to page its conversation
@@ -1289,13 +1291,13 @@ impl ServiceHub {
     pub fn contacts(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contacts()
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     pub fn contact(&self, username: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contact(username)
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     pub fn update_message(
@@ -1368,14 +1370,14 @@ impl ServiceHub {
     pub fn contact_type_counts(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contact_type_counts()
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     pub fn group_members(&self, chatroom_id: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let members = wcdb
             .group_members(chatroom_id)
-            .map_err(|err| AppError::native(err.to_string()))?;
+            .map_err(|err| AppError::native(format!("{err:#}")))?;
         let nicknames = wcdb.group_nicknames(chatroom_id).unwrap_or(Value::Null);
         let count = wcdb.group_member_count(chatroom_id).unwrap_or(Value::Null);
         Ok(json!({
@@ -1417,10 +1419,10 @@ impl ServiceHub {
                 0,
                 false,
             )
-            .map_err(|e| AppError::native(e.to_string()))?;
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let fetched = wcdb.fetch_message_batch(cursor);
         let _ = wcdb.close_message_cursor(cursor);
-        let (rows, _) = fetched.map_err(|e| AppError::native(e.to_string()))?;
+        let (rows, _) = fetched.map_err(|e| AppError::native(format!("{e:#}")))?;
         let mut msgs = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
         // `normalizeMessageOrder`
         msgs.sort_by(|a, b| {
@@ -1449,7 +1451,7 @@ impl ServiceHub {
         let probe = (page + 1).min(500);
         let mut rows = wcdb
             .messages(session_id, crate::num::saturating_i32(probe), 0)
-            .map_err(|e| AppError::native(e.to_string()))?;
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         rows.truncate(page);
         let mapped = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
         let is_group = session_id.contains("@chatroom");

@@ -121,7 +121,7 @@ fn read_pages<T: Send, R>(
     let (begin, finish) = (req.start.map_or(0, clamp), req.end.map_or(0, clamp));
     let cursor = wcdb
         .open_export_cursor(&req.session_id, PAGE_SIZE, begin, finish)
-        .map_err(|e| AppError::native(e.to_string()))?;
+        .map_err(|e| AppError::native(format!("{e:#}")))?;
     let cpus = std::thread::available_parallelism().map_or(2, |n| n.get());
     let workers = (cpus, max_workers);
     let result = read_cursor(wcdb, cursor, req, opts, workers, with_finisher, f);
@@ -165,7 +165,7 @@ fn read_cursor<T: Send, R>(
     let stale_before = wcdb.stale_reruns();
     let (total, batch) = wcdb
         .message_cursor_len(cursor)
-        .map_err(|e| AppError::native(e.to_string()))?;
+        .map_err(|e| AppError::native(format!("{e:#}")))?;
     let pages = total.div_ceil(batch.max(1));
     let (initial, workers) = worker_counts(
         pages,
@@ -261,7 +261,7 @@ impl PageSource<'_> {
         let rows = self
             .wcdb
             .fetch_message_page(self.cursor, page)
-            .map_err(|e| AppError::native(e.to_string()))?;
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let fetch = t.elapsed();
         let scanned = rows.len();
         let (start, end) = (self.req.start, self.req.end);

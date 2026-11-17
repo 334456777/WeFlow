@@ -77,7 +77,7 @@ impl ServiceHub {
         let (account_dir, key, _) = self.connection_inputs()?;
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
         wcdb.test_connection(&account_dir, &key)
-            .map_err(|err| AppError::native(err.to_string()))?;
+            .map_err(|err| AppError::native(format!("{err:#}")))?;
         Ok(crate::contract::DbConnection {
             account_dir,
             connected: true,
@@ -88,7 +88,7 @@ impl ServiceHub {
         let (account_dir, key, wxid) = self.connection_inputs()?;
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
         wcdb.open_unchecked(&account_dir, &key, wxid.as_deref())
-            .map_err(|err| AppError::native(err.to_string()))?;
+            .map_err(|err| AppError::native(format!("{err:#}")))?;
         // Proving the key costs a slow key derivation on session.db. Once it has worked, a fingerprint of
         // (key, session.db salt, account) is remembered, and later runs with the same key and database skip it.
         let fingerprint = wcdb
@@ -100,7 +100,7 @@ impl ServiceHub {
         });
         if !known {
             wcdb.check_key()
-                .map_err(|err| AppError::native(err.to_string()))?;
+                .map_err(|err| AppError::native(format!("{err:#}")))?;
             if let Some(fp) = fingerprint {
                 remember_fingerprint(&path, &fp);
             }
@@ -118,7 +118,7 @@ impl ServiceHub {
     pub fn warm_chat_databases(&self) -> AppResult<usize> {
         self.open_wcdb()?
             .warm_chat_databases()
-            .map_err(|e| AppError::native(e.to_string()))
+            .map_err(|e| AppError::native(format!("{e:#}")))
     }
 
     pub(super) fn connection_inputs(&self) -> AppResult<(PathBuf, String, Option<String>)> {

@@ -78,7 +78,8 @@ pub struct SkippedFile {
 pub fn inspect_backup(archive_path: &Path) -> Result<BackupManifest> {
     let file =
         fs::File::open(archive_path).with_context(|| format!("open {}", archive_path.display()))?;
-    let mut zip = ZipArchive::new(file).context("open zip archive")?;
+    let mut zip = ZipArchive::new(file)
+        .with_context(|| format!("{} is not a zip archive", archive_path.display()))?;
     let mut entry = zip
         .by_name(MANIFEST_NAME)
         .context("manifest not found in archive")?;

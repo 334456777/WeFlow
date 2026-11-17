@@ -151,7 +151,7 @@ impl ServiceHub {
             self.emit_progress("emoji", "downloading emojis", current, t)
         })
         .await
-        .map_err(|e| AppError::runtime(e.to_string()))?;
+        .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let downloaded = results.iter().filter(|f| !f.cached).count();
         Ok(crate::contract::EmojisDownloaded {
             found: total,

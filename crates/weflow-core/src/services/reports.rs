@@ -520,7 +520,7 @@ impl ServiceHub {
         let now = Local::now();
 
         let sessions_json =
-            serde_json::to_string(&sessions).map_err(|e| AppError::runtime(e.to_string()))?;
+            serde_json::to_string(&sessions).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let (nb, ne) = normalize_range(start, end);
         let d = wcdb
             .invoke_json(

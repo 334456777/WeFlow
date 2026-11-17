@@ -574,7 +574,7 @@ impl ServiceHub {
         let res = req
             .send()
             .await
-            .map_err(|e| AppError::runtime(e.to_string()))?;
+            .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let header = |k: &str| {
             res.headers()
                 .get(k)
@@ -680,7 +680,7 @@ impl ServiceHub {
         let mut raw = resp
             .bytes()
             .await
-            .map_err(|e| AppError::runtime(e.to_string()))?
+            .map_err(|e| AppError::runtime(format!("{e:#}")))?
             .to_vec();
         let key = truthy_key(key);
 
@@ -986,7 +986,9 @@ impl ServiceHub {
             .map(|p| vec![SavedMedia::default(); p.media.len()])
             .collect();
         if want_media {
-            std::fs::create_dir_all(&media_dir).map_err(|e| AppError::runtime(e.to_string()))?;
+            std::fs::create_dir_all(&media_dir).map_err(|e| {
+                AppError::runtime(format!("failed to create {}: {e}", media_dir.display()))
+            })?;
             #[derive(Clone)]
             struct Task {
                 kind: &'static str,
@@ -1086,7 +1088,9 @@ impl ServiceHub {
         // 2.5 avatars (html only)
         let mut avatar_map: HashMap<String, String> = HashMap::new();
         if opts.format == "html" {
-            std::fs::create_dir_all(&media_dir).map_err(|e| AppError::runtime(e.to_string()))?;
+            std::fs::create_dir_all(&media_dir).map_err(|e| {
+                AppError::runtime(format!("failed to create {}: {e}", media_dir.display()))
+            })?;
             let mut unique: Vec<(String, String)> = Vec::new();
             for p in &posts {
                 if let (u, Some(a)) = (
@@ -1140,8 +1144,10 @@ impl ServiceHub {
                     .collect();
                 let data = json!({ "exportTime": export_time, "totalPosts": posts.len(), "filters": filters, "posts": posts_json });
                 let text = serde_json::to_string_pretty(&data)
-                    .map_err(|e| AppError::runtime(e.to_string()))?;
-                std::fs::write(&out_path, text).map_err(|e| AppError::runtime(e.to_string()))?;
+                    .map_err(|e| AppError::runtime(format!("{e:#}")))?;
+                std::fs::write(&out_path, text).map_err(|e| {
+                    AppError::runtime(format!("failed to write {}: {e}", out_path.display()))
+                })?;
             }
             "arkmejson" => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.json"));
@@ -1210,14 +1216,18 @@ impl ServiceHub {
                     "posts": built
                 });
                 let text = serde_json::to_string_pretty(&data)
-                    .map_err(|e| AppError::runtime(e.to_string()))?;
-                std::fs::write(&out_path, text).map_err(|e| AppError::runtime(e.to_string()))?;
+                    .map_err(|e| AppError::runtime(format!("{e:#}")))?;
+                std::fs::write(&out_path, text).map_err(|e| {
+                    AppError::runtime(format!("failed to write {}: {e}", out_path.display()))
+                })?;
             }
             _ => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.html"));
                 let html = sns::generate_html(&posts, &saved, keyword, &avatar_map)
-                    .map_err(|e| AppError::runtime(e.to_string()))?;
-                std::fs::write(&out_path, html).map_err(|e| AppError::runtime(e.to_string()))?;
+                    .map_err(|e| AppError::runtime(format!("{e:#}")))?;
+                std::fs::write(&out_path, html).map_err(|e| {
+                    AppError::runtime(format!("failed to write {}: {e}", out_path.display()))
+                })?;
             }
         }
         self.emit_progress("sns", "export finished", posts.len(), posts.len());
@@ -1634,7 +1644,7 @@ impl ServiceHub {
         let (final_data, ext) = match xor_key {
             Some(xor_key) if version > 0 => {
                 let result = crate::decrypt::decrypt_dat(&data, xor_key, aes_key_bytes.as_ref())
-                    .map_err(|err| AppError::runtime(err.to_string()))?;
+                    .map_err(|err| AppError::runtime(format!("{err:#}")))?;
                 (result.data, result.ext)
             }
             _ => {

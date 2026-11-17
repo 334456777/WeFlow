@@ -237,7 +237,7 @@ impl ServiceHub {
     ) -> AppResult<Vec<String>> {
         let raw = wcdb
             .sessions()
-            .map_err(|e| AppError::native(e.to_string()))?;
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let rows = raw.as_array().cloned().unwrap_or_default();
         let own;
         let excluded = match excluded {
@@ -292,7 +292,7 @@ impl ServiceHub {
                     weflow_native::wcdb::Arg::I32(e),
                 ],
             )
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
         };
         let mut result = call(session_ids)?;
         if num(&result["total"]) == 0 {
