@@ -9279,6 +9279,10 @@
             "maximum": 255,
             "description": "`key image-mem` without a ciphertext: the XOR key a thumbnail of the account decodes with together with the\nAES key; left out when no thumbnail has an XOR tail that verifies."
           },
+          "verification": {
+            "type": "string",
+            "description": "How the AES key was confirmed, when one was found: `jpeg_decode_and_xor_tail` (a thumbnail of the account\ndecodes as a whole JPEG with both keys), `sample_first_blocks` (the first blocks of two or more thumbnails\ndecrypt into image headers) or `first_block` (only the given ciphertext was checked)."
+          },
           "pid": {
             "type": "integer",
             "format": "uint32",
