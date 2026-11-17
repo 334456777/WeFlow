@@ -82,7 +82,9 @@ impl ServiceHub {
                 found.ok_or_else(timeout_error)?
             }
             None => find_wechat_pid().ok_or_else(|| {
-                AppError::runtime("WeChat process not found (looked for Weixin.exe and WeChat.exe); start WeChat first or pass --pid")
+                AppError::runtime(
+                    "WeChat process not found; start WeChat first, or pass --pid (`weflow key processes` lists WeChat's processes)",
+                )
             })?,
         };
         let login_phase = || {
@@ -99,6 +101,8 @@ impl ServiceHub {
             login_phase();
         }
 
+        // the macOS hook is tried again once at most: more tries can set off the system's protection (#806)
+        let mut tried_again = false;
         let key = loop {
             if key_db_interrupted() {
                 return Err(interrupted());
@@ -135,6 +139,10 @@ impl ServiceHub {
                         format!(
                             "permission denied: cannot attach to WeChat (pid {pid}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({detail})"
                         )
+                    } else if cfg!(target_os = "macos") {
+                        format!(
+                            "permission denied: cannot attach to WeChat (pid {pid}). Run weflow with sudo, and check that macOS lets it debug other processes (System Integrity Protection, code signing). ({detail})"
+                        )
                     } else {
                         format!(
                             "permission denied: cannot open the WeChat process (pid {pid}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({detail})"
@@ -151,8 +159,21 @@ impl ServiceHub {
                 Err(DbKeyError::NotReady(_)) if remaining() > 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
-                Err(DbKeyError::Other(_)) if cfg!(target_os = "macos") && remaining() > 0 => {
-                    std::thread::sleep(std::time::Duration::from_secs(1));
+                Err(DbKeyError::Unsupported(detail)) => {
+                    end_status_line();
+                    return Err(AppError::native(unsupported_wechat(&detail)));
+                }
+                Err(DbKeyError::Other(detail)) if cfg!(target_os = "macos") => {
+                    match macos_hook_failed(&detail, tried_again || remaining() == 0) {
+                        None => {
+                            tried_again = true;
+                            std::thread::sleep(std::time::Duration::from_secs(1));
+                        }
+                        Some(message) => {
+                            end_status_line();
+                            return Err(AppError::native(message));
+                        }
+                    }
                 }
                 Err(other) => {
                     end_status_line();
@@ -292,6 +313,30 @@ impl ServiceHub {
             ))
         }
     }
+}
+
+/// The error when the hook finds nowhere to stop in this WeChat (`detail` says what was missing): WeChat had not
+/// fully started, or its version is one the hook does not know (#806).
+fn unsupported_wechat(detail: &str) -> String {
+    format!(
+        "cannot find where WeChat takes its database key ({detail}); make sure WeChat has fully started and is in front, otherwise this WeChat version is not supported yet (4.1.7 and 4.1.8.100 are known to work)"
+    )
+}
+
+/// What a failure of the macOS hook (`detail`) leads to (#806): `None` to try once more, while `last` is false, as a
+/// breakpoint or a thread's state may have been refused at a bad moment; else the error to end with. A WeChat that
+/// quit is not tried again.
+fn macos_hook_failed(detail: &str, last: bool) -> Option<String> {
+    if detail == "process_died_while_waiting" {
+        return Some(
+            "WeChat quit while the command waited for the key; reopen WeChat, then run the command again".into(),
+        );
+    }
+    last.then(|| {
+        format!(
+            "cannot hook WeChat ({detail}); quit WeChat completely and restart the Mac before trying again, as more tries can set off macOS's protection"
+        )
+    })
 }
 
 fn find_wechat_pid() -> Option<u32> {
@@ -500,6 +545,22 @@ fn wechat_pids() -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A failure of the macOS hook is tried again once, unless WeChat quit, and its reason is in the error (#806).
+    #[test]
+    fn the_macos_hook_is_tried_again_once_and_says_why_it_failed() {
+        let breakpoint = "patch_breakpoint_failed:ptrace_word:-1";
+        assert_eq!(macos_hook_failed(breakpoint, false), None);
+        let last = macos_hook_failed(breakpoint, true).unwrap();
+        assert!(
+            last.contains(breakpoint) && last.contains("restart the Mac"),
+            "{last}"
+        );
+        let quit = macos_hook_failed("process_died_while_waiting", false).unwrap();
+        assert!(quit.starts_with("WeChat quit"), "{quit}");
+        let scan = unsupported_wechat("Sink pattern not found");
+        assert!(scan.contains("(Sink pattern not found)"), "{scan}");
+    }
 
     /// Drives `wait_for_fresh_wechat` with a scripted process list; each `sleep` is one second.
     fn run_wait(script: Vec<Vec<u32>>, timeout: u64) -> (Option<u32>, Vec<&'static str>, u64) {

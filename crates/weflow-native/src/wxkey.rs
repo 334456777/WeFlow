@@ -202,12 +202,15 @@ impl WxKey {
     }
 }
 
-#[cfg(target_os = "macos")]
+/// The kind of a failure of the macOS hook, from its message.
+#[cfg(any(target_os = "macos", test))]
 fn macos_db_key_error(message: String) -> DbKeyError {
     if message == "interrupted by user" {
         DbKeyError::Interrupted
     } else if message.starts_with("HOOK_TIMEOUT") {
         DbKeyError::Timeout
+    } else if let Some(reason) = message.strip_prefix("scan:") {
+        DbKeyError::Unsupported(reason.to_string())
     } else if message.contains("task_for_pid")
         || message.contains("ptrace_attach_failed")
         || message.contains("ATTACH_FAILED")
@@ -230,6 +233,9 @@ pub enum DbKeyError {
     Interrupted,
     /// WeChat has just started and its modules are not ready for inspection.
     NotReady(String),
+    /// The hook found nowhere to stop in this WeChat (macOS: no module to scan, or no call that takes the database
+    /// key in it): another try finds the same (#806).
+    Unsupported(String),
     Other(String),
 }
 
@@ -240,8 +246,45 @@ impl std::fmt::Display for DbKeyError {
             Self::LoginRequired => write!(f, "WeChat is running but not logged in; log in while the command is waiting"),
             Self::Timeout => write!(f, "timed out waiting for the key; log in to WeChat (or restart it) while the command is running"),
             Self::Interrupted => write!(f, "interrupted by user"),
-            Self::NotReady(m) => write!(f, "{m}"),
-            Self::Other(m) => write!(f, "{m}"),
+            Self::NotReady(m) | Self::Unsupported(m) | Self::Other(m) => write!(f, "{m}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The messages of the macOS hook (`macos_key_helper::platform`) and the kind each is taken for (#806).
+    #[test]
+    fn the_macos_hooks_failures_are_told_apart() {
+        let kind = |m: &str| macos_db_key_error(m.to_string());
+        for scan in [
+            "scan:No suitable module found (wechat.dylib or WeChat >100MB)",
+            "scan:Both wechat.dylib and main binary >100MB found (ambiguous)",
+            "scan:Sink pattern not found",
+        ] {
+            assert_eq!(
+                kind(scan),
+                DbKeyError::Unsupported(scan["scan:".len()..].to_string())
+            );
+        }
+        assert!(matches!(
+            kind("attach:task_for_pid(5): (os/kern) failure"),
+            DbKeyError::AccessDenied(_)
+        ));
+        assert!(matches!(
+            kind("attach_wait_timeout"),
+            DbKeyError::NotReady(_)
+        ));
+        assert_eq!(kind("HOOK_TIMEOUT"), DbKeyError::Timeout);
+        assert_eq!(kind("interrupted by user"), DbKeyError::Interrupted);
+        for other in [
+            "patch_breakpoint_failed:ptrace_word:-1",
+            "thread_get_state(5): (os/kern) failure",
+            "process_died_while_waiting",
+        ] {
+            assert_eq!(kind(other), DbKeyError::Other(other.to_string()));
         }
     }
 }
