@@ -10,13 +10,15 @@ import { t } from '../i18n';
 const ROW_HEIGHT = 58;
 const ALL = '@all';
 
-export function MomentPeople({ state, total, selected, onSelect, onRetry }: {
+export function MomentPeople({ state, total, selected, onSelect, onRetry, sample = false }: {
   state: PeopleState;
   /** All the posts, from `sns stats`, once known. */
   total: number | null;
   selected: string | null;
   onSelect(username: string | null): void;
   onRetry(): void;
+  /** The posts are the sample's (#879). */
+  sample?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const rows = useMemo(() => {
@@ -52,6 +54,7 @@ export function MomentPeople({ state, total, selected, onSelect, onRetry }: {
       <div className="search-input session-search"><MagnifyingGlass size={16} aria-hidden="true" />
         <input type="search" aria-label={t('搜索发布者')} placeholder={t('搜索发布者')} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
+      {sample && <p className="session-note">{t('示例数据 · 连接 weflow serve 后显示真实记录')}</p>}
     </div>
     {body}
   </div>;

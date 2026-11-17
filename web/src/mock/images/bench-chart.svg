@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 340" width="560" height="340">
+  <rect width="560" height="340" fill="#fbfbfd"/>
+  <g stroke="#e4e6ee"><path d="M70 50h450M70 110h450M70 170h450M70 230h450M70 290h450"/></g>
+  <path d="M70 30v260h450" stroke="#9aa1b2" stroke-width="2" fill="none"/>
+  <g fill="#b9c0cf"><rect x="100" y="90" width="40" height="200" rx="4"/><rect x="220" y="130" width="40" height="160" rx="4"/><rect x="340" y="70" width="40" height="220" rx="4"/></g>
+  <g fill="#e3743d"><rect x="146" y="196" width="40" height="94" rx="4"/><rect x="266" y="214" width="40" height="76" rx="4"/><rect x="386" y="172" width="40" height="118" rx="4"/></g>
+  <g font-family="sans-serif" font-size="15" fill="#4a5163"><text x="104" y="318">sessions</text><text x="222" y="318">messages</text><text x="348" y="318">export</text></g>
+  <rect x="430" y="40" width="14" height="14" rx="3" fill="#b9c0cf"/><rect x="430" y="64" width="14" height="14" rx="3" fill="#e3743d"/>
+  <g font-family="sans-serif" font-size="14" fill="#4a5163"><text x="452" y="52">before</text><text x="452" y="76">after</text></g>
+</svg>

@@ -38,14 +38,31 @@ describe('scopes (#198)', () => {
     rerender({ backend: ready('b') });
     expect(result.current).toBe(start + 1);
     // gone and back (an older server says no data)
-    rerender({ backend: { state: 'offline' } });
+    rerender({ backend: { state: 'offline', held: true } });
     rerender({ backend: ready('b') });
     expect(result.current).toBe(start + 2);
     rerender({ backend: ready(undefined) });
     expect(result.current).toBe(start + 3);
-    rerender({ backend: { state: 'offline' } });
+    rerender({ backend: { state: 'offline', held: true } });
     rerender({ backend: ready(undefined) });
     expect(result.current).toBe(start + 4);
+  });
+
+  it('starts a new one between the sample and a server, either way (#879)', () => {
+    const { result, rerender } = renderHook(({ backend }) => useScope(backend), { initialProps: { backend: { state: 'checking' } as Backend } });
+    const start = result.current;
+    // no server yet: the sample, read in the first scope
+    rerender({ backend: { state: 'offline' } });
+    expect(result.current).toBe(start);
+    // a server: what the sample answered goes
+    rerender({ backend: ready('a') });
+    expect(result.current).toBe(start + 1);
+    // one that does not suit the page takes its place: the sample again, the server's records go
+    const incompatible: Backend = { state: 'incompatible', health: { status: 'ok', apiVersion: '0', version: '5.0.0', data: 'a' }, reason: '', advice: '' };
+    rerender({ backend: incompatible });
+    expect(result.current).toBe(start + 2);
+    rerender({ backend: { state: 'offline' } });
+    expect(result.current).toBe(start + 2);
   });
 
   it('never shows the account before for the same conversation', async () => {

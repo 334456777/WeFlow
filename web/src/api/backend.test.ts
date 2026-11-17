@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
-import { adviceFor, compareVersions, Connection, holdsRecords, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
+import { adviceFor, compareVersions, Connection, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
+import { holdsRecords } from './records';
 import { call, setToken } from './client';
 import { onLive, type LiveEvent } from './live';
 import { HIDDEN_MS } from './presence';

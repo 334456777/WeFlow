@@ -104,13 +104,6 @@ export function adviceFor(health: Health, web = WEB): string {
   return t('请把 weflow 升级到 {want} 或更新的版本；或运行 weflow web list --remote 找一个适用于当前 weflow 的网页版本，再用 weflow web use <版本> 换上。', { want: web.minBackendVersion });
 }
 
-/**
- * Whether the page shows the server's records: while it is ready, and while it is gone after it was ready, with what
- * was read before it went (the sample is only for a page that has not read any).
- */
-export const holdsRecords = (backend: Backend): boolean =>
-  backend.state === 'ready' || (backend.state === 'offline' && backend.held === true);
-
 function stateOf(health: Health): Backend {
   const reason = incompatibility(health);
   return reason ? { state: 'incompatible', health, reason, advice: adviceFor(health) } : { state: 'ready', health };

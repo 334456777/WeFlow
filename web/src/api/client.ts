@@ -107,10 +107,55 @@ export function apiUrl(path: string, params: Params = {}): string {
   return '/' + path.replace(/^\/+/, '') + (tail ? '?' + tail : '');
 }
 
-type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+/**
+ * What answers the page instead of a server (#879): the sample records of `src/mock`, while no server has answered
+ * this page or the one there does not suit it. The page loads it, a chunk of its own, and sets it with `setSample`.
+ */
+export interface SampleServer {
+  /**
+   * The data the route answers, as `weflow serve` would; `refused` for what the sample does not do: any change, a job,
+   * a route it does not have. (The chunk imports nothing of the page's, so it builds no ApiError itself.)
+   */
+  answer(method: Method, path: string, params: Params): { data: unknown } | { refused: true };
+  /** The address of a media file of the sample: what `path` and `params` address on a server. */
+  media(path: string, params: Params): string;
+}
+
+interface Sampling { server: Promise<SampleServer>; loaded: SampleServer | null }
+
+let sample: Sampling | null = null;
+
+/** Answers the page from the sample server `load` gives, or from the server again (null). */
+export function setSample(load: (() => Promise<SampleServer>) | null): void {
+  if (!load) { sample = null; return; }
+  if (sample) return;
+  const entry: Sampling = { server: load(), loaded: null };
+  entry.server.then(server => { entry.loaded = server; }, () => { /* each call says it */ });
+  sample = entry;
+}
+
+/** Whether the page is answered by the sample server. */
+export const sampling = () => sample !== null;
+
+/** The address of a media file (`<img>`, `<audio>`, …): on the server, or of the sample while it answers. */
+export function mediaAddress(path: string, params: Params): string {
+  return sample?.loaded ? sample.loaded.media(path, params) : apiUrl(path, params);
+}
+
+async function answerSample<T>(server: Promise<SampleServer>, method: Method, path: string, params: Params, signal?: AbortSignal): Promise<T> {
+  const answering = await server;
+  signal?.throwIfAborted();
+  const answer = answering.answer(method, path.replace(/^\/+/, ''), params);
+  if ('refused' in answer) throw new ApiError(0, 'sample', t('这是示例数据，连接 weflow serve 后才能这样做。'));
+  // the answer is the page's own, as one read from a server is: what it changes leaves the sample as it is
+  return structuredClone(answer.data) as T;
+}
 
 /** Runs a route: GET and DELETE take the parameters as a query, the other methods as a JSON body. */
 export async function call<T>(method: Method, path: string, params: Params = {}, signal?: AbortSignal, extra: Record<string, string> = {}): Promise<T> {
+  if (sample) return answerSample<T>(sample.server, method, path, params, signal);
   const revision = tokenRevision;
   const inQuery = method === 'GET' || method === 'DELETE';
   const headers: Record<string, string> = { Accept: 'application/json', ...extra };

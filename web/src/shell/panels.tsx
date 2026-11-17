@@ -3,7 +3,8 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { Icon } from '@phosphor-icons/react';
-import { holdsRecords, type Backend } from '../api/backend';
+import type { Backend } from '../api/backend';
+import { holdsRecords } from '../api/records';
 import { MobileBar } from '../MobileNav';
 import { pageIn } from '../motion';
 import { Scrollbar } from '../Scrollbar';

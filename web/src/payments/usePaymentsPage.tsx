@@ -1,5 +1,5 @@
-// The WeChat Pay page (#204): all the notices read once, narrowed by payee and days here. With no records
-// held (shell.held), the sample is shown in the chat page's browser instead.
+// The WeChat Pay page (#204): all the notices read once, narrowed by payee and days here. The notices are
+// the server's, or the sample's while no server has answered (#879).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Page, Shell } from '../shell/page';
 import { BrowserPanel } from '../shell/panels';
@@ -15,7 +15,7 @@ import './payments.css';
 /** `active`: the page browsed, the one the console keeps the cards of while the settings are open. */
 export function usePaymentsPage(shell: Shell, active: boolean): Page {
   const { backend, scope, setMobileDetail } = shell;
-  const live = active && shell.held;
+  const live = active && shell.records;
   const [filter, setFilter] = useState<PayFilter>(ALL_PAYMENTS);
   useEffect(() => { setFilter(ALL_PAYMENTS); }, [scope]);
   const [state, reload] = usePayments(live, scope);
@@ -41,7 +41,7 @@ export function usePaymentsPage(shell: Shell, active: boolean): Page {
   const view = <BrowserPanel label={t('微信支付浏览')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回商户列表')} title={t('支付记录')} paneLabel={t('支付记录')} pane={pane} detailKey={filter.merchant}
     list={backend.state === 'unauthorized'
       ? <TokenPrompt />
-      : <PaymentMerchants state={state} merchants={merchants} selected={filter.merchant} onRetry={reload}
+      : <PaymentMerchants state={state} merchants={merchants} selected={filter.merchant} onRetry={reload} sample={shell.sample}
         onSelect={merchant => { setFilter(f => ({ ...f, merchant })); setMobileDetail(true); }} />}>
     {live && (chosen
       ? <PaymentList key={scope + ':' + JSON.stringify(filter)} payments={chosen} scroller={pane} narrowed={Boolean(filter.merchant || filter.from || filter.to)} />

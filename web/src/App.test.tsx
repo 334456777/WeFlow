@@ -62,36 +62,44 @@ function openSettings(section: string) {
 }
 
 describe('App', () => {
-  it('shows the workspace with the sample records while no backend is connected', async () => {
+  it('shows the workspace with the sample records while no backend is connected (#879)', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
     await renderWith(null);
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeTruthy();
     expect(screen.getByRole('region', { name: '操作控制台' })).toBeTruthy();
     expect(screen.queryByText('操作控制台')).toBeNull();
+    // the sample server answers as a server would: the newest conversation opens, its messages read the same way
+    await waitFor(() => expect(document.querySelector('.message-pane')?.textContent).toContain('改成讲 WeFlow 自己的'));
+    expect(screen.getByRole('button', { name: '选择WeFlow 开发群' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '选择林沐' }).textContent).toContain('收到 👌');
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);
     expect(screen.getByText('示例数据 · 连接 weflow serve 后显示真实会话')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '选择设计协作群' }).textContent).toContain('李婷：这版看起来不错');
+    expect(document.querySelector('[data-card="export"] .badge')?.textContent).toBe('示例数据');
+    // no read went to a server
+    expect(fetch.mock.calls.filter(([url]) => String(url).includes('/api/'))).toEqual([]);
   });
 
-  it('finds nothing in the sample conversation for an empty search, and clears what a search found (#199)', async () => {
+  it('searches the sample conversations, and refuses what would change something (#879)', async () => {
     await renderWith(null);
+    await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
     const field = screen.getByRole('searchbox', { name: '搜索此会话的消息' });
-    fireEvent.change(field, { target: { value: '   ' } });
+    fireEvent.change(field, { target: { value: 'Kani' } });
     fireEvent.click(screen.getByRole('button', { name: '搜索' }));
-    expect(document.querySelectorAll('.search-results .search-result')).toHaveLength(0);
-    fireEvent.change(field, { target: { value: '照片' } });
-    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
-    expect(document.querySelectorAll('.search-results .search-result').length).toBeGreaterThan(0);
-    fireEvent.change(field, { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
-    expect(document.querySelectorAll('.search-results .search-result')).toHaveLength(0);
+    await waitFor(() => expect(document.querySelectorAll('.search-results .search-result')).toHaveLength(1));
+    expect(document.querySelector('.search-results')?.textContent).toContain('WAL 解析的 Kani 证明');
+    fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('这是示例数据，连接 weflow serve 后才能这样做。'));
   });
 
   it('keeps official accounts in the chat list rather than a sidebar entry of their own', async () => {
     await renderWith(null);
     const nav = screen.getByRole('navigation', { name: '主导航' });
     expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '通讯录', '资源浏览', '聊天分析', '年度报告', '我的足迹', '灵感信箱', '导出', '数据库备份', '设置']);
+    await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '公众号' }));
-    expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['设计观察', '城市手记']);
+    await waitFor(() => expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent))
+      .toEqual(['微信支付', 'WeFlow 更新日志', 'Rust 编程手记', '界面设计观察']));
   });
 
   it('lists the conversations of a running backend', async () => {
@@ -214,8 +222,9 @@ describe('App', () => {
 
   it('switches between the conversations and the settings', async () => {
     await renderWith(null);
+    await waitFor(() => expect(screen.getByRole('button', { name: '选择陈屿' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '选择陈屿' }));
-    expect(screen.getByText('好的，周一见。', { selector: '.message-bubble' })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('pgo-build.sh 的训练清单可以加上 WebUI 常用的几个读取', { selector: '.message-bubble' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     // the connection first, the sections of the server marked as needing it (#776)
     expect(screen.getByRole('region', { name: '连接状态' }).textContent).toContain('weflow serve');

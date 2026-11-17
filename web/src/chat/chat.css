@@ -11,7 +11,6 @@
   color: var(--fg); font-size: var(--text-2xs); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums;
 }
 .unread-dot { width: 8px; height: 8px; flex-shrink: 0; margin: 0 5px; border-radius: 50%; background: var(--fg-subtle); }
-.session-note { color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
 .folded-head { display: flex; align-items: center; gap: var(--space-2); height: var(--control-sm); font-size: var(--text-sm); }
 .folded-head .num { color: var(--fg-subtle); font-size: var(--text-xs); }
 .biz-feed { display: flex; flex-direction: column; gap: var(--space-4); max-width: 520px; margin: 0 auto; }
