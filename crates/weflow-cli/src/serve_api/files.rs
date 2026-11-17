@@ -144,8 +144,14 @@ async fn open(path: &Path) -> Result<(tokio::fs::File, u64, String), String> {
     Ok((file, meta.len(), name))
 }
 
-/// `head`, then the file read from disk as it is sent, then `tail`.
-fn between(head: String, mut file: tokio::fs::File, tail: String) -> Body {
+/// `head`, then the file read from disk as it is sent, then `tail`. `folder`, the request's own, goes with the
+/// answer: removed once the file is sent and closed, or when the client goes before.
+fn between(
+    head: String,
+    mut file: tokio::fs::File,
+    tail: String,
+    folder: Option<super::RequestFolder>,
+) -> Body {
     Body::from_stream(async_stream::stream! {
         if !head.is_empty() {
             yield Ok::<_, std::io::Error>(Bytes::from(head));
@@ -161,6 +167,9 @@ fn between(head: String, mut file: tokio::fs::File, tail: String) -> Body {
                 }
             }
         }
+        // closed before its folder goes
+        drop(file);
+        drop(folder);
         if !tail.is_empty() {
             yield Ok(Bytes::from(tail));
         }
@@ -168,8 +177,11 @@ fn between(head: String, mut file: tokio::fs::File, tail: String) -> Body {
 }
 
 /// The `multipart/form-data` answer: `{"success": true, "data": {"path": …}}`, then the file read from disk as it is
-/// sent.
-pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
+/// sent; `folder`, the request's own, is removed once it is sent.
+pub(super) async fn multipart(
+    path: &Path,
+    folder: Option<super::RequestFolder>,
+) -> Result<Response, String> {
     let (file, length, name) = open(path).await?;
     let boundary = format!("weflow-{}", super::generate_token());
     let result = json!({ "success": true, "data": { "path": path } });
@@ -187,7 +199,7 @@ pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
             format!("multipart/form-data; boundary={boundary}"),
         )
         .header(header::CONTENT_LENGTH, length)
-        .body(between(head, file, tail))
+        .body(between(head, file, tail, folder))
         .map_err(|e| format!("cannot answer with {}: {e}", path.display()))
 }
 
@@ -202,7 +214,7 @@ pub(super) async fn attachment(path: &Path) -> Result<Response, String> {
             disposition("attachment", &name),
         )
         .header(header::CONTENT_LENGTH, length)
-        .body(between(String::new(), file, String::new()))
+        .body(between(String::new(), file, String::new(), None))
         .map_err(|e| format!("cannot answer with {}: {e}", path.display()))
 }
 

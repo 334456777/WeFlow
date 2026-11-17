@@ -156,7 +156,8 @@ impl ServiceHub {
         dirs
     }
 
-    /// Folder of the files `weflow serve` writes for `?return=file` requests that name no `--out`.
+    /// Folder of the files `weflow serve` writes for `?return=file` requests that name no `--out`, a folder of each
+    /// running server's own in it (see [`crate::serve_files`]).
     pub fn serve_files_dir(&self) -> PathBuf {
         self.cache_base().join("serve-files")
     }
@@ -185,10 +186,17 @@ impl ServiceHub {
     pub fn cache_clear(&self, parts: &[CachePart]) -> crate::contract::CacheCleared {
         let (mut removed, mut warnings) = (Vec::new(), Vec::new());
         let mut freed = 0u64;
+        let serve_files = self.serve_files_dir();
         for &part in parts {
             for path in self.cache_part_paths(part) {
                 let (bytes, _) = disk_usage(&path);
-                if remove_path(&path, &mut removed, &mut warnings) {
+                if path == serve_files {
+                    // the folders of the servers running stay (#815)
+                    let (gone, failed) = crate::serve_files::remove_unheld(&path);
+                    removed.extend(gone.iter().map(|p| p.to_string_lossy().into_owned()));
+                    warnings.extend(failed);
+                    freed += bytes.saturating_sub(disk_usage(&path).0);
+                } else if remove_path(&path, &mut removed, &mut warnings) {
                     freed += bytes;
                 }
             }

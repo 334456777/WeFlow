@@ -384,6 +384,30 @@ impl FileOut {
     }
 }
 
+/// The folder the server chose for the file of a request answered right away (not a job), removed when this is
+/// dropped (#815): by the answer that sends the file once it is sent or the client has gone, at once when the
+/// command failed or the request went no further.
+pub(super) struct RequestFolder(PathBuf);
+
+impl Drop for RequestFolder {
+    fn drop(&mut self) {
+        if std::fs::remove_dir_all(&self.0).is_ok() || !self.0.exists() {
+            return;
+        }
+        // a read still finishing elsewhere can keep the file open a moment, and Windows removes no open file: try
+        // again shortly, off this thread
+        let dir = std::mem::take(&mut self.0);
+        std::thread::spawn(move || {
+            for _ in 0..20 {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                if std::fs::remove_dir_all(&dir).is_ok() || !dir.exists() {
+                    return;
+                }
+            }
+        });
+    }
+}
+
 /// Makes the folder the server chose for the file of `?return=file`, once the command is sure to run.
 fn make_folder(file_out: Option<&FileOut>) -> Result<(), Refused> {
     let Some(dir) = file_out.and_then(|f| f.dir.as_ref()) else {
@@ -738,6 +762,10 @@ async fn command_route(
         }
     };
     make_folder(file_out.as_ref())?;
+    let folder = file_out
+        .as_ref()
+        .and_then(|f| f.dir.clone())
+        .map(RequestFolder);
     let args = if asked.std == Std::Json { &full } else { &argv };
     let ran = std::time::Instant::now();
     let output = run(&st.cfg.exe, args, lang).await.map_err(|err| {
@@ -748,7 +776,7 @@ async fn command_route(
         )
     })?;
     timing.stage("cmd", Some("child process"), ran);
-    Ok(timing.on(child_answer(st, &command, output, asked, file_out).await))
+    Ok(timing.on(child_answer(st, &command, output, asked, file_out, folder).await))
 }
 
 /// The parameters of a request to a command: its query's, and over them the keys of its JSON body (`null` removes
@@ -855,6 +883,7 @@ async fn child_answer(
     output: std::process::Output,
     asked: Asked,
     file_out: Option<FileOut>,
+    folder: Option<RequestFolder>,
 ) -> Response {
     // killed by a signal: no exit code
     let exit = output.status.code().unwrap_or(-1);
@@ -871,7 +900,7 @@ async fn child_answer(
                         if file.dir.is_some() {
                             path = files::add_extension(&path);
                         }
-                        match files::multipart(&path).await {
+                        match files::multipart(&path, folder).await {
                             Ok(resp) => resp,
                             Err(message) => error_response(
                                 StatusCode::INTERNAL_SERVER_ERROR,
