@@ -98,6 +98,9 @@ export const groups: Group[] = [
   { username: DORM, name: '404 寝室（永不熄灯）', owner: 'wxid_sample_ajie', members: ['wxid_sample_ajie', 'wxid_sample_laoma', 'wxid_sample_dabing', ME] },
 ];
 
+/** The conversations pinned to the top (#885): the WeFlow group, the family, the one loved and mother. */
+export const pinned = new Set([DEV, FAMILY, 'wxid_sample_xiaolu', 'wxid_sample_mom']);
+
 export interface Official {
   username: string;
   name: string;

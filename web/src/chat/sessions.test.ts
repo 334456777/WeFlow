@@ -34,7 +34,10 @@ describe('previewOf', () => {
 });
 
 describe('sessionRows', () => {
-  const statuses = { 'g1@chatroom': { isFolded: true, isMuted: true }, 'g2@chatroom': { isFolded: true, isMuted: false }, wxid_b: { isFolded: false, isMuted: true } };
+  const statuses = {
+    'g1@chatroom': { isFolded: true, isMuted: true, isPinned: false }, 'g2@chatroom': { isFolded: true, isMuted: false, isPinned: false },
+    wxid_b: { isFolded: false, isMuted: true, isPinned: false },
+  };
 
   it('gathers the folded groups into one entry at the time of the newest', () => {
     const rows = sessionRows(sessions, statuses, 'all', '');
@@ -54,6 +57,16 @@ describe('sessionRows', () => {
 
   it('shows everything when the states are not known yet', () => {
     expect(sessionRows(sessions, {}, 'group', '').map(r => r.id)).toEqual(['g1@chatroom', 'g2@chatroom']);
+  });
+
+  it('lists the pinned conversations first, newest first among them, and in time order when searched (#885)', () => {
+    const pinned = { ...statuses, wxid_b: { isFolded: false, isMuted: true, isPinned: true }, gh_news: { isFolded: false, isMuted: false, isPinned: true } };
+    const rows = sessionRows(sessions, pinned, 'all', '');
+    expect(rows.map(r => r.id)).toEqual(['gh_news', 'wxid_b', 'wxid_a', FOLDED_ID]);
+    expect(rows.map(r => r.pinned)).toEqual([true, true, false, false]);
+    expect(sessionRows(sessions, pinned, 'private', '').map(r => r.id)).toEqual(['wxid_b', 'wxid_a']);
+    expect(sessionRows(sessions, pinned, 'all', '陈屿 ').map(r => r.id)).toEqual(['wxid_b']);
+    expect(sessionRows(sessions, pinned, 'private', 'wxid').map(r => r.id)).toEqual(['wxid_a', 'wxid_b']);
   });
 });
 

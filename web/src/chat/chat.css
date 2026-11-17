@@ -4,6 +4,8 @@
 .conversation-foot { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .conversation-foot .conversation-preview { flex: 1; min-width: 0; }
 .muted-icon { color: var(--fg-subtle); }
+/* a conversation pinned in WeChat (#885), beside its name */
+.pinned-icon { flex: none; margin-right: var(--space-1); color: var(--fg-subtle); }
 /* Unread messages: a small count, or only a dot for a muted conversation. Not a status colour. */
 .unread-count {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; flex-shrink: 0;

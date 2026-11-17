@@ -296,6 +296,7 @@ impl ServiceHub {
                 let status = ChatStatus {
                     is_folded: flag("isFolded"),
                     is_muted: flag("isMuted"),
+                    is_pinned: flag("isPinned"),
                 };
                 (id, status)
             })

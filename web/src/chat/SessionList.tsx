@@ -1,7 +1,7 @@
 // The conversation list of the chat page (#197): search, a filter by kind, folded groups, and a virtual list.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import { ArrowClockwise, ArrowLeft, BellSlash, MagnifyingGlass, UsersThree } from '@phosphor-icons/react';
+import { ArrowClockwise, ArrowLeft, BellSlash, MagnifyingGlass, PushPin, UsersThree } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
 import { Avatar } from '../Avatar';
 import { Segmented } from '../Segmented';
@@ -23,7 +23,9 @@ function SessionItem({ row, active, now, onClick }: { row: SessionRow; active: b
     aria-label={row.folded ? t('打开折叠的群聊，共 {count} 个', { count: row.folded.count }) : t('选择{name}', { name: row.name })} aria-pressed={row.folded ? undefined : active} onClick={onClick}>
     {row.folded ? <span className="avatar avatar-initial" aria-hidden="true"><UsersThree size={20} /></span> : <Avatar name={row.name} url={row.avatarUrl} />}
     <span className="conversation-copy">
-      <span className="conversation-head"><span className="conversation-name">{row.name}</span><time className="conversation-time">{formatSessionTime(row.time, now)}</time></span>
+      <span className="conversation-head"><span className="conversation-name">{row.name}</span>
+        {row.pinned && <PushPin className="pinned-icon" size={12} weight="fill" aria-label={t('置顶')} />}
+        <time className="conversation-time">{formatSessionTime(row.time, now)}</time></span>
       <span className="conversation-foot">
         <span className="conversation-preview clamp-1">{row.preview}</span>
         {row.muted && !row.folded && <BellSlash className="muted-icon" size={14} aria-label={t('免打扰')} />}

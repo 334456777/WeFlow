@@ -79,7 +79,7 @@ const HELP: &[(&str, &str)] = &[
     ("Extract the video md5 from a message XML payload", "从消息 XML 中提取视频 md5"),
     ("Fetch (and decrypt, with --key) a Moments image or video", "获取朋友圈图片或视频（使用 --key 时同时解密）"),
     ("First day (YYYY-MM-DD, local time)", "起始日期（YYYY-MM-DD，本地时间）"),
-    ("Folded / muted state of sessions", "会话的折叠 / 免打扰状态"),
+    ("Folded / muted / pinned state of sessions", "会话的折叠 / 免打扰 / 置顶状态"),
     ("Footprint statistics from the database", "来自数据库的足迹统计"),
     ("Generate a test insight for the first eligible private chat, or for the given conversation", "为第一个符合条件的私聊或指定的会话生成测试洞察"),
     ("Generate for this conversation instead of the first eligible one", "改为对该会话生成，而不是第一个符合条件的会话"),

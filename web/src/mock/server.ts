@@ -14,7 +14,7 @@ import { pictureUrl, voiceSound } from './media';
 import { postCounts, timeline } from './moments';
 import { pushes } from './official';
 import { payRecords } from './pay';
-import { contactRows, contacts, groups, ME, nameOf, officials, people, person } from './people';
+import { contactRows, contacts, groups, ME, nameOf, officials, people, person, pinned } from './people';
 import { annualReport, dualReport, reportYears } from './reports';
 
 type Params = Parameters<SampleServer['answer']>[2];
@@ -236,7 +236,7 @@ const routes: Record<string, Route> = {
   'GET api/chat/sessions': () => sessions(),
   'GET api/chat/statuses': params => Object.fromEntries(list(params, 'usernames').map(username => {
     const group = groups.find(g => g.username === username);
-    return [username, { isFolded: Boolean(group?.folded), isMuted: Boolean(group?.muted) }];
+    return [username, { isFolded: Boolean(group?.folded), isMuted: Boolean(group?.muted), isPinned: pinned.has(username) }];
   })),
   'GET api/chat/messages': messagePage,
   'GET api/chat/search': search,

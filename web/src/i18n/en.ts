@@ -193,6 +193,7 @@ export const en: Record<string, string> = {
   "打开折叠的群聊，共 {count} 个": "Open the folded groups, {count} in all",
   "选择{name}": "Choose {name}",
   "免打扰": "Muted",
+  "置顶": "Pinned",
   "{n} 条未读": "{n} unread",
   "正在读取会话": "Reading the conversations",
   "没有名称匹配的会话。": "No conversation has a matching name.",

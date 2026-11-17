@@ -280,19 +280,21 @@ impl Account {
         Ok(Value::Object(map))
     }
 
-    /// `{ username: { isFolded, isMuted } }`.
+    /// `{ username: { isFolded, isMuted, isPinned } }`.
     ///
-    /// WeChat keeps these in `contact.flag` bits (folded group chats: bit 28; muted single chats: bit 9)
-    /// and, for group chats, in `chat_room_notify` (1 = notifications off).
+    /// WeChat keeps these in `contact.flag` bits (folded group chats: bit 28; muted single chats: bit 9; pinned
+    /// conversations of any kind: bit 11) and, for group chats, in `chat_room_notify` (1 = notifications off).
+    /// `SessionTable.status`, which might have held the pinning, is 0 on WeChat 4.x (#885).
     pub fn contact_status(&self, usernames: &[String]) -> Result<Value> {
         let mut map = Map::new();
         for r in self.contact_rows(usernames)? {
             let flag = int(&r, "flag");
             let muted = int(&r, "chat_room_notify") == 1 || flag & (1 << 9) != 0;
             let folded = flag & (1 << 28) != 0;
+            let pinned = flag & (1 << 11) != 0;
             map.insert(
                 text(&r, "username"),
-                json!({ "isFolded": folded, "isMuted": muted }),
+                json!({ "isFolded": folded, "isMuted": muted, "isPinned": pinned }),
             );
         }
         Ok(Value::Object(map))
@@ -470,7 +472,8 @@ mod tests {
                     "wxid_eve",
                     3,
                     "",
-                    0,
+                    // pinned, and in a contact list (bits 0 and 1), as WeChat 4.x keeps a pinned friend
+                    (1 << 11) | 0b11,
                     "",
                     "Eve",
                     "eve",
@@ -571,13 +574,21 @@ mod tests {
             json!({"wxid_bob": "bb"})
         );
         let st = acct
-            .contact_status(&ids(&["room1@chatroom", "wxid_bob"]))
+            .contact_status(&ids(&["room1@chatroom", "wxid_bob", "wxid_eve"]))
             .unwrap();
         assert_eq!(
             st["room1@chatroom"],
-            json!({"isFolded": true, "isMuted": true})
+            json!({"isFolded": true, "isMuted": true, "isPinned": false})
         );
-        assert_eq!(st["wxid_bob"], json!({"isFolded": false, "isMuted": false}));
+        assert_eq!(
+            st["wxid_bob"],
+            json!({"isFolded": false, "isMuted": false, "isPinned": false})
+        );
+        // pinned: bit 11 of the flag, whatever else is set beside it
+        assert_eq!(
+            st["wxid_eve"],
+            json!({"isFolded": false, "isMuted": false, "isPinned": true})
+        );
     }
 
     #[test]

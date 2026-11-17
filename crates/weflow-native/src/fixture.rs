@@ -786,7 +786,11 @@ impl Fixture {
                     avatar: "https://example.com/bob.png",
                     ..ContactSpec::new("wxid_bob", 1, "Bob")
                 },
-                ContactSpec::new("wxid_carol", 1, "Carol"),
+                // pinned to the top of the conversation list (#885)
+                ContactSpec {
+                    flag: 1 << 11,
+                    ..ContactSpec::new("wxid_carol", 1, "Carol")
+                },
                 ContactSpec::new("wxid_quiet", 3, "Quiet"),
                 ContactSpec::new("gh_news", 5, "News"),
                 ContactSpec::new("medianote", 1, "File Helper"),

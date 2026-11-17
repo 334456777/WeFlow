@@ -13,7 +13,10 @@ const session = (username: string, displayName: string, time: number, unreadCoun
 const ready: SessionsState = {
   status: 'ready',
   sessions: [session('wxid_a', '林沐', 500, 200),session('g1@chatroom', '家人群', 400, 120), session('wxid_b', '陈屿', 300), session('g2@chatroom', '旧同学', 200)],
-  statuses: { 'g1@chatroom': { isFolded: true, isMuted: false }, 'g2@chatroom': { isFolded: true, isMuted: true }, wxid_b: { isFolded: false, isMuted: true } },
+  statuses: {
+    'g1@chatroom': { isFolded: true, isMuted: false, isPinned: false }, 'g2@chatroom': { isFolded: true, isMuted: true, isPinned: false },
+    wxid_b: { isFolded: false, isMuted: true, isPinned: false },
+  },
 };
 
 function Harness({ state = ready, onRetry = () => {} }: { state?: SessionsState; onRetry?: () => void }) {

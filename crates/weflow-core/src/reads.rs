@@ -108,7 +108,7 @@ pub enum Read {
         user: Option<String>,
         prefer_cache: bool,
     },
-    /// Whether each conversation is folded and muted.
+    /// Whether each conversation is folded, muted and pinned.
     ChatStatuses {
         usernames: Vec<String>,
     },

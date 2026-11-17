@@ -27,6 +27,8 @@ export interface SessionRow {
   time: number;
   unread: number;
   muted: boolean;
+  /** Pinned in WeChat (#885): listed before the others. */
+  pinned: boolean;
   /** The entry of the folded groups; `count` of them. */
   folded?: { count: number };
 }
@@ -50,6 +52,7 @@ function rowOf(session: ChatSession, status?: SessionStatus): SessionRow {
     time: timeOf(session),
     unread: session.unreadCount || 0,
     muted: Boolean(status?.isMuted),
+    pinned: Boolean(status?.isPinned),
   };
 }
 
@@ -64,8 +67,9 @@ export function withOfficials(sessions: readonly ChatSession[], officials: reado
 }
 
 /**
- * The rows for a filter and a search. Folded groups are gathered into one entry at the time of the newest of them,
- * or listed on their own in the folded view; a search looks through all of them by name. The 「公众号」 filter adds
+ * The rows for a filter and a search. The conversations pinned in WeChat come first, newest first among them, as
+ * WeChat lists them (#885). Folded groups are gathered into one entry at the time of the newest of them, or listed on
+ * their own in the folded view; a search looks through all of them by name, in time order. The 「公众号」 filter adds
  * the `officials` followed that have no conversation, after the ones that do (#203).
  */
 export function sessionRows(
@@ -91,17 +95,20 @@ export function sessionRows(
     entry = {
       // The group's name in front of its last message, without the sender: one prefix is enough on one line.
       id: FOLDED_ID, name: t('折叠的群聊'), preview: (newest.displayName || newest.username) + '：' + newest.summary.replace(/\s+/g, ' ').trim(),
-      time: timeOf(newest), unread: folded.reduce((sum, s) => sum + (s.unreadCount || 0), 0), muted: true,
+      time: timeOf(newest), unread: folded.reduce((sum, s) => sum + (s.unreadCount || 0), 0), muted: true, pinned: false,
       folded: { count: folded.length },
     };
   }
+  const isPinned = (session: ChatSession) => Boolean(statuses[session.username]?.isPinned);
+  const pinned: SessionRow[] = [];
   for (const session of sessions) {
     if (isFolded(session) || !wanted(session)) continue;
+    if (isPinned(session)) { pinned.push(rowOf(session, statuses[session.username])); continue; }
     if (entry && entry.time >= timeOf(session)) { rows.push(entry); entry = null; }
     rows.push(rowOf(session, statuses[session.username]));
   }
   if (entry) rows.push(entry);
-  return rows;
+  return [...pinned, ...rows];
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
