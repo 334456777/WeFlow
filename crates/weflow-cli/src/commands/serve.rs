@@ -28,7 +28,7 @@ pub(crate) struct ServeCommand {
     /// Listen port (default: 18108).
     #[arg(long)]
     port: Option<u16>,
-    /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run).
+    /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run). An empty one counts as none.
     #[arg(long, env = "WEFLOW_HTTP_TOKEN")]
     api_token: Option<String>,
     /// Tasks (`POST` commands: exports, keys, backups…) the command API runs at once; more are queued or refused (default: 1)
@@ -150,9 +150,14 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     };
     let host = command.host.unwrap_or_else(|| "127.0.0.1".into());
     let port = command.port.unwrap_or(serve_api::DEFAULT_PORT);
+    // an empty one is none: `WEFLOW_HTTP_TOKEN: ${WEFLOW_HTTP_TOKEN}` of a compose file that has no value for it
+    // would otherwise let in anyone who gives an empty `access_token` (#808)
     let token = command
         .api_token
-        .clone()
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
         .or_else(|| cfg_str("httpApiToken"));
     // without a configured token the command API makes one up
     let generated_token = token.is_none().then(serve_api::http::generate_token);

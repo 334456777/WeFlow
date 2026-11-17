@@ -91,7 +91,12 @@ fn safe_equal(a: &str, b: &str) -> bool {
     x.len() == y.len() && x.iter().zip(y).fold(0u8, |acc, (p, q)| acc | (p ^ q)) == 0
 }
 
+/// Whether the request gives the server's `token`, in an `Authorization: Bearer` header or an `access_token`
+/// parameter. An empty `token` lets no one in: an empty parameter would match it (#808).
 pub(super) fn authorized(token: &str, headers: &HeaderMap, query: &[(String, String)]) -> bool {
+    if token.is_empty() {
+        return false;
+    }
     let bearer = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -224,6 +229,16 @@ mod tests {
         assert!(!authorized("t0k", &headers, &[]));
         assert_eq!(generate_token().len(), 32);
         assert_ne!(generate_token(), generate_token());
+    }
+
+    #[test]
+    fn an_empty_token_lets_no_one_in() {
+        let mut headers = HeaderMap::new();
+        let empty = [("access_token".to_string(), String::new())];
+        assert!(!authorized("", &headers, &empty));
+        assert!(!authorized("", &headers, &[]));
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer "));
+        assert!(!authorized("", &headers, &[]));
     }
 
     #[test]

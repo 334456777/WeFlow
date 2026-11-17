@@ -8,7 +8,7 @@ use std::process::Stdio;
 use serde_json::{json, Value};
 use weflow_core::contract::API_VERSION;
 
-use super::common::{account_home, run_cli, start, start_env, temp_root, weflow, TOKEN};
+use super::common::{account_home, run_cli, start, start_env, temp_root, weflow, Server, TOKEN};
 
 #[test]
 fn options_saved_in_the_config_apply_where_the_command_line_gives_none() {
@@ -411,26 +411,57 @@ fn the_startup_message_gives_the_webui_address_with_the_token() {
     assert!(url.ends_with(&format!("/ui/?token={TOKEN}")), "{url}");
 }
 
+/// Without a token one is made up; an empty one, from the command line or the environment, is none (#808): it
+/// would let in an empty `access_token`.
 #[test]
 fn a_token_is_made_up_when_none_is_configured() {
-    let root = temp_root("gen-token");
-    let mut child = weflow(&root)
-        .args(["--json", "serve", "--port", "0"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
-    let event: Value = loop {
-        let line = lines.next().unwrap().unwrap();
-        if let Ok(v) = serde_json::from_str::<Value>(&line) {
-            break v;
+    let none: &[&str] = &[];
+    for (n, (args, env)) in [
+        (none, None),
+        (&["--api-token", ""][..], None),
+        (&["--api-token", "  "][..], None),
+        (none, Some("")),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let root = temp_root(&format!("gen-token-{n}"));
+        let mut cmd = weflow(&root);
+        if let Some(value) = env {
+            cmd.env("WEFLOW_HTTP_TOKEN", value);
         }
-    };
-    let _ = child.kill();
-    let _ = child.wait();
-    assert_eq!(event["tokenConfigured"], false);
-    assert_eq!(event["generatedToken"].as_str().unwrap().len(), 32);
+        let mut child = cmd
+            .args(["--json", "serve", "--port", "0", "--api-only"])
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        // held to the end: the server writes to it
+        let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+        let event: Value = loop {
+            let line = lines.next().unwrap().unwrap();
+            if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                break v;
+            }
+        };
+        assert_eq!(event["tokenConfigured"], false, "{n}");
+        assert_eq!(event["generatedToken"].as_str().unwrap().len(), 32, "{n}");
+        let server = Server {
+            child,
+            addr: event["url"]
+                .as_str()
+                .unwrap()
+                .trim_start_matches("http://")
+                .to_string(),
+            home: root.to_path_buf(),
+            stderr: std::sync::Arc::default(),
+        };
+        let r = server.request("GET", "/config/list?access_token=", &[], "");
+        assert_eq!(r.status, 401, "{n}: {}", r.body);
+        drop(server);
+        drop(lines);
+    }
 }
 
 #[test]
