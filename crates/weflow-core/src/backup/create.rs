@@ -61,8 +61,8 @@ impl Written {
 /// Neither is backed up itself when it lies in a folder that is.
 ///
 /// A database is copied with its WAL as one: when WeChat writes to the database (a checkpoint) or starts the WAL
-/// over while they are copied, both are copied again, up to [`COPY_ATTEMPTS`] times (`unsettled` names those that
-/// never held still). The WAL index (`-shm`) is left out, since SQLite rebuilds it from the WAL.
+/// over while they are copied, both are copied again, up to three times (`COPY_ATTEMPTS`; `unsettled` names those
+/// that never held still). The WAL index (`-shm`) is left out, since SQLite rebuilds it from the WAL.
 ///
 /// A file that is gone by the time it is read (WeChat removes some meanwhile) is left out. One that cannot be read is
 /// listed in `skipped` when it is a medium or a sticker, and fails the backup when it is one of the databases.
