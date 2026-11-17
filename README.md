@@ -106,6 +106,10 @@ For the detailed list, see [Unsupported features](https://github.com/334456777/W
 
 [WeFlow Wiki](https://github.com/334456777/WeFlow/wiki)
 
+## Sponsor
+
+If WeFlow CLI is useful to you, you can support its development through [GitHub Sponsors](https://github.com/sponsors/334456777).
+
 # Disclaimer
 <div id="disclaimer">
 

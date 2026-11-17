@@ -105,6 +105,10 @@ WeFlow Rust CLI 以**只读**方式打开数据库，不会修改微信数据库
 
 [WeFlow Wiki](https://github.com/334456777/WeFlow/wiki)
 
+## 赞助
+
+如果 WeFlow CLI 对你有帮助，可以通过 [GitHub Sponsors](https://github.com/sponsors/334456777) 支持它的开发。
+
 # 免责声明
 <div id="disclaimer">
 
