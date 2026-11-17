@@ -31,7 +31,7 @@ impl AppContext {
         } else {
             default_home_dir()?
         };
-        fs::create_dir_all(&home_dir).map_err(|err| {
+        crate::private_files::create_dir_all(&home_dir).map_err(|err| {
             AppError::config(format!("failed to create {}: {err}", home_dir.display()))
         })?;
         let config_path = chosen.unwrap_or_else(|| home_dir.join("config.json"));
@@ -208,9 +208,10 @@ impl ConfigStore {
 
     /// Write the config through a temporary file and a rename, so a reader never sees a half-written file.
     /// Use [`ConfigStore::update`] to change the saved config: `save` alone overwrites what other processes wrote.
+    /// The file it leaves is its owner's only on Unix, whatever the mode of the one it replaces (#812).
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
+            crate::private_files::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
         static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
@@ -221,7 +222,10 @@ impl ConfigStore {
             NEXT_TMP.fetch_add(1, Ordering::Relaxed)
         ));
         let written = (|| -> Result<()> {
-            let mut file = fs::File::create(&tmp)?;
+            let mut file = crate::private_files::open_options()
+                .write(true)
+                .create_new(true)
+                .open(&tmp)?;
             file.write_all(&serde_json::to_vec_pretty(self)?)?;
             file.sync_all()?;
             drop(file);
@@ -575,14 +579,14 @@ pub fn default_config_path() -> Option<PathBuf> {
 /// Exclusive lock on `<config>.lock`, released when the returned file is dropped.
 fn lock_config(path: &Path) -> Result<fs::File> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
+        crate::private_files::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     let lock_path = path.with_file_name(format!(
         "{}.lock",
         path.file_name().unwrap_or_default().to_string_lossy()
     ));
-    let file = fs::OpenOptions::new()
+    let file = crate::private_files::open_options()
         .create(true)
         .truncate(false)
         .write(true)
@@ -646,7 +650,7 @@ pub fn set_saved_config_path(path: &Path) -> AppResult<()> {
         };
     }
     if let Some(parent) = pointer.parent() {
-        fs::create_dir_all(parent).map_err(|err| {
+        crate::private_files::create_dir_all(parent).map_err(|err| {
             AppError::config(format!("failed to create {}: {err}", parent.display()))
         })?;
     }
@@ -1043,6 +1047,25 @@ mod tests {
             ConfigStore::update(&path, |c| c.set_key(None, "image_xor_key", json!(256))).is_err()
         );
         assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    /// The config file holds the keys: its folder, the file and its lock are made for their owner only, and a file
+    /// others could read is closed to them by the next save (#812).
+    #[cfg(unix)]
+    #[test]
+    fn the_config_is_its_owners_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| fs::metadata(path).map_or(0, |m| m.permissions().mode() & 0o777);
+        let dir = temp_dir("weflow-config-mode");
+        let path = dir.join("home/config.json");
+        ConfigStore::update(&path, |c| c.set_key(None, "wxid", json!("wxid_a"))).unwrap();
+        assert_eq!(mode(&dir.join("home")), 0o700);
+        assert_eq!(mode(&path), 0o600);
+        assert_eq!(mode(&dir.join("home/config.json.lock")), 0o600);
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        ConfigStore::update(&path, |c| c.set_key(None, "wxid", json!("wxid_b"))).unwrap();
+        assert_eq!(mode(&path), 0o600);
     }
 
     #[test]

@@ -108,13 +108,21 @@ fn export_stats_value(total_posts: i64, total_friends: i64, my_posts: Option<i64
 impl ServiceHub {
     // ── paths ──
 
+    /// The cache folder, made here when it is not there yet so that it is its owner's only: what goes in it, such as
+    /// decrypted images and voices, takes its folder's protection (#812).
     pub(super) fn cache_base(&self) -> PathBuf {
-        self.profile()
+        let base = self
+            .profile()
             .ok()
             .and_then(|p| p.cache_path.clone())
             .filter(|p| !p.trim().is_empty())
             .map(|p| crate::config::expand_home(&p))
-            .unwrap_or_else(|| self.ctx.cache_dir())
+            .unwrap_or_else(|| self.ctx.cache_dir());
+        if !base.exists() {
+            // the parts that write there report a folder they cannot make
+            let _ = crate::private_files::create_dir_all(&base);
+        }
+        base
     }
 
     fn sns_cache_dir(&self) -> PathBuf {

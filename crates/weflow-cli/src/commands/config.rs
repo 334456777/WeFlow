@@ -73,6 +73,34 @@ pub(crate) fn apply_progress_settings(
     }
 }
 
+/// For `config path` and `db test`: a line on stderr for the config file and the folder of WeFlow's files when other
+/// users of the machine may read them (#812). What WeFlow makes is its owner's only; what was there before, or was
+/// changed since, keeps its mode until the config is saved again (the file) or the user changes it (the folder).
+pub(crate) fn warn_if_open_to_others(ctx: &AppContext) {
+    use weflow_core::locale::tr;
+    use weflow_core::private_files::open_to_others;
+    if open_to_others(&ctx.config_path) {
+        eprintln!(
+            "{}",
+            tr(
+                "warning: other users of this machine may read {path}, which holds the database key and the API token (chmod 600 {path})",
+                "警告：这台机器上的其他用户可以读取 {path}，其中有数据库密钥和 API 令牌（chmod 600 {path}）"
+            )
+            .replace("{path}", &ctx.config_path.to_string_lossy())
+        );
+    }
+    if open_to_others(&ctx.home_dir) {
+        eprintln!(
+            "{}",
+            tr(
+                "warning: other users of this machine may open {path}, the folder of WeFlow's files (chmod 700 {path})",
+                "警告：这台机器上的其他用户可以打开 WeFlow 的文件夹 {path}（chmod 700 {path}）"
+            )
+            .replace("{path}", &ctx.home_dir.to_string_lossy())
+        );
+    }
+}
+
 pub(crate) fn handle_config(
     command: ConfigCommand,
     ctx: &AppContext,

@@ -25,6 +25,7 @@ pub mod message;
 pub mod messages_zh;
 pub mod num;
 pub mod output;
+pub mod private_files;
 pub mod process;
 pub mod push;
 pub mod reads;
