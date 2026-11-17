@@ -347,12 +347,20 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         };
         stopped.map_err(|err| AppError::runtime(format!("HTTP server stopped: {err}")))
     };
+    // whichever request stops it (Ctrl+C, `systemctl stop`, a closed window, #810) takes this way out: the jobs'
+    // processes end as the server is dropped, and the insight engine and the auto-download hook stop below
     let outcome = tokio::select! {
         result = server => result.map(|_| ()),
-        _ = tokio::signal::ctrl_c() => {
+        stop = crate::stop::requested() => {
             // the open event streams end with `bye`, so a page tells a server that stopped from one it lost
             farewell.say(std::time::Duration::from_millis(500)).await;
-            Err(AppError::new("user_interrupt", "interrupted by user", 130))
+            match stop {
+                crate::stop::Stop::Interrupt => {
+                    Err(AppError::new("user_interrupt", "interrupted by user", 130))
+                }
+                // a service asked to end ends well: `systemctl` counts any other code as a failure
+                crate::stop::Stop::End => Ok(()),
+            }
         }
     };
     insight_stop.store(true, std::sync::atomic::Ordering::Relaxed);

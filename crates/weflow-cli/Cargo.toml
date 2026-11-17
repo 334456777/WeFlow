@@ -52,6 +52,10 @@ zip.workspace = true
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
 
+# stop.rs reads whether SIGHUP is ignored (`nohup`) before listening for it
+[target."cfg(unix)".dependencies]
+libc = "0.2"
+
 # turns on ANSI colours in the Windows console (`cache list` prints its header in green)
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console"] }
