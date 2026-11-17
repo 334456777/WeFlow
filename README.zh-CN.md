@@ -31,7 +31,7 @@ weflow lang zh
 
 ## 首次设置与导出（必要步骤）
 
-支持微信 4.0 及以上版本，需要至少登录过一次账号、发送过消息并打开过图片。下面的步骤以 Windows 为例，请**以管理员身份运行 PowerShell**。Linux 步骤见 Wiki 的 [Linux 首次设置](https://github.com/334456777/WeFlow/wiki/Linux-首次设置)。
+支持微信 4.0 及以上版本，需要至少登录过一次账号、发送过消息并打开过图片。下面的步骤以 Windows 为例，请**以管理员身份运行 PowerShell**。Linux 步骤见 Wiki 的 [Linux 首次设置](https://github.com/334456777/WeFlow/wiki/Linux-首次设置)，macOS 步骤见 Wiki 的 [macOS 首次设置](https://github.com/334456777/WeFlow/wiki/macOS-首次设置)。
 
 1. 设置微信数据目录
 ```powershell
@@ -60,9 +60,7 @@ weflow key db --save
 ```
 > stdout: `已获取数据库密钥，已保存到当前档案`
 
-Linux 和 macOS 上这一步需要 root：运行 `sudo weflow key db --save`（`sudo` 找不到 `weflow` 时写完整路径）。用 sudo 运行时，WeFlow 仍使用你本人的配置，写入的文件也会交还给你，见 Wiki 的 [Linux x64 的实现](https://github.com/334456777/WeFlow/wiki/密钥获取#linux-x64-的实现)。
-
-4. 获取并保存图片密钥（Windows、Linux x64 和 macOS，见 Wiki 的[图片密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥)）
+4. 获取并保存图片密钥（见 Wiki 的[图片密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥)）
 ```powershell
 weflow key image --save
 ```
@@ -74,6 +72,7 @@ weflow key image --save
 ```powershell
 weflow db test
 ```
+> stdout: `accountDir: C:\Users\<你>\Documents\xwechat_files\wxid_xxxxxxxx_xxxx`<br>`connected: true`
 
 6. 尝试列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
 ```powershell
