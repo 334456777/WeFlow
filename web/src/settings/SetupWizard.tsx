@@ -28,7 +28,7 @@ const reason = (problem: unknown, fallback: string) =>
 
 /** One choice of a list: inset when chosen, like the other choices of the page. */
 function Choice({ on, onClick, children }: { on: boolean; onClick(): void; children: ReactNode }) {
-  return <button type="button" className="setup-choice" aria-pressed={on} onClick={onClick}>
+  return <button type="button" className="setup-choice as-option" aria-pressed={on} onClick={onClick}>
     <span className="setup-choice-copy">{children}</span>{on && <Check size={14} weight="bold" aria-hidden="true" />}
   </button>;
 }
@@ -297,7 +297,7 @@ export function SetupWizard({ profile, jobs, platform, onChanged, onDone, onClos
       <button type="button" className="icon-button" aria-label={t('关闭配置向导')} onClick={onClose}><X size={18} /></button></header>
     <ol className="setup-steps">
       {STEPS.map((s, i) => <li key={s.id}>
-        <button type="button" className={'setup-step' + (done[s.id] ? ' passed' : '')} aria-current={s.id === step ? 'step' : undefined} onClick={() => setStep(s.id)}>
+        <button type="button" className={'setup-step as-row' + (done[s.id] ? ' passed' : '')} aria-current={s.id === step ? 'step' : undefined} onClick={() => setStep(s.id)}>
           <span className="setup-step-number">{done[s.id] ? <Check size={12} weight="bold" aria-label={t('已完成')} /> : i + 1}</span><SteadyLabel text={t(s.label)} />
         </button>
       </li>)}

@@ -117,7 +117,7 @@ function MediaItem({ sessionId, item, onOpen }: { sessionId: string; item: Resou
   const thumb = item.resourceType === 'image' && !broken
     ? <img src={mediaUrl('image-data', sessionId, item as unknown as ParsedMessage, { thumb: true })} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
     : <span className="media-icon" aria-hidden="true">{item.resourceType === 'video' ? <VideoCamera size={24} /> : <FileText size={24} />}</span>;
-  return <button className="media-item" type="button" aria-label={t('{label}，{detail}，在会话中定位', { label, detail })} onClick={() => onOpen(item)}>
+  return <button className="media-item as-row" type="button" aria-label={t('{label}，{detail}，在会话中定位', { label, detail })} onClick={() => onOpen(item)}>
     {thumb}<span><span className="clamp-1">{label}</span><small>{detail}</small></span><ArrowSquareOut size={14} />
   </button>;
 }

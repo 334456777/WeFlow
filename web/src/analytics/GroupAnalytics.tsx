@@ -39,7 +39,7 @@ export function GroupPicker({ state, selected, onSelect, onRetry }: { state: Gro
   if (!groups.length) return <p className="muted">{t('没有群聊。')}</p>;
   const close = (focus: boolean) => { if (focus) anchor.current?.focus(); setOpen(false); };
   return <>
-    <button ref={anchor} type="button" className="group-picker" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
+    <button ref={anchor} type="button" className={'group-picker as-control' + (open ? ' on' : '')} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
       <span className="avatar avatar-initial" aria-hidden="true"><UsersThree size={20} /></span>
       <span className="rank-copy"><strong className="clamp-1">{selected?.displayName ?? t('选择群聊')}</strong>
         <span className="cache-text">{selected ? t('{n} 位成员 · 点这里换一个群', { n: n(selected.memberCount) }) : t('共 {n} 个群聊', { n: n(groups.length) })}</span></span>

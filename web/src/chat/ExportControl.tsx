@@ -24,7 +24,7 @@ export function ExportControl({ stage, result, ready, onStart, onCancel }: {
           : waiting ? <><DownloadSimple size={18} />{t('选择导出格式')}</>
           : <><DownloadSimple size={18} />{stage === 'error' ? t('重新导出') : t('开始导出')}</>}</span>
       </button>}
-    <button type="button" className="export-side" inert={!expanded} aria-label={stage === 'done' ? t('再次导出') : t('取消导出')} title={stage === 'done' ? t('再次导出') : t('取消导出')} onClick={stage === 'done' ? onStart : onCancel}>
+    <button type="button" className="export-side as-button" inert={!expanded} aria-label={stage === 'done' ? t('再次导出') : t('取消导出')} title={stage === 'done' ? t('再次导出') : t('取消导出')} onClick={stage === 'done' ? onStart : onCancel}>
       {stage === 'done' ? <ArrowClockwise size={18} /> : <X size={18} />}
     </button>
   </div>;

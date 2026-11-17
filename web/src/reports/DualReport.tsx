@@ -38,7 +38,7 @@ export function FriendPicker({ selected, onSelect }: { selected: Friend | null; 
   }, [people, keyword]);
   const close = (focus: boolean) => { if (focus) anchor.current?.focus(); setOpen(false); };
   return <>
-    <button ref={anchor} type="button" className="group-picker" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setAsked(true); setOpen(!open); }}>
+    <button ref={anchor} type="button" className={'group-picker as-control' + (open ? ' on' : '')} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setAsked(true); setOpen(!open); }}>
       {selected ? <Avatar name={selected.displayName} url={selected.avatarUrl} /> : <span className="avatar avatar-initial" aria-hidden="true"><UserCircle size={20} /></span>}
       <span className="rank-copy"><strong className="clamp-1">{selected?.displayName ?? t('选择一位好友')}</strong>
         <span className="cache-text">{selected ? t('点这里换一位') : t('和 TA 的聊天会生成一份双人报告')}</span></span>

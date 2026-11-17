@@ -36,7 +36,7 @@ function Cover({ src, className }: { src: string; className: string }) {
 function ArticleLink({ article, className, children }: { article: Pick<BizArticle, 'url' | 'title'>; className: string; children: ReactNode }) {
   const url = safeUrl(article.url);
   return url
-    ? <a className={className} href={url} target="_blank" rel="noreferrer noopener" aria-label={article.title || t('打开文章')}>{children}</a>
+    ? <a className={className + ' as-row'} href={url} target="_blank" rel="noreferrer noopener" aria-label={article.title || t('打开文章')}>{children}</a>
     : <div className={className}>{children}</div>;
 }
 
