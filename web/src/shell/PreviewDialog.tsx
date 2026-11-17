@@ -107,15 +107,27 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
       dialog?.setAttribute('data-flown', '');
       const frame = dialog?.querySelector<HTMLElement>('.preview-content');
       const done = frame ? frameFlight('close', frame, media, back.thumb.getBoundingClientRect()) : () => {};
-      void fly(media, () => { flushSync(() => setPreview(null)); dialog?.close(); }, () => back.thumb).then(() => { done(); dialog?.removeAttribute('data-flown'); });
+      // a picture opened while it flies back (#844) is flown in, and keeps the mark
+      void fly(media, () => { flushSync(() => setPreview(null)); dialog?.close(); }, () => back.thumb).then(landed => {
+        done();
+        if (landed) dialog?.removeAttribute('data-flown');
+      });
     } else {
       dialog?.removeAttribute('data-flown');
       setPreview(null);
     }
   };
 
+  // A click on the backdrop closes. One on the frame while it still flies in lands on the dialog too, as the frame
+  // takes no clicks until it is in place (#844), and does nothing.
+  const onBackdrop = (event: { target: EventTarget; currentTarget: Element; clientX: number; clientY: number }) => {
+    if (event.target !== event.currentTarget) return false;
+    const box = event.currentTarget.querySelector('.preview-content')?.getBoundingClientRect();
+    return !box || event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+  };
+
   const dialog = <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || t('媒体预览')} data-state={shownPreview?.closing ? 'closing' : 'open'}
-    onCancel={event => { event.preventDefault(); closePreview(); }} onClick={event => { if (event.target === event.currentTarget) closePreview(); }} onKeyDown={previewKeys}>
+    onCancel={event => { event.preventDefault(); closePreview(); }} onClick={event => { if (onBackdrop(event)) closePreview(); }} onKeyDown={previewKeys}>
     {shownPreview && (() => {
       const shown = shownPreview.value;
       // what the preview shows, also while it fades out after it was let go of (#340)

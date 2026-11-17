@@ -154,7 +154,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'picture preview: opened, the one before, closed with Escape and the close button',
+    name: 'picture preview: opened, the one before, closed with Escape and the close button, opened as it flies back',
     async run(page) {
       await count(page, 'the messages of 图片测试', '[aria-label="图片测试的记录"] .message-row', n => n === 18);
       const preview = () => {
@@ -175,6 +175,15 @@ export const checks: Check[] = [
       await page.until('the preview closed', p => !p.open, preview);
       await page.click(picture(16));
       await page.until('⑧ in the preview again', p => p.open && p.place === '8 / 9' && p.decoded, preview);
+      // ⑧ flies back into its thumbnail; a click on the thumbnail meanwhile opens it again (#844)
+      const thumb = await page.eval(selector => {
+        const box = document.querySelector(selector)!.getBoundingClientRect();
+        return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      }, picture(16));
+      await page.click('dialog.preview-dialog button[aria-label="关闭预览"]');
+      await page.until('⑧ flying back', p => !p.open, preview);
+      await page.clickAt(thumb);
+      await page.until('⑧ opened as it flew back', p => p.open && p.place === '8 / 9' && p.decoded, preview);
       await page.click('dialog.preview-dialog button[aria-label="关闭预览"]');
       await page.until('the preview closed', p => !p.open, preview);
     },
