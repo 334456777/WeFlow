@@ -77,7 +77,6 @@ const CATALOG: &[(&str, &str)] = &[
     ("WeChat quit while the command waited for the key; reopen WeChat, then run the command again", "等待密钥时微信已退出；请重新打开微信，再运行命令"),
     ("cannot hook WeChat ({}); quit WeChat completely and restart the Mac before trying again, as more tries can set off macOS's protection", "无法挂钩微信（{}）；请彻底退出微信并重启 Mac 后再试，反复尝试可能触发 macOS 的保护机制"),
     ("permission denied: cannot open the WeChat process (pid {}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({})", "无法打开微信进程（pid {0}）。请以管理员身份运行终端，关闭可能拦截的安全软件，并确认微信本身没有以管理员身份运行。（{1}）"),
-    ("cannot get the database key on an Intel Mac yet: the scanner that finds where WeChat takes its database key only reads Apple silicon code. `key processes`, `key image` and `key image-mem` still work", "Intel Mac 上还不能取得数据库密钥：定位微信使用数据库密钥之处的扫描器只支持 Apple 芯片的代码。`key processes`、`key image`、`key image-mem` 不受影响"),
     ("permission denied: cannot attach to WeChat (pid {}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({})", "无法附加到微信进程（pid {0}）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（{1}）"),
     ("permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is {}. Run weflow as root, or set ptrace_scope to 0", "/proc/sys/kernel/yama/ptrace_scope 为 {} 时，weflow 无法附加到微信进程。请以 root 运行 weflow，或把 ptrace_scope 设为 0"),
     ("permission denied: /proc/sys/kernel/yama/ptrace_scope is 3, which stops every process from attaching to WeChat, root included, until the system restarts", "/proc/sys/kernel/yama/ptrace_scope 为 3，在系统重启前任何进程（包括 root）都无法附加到微信进程"),
@@ -192,14 +191,6 @@ mod tests {
             Some("--start（b）晚于 --end（a）")
         );
         assert_eq!(translate("not in the catalog"), None);
-    }
-
-    #[test]
-    fn the_intel_mac_refusal_is_translated() {
-        assert!(
-            translate("cannot get the database key on an Intel Mac yet: the scanner that finds where WeChat takes its database key only reads Apple silicon code. `key processes`, `key image` and `key image-mem` still work")
-                .is_some_and(|zh| zh.starts_with("Intel Mac 上还不能取得数据库密钥"))
-        );
     }
 
     #[test]

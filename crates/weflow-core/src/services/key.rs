@@ -8,14 +8,11 @@ use serde_json::{json, Value};
 use super::ServiceHub;
 use crate::error::{AppError, AppResult};
 
-/// Why `key db` refuses on an Intel Mac before attaching to WeChat (#872).
-const INTEL_MAC_DB_KEY: &str = "cannot get the database key on an Intel Mac yet: the scanner that finds where WeChat takes its database key only reads Apple silicon code. `key processes`, `key image` and `key image-mem` still work";
-
 impl ServiceHub {
     /// `key:autoGetDbKey`. WeChat only produces the key while it opens its databases, so on Windows and Linux the
     /// command asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for
-    /// the user to click "Enter WeChat". On macOS it hooks the running WeChat; an Intel Mac is refused before
-    /// attaching. Everywhere the login prompt follows the installed hook.
+    /// the user to click "Enter WeChat". On macOS it hooks the running WeChat. Everywhere the login prompt
+    /// follows the installed hook.
     pub fn key_db(
         &self,
         pid_override: Option<u32>,
@@ -30,10 +27,6 @@ impl ServiceHub {
             return Err(AppError::native(
                 "Linux database-key extraction requires x64",
             ));
-        }
-        // the locator only reads ARM64 code, so on an Intel Mac it would attach to WeChat and find nothing (#872)
-        if cfg!(target_os = "macos") && !cfg!(target_arch = "aarch64") {
-            return Err(AppError::native(INTEL_MAC_DB_KEY));
         }
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         linux_ptrace_check()?;
