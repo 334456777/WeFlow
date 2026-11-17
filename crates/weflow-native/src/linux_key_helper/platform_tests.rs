@@ -247,16 +247,18 @@ fn image_mem_finds_the_key_in_the_target() {
     let mut target = Target::spawn();
     let _ = target.address();
     let key = [0x42u8; 16];
-    let mut block = Array::from(*b"\xff\xd8\xffhello world!!");
+    let mut block = Array::from(*b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01");
     aes::Aes128::new((&key).into()).encrypt_block(&mut block);
     let ciphertext: [u8; 16] = block.into();
-    let ciphertext: String = ciphertext
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let pid = target.child.id();
     assert_eq!(
-        crate::linux_key_helper::image_mem(target.child.id(), &ciphertext),
-        Some("42".repeat(16))
+        crate::linux_key_helper::image_mem(pid, &[ciphertext], &mut |_| true),
+        Ok(Some(key))
+    );
+    // a candidate the caller refuses is passed over
+    assert_eq!(
+        crate::linux_key_helper::image_mem(pid, &[ciphertext], &mut |_| false),
+        Ok(None)
     );
 }
 

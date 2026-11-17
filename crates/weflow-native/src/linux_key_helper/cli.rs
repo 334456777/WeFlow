@@ -4,6 +4,7 @@
 use std::path::Path;
 
 use super::{image_local_at, image_mem, platform, process, Hook};
+use crate::image_key_scan::{self, MemoryScanError};
 
 const USAGE: &str = "{\"success\":false,\"result\":\"ERROR:USAGE: helper <pid> [timeout_ms]\"}\n";
 const IMAGE_MEM_USAGE: &str =
@@ -79,9 +80,15 @@ pub fn run_helper_at(args: &[String], home: Option<&Path>) -> (String, i32) {
                 return (IMAGE_MEM_USAGE.to_string(), 1);
             }
             let pid = args[2].parse().unwrap_or(0);
-            match image_mem(pid, &args[3]) {
-                Some(key) => (success_key(&key), 0),
-                None => (failure("ERROR:NOT_FOUND"), 0),
+            let Some(ciphertext) = image_key_scan::parse_ciphertext(&args[3]) else {
+                return (failure("ERROR:NOT_FOUND"), 0);
+            };
+            match image_mem(pid, &[ciphertext], &mut |_| true) {
+                Ok(Some(key)) => (success_key(&image_key_scan::hex(&key)), 0),
+                Ok(None) | Err(MemoryScanError::Failed(_)) => (failure("ERROR:NOT_FOUND"), 0),
+                Err(MemoryScanError::PermissionDenied(_)) => {
+                    (failure("ERROR:PERMISSION_DENIED"), 0)
+                }
             }
         }
         _ => (UNKNOWN_MODE.to_string(), 1),

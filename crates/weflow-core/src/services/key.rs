@@ -249,9 +249,16 @@ impl ServiceHub {
         }
     }
 
-    /// An image AES key found in WeChat's memory from a ciphertext block, on Linux and macOS. `pid` defaults to the
-    /// running WeChat. Without `ciphertext` the block comes from the newest thumbnails of the configured account,
-    /// which also give the XOR key when one of them decodes with the pair.
+    /// An image AES key found in WeChat's memory, on Linux and macOS. `pid` defaults to the running WeChat. Without
+    /// `ciphertext` the memory is searched with the first blocks of the newest thumbnails of the configured account,
+    /// and a key is taken only once the thumbnails confirm it ([`crate::image_keys::check_memory_key`]), which also
+    /// gives the XOR key when one of them decodes with the pair. With `ciphertext` the first key that decrypts that
+    /// one block into an image header is taken.
+    ///
+    /// # Errors
+    ///
+    /// A usage error for a ciphertext that is not 32 hex characters, `image_key_no_template` without thumbnails,
+    /// and a native error when the system does not let weflow read WeChat's memory.
     pub fn key_image_mem(
         &self,
         pid: Option<u32>,
@@ -270,22 +277,46 @@ impl ServiceHub {
                 )
             })?,
         };
-        let (image_aes_key, image_xor_key) = match ciphertext {
-            Some(ciphertext) => (scan_image_memory(pid, ciphertext), None),
+        use crate::image_keys::MemoryKeyCheck;
+        let found = match ciphertext {
+            Some(text) => {
+                let block = weflow_native::image_key_scan::parse_ciphertext(text.trim())
+                    .ok_or_else(|| {
+                        AppError::usage(
+                            "the ciphertext must be 32 hex characters (one 16-byte block)",
+                        )
+                    })?;
+                scan_image_memory(pid, &[block], &mut |_| true)?
+                    .map(|key| (key, None, "first_block"))
+            }
             None => {
                 let samples = crate::image_keys::memory_samples(&self.account_dir_only()?)?;
-                let aes = crate::image_keys::aes_from_samples(&samples, |ciphertext| {
-                    scan_image_memory(pid, ciphertext)
-                });
-                let xor = aes
-                    .as_deref()
-                    .and_then(|aes| crate::image_keys::xor_from_samples(&samples, aes));
-                (aes, xor)
+                let ciphertexts = crate::image_keys::memory_ciphertexts(&samples);
+                let mut check = None;
+                let key = scan_image_memory(pid, &ciphertexts, &mut |key| {
+                    check = crate::image_keys::check_memory_key(&samples, key);
+                    check.is_some()
+                })?;
+                key.zip(check).map(|(key, check)| match check {
+                    MemoryKeyCheck::DecodedWithXor(xor) => {
+                        (key, Some(xor), "jpeg_decode_and_xor_tail")
+                    }
+                    MemoryKeyCheck::FirstBlocks(_) => (key, None, "sample_first_blocks"),
+                })
             }
+        };
+        let (image_aes_key, image_xor_key, verification) = match found {
+            Some((key, xor, verification)) => (
+                Some(weflow_native::image_key_scan::hex(&key)),
+                xor,
+                Some(verification.to_string()),
+            ),
+            None => (None, None, None),
         };
         Ok(crate::contract::ImageMemKey {
             image_aes_key,
             image_xor_key,
+            verification,
             pid,
             saved: Vec::new(),
         })
@@ -303,6 +334,7 @@ impl ServiceHub {
         {
             let image_aes_key = weflow_native::image_scan_helper::scan(pid, ciphertext);
             Ok(crate::contract::ImageMemKey {
+                verification: image_aes_key.as_ref().map(|_| "first_block".to_string()),
                 image_aes_key,
                 image_xor_key: None,
                 pid,
@@ -348,25 +380,43 @@ const IMAGE_MEM_SUPPORTED: bool = cfg!(any(
     target_os = "macos"
 ));
 
-/// The image AES key that a 16-byte `ciphertext` block (32 hex characters) decrypts with, searched in the writable
-/// memory of WeChat's process `pid`; always `None` where [`IMAGE_MEM_SUPPORTED`] is false.
+/// The first key in the writable memory of WeChat's process `pid` that decrypts one of `ciphertexts` into the start
+/// of an image and that `accept` takes; always `None` where [`IMAGE_MEM_SUPPORTED`] is false.
+///
+/// # Errors
+///
+/// A native error saying how to get the permission when the system does not let weflow read WeChat's memory.
 #[cfg_attr(
     not(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos")),
     expect(unused_variables, reason = "no memory scanner on this platform")
 )]
-fn scan_image_memory(pid: u32, ciphertext: &str) -> Option<String> {
+fn scan_image_memory(
+    pid: u32,
+    ciphertexts: &[[u8; 16]],
+    accept: &mut dyn FnMut(&[u8; 16]) -> bool,
+) -> AppResult<Option<[u8; 16]>> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    {
-        weflow_native::linux_key_helper::image_mem(pid, ciphertext)
-    }
+    let found = weflow_native::linux_key_helper::image_mem(pid, ciphertexts, accept);
     #[cfg(target_os = "macos")]
-    {
-        weflow_native::macos_key_helper::scan_memory_for_image_key(pid, ciphertext)
-    }
+    let found = weflow_native::macos_key_helper::scan_image_key(pid, ciphertexts, accept);
     #[cfg(not(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos")))]
-    {
-        None
-    }
+    let found: Result<_, weflow_native::image_key_scan::MemoryScanError> = Ok(None);
+    found.map_err(|error| {
+        use weflow_native::image_key_scan::MemoryScanError;
+        match error {
+            MemoryScanError::PermissionDenied(detail) if cfg!(target_os = "macos") => {
+                AppError::native(format!(
+                    "permission denied: cannot read WeChat's memory (pid {pid}). Run weflow with sudo. ({detail})"
+                ))
+            }
+            MemoryScanError::PermissionDenied(detail) => AppError::native(format!(
+                "permission denied: cannot read WeChat's memory (pid {pid}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({detail})"
+            )),
+            MemoryScanError::Failed(detail) => AppError::native(format!(
+                "cannot read WeChat's memory (pid {pid}): {detail}"
+            )),
+        }
+    })
 }
 
 fn find_wechat_pid() -> Option<u32> {

@@ -320,12 +320,12 @@ fn net_kvcomm_dirs(xwechat: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-/// How many of the newest thumbnails `key image-mem` scans WeChat's memory with when no ciphertext is given; each
-/// scan reads all of WeChat's writable memory.
-pub const MEMORY_SCAN_TRIES: usize = 3;
+/// How many first blocks of distinct thumbnails `key image-mem` tries every window of WeChat's memory on when no
+/// ciphertext is given; each one adds a decryption per window.
+pub const MEMORY_SCAN_CIPHERTEXTS: usize = 3;
 
-/// The newest V2 thumbnails of `account`, newest first: the ciphertext `key image-mem` scans WeChat's memory with,
-/// and the samples the XOR key is checked against.
+/// The newest V2 thumbnails of `account`, newest first: their first blocks are what `key image-mem` searches WeChat's
+/// memory with, and every key it finds is checked against all of them.
 ///
 /// # Errors
 ///
@@ -344,33 +344,48 @@ pub fn memory_samples(account: &Path) -> AppResult<Vec<crate::keys::ImageTemplat
     Ok(scan.templates)
 }
 
-/// The first AES block of `sample` as the 32 hex characters `key image-mem` takes.
-pub fn ciphertext_hex(sample: &crate::keys::ImageTemplate) -> String {
-    sample.cipher.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// The AES key `scan` finds with the ciphertext of the newest of `samples`, trying up to [`MEMORY_SCAN_TRIES`]
-/// distinct ones.
-pub fn aes_from_samples(
-    samples: &[crate::keys::ImageTemplate],
-    mut scan: impl FnMut(&str) -> Option<String>,
-) -> Option<String> {
-    let mut tried = BTreeSet::new();
+/// The first blocks `key image-mem` searches WeChat's memory with: those of the newest [`MEMORY_SCAN_CIPHERTEXTS`]
+/// distinct thumbnails among `samples`.
+pub fn memory_ciphertexts(samples: &[crate::keys::ImageTemplate]) -> Vec<[u8; 16]> {
+    let mut seen = BTreeSet::new();
     samples
         .iter()
-        .filter(|sample| tried.insert(sample.cipher))
-        .take(MEMORY_SCAN_TRIES)
-        .find_map(|sample| scan(&ciphertext_hex(sample)))
+        .map(|sample| sample.cipher)
+        .filter(|cipher| seen.insert(*cipher))
+        .take(MEMORY_SCAN_CIPHERTEXTS)
+        .collect()
 }
 
-/// The XOR key of `aes`: a value the tail of a sample reads as the JPEG end marker, kept only when that sample then
-/// decodes as a whole JPEG with both keys.
-pub fn xor_from_samples(samples: &[crate::keys::ImageTemplate], aes: &str) -> Option<u8> {
-    samples.iter().find_map(|sample| {
+/// How a key found in WeChat's memory was confirmed against the account's thumbnails.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryKeyCheck {
+    /// A thumbnail decodes as a whole JPEG with the key and this XOR key, read from its tail.
+    DecodedWithXor(u8),
+    /// The first blocks of this many distinct thumbnails (two or more) decrypt into image headers.
+    FirstBlocks(usize),
+}
+
+/// Whether `key`, a candidate found in WeChat's memory, is the account's image AES key: a thumbnail of `samples`
+/// decodes as a whole JPEG with it and the XOR key its tail gives, or the first blocks of at least two distinct
+/// thumbnails decrypt into image headers. A random window of memory passes the header check of one block often
+/// enough over a whole scan to need either of these.
+pub fn check_memory_key(
+    samples: &[crate::keys::ImageTemplate],
+    key: &[u8; 16],
+) -> Option<MemoryKeyCheck> {
+    let matched: Vec<_> = samples
+        .iter()
+        .filter(|sample| weflow_native::image_key_scan::decrypts_to_image(key, &sample.cipher))
+        .collect();
+    let hex = weflow_native::image_key_scan::hex(key);
+    if let Some(xor) = matched.iter().find_map(|sample| {
         let xor = sample.tail_xor?;
-        (verify_derived_aes_key(aes, &sample.cipher) && verify_pair(&sample.path, aes, xor))
-            .then_some(xor)
-    })
+        verify_pair(&sample.path, &hex, xor).then_some(xor)
+    }) {
+        return Some(MemoryKeyCheck::DecodedWithXor(xor));
+    }
+    let distinct: BTreeSet<_> = matched.iter().map(|sample| sample.cipher).collect();
+    (distinct.len() >= 2).then_some(MemoryKeyCheck::FirstBlocks(distinct.len()))
 }
 
 #[cfg(test)]
@@ -404,22 +419,12 @@ mod tests {
     }
 
     #[test]
-    fn aes_from_samples_tries_a_few_distinct_ciphertexts_newest_first() {
+    fn memory_ciphertexts_are_a_few_distinct_first_blocks_newest_first() {
         let samples = [sample(1), sample(1), sample(2), sample(3), sample(4)];
-        let mut tried = Vec::new();
-        let found = aes_from_samples(&samples, |cipher| {
-            tried.push(cipher.to_string());
-            None
-        });
-        assert_eq!(found, None);
         assert_eq!(
-            tried,
-            ["01".repeat(16), "02".repeat(16), "03".repeat(16)],
-            "duplicates skipped, at most {MEMORY_SCAN_TRIES} scans"
+            memory_ciphertexts(&samples),
+            [[1; 16], [2; 16], [3; 16]],
+            "duplicates skipped, at most {MEMORY_SCAN_CIPHERTEXTS}"
         );
-        let found = aes_from_samples(&samples, |cipher| {
-            cipher.starts_with("02").then(|| "key".to_string())
-        });
-        assert_eq!(found.as_deref(), Some("key"));
     }
 }

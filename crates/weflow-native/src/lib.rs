@@ -3,6 +3,7 @@ pub mod contact;
 pub mod db;
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod fixture;
+pub mod image_key_scan;
 #[cfg(any(test, target_os = "macos"))]
 pub mod image_scan_helper;
 mod leaf_scan;

@@ -150,6 +150,11 @@ pub struct ImageMemKey {
     /// AES key; left out when no thumbnail has an XOR tail that verifies.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_xor_key: Option<u8>,
+    /// How the AES key was confirmed, when one was found: `jpeg_decode_and_xor_tail` (a thumbnail of the account
+    /// decodes as a whole JPEG with both keys), `sample_first_blocks` (the first blocks of two or more thumbnails
+    /// decrypt into image headers) or `first_block` (only the given ciphertext was checked).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification: Option<String>,
     pub pid: u32,
     /// With `save`: the profile keys written.
     #[serde(skip_serializing_if = "Vec::is_empty")]
