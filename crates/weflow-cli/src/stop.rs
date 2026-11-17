@@ -5,6 +5,9 @@
 //!
 //! On Windows the last three end the process once their handler returns; tokio's handler waits instead, so the
 //! process ends when the command returns, or when Windows stops waiting (5 seconds for a closed window).
+//!
+//! A command `serve` runs cannot be sent any of these; for one that ends by itself
+//! ([`CANCEL_ON_STDIN`](crate::serve_api::child::CANCEL_ON_STDIN)), the end of its stdin is the request instead.
 
 /// How the command was asked to stop.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,7 +43,23 @@ pub(crate) async fn requested() -> Stop {
         () = next(SignalKind::interrupt()) => Stop::Interrupt,
         () = next(SignalKind::terminate()) => Stop::End,
         () = hangup => Stop::End,
+        () = stdin_ends() => Stop::End,
     }
+}
+
+/// The end of stdin, for a command `serve` runs that ends by itself: `serve` ends it when the job is cancelled, or the
+/// request or the server is gone (#287, #809). Never, for any other command.
+async fn stdin_ends() {
+    if std::env::var_os(crate::serve_api::child::CANCEL_ON_STDIN).is_none() {
+        return std::future::pending().await;
+    }
+    let (ended, end) = tokio::sync::oneshot::channel();
+    // a thread of its own, not `spawn_blocking`: a read still waiting would hold up the runtime's end
+    std::thread::spawn(move || {
+        let _ = std::io::copy(&mut std::io::stdin().lock(), &mut std::io::sink());
+        let _ = ended.send(());
+    });
+    let _ = end.await;
 }
 
 /// Whether SIGHUP is ignored, as `nohup` leaves it.
@@ -78,5 +97,6 @@ pub(crate) async fn requested() -> Stop {
         () = next!(windows::ctrl_close) => Stop::End,
         () = next!(windows::ctrl_logoff) => Stop::End,
         () = next!(windows::ctrl_shutdown) => Stop::End,
+        () = stdin_ends() => Stop::End,
     }
 }
