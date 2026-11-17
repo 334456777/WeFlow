@@ -32,7 +32,7 @@ For language settings and precedence, see [Command reference - Language](https:/
 
 ## First-time setup and export (required steps)
 
-WeChat 4.0 and later are supported. You need to have logged in to an account at least once, sent messages, and opened images. The steps below use Windows as the example: **run PowerShell as administrator.** For Linux, see [Linux first-time setup](https://github.com/334456777/WeFlow/wiki/Linux-首次设置) in the Wiki.
+WeChat 4.0 and later are supported. You need to have logged in to an account at least once, sent messages, and opened images. The steps below use Windows as the example: **run PowerShell as administrator.** For Linux, see [Linux first-time setup](https://github.com/334456777/WeFlow/wiki/Linux-首次设置) in the Wiki; for macOS, see [macOS first-time setup](https://github.com/334456777/WeFlow/wiki/macOS-首次设置).
 
 1. Set the WeChat data directory
 ```powershell
@@ -54,9 +54,7 @@ weflow key db --save
 ```
 > stdout: `Database key obtained and saved to the active profile`
 
-On Linux and macOS this step needs root: run `sudo weflow key db --save` (with the full path of `weflow` if `sudo` does not find it). Under `sudo`, WeFlow still uses your own config and gives the files it writes back to you; see [Linux x64](https://github.com/334456777/WeFlow/wiki/密钥获取#linux-x64-的实现) in the Wiki.
-
-4. Get and save the image keys (Windows, Linux x64 and macOS; see [Image keys](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥) in the Wiki)
+4. Get and save the image keys (see [Image keys](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥) in the Wiki)
 ```powershell
 weflow key image --save
 ```
