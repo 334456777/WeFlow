@@ -12,7 +12,7 @@
 .contact-facts dt { color: var(--fg-subtle); font-size: var(--text-xs); line-height: var(--leading-sm); }
 .contact-facts dd { min-width: 0; margin: 0; font-size: var(--text-sm); line-height: var(--leading-sm); overflow-wrap: anywhere; white-space: pre-line; }
 .contact-labels { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.contact-labels .badge { box-shadow: var(--neu-inset); }
+.contact-labels .badge { box-shadow: var(--tag-shadow); }
 .contact-actions { display: flex; flex-direction: column; align-items: flex-start; }
 .contact-actions .card-note { margin-top: var(--space-2); }
 }

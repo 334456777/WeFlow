@@ -6,7 +6,7 @@
   max-width: min(960px + var(--preview-room-x) - 32px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
 .preview-dialog::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
 .preview-dialog[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
-.preview-content { overflow: hidden; border-radius: var(--radius-2xl); background: var(--surface); box-shadow: var(--neu-raised-overlay); animation: dialog-in var(--duration-base) var(--ease-out) both; }
+.preview-content { overflow: hidden; border-radius: var(--radius-2xl); background: var(--dialog-bg); box-shadow: var(--dialog-shadow); animation: dialog-in var(--duration-base) var(--ease-out) both; }
 .preview-dialog[data-state='closing'] .preview-content { animation: dialog-out var(--duration-exit) var(--ease-out) both; }
 /* The picture flying out of its thumbnail into the preview and back (#194): the frame grows from the thumbnail's
    shape to the picture's, the picture filling it as it goes; the backdrop and the preview's bar fade meanwhile. */
@@ -39,13 +39,13 @@
 .preview-content header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); font-size: var(--text-sm); }
 .preview-content > img { width: auto; max-height: calc(100dvh - var(--preview-room-y)); margin: 0 auto; object-fit: contain; }
 /*
- * The picture sits sunk in a hollow of the frame; under it 「原图」 on the left, the long flat arrows in the middle and
+ * The picture sits in a well of the frame; under it 「原图」 on the left, the long flat arrows in the middle and
  * 「下载」 on the right (#341).
  */
 .preview-content:has(> .preview-stage) { padding: 0 var(--space-3); }
 .preview-content:has(> .preview-stage) > header { margin: 0 calc(-1 * var(--space-3)); }
 /* as wide as the picture, in the middle when the bar or the footer is wider */
-.preview-stage { width: fit-content; max-width: 100%; margin: 0 auto; padding: var(--space-2); border-radius: var(--radius-xl); box-shadow: var(--neu-inset); }
+.preview-stage { width: fit-content; max-width: 100%; margin: 0 auto; padding: var(--space-2); border-radius: var(--radius-xl); box-shadow: var(--well-shadow); }
 .preview-stage :is(.zoom-frame, .preview-video, .media-error) { border-radius: var(--radius-md); }
 .preview-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); padding: var(--space-3) 0; }
 .preview-foot-side { display: flex; min-width: 0; }
@@ -53,12 +53,13 @@
 .preview-steps { display: flex; gap: var(--space-3); }
 .preview-step {
   display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 24px; border-radius: var(--radius-full);
-  background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted);
+  background: var(--control-bg); box-shadow: var(--control-shadow); color: var(--fg-muted);
   transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
-.preview-step:hover:not(:disabled) { color: var(--fg); box-shadow: var(--neu-pressed); }
-.preview-step:active:not(:disabled) { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); }
-.preview-step:disabled { box-shadow: var(--neu-disabled); color: var(--fg-subtle); cursor: not-allowed; }
+/* under the pointer an arrow already looks pressed; held down, it looks as a button that is on does held down */
+.preview-step:hover:not(:disabled) { color: var(--fg); box-shadow: var(--control-shadow-pressed); }
+.preview-step:active:not(:disabled) { box-shadow: var(--control-shadow-on-pressed); transform: scale(var(--press-scale)); }
+.preview-step:disabled { box-shadow: var(--control-shadow-disabled); color: var(--fg-subtle); cursor: not-allowed; }
 
 .preview-download.failed { color: var(--state-danger); }
 /* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */
@@ -67,19 +68,20 @@
 .zoom-frame.zoomed:active { cursor: grabbing; }
 .zoom-frame img { width: auto; max-width: 100%; max-height: calc(100dvh - var(--preview-room-y)); object-fit: contain; transform-origin: center; user-select: none; }
 .preview-tools { display: flex; align-items: center; gap: var(--space-1); }
-/* 「原图」: a small raised control in the lower left corner; flat and faint when the original is not on this computer,
-   and sunk while it shows, pressed again to go back (#194, #338) */
+/* 「原图」: a small button in the lower left corner; disabled and faint when the original is not on this computer, and on
+   while it shows, pressed again to go back (#194, #338) */
 .original-button {
   display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-md); padding: 0 var(--space-3);
-  border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted); font-size: var(--text-xs);
+  border-radius: var(--radius-md); background: var(--control-bg); box-shadow: var(--control-shadow); color: var(--fg-muted); font-size: var(--text-xs);
   transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
 .original-button small { color: var(--fg-subtle); font-size: var(--text-2xs); }
 
-button.original-button:not([aria-disabled]):hover { color: var(--fg); box-shadow: var(--neu-pressed); }
+/* under the pointer it already looks pressed */
+button.original-button:not([aria-disabled]):hover { color: var(--fg); box-shadow: var(--control-shadow-pressed); }
 button.original-button:not([aria-disabled]):active { transform: scale(var(--press-scale)); }
-.original-button[aria-disabled] { box-shadow: var(--neu-disabled); color: var(--fg-subtle); cursor: not-allowed; }
-.original-button.shown { box-shadow: var(--neu-inset); color: var(--fg); }
+.original-button[aria-disabled] { box-shadow: var(--control-shadow-disabled); color: var(--fg-subtle); cursor: not-allowed; }
+.original-button.shown { background: var(--control-bg-on); box-shadow: var(--control-shadow-on); color: var(--control-fg-on); }
 .preview-content header small { margin-left: var(--space-2); color: var(--fg-subtle); font-weight: var(--weight-regular); }
 .file-preview { min-width: 320px; padding: var(--space-8) var(--space-8) var(--space-6); text-align: center; }
 @media (max-width: 640px) {

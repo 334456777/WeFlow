@@ -1,9 +1,9 @@
 // A scrollbar drawn by the page over its scroll area (`.scroll-area` hides the browser's): it takes no width, so
-// content does not shift when it appears, and it looks like the rest of the page (a raised-sm thumb, #220).
+// content does not shift when it appears, and it looks like the rest of the page (the skin's scrollbar role, #828).
 // Render it right after the scroll area, in the same positioned parent; it places itself along its right edge.
-// It also fades the area's top and bottom edges while there is more to scroll that way (#194): a layer in the
-// surface's colour, as every surface of the page has that colour (#220), so it works on panels with shadows too,
-// which a mask would clip.
+// It also fades the area's top and bottom edges while there is more to scroll that way (#194): a layer in
+// `--fade-color`, the colour under the area (every surface has the page's colour in neumorphism, #220), so it works
+// on panels with shadows too, which a mask would clip.
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 

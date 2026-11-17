@@ -1,0 +1,248 @@
+/*
+ * Neumorphism (#220), the default skin (#828): its colours, its raw tokens (`--neu-`, used by this sheet only) and the
+ * roles the pages use, mapped onto its surfaces. See styles/tokens.css for what a skin gives.
+ *
+ * Every element has the page's colour, neutral grey, and is one of five surfaces: raised, raised-sm, inset, pressed or
+ * flat. One light at the top left: raised surfaces catch it on their top-left edge and cast a shadow to the bottom
+ * right; hollows are the other way round. A sharp 1px edge light along each rim keeps the edges readable. Nothing is
+ * coloured: a selection shows by its depth and its bolder text, never by a colour of its own. Only the status dots, the
+ * preview's overlay and the focus ring step outside.
+ */
+@layer tokens {
+:root {
+  /* Body text 4.5:1 or more on the surface, captions included. */
+  --fg: #15191d;
+  --fg-muted: #4d535a;
+  --fg-subtle: #5b6168;
+  --focus-ring: #4d535a;
+  --overlay: rgb(14 17 20 / .55);
+  --state-ok: #1a8a4b;
+  --state-busy: #b8892a;
+  --state-idle: #8f969e;
+  --state-danger: #a63d3d;
+  /* The accent no role here uses: a selection is not coloured. */
+  --accent: var(--fg);
+  --on-accent: var(--neu-surface);
+
+  --neu-surface: #e4e6e9;
+  /* The light: a soft glow and shadow, and the sharp rim of each edge. */
+  --neu-light: rgb(255 255 255 / .9);
+  --neu-dark: rgb(150 157 168 / .6);
+  --neu-edge-light: rgb(255 255 255 / .95);
+  --neu-edge-dark: rgb(40 46 54 / .35);
+  --neu-edge-light-hover: rgb(255 255 255 / 1);
+  --neu-edge-dark-hover: rgb(40 46 54 / .45);
+
+  /*
+   * The five surfaces. Each is the same six layers (two rims, two inner shades, two outer shades), so a
+   * transition between any two of them, such as raised to pressed, moves smoothly instead of jumping.
+   */
+  --neu-raised:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -6px -6px 12px var(--neu-light), 6px 6px 12px var(--neu-dark);
+  --neu-raised-sm:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -3px -3px 6px var(--neu-light), 3px 3px 6px var(--neu-dark);
+  --neu-inset:
+    inset 1px 1px 0 var(--neu-edge-dark), inset -1px -1px 0 var(--neu-edge-light),
+    inset 4px 4px 8px var(--neu-dark), inset -4px -4px 8px var(--neu-light),
+    0 0 0 transparent, 0 0 0 transparent;
+  --neu-pressed:
+    inset 1px 1px 0 var(--neu-edge-dark), inset -1px -1px 0 var(--neu-edge-light),
+    inset 2px 2px 4px var(--neu-dark), inset -2px -2px 4px var(--neu-light),
+    0 0 0 transparent, 0 0 0 transparent;
+  --neu-flat:
+    inset 0 0 0 transparent, inset 0 0 0 transparent, inset 0 0 0 transparent, inset 0 0 0 transparent,
+    0 0 0 transparent, 0 0 0 transparent;
+  /* A raised control that cannot be used keeps only its rims: its shape shows, but it no longer stands out (#278). */
+  --neu-disabled:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    0 0 0 transparent, 0 0 0 transparent;
+  /* Hover: a raised surface's shadow goes a little deeper and farther and its rim brightens. */
+  --neu-raised-hover:
+    inset 1px 1px 0 var(--neu-edge-light-hover), inset -1px -1px 0 var(--neu-edge-dark-hover),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -8px -8px 16px var(--neu-light), 8px 8px 16px var(--neu-dark);
+  --neu-raised-sm-hover:
+    inset 1px 1px 0 var(--neu-edge-light-hover), inset -1px -1px 0 var(--neu-edge-dark-hover),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -4px -4px 8px var(--neu-light), 4px 4px 8px var(--neu-dark);
+  /*
+   * Held down, an inset surface (a selection, a toggle that is on, a checked box) sinks deeper still: its shades
+   * grow and its top-left rim darkens, so a press on it shows as much as a press on a raised one (#253).
+   */
+  --neu-inset-pressed:
+    inset 1px 1px 0 var(--neu-edge-dark-hover), inset -1px -1px 0 var(--neu-edge-light),
+    inset 6px 6px 12px var(--neu-dark), inset -5px -5px 10px var(--neu-light),
+    0 0 0 transparent, 0 0 0 transparent;
+  /* Floating layers (dialogs, notices, a dragged card) are raised too, only farther from the page. */
+  --neu-raised-float:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -12px -12px 24px var(--neu-light), 14px 14px 28px var(--neu-dark);
+  /*
+   * The preview sits on the dark overlay, where no lit page is left to glow on: it keeps its rims and casts a
+   * darker shadow to the bottom right, without the top-left glow that would show as a white haze.
+   */
+  --neu-overlay-shadow: rgb(0 0 0 / .35);
+  --neu-raised-overlay:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    0 0 0 transparent, 16px 16px 32px var(--neu-overlay-shadow);
+
+  /*
+   * The roles. A role's states are a suffix: none for at rest, then -hover, -pressed (held down), -selected (or -on,
+   * -marked, -own: what sets it apart in its group), -disabled. -bg is its background, -fg its text, -shadow its
+   * shadow; a role's shadows in one skin share their layers, so that one state moves into another. An element with no
+   * background of its own at rest takes none in its other states either, so -bg reaches only those that have one.
+   */
+  /* No shadow, in the layers of the others, so that a shadow fades into it and back. */
+  --shadow-none: var(--neu-flat);
+  /* The page under everything (html, body); may be a picture. */
+  --page-bg: var(--neu-surface);
+  /* The colour the edges of a scroll area fade into (app.css .scroll-fade): what lies under the area. */
+  --fade-color: var(--neu-surface);
+
+  /* The main action (.primary-button), and a button as big where it stands for one (the export's side buttons). */
+  --button-bg: var(--neu-surface);
+  --button-shadow: var(--neu-raised);
+  --button-shadow-hover: var(--neu-raised-hover);
+  --button-shadow-pressed: var(--neu-pressed);
+  --button-shadow-disabled: var(--neu-disabled);
+  /*
+   * The other buttons: secondary, icon, the preview's steps and 「原图」, a resource's tile. -on: a button that toggles
+   * and is on, or whose popover is open.
+   */
+  --control-bg: var(--neu-surface);
+  --control-shadow: var(--neu-raised-sm);
+  --control-shadow-hover: var(--neu-raised-sm-hover);
+  --control-shadow-pressed: var(--neu-pressed);
+  --control-shadow-disabled: var(--neu-disabled);
+  --control-bg-on: var(--neu-surface);
+  --control-fg-on: var(--fg);
+  --control-shadow-on: var(--neu-inset);
+  --control-shadow-on-pressed: var(--neu-inset-pressed);
+  /*
+   * What is picked among others: a chip, a choice of the setup, a page in the phone's sheet. Held down, chosen or not,
+   * it looks the same.
+   */
+  --option-bg: var(--neu-surface);
+  --option-shadow: var(--neu-raised-sm);
+  --option-shadow-hover: var(--neu-raised-sm-hover);
+  --option-shadow-pressed: var(--neu-inset-pressed);
+  --option-shadow-disabled: var(--neu-disabled);
+  --option-bg-selected: var(--neu-surface);
+  --option-fg-selected: var(--fg);
+  --option-shadow-selected: var(--neu-inset);
+  /*
+   * Navigation and the rows of a list, flat on what holds them: the sidebar, a conversation, a hit, a medium, a day of
+   * the calendar, a tab of the phone, a step of the setup. The hover hollow (HoverTrack.tsx) draws a row's hover.
+   */
+  --row-shadow: var(--neu-flat);
+  --row-shadow-hover: var(--neu-pressed);
+  --row-shadow-pressed: var(--neu-inset-pressed);
+  --row-bg-selected: transparent;
+  --row-fg-selected: var(--fg);
+  --row-shadow-selected: var(--neu-inset);
+  /* What takes typing: a search, a token, a date, a command's arguments. */
+  --field-bg: var(--neu-surface);
+  --field-shadow: var(--neu-inset);
+  /* A check box; a finished step of a task is drawn as one checked. */
+  --check-bg: var(--neu-surface);
+  --check-shadow: var(--neu-raised-sm);
+  --check-shadow-pressed: var(--neu-inset-pressed);
+  --check-bg-on: var(--neu-surface);
+  --check-fg-on: var(--fg);
+  --check-shadow-on: var(--neu-inset);
+  /* A switch and a segmented control: the track, and the thumb that slides in it (and the text on the thumb). */
+  --track-shadow: var(--neu-inset);
+  --thumb-bg: var(--neu-surface);
+  --thumb-fg: var(--fg);
+  --thumb-shadow: var(--neu-raised-sm);
+  --thumb-shadow-pressed: var(--neu-pressed);
+  /* The thumb of the page's own scrollbar (Scrollbar.tsx), dragged. */
+  --scrollbar-bg: var(--neu-surface);
+  --scrollbar-shadow: var(--neu-raised-sm);
+  --scrollbar-shadow-pressed: var(--neu-pressed);
+  /* The large surfaces of the layout: the panels and the console's cards. */
+  --panel-bg: var(--neu-surface);
+  --panel-shadow: var(--neu-raised);
+  /* A block of content in a list or a page: a post, a payment, a group of settings; -marked, the account in use or a
+     mention of you. */
+  --card-bg: var(--neu-surface);
+  --card-shadow: var(--neu-raised-sm);
+  --card-bg-marked: transparent;
+  --card-shadow-marked: var(--neu-inset);
+  /* A message and a sent photo's frame; -own: one of the account's own. */
+  --bubble-bg: var(--neu-surface);
+  --bubble-shadow: var(--neu-raised-sm);
+  --bubble-bg-own: var(--neu-surface);
+  --bubble-shadow-own: var(--neu-inset);
+  --bubble-shadow-own-pressed: var(--neu-inset-pressed);
+  /* A hollow that holds content without being one: the messages, a chart, a list of commands; -shallow, a quote. */
+  --well-shadow: var(--neu-inset);
+  --well-shadow-shallow: var(--neu-pressed);
+  /* A loading placeholder, and the light that sweeps over it. */
+  --skeleton-shadow: var(--neu-pressed);
+  --skeleton-sweep: var(--neu-light);
+  /* A small mark on something (a count, a play button, an initial, an icon), and a label (a contact's tag). */
+  --badge-bg: var(--neu-surface);
+  --badge-shadow: var(--neu-raised-sm);
+  --tag-shadow: var(--neu-inset);
+  /* What floats over the page (a popover, a notice, a dragged card), and a dialog over the overlay. */
+  --float-bg: var(--neu-surface);
+  --float-shadow: var(--neu-raised-float);
+  --dialog-bg: var(--neu-surface);
+  --dialog-shadow: var(--neu-raised-overlay);
+  /* The phone's tab bar along the bottom. */
+  --tab-bar-bg: var(--neu-surface);
+  --tab-bar-shadow: 0 -8px 18px -12px var(--neu-dark);
+}
+
+:root[data-theme='dark'] {
+  --neu-surface: #25282c;
+  --fg: #e7e9ec;
+  --fg-muted: #b0b6bd;
+  --fg-subtle: #9aa0a7;
+  --focus-ring: #b0b6bd;
+  --overlay: rgb(0 0 0 / .65);
+  --state-ok: #38c172;
+  --state-busy: #d9b04e;
+  --state-idle: #6c737b;
+  --state-danger: #e07a7a;
+  --neu-light: rgb(255 255 255 / .05);
+  --neu-dark: rgb(0 0 0 / .5);
+  /* The lit rim: white light catching the edge of what is raised or sunk, as the dark rim does on light surfaces. */
+  --neu-edge-light: rgb(255 255 255 / .22);
+  --neu-edge-dark: rgb(0 0 0 / .6);
+  --neu-edge-light-hover: rgb(255 255 255 / .3);
+  --neu-edge-dark-hover: rgb(0 0 0 / .7);
+  --neu-overlay-shadow: rgb(0 0 0 / .6);
+}
+
+/* Higher contrast: deeper shadows and sharper rims, still no borders. */
+@media (prefers-contrast: more) {
+  :root {
+    --fg-muted: #3d4349;
+    --fg-subtle: #454b52;
+    --neu-dark: rgb(120 127 138 / .75);
+    --neu-edge-light: rgb(255 255 255 / 1);
+    --neu-edge-dark: rgb(30 35 42 / .6);
+    --neu-edge-dark-hover: rgb(30 35 42 / .7);
+  }
+}
+@media (prefers-contrast: more) {
+  :root[data-theme='dark'] {
+    --fg-muted: #c6cbd1;
+    --fg-subtle: #b4bac1;
+    --neu-dark: rgb(0 0 0 / .7);
+    --neu-edge-light: rgb(255 255 255 / .36);
+    --neu-edge-dark: rgb(0 0 0 / .85);
+    --neu-edge-light-hover: rgb(255 255 255 / .44);
+    --neu-edge-dark-hover: rgb(0 0 0 / .9);
+  }
+}
+}

@@ -41,9 +41,16 @@ describe('cascade layers', () => {
     expect(imports[0]).toBe('./styles/tokens.css');
   });
 
+  test('main.tsx loads the default skin next, before app.css', () => {
+    const imports = [...read('main.tsx').matchAll(/^import .*?'([^']+)';$/gm)].map(match => match[1]);
+    expect(imports.slice(1, 3)).toEqual(['./styles/neumorphism.css', './app.css']);
+  });
+
   test('every rule is in its sheet’s layer', () => {
+    // the default skin's tokens are the ground every skin builds on, so they are tokens too
+    const layer = (path: string) => path === 'styles/neumorphism.css' ? 'tokens' : path === 'app.css' ? 'app' : 'pages';
     const outside = sheets(src).filter(path => path !== 'styles/tokens.css')
-      .filter(path => !inLayer(withoutComments(read(path)), path === 'app.css' ? 'app' : 'pages'));
+      .filter(path => !inLayer(withoutComments(read(path)), layer(path)));
     expect(outside).toEqual([]);
   });
 });

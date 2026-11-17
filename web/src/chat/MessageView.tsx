@@ -1,5 +1,5 @@
-// One message of the chat window (#198), drawn by its kind on the surfaces of #220: received bubbles raised,
-// sent ones inset; cards (links, files, records…) are bubbles too.
+// One message of the chat window (#198), drawn by its kind as the skin's bubbles (#828): received ones and the
+// account's own look different; cards (links, files, records…) are bubbles too.
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import {

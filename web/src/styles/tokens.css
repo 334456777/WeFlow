@@ -1,7 +1,15 @@
 /*
- * Design tokens of the WeFlow WebUI (#192, #193, #220). Pages use these variables only; no stray sizes, colours,
- * shadows, durations or curves. Sizes and motion follow the parameters studied in open-claude-ui (#191); the
- * surfaces are neumorphic in neutral grey (#220).
+ * Design tokens of the WeFlow WebUI (#192, #193, #828). Pages use these variables only; no stray sizes, colours,
+ * shadows, durations or curves. Sizes and motion follow the parameters studied in open-claude-ui (#191).
+ *
+ * This sheet holds what every skin shares: type, sizes, spacing, layout and motion. A skin (#784) gives the rest:
+ *   - the colours: text (`--fg`, `--fg-muted`, `--fg-subtle`), the focus ring, the overlay under a dialog, the states
+ *     (`--state-ok`, `--state-busy`, `--state-idle`, `--state-danger`) and an accent with the text on it (`--accent`,
+ *     `--on-accent`) for a skin that shows a selection in colour;
+ *   - its own raw tokens, prefixed with its name (`--neu-` for neumorphism), which no other sheet uses;
+ *   - the roles: what each kind of control or surface looks like in each of its states, named by what it is for (a
+ *     button, a row, a field, a card, …) and not by how the skin draws it. Pages use the roles only.
+ * Neumorphism (styles/neumorphism.css) is the default skin and gives all of them; it lists the roles.
  */
 
 /*
@@ -57,92 +65,6 @@
   /* The console column on the right (#130). */
   --console-width: clamp(340px, 30vw, 440px);
 
-  /*
-   * Neumorphism (#220). Every element has the page's colour and is one of five surfaces: raised, raised-sm,
-   * inset, pressed or flat. One light at the top left: raised surfaces catch it on their top-left edge and cast
-   * a shadow to the bottom right; hollows are the other way round. A sharp 1px edge light along each rim
-   * keeps the edges readable. Only the status dots, the preview's overlay and the focus ring step outside.
-   */
-  --surface: #e4e6e9;
-  /* Body text 4.5:1 or more on the surface, captions included. */
-  --fg: #15191d;
-  --fg-muted: #4d535a;
-  --fg-subtle: #5b6168;
-  --focus-ring: #4d535a;
-  --overlay: rgb(14 17 20 / .55);
-  --state-ok: #1a8a4b;
-  --state-busy: #b8892a;
-  --state-idle: #8f969e;
-  --state-danger: #a63d3d;
-
-  /* The light: a soft glow and shadow, and the sharp rim of each edge. */
-  --neu-light: rgb(255 255 255 / .9);
-  --neu-dark: rgb(150 157 168 / .6);
-  --neu-edge-light: rgb(255 255 255 / .95);
-  --neu-edge-dark: rgb(40 46 54 / .35);
-  --neu-edge-light-hover: rgb(255 255 255 / 1);
-  --neu-edge-dark-hover: rgb(40 46 54 / .45);
-
-  /*
-   * The five surfaces. Each is the same six layers (two rims, two inner shades, two outer shades), so a
-   * transition between any two of them, such as raised to pressed, moves smoothly instead of jumping.
-   */
-  --neu-raised:
-    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
-    inset 0 0 0 transparent, inset 0 0 0 transparent,
-    -6px -6px 12px var(--neu-light), 6px 6px 12px var(--neu-dark);
-  --neu-raised-sm:
-    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
-    inset 0 0 0 transparent, inset 0 0 0 transparent,
-    -3px -3px 6px var(--neu-light), 3px 3px 6px var(--neu-dark);
-  --neu-inset:
-    inset 1px 1px 0 var(--neu-edge-dark), inset -1px -1px 0 var(--neu-edge-light),
-    inset 4px 4px 8px var(--neu-dark), inset -4px -4px 8px var(--neu-light),
-    0 0 0 transparent, 0 0 0 transparent;
-  --neu-pressed:
-    inset 1px 1px 0 var(--neu-edge-dark), inset -1px -1px 0 var(--neu-edge-light),
-    inset 2px 2px 4px var(--neu-dark), inset -2px -2px 4px var(--neu-light),
-    0 0 0 transparent, 0 0 0 transparent;
-  --neu-flat:
-    inset 0 0 0 transparent, inset 0 0 0 transparent, inset 0 0 0 transparent, inset 0 0 0 transparent,
-    0 0 0 transparent, 0 0 0 transparent;
-  /* A raised control that cannot be used keeps only its rims: its shape shows, but it no longer stands out (#278). */
-  --neu-disabled:
-    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
-    inset 0 0 0 transparent, inset 0 0 0 transparent,
-    0 0 0 transparent, 0 0 0 transparent;
-  /* Hover: a raised surface's shadow goes a little deeper and farther and its rim brightens. */
-  --neu-raised-hover:
-    inset 1px 1px 0 var(--neu-edge-light-hover), inset -1px -1px 0 var(--neu-edge-dark-hover),
-    inset 0 0 0 transparent, inset 0 0 0 transparent,
-    -8px -8px 16px var(--neu-light), 8px 8px 16px var(--neu-dark);
-  --neu-raised-sm-hover:
-    inset 1px 1px 0 var(--neu-edge-light-hover), inset -1px -1px 0 var(--neu-edge-dark-hover),
-    inset 0 0 0 transparent, inset 0 0 0 transparent,
-    -4px -4px 8px var(--neu-light), 4px 4px 8px var(--neu-dark);
-  /*
-   * Held down, an inset surface (a selection, a toggle that is on, a checked box) sinks deeper still: its shades
-   * grow and its top-left rim darkens, so a press on it shows as much as a press on a raised one (#253).
-   */
-  --neu-inset-pressed:
-    inset 1px 1px 0 var(--neu-edge-dark-hover), inset -1px -1px 0 var(--neu-edge-light),
-    inset 6px 6px 12px var(--neu-dark), inset -5px -5px 10px var(--neu-light),
-    0 0 0 transparent, 0 0 0 transparent;
-  /* Floating layers (dialogs, notices, a dragged card) are raised too, only farther from the page. */
-  --neu-raised-float:
-    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
-    inset 0 0 0 transparent, inset 0 0 0 transparent,
-    -12px -12px 24px var(--neu-light), 14px 14px 28px var(--neu-dark);
-  /*
-   * The preview sits on the dark overlay, where no lit page is left to glow on: it keeps its rims and casts a
-   * darker shadow to the bottom right, without the top-left glow that would show as a white haze.
-   */
-  --neu-overlay-shadow: rgb(0 0 0 / .35);
-  --neu-raised-overlay:
-    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
-    inset 0 0 0 transparent, inset 0 0 0 transparent,
-    0 0 0 transparent, 16px 16px 32px var(--neu-overlay-shadow);
-
   /* Motion. Durations: micro, snap, base, panel, page; hover and exits have their own. */
   --duration-micro: 60ms;
   --duration-snap: 120ms;
@@ -168,52 +90,10 @@
 
 /*
  * Dark (#252): `data-theme` on <html> is the theme in force, set before the first paint (index.html) and kept
- * by theme.ts, which follows the system's light or dark mode unless one is chosen in the settings.
+ * by theme.ts, which follows the system's light or dark mode unless one is chosen in the settings. Each skin gives
+ * its colours for both.
  */
-:root[data-theme='dark'] {
-  color-scheme: dark;
-  --surface: #25282c;
-  --fg: #e7e9ec;
-  --fg-muted: #b0b6bd;
-  --fg-subtle: #9aa0a7;
-  --focus-ring: #b0b6bd;
-  --overlay: rgb(0 0 0 / .65);
-  --state-ok: #38c172;
-  --state-busy: #d9b04e;
-  --state-idle: #6c737b;
-  --state-danger: #e07a7a;
-  --neu-light: rgb(255 255 255 / .05);
-  --neu-dark: rgb(0 0 0 / .5);
-  /* The lit rim: white light catching the edge of what is raised or sunk, as the dark rim does on light surfaces. */
-  --neu-edge-light: rgb(255 255 255 / .22);
-  --neu-edge-dark: rgb(0 0 0 / .6);
-  --neu-edge-light-hover: rgb(255 255 255 / .3);
-  --neu-edge-dark-hover: rgb(0 0 0 / .7);
-  --neu-overlay-shadow: rgb(0 0 0 / .6);
-}
-
-/* Higher contrast: deeper shadows and sharper rims, still no borders. */
-@media (prefers-contrast: more) {
-  :root {
-    --fg-muted: #3d4349;
-    --fg-subtle: #454b52;
-    --neu-dark: rgb(120 127 138 / .75);
-    --neu-edge-light: rgb(255 255 255 / 1);
-    --neu-edge-dark: rgb(30 35 42 / .6);
-    --neu-edge-dark-hover: rgb(30 35 42 / .7);
-  }
-}
-@media (prefers-contrast: more) {
-  :root[data-theme='dark'] {
-    --fg-muted: #c6cbd1;
-    --fg-subtle: #b4bac1;
-    --neu-dark: rgb(0 0 0 / .7);
-    --neu-edge-light: rgb(255 255 255 / .36);
-    --neu-edge-dark: rgb(0 0 0 / .85);
-    --neu-edge-light-hover: rgb(255 255 255 / .44);
-    --neu-edge-dark-hover: rgb(0 0 0 / .9);
-  }
-}
+:root[data-theme='dark'] { color-scheme: dark; }
 
 /* The system setting and the 「减少动画」 switch both make every transition immediate. */
 @media (prefers-reduced-motion: reduce) {
