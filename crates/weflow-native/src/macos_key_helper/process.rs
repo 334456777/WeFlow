@@ -75,30 +75,43 @@ fn belongs_to_wechat(name: &str, path: &str) -> bool {
         || is_main(path)
 }
 
+/// How many pids to make room for when `proc_listallpids` counted `count`
+/// processes: that count plus headroom for processes started before the
+/// second call. `proc_listallpids` counts pids, not bytes.
+fn pid_capacity(count: libc::c_int) -> usize {
+    usize::try_from(count).map_or(0, |count| count + count / 4 + 64)
+}
+
+/// How many pids a `proc_listallpids` call that returned `returned` wrote into
+/// a buffer of `capacity` pids: the return value is already a count of pids.
+fn pids_written(returned: libc::c_int, capacity: usize) -> usize {
+    usize::try_from(returned).map_or(0, |count| count.min(capacity))
+}
+
+/// The pids of every process, newest first.
+fn all_pids() -> Vec<libc::pid_t> {
+    // SAFETY: a null buffer only asks for the number of processes.
+    let counted = unsafe { libc::proc_listallpids(std::ptr::null_mut(), 0) };
+    let capacity = pid_capacity(counted);
+    if counted < 0 {
+        return Vec::new();
+    }
+    let Ok(buffer_bytes) = libc::c_int::try_from(capacity * std::mem::size_of::<libc::pid_t>())
+    else {
+        return Vec::new();
+    };
+    let mut pids: Vec<libc::pid_t> = vec![0; capacity];
+    // SAFETY: `pids` is a live, writable buffer of `buffer_bytes` bytes, the
+    // length passed; `proc_listallpids` writes at most that many.
+    let returned = unsafe { libc::proc_listallpids(pids.as_mut_ptr().cast(), buffer_bytes) };
+    pids.truncate(pids_written(returned, capacity));
+    pids
+}
+
 /// Every `WeChat` process, the main application first.
 pub fn wechat_processes() -> Vec<WeChatProcess> {
-    let mut bytes = Vec::new();
-    // SAFETY: `proc_listallpids` writes at most the buffer length; a null
-    // buffer asks for the needed size.
-    let needed = unsafe { libc::proc_listallpids(std::ptr::null_mut(), 0) };
-    if needed <= 0 {
-        return Vec::new();
-    }
-    bytes.resize(needed as usize, 0);
-    // SAFETY: `bytes` is a live buffer of that length.
-    let written = unsafe { libc::proc_listallpids(bytes.as_mut_ptr().cast(), needed) };
-    if written <= 0 {
-        return Vec::new();
-    }
-    let count = written as usize / std::mem::size_of::<libc::pid_t>();
     let mut processes = Vec::new();
-    let (pids, _) = bytes.as_chunks::<{ std::mem::size_of::<libc::pid_t>() }>();
-    for pid in pids
-        .iter()
-        .take(count)
-        .map(|chunk| libc::pid_t::from_ne_bytes(*chunk))
-        .filter(|pid| *pid > 0)
-    {
+    for pid in all_pids().into_iter().filter(|pid| *pid > 0) {
         let Some(path) = path_of(pid) else {
             continue;
         };
@@ -148,5 +161,19 @@ mod tests {
             "Safari",
             "/Applications/Safari.app/Contents/MacOS/Safari"
         ));
+    }
+
+    #[test]
+    fn the_pid_list_is_read_as_a_count_of_pids() {
+        // #868: 494 processes counted must leave room for all of them, and a
+        // call that wrote 475 pids yields all 475 rather than 475 / 4.
+        let capacity = pid_capacity(494);
+        assert!(capacity >= 494, "room for {capacity} pids");
+        assert_eq!(pids_written(475, capacity), 475);
+        // Never more than the buffer holds.
+        assert_eq!(pids_written(700, 600), 600);
+        assert_eq!(pids_written(-1, capacity), 0);
+        assert_eq!(pid_capacity(-1), 0);
+        assert_eq!(pid_capacity(0), 64);
     }
 }
