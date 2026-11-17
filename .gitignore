@@ -64,12 +64,14 @@ weflow.exe
 # tsc's incremental build state (web/)
 *.tsbuildinfo
 *.bak
-.claude/
+.claude/*
+# loop.md for Bug fix Claude
+!.claude/loop.md
 .agents/
 .codex
 /temp/*
 
-# docs: only images/ (the READMEs' pictures) is kept; the other folders are third-party/reference material
+# docs: the other folders are third-party/reference material
 /docs/sarv.blog/
 /docs/sjzar/
 /docs/weflow-tech-docs/
