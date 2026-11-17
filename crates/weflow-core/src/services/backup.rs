@@ -26,6 +26,8 @@ impl ServiceHub {
             entries: manifest.entries.len(),
             wxid: manifest.wxid,
             created_at: manifest.created_at,
+            skipped: manifest.skipped,
+            unsettled: manifest.unsettled,
         })
     }
 

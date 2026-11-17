@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Archive, ArrowCounterClockwise, Check, CircleNotch, DownloadSimple, FolderOpen, MagnifyingGlass } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
-import { backupParams, backupParts, inspectBackup, type BackupChoice, type BackupManifest } from '../api/backup';
+import { backupGaps, backupParams, backupParts, inspectBackup, type BackupChoice, type BackupGaps, type BackupManifest } from '../api/backup';
 import { jobFileUrl, type Job } from '../api/jobs';
 import { formatSize, jobLine } from '../jobs/TaskCenter';
 import { runJob, type JobsState } from '../jobs/useJobs';
@@ -21,6 +21,9 @@ function Check3({ label, hint, checked, onChange }: { label: string; hint: strin
   return <label className="checkbox"><input type="checkbox" aria-label={label} checked={checked} onChange={event => onChange(event.target.checked)} />
     <span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{label} <small>{hint}</small></span></label>;
 }
+
+/** What a backup lacks (`backupGaps`), one warning a line; nothing when it lacks nothing. */
+const Gaps = ({ lines }: { lines: string[] }) => <>{lines.map(line => <p key={line} className="card-note setting-warning backup-gap">{line}</p>)}</>;
 
 /** Where the backup a job made sits on the server, from its result. */
 const backupPath = (job: Job) => {
@@ -93,6 +96,7 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
               <span className={'cache-text' + (job.status === 'failed' ? ' backup-failed' : '')}>{jobLine(job)}</span></span>
             {done && job.file && <a className="secondary-button" href={jobFileUrl(job.id)} download={job.file.name}><DownloadSimple size={12} />{t('下载')}</a>}
             {done && where && <button type="button" className="secondary-button" onClick={() => inspect(where)}><MagnifyingGlass size={12} />{t('查看内容')}</button>}
+            {done && <Gaps lines={backupGaps((job.result?.data ?? {}) as BackupGaps)} />}
           </li>;
         })}
       </ul>}
@@ -113,6 +117,7 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
           <div><dt>{t('WeFlow 版本')}</dt><dd className="num">{manifest.value.weflow_version || '—'}</dd></div>
           {backupParts(manifest.value.entries).map(p => <div key={p.label}><dt>{t(p.label)}</dt><dd className="num">{t('{files} 个 · {bytes}', { files: p.files.toLocaleString(locale()), bytes: formatSize(p.bytes) })}</dd></div>)}
         </dl>
+        <Gaps lines={backupGaps(manifest.value)} />
         <form className="token-form" onSubmit={restore}>
           <label className="token-input"><FolderOpen size={16} aria-hidden="true" />
             <input type="text" spellCheck={false} aria-label={t('恢复到的文件夹')} placeholder={t('恢复到服务端的哪个文件夹')} value={target} onChange={event => setTarget(event.target.value)} /></label>
