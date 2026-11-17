@@ -44,16 +44,48 @@ pub fn jump_to(shellcode: u64) -> [u8; 13] {
     bytes
 }
 
+/// Where a jump made by [`jump_to`] at the start of `bytes` goes, or `None` when `bytes` does not start with one.
+pub fn jump_target(bytes: &[u8]) -> Option<u64> {
+    match bytes.get(..13)? {
+        [0x49, 0xba, address @ .., 0x41, 0xff, 0xe2] => {
+            Some(u64::from_le_bytes(address.try_into().ok()?))
+        }
+        _ => None,
+    }
+}
+
+/// The length of the code [`build`] makes.
+pub const LEN: usize = 0xcf;
+
+/// Where the replaced bytes are kept in the code [`build`] makes.
+const ORIGINAL_OFFSET: usize = 0xb4;
+
+/// The jump back after the replaced bytes: `jmp qword ptr [rip+0]`, with the address right after it.
+const JUMP_BACK: [u8; 6] = [0xff, 0x25, 0x00, 0x00, 0x00, 0x00];
+
 /// The shellcode for a target whose first 13 bytes are `original`: the template, those bytes, and a jump back to
 /// `target + 13`.
 pub fn build(original: &[u8; 13], target: u64) -> Vec<u8> {
-    let mut code = Vec::with_capacity(0xcf);
+    let mut code = Vec::with_capacity(LEN);
     code.extend_from_slice(&TEMPLATE);
     code.extend_from_slice(original);
-    // jmp qword ptr [rip+0], with the address right after it
-    code.extend_from_slice(&[0xff, 0x25, 0x00, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&JUMP_BACK);
     code.extend_from_slice(&(target + 13).to_le_bytes());
     code
+}
+
+/// The 13 bytes a hook of `target` replaced, read back from its shellcode `code`: `None` unless `code` is what
+/// [`build`] makes for `target` (the same template and a jump back to `target + 13`), so that the code of another
+/// program is never taken for it (#809).
+pub fn replaced_bytes(code: &[u8], target: u64) -> Option<[u8; 13]> {
+    let code = code.get(..LEN)?;
+    if code[..ORIGINAL_OFFSET] != TEMPLATE
+        || code[ORIGINAL_OFFSET + 13..ORIGINAL_OFFSET + 19] != JUMP_BACK
+        || code[ORIGINAL_OFFSET + 19..] != (target + 13).to_le_bytes()
+    {
+        return None;
+    }
+    code[ORIGINAL_OFFSET..ORIGINAL_OFFSET + 13].try_into().ok()
 }
 
 #[cfg(test)]
@@ -83,6 +115,46 @@ mod tests {
         assert_eq!(&bytes[..2], &[0x49, 0xba]);
         assert_eq!(&bytes[2..10], &0x1234_5678_9abc_def0_u64.to_le_bytes());
         assert_eq!(&bytes[10..], &[0x41, 0xff, 0xe2]);
+    }
+
+    #[test]
+    fn a_jump_is_read_back() {
+        assert_eq!(
+            jump_target(&jump_to(0x1234_5678_9abc_def0)),
+            Some(0x1234_5678_9abc_def0)
+        );
+        let mut longer = jump_to(0x55).to_vec();
+        longer.extend_from_slice(&[0x90; 4]);
+        assert_eq!(jump_target(&longer), Some(0x55));
+        // the function's own start, a cut-off jump and another jump are not one
+        let prologue = [
+            0x55, 0x41, 0x56, 0x56, 0x57, 0x53, 0x48, 0x81, 0xec, 0x00, 0x03, 0x00, 0x00,
+        ];
+        assert_eq!(jump_target(&prologue), None);
+        assert_eq!(jump_target(&jump_to(1)[..12]), None);
+        let mut jmp_rax = jump_to(1);
+        jmp_rax[12] = 0xe0;
+        assert_eq!(jump_target(&jmp_rax), None);
+    }
+
+    #[test]
+    fn the_replaced_bytes_are_read_back_from_a_hook_of_the_same_target() {
+        let original = [
+            0x55, 0x41, 0x56, 0x56, 0x57, 0x53, 0x48, 0x81, 0xec, 0x00, 0x03, 0x00, 0x00,
+        ];
+        let code = build(&original, 0x7ff8_1000);
+        assert_eq!(code.len(), LEN);
+        assert_eq!(replaced_bytes(&code, 0x7ff8_1000), Some(original));
+        // with the whitelist page behind it as well
+        let mut page = code.clone();
+        page.resize(0x400, 0);
+        assert_eq!(replaced_bytes(&page, 0x7ff8_1000), Some(original));
+        // a hook of another function, other code, and too little of it are not taken
+        assert_eq!(replaced_bytes(&code, 0x7ff8_2000), None);
+        let mut other = code.clone();
+        other[0] = 0xcc;
+        assert_eq!(replaced_bytes(&other, 0x7ff8_1000), None);
+        assert_eq!(replaced_bytes(&code[..LEN - 1], 0x7ff8_1000), None);
     }
 }
 

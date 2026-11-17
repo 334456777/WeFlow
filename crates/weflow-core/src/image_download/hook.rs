@@ -32,6 +32,16 @@ mod imp {
         true
     }
 
+    /// How the target function starts.
+    #[derive(Debug, PartialEq, Eq)]
+    enum Start {
+        /// With its own first instruction, `push rbp`: no hook is in it.
+        Plain(u64),
+        /// With the jump of a hook at `at` into `shellcode`: one left by a `weflow` that is still running, or that
+        /// ended without taking it out (#809).
+        Hooked { at: u64, shellcode: u64 },
+    }
+
     /// A hook that is installed in a running WeChat process.
     pub struct Hook {
         process: usize,
@@ -62,22 +72,24 @@ mod imp {
         fn install_with(process: HANDLE, whitelist: &[u8]) -> Result<Self, String> {
             let (base, size) = find_module(process).ok_or("Weixin.dll not found")?;
             let memory = read_module(process, base, size).ok_or("Memory read failed")?;
-            let target = find_target(&memory, base).ok_or("Target function not found")?;
-
-            let mut original = [0u8; PATCH_LEN];
-            // SAFETY: `target` is inside the module we just read; the buffer is `PATCH_LEN` bytes.
-            let read = unsafe {
-                ReadProcessMemory(
-                    process,
-                    target as *const c_void,
-                    original.as_mut_ptr() as *mut c_void,
-                    PATCH_LEN,
-                    std::ptr::null_mut(),
-                )
-            };
-            if read == 0 {
-                return Err("Backup failed".into());
-            }
+            let (target, original) =
+                match find_target(&memory, base).ok_or("Target function not found")? {
+                    Start::Plain(target) => {
+                        let mut original = [0u8; PATCH_LEN];
+                        read_remote(process, target, &mut original).ok_or("Backup failed")?;
+                        (target, original)
+                    }
+                    // The bytes the earlier hook replaced are in its shellcode: they become ours, and its jump is
+                    // overwritten by ours below. Its page stays, as its own `weflow` may still run and free it.
+                    Start::Hooked { at, shellcode } => {
+                        let mut code = [0u8; shellcode::LEN];
+                        read_remote(process, shellcode, &mut code)
+                            .and_then(|()| shellcode::replaced_bytes(&code, at))
+                            .filter(|original| original[0] == 0x55)
+                            .map(|original| (at, original))
+                            .ok_or("Target function is hooked by another program")?
+                    }
+                };
 
             let code = shellcode::build(&original, target);
             // SAFETY: allocating a page in the target process; freed in `uninstall`.
@@ -180,25 +192,48 @@ mod imp {
             })
         }
 
-        /// Restores the original bytes and frees the shellcode page.
+        /// Restores the original bytes and frees the shellcode page. The bytes are restored only while the function
+        /// still starts with this hook's jump: a hook installed over it since took the original bytes into its own
+        /// shellcode and stays (#809). The page is freed either way, as no jump leads into it any more.
         pub fn uninstall(&self) {
             let process = self.process as HANDLE;
             let target = self.target as *const c_void;
+            let mut now = [0u8; PATCH_LEN];
+            let ours = read_remote(process, self.target as u64, &mut now).is_some()
+                && now == shellcode::jump_to(self.shellcode as u64);
             let mut written = 0usize;
             // SAFETY: the handle and addresses are the ones `install` kept; the original bytes are `PATCH_LEN` long.
             unsafe {
-                WriteProcessMemory(
-                    process,
-                    target,
-                    self.original.as_ptr() as *const c_void,
-                    PATCH_LEN,
-                    &mut written,
-                );
-                FlushInstructionCache(process, target, PATCH_LEN);
+                if ours {
+                    WriteProcessMemory(
+                        process,
+                        target,
+                        self.original.as_ptr() as *const c_void,
+                        PATCH_LEN,
+                        &mut written,
+                    );
+                    FlushInstructionCache(process, target, PATCH_LEN);
+                }
                 VirtualFreeEx(process, self.shellcode as *mut c_void, 0, MEM_RELEASE);
                 CloseHandle(process);
             }
         }
+    }
+
+    /// Reads `buf.len()` bytes of `process` at `address`.
+    fn read_remote(process: HANDLE, address: u64, buf: &mut [u8]) -> Option<()> {
+        // SAFETY: `ReadProcessMemory` writes at most `buf.len()` bytes into `buf`, and fails on an address the
+        // process does not have.
+        let read = unsafe {
+            ReadProcessMemory(
+                process,
+                address as *const c_void,
+                buf.as_mut_ptr() as *mut c_void,
+                buf.len(),
+                std::ptr::null_mut(),
+            )
+        };
+        (read != 0).then_some(())
     }
 
     /// The `Weixin.dll` module of `process`: its base address and image size.
@@ -306,8 +341,9 @@ mod imp {
 
     /// The function that downloads media: the one whose `lea reg, [rip+disp]` points at the
     /// `_startDownloadMedia` string (or at the `mars::cdn::CdnCore::` prefix in front of it), starting at the
-    /// nearest `push rbp` before it.
-    fn find_target(module: &[u8], base: u64) -> Option<u64> {
+    /// nearest `push rbp` before it. A hook's jump met on the way back is that start, hooked already: the bytes of
+    /// its address may hold a `0x55`, and the one before it is another function's (#809).
+    fn find_target(module: &[u8], base: u64) -> Option<Start> {
         let mut string = find_bytes(module, b"_startDownloadMedia")?;
         // The string is usually the tail of `mars::cdn::CdnCore::_startDownloadMedia`, and the `lea` points at the
         // whole string; step back over the prefix when it is there.
@@ -337,8 +373,18 @@ mod imp {
             }
             let start = i.saturating_sub(PROLOGUE_SEARCH);
             for j in (start..=i).rev() {
+                // a jump that covers `j`, starting at most `PATCH_LEN - 1` bytes before it
+                let jump = (j.saturating_sub(PATCH_LEN - 1)..=j).find_map(|at| {
+                    shellcode::jump_target(&module[at..]).map(|shellcode| (at, shellcode))
+                });
+                if let Some((at, shellcode)) = jump {
+                    return Some(Start::Hooked {
+                        at: base + at as u64,
+                        shellcode,
+                    });
+                }
                 if module[j] == 0x55 {
-                    return Some(base + j as u64);
+                    return Some(Start::Plain(base + j as u64));
                 }
             }
         }
@@ -378,7 +424,7 @@ mod imp {
             module[0x10] = 0x55;
             module[0x20..0x27].copy_from_slice(&[0x48, 0x8d, 0x1d, 0x19, 0x00, 0x00, 0x00]);
             module[0x40..0x40 + 19].copy_from_slice(b"_startDownloadMedia");
-            assert_eq!(find_target(&module, 0x1000), Some(0x1010));
+            assert_eq!(find_target(&module, 0x1000), Some(Start::Plain(0x1010)));
         }
 
         #[test]
@@ -389,7 +435,41 @@ mod imp {
             module[0x20..0x27].copy_from_slice(&[0x48, 0x8d, 0x1d, 0x19, 0x00, 0x00, 0x00]);
             module[0x40..0x40 + 20].copy_from_slice(b"mars::cdn::CdnCore::");
             module[0x54..0x54 + 19].copy_from_slice(b"_startDownloadMedia");
-            assert_eq!(find_target(&module, 0x1000), Some(0x1010));
+            assert_eq!(find_target(&module, 0x1000), Some(Start::Plain(0x1010)));
+        }
+
+        /// A module laid out as `Weixin.dll` is: the function before at +0x40, the target at +0x100 starting with the
+        /// 13 bytes of WeChat 4.2.0.52, and a `lea` in it of the string at +0x300.
+        fn module_with_target() -> Vec<u8> {
+            let mut module = vec![0xccu8; 0x400];
+            module[0x40] = 0x55;
+            module[0x100..0x10d].copy_from_slice(&[
+                0x55, 0x41, 0x56, 0x56, 0x57, 0x53, 0x48, 0x81, 0xec, 0x00, 0x03, 0x00, 0x00,
+            ]);
+            // lea rdx, [rip+disp] at +0x180: +0x187 + 0x179 = +0x300
+            module[0x180..0x187].copy_from_slice(&[0x48, 0x8d, 0x15, 0x79, 0x01, 0x00, 0x00]);
+            module[0x300..0x300 + 19].copy_from_slice(b"_startDownloadMedia");
+            module
+        }
+
+        #[test]
+        fn a_hooked_target_is_found_as_hooked_not_as_the_function_before() {
+            let base = 0x7ff8_0000_0000;
+            let module = module_with_target();
+            assert_eq!(find_target(&module, base), Some(Start::Plain(base + 0x100)));
+            // the jump of a hook, with a 0x55 among the bytes of its address and without
+            for shellcode in [0x0000_0255_5500_0000_u64, 0x0000_0123_4567_0000] {
+                let mut hooked = module.clone();
+                hooked[0x100..0x10d].copy_from_slice(&shellcode::jump_to(shellcode));
+                assert_eq!(
+                    find_target(&hooked, base),
+                    Some(Start::Hooked {
+                        at: base + 0x100,
+                        shellcode
+                    }),
+                    "{shellcode:#x}"
+                );
+            }
         }
 
         #[test]
