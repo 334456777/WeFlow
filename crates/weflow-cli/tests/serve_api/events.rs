@@ -96,27 +96,90 @@ fn health_events_say_hello_then_beat_without_a_token() {
     assert!(reply.starts_with("HTTP/1.1 403"), "{reply}");
 }
 
-// Ctrl+C as a signal; Windows has no way to send one to another process alone
+/// Ctrl+C, and the signals `systemctl stop` or a closed terminal send, stop the server the same way (#810): the event
+/// streams end with `bye` and the processes of its jobs end with it. Ctrl+C is an interruption (130); the others
+/// ask it to end, which it does well (0). Windows has no way to send them to another process alone.
 #[cfg(unix)]
 #[test]
-fn event_streams_say_bye_when_the_server_stops() {
+fn every_request_to_stop_says_bye_and_ends_the_jobs() {
     use std::process::Command;
 
-    let root = temp_root("bye");
-    let server = start(&root, &["--api-token", TOKEN]);
-    let mut events = EventStream::open_at(&server, "/health/events", &[]);
-    assert!(events.wait_for("event: hello", 10), "{}", events.text);
-    let sent = Command::new("kill")
-        .args(["-INT", &server.child.id().to_string()])
-        .status()
-        .unwrap();
-    assert!(sent.success());
-    assert!(events.wait_for("event: bye", 5), "{}", events.text);
-    assert!(
-        events.text.contains("\"reason\":\"stopped\""),
-        "{}",
-        events.text
-    );
+    // a registry that takes the connection and never answers: `web install` waits on it for a minute
+    let registry = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let registry_url = format!("http://{}", registry.local_addr().unwrap());
+    let alive = |pid: &str| {
+        Command::new("kill")
+            .args(["-0", pid])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    for (signal, code) in [("INT", 130), ("TERM", 0), ("HUP", 0)] {
+        let root = temp_root(&format!("bye-{signal}"));
+        let mut server = start_env(
+            &root,
+            &["--api-token", TOKEN, "--api-only"],
+            &[("WEFLOW_WEB_REGISTRY", &registry_url)],
+        );
+        let mut events = EventStream::open_at(&server, "/health/events", &[]);
+        assert!(events.wait_for("event: hello", 10), "{}", events.text);
+        let auth = format!("Bearer {TOKEN}");
+        let r = server.request(
+            "POST",
+            "/web/install",
+            &[("Authorization", &auth), ("Prefer", "respond-async")],
+            r#"{"version":"0.1.0"}"#,
+        );
+        assert_eq!(r.status, 202, "{signal}: {}", r.body);
+        let pid = server.child.id().to_string();
+        let jobs = (0..50)
+            .find_map(|_| {
+                let out = Command::new("pgrep").args(["-P", &pid]).output().unwrap();
+                let jobs: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect();
+                if jobs.is_empty() {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    None
+                } else {
+                    Some(jobs)
+                }
+            })
+            .unwrap_or_else(|| panic!("{signal}: the job's process did not start"));
+
+        let sent = Command::new("kill")
+            .args([format!("-{signal}"), pid])
+            .status()
+            .unwrap();
+        assert!(sent.success());
+        assert!(
+            events.wait_for("event: bye", 5),
+            "{signal}: {}",
+            events.text
+        );
+        assert!(
+            events.text.contains("\"reason\":\"stopped\""),
+            "{signal}: {}",
+            events.text
+        );
+        assert_eq!(server.child.wait().unwrap().code(), Some(code), "{signal}");
+        for job in &jobs {
+            let gone = (0..50).any(|_| {
+                let gone = !alive(job);
+                if !gone {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                gone
+            });
+            assert!(
+                gone,
+                "{signal}: the job's process {job} outlived the server"
+            );
+        }
+    }
+    drop(registry);
 }
 
 #[test]

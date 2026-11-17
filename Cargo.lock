@@ -3261,6 +3261,7 @@ dependencies = [
  "flate2",
  "jpeg-encoder",
  "jsonschema",
+ "libc",
  "md-5",
  "mimalloc",
  "mime_guess",

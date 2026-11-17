@@ -8,6 +8,7 @@ mod files;
 mod i18n;
 mod reads;
 mod serve_api;
+mod stop;
 mod term;
 
 use cli::{Cli, Commands, LangArg};
@@ -193,7 +194,7 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
                 weflow_core::output::event(
                     json!({ "type": "auto_download_started", "status": svc.status() }),
                 );
-                let _ = tokio::signal::ctrl_c().await;
+                stop::requested().await;
                 svc.stop();
                 Ok(json!(weflow_core::contract::AutoDownloadStopped {
                     stopped: true
