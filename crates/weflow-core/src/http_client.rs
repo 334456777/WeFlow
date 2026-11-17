@@ -29,9 +29,38 @@ pub fn builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
 }
 
+/// What went wrong with a request, in words that leave out its address (#811): reqwest names the whole address in
+/// its error, and an address can carry a secret, such as the bot token in Telegram's or the signature of a Moments
+/// image. What is left is the kind of failure and its causes, as `error sending request: client error (Connect): tcp
+/// connect error: …`.
+pub fn failure(err: reqwest::Error) -> String {
+    format!("{:#}", anyhow::Error::from(err.without_url()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A request that cannot be sent is reported without the token in its address, and with why it failed.
+    #[tokio::test]
+    async fn a_failure_leaves_the_address_out() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
+        let err = builder()
+            .build()
+            .unwrap()
+            .post(format!(
+                "http://127.0.0.1:{port}/bot123456:SECRET-TOKEN/sendMessage?sign=SECRET-SIGN"
+            ))
+            .send()
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("SECRET-TOKEN"), "{err}");
+        let text = failure(err);
+        assert!(!text.contains("SECRET"), "{text}");
+        assert!(text.starts_with("error sending request: "), "{text}");
+    }
 
     #[test]
     fn only_the_hosts_with_a_wrong_name_go_unchecked() {

@@ -576,7 +576,7 @@ impl ServiceHub {
         let res = req
             .send()
             .await
-            .map_err(|e| AppError::runtime(format!("{e:#}")))?;
+            .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
         let header = |k: &str| {
             res.headers()
                 .get(k)
@@ -671,7 +671,8 @@ impl ServiceHub {
             AppError::runtime(if e.is_timeout() {
                 "request timed out".to_string()
             } else {
-                e.to_string()
+                // the address carries the media's token
+                crate::http_client::failure(e)
             })
         })?;
         let status = resp.status();
@@ -693,7 +694,7 @@ impl ServiceHub {
         let mut raw = resp
             .bytes()
             .await
-            .map_err(|e| AppError::runtime(format!("{e:#}")))?
+            .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?
             .to_vec();
         let key = truthy_key(key);
 
@@ -1619,21 +1620,24 @@ impl ServiceHub {
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|err| AppError::runtime(format!("failed to create HTTP client: {err}")))?;
-        let response = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|err| AppError::runtime(format!("failed to download image: {err}")))?;
+        let response = client.get(url).send().await.map_err(|err| {
+            AppError::runtime(format!(
+                "failed to download image: {}",
+                crate::http_client::failure(err)
+            ))
+        })?;
         if !response.status().is_success() {
             return Err(AppError::runtime(format!(
                 "image download failed with status {}",
                 response.status()
             )));
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|err| AppError::runtime(format!("failed to read image response: {err}")))?;
+        let bytes = response.bytes().await.map_err(|err| {
+            AppError::runtime(format!(
+                "failed to read image response: {}",
+                crate::http_client::failure(err)
+            ))
+        })?;
         let data = bytes.to_vec();
 
         let profile = self.profile()?;

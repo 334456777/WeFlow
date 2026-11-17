@@ -157,7 +157,7 @@ async fn request_json(
         if e.is_timeout() {
             "Weibo request timed out".to_string()
         } else {
-            e.to_string()
+            crate::http_client::failure(e)
         }
     })?;
     let status = resp.status();
@@ -167,7 +167,7 @@ async fn request_json(
             status.as_u16()
         ));
     }
-    let text = resp.text().await.map_err(|e| e.to_string())?;
+    let text = resp.text().await.map_err(crate::http_client::failure)?;
     serde_json::from_str(&text).map_err(|_| "Weibo API returned a non-JSON response".to_string())
 }
 
