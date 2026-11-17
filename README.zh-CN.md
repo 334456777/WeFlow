@@ -36,16 +36,23 @@ weflow lang zh
 1. 设置微信数据目录
 ```powershell
 weflow db detect
-weflow config set db_path "C:\Users\<你>\Documents\xwechat_files"
 ```
 > stdout: `db_path: C:\Users\<你>\Documents\xwechat_files`
+
+```powershell
+weflow config set db_path "C:\Users\<你>\Documents\xwechat_files"
+```
+
 
 2. 设置你的 wxid
 ```powershell
 weflow db wxid
-weflow config set wxid wxid_xxxxxxxx
 ```
 > stdout: `wxid: wxid_xxxxxxxx`
+
+```powershell
+weflow config set wxid wxid_xxxxxxxx
+```
 
 3. 获取并保存数据库密钥（[详细见下文](#key-db)）
 ```powershell
