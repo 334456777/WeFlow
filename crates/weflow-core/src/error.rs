@@ -62,6 +62,12 @@ impl AppError {
         Self::new("runtime_error", message, 1)
     }
 
+    /// A [`runtime`](Self::runtime) error for what is not there (a message, a record, a file): `failureKind` is
+    /// `not_found`, which the command API answers with 404 (#822).
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::runtime(message).with_details(serde_json::json!({ "failureKind": "not_found" }))
+    }
+
     pub fn usage(message: impl Into<String>) -> Self {
         Self::new("invalid_arguments", message, 2)
     }

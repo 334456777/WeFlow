@@ -466,7 +466,19 @@ impl Read {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
                 Ok(json!(hub.insight_footprint(b, e)?))
             }
-            Read::InsightGet { id } => Ok(json!(hub.insight_get_record(id))),
+            Read::InsightGet { id } => {
+                let found = hub.insight_get_record(id);
+                if found.success {
+                    return Ok(json!(found));
+                }
+                // a record that is not there is a 404 of the command API (#822); an empty id is the request's fault
+                let error = found.error.unwrap_or_default();
+                Err(if id.trim().is_empty() {
+                    AppError::usage(error)
+                } else {
+                    AppError::not_found(error)
+                })
+            }
             Read::ReportAnnualYears => Ok(json!(hub.report_available_years()?)),
             Read::CacheList => Ok(json!(hub.cache_list())),
             Read::ConfigGet { key } => {

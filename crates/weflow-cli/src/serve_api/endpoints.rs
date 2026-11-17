@@ -275,6 +275,10 @@ impl Endpoint {
             argv.push("--".into());
             argv.extend(positionals.into_iter().flat_map(|(_, v)| v));
         }
+        // no command line carries a NUL byte: refused here, not as a child process that cannot start (#822)
+        if argv.iter().any(|arg| arg.contains('\0')) {
+            return Err("a parameter holds a NUL byte, which a command line cannot carry".into());
+        }
         Ok(argv)
     }
 }
@@ -350,6 +354,13 @@ mod tests {
     fn argv(path: &str, pairs: &[(&str, Value)]) -> Result<Vec<String>, String> {
         let endpoints = Endpoints::new();
         endpoints.0.get(path).unwrap().argv(&params(pairs))
+    }
+
+    /// A NUL byte in a value is refused: no child process could start with it (#822).
+    #[test]
+    fn a_nul_byte_is_refused() {
+        let err = argv("chat latest", &[("session-id", json!("a\0b"))]).unwrap_err();
+        assert!(err.contains("NUL"), "{err}");
     }
 
     #[test]

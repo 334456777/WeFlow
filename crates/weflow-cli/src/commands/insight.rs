@@ -144,7 +144,15 @@ pub(crate) async fn handle_insight(command: InsightCommand, hub: &ServiceHub) ->
         } => Ok(json!(hub.insight_list_records(&insight_filters(
             session, keyword, start, end, limit, offset,
         )))),
-        InsightSubcommand::MarkRead { id } => Ok(json!(hub.insight_mark_record_read(&id))),
+        InsightSubcommand::MarkRead { id } => {
+            let marked = hub.insight_mark_record_read(&id);
+            if marked.success {
+                Ok(json!(marked))
+            } else {
+                // the record is not there: a 404 of the command API, as `insight get` (#822)
+                Err(AppError::not_found(marked.error.unwrap_or_default()))
+            }
+        }
         InsightSubcommand::Clear {
             session,
             start,

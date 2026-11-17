@@ -106,8 +106,27 @@ fn reads_run_in_process_with_the_same_answers() {
         let r = same(target);
         assert_eq!(r.status, 200, "{target}: {}", r.body);
     }
-    // an insight record that is not there: the command's own failure
-    assert_eq!(same("/insight/get?id=none").status, 500);
+    // what is not there (an insight record, a message, a voice, a backup) is a 404 from either side, and a value no
+    // command line can carry a 400 (#822)
+    assert_eq!(same("/insight/get?id=none").status, 404);
+    for target in [
+        "/api/chat/image-info?session-id=wxid_bob&msg-id=999",
+        "/api/chat/video-data?session-id=wxid_bob&msg-id=999",
+        "/api/chat/voice-data?session-id=wxid_bob&msg-id=999",
+        "/chat/image-info?session-id=wxid_bob&msg-id=999",
+        "/backup/inspect?path=no-such-backup.zip",
+    ] {
+        let r = server.call("GET", target, "");
+        assert_eq!(r.status, 404, "{target}: {}", r.body);
+        assert_eq!(
+            r.json()["error"]["details"]["failureKind"],
+            "not_found",
+            "{target}"
+        );
+    }
+    let r = server.call("GET", "/backup/inspect?path=a%00b.zip", "");
+    assert_eq!(r.status, 400, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], "invalid_arguments");
     // a cursor that is not one fails the same way
     assert_eq!(same("/chat/resources?before=1.2.3").status, 400);
     // A media list lookup has exactly the parsed shape and cursor of the conversation page.

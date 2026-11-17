@@ -184,13 +184,6 @@ impl Rendition {
     }
 }
 
-/// A `not_found` failure (HTTP 404), as the image routes report a missing file.
-fn not_found(message: &str) -> AppError {
-    let mut err = AppError::runtime(message);
-    err.details = Some(json!({ "failureKind": "not_found" }));
-    err
-}
-
 #[derive(Default, Clone, Debug)]
 pub struct ImagePayload {
     pub session_id: Option<String>,
@@ -1398,7 +1391,7 @@ impl ServiceHub {
                 match (variant, &files.hd, &files.base) {
                     // the HD file through the usual path, which keeps the HD rendition in the cache
                     (ImageVariant::Hd, Some(_), _) => self.image_data_for_payload(&hd_payload),
-                    (ImageVariant::Hd, None, _) => Err(not_found(
+                    (ImageVariant::Hd, None, _) => Err(AppError::not_found(
                         "the HD original of this image is not on this computer: open the image in WeChat and choose View original",
                     )),
                     // with no HD file the usual path already gives the image itself (or the thumbnail without it);
@@ -1584,7 +1577,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let row =
             super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(3))?
-                .ok_or_else(|| AppError::runtime("message not found"))?;
+                .ok_or_else(|| AppError::not_found("message not found"))?;
         let my = self.my_wxid_cleaned();
         let msg =
             crate::chat_msg::map_msg_row(row, &weflow_native::msg::table_name_for(session_id), &my);

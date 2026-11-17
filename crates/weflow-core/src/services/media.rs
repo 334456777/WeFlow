@@ -46,7 +46,7 @@ impl ServiceHub {
             .ok_or_else(|| AppError::usage("invalid message id"))?;
         let wcdb = self.open_wcdb()?;
         let row = chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(43))?
-            .ok_or_else(|| AppError::runtime("message not found"))?;
+            .ok_or_else(|| AppError::not_found("message not found"))?;
         let msg = crate::chat_msg::map_msg_row(
             row,
             &weflow_native::msg::table_name_for(session_id),

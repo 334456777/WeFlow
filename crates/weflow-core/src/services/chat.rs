@@ -184,7 +184,7 @@ impl ServiceHub {
     ) -> AppResult<MsgRow> {
         let wcdb = self.open_wcdb()?;
         message_by_local_id(&wcdb, session_id, local_id, create_time, None)?
-            .ok_or_else(|| AppError::runtime("message not found"))
+            .ok_or_else(|| AppError::not_found("message not found"))
     }
 
     /// `chat message --server-id`.
@@ -196,7 +196,7 @@ impl ServiceHub {
         self.open_wcdb()?
             .message_by_server_id(session_id, server_id)
             .map_err(native)?
-            .ok_or_else(|| AppError::runtime("message not found"))
+            .ok_or_else(|| AppError::not_found("message not found"))
     }
 
     /// `chat message` without `parsed`: the row, and the message as the query commands list it.

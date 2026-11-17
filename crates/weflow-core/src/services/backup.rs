@@ -31,8 +31,24 @@ impl ServiceHub {
         })
     }
 
+    /// The manifest of the backup at `path`.
+    ///
+    /// # Errors
+    /// A file that is not there is `not_found` (a 404 of the command API, #822); one that cannot be read as a backup
+    /// is a runtime error.
     pub fn backup_inspect(&self, path: &Path) -> AppResult<crate::backup::BackupManifest> {
-        crate::backup::inspect_backup(path).map_err(|e| AppError::runtime(format!("{e:#}")))
+        crate::backup::inspect_backup(path).map_err(|e| {
+            let missing = e.chain().any(|cause| {
+                cause
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+            });
+            if missing {
+                AppError::not_found(format!("{e:#}"))
+            } else {
+                AppError::runtime(format!("{e:#}"))
+            }
+        })
     }
 
     pub fn backup_restore(
