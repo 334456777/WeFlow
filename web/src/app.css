@@ -226,7 +226,8 @@ time, .num { font-variant-numeric: tabular-nums; }
   position: relative; display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; flex-shrink: 0;
   padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); text-align: left;
 }
-.conversation-row.active::before {
+/* the selection bar; a row's ::before is its shape under a skin with shapes (styles/roles.css) */
+.conversation-row.active::after {
   content: ''; position: absolute; left: 0; top: 50%; width: 3px; height: 20px; margin-top: -10px;
   border-radius: var(--radius-full); background: var(--row-fg-selected); animation: indicator-in var(--duration-snap) var(--ease-snap);
 }
@@ -482,15 +483,17 @@ time, .num { font-variant-numeric: tabular-nums; }
 .calendar-day.chosen { font-weight: var(--weight-semibold); }
 .calendar-day.quiet:not(.chosen, .between) { color: var(--fg-subtle); }
 .calendar-day[aria-disabled] { color: var(--fg-subtle); opacity: .45; cursor: default; }
-.calendar-day.today::before, .calendar-day.marked::after {
+/* Today's bar and a marked day's dot, placed in the day by its number's pseudo-elements: the day's own ::before is its
+   shape under a skin with shapes (styles/roles.css). */
+.calendar-day.today > span::before, .calendar-day.marked > span::after {
   content: ''; position: absolute; left: 50%; transform: translateX(-50%); background: currentColor; pointer-events: none;
 }
 .calendar-day.today { font-weight: var(--weight-semibold); }
-.calendar-day.today::before { top: 8px; width: 12px; height: 2px; border-radius: var(--radius-full); }
-.calendar-day.marked::after { bottom: 5px; width: 4px; height: 4px; border-radius: 50%; opacity: .7; }
+.calendar-day.today > span::before { top: 8px; width: 12px; height: 2px; border-radius: var(--radius-full); }
+.calendar-day.marked > span::after { bottom: 5px; width: 4px; height: 4px; border-radius: 50%; opacity: .7; }
 /* The busier the day, the bigger its dot (chat date-counts, in three steps). */
-.calendar-day[data-heat='1']::after { width: 3px; height: 3px; }
-.calendar-day[data-heat='3']::after { width: 6px; height: 6px; bottom: 4px; }
+.calendar-day[data-heat='1'] > span::after { width: 3px; height: 3px; }
+.calendar-day[data-heat='3'] > span::after { width: 6px; height: 6px; bottom: 4px; }
 .calendar-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .calendar-choice {
   height: 44px; border-radius: var(--radius-md); font-size: var(--text-sm); font-variant-numeric: tabular-nums;

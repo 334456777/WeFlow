@@ -9,11 +9,16 @@
  * layer is above this one. Every selector is in :where(), of no weight, so within a role the later state wins:
  * at rest, hover, selected or on, held down, disabled.
  *
- * What differs from one element to another is a variable it sets: `--press`, how much it shrinks held down
- * (`--press-scale-sm` for the small ones, which would not show the press otherwise); `--transition`, the whole of
- * its transitions where it moves in other ways too (the export's side buttons grow out of the export button).
+ * A state gives the role's fill (`--face`, the background) and its shadow (`--lift`), which the element draws on
+ * itself. What differs from one element to another is a variable it sets: `--press`, how much it shrinks held down (`--press-scale-sm` for the
+ * small ones, which would not show the press otherwise); `--transition`, the whole of its transitions where it moves
+ * in other ways too (the export's side buttons grow out of the export button).
  */
 @layer roles {
+/* The state's fill and shadow belong to the element that sets them: a role inside another takes none of its own. */
+@property --face { syntax: '*'; inherits: false; }
+@property --lift { syntax: '*'; inherits: false; }
+
 /* Hover changes the look within 150ms; held down, what can be pressed takes its pressed look at once and shrinks a
    little: the roles below, the segmented control's options, a date field, and the photos and files of a chat to open. */
 :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option, .nav-item, .conversation-row, .as-row,
@@ -25,11 +30,18 @@
   scale: var(--press, var(--press-scale)); transition-duration: var(--duration-micro);
 }
 
+/* The fill and the shadow of the state, on the element. A row has a fill only selected. */
+:where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option) { background: var(--face); }
+:where(.nav-item, .conversation-row, .as-row):where(.selected, .active, .chosen, [aria-current='page'], [aria-current='step']) { background: var(--face); }
+:where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option, .nav-item, .conversation-row, .as-row) {
+  box-shadow: var(--lift);
+}
+
 /* The main action, and a button drawn as one (`as-button`: the export's side buttons, 「回到最新消息」). */
-:where(.primary-button, .as-button) { background: var(--button-bg); box-shadow: var(--button-shadow); }
-:where(.primary-button, .as-button):where(:hover:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--button-shadow-hover); }
-:where(.primary-button, .as-button):where(:active:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--button-shadow-pressed); }
-:where(.primary-button, .as-button):where(:disabled) { box-shadow: var(--button-shadow-disabled); }
+:where(.primary-button, .as-button) { --face: var(--button-bg); --lift: var(--button-shadow); }
+:where(.primary-button, .as-button):where(:hover:not(:disabled, [aria-disabled='true'])) { --lift: var(--button-shadow-hover); }
+:where(.primary-button, .as-button):where(:active:not(:disabled, [aria-disabled='true'])) { --lift: var(--button-shadow-pressed); }
+:where(.primary-button, .as-button):where(:disabled) { --lift: var(--button-shadow-disabled); }
 
 /*
  * The other buttons: secondary, icon, and `as-control` (the preview's steps and 「原图」, a resource's tile, the group
@@ -37,47 +49,47 @@
  * under the pointer. Held down, one that is on or toggles (`aria-expanded`, `aria-pressed`) looks as one on held down,
  * on or off. `press-on-hover`: under the pointer it looks pressed already, and held down as one on.
  */
-:where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)) { background: var(--control-bg); box-shadow: var(--control-shadow); }
-:where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)):where(:hover:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--control-shadow-hover); }
-:where(.press-on-hover):where(:hover:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--control-shadow-pressed); }
+:where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)) { --face: var(--control-bg); --lift: var(--control-shadow); }
+:where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)):where(:hover:not(:disabled, [aria-disabled='true'])) { --lift: var(--control-shadow-hover); }
+:where(.press-on-hover):where(:hover:not(:disabled, [aria-disabled='true'])) { --lift: var(--control-shadow-pressed); }
 :where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)):where(.on, .shown, .playing) {
-  background: var(--control-bg-on); box-shadow: var(--control-shadow-on); color: var(--control-fg-on);
+  --face: var(--control-bg-on); --lift: var(--control-shadow-on); color: var(--control-fg-on);
 }
-:where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)):where(:active:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--control-shadow-pressed); }
+:where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)):where(:active:not(:disabled, [aria-disabled='true'])) { --lift: var(--control-shadow-pressed); }
 :where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)):where(:is(.on, .shown, .playing, [aria-expanded], [aria-pressed], .press-on-hover):active:not(:disabled, [aria-disabled='true'])) {
-  box-shadow: var(--control-shadow-on-pressed);
+  --lift: var(--control-shadow-on-pressed);
 }
-:where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)):where(:disabled, [aria-disabled='true']) { box-shadow: var(--control-shadow-disabled); }
+:where(:is(.secondary-button, .icon-button, .as-control):not(.as-button)):where(:disabled, [aria-disabled='true']) { --lift: var(--control-shadow-disabled); }
 
 /* What is picked among others: a chip, and `as-option` (a choice of the setup, a page in the phone's sheet). Held
    down, chosen or not, it looks the same. */
-:where(.chip, .as-option) { background: var(--option-bg); box-shadow: var(--option-shadow); }
-:where(.chip, .as-option):where(:hover:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--option-shadow-hover); }
+:where(.chip, .as-option) { --face: var(--option-bg); --lift: var(--option-shadow); }
+:where(.chip, .as-option):where(:hover:not(:disabled, [aria-disabled='true'])) { --lift: var(--option-shadow-hover); }
 :where(.chip, .as-option):where([aria-pressed='true'], .selected) {
-  background: var(--option-bg-selected); box-shadow: var(--option-shadow-selected); color: var(--option-fg-selected);
+  --face: var(--option-bg-selected); --lift: var(--option-shadow-selected); color: var(--option-fg-selected);
 }
-:where(.chip, .as-option):where(:active:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--option-shadow-pressed); }
-:where(.chip, .as-option):where(:disabled) { box-shadow: var(--option-shadow-disabled); }
+:where(.chip, .as-option):where(:active:not(:disabled, [aria-disabled='true'])) { --lift: var(--option-shadow-pressed); }
+:where(.chip, .as-option):where(:disabled) { --lift: var(--option-shadow-disabled); }
 
 /*
  * Navigation and the rows of a list: the sidebar's, the conversations, and `as-row` (a hit, a medium, a member, an
  * article, the days, months and title of the calendar, a tab of the phone, a step of the setup). A day inside the range
  * being picked looks as one under the pointer. Held down, chosen or not, a row looks the same.
  */
-:where(.nav-item, .conversation-row, .as-row) { box-shadow: var(--row-shadow); }
-:where(.nav-item, .conversation-row, .as-row):where(:hover:not(:disabled, [aria-disabled='true']), .between) { box-shadow: var(--row-shadow-hover); }
+:where(.nav-item, .conversation-row, .as-row) { --lift: var(--row-shadow); }
+:where(.nav-item, .conversation-row, .as-row):where(:hover:not(:disabled, [aria-disabled='true']), .between) { --lift: var(--row-shadow-hover); }
 :where(.nav-item, .conversation-row, .as-row):where(.selected, .active, .chosen, [aria-current='page'], [aria-current='step']) {
-  background: var(--row-bg-selected); box-shadow: var(--row-shadow-selected); color: var(--row-fg-selected);
+  --face: var(--row-bg-selected); --lift: var(--row-shadow-selected); color: var(--row-fg-selected);
 }
-:where(.nav-item, .conversation-row, .as-row):where(:active:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--row-shadow-pressed); }
+:where(.nav-item, .conversation-row, .as-row):where(:active:not(:disabled, [aria-disabled='true'])) { --lift: var(--row-shadow-pressed); }
 /* `in-well`: a row in a well (the commands) stands out as a control under the pointer and when chosen, instead of
    sinking into the well; held down, it takes the control's press. */
-:where(.as-row.in-well):where(:hover:not(:disabled, [aria-disabled='true']), [aria-pressed='true']) { box-shadow: var(--control-shadow); }
-:where(.as-row.in-well):where(:active:not(:disabled, [aria-disabled='true'])) { box-shadow: var(--control-shadow-pressed); }
+:where(.as-row.in-well):where(:hover:not(:disabled, [aria-disabled='true']), [aria-pressed='true']) { --lift: var(--control-shadow); }
+:where(.as-row.in-well):where(:active:not(:disabled, [aria-disabled='true'])) { --lift: var(--control-shadow-pressed); }
 /* In a group whose hover hollow (HoverTrack.tsx) draws the hover, a row keeps its rest look over the hollow; held down
    too, while the hollow takes the press. A selected row keeps its own look. */
-:where(.hover-track-host :is(.nav-item, .conversation-row, .as-row):hover:not(.selected, .active, :active)) { box-shadow: var(--row-shadow); }
-:where(.hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .as-row):active:not(.selected, .active)) { box-shadow: var(--row-shadow); }
+:where(.hover-track-host :is(.nav-item, .conversation-row, .as-row):hover:not(.selected, .active, :active)) { --lift: var(--row-shadow); }
+:where(.hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .as-row):active:not(.selected, .active)) { --lift: var(--row-shadow); }
 
 /* A check box, with its tick (`--check-fg-on`) when checked. Held down, checked or not, it looks the same and shrinks
    more than a button, being small. */
