@@ -4,12 +4,17 @@
 // a browser context of its own; before a shot the page settles: its fonts and pictures loaded, the transitions over,
 // the loops (a spinner, a loading sweep) stopped at their start.
 //
-//   bun run shots <name> [<word>...]    shots into target/web-shots/<name>/ (only the scenes with one of the words)
+//   bun run shots <name> [--skin <id>] [<word>...]
+//                                       shots into target/web-shots/<name>/ (only the scenes with one of the words), in
+//                                       the skin <id> of src/skin.ts (none: the default)
 //   bun run shots --compare <a> <b>     <a> and <b> compared pixel by pixel; where they differ, in target/web-shots/<a>-vs-<b>/
 //
 // Shots differ from one machine to another (fonts, Chrome's version), so the two sets compared are taken on the same
 // one, on the same day (dates are written relative to today), and served by the same weflow (pinned below).
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+//
+// A set is in one skin, which its file `skin` names: a partial run in another skin into it fails, and --compare says
+// when the two sets are in different skins.
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { accounts, buildAccount, startServe, target } from '../scripts/account.ts';
 import { Browser, findChrome, type Page } from './cdp.ts';
@@ -23,6 +28,11 @@ const AT_ONCE = 3;
 /** Drawn the same way every time: in software on one thread, in sRGB. Else the edge of a rounded shadow differs by a
  * shade at a pixel or two from one run to the next. */
 const STEADY = ['--disable-gpu', '--num-raster-threads=1', '--disable-partial-raster', '--force-color-profile=srgb'];
+/** Where the page keeps the skin chosen: skin.ts's SKIN_KEY, written again here since skin.ts cannot be loaded outside
+ * a page (the i18n module it imports sets the document's title as it loads). */
+const SKIN_KEY = 'weflow.skin';
+/** The file of a set that names its skin. */
+const SKIN_FILE = 'skin';
 
 const out = join(target, 'web-shots');
 const args = process.argv.slice(2);
@@ -33,6 +43,8 @@ if (args[0] === '--compare') {
   const browser = await Browser.launch(findChrome(), join(out, 'profile'));
   try {
     const { same, differences } = await compare(browser, join(out, before), join(out, after), join(out, `${before}-vs-${after}`));
+    const [a, b] = [before, after].map(set => skinOf(join(out, set)));
+    if (a && b && a !== b) console.log(`${before} is in the skin ${a}, ${after} in ${b}`);
     for (const { file, text } of differences) console.log(`✗ ${file}: ${text}`);
     console.log(differences.length
       ? `${differences.length} of ${same + differences.length} shots differ; where: ${join(out, `${before}-vs-${after}`)}`
@@ -42,28 +54,37 @@ if (args[0] === '--compare') {
     await browser.close();
   }
 } else {
-  const [name, ...only] = args;
+  const [name, ...rest] = args;
   if (!name || !/^[\w-]+$/.test(name) || name === 'profile') usage();
-  await shoot(name, only);
+  const at = rest.indexOf('--skin');
+  const skin = at < 0 ? undefined : rest[at + 1];
+  if (at >= 0 && !/^[\w-]+$/.test(skin ?? '')) usage();
+  await shoot(name, at < 0 ? rest : rest.toSpliced(at, 2), skin).catch((error: Error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
 }
 
 function usage(): never {
-  console.error('usage: bun run shots <name> [<word>...] | bun run shots --compare <name> <name>');
+  console.error('usage: bun run shots <name> [--skin <id>] [<word>...] | bun run shots --compare <name> <name>');
   process.exit(2);
+}
+
+/** The skin the shots in `dir` are in; none for a set shot before sets named theirs. */
+function skinOf(dir: string): string | undefined {
+  const file = join(dir, SKIN_FILE);
+  return existsSync(file) ? readFileSync(file, 'utf8').trim() : undefined;
 }
 
 type Variant = { scheme: 'light' | 'dark'; contrast: boolean };
 
-async function shoot(name: string, only: string[]): Promise<void> {
+async function shoot(name: string, only: string[], skin: string | undefined): Promise<void> {
   const dist = join(import.meta.dir, '../dist');
   if (!existsSync(join(dist, 'index.html'))) {
     console.error('no build in web/dist: run `bun run build` first');
     process.exit(1);
   }
   const dir = join(out, name);
-  // a full run starts afresh; a partial one replaces the shots of its scenes only
-  if (!only.length) rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
   const jobs = scenes
     .filter(scene => !only.length || only.some(word => scene.name.includes(word)))
     .flatMap(scene => variants(scene).map(variant => ({ scene, variant })));
@@ -71,23 +92,34 @@ async function shoot(name: string, only: string[]): Promise<void> {
     console.error('no scene has any of the words ' + only.join(', '));
     process.exit(2);
   }
-  for (const { scene, variant } of jobs) {
-    for (const file of readdirSync(dir)) if (file.startsWith(scene.name + '.') && file.endsWith(`.${suffix(variant)}.png`)) rmSync(join(dir, file));
-  }
 
   const { weflow: built, home } = buildAccount(accounts.dev);
   const weflow = pinned(built);
   console.log('served by ' + Bun.spawnSync([weflow, '--version']).stdout.toString().trim() + ' (' + weflow + ')');
   const browser = await Browser.launch(findChrome(), join(out, 'profile'), STEADY);
   const { serve, url, token } = await startServe(weflow, home, ['--ui-dir', dist, '--no-browser'], { WEFLOW_LANG: 'zh' });
+  const address = `${url}/ui/?token=${token}`;
   const started = performance.now();
   let failed = 0, shots = 0, next = 0;
   try {
+    // the skin is tried in one tab first, so that one the page does not have fails once, before the set is touched
+    const probe = await browser.newPage({ isolated: true });
+    const shown = await open(probe, address, skin).finally(() => probe.close());
+    const kept = skinOf(dir);
+    // a full run starts afresh; a partial one replaces the shots of its scenes only, in the skin of the set
+    if (only.length && kept && kept !== shown) throw new Error(`the shots in ${dir} are in the skin ${kept}: shoot ${shown} into a set of its own`);
+    if (!only.length) rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    for (const { scene, variant } of jobs) {
+      for (const file of readdirSync(dir)) if (file.startsWith(scene.name + '.') && file.endsWith(`.${suffix(variant)}.png`)) rmSync(join(dir, file));
+    }
+    writeFileSync(join(dir, SKIN_FILE), shown + '\n');
+    console.log('in the skin ' + shown);
     const worker = async () => {
       while (next < jobs.length) {
         const { scene, variant } = jobs[next++];
         try {
-          const taken = await run(browser, `${url}/ui/?token=${token}`, scene, variant, dir);
+          const taken = await run(browser, address, skin, scene, variant, dir);
           shots += taken;
           console.log(`✓ ${scene.name} (${suffix(variant)})`);
         } catch (error) {
@@ -126,8 +158,24 @@ function suffix(variant: Variant): string {
   return variant.scheme + (variant.contrast ? '-contrast' : '');
 }
 
-/** The scene in a new tab of its own context: the number of shots it took. */
-async function run(browser: Browser, address: string, scene: Scene, variant: Variant, dir: string): Promise<number> {
+/**
+ * Opens the page in `page` (a tab of a context of its own, where nothing is kept yet) in the skin `skin`, the default
+ * for none, until it has connected to weflow serve: the skin it shows. Fails when that is not the skin asked for (one
+ * src/skin.ts does not have, or whose sheet could not be fetched, leaves the default on).
+ */
+async function open(page: Page, address: string, skin: string | undefined): Promise<string> {
+  // kept before the page's first script reads it: index.html puts the skin on before the first paint
+  if (skin) await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem(${JSON.stringify(SKIN_KEY)}, ${JSON.stringify(skin)});` });
+  await page.goto(address);
+  await page.waitFor('the page to connect to weflow serve', () => document.querySelector('.connection.ready') !== null);
+  // main.tsx draws the page once the skin is on, so it is the one on now
+  const shown = await page.eval(() => document.documentElement.dataset.skin ?? '');
+  if (skin && shown !== skin) throw new Error(`the page shows the skin ${shown}, not ${skin}: no skin ${skin} in src/skin.ts, or its sheet could not be fetched`);
+  return shown;
+}
+
+/** The scene in a new tab of its own context, in the skin `skin`: the number of shots it took. */
+async function run(browser: Browser, address: string, skin: string | undefined, scene: Scene, variant: Variant, dir: string): Promise<number> {
   const page = await browser.newPage({ isolated: true });
   let taken = 0;
   try {
@@ -139,8 +187,7 @@ async function run(browser: Browser, address: string, scene: Scene, variant: Var
         { name: 'prefers-reduced-motion', value: 'no-preference' },
       ],
     });
-    await page.goto(address);
-    await page.waitFor('the page to connect to weflow serve', () => document.querySelector('.connection.ready') !== null);
+    await open(page, address, skin);
     const shoot: Shoot = async (label, around) => {
       // the viewport is shot with the mouse off every control; a part of it, as the scene left the mouse
       if (!around) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...REST });
