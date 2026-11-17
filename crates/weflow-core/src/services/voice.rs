@@ -181,8 +181,9 @@ impl ServiceHub {
                 }
             }
         }
+        // without one given, the time comes from the voice message: none was found (#822)
         let create_time =
-            create_time.ok_or_else(|| AppError::runtime("message timestamp not found"))?;
+            create_time.ok_or_else(|| AppError::not_found("message timestamp not found"))?;
 
         let key = voice_cache_key(session_id, &local_id.to_string(), Some(create_time));
         let cache_file = self.voice_cache_dir().join(format!("{key}.wav"));
@@ -202,7 +203,7 @@ impl ServiceHub {
                 &candidates,
             )
             .ok_or_else(|| {
-                AppError::runtime(
+                AppError::not_found(
                     "voice data not found (play the voice message in WeChat once first)",
                 )
             })?;
