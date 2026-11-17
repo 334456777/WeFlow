@@ -158,6 +158,11 @@ pub(crate) fn handle_key(
             ciphertext,
             save,
         } => {
+            if *save && ciphertext.is_some() {
+                return Err(AppError::usage(
+                    "a key found with a given ciphertext is checked against that block only, so it is not saved; run `key image-mem --save` without a ciphertext to check the key against the account's thumbnails",
+                ));
+            }
             let mut data = hub.key_image_mem(*pid, ciphertext.as_deref())?;
             if *save {
                 let aes = data.image_aes_key.take().ok_or_else(|| {
@@ -315,7 +320,7 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
                     tr("No image AES key found", "未找到图片 AES 密钥")
                 ));
             };
-            Some(match data["image_xor_key"].as_u64() {
+            let mut text = match data["image_xor_key"].as_u64() {
                 Some(xor) => format!(
                     "{}\nimage_xor_key: {xor}\nimage_aes_key: {key}\n",
                     tr("Image keys obtained", "已获取图片密钥")
@@ -324,7 +329,14 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
                     "{}\nimage_aes_key: {key}\n",
                     tr("Image AES key obtained", "已获取图片 AES 密钥")
                 ),
-            })
+            };
+            if data["verification"] == "first_block" {
+                text.push_str(tr(
+                    "(only the given block was checked; the key is not verified against the account's images)\n",
+                    "（只验证了给定的这一块，未用账号的图片验证这个密钥）\n",
+                ));
+            }
+            Some(text)
         }
         KeyShown::Processes => {
             let processes = data["processes"].as_array()?;
@@ -496,6 +508,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(scanned, found);
+        let one_block = keys_summary(
+            KeyShown::ImageMem,
+            &json!({ "image_aes_key": "00112233445566778899aabbccddeeff", "verification": "first_block", "pid": 1 }),
+        )
+        .unwrap();
+        assert!(
+            one_block.starts_with(&found) && one_block.len() > found.len(),
+            "a key checked on one block says so: {one_block}"
+        );
         let missing = keys_summary(KeyShown::ImageMem, &json!({ "pid": 1 })).unwrap();
         assert!(missing.contains("AES") || missing.contains("图片"));
         let pair = keys_summary(

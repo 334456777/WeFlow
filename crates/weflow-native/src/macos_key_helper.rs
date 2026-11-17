@@ -1,8 +1,8 @@
 //! The Rust rewrite of macOS `xkey_helper`.
 //!
 //! `Hook` locates the database-key call, attaches to WeChat with `ptrace` and
-//! Mach breakpoints, and reads the 32-byte key; `scan_memory_for_image_key`
-//! backs the image-key scan, and `wechat_processes` lists the running client.
+//! Mach breakpoints, and reads the 32-byte key; `scan_image_key` and
+//! `scan_memory_for_image_key` back the image-key scan, and `wechat_processes` lists the running client.
 //! `cli` keeps the helper's own command line, JSON and exit codes for tests.
 //!
 //! The original executable used Mach exception ports. This rewrite lets
@@ -22,7 +22,7 @@ mod process;
 
 pub use cli::{run_helper, run_helper_at};
 #[cfg(target_os = "macos")]
-pub use image_mem::scan_memory_for_image_key;
+pub use image_mem::{scan_image_key, scan_memory_for_image_key};
 #[cfg(target_os = "macos")]
 pub use platform::{get_db_key_target, interrupt, Hook};
 #[cfg(target_os = "macos")]

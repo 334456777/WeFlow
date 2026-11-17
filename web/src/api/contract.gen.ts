@@ -1503,6 +1503,12 @@ export interface ImageMemKey {
    * AES key; left out when no thumbnail has an XOR tail that verifies.
    */
   image_xor_key?: number;
+  /**
+   * How the AES key was confirmed, when one was found: `jpeg_decode_and_xor_tail` (a thumbnail of the account
+   * decodes as a whole JPEG with both keys), `sample_first_blocks` (the first blocks of two or more thumbnails
+   * decrypt into image headers) or `first_block` (only the given ciphertext was checked).
+   */
+  verification?: string;
   pid: number;
   /** With `save`: the profile keys written. */
   saved?: string[];

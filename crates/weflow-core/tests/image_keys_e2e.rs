@@ -15,8 +15,8 @@ use std::time::{Duration, SystemTime};
 
 use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
 use weflow_core::image_keys::{
-    account_identities, acquire_image_keys, aes_from_samples, ciphertext_hex, collect_codes,
-    memory_samples, xor_from_samples,
+    account_identities, acquire_image_keys, check_memory_key, collect_codes, memory_ciphertexts,
+    memory_samples, MemoryKeyCheck,
 };
 use weflow_core::keys::{derive_image_keys, scan_templates};
 
@@ -52,30 +52,50 @@ fn sample(dir: &Path, name: &str, code: u32, wxid: &str, xor_len: usize) {
     fs::write(dir.join(name), encrypt(&jpeg(), code, wxid, xor_len)).unwrap();
 }
 
-/// `key image-mem` without a ciphertext: the newest thumbnail's first AES block goes to the memory scan, and the XOR
-/// key comes from a sample's tail only once the pair decodes it.
+/// The image AES key as the raw bytes `key image-mem` finds in memory: the derived key's ASCII characters.
+fn memory_key(code: u32, wxid: &str) -> [u8; 16] {
+    let (_, aes) = derive_image_keys(code.into(), wxid);
+    *aes.as_bytes().first_chunk().unwrap()
+}
+
+/// `key image-mem` without a ciphertext: the memory is searched with the first blocks of the newest thumbnails, and a
+/// key is taken only once a thumbnail decodes with it and its XOR tail, or two thumbnails' first blocks decrypt with
+/// it (#853).
 #[test]
-fn memory_scan_takes_its_ciphertext_and_the_xor_key_from_the_samples() {
+fn memory_scan_takes_a_key_only_once_the_samples_confirm_it() {
     let root = common::temp_dir("image-memory-samples");
     assert_eq!(
         memory_samples(&root).unwrap_err().code,
         "image_key_no_template"
     );
     sample(&root.join("a"), "1_t.dat", 123, "wxid_me", 64);
-    let (xor, aes) = derive_image_keys(123, "wxid_me");
+    let (xor, _) = derive_image_keys(123, "wxid_me");
+    let key = memory_key(123, "wxid_me");
     let samples = memory_samples(&root).unwrap();
-    let expected = ciphertext_hex(&samples[0]);
-    let found = aes_from_samples(&samples, |cipher| (cipher == expected).then(|| aes.clone()));
-    assert_eq!(found.as_deref(), Some(aes.as_str()));
-    assert_eq!(xor_from_samples(&samples, &aes), Some(xor));
-    let (_, other) = derive_image_keys(124, "wxid_me");
-    assert_eq!(xor_from_samples(&samples, &other), None);
-    // no XOR tail: the AES key alone
+    assert_eq!(memory_ciphertexts(&samples), [samples[0].cipher]);
+    assert_eq!(
+        check_memory_key(&samples, &key),
+        Some(MemoryKeyCheck::DecodedWithXor(xor))
+    );
+    assert_eq!(
+        check_memory_key(&samples, &memory_key(124, "wxid_me")),
+        None
+    );
+
+    // no XOR tail: one thumbnail cannot confirm the key, two distinct ones can
     let bare = common::temp_dir("image-memory-no-tail");
     sample(&bare, "1_t.dat", 123, "wxid_me", 0);
     assert_eq!(
-        xor_from_samples(&memory_samples(&bare).unwrap(), &aes),
+        check_memory_key(&memory_samples(&bare).unwrap(), &key),
         None
+    );
+    // another first block: the JFIF density differs
+    let mut other = jpeg();
+    other[15] ^= 2;
+    fs::write(bare.join("2_t.dat"), encrypt(&other, 123, "wxid_me", 0)).unwrap();
+    assert_eq!(
+        check_memory_key(&memory_samples(&bare).unwrap(), &key),
+        Some(MemoryKeyCheck::FirstBlocks(2))
     );
 }
 
