@@ -354,7 +354,7 @@ impl Registry {
             .read_timeout(Duration::from_secs(60))
             .user_agent(concat!("weflow/", env!("CARGO_PKG_VERSION")))
             .build()
-            .map_err(|e| AppError::runtime(e.to_string()))?;
+            .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         Ok(Self {
             base: base.trim_end_matches('/').to_string(),
             repository: repository.to_string(),

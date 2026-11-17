@@ -242,7 +242,7 @@ pub(crate) async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> A
                 write_text_file(&path, &csv)?;
             } else {
                 weflow_core::export::export_table_excel(&headers, &rows, &path)
-                    .map_err(|err| AppError::runtime(err.to_string()))?;
+                    .map_err(|err| AppError::runtime(format!("{err:#}")))?;
             }
             Ok(json!(ExportWritten { out: path, format }))
         }
@@ -652,7 +652,7 @@ async fn write_list(
                     }),
             };
             export::export_list_html(&page, &path)
-                .map_err(|err| AppError::runtime(err.to_string()))?;
+                .map_err(|err| AppError::runtime(format!("{err:#}")))?;
         }
         ListFormat::Excel | ListFormat::Sql => {
             let (headers, rows) = export::list_table(value);
@@ -660,7 +660,7 @@ async fn write_list(
                 ListFormat::Excel => export::export_table_excel(&headers, &rows, &path),
                 _ => export::export_table_sql(name, &headers, &rows, &path),
             }
-            .map_err(|err| AppError::runtime(err.to_string()))?;
+            .map_err(|err| AppError::runtime(format!("{err:#}")))?;
         }
     }
     Ok(ExportWritten {

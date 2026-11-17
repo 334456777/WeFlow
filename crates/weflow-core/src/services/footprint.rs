@@ -17,7 +17,7 @@ impl ServiceHub {
             "endTimestamp": end
         });
         wcdb.footprint_stats(&options)
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
     /// [`Self::footprint`]'s answer as the rows of a CSV or Excel export, with the names of the conversations and

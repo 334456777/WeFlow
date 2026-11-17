@@ -37,14 +37,14 @@ impl ServiceHub {
         let client = crate::http_client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()
-            .map_err(|e| AppError::runtime(e.to_string()))?;
+            .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let mut url = cdn_url.to_string();
         for _ in 0..5 {
             let resp = client
                 .get(&url)
                 .send()
                 .await
-                .map_err(|e| AppError::runtime(e.to_string()))?;
+                .map_err(|e| AppError::runtime(format!("{e:#}")))?;
             let code = resp.status().as_u16();
             if code == 301 || code == 302 {
                 if let Some(loc) = resp.headers().get("location").and_then(|v| v.to_str().ok()) {
@@ -58,7 +58,7 @@ impl ServiceHub {
             let bytes = resp
                 .bytes()
                 .await
-                .map_err(|e| AppError::runtime(e.to_string()))?;
+                .map_err(|e| AppError::runtime(format!("{e:#}")))?;
             if bytes.is_empty() {
                 return Err(AppError::runtime("download failed"));
             }
@@ -70,7 +70,9 @@ impl ServiceHub {
                 e => e.to_string(),
             };
             let path = dir.join(format!("{key}{ext}"));
-            std::fs::write(&path, &bytes).map_err(|e| AppError::runtime(e.to_string()))?;
+            std::fs::write(&path, &bytes).map_err(|e| {
+                AppError::runtime(format!("failed to write {}: {e}", path.display()))
+            })?;
             return Ok(path);
         }
         Err(AppError::runtime("download failed"))

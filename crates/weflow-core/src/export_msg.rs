@@ -551,10 +551,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             ""
         };
         let open = || -> Result<std::io::BufWriter<std::fs::File>> {
-            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-                std::fs::create_dir_all(parent)?;
-            }
-            let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+            let mut w = create_output(out)?;
             w.write_all(header.as_bytes())?;
             Ok(w)
         };
@@ -639,14 +636,25 @@ fn plain_message_text(msg: &ExportMsg) -> Option<String> {
 }
 
 fn write_bytes(out: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = out.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
+    create_folder_of(out)?;
+    fs::write(out, bytes).with_context(|| format!("failed to write {}", out.display()))
+}
+
+/// The folder `out` goes in, made when missing; a failure names it.
+fn create_folder_of(out: &Path) -> Result<()> {
+    match out.parent().filter(|p| !p.as_os_str().is_empty()) {
+        Some(parent) => fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display())),
+        None => Ok(()),
     }
-    // the cause goes into the message itself: only the outermost context reaches the user
-    fs::write(out, bytes).map_err(|e| anyhow::anyhow!("failed to write {}: {e}", out.display()))
+}
+
+/// `out` created to be written, buffered, its folder made first; a failure names the file or folder (#816).
+fn create_output(out: &Path) -> Result<std::io::BufWriter<fs::File>> {
+    create_folder_of(out)?;
+    let file =
+        fs::File::create(out).with_context(|| format!("failed to create {}", out.display()))?;
+    Ok(std::io::BufWriter::with_capacity(1 << 20, file))
 }
 
 #[cfg(test)]

@@ -27,7 +27,7 @@ use weflow_core::services::ServiceHub;
 pub(crate) fn open_hub() -> AppResult<(ServiceHub, PathBuf)> {
     let ctx = AppContext::new(VERSION)?;
     let config =
-        ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
+        ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(format!("{err:#}")))?;
     let path = ctx.config_path.clone();
     Ok((ServiceHub::new(ctx, config), path))
 }

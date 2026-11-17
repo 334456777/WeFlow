@@ -37,16 +37,13 @@ pub(super) struct Spool {
 
 impl Spool {
     pub(super) fn create(out: &Path) -> Result<Self> {
-        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
-        }
         let mut name = out.as_os_str().to_os_string();
         name.push(".part");
         let path = std::path::PathBuf::from(name);
-        let file = std::fs::File::create(&path)?;
+        let writer = super::create_output(&path)?;
         Ok(Self {
             path,
-            writer: Some(std::io::BufWriter::with_capacity(1 << 20, file)),
+            writer: Some(writer),
             entries: 0,
         })
     }

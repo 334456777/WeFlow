@@ -20,7 +20,7 @@ impl ServiceHub {
             out,
             &|current, total| self.emit_progress("backup", "creating backup", current, total),
         )
-        .map_err(|e| AppError::runtime(e.to_string()))?;
+        .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         Ok(crate::contract::BackupCreated {
             out: out.to_path_buf(),
             entries: manifest.entries.len(),
@@ -32,7 +32,7 @@ impl ServiceHub {
     }
 
     pub fn backup_inspect(&self, path: &Path) -> AppResult<crate::backup::BackupManifest> {
-        crate::backup::inspect_backup(path).map_err(|e| AppError::runtime(e.to_string()))
+        crate::backup::inspect_backup(path).map_err(|e| AppError::runtime(format!("{e:#}")))
     }
 
     pub fn backup_restore(
@@ -45,7 +45,7 @@ impl ServiceHub {
             crate::backup::restore_backup(path, target_dir, Some(&emoji_dir), &|current, total| {
                 self.emit_progress("restore", "restoring backup", current, total)
             })
-            .map_err(|e| AppError::runtime(e.to_string()))?;
+            .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         Ok(crate::contract::BackupRestored {
             restored_to: target_dir.to_path_buf(),
             stickers_restored_to: stickers.then_some(emoji_dir),

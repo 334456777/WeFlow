@@ -218,7 +218,7 @@ fn profiles_summary(config: &ConfigStore) -> Vec<crate::contract::ProfileSummary
 
 /// The config file of `hub`, read again: a config read answers what the file holds now.
 fn config_of(hub: &ServiceHub) -> AppResult<ConfigStore> {
-    ConfigStore::load(hub.config_path()).map_err(|err| AppError::config(err.to_string()))
+    ConfigStore::load(hub.config_path()).map_err(|err| AppError::config(format!("{err:#}")))
 }
 
 impl Read {
@@ -477,7 +477,7 @@ impl Read {
                 Ok(match key {
                     Some(key) => config.get_key(None, key),
                     None => serde_json::to_value(config.profile(None))
-                        .map_err(|err| AppError::runtime(err.to_string()))?,
+                        .map_err(|err| AppError::runtime(format!("{err:#}")))?,
                 })
             }
             Read::ConfigProfiles => Ok(json!(profiles_summary(&config_of(hub)?))),

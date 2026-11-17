@@ -27,8 +27,8 @@ impl ServiceHub {
                 "Linux database-key extraction requires x64",
             ));
         }
-        let wxkey =
-            weflow_native::wxkey::WxKey::new().map_err(|err| AppError::native(err.to_string()))?;
+        let wxkey = weflow_native::wxkey::WxKey::new()
+            .map_err(|err| AppError::native(format!("{err:#}")))?;
         if !wxkey.is_available() {
             return Err(AppError::native(
                 "database-key extraction is not available on this platform",
@@ -193,8 +193,8 @@ impl ServiceHub {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         {
             let data = weflow_native::linux_key_helper::image_local()
-                .map_err(|error| AppError::native(error.to_string()))?;
-            serde_json::from_str(&data).map_err(|error| AppError::native(error.to_string()))
+                .map_err(|error| AppError::native(format!("{error:#}")))?;
+            serde_json::from_str(&data).map_err(|error| AppError::native(format!("{error:#}")))
         }
         #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
         {

@@ -208,7 +208,7 @@ impl ServiceHub {
             // far: do not leave a truncated export that looks complete
             remove_if_written(out, before);
         }
-        let count = read??.map_err(|e| AppError::runtime(e.to_string()))?;
+        let count = read??.map_err(|e| AppError::runtime(format!("{e:#}")))?;
         if count == 0 {
             return Err(no_messages(req));
         }
@@ -317,7 +317,7 @@ impl ServiceHub {
         avatars: &std::collections::HashMap<String, String>,
     ) -> AppResult<crate::contract::MessagesExported> {
         let format = req.format.to_ascii_lowercase();
-        let runtime = |e: anyhow::Error| AppError::runtime(e.to_string());
+        let runtime = |e: anyhow::Error| AppError::runtime(format!("{e:#}"));
         let before = file_stamp(out);
         let written = self.with_exporter(
             &req.session_id,

@@ -246,7 +246,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let members = self.chatlab_finish_members(members);
         let chatlab = self.chatlab_header();
         let meta = self.chatlab_meta();
-        let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+        let mut w = super::create_output(out)?;
         if jsonl {
             serde_json::to_writer(
                 &mut w,

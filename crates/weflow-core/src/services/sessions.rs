@@ -218,7 +218,7 @@ impl ServiceHub {
     ) -> AppResult<Vec<Session>> {
         let raw = wcdb
             .sessions()
-            .map_err(|e| AppError::native(e.to_string()))?;
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let rows = raw.as_array().cloned().unwrap_or_default();
         if let Some(first) = rows.first() {
             if first.get("_error").is_some() || first.get("_info").is_some() {
@@ -547,7 +547,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
             .contacts()
-            .map_err(|e| AppError::native(e.to_string()))?;
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let rows = raw.as_array().cloned().unwrap_or_default();
         let mut last_contact: HashMap<String, i64> = HashMap::new();
         if let Ok(Value::Array(sessions)) = wcdb.sessions() {

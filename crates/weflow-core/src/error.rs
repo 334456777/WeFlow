@@ -81,15 +81,15 @@ impl AppError {
     }
 
     /// A database-layer error: [`unsupported`](Self::unsupported) for the calls the native backend refuses,
-    /// [`native`](Self::native) for everything else.
+    /// [`native`](Self::native) for everything else. Its message has every context and the error under them.
     pub fn from_native(err: anyhow::Error) -> Self {
         if err
             .downcast_ref::<weflow_native::wcdb::Unsupported>()
             .is_some()
         {
-            Self::unsupported(err.to_string())
+            Self::unsupported(format!("{err:#}"))
         } else {
-            Self::native(err.to_string())
+            Self::native(format!("{err:#}"))
         }
     }
 
@@ -112,9 +112,11 @@ impl AppError {
     }
 }
 
+/// A runtime error saying every context and the error under them (`{:#}`, #816): `create <path>: <why>`, where
+/// `to_string` gives the outermost context alone. Every conversion of an error into an [`AppError`] says it this way.
 impl From<anyhow::Error> for AppError {
     fn from(value: anyhow::Error) -> Self {
-        Self::runtime(value.to_string())
+        Self::runtime(format!("{value:#}"))
     }
 }
 

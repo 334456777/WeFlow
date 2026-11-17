@@ -132,7 +132,7 @@ async fn main() -> ExitCode {
 async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> AppResult<Value> {
     let ctx = AppContext::new(VERSION)?;
     let mut config =
-        ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
+        ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(format!("{err:#}")))?;
 
     apply_progress_settings(&config, progress);
 

@@ -201,7 +201,7 @@ pub fn acquire_image_keys(
     let identities = account_identities(account, wxid);
     let scan = scan_templates(account, budget, TEMPLATE_LIMIT);
     let diagnostics =
-        serde_json::to_value(&scan).map_err(|err| AppError::runtime(err.to_string()))?;
+        serde_json::to_value(&scan).map_err(|err| AppError::runtime(format!("{err:#}")))?;
     if scan.templates.is_empty() {
         return Err(fail(
             "image_key_no_template",
