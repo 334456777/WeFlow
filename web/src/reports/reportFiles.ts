@@ -39,7 +39,7 @@ export function withoutPictures(report: HTMLElement): HTMLElement {
 
 const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
-/** Styles of the copy itself: the page scrolls as a document, the report sits in a column on the surface. */
+/** Styles of the copy itself: the page scrolls as a document, the report sits in a column on the page. */
 const OWN_CSS = 'html, body { height: auto; overflow: auto; } body { padding: 24px 16px; } .report-export { max-width: 880px; margin: 0 auto; } .report-export .report { margin-top: 0; }';
 
 /** The report as a page of its own. */
@@ -54,7 +54,7 @@ export function reportHtml(report: HTMLElement, title: string): string {
 export function reportSvg(report: HTMLElement, width: number): { svg: string; height: number } {
   const copy = withoutPictures(report);
   const frame = document.createElementNS(XHTML, 'div') as HTMLDivElement;
-  frame.setAttribute('style', themeVariables() + '; width: ' + width + 'px; padding: 24px; box-sizing: border-box; background: var(--surface); color: var(--fg); font-family: var(--font-sans); font-size: var(--text-md); line-height: var(--leading-md)');
+  frame.setAttribute('style', themeVariables() + '; width: ' + width + 'px; padding: 24px; box-sizing: border-box; background: var(--page-bg); color: var(--fg); font-family: var(--font-sans); font-size: var(--text-md); line-height: var(--leading-md)');
   const style = document.createElementNS(XHTML, 'style');
   style.textContent = pageCss() + '\n.report { margin-top: 0; }';
   frame.append(style, copy);

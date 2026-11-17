@@ -23,11 +23,11 @@ describe('saving a report', () => {
   });
 
   it('makes a page of its own in the colours of the theme in use', () => {
-    document.documentElement.style.setProperty('--surface', '#25282c');
+    document.documentElement.style.setProperty('--page-bg', '#25282c');
     const html = reportHtml(report(), 'WeFlow <2025>');
     expect(html).toMatch(/^<!doctype html>/);
     expect(html).toContain('<title>WeFlow &lt;2025&gt;</title>');
-    expect(html).toContain('--surface: #25282c');
+    expect(html).toContain('--page-bg: #25282c');
     expect(html).toContain('<article class="report" aria-label="2025 年的年度报告">');
     expect(html).not.toContain('qlogo');
     expect(html).toContain('a &lt; b &amp; "c"');

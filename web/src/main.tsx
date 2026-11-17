@@ -1,5 +1,7 @@
 // first: tokens.css states the order of the cascade layers, which holds only before any rule of a layer
 import './styles/tokens.css';
+// the default skin: the colours and the roles the pages use (#828)
+import './styles/neumorphism.css';
 import './app.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

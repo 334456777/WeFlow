@@ -13,7 +13,7 @@
 /* The formats of an export written side by side (#628): a lane each, all sweeping at once, solid once written. */
 .format-lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-3); margin: var(--space-1) 0 0; padding: 0; color: var(--fg-muted); font-size: var(--text-xs); list-style: none; }
 .format-lane-bar {
-  display: block; height: 4px; margin-top: 2px; border-radius: var(--radius-full); box-shadow: var(--neu-inset);
+  display: block; height: 4px; margin-top: 2px; border-radius: var(--radius-full); box-shadow: var(--track-shadow);
   background: linear-gradient(90deg, transparent 30%, var(--fg-muted) 50%, transparent 70%) 0 0 / 300% 100%;
   animation: shimmer var(--loop-sweep) linear infinite;
 }

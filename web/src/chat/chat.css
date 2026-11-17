@@ -4,10 +4,10 @@
 .conversation-foot { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .conversation-foot .conversation-preview { flex: 1; min-width: 0; }
 .muted-icon { color: var(--fg-subtle); }
-/* Unread messages: a small raised count, or only a dot for a muted conversation. Neutral grey, not a status colour. */
+/* Unread messages: a small count, or only a dot for a muted conversation. Not a status colour. */
 .unread-count {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; flex-shrink: 0;
-  border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--neu-raised-sm);
+  border-radius: var(--radius-full); background: var(--badge-bg); box-shadow: var(--badge-shadow);
   color: var(--fg); font-size: var(--text-2xs); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums;
 }
 .unread-dot { width: 8px; height: 8px; flex-shrink: 0; margin: 0 5px; border-radius: 50%; background: var(--fg-subtle); }
@@ -18,13 +18,13 @@
 .biz-head { display: flex; align-items: center; gap: var(--space-3); }
 .biz-head h2 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .biz-head p { display: flex; align-items: center; gap: var(--space-1); color: var(--fg-subtle); font-size: var(--text-xs); }
-.biz-push { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
+.biz-push { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-lg); background: var(--card-bg); box-shadow: var(--card-shadow); }
 .biz-push-time { align-self: center; padding: var(--space-1) 0; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
 .biz-lead, .biz-item {
   display: flex; border-radius: var(--radius-md); color: inherit; text-decoration: none;
   transition: box-shadow var(--duration-hover) var(--ease-out);
 }
-a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
+a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--row-shadow-hover); }
 .biz-lead { flex-direction: column; gap: var(--space-1); padding: var(--space-1) var(--space-1) var(--space-2); }
 .biz-lead-cover { width: 100%; aspect-ratio: 2.35 / 1; object-fit: cover; border-radius: var(--radius-md); }
 .biz-lead-title { padding: 0 var(--space-1); font-size: var(--text-md); font-weight: var(--weight-semibold); line-height: var(--leading-md); }
@@ -32,22 +32,22 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 .biz-item { align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-1) var(--space-2) var(--space-2); }
 .biz-item-title { flex: 1; min-width: 0; font-size: var(--text-sm); line-height: var(--leading-sm); }
 .biz-item-cover { width: 48px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-sm); }
-.biz-cover-missing { display: flex; align-items: center; justify-content: center; color: var(--fg-subtle); box-shadow: var(--neu-inset); }
+.biz-cover-missing { display: flex; align-items: center; justify-content: center; color: var(--fg-subtle); box-shadow: var(--well-shadow); }
 .biz-empty { color: var(--fg-muted); font-size: var(--text-sm); line-height: var(--leading-sm); text-align: center; }
 .biz-more { align-self: center; }
 .message-bubble {
   max-width: min(560px, calc(100% - 48px)); padding: 6px var(--space-3); border-radius: var(--radius-xl);
-  background: var(--surface); box-shadow: var(--neu-raised-sm); font-size: var(--text-md); line-height: var(--leading-md);
+  background: var(--bubble-bg); box-shadow: var(--bubble-shadow); font-size: var(--text-md); line-height: var(--leading-md);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
-/* Received messages stand out of the page, sent ones are carved into it: told apart without their side. */
-.outgoing .message-bubble { box-shadow: var(--neu-inset); }
+/* Received messages and sent ones look different: told apart without their side. */
+.outgoing .message-bubble { background: var(--bubble-bg-own); box-shadow: var(--bubble-shadow-own); }
 .message-time { flex-shrink: 0; padding-bottom: 2px; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
-/* A photo sits in a frame of the same surface, raised when received and inset when sent. */
-.photo-button { display: block; max-width: calc(100% - 48px); padding: var(--space-1); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--neu-raised-sm); }
-.outgoing .photo-button { box-shadow: var(--neu-inset); }
-/* held down, a sent one sinks further, as what is already sunk does (#253) */
-.outgoing .photo-button:active { box-shadow: var(--neu-inset-pressed); transition-duration: var(--duration-micro); }
+/* A photo sits in a frame drawn as a message: a received one's or a sent one's. */
+.photo-button { display: block; max-width: calc(100% - 48px); padding: var(--space-1); border-radius: var(--radius-xl); background: var(--bubble-bg); box-shadow: var(--bubble-shadow); }
+.outgoing .photo-button { background: var(--bubble-bg-own); box-shadow: var(--bubble-shadow-own); }
+/* held down, a sent one takes its pressed look, as what is selected does (#253) */
+.outgoing .photo-button:active { box-shadow: var(--bubble-shadow-own-pressed); transition-duration: var(--duration-micro); }
 .message-photo { width: 240px; max-width: 100%; aspect-ratio: 1.6973; object-fit: cover; border-radius: var(--radius-md); }
 .highlighted :is(.message-bubble, .photo-button, .emoji-sticker, .system-message) { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 .file-bubble { display: flex; align-items: center; gap: var(--space-3); text-align: left; }
@@ -58,14 +58,14 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
   color: var(--fg-subtle); font-size: var(--text-2xs);
 }
 /*
- * Left in the past by a jump (#199): newer messages load below, and a raised button floats at the bottom to go back
- * to the newest ones.
+ * Left in the past by a jump (#199): newer messages load below, and a button floats at the bottom to go back to the
+ * newest ones, drawn as a main one.
  */
 .latest-bar { position: sticky; bottom: var(--space-3); z-index: 2; display: flex; justify-content: center; margin-top: var(--space-2); pointer-events: none; }
-.latest-bar .secondary-button { pointer-events: auto; box-shadow: var(--neu-raised); }
+.latest-bar .secondary-button { pointer-events: auto; background: var(--button-bg); box-shadow: var(--button-shadow); }
 
-.latest-bar .secondary-button:hover { box-shadow: var(--neu-raised-hover); }
-.latest-bar .secondary-button:active { box-shadow: var(--neu-pressed); }
+.latest-bar .secondary-button:hover { box-shadow: var(--button-shadow-hover); }
+.latest-bar .secondary-button:active { box-shadow: var(--button-shadow-pressed); }
 .message-row.with-avatar { align-items: flex-start; }
 .message-row .message-time { align-self: flex-end; }
 
@@ -115,20 +115,20 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .money-bubble > span { color: var(--fg-muted); font-size: var(--text-xs); }
 .call-bubble { display: inline-flex; align-items: center; gap: var(--space-2); }
 .quote-bubble { display: flex; flex-direction: column; gap: var(--space-1); }
-.quote-block { padding: 2px var(--space-2); border-radius: var(--radius-sm); box-shadow: var(--neu-pressed); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); white-space: normal; }
+.quote-block { padding: 2px var(--space-2); border-radius: var(--radius-sm); box-shadow: var(--well-shadow-shallow); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); white-space: normal; }
 
 /* The export button stretches into a control group (#50): progress and cancel, then download and again. */
 .export-control { display: flex; width: 240px; max-width: 100%; margin-top: var(--space-4); }
 .export-control > .primary-button { flex: 1; min-width: 0; overflow: hidden; }
 .export-side {
   width: 0; margin-left: 0; opacity: 0; overflow: hidden; flex-shrink: 0;
-  height: var(--control-lg); border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--neu-raised); color: var(--fg);
+  height: var(--control-lg); border-radius: var(--radius-full); background: var(--button-bg); box-shadow: var(--button-shadow); color: var(--fg);
   display: inline-flex; align-items: center; justify-content: center;
   transition: width var(--duration-panel) var(--ease-snap), margin-left var(--duration-panel) var(--ease-snap),
     opacity var(--duration-base) var(--ease-out), box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
-.export-side:hover { box-shadow: var(--neu-raised-hover); }
-.export-side:active { box-shadow: var(--neu-pressed); transform: scale(var(--press-scale)); }
+.export-side:hover { box-shadow: var(--button-shadow-hover); }
+.export-side:active { box-shadow: var(--button-shadow-pressed); transform: scale(var(--press-scale)); }
 .export-control.expanded .export-side { width: var(--control-lg); margin-left: var(--space-3); opacity: 1; }
 /* in a narrow card, as wide as the card (#254) */
 @container (max-width: 340px) {
@@ -173,8 +173,9 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 
 .member-list { height: min(312px, 40dvh); margin-top: var(--space-3); border-radius: var(--radius-md); }
 .member-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; height: 52px; padding: var(--space-2); border-radius: var(--radius-md); text-align: left; }
-.member-row:hover { box-shadow: var(--neu-pressed); }
-.member-row:active { box-shadow: var(--neu-inset); }
+.member-row:hover { box-shadow: var(--row-shadow-hover); }
+/* held down, a member looks chosen: it opens their details */
+.member-row:active { box-shadow: var(--row-shadow-selected); }
 .member-row .avatar { flex-shrink: 0; width: var(--control-md); height: var(--control-md); }
 
 .member-copy { display: flex; flex: 1; flex-direction: column; font-size: var(--text-sm); }
@@ -187,18 +188,18 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .member-phrases small { color: var(--fg-subtle); }
 
 .media-filter { width: 100%; margin-bottom: var(--space-3); }
-.media-item > .media-icon { display: grid; flex: 0 0 72px; width: 72px; height: 48px; place-items: center; border-radius: var(--radius-xs); box-shadow: var(--neu-inset); }
+.media-item > .media-icon { display: grid; flex: 0 0 72px; width: 72px; height: 48px; place-items: center; border-radius: var(--radius-xs); box-shadow: var(--well-shadow); }
 .media-more { justify-self: start; }
 
-/* Media rows are flat like the other lists; the list's hover hollow (HoverTrack.tsx) sinks under the one hovered. */
+/* Media rows are rows like the other lists'; the list's hover hollow (HoverTrack.tsx) lies under the one hovered. */
 .media-item {
   display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-2);
   border-radius: var(--radius-xl); color: var(--fg-subtle); text-align: left;
 }
 .media-item:hover { color: var(--fg); }
 
-/* in a group whose hover hollow takes the press (HoverTrack.tsx), the item stays flat over it */
-.hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .search-result, .media-item):active:not(.selected, .active) { box-shadow: var(--neu-flat); }
+/* in a group whose hover hollow takes the press (HoverTrack.tsx), the item stays at rest over it */
+.hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .search-result, .media-item):active:not(.selected, .active) { box-shadow: var(--row-shadow); }
 
 .media-item img { width: 72px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-xs); }
 .media-item > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }

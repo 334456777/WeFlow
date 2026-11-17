@@ -1,6 +1,6 @@
 // The colour theme (#252): light, dark, or the system's, which is the default. The choice is kept in this
-// browser's localStorage; the theme in force is `data-theme` on <html>, which tokens.css reads. index.html sets it
-// before the first paint with the same rules, so a page does not flash the other theme while it loads.
+// browser's localStorage; the theme in force is `data-theme` on <html>, which the skin's colours follow. index.html
+// sets it before the first paint with the same rules, so a page does not flash the other theme while it loads.
 import { useEffect, useState } from 'react';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';

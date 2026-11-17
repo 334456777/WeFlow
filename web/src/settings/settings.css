@@ -27,7 +27,7 @@
 .settings-nav-row .conversation-preview { overflow-wrap: anywhere; }
 .settings-nav-icon {
   display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 32px; height: 32px;
-  border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted);
+  border-radius: var(--radius-md); background: var(--badge-bg); box-shadow: var(--badge-shadow); color: var(--fg-muted);
   transition: color var(--duration-hover) ease;
 }
 .settings-nav-row.active .settings-nav-icon { color: var(--fg); }
@@ -40,8 +40,8 @@
 .settings-section-head p { margin-top: 2px; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .settings-section .setting-warning { color: var(--state-danger); font-size: var(--text-xs); line-height: var(--leading-xs); }
 
-/* A group: rows on one subject, raised; its title a small label over them, its buttons beside it. */
-.settings-group { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
+/* A group: rows on one subject, a card; its title a small label over them, its buttons beside it. */
+.settings-group { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--card-bg); box-shadow: var(--card-shadow); }
 .settings-group-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control-sm); padding-bottom: var(--space-1); }
 .settings-group-head h3 { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); font-weight: var(--weight-semibold); }
 .settings-group-head p { color: var(--fg-subtle); font-size: var(--text-xs); line-height: var(--leading-xs); }
@@ -72,13 +72,13 @@
 .ai-form .console-field-name, .serve-form .console-field-name { color: var(--fg-muted); font-size: var(--text-xs); }
 .ai-form .console-input, .serve-form .console-input {
   width: 100%; height: var(--control-md); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-md);
-  background: var(--surface); box-shadow: var(--neu-inset); color: var(--fg); font-size: var(--text-sm);
+  background: var(--field-bg); box-shadow: var(--field-shadow); color: var(--fg); font-size: var(--text-sm);
 }
 .ai-form .console-input:focus-visible, .serve-form .console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 /* held into the pane's padding below it, a little above its edge, so little of what scrolls under it shows */
 .settings-save {
   position: sticky; bottom: calc(var(--space-2) - var(--space-4)); z-index: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border-radius: var(--radius-lg); background: var(--card-bg); box-shadow: var(--card-shadow);
 }
 .settings-save-note { flex: 1 1 200px; min-width: 0; color: var(--fg-muted); }
 .settings-save-actions { display: flex; gap: var(--space-2); margin-left: auto; }
@@ -118,7 +118,7 @@
 .settings-group .command-console { padding: var(--space-1) 0 var(--space-2); }
 /* The command console: a searchable list of the commands by tag, and the form of the one chosen. */
 .command-console { display: flex; flex-direction: column; gap: var(--space-3); max-width: 720px; }
-.command-list { max-height: 320px; padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--neu-inset); }
+.command-list { max-height: 320px; padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--well-shadow); }
 .command-group h4 { padding: var(--space-2) var(--space-2) var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-medium); text-transform: uppercase; }
 .command-item {
   display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 32px; padding: 4px var(--space-2);
@@ -126,13 +126,14 @@
   transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-base) var(--ease-out);
 }
 .command-item code { flex-shrink: 0; color: var(--fg); }
-.command-item:hover { box-shadow: var(--neu-raised-sm); color: var(--fg); }
-.command-item[aria-pressed='true'] { box-shadow: var(--neu-raised-sm); color: var(--fg); }
-.command-item:active { box-shadow: var(--neu-pressed); transition-duration: var(--duration-micro); }
+/* in the well of the list, the command under the pointer or chosen stands out as a button */
+.command-item:hover { box-shadow: var(--control-shadow); color: var(--fg); }
+.command-item[aria-pressed='true'] { box-shadow: var(--control-shadow); color: var(--fg); }
+.command-item:active { box-shadow: var(--control-shadow-pressed); transition-duration: var(--duration-micro); }
 .command-item.refused code { color: var(--fg-subtle); text-decoration: line-through; }
 .command-summary { flex: 1; min-width: 0; font-size: var(--text-xs); }
 .command-method { flex-shrink: 0; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); }
-.console-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--neu-raised-sm); }
+.console-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--card-shadow); }
 .console-form h3 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
 .console-form h3 code { font-size: var(--text-sm); }
 .console-form header p { margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
@@ -148,27 +149,27 @@
 .console-required { margin-left: 2px; color: var(--state-danger); }
 .console-input {
   width: 100%; min-width: 0; min-height: var(--control-md); padding: 6px var(--space-3); border: 0; border-radius: var(--radius-md);
-  background: var(--surface); box-shadow: var(--neu-inset); color: var(--fg); font-family: var(--font-mono); font-size: var(--text-xs); resize: vertical;
+  background: var(--field-bg); box-shadow: var(--field-shadow); color: var(--fg); font-family: var(--font-mono); font-size: var(--text-xs); resize: vertical;
 }
 .console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .console-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .console-output-choice { width: 180px; margin-left: auto; }
-.console-line { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-pressed); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.console-line { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--well-shadow-shallow); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .console-line code { font-size: var(--text-xs); }
 .console-actions { display: flex; align-items: center; gap: var(--space-2); }
 .console-answer { display: flex; flex-direction: column; gap: var(--space-2); }
 .console-answer-head { display: flex; gap: var(--space-3); font-size: var(--text-xs); }
 .console-answer-head span { color: var(--fg-muted); }
 .console-answer.failed .console-answer-head strong { color: var(--state-danger); }
-.console-output { max-height: 360px; margin: 0; padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-family: var(--font-mono); font-size: var(--text-2xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Account setup (#216): a dialog of four steps; a choice is raised, and inset once chosen. */
+.console-output { max-height: 360px; margin: 0; padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--well-shadow); font-family: var(--font-mono); font-size: var(--text-2xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Account setup (#216): a dialog of four steps, each a choice of options. */
 /* held at the same top, so the steps stay in place while the body under them changes height */
 .setup-dialog { width: min(600px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: max(24px, 12dvh) auto auto; padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
 .setup-dialog::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
 .setup-dialog[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
 .setup-content {
   max-height: calc(100dvh - 48px); overflow: auto; padding: var(--space-4) var(--space-5) var(--space-5);
-  border-radius: var(--radius-2xl); background: var(--surface); box-shadow: var(--neu-raised-overlay);
+  border-radius: var(--radius-2xl); background: var(--dialog-bg); box-shadow: var(--dialog-shadow);
   animation: dialog-in var(--duration-base) var(--ease-out) both;
 }
 .setup-dialog[data-state='closing'] .setup-content { animation: dialog-out var(--duration-exit) var(--ease-out) both; }
@@ -182,13 +183,13 @@
   transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-base) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
 .setup-step:hover { color: var(--fg); }
-.setup-step[aria-current='step'] { color: var(--fg); font-weight: var(--weight-semibold); box-shadow: var(--neu-inset); }
+.setup-step[aria-current='step'] { background: var(--row-bg-selected); color: var(--row-fg-selected); font-weight: var(--weight-semibold); box-shadow: var(--row-shadow-selected); }
 /* the label keeps its gap to the number; the room its bold text needs goes on the right */
 .setup-step .steady-label { align-items: flex-start; }
-.setup-step:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); transition-duration: var(--duration-micro); }
+.setup-step:active { box-shadow: var(--row-shadow-pressed); transform: scale(var(--press-scale)); transition-duration: var(--duration-micro); }
 .setup-step-number {
   display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
-  background: var(--surface); box-shadow: var(--neu-raised-sm); font-size: var(--text-2xs); font-variant-numeric: tabular-nums;
+  background: var(--badge-bg); box-shadow: var(--badge-shadow); font-size: var(--text-2xs); font-variant-numeric: tabular-nums;
 }
 .setup-step.passed .setup-step-number { color: var(--state-ok); }
 .setup-body { display: flex; flex-direction: column; gap: var(--space-3); animation: label-in var(--duration-base) var(--ease-out); }
@@ -196,19 +197,19 @@
 .setup-choices { display: flex; flex-direction: column; gap: var(--space-2); }
 .setup-choice {
   display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--control-lg); padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); text-align: left;
+  border-radius: var(--radius-md); background: var(--option-bg); box-shadow: var(--option-shadow); text-align: left;
   transition: box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
-.setup-choice:hover { box-shadow: var(--neu-raised-sm-hover); }
-.setup-choice[aria-pressed='true'] { box-shadow: var(--neu-inset); }
-/* held down, chosen or not, as deep as a chosen one held down */
-.setup-choice:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro); }
+.setup-choice:hover { box-shadow: var(--option-shadow-hover); }
+.setup-choice[aria-pressed='true'] { background: var(--option-bg-selected); box-shadow: var(--option-shadow-selected); color: var(--option-fg-selected); }
+/* held down, chosen or not, the same */
+.setup-choice:active { box-shadow: var(--option-shadow-pressed); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro); }
 .setup-choice-copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--text-sm); }
 .setup-path { color: var(--fg-muted); font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .setup-note { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .setup-note.error { color: var(--state-danger); }
 .setup-state { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
-.setup-running { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-sm); }
+.setup-running { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--well-shadow); font-size: var(--text-sm); }
 .setup-running p { display: flex; align-items: center; gap: var(--space-2); }
 .setup-manual summary { width: fit-content; cursor: pointer; color: var(--fg-muted); font-size: var(--text-xs); }
 .setup-manual summary:hover { color: var(--fg); }
