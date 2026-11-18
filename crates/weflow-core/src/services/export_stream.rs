@@ -756,7 +756,7 @@ mod tests {
             .is_err();
             let _ = done.send(panicked);
         });
-        // before the fix the export waited forever for the sleeping workers
+        // the panic halts the gate, which wakes the sleeping workers: the export ends and passes the panic on
         let panicked = finished.recv_timeout(Duration::from_secs(60));
         assert_eq!(panicked, Ok(true), "the export hung or swallowed the panic");
     }
