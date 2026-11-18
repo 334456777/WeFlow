@@ -6,7 +6,7 @@ import { getProfiles, type Profile } from '../api/setup';
 export interface ProfilesState {
   /** null until read, and when it could not be. */
   profiles: Profile[] | null;
-  /** The server could not say: a `weflow` older than `config profiles`, or a failure. */
+  /** The server could not say: the read failed, or did not answer a list. */
   failed: boolean;
   reload(): void;
 }
