@@ -250,8 +250,6 @@ fn macos_db_key_error(message: String) -> DbKeyError {
 pub enum DbKeyError {
     /// The process could not be opened (needs administrator rights / a security product interferes).
     AccessDenied(String),
-    /// WeChat is running but has not logged in, so it never opened its databases.
-    LoginRequired,
     Timeout,
     Interrupted,
     /// WeChat has just started and its modules are not ready for inspection.
@@ -266,7 +264,6 @@ impl std::fmt::Display for DbKeyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::AccessDenied(d) => write!(f, "access denied: cannot open the WeChat process ({d})"),
-            Self::LoginRequired => write!(f, "WeChat is running but not logged in; log in while the command is waiting"),
             Self::Timeout => write!(f, "timed out waiting for the key; log in to WeChat (or restart it) while the command is running"),
             Self::Interrupted => write!(f, "interrupted by user"),
             Self::NotReady(m) | Self::Unsupported(m) | Self::Other(m) => write!(f, "{m}"),

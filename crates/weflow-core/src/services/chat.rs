@@ -932,7 +932,7 @@ impl ServiceHub {
     pub fn chat_all_images(&self, session_id: &str) -> AppResult<ChatImages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type(session_id, 3, false, 0, 0)
+            .messages_by_type(session_id, 3, false)
             .map_err(native)?;
         let msgs = self.normalize_row(rows, session_id);
         let mut images: Vec<(i64, ImageRef)> = msgs
@@ -971,7 +971,7 @@ impl ServiceHub {
     pub fn chat_all_voices(&self, session_id: &str) -> AppResult<VoiceMessages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type(session_id, 34, false, 0, 0)
+            .messages_by_type(session_id, 34, false)
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
         let mut msgs = self.normalize_row(rows, session_id);

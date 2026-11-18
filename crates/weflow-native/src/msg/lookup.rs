@@ -6,41 +6,27 @@ use crate::db::Account;
 use crate::msg_row::MsgRow;
 
 impl Account {
-    /// Messages of one `local_type`; `limit == 0` means all.
+    /// Every message of one `local_type` in the chat's order, oldest or newest first: by `sort_seq` (`create_time *
+    /// 1000` without one), then `create_time` and `local_id`; equal keys of different databases by ascending
+    /// database either way.
     pub fn messages_by_type(
         &self,
         session_id: &str,
         local_type: i64,
         ascending: bool,
-        limit: i32,
-        offset: i32,
     ) -> Result<Vec<MsgRow>> {
-        let (offset, limit) = (offset.max(0) as usize, limit.max(0) as usize);
-        let want = if limit == 0 {
-            -1
-        } else {
-            (offset + limit) as i64
-        };
-        let dir = if ascending { "asc" } else { "desc" };
         let mut rows: Vec<MsgRow> = Vec::new();
         for t in self.message_tables(session_id)? {
-            let sql = Self::select_sql(
-                &t,
-                &format!("where m.local_type = ?1 order by m.sort_seq {dir}, m.create_time {dir}, m.local_id {dir} limit ?2"),
-            );
-            rows.extend(self.read_rows(&t, &sql, &[&local_type, &want])?);
+            let sql = Self::select_sql(&t, "where m.local_type = ?1");
+            rows.extend(self.read_rows(&t, &sql, &[&local_type])?);
         }
+        // stable: equal keys keep the order of the databases
         if ascending {
             rows.sort_by_key(MsgRow::key);
         } else {
             rows.sort_by_key(|r| std::cmp::Reverse(r.key()));
         }
-        let it = rows.into_iter().skip(offset);
-        Ok(if limit == 0 {
-            it.collect()
-        } else {
-            it.take(limit).collect()
-        })
+        Ok(rows)
     }
 
     /// Every message of a session with this `local_id`, newest shard first: the id is only unique within one
@@ -103,15 +89,15 @@ mod tests {
     fn lookups_by_type_and_id() {
         let (_dir, acct) = account("lookup");
         assert_eq!(
-            texts(&acct.messages_by_type("wxid_bob", 1, true, 0, 0).unwrap()),
+            texts(&acct.messages_by_type("wxid_bob", 1, true).unwrap()),
             ["hello", "third", "fourth"]
         );
         assert_eq!(
-            texts(&acct.messages_by_type("wxid_bob", 1, false, 2, 0).unwrap()),
-            ["fourth", "third"]
+            texts(&acct.messages_by_type("wxid_bob", 1, false).unwrap()),
+            ["fourth", "third", "hello"]
         );
         assert!(acct
-            .messages_by_type("wxid_bob", 999, false, 0, 0)
+            .messages_by_type("wxid_bob", 999, false)
             .unwrap()
             .is_empty());
         // local_id 1 exists in both shards: the newest shard first
@@ -139,5 +125,31 @@ mod tests {
         );
         assert_eq!(acct.message_by_server_id("wxid_bob", "77").unwrap(), None);
         assert!(acct.message_by_server_id("wxid_bob", "abc").is_err());
+    }
+
+    /// A message without a `sort_seq` takes its place from its time, as in the chat; a message two databases hold is
+    /// listed from the lower one first, either way.
+    #[test]
+    fn messages_by_type_follow_the_chat_order() {
+        let row = |id: i64, seq: String, create: i64| (id, seq, create.to_string());
+        let (_dir, acct) = crate::msg::tests::keyed_account(
+            "by-type-order",
+            &[
+                vec![
+                    row(1, "0".into(), T0 + 100),
+                    row(2, (T0 * 1000).to_string(), T0),
+                    row(3, ((T0 + 200) * 1000).to_string(), T0 + 200),
+                ],
+                vec![row(1, ((T0 + 100) * 1000).to_string(), T0 + 100)],
+            ],
+        );
+        assert_eq!(
+            texts(&acct.messages_by_type("wxid_bob", 1, true).unwrap()),
+            ["0:2", "0:1", "1:1", "0:3"]
+        );
+        assert_eq!(
+            texts(&acct.messages_by_type("wxid_bob", 1, false).unwrap()),
+            ["0:3", "0:1", "1:1", "0:2"]
+        );
     }
 }

@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
+use rusqlite::types::ValueRef;
 use rusqlite::ToSql;
 use serde_json::{json, Map, Value};
 
@@ -245,15 +246,23 @@ impl Account {
         if username.is_empty() || !db.is_file() {
             return Ok(None);
         }
-        let rows = self.query(
-            &db,
-            "select image_buffer from head_image where username = ?1",
-            &[&username],
-        )?;
-        Ok(rows
-            .iter()
-            .map(|r| decode_hex(&text(r, "image_buffer")))
-            .find(|b| !b.is_empty()))
+        self.with_db(&db, |conn| {
+            let mut stmt =
+                conn.prepare("select image_buffer from head_image where username = ?1")?;
+            let mut rows = stmt.query([username])?;
+            while let Some(row) = rows.next()? {
+                // the picture's bytes as stored (a zstd frame inflated); a text cell as the hex it spells
+                let bytes = match row.get_ref(0)? {
+                    ValueRef::Blob(b) => crate::db::inflate_blob(b).into_owned(),
+                    ValueRef::Text(t) => std::str::from_utf8(t).map(decode_hex).unwrap_or_default(),
+                    ValueRef::Null | ValueRef::Integer(_) | ValueRef::Real(_) => Vec::new(),
+                };
+                if !bytes.is_empty() {
+                    return Ok(Some(bytes));
+                }
+            }
+            Ok(None)
+        })
     }
 
     /// `{ username: url }` for contacts that have one (big avatar preferred).
@@ -387,8 +396,11 @@ impl Account {
     }
 }
 
+/// The bytes a hex string spells, pairs that are not hex left out; empty for a string that is not ASCII or has an odd
+/// length.
 fn decode_hex(s: &str) -> Vec<u8> {
-    if !s.len().is_multiple_of(2) {
+    // ASCII first: a slice of two bytes must not cut a character
+    if !s.is_ascii() || !s.len().is_multiple_of(2) {
         return Vec::new();
     }
     (0..s.len() / 2)
@@ -639,6 +651,48 @@ mod tests {
         let got = parse_group_nicknames(&buf);
         assert_eq!(got.get("wxid_a").map(String::as_str), Some("first"));
         assert_eq!(got.len(), 1);
+    }
+
+    #[test]
+    fn head_images_come_back_byte_for_byte() {
+        use crate::fixture::Fixture;
+        let root = TestDir::new("weflow-contact-head-image");
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        let png: &[u8] = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
+        // bytes that happen to be UTF-8: plain text, and text with a character of two bytes
+        let ascii: &[u8] = b"hello!";
+        let wide: &[u8] = "a\u{e9}b".as_bytes();
+        let packed = zstd::stream::encode_all(png, 3).unwrap();
+        f.head_image_db(&[
+            ("wxid_png", png),
+            ("wxid_ascii", ascii),
+            ("wxid_wide", wide),
+            ("wxid_packed", &packed),
+            ("wxid_empty", b""),
+        ]);
+        let acct = Account::new(f.db_storage(), &f.key_hex()).unwrap();
+        let got = |u: &str| acct.head_image(u).unwrap();
+        assert_eq!(got("wxid_png").as_deref(), Some(png));
+        assert_eq!(got("wxid_ascii").as_deref(), Some(ascii));
+        assert_eq!(got("wxid_wide").as_deref(), Some(wide));
+        assert_eq!(
+            got("wxid_packed").as_deref(),
+            Some(png),
+            "a zstd frame inflated"
+        );
+        assert_eq!(got("wxid_empty"), None);
+        assert_eq!(got("nobody"), None);
+        assert_eq!(got(""), None);
+    }
+
+    #[test]
+    fn hex_decoding_leaves_out_what_is_not_hex() {
+        assert_eq!(decode_hex("00ff7a"), [0x00, 0xff, 0x7a]);
+        assert_eq!(decode_hex("zz01"), [0x01]);
+        assert!(decode_hex("abc").is_empty(), "odd length");
+        // a character of two bytes: four bytes in all, but no pair of them to slice
+        assert!(decode_hex("a\u{e9}b").is_empty());
+        assert!(decode_hex("\u{e9}\u{e9}").is_empty());
     }
 
     #[test]

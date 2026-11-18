@@ -148,7 +148,7 @@ impl ServiceHub {
                     };
                     return Err(AppError::native(hint));
                 }
-                Err(DbKeyError::Timeout | DbKeyError::LoginRequired) => {
+                Err(DbKeyError::Timeout) => {
                     end_status_line();
                     return Err(timeout_error());
                 }

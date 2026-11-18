@@ -18,7 +18,8 @@ pub(super) enum OffsetPosition {
     /// The offset skips every message.
     Past,
     /// A sort key read is not stored as an integer (a `sort_seq` may also be null): [`typed_row_key`] and SQLite order
-    /// such values differently, so only reading the rows lists them as before.
+    /// such values differently, so the page is read from the rows themselves
+    /// ([`newest_rows`](Account::newest_rows)).
     Unusual,
 }
 

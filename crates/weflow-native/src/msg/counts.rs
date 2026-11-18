@@ -14,20 +14,25 @@ const QUARTER: i64 = 900;
 
 impl Account {
     pub fn message_count(&self, session_id: &str) -> Result<i32> {
-        let mut total = 0i64;
-        for t in self.message_tables(session_id)? {
-            let sql = format!("select count(*) as n from \"{}\"", t.table);
-            total += int(&self.query(&t.db, &sql, &[])?[0], "n");
-        }
-        Ok(i32::try_from(total).unwrap_or(i32::MAX))
+        self.count_rows(&self.message_tables(session_id)?)
     }
 
     pub fn session_message_counts(&self, session_ids: &[String]) -> Result<Value> {
         let mut out = Map::new();
-        for id in session_ids {
-            out.insert(id.clone(), json!(self.message_count(id)?));
+        for (id, tables) in session_ids.iter().zip(self.message_tables_of(session_ids)?) {
+            out.insert(id.clone(), json!(self.count_rows(&tables)?));
         }
         Ok(Value::Object(out))
+    }
+
+    /// The rows of `tables` together, at most `i32::MAX`.
+    fn count_rows(&self, tables: &[MsgTable]) -> Result<i32> {
+        let mut total = 0i64;
+        for t in tables {
+            let sql = format!("select count(*) as n from \"{}\"", t.table);
+            total += int(&self.query(&t.db, &sql, &[])?[0], "n");
+        }
+        Ok(i32::try_from(total).unwrap_or(i32::MAX))
     }
 
     /// `{ "YYYY-MM-DD": count }` in local time, ascending.

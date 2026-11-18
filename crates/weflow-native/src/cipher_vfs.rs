@@ -62,6 +62,21 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(os)
 }
 
+/// Bytes in a WAL header.
+const WAL_HEADER: usize = 32;
+
+/// The header of the WAL at `path`, read on its own: `None` when the file cannot be read, `Some(None)` when it is
+/// shorter than a header.
+fn wal_header(path: &Path) -> Option<Option<[u8; WAL_HEADER]>> {
+    use std::io::Read;
+    let mut header = [0u8; WAL_HEADER];
+    match File::open(path).ok()?.read_exact(&mut header) {
+        Ok(()) => Some(Some(header)),
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Some(None),
+        Err(_) => None,
+    }
+}
+
 // ───────────────────────────── change guard ─────────────────────────────
 
 /// What the wal-index says about checkpoints: the WAL generation (salt) and how many frames have been, or are being,
@@ -186,10 +201,27 @@ pub struct CipherFile {
     pages_decrypted: AtomicU64,
 }
 
+/// The raw chunks of a file read last, at most [`CHUNKS_KEPT`]; `order` lists each chunk of `chunks` once, the
+/// oldest first.
 #[derive(Default)]
 struct ChunkCache {
     chunks: HashMap<u32, Arc<[u8]>>,
     order: VecDeque<u32>,
+}
+
+impl ChunkCache {
+    /// Keep chunk `idx`, dropping the oldest beyond [`CHUNKS_KEPT`]. Threads that missed the same chunk at once each
+    /// read it and keep it: the later copy replaces the earlier one in its place.
+    fn keep(&mut self, idx: u32, chunk: Arc<[u8]>) {
+        if self.chunks.insert(idx, chunk).is_none() {
+            self.order.push_back(idx);
+        }
+        while self.order.len() > CHUNKS_KEPT {
+            if let Some(old) = self.order.pop_front() {
+                self.chunks.remove(&old);
+            }
+        }
+    }
 }
 
 impl CipherFile {
@@ -262,11 +294,10 @@ impl CipherFile {
                 stamp_at_open,
             };
             // A WAL reset between reading the index and the WAL shows up as a different salt in the WAL header.
-            let wal_header_now = fs::read(&wal_path)
-                .ok()
-                .map(|w| w.get(..32).map(<[u8]>::to_vec));
-            let wal_stable =
-                wal_header_now == wal.as_ref().map(|w| w.get(..32).map(<[u8]>::to_vec));
+            let wal_stable = wal_header(&wal_path)
+                == wal
+                    .as_deref()
+                    .map(|w| w.first_chunk::<WAL_HEADER>().copied());
             // A checkpoint running right now over frames we do not hold may be rewriting main-file pages: wait for it.
             // Anything else is fine to start from; the guard watches what happens next.
             let index_ok = match &at_open {
@@ -366,13 +397,7 @@ impl CipherFile {
         }
         let chunk: Arc<[u8]> = buf.into();
         if let Ok(mut cache) = self.chunks.lock() {
-            cache.chunks.insert(idx, chunk.clone());
-            cache.order.push_back(idx);
-            while cache.order.len() > CHUNKS_KEPT {
-                if let Some(old) = cache.order.pop_front() {
-                    cache.chunks.remove(&old);
-                }
-            }
+            cache.keep(idx, chunk.clone());
         }
         Ok((chunk, first))
     }
@@ -840,6 +865,33 @@ mod tests {
     }
 
     #[test]
+    fn a_chunk_kept_twice_is_listed_once() {
+        let chunk = |n: u8| -> Arc<[u8]> { vec![n; 4].into() };
+        let mut cache = ChunkCache::default();
+        // two threads missed chunk 0 at once
+        cache.keep(0, chunk(0));
+        cache.keep(0, chunk(1));
+        for idx in 1..CHUNKS_KEPT as u32 {
+            cache.keep(idx, chunk(2));
+        }
+        assert_eq!(cache.chunks.len(), CHUNKS_KEPT);
+        assert_eq!(cache.order.len(), CHUNKS_KEPT);
+        assert_eq!(
+            cache.chunks.get(&0).map(|c| c[0]),
+            Some(1),
+            "the later copy"
+        );
+        // one more pushes out the oldest, and only it
+        cache.keep(CHUNKS_KEPT as u32, chunk(3));
+        assert!(!cache.chunks.contains_key(&0));
+        assert_eq!(
+            (cache.chunks.len(), cache.order.len()),
+            (CHUNKS_KEPT, CHUNKS_KEPT)
+        );
+        assert!(cache.order.iter().all(|idx| cache.chunks.contains_key(idx)));
+    }
+
+    #[test]
     fn wrong_key_and_plain_files_are_refused() {
         let dir = temp_dir("key");
         let cipher = PageCipher::derive(&KEY, &SALT);
@@ -1021,6 +1073,21 @@ mod tests {
             cf.read_error().unwrap().contains("HMAC"),
             "{:?}",
             cf.read_error()
+        );
+    }
+
+    #[test]
+    fn a_wal_header_is_read_without_the_rest() {
+        let dir = temp_dir("wal-header");
+        let path = dir.join("a.db-wal");
+        assert_eq!(wal_header(&path), None, "no file");
+        fs::write(&path, [1u8; 10]).unwrap();
+        assert_eq!(wal_header(&path), Some(None), "shorter than a header");
+        let wal: Vec<u8> = (0..100).collect();
+        fs::write(&path, &wal).unwrap();
+        assert_eq!(
+            wal_header(&path),
+            Some(wal.first_chunk::<WAL_HEADER>().copied())
         );
     }
 

@@ -130,14 +130,6 @@ pub(crate) fn each_table<I: Sync, T: Send>(
     done.into_iter().map(|(_, r)| r).collect()
 }
 
-/// The message tables of each of `session_ids`, and every one of them in that order.
-pub(crate) fn tables_of(acct: &Account, session_ids: &[String]) -> Result<Vec<Vec<MsgTable>>> {
-    session_ids
-        .iter()
-        .map(|sid| acct.message_tables(sid))
-        .collect()
-}
-
 /// The message kinds counted one by one in [`TypeCounts::kinds`], in its order after the total.
 const COUNTED_KINDS: [i64; 7] = [VOICE, IMAGE, VIDEO, EMOJI, CALL, TRANSFER, RED_PACKET];
 
@@ -288,6 +280,21 @@ impl Account {
         Ok(ids.join(","))
     }
 
+    /// [`my_ids`](Self::my_ids) of each database that holds one of `tables`, read once a database rather than once a
+    /// table.
+    pub(crate) fn my_ids_of<'t>(
+        &self,
+        tables: impl IntoIterator<Item = &'t MsgTable>,
+    ) -> Result<HashMap<PathBuf, String>> {
+        let mut mine = HashMap::new();
+        for t in tables {
+            if !mine.contains_key(&t.db) {
+                mine.insert(t.db.clone(), self.my_ids(&t.db)?);
+            }
+        }
+        Ok(mine)
+    }
+
     /// `{ total, sent, received, firstTime, lastTime, typeCounts, hourly, weekday, daily, monthly, sessions, idMap }`.
     pub fn aggregate_stats(&self, session_ids: &[String], begin: i64, end: i64) -> Result<Value> {
         self.aggregate_inner(session_ids, begin, end, false)
@@ -299,13 +306,8 @@ impl Account {
         let range = range_sql(begin, end);
         let mut total = 0i64;
         let mut sessions = Map::new();
-        let tables = tables_of(self, session_ids)?;
-        let mut mine: BTreeMap<PathBuf, String> = BTreeMap::new();
-        for t in tables.iter().flatten() {
-            if !mine.contains_key(&t.db) {
-                mine.insert(t.db.clone(), self.my_ids(&t.db)?);
-            }
-        }
+        let tables = self.message_tables_of(session_ids)?;
+        let mine = self.my_ids_of(tables.iter().flatten())?;
         let every: Vec<&MsgTable> = tables.iter().flatten().collect();
         let counted = each_table(&every, |t| -> Result<(i64, i64, i64)> {
             let t = *t;
@@ -387,14 +389,8 @@ impl Account {
         let mut daily: BTreeMap<String, i64> = BTreeMap::new();
         let mut monthly: BTreeMap<String, i64> = BTreeMap::new();
         let mut sessions = Map::new();
-        let tables = tables_of(self, session_ids)?;
-        // the owner's sender ids, read once a database rather than once a table
-        let mut mine_of: BTreeMap<PathBuf, String> = BTreeMap::new();
-        for t in tables.iter().flatten() {
-            if !mine_of.contains_key(&t.db) {
-                mine_of.insert(t.db.clone(), self.my_ids(&t.db)?);
-            }
-        }
+        let tables = self.message_tables_of(session_ids)?;
+        let mine_of = self.my_ids_of(tables.iter().flatten())?;
         let every: Vec<&MsgTable> = tables.iter().flatten().collect();
         let grouped = each_table(&every, |t| {
             self.time_groups(t, &mine_of[&t.db], (begin, end))
@@ -518,8 +514,8 @@ impl Account {
         }
     }
 
-    /// [`time_groups`](Self::time_groups) for a table the leaf scan does not read: grouped by SQL, so that SQLite's
-    /// comparisons and arithmetic apply to its cells as they always did.
+    /// [`time_groups`](Self::time_groups) for a table the leaf scan does not read: grouped by SQL, so SQLite's own
+    /// comparisons and arithmetic apply to its cells.
     fn time_groups_by_sql(&self, t: &MsgTable, mine: &str, range: &str) -> Result<Vec<TimeGroup>> {
         let local_q = |expr: &str| local(expr).replace("create_time", "q");
         let sql = format!(
@@ -596,7 +592,7 @@ impl Account {
 
     /// Calendar years (local time, descending) in which any of the sessions has messages.
     pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
-        let tables = tables_of(self, session_ids)?;
+        let tables = self.message_tables_of(session_ids)?;
         let every: Vec<&MsgTable> = tables.iter().flatten().collect();
         let found = each_table(&every, |t| -> Result<Vec<i64>> {
             let t = *t;
@@ -648,13 +644,14 @@ impl Account {
         let begin = options.get("begin").and_then(Value::as_i64).unwrap_or(0);
         let end = options.get("end").and_then(Value::as_i64).unwrap_or(0);
         let mut out = Map::new();
-        for sid in session_ids {
+        let tables = self.message_tables_of(session_ids)?;
+        let mine = self.my_ids_of(tables.iter().flatten())?;
+        for (sid, tables) in session_ids.iter().zip(&tables) {
             let is_group = sid.ends_with("@chatroom");
             let mut all = TypeCounts::default();
             let mut senders: BTreeSet<String> = BTreeSet::new();
-            for t in self.message_tables(sid)? {
-                let mine = self.my_ids(&t.db)?;
-                let (counts, names) = self.type_counts(&t, &mine, (begin, end), is_group)?;
+            for t in tables {
+                let (counts, names) = self.type_counts(t, &mine[&t.db], (begin, end), is_group)?;
                 all.add(&counts);
                 senders.extend(names);
             }

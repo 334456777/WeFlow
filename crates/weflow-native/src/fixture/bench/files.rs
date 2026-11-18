@@ -144,8 +144,8 @@ static TONE_PACKETS: std::sync::LazyLock<Vec<Vec<u8>>> = std::sync::LazyLock::ne
 });
 
 /// A SILK voice of `ms` milliseconds the decoder reads (#574): the header WeChat writes, then a packet of the tone
-/// per 20 ms, over again past its second. The random numbers it once drew are still drawn, so the rest of the
-/// account stays the same.
+/// per 20 ms, over again past its second. Each packet also draws, and leaves unused, the random bytes of a packet of
+/// random length, so what the rest of the account draws from the generator does not depend on the tone.
 pub(super) fn silk(rng: &mut Rng, ms: i64) -> Vec<u8> {
     let mut out = b"\x02#!SILK_V3".to_vec();
     for packet in TONE_PACKETS.iter().cycle().take((ms / 20).max(1) as usize) {

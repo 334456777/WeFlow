@@ -5,6 +5,7 @@
 //! whenever the file or its `-wal` changes on disk, so long-running commands (`serve`, message push) keep
 //! seeing new messages. Nothing plaintext is written to disk.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -154,23 +155,22 @@ pub fn hex(bytes: &[u8]) -> String {
     out
 }
 
+/// A BLOB as WCDB stores it compressed: zstd frames inflated, anything else (or frames that do not inflate) as it is.
+pub(crate) fn inflate_blob(b: &[u8]) -> Cow<'_, [u8]> {
+    if b.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
+        if let Ok(v) = zstd::stream::decode_all(b) {
+            return Cow::Owned(v);
+        }
+    }
+    Cow::Borrowed(b)
+}
+
 /// Text form of a BLOB: inflate zstd frames, then UTF-8 if valid, otherwise lowercase hex.
 fn blob_to_string(b: &[u8]) -> String {
-    let inflated;
-    let bytes = if b.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
-        match zstd::stream::decode_all(b) {
-            Ok(v) => {
-                inflated = v;
-                &inflated[..]
-            }
-            Err(_) => b,
-        }
-    } else {
-        b
-    };
-    match std::str::from_utf8(bytes) {
+    let bytes = inflate_blob(b);
+    match std::str::from_utf8(&bytes) {
         Ok(s) => s.to_string(),
-        Err(_) => hex(bytes),
+        Err(_) => hex(&bytes),
     }
 }
 

@@ -2,8 +2,8 @@
 //!
 //! Everything is served by the pure-Rust backend in [`crate::db`]/[`crate::msg`]; there is
 //! no dependency on the closed-source `wcdb_api` library. Calls that have not been ported yet return a
-//! clear "not implemented" error instead of touching anything native. The calls refused by design keep the
-//! arguments they have always taken, unused.
+//! clear "not implemented" error instead of touching anything native. The calls refused by design take the
+//! arguments of the operation they stand for and leave them unused.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -213,16 +213,15 @@ impl Wcdb {
         self.account()?.session_message_date_counts(session_id)
     }
 
+    /// Every message of one `local_type` (see [`Account::messages_by_type`]).
     pub fn messages_by_type(
         &self,
         session_id: &str,
         local_type: i64,
         ascending: bool,
-        limit: i32,
-        offset: i32,
     ) -> Result<Vec<MsgRow>> {
         self.account()?
-            .messages_by_type(session_id, local_type, ascending, limit, offset)
+            .messages_by_type(session_id, local_type, ascending)
     }
 
     /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
@@ -642,6 +641,9 @@ impl Wcdb {
     }
 }
 
+/// `session/session.db` of `root`, else the first `session.db` (any case) under it. The search goes on past a folder
+/// it cannot list, and does not enter links to folders (symbolic links, junctions), so a link back up the tree cannot
+/// send it round in circles. Each folder's entries are taken in name order, so the same tree gives the same file.
 fn find_session_db(root: &Path) -> Option<PathBuf> {
     if !root.exists() {
         return None;
@@ -652,20 +654,81 @@ fn find_session_db(root: &Path) -> Option<PathBuf> {
     }
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let entries = fs::read_dir(&dir).ok()?;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
+        // popped last first: the subfolders in reverse name order, so the first by name is searched first
+        entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+        for entry in entries {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                stack.push(entry.path());
+            } else if entry
                 .file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| name.eq_ignore_ascii_case("session.db"))
-                .unwrap_or(false)
+                .to_str()
+                .is_some_and(|name| name.eq_ignore_ascii_case("session.db"))
             {
-                return Some(path);
+                return Some(entry.path());
             }
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fixture::TestDir;
+
+    #[test]
+    fn session_db_is_found_below_the_root() {
+        let root = TestDir::new("weflow-find-session");
+        assert_eq!(find_session_db(&root.join("missing")), None);
+        fs::create_dir_all(root.join("a/b")).unwrap();
+        fs::create_dir_all(root.join("c")).unwrap();
+        assert_eq!(find_session_db(root.path()), None);
+        fs::write(root.join("a/b/Session.db"), b"").unwrap();
+        fs::write(root.join("c/session.db"), b"").unwrap();
+        assert_eq!(
+            find_session_db(root.path()),
+            Some(root.join("a/b/Session.db")),
+            "the first by name"
+        );
+        fs::create_dir_all(root.join("session")).unwrap();
+        fs::write(root.join("session/session.db"), b"").unwrap();
+        assert_eq!(
+            find_session_db(root.path()),
+            Some(root.join("session/session.db"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_search_passes_folders_it_cannot_list_and_does_not_follow_links() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let root = TestDir::new("weflow-find-session-links");
+        let outside = TestDir::new("weflow-find-session-outside");
+        fs::write(outside.join("session.db"), b"").unwrap();
+        fs::create_dir_all(root.join("a")).unwrap();
+        // a link back up the tree, and one to a folder outside it
+        symlink(root.path(), root.join("a/up")).unwrap();
+        symlink(outside.path(), root.join("a/out")).unwrap();
+        assert_eq!(find_session_db(root.path()), None);
+
+        // searched first by name, but it cannot be listed
+        let locked = root.join("a/locked");
+        fs::create_dir_all(&locked).unwrap();
+        fs::create_dir_all(root.join("b")).unwrap();
+        fs::write(root.join("b/session.db"), b"").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let unlistable = fs::read_dir(&locked).is_err(); // root lists it anyway
+        let found = find_session_db(root.path());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        if unlistable {
+            assert_eq!(found, Some(root.join("b/session.db")));
+        }
+    }
 }
