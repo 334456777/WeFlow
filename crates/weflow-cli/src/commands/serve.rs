@@ -53,7 +53,7 @@ pub(crate) struct ServeCommand {
     #[arg(long, value_name = "VERSION", conflicts_with = "ui_dir")]
     pub(super) web_version: Option<String>,
     /// Serve the API alone, without the WebUI
-    #[arg(long, conflicts_with_all = ["ui_dir", "web_version", "no_browser"])]
+    #[arg(long, conflicts_with_all = ["ui_dir", "web_version"])]
     pub(super) api_only: bool,
 }
 
@@ -133,6 +133,28 @@ pub(crate) fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The address `--host` (or `serve_host`) and the port name: an IPv4 or IPv6 address, the latter with or without
+/// brackets (`::1`, `[::1]`), or a host name, which takes the first address it resolves to.
+async fn listen_address(host: &str, port: u16) -> AppResult<std::net::SocketAddr> {
+    let host = host.trim();
+    let bare = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
+        return Ok(std::net::SocketAddr::new(ip, port));
+    }
+    let invalid = |why: String| AppError::usage(format!("invalid listen address {host}: {why}"));
+    if bare.is_empty() || bare.contains(['[', ']', '/']) {
+        return Err(invalid("not an IP address or a host name".into()));
+    }
+    tokio::net::lookup_host((bare, port))
+        .await
+        .map_err(|err| invalid(err.to_string()))?
+        .next()
+        .ok_or_else(|| invalid("the name has no address".into()))
+}
+
 /// `serve` runs the command API (every CLI command over HTTP, see `serve_api`), next to the optional insight and image
 /// auto-download services.
 pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
@@ -161,9 +183,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         .or_else(|| cfg_str("httpApiToken"));
     // without a configured token the command API makes one up
     let generated_token = token.is_none().then(serve_api::http::generate_token);
-    let addr = format!("{host}:{port}")
-        .parse::<std::net::SocketAddr>()
-        .map_err(|err| AppError::usage(format!("invalid listen address: {err}")))?;
+    let addr = listen_address(&host, port).await?;
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|err| AppError::runtime(format!("failed to bind HTTP server: {err}")))?;
@@ -347,6 +367,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
                 config_path: hub.config_path().to_path_buf(),
                 farewell: farewell.clone(),
                 insight: command.insight,
+                image_auto_download: auto_download.clone(),
             };
             serve_api::serve(cfg, listener).await
         };
@@ -374,4 +395,42 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     }
     outcome?;
     Ok(json!({ "stopped": true }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::SocketAddr;
+
+    #[tokio::test]
+    async fn listen_addresses_are_ips_with_or_without_brackets_or_names() {
+        let at = |host: &'static str| listen_address(host, 18108);
+        let addr = |text: &str| text.parse::<SocketAddr>().unwrap();
+        assert_eq!(at("127.0.0.1").await.unwrap(), addr("127.0.0.1:18108"));
+        assert_eq!(at(" 0.0.0.0 ").await.unwrap(), addr("0.0.0.0:18108"));
+        assert_eq!(at("::1").await.unwrap(), addr("[::1]:18108"));
+        assert_eq!(at("[::1]").await.unwrap(), addr("[::1]:18108"));
+        assert_eq!(at("::").await.unwrap(), addr("[::]:18108"));
+        // a name: the first address it resolves to
+        let local = at("localhost").await.unwrap();
+        assert!(local.ip().is_loopback(), "{local}");
+        assert_eq!(local.port(), 18108);
+        for bad in ["", "[::1", "[]", "a/b"] {
+            let err = at(bad).await.unwrap_err();
+            assert_eq!(err.code, "invalid_arguments", "{bad}: {}", err.message);
+        }
+    }
+
+    #[test]
+    fn api_only_goes_with_no_browser() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Line {
+            #[command(flatten)]
+            serve: ServeCommand,
+        }
+        let line = Line::try_parse_from(["serve", "--api-only", "--no-browser"]).unwrap();
+        assert!(line.serve.api_only && line.serve.no_browser);
+        assert!(Line::try_parse_from(["serve", "--api-only", "--ui-dir", "dist"]).is_err());
+    }
 }

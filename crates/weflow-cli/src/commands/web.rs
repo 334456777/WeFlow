@@ -187,10 +187,11 @@ pub(crate) async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppRes
             let mut out = Vec::new();
             for version in registry.versions().await?.into_iter().take(30) {
                 let published = registry.published(&version).await?;
-                let refusal = match (&published.api_version, &published.min_backend_version) {
-                    (Some(api), Some(min)) => backend.refusal(api, min),
-                    _ => None,
-                };
+                let refusal = published_refusal(
+                    &backend,
+                    published.api_version.as_deref(),
+                    published.min_backend_version.as_deref(),
+                );
                 out.push(WebPublished {
                     size: published.size,
                     api_version: published.api_version,
@@ -222,12 +223,13 @@ pub(crate) async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppRes
             let mut suitable = Vec::new();
             for version in registry.versions().await?.into_iter().take(30) {
                 let published = registry.published(&version).await?;
-                if let (Some(api), Some(min)) =
-                    (&published.api_version, &published.min_backend_version)
-                {
-                    if backend.refusal(api, min).is_none() {
-                        suitable.push(version);
-                    }
+                let refusal = published_refusal(
+                    &backend,
+                    published.api_version.as_deref(),
+                    published.min_backend_version.as_deref(),
+                );
+                if refusal.is_none() {
+                    suitable.push(version);
                 }
             }
             // the newest release, or the newest pre-release when there is no release yet
@@ -278,6 +280,25 @@ pub(crate) async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppRes
     }
 }
 
+/// Why a published version does not suit this weflow, or `None` when it does: one whose metadata leaves out the API
+/// or the lowest weflow it needs cannot be told to suit.
+fn published_refusal(
+    backend: &weflow_core::webui::Backend<'_>,
+    api_version: Option<&str>,
+    min_backend_version: Option<&str>,
+) -> Option<String> {
+    match (api_version, min_backend_version) {
+        (Some(api), Some(min)) => backend.refusal(api, min),
+        _ => Some(
+            weflow_core::locale::tr(
+                "its metadata does not say which API and weflow version it needs",
+                "它的元数据没有写明需要的 API 和 weflow 版本",
+            )
+            .to_string(),
+        ),
+    }
+}
+
 /// `value` as a URL query value: every byte but the unreserved ones (RFC 3986) percent-encoded, so a token with `+`,
 /// `&`, `#` or `=` reaches the page as it is.
 pub(super) fn query_escape(value: &str) -> String {
@@ -307,9 +328,16 @@ pub(super) fn open_in_browser(url: &str) {
         cmd.arg(url);
         cmd
     };
-    let _ = opener
+    let spawned = opener
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn();
+    if let Ok(mut child) = spawned {
+        // waited for off this thread, so the opener, which ends once it handed the address over, is reaped (on
+        // Unix it would stay a zombie while the server runs)
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
 }

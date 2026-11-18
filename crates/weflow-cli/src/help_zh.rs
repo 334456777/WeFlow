@@ -1,4 +1,5 @@
-// Chinese help text: (English doc comment, Chinese). Keep in sync with the doc comments in main.rs; a test fails on gaps.
+// Chinese help text: (English doc comment, Chinese). Keep in sync with the doc comments of the command tree (`cli.rs`
+// and `commands/`); tests fail on gaps and on entries no help text uses.
 const HELP: &[(&str, &str)] = &[
     ("kvcomm directories (repeat for net, net_1, etc.; default on Windows, Linux x64 and macOS: WeChat's existing net*/kvcomm directories)", "kvcomm 目录（可重复传入 net、net_1 等目录；Windows、Linux x64 和 macOS 默认使用微信已存在的 net*/kvcomm 目录）"),
     ("Maximum filesystem entries scanned for templates in the selected account (default: 10000)", "在选定账号中查找模板时扫描的文件系统条目上限（默认：10000）"),
@@ -267,6 +268,7 @@ const HELP: &[(&str, &str)] = &[
     ("Export format: json, html or arkmejson", "导出格式：json、html 或 arkmejson"),
     ("Decryption key", "解密密钥"),
     ("Output file (default: print base64 in the result)", "输出文件（默认：在结果中输出 base64）"),
+    ("Output file (without it: only the size and the file in the cache)", "输出文件（不给时只返回大小和缓存中的文件）"),
     ("Sticker URL", "表情地址"),
     ("URL of the encrypted sticker", "加密表情的地址"),
     ("AES key of the encrypted sticker", "加密表情的 AES 密钥"),
@@ -294,7 +296,6 @@ const HELP: &[(&str, &str)] = &[
     ("Mark an insight record as read", "把一条洞察记录标为已读"),
     ("JSON payload", "JSON 参数"),
     ("Run the AI insight engine", "运行 AI 洞察引擎"),
-    ("Run the image auto-download hook (Windows only)", "运行原图自动下载钩子（仅限 Windows）"),
     ("Create a backup of the current account", "为当前账号创建备份"),
     ("Also back up the images WeChat keeps (msg/attach)", "同时备份微信保存的图片（msg/attach）"),
     ("Also back up the videos WeChat keeps (msg/video)", "同时备份微信保存的视频（msg/video）"),

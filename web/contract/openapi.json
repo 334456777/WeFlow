@@ -8860,7 +8860,7 @@
         "properties": {
           "isHooked": {
             "type": "boolean",
-            "description": "Always false."
+            "description": "Whether the hook is in WeChat now."
           },
           "pid": {
             "type": [
@@ -8869,7 +8869,7 @@
             ],
             "format": "uint32",
             "minimum": 0,
-            "description": "Always null."
+            "description": "The WeChat process hooked; null while none is."
           },
           "supported": {
             "type": "boolean",
@@ -8881,7 +8881,7 @@
           "pid",
           "supported"
         ],
-        "description": "What `image auto-download status` answers: the hook is not part of WeFlow."
+        "description": "What `image auto-download status` answers: whether the image auto-download hook is in WeChat. `weflow serve`\nanswers its `--json` document for the hook it runs itself (on Windows x64 unless `serve_image_auto_download` is\nfalse); the command run on its own, or through `serve` as a job or with `std`, answers for its own process, which\nruns none."
       },
       "VideoInfo": {
         "type": "object",

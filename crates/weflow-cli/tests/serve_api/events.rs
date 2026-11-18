@@ -96,6 +96,56 @@ fn health_events_say_hello_then_beat_without_a_token() {
     assert!(reply.starts_with("HTTP/1.1 403"), "{reply}");
 }
 
+/// The events of a quiet job carry the same `heartbeat` event as the other streams, as often: `EventSource` reports no
+/// comment line.
+#[test]
+fn job_events_beat_while_the_job_is_quiet() {
+    // a registry that takes the connection and never answers: `web install` waits on it
+    let registry = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let registry_url = format!("http://{}", registry.local_addr().unwrap());
+    let root = temp_root("job-heartbeat");
+    let server = start_env(
+        &root,
+        &["--api-token", TOKEN, "--api-only"],
+        &[
+            ("WEFLOW_WEB_REGISTRY", &registry_url),
+            ("WEFLOW_SSE_HEARTBEAT_MS", "200"),
+        ],
+    );
+    let auth = format!("Bearer {TOKEN}");
+    let r = server.request(
+        "POST",
+        "/web/install",
+        &[("Authorization", &auth), ("Prefer", "respond-async")],
+        r#"{"version":"0.1.0"}"#,
+    );
+    assert_eq!(r.status, 202, "{}", r.body);
+    let id = r.json()["data"]["id"].as_str().unwrap().to_string();
+    let mut events = EventStream::open_at(
+        &server,
+        &format!("/jobs/{id}/events"),
+        &[("Authorization", &auth)],
+    );
+    assert!(
+        events.wait_for("event: heartbeat\ndata: {}\n\n", 10),
+        "{}",
+        events.text
+    );
+    assert!(!events.text.contains(": ping"), "{}", events.text);
+    assert_eq!(
+        server
+            .request(
+                "DELETE",
+                &format!("/jobs/{id}"),
+                &[("Authorization", &auth)],
+                ""
+            )
+            .status,
+        200
+    );
+    drop(registry);
+}
+
 /// Ctrl+C, and the signals `systemctl stop` or a closed terminal send, stop the server the same way (#810): the event
 /// streams end with `bye` and the processes of its jobs end with it. Ctrl+C is an interruption (130); the others
 /// ask it to end, which it does well (0). Windows has no way to send them to another process alone.

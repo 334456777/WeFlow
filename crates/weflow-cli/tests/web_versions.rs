@@ -99,12 +99,18 @@ fn answer(mut stream: TcpStream, packages: &HashMap<String, Vec<u8>>) {
                 .into_bytes(),
         )
     } else if let Some(version) = rest.strip_prefix("manifests/") {
+        // a version named `…nometa` says nothing of the API and weflow it needs
+        let annotations = if version.contains("nometa") {
+            json!({})
+        } else {
+            json!({ "io.weflow.web.api-version": API_VERSION, "io.weflow.web.min-backend-version": "0.0.1" })
+        };
         match packages.get(version) {
             Some(p) => ("200 OK", json!({
                 "schemaVersion": 2,
                 "artifactType": "application/vnd.weflow.web.v1",
                 "layers": [{ "mediaType": "application/vnd.weflow.web.layer.v1+zip", "digest": format!("sha256:{}", sha(p)), "size": p.len() }],
-                "annotations": { "io.weflow.web.api-version": API_VERSION, "io.weflow.web.min-backend-version": "0.0.1" },
+                "annotations": annotations,
             }).to_string().into_bytes()),
             None => ("404 Not Found", Vec::new()),
         }
@@ -432,6 +438,37 @@ fn versions_kept_by_another_weflow_are_checked_again() {
     assert_eq!(server.started["uiVersion"], "0.0.9");
     assert!(server.started["uiDownloading"].is_null());
     assert!(server.get("/ui/").1.contains("WeFlow 0.0.9"));
+}
+
+/// A published version whose metadata leaves out the API and weflow it needs does not suit: the list says so, and
+/// `web update` passes it over.
+#[test]
+fn a_version_without_its_metadata_does_not_suit() {
+    let home = temp_root("nometa");
+    let reg = registry(&["0.0.8-rc.1", "0.0.9-nometa"]);
+    let remote = cli(&home, &reg, &["web", "list", "--remote"]);
+    let bare = remote
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["version"] == "0.0.9-nometa")
+        .unwrap_or_else(|| panic!("{remote}"));
+    assert_eq!(bare["suits"], false, "{bare}");
+    assert!(bare["why"].as_str().unwrap().contains("metadata"), "{bare}");
+    let other = remote
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["version"] == "0.0.8-rc.1")
+        .unwrap();
+    assert_eq!(
+        (&other["suits"], &other["why"]),
+        (&json!(true), &Value::Null)
+    );
+    assert_eq!(
+        cli(&home, &reg, &["web", "update"])["version"],
+        "0.0.8-rc.1"
+    );
 }
 
 #[test]

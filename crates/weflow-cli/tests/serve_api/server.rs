@@ -109,6 +109,20 @@ fn health_data_changes_with_the_configuration_and_each_run() {
     let second = data();
     assert_ne!(second, first);
     assert_eq!(data(), second);
+    // another config file chosen, even with the same content, and back to the first one
+    let other = root.join("other").join("config.json");
+    std::fs::create_dir_all(other.parent().unwrap()).unwrap();
+    std::fs::copy(root.join("config.json"), &other).unwrap();
+    let (code, _, err) = run_cli(
+        &root,
+        &["config", "set", "config_path", other.to_str().unwrap()],
+    );
+    assert_eq!(code, 0, "{err}");
+    let moved = data();
+    assert_ne!(moved, second);
+    let (code, _, err) = run_cli(&root, &["config", "unset", "config_path"]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(data(), second);
     drop(server);
     // the same configuration, another run
     let server = start(&root, &["--api-token", TOKEN]);

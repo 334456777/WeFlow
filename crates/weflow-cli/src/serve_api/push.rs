@@ -12,6 +12,7 @@ use std::time::{Duration, Instant, SystemTime};
 use axum::body::{Body, Bytes};
 use axum::response::Response;
 use serde_json::json;
+use tokio::sync::broadcast;
 use weflow_core::push::{PushBroker, PushEngine};
 use weflow_core::services::ServiceHub;
 
@@ -164,8 +165,9 @@ impl Push {
         self.listeners.fetch_add(1, Ordering::SeqCst);
         let listener = Listener(self.listeners.clone());
         self.watch(hub);
-        let mut rx = self.broker.subscribe();
-        let replay = self.broker.replay_since(last_id);
+        let broker = self.broker.clone();
+        let mut rx = broker.subscribe();
+        let replay = broker.replay_since(last_id);
         let stream = async_stream::stream! {
             let _listener = listener;
             yield Ok::<_, Infallible>(server.hello());
@@ -180,16 +182,13 @@ impl Push {
             heartbeat.tick().await;
             loop {
                 tokio::select! {
-                    msg = rx.recv() => match msg {
-                        Ok((id, body)) => {
-                            if id <= highest {
-                                continue;
+                    events = next_events(&broker, &mut rx, &mut highest) => match events {
+                        Some(events) => {
+                            for (_, body) in events {
+                                yield Ok(Bytes::from(body.as_bytes().to_vec()));
                             }
-                            highest = id;
-                            yield Ok(Bytes::from(body.as_bytes().to_vec()));
                         }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                        Err(_) => break,
+                        None => break,
                     },
                     _ = heartbeat.tick() => yield Ok(server.beat()),
                     _ = listening.stopping() => {
@@ -200,5 +199,73 @@ impl Push {
             }
         };
         status::event_stream(Body::from_stream(stream))
+    }
+}
+
+/// An event of the broker: its id and its text as the stream sends it.
+type Kept = (u64, Arc<String>);
+
+/// The broker's events a stream sends next, each newer than `highest` (which follows them): the next one `rx` gets,
+/// or, when `rx` fell behind the broker's channel, those the broker kept that it missed. Empty when `rx` got one
+/// already sent; `None` once the broker is gone.
+async fn next_events(
+    broker: &PushBroker,
+    rx: &mut broadcast::Receiver<Kept>,
+    highest: &mut u64,
+) -> Option<Vec<Kept>> {
+    match rx.recv().await {
+        Ok((id, body)) => {
+            if id <= *highest {
+                return Some(Vec::new());
+            }
+            *highest = id;
+            Some(vec![(id, body)])
+        }
+        Err(broadcast::error::RecvError::Lagged(_)) => {
+            let missed = broker.replay_since(*highest);
+            if let Some((id, _)) = missed.last() {
+                *highest = (*highest).max(*id);
+            }
+            Some(missed)
+        }
+        Err(broadcast::error::RecvError::Closed) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A stream whose receiver falls behind the broker's channel sends the events it missed from those the broker
+    /// kept, then goes on with the new ones, each once and in order.
+    #[tokio::test]
+    async fn a_stream_that_falls_behind_misses_no_event() {
+        let broker = PushBroker::new();
+        let mut rx = broker.subscribe();
+        // more than the channel holds, fewer than the broker keeps
+        let count = 600u64;
+        for n in 0..count {
+            broker.broadcast(&json!({ "n": n }));
+        }
+        let mut highest = 0;
+        let mut sent = Vec::new();
+        while sent.last() != Some(&count) {
+            let events = next_events(&broker, &mut rx, &mut highest)
+                .await
+                .expect("the broker is there");
+            sent.extend(events.into_iter().map(|(id, _)| id));
+        }
+        assert_eq!(sent, (1..=count).collect::<Vec<_>>());
+
+        // what the channel still holds was sent already; the next new event comes once
+        broker.broadcast(&json!({ "n": count }));
+        let mut after = Vec::new();
+        while after.is_empty() {
+            after = next_events(&broker, &mut rx, &mut highest)
+                .await
+                .expect("the broker is there");
+        }
+        let ids: Vec<u64> = after.into_iter().map(|(id, _)| id).collect();
+        assert_eq!(ids, [count + 1]);
     }
 }

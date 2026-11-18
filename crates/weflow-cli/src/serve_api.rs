@@ -86,6 +86,9 @@ pub struct ApiConfig {
     pub farewell: Farewell,
     /// Whether the insight engine runs beside (`--insight`), as `/health` says.
     pub insight: bool,
+    /// The image auto-download hook this server runs (`serve_image_auto_download`), which
+    /// `GET /image/auto-download/status` reports; `None` when it runs none.
+    pub image_auto_download: Option<weflow_core::image_download::ImageAutoDownload>,
 }
 
 struct AppState {
@@ -354,6 +357,9 @@ impl FileOut {
             ))
             .into());
         };
+        if let Some(why) = files::not_one_file(command, endpoint, params) {
+            return Err(bad_request(why).into());
+        }
         let given = params
             .iter()
             .find(|(k, _)| find_param(endpoint, k).is_some_and(|p| p.name == "out"))
@@ -709,7 +715,8 @@ async fn command_route(
         }
     }
     if media {
-        // satisfies the command line of the child process; nothing is written there
+        // completes the command line clap checks below, which refuses whatever the typed read did not take; no child
+        // process runs it, as one would write a file named `-`
         params.insert("out".into(), vec![Value::String("-".into())]);
     }
     let argv = endpoint
@@ -727,6 +734,11 @@ async fn command_route(
             json!({ "argv": shown, "stdin": Value::Null }).to_string(),
         ));
     }
+    // the hook is this server's own: a child process would answer for itself, which runs none
+    if command == "image auto-download status" && asked.std == Std::Json && !asked.background {
+        let (doc, exit) = auto_download_status(st.cfg.image_auto_download.as_ref());
+        return Ok(in_process_document(&doc, exit, asked.fields.as_deref()));
+    }
     // an `/api/` request its typed read did not take and clap refuses too: answered here with clap's error, as the
     // child process would print it, without starting one (#432)
     if place.is_some() && !asked.background {
@@ -734,6 +746,13 @@ async fn command_route(
         if let Some(refused) = refused_by_clap(&full) {
             timing.stage("cmd", Some("refused in process"), ran);
             return Ok(timing.on(refused));
+        }
+        if media {
+            return Err(bad_request(
+                "this /api/ media route does not take the request as it is: give each parameter once, as the command \
+                 takes it",
+            )
+            .into());
         }
     }
     // the child answers in the server's language, as a read in process does, whatever the request's
@@ -962,6 +981,22 @@ fn show_chosen(cfg: &ApiConfig, doc: &Value) {
     if let Some(dir) = ui::UiDir::open_version(store, version) {
         *cfg.ui.write_or_panic() = Some(dir);
     }
+}
+
+/// The `--json` document of `image auto-download status` for this server: the state of the hook it runs, or of none.
+fn auto_download_status(
+    hook: Option<&weflow_core::image_download::ImageAutoDownload>,
+) -> (Value, u8) {
+    let state = hook.map(weflow_core::image_download::ImageAutoDownload::status);
+    let status = weflow_core::contract::AutoDownloadStatus {
+        is_hooked: state.as_ref().is_some_and(|s| s["isHooked"] == true),
+        pid: state
+            .as_ref()
+            .and_then(|s| s["pid"].as_u64())
+            .and_then(|pid| u32::try_from(pid).ok()),
+        supported: weflow_core::image_download::supported(),
+    };
+    crate::reads::json_document(Ok(json!(status)))
 }
 
 #[cfg(test)]

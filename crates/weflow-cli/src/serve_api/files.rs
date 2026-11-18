@@ -9,6 +9,8 @@ use axum::response::Response;
 use serde_json::{json, Value};
 use tokio::io::AsyncReadExt;
 
+use super::endpoints::{find_param, flag_value, texts, Endpoint, Params};
+
 /// Commands that write one file, with the `--out` used when the request gives none (inside the request's folder;
 /// empty = the folder itself, the command names the file) and the field of the result holding the written path
 /// (`None`: the file is `--out` itself).
@@ -32,6 +34,47 @@ pub(super) fn file_command(name: &str) -> Option<(&'static str, Option<&'static 
         .iter()
         .find(|(n, _, _)| *n == name)
         .map(|(_, out, field)| (*out, *field))
+}
+
+/// Why `?return=file` cannot send what `command` writes with these parameters, told before it runs: `export
+/// messages` in several formats writes a folder unless `zip` packs it.
+pub(super) fn not_one_file(
+    command: &str,
+    endpoint: &Endpoint,
+    params: &Params,
+) -> Option<&'static str> {
+    if command != "export messages" {
+        return None;
+    }
+    let mut formats: Vec<String> = Vec::new();
+    let mut zip = false;
+    for (key, values) in params {
+        let Some(param) = find_param(endpoint, key) else {
+            continue;
+        };
+        match param.name.as_str() {
+            // comma separated on the command line too
+            "format" => {
+                let named = texts(param, values);
+                for format in named
+                    .iter()
+                    .flat_map(|text| text.split(','))
+                    .map(|f| f.trim().to_ascii_lowercase())
+                    .filter(|f| !f.is_empty())
+                {
+                    if !formats.contains(&format) {
+                        formats.push(format);
+                    }
+                }
+            }
+            "zip" => zip |= values.iter().any(|v| flag_value(v) == Some(true)),
+            _ => {}
+        }
+    }
+    (formats.len() > 1 && !zip).then_some(
+        "several formats are written to a folder, which return=file cannot send: add zip=true to pack them into \
+         one zip",
+    )
 }
 
 /// The file a successful run wrote: the result's path field, or `--out`; relative paths are taken from the
@@ -262,6 +305,37 @@ mod tests {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         );
         assert_eq!(content_type(Path::new("a")), "application/octet-stream");
+    }
+
+    #[test]
+    fn several_formats_need_a_zip_to_be_one_file() {
+        use crate::serve_api::endpoints::Endpoints;
+        use crate::serve_api::tests::params;
+        let endpoints = Endpoints::new();
+        let messages = endpoints.0.get("export messages").unwrap();
+        let refused = |pairs: &[(&str, Value)]| {
+            not_one_file("export messages", messages, &params(pairs)).is_some()
+        };
+        assert!(!refused(&[]));
+        assert!(!refused(&[("format", json!("html"))]));
+        assert!(!refused(&[("format", json!("html,HTML, "))]));
+        assert!(refused(&[("format", json!(["html", "txt"]))]));
+        assert!(refused(&[
+            ("format", json!("html")),
+            ("format", json!("txt"))
+        ]));
+        assert!(refused(&[("format", json!("html,txt"))]));
+        assert!(refused(&[
+            ("format", json!(["html", "txt"])),
+            ("zip", json!("false"))
+        ]));
+        assert!(!refused(&[
+            ("format", json!(["html", "txt"])),
+            ("zip", json!(true))
+        ]));
+        let sessions = endpoints.0.get("export sessions").unwrap();
+        let more = params(&[("format", json!(["json", "csv"]))]);
+        assert!(not_one_file("export sessions", sessions, &more).is_none());
     }
 
     #[test]

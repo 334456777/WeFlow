@@ -264,3 +264,34 @@ fn the_footprint_is_exported_as_json_or_as_a_timeline() {
     );
     assert!(!root.join("out").join("html").exists());
 }
+
+/// `--format ""` stands for the default format, txt, both on the command line and through `serve`.
+#[test]
+fn an_empty_message_format_exports_txt() {
+    let root = temp_root("empty-format");
+    let home = account_home(&root);
+    let out = root.join("cli");
+    let (code, stdout, stderr) = run_cli(
+        &home,
+        &[
+            "--json",
+            "export",
+            "messages",
+            "wxid_bob",
+            "--format",
+            "",
+            "--out",
+            out.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let text = std::fs::read_to_string(out.join("wxid_bob.txt")).unwrap();
+    assert!(text.contains("see you"), "{text}");
+
+    let server = start(&home, &["--api-token", TOKEN]);
+    let out = root.join("serve");
+    let body = json!({ "session-id": "wxid_bob", "format": ["", " "], "out": out });
+    let r = server.call("POST", "/export/messages", &body.to_string());
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(out.join("wxid_bob.txt").is_file());
+}

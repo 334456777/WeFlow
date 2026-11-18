@@ -160,7 +160,7 @@ fn jobs_run_in_the_background() {
     // a failing command is a failed job with the command's error
     let r = server.request(
         "GET",
-        "/config/get?key=a&key=b",
+        "/chat/messages?session-id=x&limit=many",
         &[("Authorization", &auth), ("Prefer", "respond-async")],
         "",
     );
@@ -306,6 +306,23 @@ fn files_come_back_with_the_result() {
         let r = server.call(method, target, "");
         assert_eq!(r.status, 400, "{target}: {}", r.body);
     }
+    // several formats without zip write a folder: refused before anything runs, right away or as a job
+    let several = r#"{"session-id": "wxid_bob", "format": ["html", "txt"]}"#;
+    let r = server.call("POST", "/export/messages?return=file", several);
+    assert_eq!(r.status, 400, "{}", r.body);
+    assert!(r.body.contains("zip"), "{}", r.body);
+    let r = server.request(
+        "POST",
+        "/export/messages?return=file",
+        &[
+            ("Authorization", &format!("Bearer {TOKEN}")),
+            ("Prefer", "respond-async"),
+        ],
+        several,
+    );
+    assert_eq!(r.status, 400, "{}", r.body);
+    assert_eq!(server.call("GET", "/jobs", "").json()["data"], json!([]));
+    assert!(request_folders(&home).is_empty());
 }
 
 #[test]

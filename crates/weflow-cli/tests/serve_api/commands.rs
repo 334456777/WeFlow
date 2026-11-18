@@ -51,11 +51,20 @@ fn commands_answer_like_the_terminal() {
     assert_eq!(r.status, 400);
 
     // the command checks its arguments as on a terminal: exit code 2 is 400
-    let r = server.call("GET", "/config/get?key=a&key=b", "");
-    let (exit, stdout, _) = run_cli(home, &["--json", "config", "get", "--", "a", "b"]);
+    let r = server.call("GET", "/chat/messages?session-id=x&limit=many", "");
+    let (exit, stdout, _) = run_cli(
+        home,
+        &["--json", "chat", "messages", "--limit=many", "--", "x"],
+    );
     assert_eq!((r.status, exit), (400, 2));
     assert_eq!(r.body, stdout);
     assert_eq!(r.headers["x-weflow-error-code"], "invalid_arguments");
+    // a positional argument given twice is refused by the server: on the command line the second value would go
+    // to the next argument
+    let r = server.call("GET", "/config/get?key=a&key=b", "");
+    assert_eq!(r.status, 400);
+    assert_eq!(r.json()["error"]["code"], "invalid_arguments");
+    assert!(r.body.contains("`key`"), "{}", r.body);
     // the server refuses names the command does not have
     let r = server.call("GET", "/config/path?bogus=1", "");
     assert_eq!(r.status, 400);
@@ -105,6 +114,31 @@ fn account_commands_and_read_only_refusals() {
     assert_eq!(r.status, 501, "{}", r.body);
     let r = server.call("GET", "/sns/block-delete?action=uninstall", "");
     assert_eq!((r.status, r.headers["allow"].as_str()), (405, "DELETE"));
+}
+
+/// `image auto-download status` through `serve` is the server's own hook (here none: the tests turn it off), in the
+/// document the command prints.
+#[test]
+fn the_auto_download_status_is_the_servers() {
+    let root = temp_root("auto-download");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let r = server.call("GET", "/image/auto-download/status", "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(r.headers["x-weflow-exit-code"], "0");
+    let (exit, stdout, _) = run_cli(&home, &["--json", "image", "auto-download", "status"]);
+    assert_eq!(exit, 0);
+    assert_eq!(r.body, stdout);
+    let doc = r.json();
+    assert_eq!(doc["data"]["isHooked"], false, "{doc}");
+    assert_eq!(doc["data"]["pid"], Value::Null, "{doc}");
+    assert!(doc["data"]["supported"].is_boolean(), "{doc}");
+    // the command line it stands for, as for any command
+    let r = server.call("GET", "/image/auto-download/status?std=in", "");
+    assert_eq!(
+        r.json()["argv"],
+        json!(["weflow", "--json", "image", "auto-download", "status"])
+    );
 }
 
 #[test]

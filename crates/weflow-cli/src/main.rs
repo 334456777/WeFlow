@@ -219,6 +219,7 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
                     stopped: true
                 }))
             }
+            // this process runs no hook; `serve` answers the request itself for the hook it runs
             AutoDownloadSubcommand::Status => {
                 Ok(json!(weflow_core::contract::AutoDownloadStatus {
                     is_hooked: false,
