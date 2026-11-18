@@ -90,6 +90,10 @@ pub(super) async fn route(
     }
 }
 
+/// What a job's stream sends while it is quiet: an event, as the other streams send (see `status`), without an id, so
+/// it leaves `Last-Event-ID` as it is.
+const HEARTBEAT: &[u8] = b"event: heartbeat\ndata: {}\n\n";
+
 fn sse(event: &Event) -> Bytes {
     Bytes::from(format!(
         "id: {}\nevent: {}\ndata: {}\n\n",
@@ -97,7 +101,8 @@ fn sse(event: &Event) -> Bytes {
     ))
 }
 
-/// `GET /jobs/{id}/events`: the events kept so far (after `Last-Event-ID`), then the new ones until `result`.
+/// `GET /jobs/{id}/events`: the events kept so far (after `Last-Event-ID`), then the new ones until `result`, with a
+/// `heartbeat` while it is quiet.
 fn event_stream(job: Arc<Job>, after: u64) -> Response {
     let Subscription {
         replay,
@@ -111,7 +116,7 @@ fn event_stream(job: Arc<Job>, after: u64) -> Response {
             yield Ok::<_, std::convert::Infallible>(sse(&event));
         }
         if !ended {
-            let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(25));
+            let mut heartbeat = tokio::time::interval(super::status::heartbeat());
             heartbeat.tick().await;
             loop {
                 tokio::select! {
@@ -140,7 +145,7 @@ fn event_stream(job: Arc<Job>, after: u64) -> Response {
                         }
                         Err(broadcast::error::RecvError::Closed) => break,
                     },
-                    _ = heartbeat.tick() => yield Ok(Bytes::from_static(b": ping\n\n")),
+                    _ = heartbeat.tick() => yield Ok(Bytes::from_static(HEARTBEAT)),
                 }
             }
         }

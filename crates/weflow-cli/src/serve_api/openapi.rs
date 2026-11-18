@@ -61,11 +61,13 @@ pub(super) fn document(zh: bool) -> Value {
                 zh,
                 "Every `weflow` command over HTTP: the path is the command path, the parameters are its long \
                  option names (or argument names), and the answer is its `--json` document. `GET` and `DELETE` \
-                 take parameters in the query string, the other methods in a JSON body; either way works for \
-                 every method, and body keys win. See https://github.com/334456777/WeFlow/wiki/命令-API",
+                 take parameters in the query string, the other methods in a JSON body; every method but `GET` \
+                 reads both, and body keys win, while the body of a `GET` is not read. See \
+                 https://github.com/334456777/WeFlow/wiki/命令-API",
                 "通过 HTTP 调用每个 `weflow` 命令：路径就是命令路径，参数是命令的长选项名（或参数名），回复是命令的 \
-                 `--json` 文档。`GET` 和 `DELETE` 的参数写在查询字符串里，其他方法写在 JSON 请求体里；两种写法对所有\
-                 方法都有效，同名时以请求体为准。说明见 https://github.com/334456777/WeFlow/wiki/命令-API",
+                 `--json` 文档。`GET` 和 `DELETE` 的参数写在查询字符串里，其他方法写在 JSON 请求体里；除 `GET` 外的方法\
+                 两处都读，同名时以请求体为准，`GET` 的请求体不读。说明见 \
+                 https://github.com/334456777/WeFlow/wiki/命令-API",
             ),
         },
         "tags": tags,
@@ -1002,8 +1004,8 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
             "summary": pick(zh, "The server's state as a stream: hello, then a heartbeat every 15 s", "以事件流提供服务器状态：先发 hello，之后每 15 秒一次心跳"),
             "description": pick(
                 zh,
-                "Server-sent events. `hello` carries what `/health` answers; `heartbeat` carries `{\"data\": …}`; `bye` ends the stream when the server stops on Ctrl+C. No event for 37.5 s means the connection is dead.",
-                "服务器发送事件（SSE）。`hello` 的数据就是 `/health` 的响应；`heartbeat` 的数据为 `{\"data\": …}`；服务端按 Ctrl+C 停止时，以 `bye` 结束这条流。37.5 秒收不到任何事件，说明连接已经断开。",
+                "Server-sent events. `hello` carries what `/health` answers; `heartbeat` carries `{\"data\": …}`; `bye` ends the stream when the server is asked to stop (Ctrl+C, SIGTERM, SIGHUP, a closed console window, Windows logging off or shutting down). No event for 37.5 s means the connection is dead.",
+                "服务器发送事件（SSE）。`hello` 的数据就是 `/health` 的响应；`heartbeat` 的数据为 `{\"data\": …}`；服务端被要求停止时（Ctrl+C、SIGTERM、SIGHUP、关闭控制台窗口、Windows 注销或关机），以 `bye` 结束这条流。37.5 秒收不到任何事件，说明连接已经断开。",
             ),
             "security": [],
             "responses": {
@@ -1110,8 +1112,10 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
                 "200": {
                     "description": pick(
                         zh,
-                        "Events named `status`, `progress`, `stderr`, the command's own event types, and `result`",
-                        "事件名为 `status`、`progress`、`stderr`、命令自身的事件类型，以及 `result`",
+                        "Events named `status`, `progress`, `stderr`, the command's own event types, and `result`; \
+                         `heartbeat`, with empty data and no id, every 15 s while the job is quiet",
+                        "事件名为 `status`、`progress`、`stderr`、命令自身的事件类型，以及 `result`；作业没有动静时每 15 秒\
+                         一次 `heartbeat`，数据为空，不带 id",
                     ),
                     "content": { "text/event-stream": { "schema": { "type": "string" } } },
                 },
@@ -1155,13 +1159,16 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
             ),
             "description": pick(
                 zh,
-                "First a `ready` event, then the kept events (up to 10 minutes or 1000 of them) after `Last-Event-ID`, \
-                 then each new one as `message.new` or `message.revoke`, with the message's session, sender and text. \
+                "First `hello`, as `/health/events` sends it, and a `ready` event, then the kept events (up to 10 \
+                 minutes or 1000 of them) after `Last-Event-ID`, then each new one as `message.new` or \
+                 `message.revoke`, with the message's session, sender and text. While it is quiet a `heartbeat` \
+                 every 15 s, as `/health/events` sends it; `bye` ends the stream when the server is asked to stop. \
                  The server looks for new messages once a second while someone listens. The stream is not counted \
                  with the reads.",
-                "先发送 `ready` 事件，再补发 `Last-Event-ID` 之后保留的事件（最多 10 分钟或 1000 条），之后每条新事件为 \
-                 `message.new` 或 `message.revoke`，带会话、发送者和文字。有人订阅时，服务器每秒检查一次新消息。\
-                 这个连接不计入读取的并发上限。",
+                "先发送 `hello`（与 `/health/events` 的相同）和 `ready` 事件，再补发 `Last-Event-ID` 之后保留的事件\
+                 （最多 10 分钟或 1000 条），之后每条新事件为 `message.new` 或 `message.revoke`，带会话、发送者和文字。\
+                 没有新事件时每 15 秒一次 `heartbeat`（与 `/health/events` 的相同）；服务端被要求停止时，以 `bye` \
+                 结束这条流。有人订阅时，服务器每秒检查一次新消息。这个连接不计入读取的并发上限。",
             ),
             "parameters": [
                 {
@@ -1185,8 +1192,8 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
                 "200": {
                     "description": pick(
                         zh,
-                        "Events named `ready`, `message.new` and `message.revoke`",
-                        "事件名为 `ready`、`message.new` 和 `message.revoke`",
+                        "Events named `hello`, `ready`, `message.new`, `message.revoke`, `heartbeat` and `bye`",
+                        "事件名为 `hello`、`ready`、`message.new`、`message.revoke`、`heartbeat` 和 `bye`",
                     ),
                     "content": { "text/event-stream": { "schema": { "type": "string" } } },
                 },

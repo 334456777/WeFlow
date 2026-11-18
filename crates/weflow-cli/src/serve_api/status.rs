@@ -7,9 +7,10 @@
 //! - Like `/health`, it needs no token (an `EventSource` cannot send a header, and a token in the address ends up
 //!   in logs and history) and is behind the `Host` check. It starts no work: no push engine, only the heartbeat.
 //! - `/api/push/messages` starts with the same `hello` and sends the same heartbeat, so a page listening to it
-//!   needs no second stream.
-//! - When the server stops on Ctrl+C, each of these streams ends with `event: bye` (see [`Farewell`]), so a page
-//!   can tell a server that stopped from one it lost.
+//!   needs no second stream. `/jobs/{id}/events` sends a `heartbeat` as often, with empty data.
+//! - When the server is asked to stop (Ctrl+C or any other request `crate::stop` takes: SIGTERM, SIGHUP, a closed
+//!   console window, Windows logging off or shutting down), `/health/events` and `/api/push/messages` end with
+//!   `event: bye` (see [`Farewell`]), so a page can tell a server that stopped from one it lost.
 
 use std::convert::Infallible;
 use std::path::PathBuf;
