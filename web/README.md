@@ -21,10 +21,11 @@ bun install --frozen-lockfile
 bun run dev                               # http://localhost:5173/ui/
 ```
 
-`bun run dev` (`scripts/dev.mjs`, #333) starts two things, and stopping it stops both:
+`bun run dev` (`scripts/dev.mjs`, #333) starts three things, and stopping it stops them all:
 
 - **the page**: Vite serves these sources as they are, the same page `bun run build` makes.
 - **the server**: a `weflow serve` (debug build, `cargo build` first) of a synthetic account, on a free port of 127.0.0.1 with a random token, which the proxy adds. The account is made by `crates/weflow-cli/examples/dev_account.rs` in `target/dev-account/` (about 20 s the first time); its 「图片测试」 chat has one picture per case of the files WeChat keeps of a picture. Nothing of a real WeChat account is read.
+- **a fake model API**: `crates/weflow-fake-model`, which answers as OpenAI's and Anthropic's API documents describe, on a free port of 127.0.0.1. Unless the synthetic account's AI settings name another service, they point at it (model `fake-chat`), so the settings' test and model list and the manual insight of the inbox work as they are; a model such as `fake-rate-limit` or `fake-refusal` shows the errors, and the settings list them all (Settings → AI insights → list the models).
 
 With `WEFLOW_DEV_ACCOUNT=bench` (in the shell or `web/.env.local`) it serves the benchmark account instead (`crates/weflow-cli/examples/bench_account.rs`, #488): a group of 200,000 messages and 300 other conversations. The first build takes a minute or two and about 2.5 GB.
 

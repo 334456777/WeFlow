@@ -25,14 +25,17 @@ function cargo(args: string[]): boolean {
   }
 }
 
-/** Builds `weflow` and the account's generator, which makes the account when it is not there yet: the binary and the
- * WeFlow home that points at the account. Exits when a step fails. */
+/** `weflow` and the fake model API (crates/weflow-fake-model), in a debug build. */
+const binaries = ['-p', 'weflow-cli', '-p', 'weflow-fake-model', '--bin', 'weflow', '--bin', 'weflow-fake-model'];
+
+/** Builds `weflow`, the fake model API and the account's generator, which makes the account when it is not there yet:
+ * the binary and the WeFlow home that points at the account. Exits when a step fails. */
 export function buildAccount(chosen: Account): { weflow: string; home: string } {
   // debug build: what `cargo build` has made already, and quick to make again after a change
   // one cargo run for the debug account; the benchmark account's generator is built in release, so it is a run of its own
   const builds = chosen.profile === 'release'
-    ? [['-p', 'weflow-cli', '--bin', 'weflow'], ['-p', 'weflow-cli', '--example', chosen.example, '--release']]
-    : [['-p', 'weflow-cli', '--bin', 'weflow', '--example', chosen.example]];
+    ? [binaries, ['-p', 'weflow-cli', '--example', chosen.example, '--release']]
+    : [[...binaries, '--example', chosen.example]];
   if (!builds.every(cargo)) {
     console.error('cargo build failed');
     process.exit(1);
@@ -78,4 +81,39 @@ export async function startServe(weflow: string, home: string, args: string[], e
   })();
   await started.promise;
   return { serve, url: `http://127.0.0.1:${port}`, token };
+}
+
+/** The fake model API on a free port of 127.0.0.1, once it has started: its process and its addresses. */
+export async function startFakeModel() {
+  const fake = Bun.spawn([join(target, 'debug/weflow-fake-model' + exe)], { stdio: ['ignore', 'pipe', 'inherit'] });
+  // it prints one line with its addresses, and nothing after
+  const reader = fake.stdout.pipeThrough(new TextDecoderStream()).getReader();
+  let line = '';
+  while (!line.includes('\n')) {
+    const { value, done } = await reader.read();
+    if (done) throw new Error('weflow-fake-model stopped before it started');
+    line += value;
+  }
+  reader.releaseLock();
+  const started: { openaiBaseUrl: string; anthropicBaseUrl: string; key: string } = JSON.parse(line);
+  return { fake, ...started };
+}
+
+/** Points the AI settings of the WeFlow home `home` at the fake model API (OpenAI's format, `fake-chat`), unless they
+ * name a service other than an earlier fake's: its port changes from run to run. */
+export function useFakeModel(weflow: string, home: string, fake: { openaiBaseUrl: string; key: string }) {
+  const config = (...args: string[]) => Bun.spawnSync([weflow, '--json', 'config', ...args], {
+    env: { ...process.env, WEFLOW_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const read = (key: string): unknown => {
+    try { return JSON.parse(config('get', key).stdout.toString()).data; } catch { return null; }
+  };
+  const base = read('ai_model_api_base_url');
+  if (typeof base === 'string' && base.trim() && !base.startsWith('http://127.0.0.1:')) return false;
+  const settings: [string, string][] = [['ai_model_api_base_url', fake.openaiBaseUrl], ['ai_model_api_key', fake.key]];
+  // the format and the model the developer chose are kept
+  if (!read('ai_model_api_model')) settings.push(['ai_model_api_model', 'fake-chat']);
+  // the same address serves Anthropic's format: after a base that ends in /v1, weflow asks /v1/messages
+  for (const [key, value] of settings) config('set', key, value);
+  return true;
 }
