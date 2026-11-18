@@ -81,6 +81,9 @@ fn uniq(ids: &[String]) -> Vec<String> {
     out
 }
 
+/// The lowercase forms of an id to look it up by: the id, and the id without an account folder's suffix
+/// (`clean_account_dir_name`). Two ids share a key when [`is_same_wxid`](crate::message::transfer::is_same_wxid)
+/// takes them for one account: `john` and `john_1a2b` do, `john` and `john_smith` do not.
 fn identity_keys(raw: &str) -> Vec<String> {
     let value = raw.trim();
     if value.is_empty() {
@@ -460,12 +463,8 @@ impl ServiceHub {
             {
                 continue;
             }
+            // the first of the columns the row has
             let local_type = ["local_type", "localType", "WCDB_CT_local_type"]
-                .iter()
-                .map(|k| num(row, k))
-                .find(|_| true)
-                .unwrap_or(0);
-            let lt = ["local_type", "localType", "WCDB_CT_local_type"]
                 .iter()
                 .find_map(|k| {
                     row.get(*k).map(|v| {
@@ -474,8 +473,8 @@ impl ServiceHub {
                             .unwrap_or(0)
                     })
                 })
-                .unwrap_or(local_type);
-            if lt != 1 {
+                .unwrap_or(0);
+            if local_type != 1 {
                 continue;
             }
             for key in identity_keys(username) {
@@ -1441,19 +1440,17 @@ impl ServiceHub {
         Ok(msgs)
     }
 
-    /// `getLatestMessages`: the newest `limit` messages, oldest first (direct-offset read).
+    /// `getLatestMessages`: the newest `limit` messages (1 to 500), oldest first (direct-offset read).
     pub fn chat_latest_messages(
         &self,
         session_id: &str,
         limit: usize,
     ) -> AppResult<Vec<ChatMessage>> {
         let wcdb = self.open_wcdb()?;
-        let page = limit.max(1);
-        let probe = (page + 1).min(500);
-        let mut rows = wcdb
-            .messages(session_id, crate::num::saturating_i32(probe), 0)
+        let page = limit.clamp(1, 500);
+        let rows = wcdb
+            .messages(session_id, crate::num::saturating_i32(page), 0)
             .map_err(|e| AppError::native(format!("{e:#}")))?;
-        rows.truncate(page);
         let mapped = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
         let is_group = session_id.contains("@chatroom");
         let visible: Vec<ChatMessage> = mapped
@@ -1521,4 +1518,31 @@ fn session_id_from_value(value: &Value) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identity_keys_join_an_account_and_its_folder_but_not_another_id() {
+        let shares = |a: &str, b: &str| {
+            let keys = identity_keys(a);
+            identity_keys(b).iter().any(|k| keys.contains(k))
+        };
+        for (a, b, same) in [
+            ("john", "john_1a2b", true),
+            ("WXID_ME", "wxid_me_1a2b", true),
+            ("john", "john_smith", false),
+            ("john_smith", "john", false),
+        ] {
+            assert_eq!(shares(a, b), same, "{a} {b}");
+            assert_eq!(
+                crate::message::transfer::is_same_wxid(a, b),
+                same,
+                "{a} {b}"
+            );
+        }
+        assert!(identity_keys("  ").is_empty());
+    }
 }

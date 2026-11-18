@@ -64,8 +64,8 @@ fn stamp(account: &Path) -> Stamp {
     files
 }
 
-/// The engine of one hub. Looking for new messages reads every group's latest messages, about a tenth of a second
-/// on a large account, so it is skipped while none of the watched files changed.
+/// The engine of one hub. Looking for new messages reads every conversation's latest messages, about a tenth of a
+/// second on a large account, so it is skipped while none of the watched files changed.
 struct Watcher {
     engine: PushEngine,
     generation: u64,

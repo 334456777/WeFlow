@@ -14,6 +14,7 @@ use crate::contract::{
     MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
 use crate::export_msg::csv_cell;
+use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
 
@@ -91,31 +92,6 @@ pub(crate) fn build_id_candidates(values: &[&str]) -> Vec<String> {
         }
     }
     out
-}
-
-fn same_identity(left: &str, right: &str) -> bool {
-    let l: Vec<String> = build_id_candidates(&[left])
-        .into_iter()
-        .map(|s| s.to_lowercase())
-        .collect();
-    let r: Vec<String> = build_id_candidates(&[right])
-        .into_iter()
-        .map(|s| s.to_lowercase())
-        .collect();
-    if l.is_empty() || r.is_empty() {
-        return false;
-    }
-    for lc in &l {
-        if r.contains(lc) {
-            return true;
-        }
-        for rc in &r {
-            if lc.starts_with(&format!("{rc}_")) || rc.starts_with(&format!("{lc}_")) {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 fn normalize_group_nickname(v: &str) -> String {
@@ -986,8 +962,8 @@ impl ServiceHub {
             }
         };
         let (b, e) = (norm(start), norm(end));
-        let ok = |name: &str| same_identity(member, name);
-        let mine = same_identity(member, &self.my_wxid_cleaned());
+        let ok = |name: &str| is_same_wxid(member, name);
+        let mine = is_same_wxid(member, &self.my_wxid_cleaned());
         match wcdb.open_message_cursor_for_senders(
             chatroom_id,
             batch,
@@ -1054,7 +1030,7 @@ impl ServiceHub {
                     let key = sender.trim().to_lowercase();
                     let matched = *match_cache
                         .entry(key)
-                        .or_insert_with(|| same_identity(member, &sender));
+                        .or_insert_with(|| is_same_wxid(member, &sender));
                     if !matched {
                         continue;
                     }
@@ -1181,7 +1157,7 @@ impl ServiceHub {
             if key.is_empty() {
                 return false;
             }
-            *cache.entry(key).or_insert_with(|| same_identity(member, s))
+            *cache.entry(key).or_insert_with(|| is_same_wxid(member, s))
         };
         let result = (|| -> AppResult<()> {
             loop {
@@ -1272,7 +1248,7 @@ impl ServiceHub {
                     let is_match = |s: &str, cache: &mut HashMap<String, bool>| -> bool {
                         let key = s.trim().to_lowercase();
                         !key.is_empty()
-                            && *cache.entry(key).or_insert_with(|| same_identity(member, s))
+                            && *cache.entry(key).or_insert_with(|| is_same_wxid(member, s))
                     };
                     if !sender.is_empty() && !is_match(&sender, &mut cache) {
                         continue;
@@ -1347,7 +1323,7 @@ impl ServiceHub {
         if let Ok(members) = self.group_members_full_with(&wcdb, chatroom_id) {
             if let Some(m) = members
                 .iter()
-                .find(|m| same_identity(m["username"].as_str().unwrap_or(""), member))
+                .find(|m| is_same_wxid(m["username"].as_str().unwrap_or(""), member))
             {
                 member_display = pick_str(m, &["displayName"]);
                 if member_display.is_empty() {

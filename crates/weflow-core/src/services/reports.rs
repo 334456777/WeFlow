@@ -13,6 +13,8 @@ use crate::contract::{
     FriendCount, LongestStreak, LostFriend, MidnightKing, MonthlyTopFriend, MutualFriend, PeakDay,
     PhraseCount, ResponseSpeed, SocialInitiative, YearFirstChat,
 };
+use crate::message::emoji::percent_decode;
+use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
 
@@ -126,6 +128,12 @@ fn round1(v: f64) -> f64 {
     (v * 10.0).round() / 10.0
 }
 
+/// Whether `sender` is the account itself: the configured wxid or its cleaned form, by the database layer's rule
+/// ([`is_same_wxid`]).
+fn sent_by_me(sender: &str, raw_wxid: &str, cleaned: &str) -> bool {
+    is_same_wxid(sender, raw_wxid) || is_same_wxid(sender, cleaned)
+}
+
 // ── emoji helpers (dual report) ──
 
 fn normalize_emoji_md5(raw: &str) -> Option<String> {
@@ -147,24 +155,6 @@ fn normalize_emoji_url(raw: &str) -> Option<String> {
         url = percent_decode(&url);
     }
     (!url.is_empty()).then_some(url)
-}
-
-fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() + 1 && i + 2 <= b.len().saturating_sub(1) {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
 }
 
 fn extract_emoji_url(content: &str) -> Option<String> {
@@ -688,25 +678,13 @@ impl ServiceHub {
                         if create_time == 0 {
                             continue;
                         }
-                        let mut sent = row.is_send;
+                        let sent = row.is_send
+                            || sent_by_me(row.sender.as_deref().unwrap_or(""), &raw_wxid, &cleaned);
                         let local_type = if row.local_type == 0 {
                             1
                         } else {
                             row.local_type
                         };
-                        if !sent {
-                            let sender = row.sender.as_deref().unwrap_or("").to_lowercase();
-                            if !sender.is_empty() {
-                                let (r, c) = (raw_wxid.to_lowercase(), cleaned.to_lowercase());
-                                if sender == r
-                                    || sender == c
-                                    || r.starts_with(&format!("{sender}_"))
-                                    || c.starts_with(&format!("{sender}_"))
-                                {
-                                    sent = true;
-                                }
-                            }
-                        }
                         let conv = conversation.entry(sid.clone()).or_insert((0, 0));
                         match last_message.get(sid) {
                             Some(&(t, was_sent)) if create_time - t <= CONVERSATION_GAP => {
@@ -1628,5 +1606,38 @@ impl ServiceHub {
         };
         self.emit_progress("dual-report", "done", 100, 100);
         Ok(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emoji_urls_with_broken_escapes_do_not_panic() {
+        // a multi-byte character right after `%`, in the address and in the whole message
+        assert_eq!(normalize_emoji_url("%a中").as_deref(), Some("%a中"));
+        let xml = r#"<msg><emoji cdnurl="http://emoji.example/%a中?m=%E4%B8%AD" /></msg>"#;
+        assert_eq!(
+            extract_emoji_url(xml).as_deref(),
+            Some("http://emoji.example/%a中?m=中")
+        );
+        assert_eq!(emoji_of(&format!("0:{xml}")).1, extract_emoji_url(xml));
+        assert_eq!(
+            normalize_emoji_url("http://e.example/%+5").as_deref(),
+            Some("http://e.example/%+5"),
+            "a sign is not a hex digit"
+        );
+    }
+
+    #[test]
+    fn own_messages_are_told_by_the_account_s_id_not_by_a_prefix() {
+        assert!(sent_by_me("wxid_me", "wxid_me_1a2b", "wxid_me"));
+        assert!(sent_by_me("WXID_ME", "wxid_me_1a2b", "wxid_me"));
+        assert!(sent_by_me("john", "john_1a2b", "john"));
+        // a friend whose custom id is the account's with something after `_`, and the other way round
+        assert!(!sent_by_me("john", "john_smith", "john_smith"));
+        assert!(!sent_by_me("john_smith", "john", "john"));
+        assert!(!sent_by_me("", "john", "john"));
     }
 }

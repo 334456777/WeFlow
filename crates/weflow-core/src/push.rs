@@ -237,6 +237,35 @@ pub struct PushEngine {
     baseline_ready: bool,
 }
 
+/// The `file:` URL of an avatar given as a base64 `data:image/…` URL, written to `dir` under a name taken from its
+/// hash (kept when it is there already); `None` when it is no such URL or cannot be written.
+fn avatar_file_url(dir: &std::path::Path, data_url: &str) -> Option<String> {
+    use sha1::{Digest, Sha1};
+    let caps = rx(r"(?i)^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$").captures(data_url)?;
+    let mime = caps[1].to_lowercase();
+    let bytes = crate::sns::lenient_base64(&caps[2]);
+    if bytes.is_empty() {
+        return None;
+    }
+    let ext = match mime.as_str() {
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => "jpg",
+    };
+    let hash: String = Sha1::digest(data_url.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    std::fs::create_dir_all(dir).ok()?;
+    let path = dir.join(format!("avatar_{hash}.{ext}"));
+    if !path.exists() {
+        std::fs::write(&path, &bytes).ok()?;
+    }
+    Some(crate::video::path_to_file_url(&path))
+}
+
+/// Drops the entries older than [`RECENT_TTL`]; once per pass, as [`PushEngine::is_fresh`] ignores them anyway.
 fn prune(map: &mut HashMap<String, Instant>) {
     let now = Instant::now();
     map.retain(|_, t| now.duration_since(*t) <= RECENT_TTL);
@@ -336,11 +365,11 @@ impl PushEngine {
         s.last_timestamp > prev.last_timestamp || s.unread_count != prev.unread_count
     }
 
-    fn should_scan_message_backed(&self, prev: Option<&Baseline>, s: &Session) -> bool {
+    /// Whether a scan reads the session's latest messages even though its summary did not change: every
+    /// conversation, private ones included, as a summary can miss a message (one sent in the same second as the last,
+    /// in a chat that is being read so its unread count stays).
+    fn should_scan_message_backed(prev: Option<&Baseline>, s: &Session) -> bool {
         if s.username.is_empty() || s.username.to_lowercase().contains("placeholder_foldgroup") {
-            return false;
-        }
-        if session_type(&s.username) == "private" && !is_revoke_session_summary(s) {
             return false;
         }
         prev.is_some() || s.last_timestamp > 0
@@ -357,6 +386,9 @@ impl PushEngine {
             self.baseline_ready = true;
             return out;
         }
+        prune(&mut self.seen);
+        prune(&mut self.recent);
+        prune(&mut self.recently_revoked);
         let previous = self.baseline.clone();
         let mut candidate_ids: HashSet<String> = HashSet::new();
         let candidates: Vec<&Session> = sessions
@@ -364,7 +396,7 @@ impl PushEngine {
             .filter(|s| {
                 let prev = previous.get(&s.username);
                 self.should_inspect(prev, s)
-                    || (scan_message_backed && self.should_scan_message_backed(prev, s))
+                    || (scan_message_backed && Self::should_scan_message_backed(prev, s))
             })
             .collect();
         for s in candidates {
@@ -435,11 +467,10 @@ impl PushEngine {
 
     fn remember(map: &mut HashMap<String, Instant>, key: &str) {
         map.insert(key.to_string(), Instant::now());
-        prune(map);
     }
 
-    fn is_fresh(map: &mut HashMap<String, Instant>, key: &str) -> bool {
-        prune(map);
+    /// Whether `key` was remembered within [`RECENT_TTL`].
+    fn is_fresh(map: &HashMap<String, Instant>, key: &str) -> bool {
         map.get(key).is_some_and(|t| t.elapsed() < RECENT_TTL)
     }
 
@@ -508,8 +539,8 @@ impl PushEngine {
                 continue;
             }
             let create_time = m.create_time;
-            let seen = Self::is_fresh(&mut self.seen, key);
-            let recent = Self::is_fresh(&mut self.recent, key);
+            let seen = Self::is_fresh(&self.seen, key);
+            let recent = Self::is_fresh(&self.recent, key);
             let revoke = is_revoke_system_message(m);
             if m.is_send != Some(1)
                 && (previous.is_none()
@@ -626,7 +657,7 @@ impl PushEngine {
             self.seen_primed.insert(session_id.clone());
         }
 
-        let (mut pushed_count, mut max_pushed) = (0usize, 0i64);
+        let mut max_pushed = 0i64;
         if scan_recent_revokes {
             let since = self.recent_revoke_scan_since(session, previous);
             let revokes = self.recent_revoke_messages(&session_id, since);
@@ -644,7 +675,7 @@ impl PushEngine {
                     let key = m.message_key.trim().to_string();
                     if key.is_empty()
                         || !is_revoke_system_message(m)
-                        || Self::is_fresh(&mut self.recent, &key)
+                        || Self::is_fresh(&self.recent, &key)
                     {
                         continue;
                     }
@@ -658,12 +689,10 @@ impl PushEngine {
                     Self::remember(&mut self.recent, &key);
                     Self::remember(&mut self.seen, &key);
                     self.bump_baseline(&session_id, m);
-                    pushed_count += 1;
                     max_pushed = max_pushed.max(m.create_time);
                 }
             }
         }
-        let _ = pushed_count;
         PushResult {
             max_fetched_timestamp: max_fetched.max(max_pushed),
             retry: expected_incoming > 0 && observed_incoming < expected_incoming,
@@ -814,16 +843,14 @@ impl PushEngine {
         Self::find_revoked_in(&lookup, revoke, revoked_id).cloned()
     }
 
-    fn is_recently_revoked_original(&mut self, session_id: &str, m: &ChatMessage) -> bool {
+    fn is_recently_revoked_original(&self, session_id: &str, m: &ChatMessage) -> bool {
         let prefix = session_id.trim();
         if prefix.is_empty() {
             return false;
         }
-        prune(&mut self.recently_revoked);
-        message_id_tokens(m).iter().any(|t| {
-            self.recently_revoked
-                .contains_key(&format!("{prefix}\u{0}{t}"))
-        })
+        message_id_tokens(m)
+            .iter()
+            .any(|t| Self::is_fresh(&self.recently_revoked, &format!("{prefix}\u{0}{t}")))
     }
 
     fn remember_revoked_tokens(
@@ -837,7 +864,6 @@ impl PushEngine {
         if prefix.is_empty() {
             return;
         }
-        prune(&mut self.recently_revoked);
         let mut tokens: HashSet<String> = HashSet::new();
         let mut add = |v: &str| {
             let n = normalize_id_token(v);
@@ -913,29 +939,7 @@ impl PushEngine {
         if let Some(c) = self.avatar_data_cache.get(&normalized) {
             return Some(c.clone());
         }
-        let caps = rx(r"(?i)^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$").captures(&normalized)?;
-        let mime = caps[1].to_lowercase();
-        let bytes = crate::sns::lenient_base64(&caps[2]);
-        if bytes.is_empty() {
-            return None;
-        }
-        let ext = match mime.as_str() {
-            "image/png" => "png",
-            "image/gif" => "gif",
-            "image/webp" => "webp",
-            _ => "jpg",
-        };
-        use sha1::{Digest, Sha1};
-        let mut h = Sha1::new();
-        h.update(normalized.as_bytes());
-        let hash: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
-        let dir = self.hub.push_avatar_dir();
-        std::fs::create_dir_all(&dir).ok()?;
-        let path = dir.join(format!("avatar_{hash}.{ext}"));
-        if !path.exists() {
-            std::fs::write(&path, &bytes).ok()?;
-        }
-        let url = format!("file://{}", path.to_string_lossy());
+        let url = avatar_file_url(&self.hub.push_avatar_dir(), &normalized)?;
         self.avatar_data_cache.insert(normalized, url.clone());
         Some(url)
     }
@@ -1329,6 +1333,65 @@ mod tests {
         assert_eq!(message_display_content(&m[0]).as_deref(), Some("[图片]"));
         assert_eq!(message_display_content(&m[1]).as_deref(), Some("T"));
         assert_eq!(message_display_content(&m[2]).as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn avatar_files_get_a_well_formed_file_url() {
+        let root = weflow_native::fixture::TestDir::new("weflow-push-avatar");
+        // `#` and `%` are legal in a folder name everywhere; `?` is not on Windows
+        let dir = root.path().join("a #b%c");
+        let png = "data:image/png;base64,iVBORw0KGgo=";
+        let url = avatar_file_url(&dir, png).unwrap();
+        assert!(url.starts_with("file:///"), "{url}");
+        assert!(!url.contains('\\'), "{url}");
+        assert!(url.contains("/a%20%23b%25c/avatar_"), "{url}");
+        assert!(url.ends_with(".png"), "{url}");
+        assert_eq!(avatar_file_url(&dir, png), Some(url), "the same file again");
+        assert_eq!(avatar_file_url(&dir, "http://example.com/a.png"), None);
+    }
+
+    #[test]
+    fn remembered_keys_expire_before_the_pass_prunes_them() {
+        let mut map = HashMap::new();
+        PushEngine::remember(&mut map, "new");
+        assert!(PushEngine::is_fresh(&map, "new"));
+        assert!(!PushEngine::is_fresh(&map, "missing"));
+        // an `Instant` that far back may not exist right after boot
+        if let Some(old) = Instant::now().checked_sub(RECENT_TTL + Duration::from_secs(1)) {
+            map.insert("old".into(), old);
+            assert!(!PushEngine::is_fresh(&map, "old"));
+            prune(&mut map);
+            assert_eq!(map.keys().collect::<Vec<_>>(), ["new"]);
+        }
+    }
+
+    #[test]
+    fn a_scan_reads_private_chats_whose_summary_did_not_change() {
+        let session = |username: &str| Session {
+            username: username.into(),
+            last_timestamp: 100,
+            unread_count: 0,
+            last_msg_type: 1,
+            summary: "hi".into(),
+            display_name: String::new(),
+            avatar_url: None,
+            last_sender_display_name: None,
+        };
+        let prev = Baseline {
+            last_timestamp: 100,
+            unread_count: 0,
+        };
+        for username in ["wxid_bob", "bob", "a@chatroom", "gh_x"] {
+            assert!(
+                PushEngine::should_scan_message_backed(Some(&prev), &session(username)),
+                "{username}"
+            );
+        }
+        assert!(!PushEngine::should_scan_message_backed(
+            Some(&prev),
+            &session("@placeholder_foldgroup")
+        ));
+        assert!(!PushEngine::should_scan_message_backed(None, &session("")));
     }
 
     #[test]

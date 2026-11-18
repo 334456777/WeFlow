@@ -12,10 +12,10 @@
 use weflow_native::msg_row::MsgRow;
 
 use crate::api::js_parse_int;
-use crate::config::clean_account_dir_name;
 use crate::message::emoji::percent_decode;
 use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message};
+use crate::message::transfer::is_same_wxid;
 use crate::message::xml::{
     extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content, strip_sender_line,
     strip_sender_prefix,
@@ -963,41 +963,18 @@ fn build_message_key(
 
 // ───────────────────────── isSend / sender ─────────────────────────
 
-fn identity_keys(raw: &str) -> Vec<String> {
-    let value = raw.trim();
-    if value.is_empty() {
-        return Vec::new();
-    }
-    let lower = value.to_lowercase();
-    let cleaned = clean_account_dir_name(value).to_lowercase();
-    if !cleaned.is_empty() && cleaned != lower {
-        vec![cleaned, lower]
-    } else {
-        vec![lower]
-    }
-}
-
-/// `resolveMessageIsSend`
+/// `resolveMessageIsSend`: a message whose sender is the account itself ([`is_same_wxid`]) is sent whatever its
+/// stored flag says; otherwise the flag stands, a missing one meaning received. Without a sender or an account the
+/// flag is kept as it is.
 fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) -> Option<i64> {
-    let sender_keys = identity_keys(sender.unwrap_or(""));
-    if sender_keys.is_empty() {
+    let sender = sender.unwrap_or("").trim();
+    if sender.is_empty() || my_wxid.trim().is_empty() {
         return raw;
     }
-    let self_keys = identity_keys(my_wxid.trim());
-    if self_keys.is_empty() {
-        return raw;
-    }
-    let matched = sender_keys.iter().any(|s| {
-        self_keys
-            .iter()
-            .any(|m| s == m || s.starts_with(&format!("{m}_")) || m.starts_with(&format!("{s}_")))
-    });
-    if matched && raw != Some(1) {
-        return Some(1);
-    }
-    match raw {
-        None => Some(if matched { 1 } else { 0 }),
-        r => r,
+    if is_same_wxid(sender, my_wxid) {
+        Some(1)
+    } else {
+        Some(raw.unwrap_or(0))
     }
 }
 
@@ -1065,6 +1042,22 @@ fn typed_source(row: &MsgRow, table_name: &str) -> SourceInfo {
     }
 }
 
+/// The location an app message names, on a message that has none of its own.
+fn fill_location(m: &mut ChatMessage, t: &Type49Info) {
+    if m.location_lat.is_none() {
+        m.location_lat = t.location_lat;
+    }
+    if m.location_lng.is_none() {
+        m.location_lng = t.location_lng;
+    }
+    if m.location_poiname.is_none() {
+        m.location_poiname.clone_from(&t.location_poiname);
+    }
+    if m.location_label.is_none() {
+        m.location_label.clone_from(&t.location_label);
+    }
+}
+
 /// A message of a row's columns; `packed_info` is the row's, the only place besides its text a media file is named.
 fn chat_message(
     fields: RowFields,
@@ -1096,6 +1089,7 @@ fn chat_message(
         sender_username: sender_raw,
         ..Default::default()
     };
+    let app_message = (local_type == 49 || local_type == 8589934592049) && !content.is_empty();
 
     if local_type == 47 && !content.is_empty() {
         let e = parse_emoji_info(&content);
@@ -1151,7 +1145,7 @@ fn chat_message(
             xml_attr(&content, "location", "poiname"),
             extract_xml_value(&content, "poiname"),
         ]));
-    } else if (local_type == 49 || local_type == 8589934592049) && !content.is_empty() {
+    } else if app_message {
         let t = parse_type49_message(&content);
         m.quoted_content = t.quoted_content.clone();
         m.quoted_sender = t.quoted_sender.clone();
@@ -1160,7 +1154,14 @@ fn chat_message(
         (m.quoted_content, m.quoted_sender) = quote_of(&content);
     }
 
-    if content.contains("<appmsg") || content.contains("&lt;appmsg") {
+    let has_appmsg = content.contains("<appmsg") || content.contains("&lt;appmsg");
+    if has_appmsg && app_message {
+        // `t49` is the parse of this content already: only the location it names is not the message's yet
+        if let Some(t) = m.t49.take() {
+            fill_location(&mut m, &t);
+            m.t49 = Some(t);
+        }
+    } else if has_appmsg {
         let t = parse_type49_message(&content);
         let cur = m.t49.get_or_insert_default();
         macro_rules! fill {
@@ -1200,18 +1201,7 @@ fn chat_message(
         fill!(chat_record_title);
         fill!(transfer_payer_username);
         fill!(transfer_receiver_username);
-        if m.location_lat.is_none() {
-            m.location_lat = t.location_lat;
-        }
-        if m.location_lng.is_none() {
-            m.location_lng = t.location_lng;
-        }
-        if m.location_poiname.is_none() {
-            m.location_poiname = t.location_poiname.clone();
-        }
-        if m.location_label.is_none() {
-            m.location_label = t.location_label.clone();
-        }
+        fill_location(&mut m, &t);
         if m.quoted_content.is_none() {
             m.quoted_content = t.quoted_content.clone();
         }
@@ -1296,6 +1286,58 @@ mod tests {
             parsed_content("wxid_me:\nhi", 1, Some("wxid_bob")),
             "wxid_me:\nhi"
         );
+    }
+
+    #[test]
+    fn an_app_message_takes_its_fields_and_location_from_its_parse() {
+        let contents = [
+            r#"<msg><appmsg><title>Bund</title><type>17</type></appmsg><location x="31.2" y="121.5" label="Bund" poiname="外滩"/></msg>"#,
+            "<msg><appmsg><title>f.pdf</title><type>6</type><appattach><totallen>12</totallen><fileext>pdf</fileext>\
+             </appattach><md5>abc</md5></appmsg></msg>",
+            "<msg><appmsg><title>好看</title><type>57</type><refermsg><type>1</type><svrid>9</svrid>\
+             <content>原话</content><displayname>Bob</displayname></refermsg></appmsg></msg>",
+            "&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;T&lt;/title&gt;&lt;type&gt;5&lt;/type&gt;\
+             &lt;url&gt;http://x&lt;/url&gt;&lt;/appmsg&gt;&lt;/msg&gt;",
+        ];
+        for local_type in [49, 8_589_934_592_049] {
+            for content in contents {
+                let row = MsgRow {
+                    local_type,
+                    content: content.into(),
+                    ..MsgRow::default()
+                };
+                let m = map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0);
+                let t = parse_type49_message(content);
+                assert_eq!(
+                    serde_json::to_value(m.t49.as_deref()).unwrap(),
+                    serde_json::to_value(Some(&t)).unwrap(),
+                    "{content}"
+                );
+                assert_eq!(
+                    (m.location_lat, m.location_lng),
+                    (t.location_lat, t.location_lng),
+                    "{content}"
+                );
+                assert_eq!(
+                    (m.location_poiname, m.location_label),
+                    (t.location_poiname, t.location_label),
+                    "{content}"
+                );
+                assert_eq!(
+                    (m.quoted_content, m.quoted_sender),
+                    (t.quoted_content, t.quoted_sender),
+                    "{content}"
+                );
+            }
+        }
+        let location = MsgRow {
+            local_type: 49,
+            content: contents[0].into(),
+            ..MsgRow::default()
+        };
+        let m = map_msg_rows(vec![location], "wxid_bob", "wxid_me").remove(0);
+        assert_eq!((m.location_lat, m.location_lng), (Some(31.2), Some(121.5)));
+        assert_eq!(m.location_label.as_deref(), Some("Bund"));
     }
 
     #[test]
@@ -1393,6 +1435,25 @@ mod tests {
         );
         assert_eq!(resolve_is_send(None, Some("wxid_bob"), "wxid_me"), Some(0));
         assert_eq!(resolve_is_send(None, None, "wxid_me"), None);
+        // the account folder's `_<4 chars>` suffix, either way round
+        assert_eq!(
+            resolve_is_send(Some(0), Some("WXID_ME_1a2b"), "wxid_me"),
+            Some(1)
+        );
+        assert_eq!(resolve_is_send(Some(0), Some("john"), "john_1a2b"), Some(1));
+        // a custom WeChat id is no prefix of another person's
+        assert_eq!(
+            resolve_is_send(Some(0), Some("john_smith"), "john"),
+            Some(0)
+        );
+        assert_eq!(
+            resolve_is_send(Some(0), Some("john"), "john_smith"),
+            Some(0)
+        );
+        assert_eq!(
+            resolve_is_send(Some(1), Some("john_smith"), "john"),
+            Some(1)
+        );
     }
 
     #[test]

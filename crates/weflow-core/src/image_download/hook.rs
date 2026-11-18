@@ -346,7 +346,7 @@ mod imp {
     /// nearest `push rbp` before it. A hook's jump met on the way back is that start, hooked already: the bytes of
     /// its address may hold a `0x55`, and the one before it is another function's (#809).
     fn find_target(module: &[u8], base: u64) -> Option<Start> {
-        let mut string = find_bytes(module, b"_startDownloadMedia")?;
+        let mut string = memchr::memmem::find(module, b"_startDownloadMedia")?;
         // The string is usually the tail of `mars::cdn::CdnCore::_startDownloadMedia`, and the `lea` points at the
         // whole string; step back over the prefix when it is there.
         const PREFIX: &[u8] = b"mars::cdn::CdnCore::";
@@ -391,15 +391,6 @@ mod imp {
             }
         }
         None
-    }
-
-    fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-        if needle.is_empty() || haystack.len() < needle.len() {
-            return None;
-        }
-        haystack
-            .windows(needle.len())
-            .position(|window| window == needle)
     }
 
     fn wide(text: &str) -> Vec<u16> {

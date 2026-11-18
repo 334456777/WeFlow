@@ -187,8 +187,10 @@ fn fill_template(template: &str, captures: &[&str]) -> String {
     out
 }
 
-/// Localise the human-readable fields (`error`, `message`, `note`, `hint`, `warnings`, `errors`) of a CLI result.
-/// Only the CLI output goes through this; the HTTP API keeps its documented English messages.
+/// Localise the human-readable fields (`error`, `message`, `note`, `hint`, `warnings`, `errors`) of a command's
+/// JSON document for the active language. The CLI's `--json` output and the command API's answers both go through
+/// this; the API's own process and the children it runs commands in take the server's language, so its answers are
+/// in that language whatever a request asks for.
 pub fn localize_json(value: &mut serde_json::Value) {
     use serde_json::Value;
     if current() == Lang::En {
