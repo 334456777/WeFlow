@@ -47,7 +47,9 @@ fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
     let end_index = extract_xml_value(xml, "endindex").parse::<i64>().ok();
     if !start_char.is_empty() && !end_char.is_empty() {
         if let Some(sp) = full.find(&start_char) {
-            let from = sp + start_char.len().saturating_sub(1);
+            // the end is looked for from the last character of the start on, so the two may share it
+            let last = start_char.char_indices().last().map_or(0, |(at, _)| at);
+            let from = sp + last;
             if let Some(rel) = full.get(from..).and_then(|s| s.find(&end_char)) {
                 let ep = from + rel;
                 if ep >= sp {
@@ -328,5 +330,22 @@ mod tests {
     fn partial_quote_uses_indexes() {
         let xml = "<refermsg><type>1</type><content>abcdefg</content><startindex>1</startindex><endindex>3</endindex></refermsg>";
         assert_eq!(extract_preferred_quoted_text(xml), "bcd");
+    }
+
+    #[test]
+    fn partial_quote_between_start_and_end_characters() {
+        let quote = |content: &str, start: &str, end: &str| {
+            extract_preferred_quoted_text(&format!(
+                "<refermsg><type>1</type><content>{content}</content><start>{start}</start><end>{end}</end></refermsg>"
+            ))
+        };
+        assert_eq!(quote("abcdefg", "b", "d"), "bcd");
+        // multi-byte start and end characters
+        assert_eq!(quote("今天天气很好，去公园吧", "天", "好"), "天天气很好");
+        assert_eq!(quote("今天天气很好，去公园吧", "天气", "好"), "天气很好");
+        // the start and the end may share a character
+        assert_eq!(quote("今天天气很好，去公园吧", "公", "公"), "公");
+        assert_eq!(quote("今天天气很好，去公园吧", "很好", "好"), "很好");
+        assert_eq!(quote("今天天气很好🙂，去公园吧", "🙂", "园"), "🙂，去公园");
     }
 }
