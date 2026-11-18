@@ -17,16 +17,6 @@ pub enum PosterFormat {
     FileUrl,
 }
 
-impl PosterFormat {
-    pub fn parse(s: &str) -> Self {
-        if s == "fileUrl" {
-            Self::FileUrl
-        } else {
-            Self::DataUrl
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 struct IndexEntry {
     video: Option<PathBuf>,
