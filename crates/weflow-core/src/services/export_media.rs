@@ -581,7 +581,7 @@ fn put_media(
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let keep = match files.get(&full) {
                 Some(have) => *have >= rank,
-                // left by an earlier export into the same folder: kept, as before
+                // left by an earlier export into the same folder: kept
                 None if full.exists() => {
                     files.insert(full.clone(), (true, u64::MAX));
                     true
