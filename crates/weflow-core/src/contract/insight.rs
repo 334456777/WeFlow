@@ -214,6 +214,36 @@ pub struct InsightReply {
     /// The summary written (`footprint-summary`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub insight: Option<String>,
+    /// Where the question went and what came back (`test`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe: Option<ModelProbe>,
+}
+
+/// What `insight test` asked of the model API and what it answered.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelProbe {
+    pub format: crate::model_api::ModelApiFormat,
+    /// The address asked.
+    pub endpoint: String,
+    /// The model that answered, as the service names it, else the one asked for.
+    pub model: String,
+    /// The answer, trimmed.
+    pub reply: String,
+    /// From the request to the answer, retries included.
+    pub duration_ms: u64,
+    /// The requests tried again after a transient failure.
+    pub retries: u32,
+}
+
+/// The models the model API offers (`insight models`), as the service lists them.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelList {
+    pub format: crate::model_api::ModelApiFormat,
+    /// The address asked.
+    pub endpoint: String,
+    pub models: Vec<crate::model_api::ModelInfo>,
 }
 
 impl InsightReply {
@@ -224,6 +254,7 @@ impl InsightReply {
             message: Some(message.into()),
             record: None,
             insight: None,
+            probe: None,
         }
     }
 

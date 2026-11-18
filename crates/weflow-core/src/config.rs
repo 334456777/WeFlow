@@ -173,6 +173,9 @@ pub struct ProfileConfig {
     pub image_aes_key: Option<String>,
     pub cache_path: Option<String>,
     pub http_api_token: Option<String>,
+    /// The API format of the model API, `openai` or `anthropic`. Kept as text, so that a file edited by hand still
+    /// loads; read as `openai` when it is neither.
+    pub ai_model_api_format: Option<String>,
     pub ai_model_api_base_url: Option<String>,
     pub ai_model_api_key: Option<String>,
     pub ai_model_api_model: Option<String>,
@@ -376,6 +379,18 @@ impl ConfigStore {
             "image_aes_key" | "imageAesKey" => target.image_aes_key = Some(as_string(value)?),
             "cache_path" | "cachePath" => target.cache_path = Some(as_string(value)?),
             "http_api_token" | "httpApiToken" => target.http_api_token = Some(as_string(value)?),
+            "ai_model_api_format" | "aiModelApiFormat" => {
+                let text = as_string(value)?;
+                let format = text
+                    .parse::<crate::model_api::ModelApiFormat>()
+                    .map_err(|_| {
+                        AppError::usage(format!(
+                            "invalid value '{text}' for {key}; use {}",
+                            crate::model_api::ModelApiFormat::NAMES.join(" or ")
+                        ))
+                    })?;
+                target.ai_model_api_format = Some(format.as_str().to_string());
+            }
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => {
                 target.ai_model_api_base_url = Some(as_string(value)?)
             }
@@ -435,6 +450,7 @@ impl ConfigStore {
             "image_aes_key" | "imageAesKey" => target.image_aes_key = None,
             "cache_path" | "cachePath" => target.cache_path = None,
             "http_api_token" | "httpApiToken" => target.http_api_token = None,
+            "ai_model_api_format" | "aiModelApiFormat" => target.ai_model_api_format = None,
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => target.ai_model_api_base_url = None,
             "ai_model_api_key" | "aiModelApiKey" => target.ai_model_api_key = None,
             "ai_model_api_model" | "aiModelApiModel" => target.ai_model_api_model = None,
@@ -501,6 +517,11 @@ impl ProfileConfig {
                 .http_api_token
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
+                .unwrap_or(Value::Null),
+            "ai_model_api_format" | "aiModelApiFormat" => self
+                .ai_model_api_format
+                .as_ref()
+                .map(|v| Value::String(v.clone()))
                 .unwrap_or(Value::Null),
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => self
                 .ai_model_api_base_url
@@ -723,6 +744,8 @@ fn is_profile_key(key: &str) -> bool {
             | "cachePath"
             | "http_api_token"
             | "httpApiToken"
+            | "ai_model_api_format"
+            | "aiModelApiFormat"
             | "ai_model_api_base_url"
             | "aiModelApiBaseUrl"
             | "ai_model_api_key"
@@ -752,6 +775,8 @@ fn holds_text(key: &str) -> bool {
             | "cachePath"
             | "http_api_token"
             | "httpApiToken"
+            | "ai_model_api_format"
+            | "aiModelApiFormat"
             | "ai_model_api_base_url"
             | "aiModelApiBaseUrl"
             | "ai_model_api_key"
@@ -813,6 +838,7 @@ pub fn near_known_key(key: &str) -> Option<String> {
         "image_aes_key",
         "cache_path",
         "http_api_token",
+        "ai_model_api_format",
         "ai_model_api_base_url",
         "ai_model_api_key",
         "ai_model_api_model",

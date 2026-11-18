@@ -191,6 +191,7 @@ pub(super) const METHODS: &[(&str, Rule)] = &[
     ("video info", Rule::Fixed(Get)),
     ("video parse-md5", Rule::Fixed(Get)),
     ("insight test", Rule::Fixed(Post)),
+    ("insight models", Rule::Fixed(Get)),
     ("insight trigger", Rule::Fixed(Post)),
     ("insight records", Rule::Fixed(Get)),
     ("insight get", Rule::Fixed(Get)),

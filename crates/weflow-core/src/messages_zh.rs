@@ -164,7 +164,6 @@ const CATALOG: &[(&str, &str)] = &[
     ("record id is empty", "记录 ID 为空"),
     ("{} is not supported: the native database backend opens WeChat's databases read-only", "不支持 {}：原生数据库后端以只读方式打开微信数据库"),
     ("{} is not implemented in the native database backend yet", "原生数据库后端尚未实现 {}"),
-    ("API call failed ({}): {}", "API 调用失败（{0}）：{1}"),
     ("Telegram push failed (chatId={}): {}", "Telegram 推送失败（chatId={0}）：{1}"),
 ];
 

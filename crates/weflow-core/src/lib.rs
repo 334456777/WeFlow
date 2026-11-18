@@ -23,6 +23,7 @@ pub mod locale;
 pub mod media;
 pub mod message;
 pub mod messages_zh;
+pub mod model_api;
 pub mod num;
 pub mod output;
 pub mod private_files;

@@ -1192,6 +1192,11 @@ export interface ProfileConfig {
   image_aes_key: string | null;
   cache_path: string | null;
   http_api_token: string | null;
+  /**
+   * The API format of the model API, `openai` or `anthropic`. Kept as text, so that a file edited by hand still
+   * loads; read as `openai` when it is neither.
+   */
+  ai_model_api_format: string | null;
   ai_model_api_base_url: string | null;
   ai_model_api_key: string | null;
   ai_model_api_model: string | null;
@@ -1983,10 +1988,12 @@ export interface InsightRecord {
 
 /** What was asked of the AI model for a record, and what it answered. */
 export interface InsightRecordLog {
+  /** The format of the model API asked; records written before there was a choice asked an OpenAI one. */
+  format: ModelApiFormat;
   endpoint: string;
+  /** The model that answered, as the service names it, else the one asked for. */
   model: string;
   maxTokens: number;
-  temperature: number;
   triggerReason: string;
   allowContext: boolean;
   contextCount: number;
@@ -1997,6 +2004,9 @@ export interface InsightRecordLog {
   durationMs: number;
   createdAt: number;
 }
+
+/** The wire format a model API speaks. */
+export type ModelApiFormat = "openai" | "anthropic";
 
 /** A page of the account's insight records (`insight records`), the newest first, with counts over all of them. */
 export interface InsightRecords {
@@ -2063,6 +2073,22 @@ export interface InsightScan {
   records: InsightSummary[];
 }
 
+/** The models the model API offers (`insight models`), as the service lists them. */
+export interface ModelList {
+  format: ModelApiFormat;
+  /** The address asked. */
+  endpoint: string;
+  models: ModelInfo[];
+}
+
+/** A model the service offers (`GET /v1/models`). */
+export interface ModelInfo {
+  /** What `ai_model_api_model` takes. */
+  id: string;
+  /** The name the service shows, where it gives one. */
+  displayName?: string;
+}
+
 /**
  * What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the
  * command fails with `message` instead.
@@ -2075,6 +2101,23 @@ export interface InsightReply {
   record?: InsightSummary;
   /** The summary written (`footprint-summary`). */
   insight?: string;
+  /** Where the question went and what came back (`test`). */
+  probe?: ModelProbe;
+}
+
+/** What `insight test` asked of the model API and what it answered. */
+export interface ModelProbe {
+  format: ModelApiFormat;
+  /** The address asked. */
+  endpoint: string;
+  /** The model that answered, as the service names it, else the one asked for. */
+  model: string;
+  /** The answer, trimmed. */
+  reply: string;
+  /** From the request to the answer, retries included. */
+  durationMs: number;
+  /** The requests tried again after a transient failure. */
+  retries: number;
 }
 
 /**
@@ -2223,6 +2266,7 @@ export interface Answers {
   "insight footprint-summary": InsightReply;
   "insight get": InsightLookup;
   "insight mark-read": InsightMarked;
+  "insight models": ModelList;
   "insight records": InsightRecords;
   "insight scan": InsightScan;
   "insight test": InsightReply;

@@ -1,0 +1,13 @@
+[package]
+name = "weflow-fake-model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A fake model API speaking OpenAI's Chat Completions and Anthropic's Messages, for the tests and the WebUI's dev server"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json.workspace = true

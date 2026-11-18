@@ -4,6 +4,7 @@ members = [
   "crates/weflow-silk",
   "crates/weflow-core",
   "crates/weflow-cli",
+  "crates/weflow-fake-model",
 ]
 resolver = "2"
 

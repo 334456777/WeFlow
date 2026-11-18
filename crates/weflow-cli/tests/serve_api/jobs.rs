@@ -485,6 +485,7 @@ fn jobs_are_cancelled_and_limited() {
     for (key, value) in [
         ("ai_model_api_base_url", url.as_str()),
         ("ai_model_api_key", "k"),
+        ("ai_model_api_model", "m"),
     ] {
         let (exit, _, stderr) = run_cli(&root, &["config", "set", key, value]);
         assert_eq!(exit, 0, "{stderr}");
@@ -501,7 +502,7 @@ fn jobs_are_cancelled_and_limited() {
         assert_eq!(r.status, 202, "{}", r.body);
         r.json()["data"]["id"].as_str().unwrap().to_string()
     };
-    // `insight test` waits for the AI server (15 s at most)
+    // `insight test` waits for the AI server (30 s at most)
     let first = queue("/insight/test");
     assert_eq!(ai.recv_timeout(Duration::from_secs(30)), Ok("open"));
 
@@ -552,6 +553,7 @@ fn a_job_is_cancelled_once_and_then_forgotten() {
     for (key, value) in [
         ("ai_model_api_base_url", url.as_str()),
         ("ai_model_api_key", "k"),
+        ("ai_model_api_model", "m"),
     ] {
         let (exit, _, stderr) = run_cli(&root, &["config", "set", key, value]);
         assert_eq!(exit, 0, "{stderr}");

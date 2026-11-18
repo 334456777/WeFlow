@@ -56,7 +56,7 @@ export function insightRecord(id: string): { success: boolean; record?: InsightR
     record: {
       ...summaryOf(w), accountScope: ME,
       log: {
-        endpoint: 'https://api.example.com/v1/chat/completions', model: 'sample-model', maxTokens: 512, temperature: 0.7,
+        format: 'openai', endpoint: 'https://api.example.com/v1/chat/completions', model: 'sample-model', maxTokens: 512,
         triggerReason: w.reason, allowContext: true, contextCount: 20,
         systemPrompt: '你是用户的社交助理，根据最近的聊天，用一两句话提醒用户可以做什么。只写具体的事，不编造聊天里没有的内容。',
         userPrompt: '和「' + name + '」最近 20 条消息（示例数据，不是真实的聊天）……',

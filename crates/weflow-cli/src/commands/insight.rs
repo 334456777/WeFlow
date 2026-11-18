@@ -16,6 +16,8 @@ pub(crate) struct InsightCommand {
 pub(crate) enum InsightSubcommand {
     /// Test the AI model connection
     Test,
+    /// List the models the AI model API offers
+    Models,
     /// Generate a test insight for the first eligible private chat, or for the given conversation
     Trigger {
         /// Generate for this conversation instead of the first eligible one
@@ -107,33 +109,14 @@ pub(crate) fn print_insight(r: &weflow_core::insight::InsightRecord) {
 }
 
 pub(crate) async fn handle_insight(command: InsightCommand, hub: &ServiceHub) -> AppResult<Value> {
-    use weflow_core::contract::{InsightReply, InsightScan};
+    use weflow_core::contract::InsightScan;
     match command.command {
         InsightSubcommand::Test => Ok(json!(hub.insight_test_connection().await)),
         InsightSubcommand::Trigger { session_id } => match session_id {
             None => Ok(json!(hub.insight_trigger_test().await)),
-            Some(id) => {
-                let name = hub
-                    .chat_contact_avatar(&id)
-                    .map(|(_, n)| n)
-                    .unwrap_or_else(|| id.clone());
-                let reply = match hub
-                    .insight_generate(&id, &name, weflow_core::services::InsightTrigger::Test, None)
-                    .await
-                {
-                    Some(r) => InsightReply {
-                        success: true,
-                        message: None,
-                        record: Some(r.summary()),
-                        insight: None,
-                    },
-                    None => InsightReply::failed(
-                        "no insight was generated (AI not configured, request failed, or the model answered SKIP)",
-                    ),
-                };
-                Ok(json!(reply))
-            }
+            Some(id) => Ok(json!(hub.insight_trigger_session(&id).await)),
         },
+        InsightSubcommand::Models => Ok(json!(hub.insight_models().await?)),
         InsightSubcommand::Records {
             keyword,
             session,

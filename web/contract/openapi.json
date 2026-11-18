@@ -3278,6 +3278,46 @@
         }
       }
     },
+    "/insight/models": {
+      "get": {
+        "operationId": "api_insight_models",
+        "x-weflow-command": "insight models",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ModelList"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/insight/records": {
       "get": {
         "operationId": "api_insight_records",
@@ -8160,6 +8200,7 @@
                 "image_aes_key": null,
                 "cache_path": null,
                 "http_api_token": null,
+                "ai_model_api_format": null,
                 "ai_model_api_base_url": null,
                 "ai_model_api_key": null,
                 "ai_model_api_model": null,
@@ -8338,6 +8379,14 @@
             ],
             "default": null
           },
+          "ai_model_api_format": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The API format of the model API, `openai` or `anthropic`. Kept as text, so that a file edited by hand still\nloads; read as `openai` when it is neither.",
+            "default": null
+          },
           "ai_model_api_base_url": {
             "type": [
               "string",
@@ -8389,6 +8438,7 @@
           "image_aes_key",
           "cache_path",
           "http_api_token",
+          "ai_model_api_format",
           "ai_model_api_base_url",
           "ai_model_api_key",
           "ai_model_api_model",
@@ -10666,20 +10716,22 @@
       "InsightRecordLog": {
         "type": "object",
         "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ModelApiFormat",
+            "description": "The format of the model API asked; records written before there was a choice asked an OpenAI one.",
+            "default": "openai"
+          },
           "endpoint": {
             "type": "string"
           },
           "model": {
-            "type": "string"
+            "type": "string",
+            "description": "The model that answered, as the service names it, else the one asked for."
           },
           "maxTokens": {
             "type": "integer",
             "format": "uint64",
             "minimum": 0
-          },
-          "temperature": {
-            "type": "number",
-            "format": "double"
           },
           "triggerReason": {
             "type": "string"
@@ -10714,10 +10766,10 @@
           }
         },
         "required": [
+          "format",
           "endpoint",
           "model",
           "maxTokens",
-          "temperature",
           "triggerReason",
           "allowContext",
           "contextCount",
@@ -10729,6 +10781,21 @@
           "createdAt"
         ],
         "description": "What was asked of the AI model for a record, and what it answered."
+      },
+      "ModelApiFormat": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "openai",
+            "description": "OpenAI's Chat Completions: `POST {base}/chat/completions` with `Authorization: Bearer`."
+          },
+          {
+            "type": "string",
+            "const": "anthropic",
+            "description": "Anthropic's Messages: `POST {base}/v1/messages` with `x-api-key` and `anthropic-version`."
+          }
+        ],
+        "description": "The wire format a model API speaks."
       },
       "InsightRecords": {
         "type": "object",
@@ -10928,6 +10995,47 @@
         ],
         "description": "What `insight scan` answers: the insights the silence scan wrote."
       },
+      "ModelList": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ModelApiFormat"
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "The address asked."
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelInfo"
+            }
+          }
+        },
+        "required": [
+          "format",
+          "endpoint",
+          "models"
+        ],
+        "description": "The models the model API offers (`insight models`), as the service lists them."
+      },
+      "ModelInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "What `ai_model_api_model` takes."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "The name the service shows, where it gives one."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "description": "A model the service offers (`GET /v1/models`)."
+      },
       "InsightReply": {
         "type": "object",
         "properties": {
@@ -10945,12 +11053,57 @@
           "insight": {
             "type": "string",
             "description": "The summary written (`footprint-summary`)."
+          },
+          "probe": {
+            "description": "Where the question went and what came back (`test`).",
+            "$ref": "#/components/schemas/ModelProbe"
           }
         },
         "required": [
           "success"
         ],
         "description": "What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the\ncommand fails with `message` instead."
+      },
+      "ModelProbe": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ModelApiFormat"
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "The address asked."
+          },
+          "model": {
+            "type": "string",
+            "description": "The model that answered, as the service names it, else the one asked for."
+          },
+          "reply": {
+            "type": "string",
+            "description": "The answer, trimmed."
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "From the request to the answer, retries included."
+          },
+          "retries": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The requests tried again after a transient failure."
+          }
+        },
+        "required": [
+          "format",
+          "endpoint",
+          "model",
+          "reply",
+          "durationMs",
+          "retries"
+        ],
+        "description": "What `insight test` asked of the model API and what it answered."
       },
       "Job": {
         "type": "object",
