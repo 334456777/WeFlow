@@ -55,7 +55,7 @@
 .preview-content:has(> .preview-stage) > header { margin: 0 calc(-1 * var(--space-3)); }
 /* as wide as the picture, in the middle when the bar or the footer is wider */
 .preview-stage { width: fit-content; max-width: 100%; margin: 0 auto; padding: var(--space-2); border-radius: var(--radius-xl); box-shadow: var(--well-shadow); }
-.preview-stage :is(.zoom-frame, .preview-video, .media-error) { border-radius: var(--radius-md); }
+.preview-stage :is(.zoom-frame, .preview-video) { border-radius: var(--radius-md); }
 .preview-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); padding: var(--space-3) 0; }
 .preview-foot-side { display: flex; min-width: 0; }
 .preview-foot-side.end { justify-content: flex-end; }
