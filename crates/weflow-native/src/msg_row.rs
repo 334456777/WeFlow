@@ -110,7 +110,7 @@ thread_local! {
 
 /// `bytes` (starting with [`ZSTD_MAGIC`]) inflated, or `None` when they are not valid zstd.
 fn inflate(bytes: &[u8]) -> Option<Vec<u8>> {
-    // anything but a clean end of every frame goes the old way, so errors and truncation come out as they did
+    // input that fails or is cut short is handed to `decode_all`, so it comes out as `decode_all` gives it
     DCTX.with(|slot| {
         inflate_with(
             slot.borrow_mut()
@@ -268,8 +268,8 @@ mod tests {
     }
 
     #[test]
-    fn inflating_with_a_kept_context_gives_what_streaming_gave() {
-        // what bytes_to_text did before it kept a context: stream every frame
+    fn inflating_with_a_kept_context_gives_what_streaming_gives() {
+        // the reference: every frame streamed through `decode_all`, a context made for each message
         let streamed = |bytes: &[u8]| -> String {
             let inflated = zstd::stream::decode_all(bytes).ok();
             let bytes = inflated.as_deref().unwrap_or(bytes);

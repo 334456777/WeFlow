@@ -1307,7 +1307,7 @@ mod tests {
                 }
             }
         }
-        // whole rows: the decoded text, as before
+        // whole rows: the decoded text and the sender
         let first = &a.search_messages("pie", None, 1, 0, 0, 0).unwrap()[0].row;
         assert!(first.content.ends_with("Apple pie"));
         assert_eq!(first.sender.as_deref(), Some("wxid_bob"));

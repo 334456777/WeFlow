@@ -2,8 +2,8 @@
 //!
 //! Everything is served by the pure-Rust backend in [`crate::db`]/[`crate::msg`]; there is
 //! no dependency on the closed-source `wcdb_api` library. Calls that have not been ported yet return a
-//! clear "not implemented" error instead of touching anything native. The calls refused by design keep the
-//! arguments they have always taken, unused.
+//! clear "not implemented" error instead of touching anything native. The calls refused by design take the
+//! arguments of the operation they stand for and leave them unused.
 
 use std::fs;
 use std::path::{Path, PathBuf};

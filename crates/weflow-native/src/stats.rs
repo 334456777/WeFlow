@@ -514,8 +514,8 @@ impl Account {
         }
     }
 
-    /// [`time_groups`](Self::time_groups) for a table the leaf scan does not read: grouped by SQL, so that SQLite's
-    /// comparisons and arithmetic apply to its cells as they always did.
+    /// [`time_groups`](Self::time_groups) for a table the leaf scan does not read: grouped by SQL, so SQLite's own
+    /// comparisons and arithmetic apply to its cells.
     fn time_groups_by_sql(&self, t: &MsgTable, mine: &str, range: &str) -> Result<Vec<TimeGroup>> {
         let local_q = |expr: &str| local(expr).replace("create_time", "q");
         let sql = format!(
