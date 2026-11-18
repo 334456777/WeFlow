@@ -6,7 +6,7 @@ The web interface of `weflow serve` (#130): React + TypeScript, rendered by Prea
 
 This file covers development only. The rest is in the wiki, in Chinese:
 
-- [WebUI 实现](https://github.com/334456777/WeFlow/wiki/WebUI-实现): layout, page structure, requests and caching, language, the API's types and the tests
+- [WebUI 实现](https://github.com/334456777/WeFlow/wiki/WebUI-实现): source layout, page structure, requests and caching, language, the API's types and the tests
 - [WebUI](https://github.com/334456777/WeFlow/wiki/WebUI): hosting and versions
 - [命令 API](https://github.com/334456777/WeFlow/wiki/命令-API): the API the page calls
 - [发布与 CI](https://github.com/334456777/WeFlow/wiki/发布与-CI#发布-webui): publishing the page
@@ -53,5 +53,5 @@ After `bun run build`, `weflow serve --ui-dir web/dist` opens the built page.
 | `bun run preview` | Serve `dist/` with the same proxy |
 | `bun run smoke` | The smoke test of `dist/` in headless Chrome; `bun run smoke <word>` runs only the checks with that word in their name |
 | `bun run contract` | Write `src/api/contract.gen.ts` from `contract/openapi.json`; `--check` only checks it |
-| `bun run i18n` | List the page's texts without their English, the English no text uses any more, and the Chinese not passed through `t()` yet; `--check` fails on the first two |
+| `bun run i18n` | List the page's texts without their English, the English entries no text uses, and the Chinese not passed through `t()` yet; `--check` fails on the first two |
 | `bun run check` | Check the types of the contract and the English, type-check, test and build, as CI does (CI also compares the contract with the latest release's and runs `bun run smoke`) |
