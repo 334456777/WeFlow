@@ -62,6 +62,21 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(os)
 }
 
+/// Bytes in a WAL header.
+const WAL_HEADER: usize = 32;
+
+/// The header of the WAL at `path`, read on its own: `None` when the file cannot be read, `Some(None)` when it is
+/// shorter than a header.
+fn wal_header(path: &Path) -> Option<Option<[u8; WAL_HEADER]>> {
+    use std::io::Read;
+    let mut header = [0u8; WAL_HEADER];
+    match File::open(path).ok()?.read_exact(&mut header) {
+        Ok(()) => Some(Some(header)),
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Some(None),
+        Err(_) => None,
+    }
+}
+
 // ───────────────────────────── change guard ─────────────────────────────
 
 /// What the wal-index says about checkpoints: the WAL generation (salt) and how many frames have been, or are being,
@@ -262,11 +277,10 @@ impl CipherFile {
                 stamp_at_open,
             };
             // A WAL reset between reading the index and the WAL shows up as a different salt in the WAL header.
-            let wal_header_now = fs::read(&wal_path)
-                .ok()
-                .map(|w| w.get(..32).map(<[u8]>::to_vec));
-            let wal_stable =
-                wal_header_now == wal.as_ref().map(|w| w.get(..32).map(<[u8]>::to_vec));
+            let wal_stable = wal_header(&wal_path)
+                == wal
+                    .as_deref()
+                    .map(|w| w.first_chunk::<WAL_HEADER>().copied());
             // A checkpoint running right now over frames we do not hold may be rewriting main-file pages: wait for it.
             // Anything else is fine to start from; the guard watches what happens next.
             let index_ok = match &at_open {
@@ -1021,6 +1035,21 @@ mod tests {
             cf.read_error().unwrap().contains("HMAC"),
             "{:?}",
             cf.read_error()
+        );
+    }
+
+    #[test]
+    fn a_wal_header_is_read_without_the_rest() {
+        let dir = temp_dir("wal-header");
+        let path = dir.join("a.db-wal");
+        assert_eq!(wal_header(&path), None, "no file");
+        fs::write(&path, [1u8; 10]).unwrap();
+        assert_eq!(wal_header(&path), Some(None), "shorter than a header");
+        let wal: Vec<u8> = (0..100).collect();
+        fs::write(&path, &wal).unwrap();
+        assert_eq!(
+            wal_header(&path),
+            Some(wal.first_chunk::<WAL_HEADER>().copied())
         );
     }
 
