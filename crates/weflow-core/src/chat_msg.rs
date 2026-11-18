@@ -20,18 +20,9 @@ use crate::message::xml::{
     extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content, strip_sender_line,
     strip_sender_prefix,
 };
+use crate::xml::decode_entities;
 
 // ───────────────────────── text helpers ─────────────────────────
-
-/// `decodeHtmlEntities` of the chat service (amp first).
-fn decode_html(content: &str) -> String {
-    content
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-}
 
 pub fn clean_utf16(input: &str) -> String {
     if input.is_empty() {
@@ -47,7 +38,7 @@ fn extract_sender_from_content(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
-    let normalized = clean_utf16(&decode_html(content));
+    let normalized = clean_utf16(&decode_entities(content));
     let caps = rx(r"(?i)^\s*([A-Za-z0-9_@-]{4,}):\s*(?:\r?\n|<br\s*/?>)").captures(&normalized)?;
     Some(caps[1].trim().to_string()).filter(|s| !s.is_empty())
 }
@@ -106,7 +97,7 @@ fn system_message_text(content: &str) -> String {
     if content.is_empty() {
         return "[系统消息]".into();
     }
-    let normalized = clean_utf16(&decode_html(content));
+    let normalized = clean_utf16(&decode_entities(content));
     let readable = extract_readable_system_message_text(&normalized);
     if !readable.is_empty() {
         return readable;
@@ -266,7 +257,7 @@ fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> Strin
     if content.is_empty() {
         return message_type_label(local_type).into();
     }
-    let content = clean_utf16(&decode_html(content));
+    let content = clean_utf16(&decode_entities(content));
     let xml_type = extract_xml_value(&content, "type");
     let looks_app = content.contains("<appmsg") || content.contains("&lt;appmsg");
     match local_type {
@@ -629,7 +620,7 @@ fn parse_type49_message(content: &str) -> Type49Info {
 
 /// `parseQuoteMessage` of the chat service: what a reply quotes, as (content, sender).
 fn quote_of(content: &str) -> (Option<String>, Option<String>) {
-    let Some(refer_xml) = refermsg_xml(&decode_html(content)) else {
+    let Some(refer_xml) = refermsg_xml(&decode_entities(content)) else {
         return (None, None);
     };
     let refer_xml = refer_xml.as_str();
@@ -646,7 +637,7 @@ fn quote_of(content: &str) -> (Option<String>, Option<String>) {
         "43" => "[视频]".into(),
         "47" => "[动画表情]".into(),
         "49" => {
-            let inner = parse_type49_message(&decode_html(&refer_content));
+            let inner = parse_type49_message(&decode_entities(&refer_content));
             match (inner.xml_type.as_deref(), inner.link_title) {
                 (Some("57"), Some(title)) => title,
                 _ => "[链接]".into(),
@@ -666,7 +657,7 @@ fn quote_of(content: &str) -> (Option<String>, Option<String>) {
 }
 
 fn parse_media_quote(content: &str) -> Option<String> {
-    let svrid = extract_xml_value(&refermsg_xml(&decode_html(content))?, "svrid");
+    let svrid = extract_xml_value(&refermsg_xml(&decode_entities(content))?, "svrid");
     (!svrid.is_empty()).then(|| format!("__SVRID__{svrid}__"))
 }
 
@@ -1234,6 +1225,15 @@ mod tests {
             Some("wxid_abcd")
         );
         assert_eq!(extract_sender_from_content("wxid_abcd:hello"), None);
+    }
+
+    #[test]
+    fn a_text_message_is_decoded_once() {
+        assert_eq!(
+            parsed_content("a &amp;lt;b&amp;gt;", 1, None),
+            "a &lt;b&gt;"
+        );
+        assert_eq!(parsed_content("a &lt;b&gt;", 1, None), "a <b>");
     }
 
     #[test]
