@@ -1,9 +1,17 @@
 // What the settings are built of (#776): a section under its heading, groups of rows as raised cards, a row of a
 // setting (its name and what it does, then its control), the switch of a row, the bar that saves a form of several
-// groups, and what a section that needs the server shows without it.
+// groups, the line that says how an action went, and what a section that needs the server shows without it.
 import type { ReactNode } from 'react';
 import { Plugs } from '@phosphor-icons/react';
+import { ApiError } from '../api/client';
 import { t } from '../i18n';
+
+/** What the server said went wrong, else `fallback`. */
+export const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
+
+/** How an action went; an error is announced. */
+export type Note = { text: string; error?: boolean } | null;
+export const NoteLine = ({ note }: { note: Note }) => note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>;
 
 /** A section of the settings: its heading, a line on what it holds and where that is kept, then its groups. */
 export function SettingsSection({ title, lead, children }: { title: string; lead?: ReactNode; children: ReactNode }) {
