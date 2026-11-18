@@ -3,6 +3,7 @@
 // from the cursor of `chat resources` (#178) as the grid is scrolled. A picture or video opens in the preview, which goes through those read so far and
 // can open the message in its conversation; a voice plays where it is; a file opens its message.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { ArrowSquareOut, CaretDown, ChatsCircle, CircleNotch, FilePdf, FileText, MagnifyingGlass, Play, Warning, X } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import type { ChatSession } from '../api/chat';
@@ -199,8 +200,10 @@ export function ResourceFilterCard({ sessions, filter, onChange }: { sessions: r
   </div>;
 }
 
-export function ResourcesPage({ filter, onPreview, onOpen }: {
+export function ResourcesPage({ filter, scroller, onPreview, onOpen }: {
   filter: ResourceFilter;
+  /** The page's scroll area (`ScrollPage`), which the grid scrolls in. */
+  scroller: RefObject<HTMLElement | null>;
   onPreview(preview: Preview): void;
   onOpen(sessionId: string, localId: number, createTime: number): void;
 }) {
@@ -217,7 +220,8 @@ export function ResourcesPage({ filter, onPreview, onOpen }: {
     onPreview(media.length > 1 && index >= 0 ? { ...own, gallery: { items: media.map(m => previewOf(m, open)!), index } } : own);
   };
 
-  // the next page as the end of the grid comes near
+  // the next page as the end of the grid comes near: within 800px of the bottom of the page's scroll area, or of the
+  // window where the area grows with the grid and the document scrolls instead (a phone)
   const end = useRef<HTMLDivElement>(null);
   const moreRef = useRef(more);
   moreRef.current = more;
@@ -225,10 +229,12 @@ export function ResourcesPage({ filter, onPreview, onOpen }: {
   useEffect(() => {
     const target = end.current;
     if (!target || !next || typeof IntersectionObserver === 'undefined') return;
-    const watch = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) moreRef.current(); }, { rootMargin: '800px 0px' });
+    const area = scroller.current;
+    const root = area && area.scrollHeight > area.clientHeight ? area : null;
+    const watch = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) moreRef.current(); }, { root, rootMargin: '0px 0px 800px 0px' });
     watch.observe(target);
     return () => watch.disconnect();
-  }, [next]);
+  }, [next, scroller]);
 
   let lastMonth = '';
   return <div className="resources">
