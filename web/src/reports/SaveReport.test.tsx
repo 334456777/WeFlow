@@ -53,7 +53,9 @@ describe('saving a report', () => {
 
   it('hands the page to the browser named after the report, and says when there is none yet', async () => {
     const saved: string[] = [];
-    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() }));
+    // spied on, not assigned: `URL` is one object for every test file, and `restoreAllMocks` puts spies back (#931)
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:x');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { saved.push(this.download); });
     let shown: HTMLElement | null = null;
     render(<SaveReport find={() => shown} />);
