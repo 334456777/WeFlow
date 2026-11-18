@@ -20,6 +20,7 @@ export function SetupDialog({ open, profile, jobs, platform, onChanged, onClose,
   }, [shown]);
   return <dialog className="setup-dialog" ref={ref} aria-label={t('账号配置')} data-state={shown?.closing ? 'closing' : 'open'}
     onCancel={event => { event.preventDefault(); onClose(); }}>
-    {shown && <SetupWizard profile={profile} jobs={jobs} platform={platform} onChanged={onChanged} onClose={onClose} onDone={onDone} />}
+    {/* another profile, as after adding one, starts the wizard again from its own first step (#898) */}
+    {shown && <SetupWizard key={profile?.name} profile={profile} jobs={jobs} platform={platform} onChanged={onChanged} onClose={onClose} onDone={onDone} />}
   </dialog>;
 }
