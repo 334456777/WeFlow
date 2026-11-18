@@ -101,7 +101,7 @@ The 180-second automatic exit can be adjusted with `weflow key db --timeout <sec
 
 For the full flow and how it works on each platform, see [Key acquisition - Database key](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥) on the Wiki.
 
-For the complete Windows steps (downloading and verifying the release, the administrator terminal, data directories outside the default location, and the web UI), see [Windows first-time setup](https://github.com/334456777/WeFlow/wiki/Windows-首次设置) on the Wiki.
+For the complete Windows steps (downloading and verifying the release, the administrator terminal, data directories outside the default location, and the WebUI), see [Windows first-time setup](https://github.com/334456777/WeFlow/wiki/Windows-首次设置) on the Wiki.
 
 ## What the CLI does not support
 
