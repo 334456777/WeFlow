@@ -9670,6 +9670,12 @@
             "minimum": 0,
             "description": "The ones downloaded now, not already there."
           },
+          "failed": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The ones whose request or write failed; they are not in `files`."
+          },
           "files": {
             "type": "array",
             "items": {
@@ -9680,7 +9686,8 @@
         },
         "required": [
           "found",
-          "downloaded"
+          "downloaded",
+          "failed"
         ],
         "description": "The stickers `chat emoji` downloaded."
       },

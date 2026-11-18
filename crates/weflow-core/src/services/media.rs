@@ -150,21 +150,24 @@ impl ServiceHub {
             return Ok(crate::contract::EmojisDownloaded {
                 found: 0,
                 downloaded: 0,
+                failed: 0,
                 files: None,
             });
         }
         std::fs::create_dir_all(out)
             .map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
-        let results = crate::media::download_emojis(&metas, out, &|current, t| {
-            self.emit_progress("emoji", "downloading emojis", current, t)
-        })
-        .await
-        .map_err(|e| AppError::runtime(format!("{e:#}")))?;
-        let downloaded = results.iter().filter(|f| !f.cached).count();
+        let crate::media::EmojiDownloads { files, failed } =
+            crate::media::download_emojis(&metas, out, &|current, t| {
+                self.emit_progress("emoji", "downloading emojis", current, t)
+            })
+            .await
+            .map_err(|e| AppError::runtime(format!("{e:#}")))?;
+        let downloaded = files.iter().filter(|f| !f.cached).count();
         Ok(crate::contract::EmojisDownloaded {
             found: total,
             downloaded,
-            files: Some(results),
+            failed,
+            files: Some(files),
         })
     }
 }
