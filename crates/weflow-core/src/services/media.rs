@@ -70,20 +70,28 @@ impl ServiceHub {
             })
     }
 
-    /// Path of the on-disk video of a message, if WeChat stored one: by the first of `md5s` in the month folders,
-    /// else where WeChat's media index puts one of them.
-    pub(super) fn video_file_path(&self, md5s: &[&str]) -> Option<PathBuf> {
+    /// WeChat's video folder of the configured account, for finding the videos of many messages.
+    pub(super) fn video_folder(&self) -> Option<crate::video::VideoFolder> {
         let account_dir = self.account_dir_only().ok()?;
-        let info = crate::video::video_info(
-            &account_dir.join("msg").join("video"),
-            md5s.first()?,
-            false,
-            crate::video::PosterFormat::DataUrl,
-        );
-        info.video_url
-            .map(PathBuf::from)
-            .filter(|p| p.exists())
+        Some(crate::video::VideoFolder::new(
+            account_dir.join("msg").join("video"),
+        ))
+    }
+
+    /// Path of the on-disk video of a message sent in `month` (`yyyy-mm`), if WeChat stored one: by the first of
+    /// `md5s` in `videos` (see [`VideoFolder::find`](crate::video::VideoFolder::find)), else where WeChat's media
+    /// index puts one of them.
+    pub(super) fn video_file_path(
+        &self,
+        videos: &crate::video::VideoFolder,
+        md5s: &[&str],
+        month: &str,
+    ) -> Option<PathBuf> {
+        videos
+            .find(md5s.first()?, month)
+            .map(|files| files.video)
             .or_else(|| {
+                let account_dir = self.account_dir_only().ok()?;
                 let wcdb = self.open_wcdb().ok()?;
                 linked_video(&wcdb, &account_dir, md5s).map(|files| files.video)
             })

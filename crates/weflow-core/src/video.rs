@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use base64::Engine;
 
@@ -191,14 +192,15 @@ fn info_for(
     info
 }
 
-/// `getVideoInfo`: index lookup (md5, then the `_raw` twin), then a directory scan.
+/// `getVideoInfo`: the video found in a listing of every month folder (md5, then the `_raw` twin).
 pub fn video_info(
     video_base_dir: &Path,
     md5: &str,
     include_poster: bool,
     format: PosterFormat,
 ) -> VideoInfo {
-    locate(video_base_dir, md5)
+    VideoFolder::new(video_base_dir.to_path_buf())
+        .find(md5, "")
         .map_or_else(VideoInfo::default, |f| info_of(&f, include_poster, format))
 }
 
@@ -266,42 +268,49 @@ fn in_folder(dir: &Path, names: &[String]) -> Option<VideoFiles> {
     })
 }
 
-/// The files of the video `md5` as [`video_info`] finds them.
-fn locate(video_base_dir: &Path, md5: &str) -> Option<VideoFiles> {
-    let names = names_of(md5)?;
-    if !video_base_dir.exists() {
-        return None;
-    }
-    let index = build_index(video_base_dir);
-    for key in &names {
-        let Some(entry) = index.get(key) else {
-            continue;
-        };
-        let Some(video) = entry.video.as_ref().filter(|p| p.exists()) else {
-            continue;
-        };
-        return Some(VideoFiles {
-            video: video.clone(),
-            cover: entry.cover.clone(),
-            thumb: entry.thumb.clone(),
-        });
-    }
-    // fallback scan, for the md5 itself
-    year_month_dirs(video_base_dir)
-        .iter()
-        .find_map(|dir| in_folder(dir, &names[..1]))
+/// WeChat's video folder (`msg/video`), for finding the videos of messages. A video in the folder of the month its
+/// message was sent is found without listing anything; the others are looked up in a listing of every month folder,
+/// made when the first of them is looked for and kept for the next ones, so an export lists the folder at most once.
+#[derive(Debug)]
+pub struct VideoFolder {
+    base: PathBuf,
+    index: OnceLock<HashMap<String, IndexEntry>>,
 }
 
-/// The files of a message's video: first in the folder of the month it was sent (`yyyy-mm`, where WeChat puts
-/// it), without listing the others; else as [`video_info`] finds them.
-pub fn video_files(video_base_dir: &Path, md5: &str, month: &str) -> Option<VideoFiles> {
-    let names = names_of(md5)?;
-    if !month.is_empty() {
-        if let Some(found) = in_folder(&video_base_dir.join(month), &names) {
-            return Some(found);
+impl VideoFolder {
+    pub fn new(base: PathBuf) -> Self {
+        Self {
+            base,
+            index: OnceLock::new(),
         }
     }
-    locate(video_base_dir, md5)
+
+    /// The files of the video `md5` sent in `month` (`yyyy-mm`, where WeChat puts it; empty when unknown): first in
+    /// that month's folder, else in the listing of every month folder (`md5`, then its `_raw` twin; the newest month
+    /// first).
+    pub fn find(&self, md5: &str, month: &str) -> Option<VideoFiles> {
+        let names = names_of(md5)?;
+        if !month.is_empty() {
+            if let Some(found) = in_folder(&self.base.join(month), &names) {
+                return Some(found);
+            }
+        }
+        let index = self.index.get_or_init(|| build_index(&self.base));
+        names.iter().find_map(|key| {
+            let entry = index.get(key)?;
+            let video = entry.video.as_ref().filter(|p| p.exists())?;
+            Some(VideoFiles {
+                video: video.clone(),
+                cover: entry.cover.clone(),
+                thumb: entry.thumb.clone(),
+            })
+        })
+    }
+}
+
+/// The files of a message's video sent in `month` (see [`VideoFolder::find`]).
+pub fn video_files(video_base_dir: &Path, md5: &str, month: &str) -> Option<VideoFiles> {
+    VideoFolder::new(video_base_dir.to_path_buf()).find(md5, month)
 }
 
 /// `parseVideoMd5`: five strategies, in WeFlow's desktop app's order.
@@ -419,6 +428,45 @@ mod tests {
             .exists
         );
         assert!(!video_info(&base.join("missing"), md5, true, PosterFormat::DataUrl).exists);
+    }
+
+    #[test]
+    fn a_video_folder_is_listed_once_and_only_for_videos_outside_their_month() {
+        let base = tmp("folder");
+        let [in_month, elsewhere, later] = [
+            "0123456789abcdef0123456789abcdef",
+            "fedcba9876543210fedcba9876543210",
+            "00112233445566778899aabbccddeeff",
+        ];
+        for (month, md5) in [("2024-01", in_month), ("2023-06", elsewhere)] {
+            std::fs::create_dir_all(base.join(month)).unwrap();
+            std::fs::write(base.join(month).join(format!("{md5}.mp4")), b"video").unwrap();
+        }
+        let folder = VideoFolder::new(base.to_path_buf());
+
+        // in the folder of its month: found without the listing
+        let found = folder.find(in_month, "2024-01").unwrap();
+        assert!(found.video.ends_with(format!("2024-01/{in_month}.mp4")));
+        assert!(
+            folder.index.get().is_none(),
+            "listed for a video in its month"
+        );
+
+        // in another month (or the month unknown): found in the listing
+        let found = folder.find(elsewhere, "2024-01").unwrap();
+        assert!(found.video.ends_with(format!("2023-06/{elsewhere}.mp4")));
+        assert!(folder.find(&format!("{elsewhere}_raw"), "").is_some());
+        assert!(folder
+            .find("ffffffffffffffffffffffffffffffff", "2024-01")
+            .is_none());
+
+        // the listing is kept: a video that appears later is found in its month folder only
+        std::fs::write(base.join("2023-06").join(format!("{later}.mp4")), b"video").unwrap();
+        assert!(folder.find(later, "").is_none());
+        assert!(folder.find(later, "2023-06").is_some());
+        assert!(VideoFolder::new(base.to_path_buf())
+            .find(later, "")
+            .is_some());
     }
 
     #[test]

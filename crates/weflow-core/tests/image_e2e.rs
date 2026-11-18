@@ -1300,6 +1300,64 @@ fn a_video_the_folders_miss_is_found_through_the_media_index() {
     assert_eq!(std::fs::read(&kept.video).unwrap(), b"listed video");
 }
 
+/// A media export copies the video kept in the folder of the month its message was sent, and one kept in another
+/// month folder.
+#[tokio::test]
+async fn video_exports_find_videos_in_their_month_and_in_others() {
+    use weflow_native::fixture::{Fixture, MsgSpec};
+    let (root, hub, account, _img_dir) = setup("video-export");
+    let at = 1_700_000_000;
+    let month = weflow_core::image::year_month_from_create_time(Some(at));
+    let (in_month, elsewhere, gone) = (md5_hex("in month"), md5_hex("elsewhere"), md5_hex("gone"));
+    let xml =
+        |md5: &str| format!("<msg><videomsg md5=\"{md5}\" length=\"9\" playlength=\"1\" /></msg>");
+    Fixture::open(&root.join("data"), "wxid_me_ab12").message_shard(
+        2,
+        &[(
+            "wxid_bob",
+            vec![
+                MsgSpec::text(20, "wxid_bob", at, &xml(&in_month)).of_type(43),
+                MsgSpec::text(21, "wxid_bob", at + 1, &xml(&elsewhere)).of_type(43),
+                MsgSpec::text(22, "wxid_bob", at + 2, &xml(&gone)).of_type(43),
+            ],
+        )],
+    );
+    let videos = account.join("msg/video");
+    for (folder, md5, bytes) in [
+        (month.as_str(), &in_month, &b"in month"[..]),
+        ("2020-01", &elsewhere, b"elsewhere"),
+    ] {
+        std::fs::create_dir_all(videos.join(folder)).unwrap();
+        std::fs::write(videos.join(folder).join(format!("{md5}.mp4")), bytes).unwrap();
+    }
+
+    let out = root.join("exported");
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &out, "video", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            r["found"].as_i64(),
+            r["exported"].as_i64(),
+            r["missing"].as_i64()
+        ),
+        (Some(3), Some(2), Some(1)),
+        "{r}"
+    );
+    let copied = out.join("wxid_bob/videos");
+    assert_eq!(
+        std::fs::read(copied.join(format!("{in_month}.mp4"))).unwrap(),
+        b"in month"
+    );
+    assert_eq!(
+        std::fs::read(copied.join(format!("{elsewhere}.mp4"))).unwrap(),
+        b"elsewhere"
+    );
+}
+
 /// A file message's file is copied below `files/<month>/`, as WeChat keeps it: found through WeChat's media index,
 /// else by its name in the month it was sent. Files of one name from different months stay apart, a file sent twice
 /// is copied once, and one not on disk is counted missing (#694).
