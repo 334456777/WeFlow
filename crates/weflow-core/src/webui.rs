@@ -286,7 +286,33 @@ impl WebStore {
             .map_err(|e| AppError::runtime(format!("cannot open {}: {e}", path.display())))
     }
 
-    /// A fresh folder for one download, beside the versions (so the last step is a rename on one disk).
+    /// Removes the downloads of `version` left by processes that are gone (#904): an install cut short (Ctrl-C, or a
+    /// job cancelled in `weflow serve`) leaves its [`WebStore::scratch`] folder. The caller holds the install lock of
+    /// `version` ([`WebStore::installing`]), so no other install of it is writing; the process check also spares a
+    /// download by a weflow that does not take that lock. A folder that cannot be removed is left for the next install.
+    fn clear_stale_downloads(&self, version: &str) {
+        let Ok(entries) = std::fs::read_dir(&self.root) else {
+            return;
+        };
+        let prefix = format!(".download-{version}-");
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(pid) = name
+                .to_str()
+                .and_then(|name| name.strip_prefix(&prefix))
+                .and_then(download_pid)
+            else {
+                continue;
+            };
+            let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+            if is_dir && !crate::process::may_be_running(pid) {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+
+    /// A fresh folder for one download, beside the versions (so the last step is a rename on one disk), named
+    /// `.download-<version>-<pid>-<nonce>`.
     fn scratch(&self, version: &str) -> AppResult<PathBuf> {
         let nonce: u64 = rand::random();
         let dir = self.root.join(format!(
@@ -296,6 +322,19 @@ impl WebStore {
         std::fs::create_dir_all(&dir)
             .map_err(|e| AppError::runtime(format!("cannot create {}: {e}", dir.display())))?;
         Ok(dir)
+    }
+}
+
+/// The process id in what follows the version in a download's name: `<pid>-<nonce>`, decimal and hex. A version is
+/// never taken for another: the name of a download of `<version>-<more>` has more than two parts after `<version>-`.
+fn download_pid(rest: &str) -> Option<u32> {
+    let (pid, nonce) = rest.split_once('-')?;
+    let digits = !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit());
+    let hex = !nonce.is_empty() && nonce.bytes().all(|b| b.is_ascii_hexdigit());
+    if digits && hex {
+        pid.parse().ok()
+    } else {
+        None
     }
 }
 
@@ -624,6 +663,7 @@ pub async fn install(
     }
     // another weflow installing the same version first: wait for it, and take what it kept (#332)
     let _installing = store.installing(version).await?;
+    store.clear_stale_downloads(version);
     if let Some(meta) = kept(store, version, backend)? {
         return Ok(meta);
     }
@@ -709,6 +749,29 @@ mod tests {
         assert!(valid_version("0.1.0-rc.1"));
         for bad in ["", "latest", "../x", "1/2", "0.1.0 ", "a1"] {
             assert!(!valid_version(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_download_names_its_process() {
+        assert_eq!(download_pid("1234-9f0a"), Some(1234));
+        // what follows `5.0.0-` in the download of 5.0.0-rc.1 or 5.0.0-rc.5-3-gabc1234
+        for other in [
+            "rc.1-1234-9f0a",
+            "rc.5-3-gabc1234-1234-9f0a",
+            "3-gabc-1234-9f0a",
+        ] {
+            assert_eq!(download_pid(other), None, "{other}");
+        }
+        for bad in [
+            "1234",
+            "1234-",
+            "-9f0a",
+            "+1234-9f0a",
+            "1234-xyz",
+            "99999999999-9f0a",
+        ] {
+            assert_eq!(download_pid(bad), None, "{bad}");
         }
     }
 

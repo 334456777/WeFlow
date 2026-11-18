@@ -1,5 +1,56 @@
-//! Running processes by image name, and their command lines. On Windows the list comes from a ToolHelp snapshot of
-//! the process list.
+//! Running processes by image name, their command lines, and whether a process id is still running. On Windows the
+//! list comes from a ToolHelp snapshot of the process list.
+
+/// Whether process `pid` may still be running. Only a definite "no such process" from the system gives `false`: a
+/// process of another user, an answer that cannot be read, or a platform without a check all give `true`, so a caller
+/// cleaning up after `pid` leaves its files alone. A reused id also gives `true`.
+#[cfg(windows)]
+pub fn may_be_running(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_INVALID_PARAMETER, STILL_ACTIVE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    // SAFETY: a handle to query `pid`, closed below; an id with no process gives null
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        // SAFETY: no preconditions; read right after the failed call
+        return unsafe { GetLastError() } != ERROR_INVALID_PARAMETER;
+    }
+    let mut code = 0u32;
+    // SAFETY: `handle` is open with the right to query, and `code` is a valid u32 to write
+    let read = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+    // SAFETY: the handle is ours and closed once
+    unsafe { CloseHandle(handle) };
+    // a process that exited is still opened while another handle to it is open; one that exited with the code
+    // STILL_ACTIVE reads as running
+    !read || i32::try_from(code).is_ok_and(|code| code == STILL_ACTIVE)
+}
+
+/// Whether process `pid` may still be running: see the Windows version. `kill(pid, 0)` checks without signalling.
+#[cfg(unix)]
+pub fn may_be_running(pid: u32) -> bool {
+    // 0 and the negative ids name process groups, not a process
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return false;
+    };
+    if pid <= 0 {
+        return false;
+    }
+    // SAFETY: signal 0 only checks that `pid` exists and may be signalled; nothing is sent
+    if unsafe { libc::kill(pid, 0) } == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+/// Whether process `pid` may still be running: with no check on this platform, always `true`.
+#[cfg(not(any(windows, unix)))]
+pub fn may_be_running(_pid: u32) -> bool {
+    true
+}
 
 /// Process ids of the `(image name, pid)` entries whose image is one of `images`, ignoring ASCII case. The ids are
 /// grouped in the order of `images`, each group in the order of `entries` (the order the system lists them).
@@ -168,6 +219,13 @@ mod tests {
         ]);
         assert_eq!(pick_pids(list, &["Weixin.exe"]), [1, 2]);
         assert!(pick_pids(Vec::new(), &["Weixin.exe"]).is_empty());
+    }
+
+    #[test]
+    fn tells_a_running_process_from_one_that_is_gone() {
+        assert!(may_be_running(std::process::id()));
+        // above Linux's and macOS's highest pid, and not a multiple of 4 as Windows pids are
+        assert!(!may_be_running(2_147_483_647));
     }
 
     #[cfg(windows)]
