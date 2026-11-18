@@ -1,6 +1,8 @@
-//! Port of WeFlow's `videoService.ts`: locating decrypted-by-WeChat videos on disk
-//! (`<account>/msg/video/<yyyy-mm>/<md5>.mp4`) plus their cover / thumbnail images, and
-//! extracting the video md5 out of a message's XML.
+//! The videos WeChat keeps on disk, ported from WeFlow's `videoService.ts`.
+//!
+//! It locates the videos (`<account>/msg/video/<yyyy-mm>/<md5>.mp4`) and their cover and thumbnail images, and
+//! extracts a video's md5 from its message's XML.
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 

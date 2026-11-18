@@ -1,7 +1,10 @@
-//! Where every HTTP client of weflow is made (#371). reqwest 0.13's own TLS provider for rustls is aws-lc-rs, which
-//! needs a C toolchain (and NASM on x86-64 Windows) on every target weflow ships for; weflow uses ring
-//! instead and installs it as rustls' process-wide provider before the first client. A client made without
-//! this panics on its first build. Certificates are checked against the system's store (rustls-platform-verifier).
+//! Where every HTTP client of weflow is made (#371), with ring as the TLS provider.
+//!
+//! reqwest 0.13's own TLS provider for rustls is aws-lc-rs, which needs a C toolchain (and NASM on x86-64 Windows) on
+//! every target weflow ships for; weflow uses ring instead and installs it as rustls' process-wide provider before the
+//! first client. A client made without this panics on its first build. Certificates are checked against the system's
+//! store (rustls-platform-verifier).
+
 use std::sync::Once;
 
 /// Hosts of WeChat's sticker CDN whose `https:` certificate is not made out to their name: a request to them over
@@ -29,10 +32,11 @@ pub fn builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
 }
 
-/// What went wrong with a request, in words that leave out its address (#811): reqwest names the whole address in
-/// its error, and an address can carry a secret, such as the bot token in Telegram's or the signature of a Moments
-/// image. What is left is the kind of failure and its causes, as `error sending request: client error (Connect): tcp
-/// connect error: …`.
+/// What went wrong with a request, in words that leave out its address (#811).
+///
+/// reqwest names the whole address in its error, and an address can carry a secret, such as the bot token in
+/// Telegram's or the signature of a Moments image. What is left is the kind of failure and its causes, as
+/// `error sending request: client error (Connect): tcp connect error: …`.
 pub fn failure(err: reqwest::Error) -> String {
     format!("{:#}", anyhow::Error::from(err.without_url()))
 }

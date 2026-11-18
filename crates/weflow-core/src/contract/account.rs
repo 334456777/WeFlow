@@ -161,8 +161,9 @@ pub struct ImageMemKey {
     pub saved: Vec<String>,
 }
 
-/// What `key processes` (macOS) answers: the running WeChat clients, the main
-/// application first. Helper, AppEx and crashpad processes are left out.
+/// What `key processes` (macOS) answers: the running WeChat clients, the main application first.
+///
+/// Helper, `WeChatAppEx` and crashpad processes are left out.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct WeChatProcesses {
     pub processes: Vec<WeChatProcess>,

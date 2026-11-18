@@ -1,8 +1,10 @@
-//! Statistics over the message tables. The ones over every message of a table read the few cells they need through
-//! `leaf_scan` and count them here; a table the scan does not read is counted with grouped SQL.
+//! Statistics over the message tables.
+//!
+//! The ones over every message of a table read the few cells they need through `leaf_scan` and count them here; a
+//! table the scan does not read is counted with grouped SQL.
 //!
 //! Dates, hours and weekdays are in local time (SQLite `localtime`), matching what WeFlow's desktop app shows.
-//! Output shapes are the ones the service layer already consumes (`total/sent/received/...`).
+//! The results have the shapes the service layer reads (`total/sent/received/...`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};

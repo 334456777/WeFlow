@@ -39,7 +39,7 @@ pub struct CodeCollection {
 }
 
 /// Compatibility parser: only `key_` filenames, only ASCII decimal underscore-delimited
-/// tokens, range 1..=u32::MAX. Every numeric token is a *loose* candidate, never a key.
+/// tokens, range `1..=u32::MAX`. Every numeric token is a *loose* candidate, never a key.
 fn parse_codes(name: &str) -> BTreeSet<u32> {
     let Some(name) = name.strip_prefix("key_") else {
         return BTreeSet::new();
@@ -285,8 +285,10 @@ pub const HAS_DEFAULT_KVCOMM_DIRS: bool = cfg!(any(
     all(target_os = "linux", target_arch = "x86_64")
 ));
 
-/// The existing `net*/kvcomm` directories (`net`, `net_1`, ...) WeChat keeps: on Windows under
-/// `%APPDATA%\Tencent\xwechat`, on macOS under WeChat's `app_data` in its container, on Linux x64 under the
+/// The existing `net*/kvcomm` directories (`net`, `net_1`, ...) WeChat keeps.
+///
+/// They are on Windows under `%APPDATA%\Tencent\xwechat`, on macOS under WeChat's `app_data` in its container, on
+/// Linux x64 under the
 /// `xwechat` directories in the home directory that `key image-local` also reads. The home directory is the
 /// caller's under `sudo` (#861). Other platforms have no known location, so callers must pass directories
 /// explicitly.
@@ -373,8 +375,10 @@ pub enum MemoryKeyCheck {
     FirstBlocks(usize),
 }
 
-/// Whether `key`, a candidate found in WeChat's memory, is the account's image AES key: a thumbnail of `samples`
-/// decodes as a whole JPEG with it and the XOR key its tail gives, or the first blocks of at least two distinct
+/// Whether `key`, a candidate found in WeChat's memory, is the account's image AES key.
+///
+/// It is when a thumbnail of `samples` decodes as a whole JPEG with it and the XOR key its tail gives, or the first
+/// blocks of at least two distinct
 /// thumbnails decrypt into image headers. A random window of memory passes the header check of one block often
 /// enough over a whole scan to need either of these.
 pub fn check_memory_key(

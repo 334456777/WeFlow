@@ -3,6 +3,10 @@
 //! Enabled by the `test-fixtures` feature (and always for this crate's own tests). The databases use the
 //! real table layouts, so everything above the file format — table lookup, sender resolution, contacts,
 //! groups — is exercised exactly as it is on a real account.
+//!
+//! # Panics
+//!
+//! The builders panic when they cannot write what they build, which fails the test that asked for it.
 #![expect(
     clippy::unwrap_used,
     reason = "test fixtures fail the test by panicking"
@@ -19,8 +23,10 @@ use crate::sqlcipher::PageCipher;
 
 pub mod bench;
 
-/// A directory of one test's own, `<parent>/<prefix>-<random>`, removed with everything in it when dropped, so also
-/// when the test panics. Set `WEFLOW_KEEP_TEST_DIRS` to keep the directories for a look afterwards.
+/// A directory of one test's own, `<parent>/<prefix>-<random>`, removed with everything in it when dropped.
+///
+/// It is removed also when the test panics. Set `WEFLOW_KEEP_TEST_DIRS` to keep the directories for a look
+/// afterwards.
 ///
 /// Hold it for as long as anything reads the directory, and drop it after what has files open there: a helper that
 /// returns it next to an account puts it first, `(TestDir, account)`, since the later binding of a pattern is dropped

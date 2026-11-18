@@ -1,11 +1,13 @@
-//! WXGF pictures: the first picture of a WXGF HEVC stream is decoded in Rust (`heic-rs`, an HEVC still-picture
-//! decoder: WXGF images are single intra pictures, almost all of them Main Still Picture) and written as a JPEG the
-//! way ffmpeg's `mjpeg` does it: the YCbCr planes kept at the chroma resolution they have (4:2:0, 4:2:2, 4:4:4 or
-//! grey), deeper samples (Main 10, Rext) rounded to 8 bits, limited range scaled to the full range JPEG uses.
+//! WXGF pictures decoded in Rust and written as a JPEG the way ffmpeg's `mjpeg` writes one.
+//!
+//! The first picture of a WXGF HEVC stream is decoded with `heic-rs`, an HEVC still-picture decoder: WXGF images are
+//! single intra pictures, almost all of them Main Still Picture. The JPEG keeps the YCbCr planes at the chroma
+//! resolution they have (4:2:0, 4:2:2, 4:4:4 or grey), deeper samples (Main 10, Rext) are rounded to 8 bits, and the
+//! limited range is scaled to the full range JPEG uses.
 //!
 //! On a real account 1763 WXGF images decoded to the same samples as ffmpeg, and all 5,668 of a whole account
 //! decoded. heic-rs is patched (see the workspace `Cargo.toml`) to decode 4:2:2 and 4:4:4 intra pictures; the
-//! range-extension coding tools it does not implement are left to a second decoder, rust_h265. An inter-predicted
+//! range-extension coding tools it does not implement are left to a second decoder, `rust_h265`. An inter-predicted
 //! first picture, or damaged data, is an [`Unsupported`], and the image is not converted.
 
 /// JPEG quality: as close to the source as ffmpeg's `-q:v 2` (measured on real WXGF images; the files are about
@@ -103,8 +105,9 @@ pub fn decode_to_jpeg(hevc: &[u8]) -> Result<Vec<u8>, Unsupported> {
         Err(e) => Unsupported::from(e),
     };
     // A picture heic-rs does not decode (a range-extension coding tool it does not implement, such as RDPCM or
-    // extended precision) gets a second try with rust_h265, which implements them all. Only an IRAP picture: a video decoder would predict any other from mid-grey
-    // references it makes up, and give a wrong picture rather than an error.
+    // extended precision) gets a second try with rust_h265, which implements them all. Only an IRAP picture: a video
+    // decoder would predict any other from mid-grey references it makes up, and give a wrong picture rather than an
+    // error.
     if !(16..=23).contains(&nal_type(slices[0])) {
         return Err(still);
     }
@@ -119,7 +122,7 @@ pub fn decode_to_jpeg(hevc: &[u8]) -> Result<Vec<u8>, Unsupported> {
     }
 }
 
-/// The first picture with rust_h265, from its parameter sets and slices.
+/// The first picture with `rust_h265`, from its parameter sets and slices.
 fn decode_with_rust_h265(
     sets: &[&[u8]],
     slices: &[&[u8]],
@@ -682,7 +685,7 @@ fn scaling_list_data(b: &mut Bits) -> Option<()> {
     Some(())
 }
 
-/// Parses `st_ref_pic_set(idx)` of an SPS and returns its NumDeltaPocs.
+/// Parses `st_ref_pic_set(idx)` of an SPS and returns its `NumDeltaPocs`.
 fn st_ref_pic_set(b: &mut Bits, idx: usize, delta_pocs: &[u32]) -> Option<u32> {
     if idx != 0 && b.flag()? {
         // inter_ref_pic_set_prediction_flag: predicted from the previous set (an SPS has no delta_idx)
@@ -916,7 +919,7 @@ mod tests {
         }
     }
 
-    /// rust_h265, the second decoder, gives ffmpeg's samples too, for the layouts it decodes (4:2:0 and 4:4:4).
+    /// `rust_h265`, the second decoder, gives ffmpeg's samples too, for the layouts it decodes (4:2:0 and 4:4:4).
     #[test]
     fn the_second_decoder_decodes_to_ffmpegs_samples() {
         for l in SAMPLES

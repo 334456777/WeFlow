@@ -184,9 +184,10 @@ fn word_ends_at(s: &str, i: usize) -> bool {
         .is_some_and(regex_syntax::is_word_character)
 }
 
-/// `(?i)<tag\s+[^>]*attr\s*=\s*"([^"]*)"`: an attribute value in double quotes. `tag` and `attr` must be
-/// non-empty ASCII. As in the regex, `attr` may end another attribute's name (`md5` in `cdnthumbmd5`), and the
-/// last match before the tag's first `>` wins, since `[^>]*` is greedy.
+/// An attribute value in double quotes, as `(?i)<tag\s+[^>]*attr\s*=\s*"([^"]*)"` captures it.
+///
+/// `tag` and `attr` must be non-empty ASCII. As in the regex, `attr` may end another attribute's name (`md5` in
+/// `cdnthumbmd5`), and the last match before the tag's first `>` wins, since `[^>]*` is greedy.
 pub fn attribute<'a>(xml: &'a str, tag: &str, attr: &str) -> Option<&'a str> {
     debug_assert!(!tag.is_empty() && tag.is_ascii() && !attr.is_empty() && attr.is_ascii());
     let h = xml.as_bytes();

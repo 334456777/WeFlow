@@ -1,6 +1,8 @@
-//! The files `weflow serve` writes for `?return=file` requests that name no `--out`, under `<cache>/serve-files/`
-//! (#815): a folder of each running server's own, `<id>/`, held by an exclusive lock on `<id>.lock` beside it for as
-//! long as the server runs. The lock ends with the process however it ends, so a server starting, and
+//! The files `weflow serve` writes for `?return=file` requests that name no `--out` (#815).
+//!
+//! They go under `<cache>/serve-files/`, into a folder of each running server's own, `<id>/`, held by an exclusive
+//! lock on `<id>.lock` beside it for as long as the server runs. The lock ends with the process however it ends, so a
+//! server starting, and
 //! `cache clear --api`, remove only what no running server holds: two servers on one `WEFLOW_HOME` keep each other's
 //! files, and the folders of servers that stopped go.
 
@@ -78,9 +80,11 @@ impl Drop for ServeFiles {
     }
 }
 
-/// What under `root` no running server holds: the folders of servers that stopped with their lock files, and
-/// anything else there (a folder of an older WeFlow, which kept no lock). Each folder is removed while its lock is
-/// taken here, so no server can be starting with it. Returns what was removed, and what could not be with why.
+/// Removes what under `root` no running server holds; returns what was removed, and what could not be with why.
+///
+/// That is the folders of servers that stopped with their lock files, and anything else there (a folder of an older
+/// WeFlow, which kept no lock). Each folder is removed while its lock is taken here, so no server can be starting
+/// with it.
 pub fn remove_unheld(root: &Path) -> (Vec<PathBuf>, Vec<String>) {
     let (mut removed, mut warnings) = (Vec::new(), Vec::new());
     let Ok(entries) = fs::read_dir(root) else {

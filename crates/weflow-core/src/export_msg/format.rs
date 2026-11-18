@@ -5,7 +5,7 @@ use std::io;
 use serde::Serialize;
 use serde_json::ser::Formatter;
 
-/// serde_json's compact format with every `</` inside a string written as `<\/`, so the JSON cannot close the
+/// `serde_json`'s compact format with every `</` inside a string written as `<\/`, so the JSON cannot close the
 /// `<script>` element it is embedded in.
 struct ScriptSafe;
 
@@ -35,7 +35,7 @@ pub(super) fn write_script_json(
     value.serialize(&mut serializer).map_err(io::Error::from)
 }
 
-/// serde_json's pretty printing (two-space indent) for a value that sits `base` spaces deep in a document written
+/// `serde_json`'s pretty printing (two-space indent) for a value that sits `base` spaces deep in a document written
 /// piece by piece: every line after the first is indented by `base` more spaces.
 struct NestedPretty {
     base: usize,

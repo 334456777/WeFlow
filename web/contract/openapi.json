@@ -5035,7 +5035,7 @@
           "shard",
           "_cursor"
         ],
-        "description": "A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`): its\ncolumns read with their types, the text inflated and decoded, the sender resolved (#257, #492)."
+        "description": "A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`).\n\nIts columns are read with their types, the text inflated and decoded, the sender resolved (#257, #492)."
       },
       "SearchHit": {
         "type": "object",
@@ -5237,7 +5237,7 @@
           "content",
           "text"
         ],
-        "description": "A message as the query commands list it (`chat resources`, `chat images`, `chat media-stream`…): the main fields\nof its row, its text and the keys of its media. An optional field is left out when the message has none."
+        "description": "A message as the query commands list it (`chat resources`, `chat images`, `chat media-stream`…).\n\nIt holds the main fields of its row, its text and the keys of its media. An optional field is left out when the\nmessage has none."
       },
       "Contact": {
         "type": "object",
@@ -6349,7 +6349,7 @@
           "rawContent",
           "messageKey"
         ],
-        "description": "A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399): its text and the\nkeys of its media, links, cards and so on, parsed from the row. An optional field is left out when the message has\nnone; times are Unix seconds."
+        "description": "A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399).\n\nIt holds its text and the keys of its media, links, cards and so on, parsed from the row. An optional field is\nleft out when the message has none; times are Unix seconds."
       },
       "OverallStatistics": {
         "type": "object",
@@ -9385,7 +9385,7 @@
         "required": [
           "processes"
         ],
-        "description": "What `key processes` (macOS) answers: the running WeChat clients, the main\napplication first. Helper, AppEx and crashpad processes are left out."
+        "description": "What `key processes` (macOS) answers: the running WeChat clients, the main application first.\n\nHelper, `WeChatAppEx` and crashpad processes are left out."
       },
       "WeChatProcess": {
         "type": "object",
@@ -10262,7 +10262,7 @@
           "mention_groups",
           "diagnostics"
         ],
-        "description": "My footprint over a range of days (`insight footprint`): who I talked with and replied to, and where I was\n@-mentioned. Its keys are the native layer's, in snake_case. Times are Unix seconds, 0 where there is none."
+        "description": "My footprint over a range of days (`insight footprint`).\n\nIt says who I talked with and replied to, and where I was @-mentioned. Its keys are the native layer's, in\n`snake_case`. Times are Unix seconds, 0 where there is none."
       },
       "FootprintSummary": {
         "type": "object",

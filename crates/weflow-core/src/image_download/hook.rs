@@ -1,5 +1,5 @@
 //! The Windows x64 side of the image auto-download hook: find `Weixin.dll` in the WeChat process, locate the
-//! function that downloads media, and patch it to run [`shellcode`] first.
+//! function that downloads media, and patch it to run the code of the `shellcode` module first.
 //!
 //! This is the Rust replacement for `img_helper.dll`. It uses only system DLLs, so it does not need the Visual C++
 //! runtime.

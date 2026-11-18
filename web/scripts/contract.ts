@@ -36,7 +36,9 @@ const key = (k: string) => (/^[A-Za-z_$][\w$]*$/.test(k) ? k : literal(k));
 function comment(text: unknown, indent: string): string {
   if (typeof text !== 'string' || !text.trim()) return '';
   const lines = text.trim().replace(/\*\//g, '* /').split('\n');
-  return lines.length === 1 ? `${indent}/** ${lines[0]} */\n` : `${indent}/**\n${lines.map(l => `${indent} * ${l}`).join('\n')}\n${indent} */\n`;
+  // a blank line between paragraphs gets no trailing space
+  const line = (l: string) => (l ? `${indent} * ${l}` : `${indent} *`);
+  return lines.length === 1 ? `${indent}/** ${lines[0]} */\n` : `${indent}/**\n${lines.map(line).join('\n')}\n${indent} */\n`;
 }
 
 /** The TypeScript of a schema, `indent` being that of the line it is on. */

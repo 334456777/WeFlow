@@ -1,3 +1,5 @@
+//! Stickers: their addresses in the messages, and downloading them into the cache.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +13,7 @@ const CACHED_EXTENSIONS: [&str; 6] = [".gif", ".png", ".webp", ".jpg", ".jpeg", 
 /// A sticker to download: its address and the name its file is saved under.
 #[derive(Debug, Clone)]
 pub struct EmojiMeta {
+    /// The sticker's address on WeChat's CDN.
     pub cdn_url: String,
     /// The sticker's md5 (32 lowercase hex digits), or a 16-hex-digit hash of `cdn_url` when the message has none;
     /// only hex digits, so it is safe as a file name.
@@ -35,7 +38,8 @@ fn emoji_meta(content: &str) -> Option<EmojiMeta> {
 }
 
 /// Downloads each of `metas` into `cache_dir` as `<md5><ext>`, skipping the ones already there; a sticker whose
-/// request or write fails is left out of the result.
+/// request or write fails is left out of the result. `progress_cb` gets `(done, total)` before each sticker and once
+/// at the end.
 ///
 /// # Errors
 ///
@@ -57,7 +61,7 @@ pub async fn download_emojis(
     let mut results = Vec::new();
     for (idx, meta) in metas.iter().enumerate() {
         progress_cb(idx, total);
-        // Skip if already cached (any extension)
+        // skip a sticker cached already, under any picture extension
         let existing = find_cached_emoji(cache_dir, &meta.md5);
         if let Some(p) = existing {
             results.push(crate::contract::EmojiFile {

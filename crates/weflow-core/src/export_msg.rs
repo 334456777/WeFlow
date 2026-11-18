@@ -322,9 +322,11 @@ impl<'a, 'n> Exporter<'a, 'n> {
         })
     }
 
-    /// 一条消息的展示文本，detailed JSON 与简易 txt 共用，保证两种格式写法一致：
-    /// 引用消息带引用人名字，链接带 URL，转账带「谁转给谁」，系统消息统一用 `[系统: …]` 包裹，
-    /// 表情 `[表情]`、语音 `[语音消息]`、图片 `[图片]`（不含媒体文件路径）。
+    /// The text of a message, shared by the detailed JSON and the plain txt so both write it the same way.
+    ///
+    /// A quote names the quoted sender, a link carries its URL, a transfer says who paid whom, a system message is
+    /// wrapped in `[系统: …]`, and a sticker, a voice and an image are `[表情]`, `[语音消息]` and `[图片]` (without the
+    /// path of a media file).
     fn message_text(&mut self, msg: &ExportMsg) -> String {
         self.message_text_in(msg, &MsgXml::new(&msg.content))
     }
@@ -334,9 +336,11 @@ impl<'a, 'n> Exporter<'a, 'n> {
         self.message_text_with(msg, x, Some(LinkStyle::AppendUrl), true)
     }
 
-    /// [`message_text`](Self::message_text) 的可调版本：`link` 为链接卡片的写法（`None` 保持解析出的
-    /// `[链接] 标题`，用于 HTML 这类另有链接卡片的格式），`wrap_system` 控制系统消息是否包成 `[系统: …]`
-    /// （ChatLab 有独立的 system 类型、HTML 有专门的样式，不再包一层）。
+    /// [`message_text`](Self::message_text) with its choices given.
+    ///
+    /// `link` is how a link card is written (`None` keeps the parsed `[链接] title`, for formats such as HTML that draw
+    /// link cards of their own). `wrap_system` says whether a system message is wrapped in `[系统: …]`; ChatLab has a
+    /// system type of its own and HTML a style of its own, so neither wraps it.
     fn message_text_with(
         &mut self,
         msg: &ExportMsg,
@@ -350,7 +354,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
         self.message_text_generic(msg, x, link, wrap_system)
     }
 
-    /// 完整流程（不走快速路径）。
+    /// [`message_text_with`](Self::message_text_with) through every step, without the fast path of
+    /// [`plain_message_text`].
     fn message_text_generic(
         &mut self,
         msg: &ExportMsg,
@@ -392,11 +397,12 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 }
             }
         }
-        // 表情有描述时写成 [表情：描述]（type 8 的表情走的是 appmsg，解析结果里没有描述）
+        // a sticker with a caption is written `[表情：caption]` (a type 8 sticker is an appmsg, whose parsed text has no
+        // caption)
         if let (Some("[表情]"), Some(c)) = (content.as_deref(), msg.emoji_caption.as_deref()) {
             content = Some(format_emoji_semantic_text(Some(c)));
         }
-        // 内容为空的媒体消息（库里没存 XML）仍然给出占位符
+        // a media message with empty content (the database kept no XML) still gets its placeholder
         let text = content.unwrap_or_else(|| match msg.local_type {
             34 => "[语音消息]".into(),
             43 => "[视频]".into(),
@@ -603,7 +609,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ─────────────────────────────────── HTML ───────────────────────────────────
 
-    /// HTML 页面里一条消息的文本（见 [`html`]）：与其他格式同一套写法，但链接卡片、系统消息由页面自己渲染。
+    /// The text of a message on the HTML page (see [`html`]): written as in the other formats, but the page draws link
+    /// cards and system messages itself.
     fn html_message_text(&mut self, msg: &ExportMsg, x: &MsgXml) -> String {
         if msg.content.is_empty() && msg.local_type != 47 {
             return String::new();
@@ -612,9 +619,12 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 }
 
-/// 文本、图片、语音、视频、表情这几种最常见的消息（约占 9 成）不含 XML，不需要引用 / 链接 / 转账 / 系统消息的
-/// 解析（每一步都要把内容规范化、跑正则），直接给出结果；内容里带 appmsg / sysmsg / refermsg 的仍走完整流程。
-/// 结果与完整流程一致（有测试对照）。
+/// The fast path of [`Exporter::message_text_with`]: the text of a text, image, voice, video or sticker message.
+///
+/// These kinds, about nine in ten messages, hold no XML, so they need none of the parsing of quotes, links,
+/// transfers and system messages (each step normalizes the content and runs regexes). Content with `appmsg`,
+/// `sysmsg` or `refermsg` in it still goes through every step. The result is the same as the full path's, which a
+/// test checks.
 fn plain_message_text(msg: &ExportMsg) -> Option<String> {
     if !matches!(msg.local_type, 1 | 3 | 34 | 43 | 47) {
         return None;
@@ -769,7 +779,8 @@ mod tests {
         f(&mut ex)
     }
 
-    /// detailed JSON 与简易 txt 共用 `message_text`：各类消息的写法在两种格式里一致。
+    /// The detailed JSON and the plain txt share `message_text`, so each kind of message is written the same way in
+    /// both.
     #[test]
     fn message_text_is_uniform_across_message_kinds() {
         let quote_inner = "&lt;msg&gt;&lt;img md5=\"x\"&gt;&lt;extcommoninfo&gt;&lt;refermsg&gt;&lt;svrid&gt;9&lt;/svrid&gt;&lt;/refermsg&gt;&lt;/extcommoninfo&gt;&lt;/msg&gt;";
@@ -777,13 +788,14 @@ mod tests {
             row(1, 1700000000, 47, r#"wxid_bob:<msg><emoji md5="a"/></msg>"#, Some("wxid_bob")),
             row(2, 1700000001, 34, "", Some("wxid_bob")),
             row(3, 1700000002, 10000, r#""Bob" 撤回了一条消息"#, None),
-            // 图片里夹带 <refermsg>：不是文字引用，仍然是 [图片]
+            // an image carrying a <refermsg> is not a text quote: still [图片]
             row(4, 1700000003, 3, "wxid_bob:\n<msg><img md5=\"x\"/><extcommoninfo><refermsg><svrid>9</svrid></refermsg></extcommoninfo></msg>", Some("wxid_bob")),
-            // appmsg type 8：以附件形式发送的表情
+            // appmsg type 8: a sticker sent as an attachment
             row(5, 1700000004, 34359738417, "wxid_bob:\n<msg><appmsg><title /><type>8</type></appmsg></msg>", Some("wxid_bob")),
-            // 引用一条「带引用的图片」：被引用内容是（转义后的）XML，且里面还嵌着一层 <refermsg>
+            // a quote of an image that carries a quote: the quoted content is (escaped) XML with another <refermsg>
+            // inside
             row(6, 1700000005, 244813135921, &format!("wxid_bob:\n<msg><appmsg><title>好看</title><type>57</type><refermsg><type>3</type><content>wxid_me:\n{quote_inner}</content><displayname>Me Nick</displayname><svrid>1</svrid></refermsg></appmsg></msg>"), Some("wxid_bob")),
-            // 正文里的 "4:1" 不是发送者前缀
+            // "4:1" in the text is not a sender prefix
             row(7, 1700000006, 1, "4:1", Some("wxid_bob")),
         ];
         let msgs = collect_rows(
@@ -827,8 +839,8 @@ mod tests {
         assert_eq!(t[6], "4:1");
     }
 
-    /// 各格式共用同一套文本：SQL / Excel 行 / 导出器 txt 与 JSON 一致；ChatLab 链接用 Markdown、
-    /// 系统消息不再包裹；WeClone 丢弃引用消息。
+    /// The formats share one text: the SQL and Excel rows and the exporter's txt match the JSON; ChatLab writes links
+    /// as Markdown and leaves system messages unwrapped; WeClone drops quotes.
     #[test]
     fn formats_share_message_text() {
         let rows = vec![
@@ -872,7 +884,7 @@ mod tests {
             settings: Settings::default(),
         };
         let sys = |t: &str| format!("[{}: {t}]", chrome("系统", "System"));
-        // 导出器 txt / SQL（plain_row_content）与 JSON（message_text）一致
+        // the exporter's txt and SQL (plain_row_content) match the JSON (message_text)
         for m in &msgs {
             assert_eq!(
                 ex.plain_row_content(m, &MsgXml::new(&m.content)).0,
@@ -894,7 +906,7 @@ mod tests {
                 "sql: {want}\n{sql}"
             );
         }
-        // ChatLab：链接 Markdown，系统消息不包裹
+        // ChatLab: links as Markdown, system messages unwrapped
         let chatlab = ex.build_chatlab(&msgs).to_string();
         assert!(
             chatlab.contains("[Doc](https://example.com/x)"),
@@ -902,13 +914,13 @@ mod tests {
         );
         assert!(chatlab.contains("\\\"Bob\\\" 撤回了一条消息"), "{chatlab}");
         assert!(!chatlab.contains(&sys("\"Bob\"")), "{chatlab}");
-        // WeClone：引用消息不进训练数据，其余同样的写法
+        // WeClone: quotes stay out of the training data, the rest is written the same way
         let weclone = ex.render_weclone(&msgs);
         assert!(!weclone.contains("好的"), "{weclone}");
         assert!(weclone.contains("[语音消息]"), "{weclone}");
     }
 
-    /// 常见消息类型的快速路径与完整流程结果一致。
+    /// The fast path of the common kinds of message gives what the full path gives.
     #[test]
     fn plain_message_text_matches_the_full_path() {
         let samples: Vec<(i64, &str, Option<&str>)> = vec![
@@ -967,7 +979,8 @@ mod tests {
             };
             let fast = plain_message_text(&msg)
                 .unwrap_or_else(|| panic!("no fast path: {ty} {content:?}"));
-            // 完整流程：内容里夹一个 appmsg 字样会关掉快速路径，所以改走 message_text_generic
+            // the full path: `message_text_generic` directly, since content mentioning appmsg would turn the fast
+            // path off
             let full = ex.message_text_generic(
                 &msg,
                 &MsgXml::new(&msg.content),
@@ -980,7 +993,7 @@ mod tests {
                 assert_eq!(fast, expected, "{content:?}");
             }
         }
-        // 含 appmsg / sysmsg / refermsg 的内容不走快速路径
+        // content with appmsg, sysmsg or refermsg in it takes the full path
         for k in ["appmsg", "sysmsg", "refermsg"] {
             let msg = ExportMsg {
                 local_type: 1,

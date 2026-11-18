@@ -549,9 +549,11 @@ fn report_wait(event: WaitEvent) {
 static KEY_DB_INTERRUPTED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-/// Ends `key db` as Ctrl+C does, from another thread: while it waits for WeChat it stops waiting, and a hook it has
-/// set restores WeChat's debug registers and detaches first, so nothing of it is left in WeChat (#287). It ends
-/// with `user_interrupt`. A hook may be about to be set when this is called: call it again until the command ends.
+/// Ends `key db` as Ctrl+C does, from another thread.
+///
+/// While it waits for WeChat it stops waiting, and a hook it has set restores WeChat's debug registers and detaches
+/// first, so nothing of it is left in WeChat (#287). It ends with `user_interrupt`. A hook may be about to be set when
+/// this is called: call it again until the command ends.
 pub fn interrupt_key_db() {
     KEY_DB_INTERRUPTED.store(true, std::sync::atomic::Ordering::Release);
     #[cfg(all(windows, target_arch = "x86_64"))]

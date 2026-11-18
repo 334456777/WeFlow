@@ -1,7 +1,7 @@
 //! The synthetic account `bun run dev` in `web/` serves (#333): made-up people, chats and pictures in real encrypted
 //! databases, so the page can be worked on and tried by hand without a WeChat account.
 //!
-//! usage: dev_account <work dir> --weflow <weflow binary>
+//! Usage: `dev_account <work dir> --weflow <weflow binary>`
 //!
 //! `<work dir>/data` holds the account and `<work dir>/home` the WeFlow home pointing at it; both are built again only
 //! when [`VERSION`] changes. The home is printed on stdout.

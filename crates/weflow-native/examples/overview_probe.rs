@@ -1,5 +1,5 @@
 //! Read-only probe of the native backend against a real account (prints counts, never message text).
-//! usage: overview_probe <account_dir> <key_file>
+//! Usage: `overview_probe <account_dir> <key_file>`
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,

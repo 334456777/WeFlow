@@ -28,8 +28,8 @@ impl QuoteInfo {
 /// The `<refermsg>` block of a quote, in content whose entities are decoded.
 pub(crate) fn refermsg_xml(normalized: &str) -> Option<String> {
     let start = memchr::memmem::find(normalized.as_bytes(), b"<refermsg>")?;
-    // 被引用的是「带引用的图片」等消息时，其 content 里还嵌着一层（已解码的）<refermsg>，
-    // 取最后一个结束标签才是外层，否则 type / displayname 会被截掉。
+    // when the quoted message carries a quote itself (such as an image with a quote), its content holds another
+    // (decoded) <refermsg>: the outer block ends at the last closing tag, or its type and displayname would be cut off
     let end = memchr::memmem::rfind(normalized.as_bytes(), b"</refermsg>")?;
     if end < start {
         return None;
@@ -140,7 +140,7 @@ pub(super) fn quote_info_of(refer: impl AsRef<str>) -> QuoteInfo {
         "48" => "[位置]".into(),
         _ => quoted_other_preview(&refer_content),
     };
-    // 被引用的文字本身是 XML（如引用了一条夹带图片的消息）时，换成可读预览
+    // quoted text that is XML itself (a quote of a message carrying an image, say) becomes a readable preview
     let display = if looks_like_xml_payload(&display) {
         quoted_xml_preview(&display)
     } else {
@@ -155,7 +155,7 @@ pub(super) fn quote_info_of(refer: impl AsRef<str>) -> QuoteInfo {
     }
 }
 
-/// 被引用消息的内容本身是 XML（引用的是另一条引用、文件、图片、笔记……）时的可读预览。
+/// A readable preview of quoted content that is XML itself (a quote of another quote, a file, an image, a note…).
 fn quoted_xml_preview(content: &str) -> String {
     let normalized = normalize_app_message_content(content);
     let title = extract_xml_value(&normalized, "title");
@@ -202,7 +202,8 @@ fn quoted_xml_preview(content: &str) -> String {
     }
 }
 
-/// 微信会把过长的被引用内容截断，XML 可能没有结尾标签，所以只看开头。
+/// Whether `text` is an XML payload, by its start alone: WeChat cuts long quoted content short, so the XML may have
+/// no closing tag.
 fn looks_like_xml_payload(text: &str) -> bool {
     let head = text.trim_start();
     [
@@ -218,7 +219,8 @@ fn looks_like_xml_payload(text: &str) -> bool {
     .any(|p| head.starts_with(p))
 }
 
-/// 引用里「被引用内容」的文本；XML 内容改成可读预览，普通文本去掉清洗后原样返回。
+/// The text of a quote's quoted content: XML becomes a readable preview, other text comes back sanitized, and
+/// content that is empty or names a wxid is `[消息]`.
 fn quoted_other_preview(refer_content: &str) -> String {
     let decoded = decode_html_entities(refer_content);
     let body = strip_sender_prefix(&decoded);

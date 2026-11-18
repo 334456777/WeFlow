@@ -15,6 +15,7 @@ use crate::db::hex;
 pub type Spread = (f64, f64, f64);
 
 /// The shapes the account copies from a real one (#488, #605): shares and sizes only, never a name or a message.
+///
 /// [`Profile::default`] is the one measured for #488 (the constants below); a machine may calibrate its own from a
 /// real account (`account_profile_probe --profile-out`), which stays on that machine and is read by [`Profile::load`].
 /// What it holds is never shown: a benchmark result names it by [`Profile::hash`] and the day it was measured.

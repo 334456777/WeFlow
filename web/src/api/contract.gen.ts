@@ -112,8 +112,9 @@ export interface ParsedMessage {
 }
 
 /**
- * A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`): its
- * columns read with their types, the text inflated and decoded, the sender resolved (#257, #492).
+ * A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`).
+ *
+ * Its columns are read with their types, the text inflated and decoded, the sender resolved (#257, #492).
  */
 export interface MessageRow {
   /** Unique within its message database (`shard`), not across them. */
@@ -186,8 +187,10 @@ export interface MessageLookup {
 }
 
 /**
- * A message as the query commands list it (`chat resources`, `chat images`, `chat media-stream`…): the main fields
- * of its row, its text and the keys of its media. An optional field is left out when the message has none.
+ * A message as the query commands list it (`chat resources`, `chat images`, `chat media-stream`…).
+ *
+ * It holds the main fields of its row, its text and the keys of its media. An optional field is left out when the
+ * message has none.
  */
 export interface MessageView {
   localId: number;
@@ -509,9 +512,10 @@ export interface MemberMessages {
 }
 
 /**
- * A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399): its text and the
- * keys of its media, links, cards and so on, parsed from the row. An optional field is left out when the message has
- * none; times are Unix seconds.
+ * A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399).
+ *
+ * It holds its text and the keys of its media, links, cards and so on, parsed from the row. An optional field is
+ * left out when the message has none; times are Unix seconds.
  */
 export interface ChatMessage {
   /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
@@ -1529,8 +1533,9 @@ export interface ImageMemKey {
 }
 
 /**
- * What `key processes` (macOS) answers: the running WeChat clients, the main
- * application first. Helper, AppEx and crashpad processes are left out.
+ * What `key processes` (macOS) answers: the running WeChat clients, the main application first.
+ *
+ * Helper, `WeChatAppEx` and crashpad processes are left out.
  */
 export interface WeChatProcesses {
   processes: WeChatProcess[];
@@ -1841,8 +1846,10 @@ export interface DbConnection {
 }
 
 /**
- * My footprint over a range of days (`insight footprint`): who I talked with and replied to, and where I was
- * @-mentioned. Its keys are the native layer's, in snake_case. Times are Unix seconds, 0 where there is none.
+ * My footprint over a range of days (`insight footprint`).
+ *
+ * It says who I talked with and replied to, and where I was @-mentioned. Its keys are the native layer's, in
+ * `snake_case`. Times are Unix seconds, 0 where there is none.
  */
 export interface Footprint {
   summary: FootprintSummary;

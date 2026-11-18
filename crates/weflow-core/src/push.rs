@@ -1148,9 +1148,10 @@ struct PushPayload<'a> {
     timestamp: i64,
 }
 
-/// SSE fan-out with a replay buffer (`broadcastMessagePush` of the HTTP service):
-/// every payload gets an increasing id, is kept for 10 minutes / 1000 events and can be
-/// replayed to clients that reconnect with `Last-Event-ID`.
+/// SSE fan-out with a replay buffer (`broadcastMessagePush` of the HTTP service).
+///
+/// Every payload gets an increasing id, is kept for 10 minutes / 1000 events and can be replayed to clients that
+/// reconnect with `Last-Event-ID`.
 pub struct PushBroker {
     inner: std::sync::Mutex<BrokerInner>,
     tx: broadcast::Sender<(u64, std::sync::Arc<String>)>,

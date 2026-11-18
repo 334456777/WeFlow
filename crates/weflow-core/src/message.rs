@@ -143,7 +143,8 @@ fn extract_amount_from_text(text: &str) -> Option<String> {
         .map(|c| rx(r"\s+").replace_all(&c[1], "").to_string())
 }
 
-/// 解码 `&#x0A;` / `&#32;` 这类数字实体（笔记正文里的换行、空格就是这样存的）。
+/// `text` with numeric entities such as `&#x0A;` and `&#32;` decoded (a note's body stores line breaks and spaces
+/// this way).
 fn decode_numeric_entities(text: &str) -> String {
     rx(r"&#(?:[xX]([0-9a-fA-F]+)|([0-9]+));")
         .replace_all(text, |c: &regex::Captures| {
@@ -159,8 +160,10 @@ fn decode_numeric_entities(text: &str) -> String {
         .into_owned()
 }
 
-/// appmsg type 24 是微信「笔记」。`<des>` 只有被截断的预览，完整正文在 `<recorditem>` 里
-/// 每个 `datatype="1"` 的 `<datadesc>`（文本段），`datatype="2"` 是图片。
+/// The text of a WeChat note (appmsg type 24).
+///
+/// `<des>` holds only a truncated preview; the full body is in `<recorditem>`, one `<datadesc>` per `datatype="1"`
+/// item (a text section), while a `datatype="2"` item is an image.
 fn note_text(normalized: &str, title: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
     for c in rx(r#"(?is)<dataitem\b[^>]*\bdatatype\s*=\s*["']?(\d+)["']?[^>]*>(.*?)</dataitem>"#)
@@ -749,7 +752,7 @@ mod tests {
         let xml = "<msg><appmsg><title /><des>预览被截断…</des><type>24</type><recorditem><![CDATA[<recordinfo><desc>预览</desc><datalist count=\"3\"><dataitem datatype=\"8\" dataid=\"a\"><fileext>.htm</fileext></dataitem><dataitem datatype=\"1\" dataid=\"b\"><datadesc>第一段&#x0A;第&#x20;二行</datadesc></dataitem><dataitem datatype=\"2\" dataid=\"c\"></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>";
         let t = parse_message_content(xml, 103_079_215_153, None, None, None).unwrap();
         assert_eq!(t, "[笔记]\n第一段\n第 二行\n[图片]");
-        // 没有 recorditem 时退回 <des>
+        // without a recorditem, the <des>
         let t = parse_message_content(
             "<msg><appmsg><title /><des>只有预览</des><type>24</type></appmsg></msg>",
             103_079_215_153,

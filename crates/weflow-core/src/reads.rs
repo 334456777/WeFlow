@@ -1,6 +1,8 @@
-//! The reads the CLI and the command API share (#397): one typed request each, run on a [`ServiceHub`]. The CLI builds
-//! them from its arguments and the command API from the parameters of a request, so neither depends on how the other
-//! parses; both answer what [`Read::run`] returns, serialized at their own edge.
+//! The reads the CLI and the command API share (#397), one typed request each.
+//!
+//! Each read runs on a [`ServiceHub`]. The CLI builds them from its arguments and the command API from the
+//! parameters of a request, so neither depends on how the other parses; both answer what [`Read::run`] returns,
+//! serialized at their own edge.
 
 use std::path::PathBuf;
 

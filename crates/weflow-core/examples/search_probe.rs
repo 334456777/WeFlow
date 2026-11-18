@@ -1,5 +1,5 @@
 //! Where the time of a search in one conversation goes, on an existing configured account (issue #153).
-//! Usage: search_probe <isolated config.json> [keyword]
+//! Usage: `search_probe <isolated config.json> [keyword]`
 //! Searches the conversation with the most messages. Stdout holds only aggregate counts and timings: no key,
 //! identifier, message content or local path is printed.
 #![expect(
@@ -108,10 +108,10 @@ fn scan(
     Ok((ms(t), hits, rows, blobs, inflating))
 }
 
-/// (sort_seq, local_id) of a message, the key that matches it to WeChat's index.
+/// (`sort_seq`, `local_id`) of a message, the key that matches it to WeChat's index.
 type Key = (i64, i64);
 
-/// The rows of WeChat's full-text index for one conversation: key, local_type, text.
+/// The rows of WeChat's full-text index for one conversation: key, `local_type`, text.
 fn fts_rows(
     account: &Account,
     fts: &Path,

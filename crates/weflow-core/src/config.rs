@@ -1,3 +1,6 @@
+//! WeFlow's configuration: the config file with its profiles and the saved options of `serve`, and the folders
+//! WeFlow keeps its files in.
+
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -11,10 +14,14 @@ use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
 
+/// Where a run of `weflow` keeps its files, and which version it is.
 #[derive(Debug, Clone)]
 pub struct AppContext {
+    /// WeFlow's home folder: the config file's folder, and the parent of the cache.
     pub home_dir: PathBuf,
+    /// The config file.
     pub config_path: PathBuf,
+    /// The version of this `weflow`.
     pub version: String,
 }
 
@@ -44,6 +51,7 @@ impl AppContext {
         })
     }
 
+    /// The cache folder, `cache` in the home folder.
     pub fn cache_dir(&self) -> PathBuf {
         self.home_dir.join("cache")
     }
@@ -694,8 +702,10 @@ fn default_home_dir() -> AppResult<PathBuf> {
         .ok_or_else(|| AppError::config("failed to locate platform config directory"))
 }
 
-/// The account id of an account folder's name (`cleanAccountDirName`, `normalizeAccountId`): `wxid_abc_1a2b` is
-/// `wxid_abc` and `name_1a2b` is `name`; a name without the four-character suffix WeChat adds is the id already.
+/// The account id of an account folder's name (`cleanAccountDirName`, `normalizeAccountId`).
+///
+/// `wxid_abc_1a2b` is `wxid_abc` and `name_1a2b` is `name`; a name without the four-character suffix WeChat adds is
+/// the id already.
 pub fn clean_account_dir_name(dir_name: &str) -> String {
     let trimmed = dir_name.trim();
     if trimmed
@@ -811,9 +821,10 @@ fn is_known_key(key: &str) -> bool {
             .is_some_and(|k| ServeSettings::KEYS.contains(&k))
 }
 
-/// For a key `config set` does not know but that is spelt almost as one it does (`decrypt_ky`, `dbpath`), which
-/// one that is (#813). Such a key is still saved, with the profile's other settings: the WebUI keeps settings of its
-/// own there.
+/// The known key that `key` looks like a misspelling of (`decrypt_ky`, `dbpath`), when `config set` does not know it
+/// (#813).
+///
+/// Such a key is still saved, with the profile's other settings: the WebUI keeps settings of its own there.
 pub fn near_known_key(key: &str) -> Option<String> {
     let bare = key.split_once('.').map_or(key, |(_, k)| k);
     if is_known_key(bare) {

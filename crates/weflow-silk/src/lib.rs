@@ -207,6 +207,10 @@ pub mod testenc {
     }
 
     /// Encodes one second of a 440 Hz tone with the vendored encoder into the `.silk` container.
+    ///
+    /// # Panics
+    ///
+    /// When the encoder fails: `rate` must be a sample rate SILK encodes (8, 12, 16 or 24 kHz).
     pub fn encode_tone(rate: i32) -> Vec<u8> {
         let mut size = 0;
         // SAFETY: `size` is a live local the SDK writes the encoder's size to.

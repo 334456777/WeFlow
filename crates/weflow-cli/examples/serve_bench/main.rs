@@ -1,7 +1,7 @@
 //! Benchmark of the command API (`weflow serve`) on two accounts, both required: a synthetic one, whose content is
 //! known, checks that the answers are right; a real one measures how fast they come.
 //!
-//! usage: serve_bench <work dir> --home <WEFLOW_HOME> [--weflow PATH] [--runs N] [--messages N] [--sessions N]
+//! Usage: `serve_bench <work dir> --home <WEFLOW_HOME> [--weflow PATH] [--runs N] [--messages N] [--sessions N]`
 //!                    [--contacts N] [--keyword K] [--save FILE] [--compare FILE] [--tolerance X]
 //!                    [-- <more `weflow serve` arguments>]
 //!

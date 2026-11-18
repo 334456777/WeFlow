@@ -334,7 +334,7 @@ impl ServiceHub {
     }
 
     /// The avatars of `users` written to `<dir>/avatars/`: WeChat's copy on this computer, else, with
-    /// [`AvatarSource::Download`], the picture at the contact's avatar address. Returns
+    /// [`AvatarSource::Download`](api::AvatarSource::Download), the picture at the contact's avatar address. Returns
     /// `{ username: <prefix>/avatars/<file> }` for those written; the others keep the page's initial.
     async fn write_avatars(
         &self,
@@ -581,7 +581,7 @@ fn put_media(
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let keep = match files.get(&full) {
                 Some(have) => *have >= rank,
-                // left by an earlier export into the same folder: kept, as before
+                // left by an earlier export into the same folder: kept
                 None if full.exists() => {
                     files.insert(full.clone(), (true, u64::MAX));
                     true

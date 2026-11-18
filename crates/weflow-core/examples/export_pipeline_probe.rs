@@ -1,6 +1,6 @@
 //! Export pipeline probe on a synthetic encrypted account; no WeChat data is opened.
 //!
-//! usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N]
+//! Usage: `export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N]`
 //!                              [--mode all|full|stages|read|keys] [--connections N]
 //!
 //! `<work dir>/data` is wiped and rebuilt: one group with N messages (default 200000) spread evenly over the
@@ -126,7 +126,7 @@ fn leak(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
 
-/// (local_type, content, stored compressed) of the `i`-th synthetic message.
+/// (`local_type`, content, stored compressed) of the `i`-th synthetic message.
 fn message(i: i64) -> (i64, String, bool) {
     let r = (i.wrapping_mul(2_654_435_761) >> 7) & 0xffff;
     let words: Vec<char> =

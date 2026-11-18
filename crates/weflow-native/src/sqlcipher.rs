@@ -205,8 +205,10 @@ fn fingerprint(raw_key: &[u8; 32]) -> [u8; 32] {
     Sha256::digest(raw_key).into()
 }
 
-/// The page keys [`shared_cipher`] derived so far, for [`import_keys`] in a process this one starts. A page key
-/// opens its database just as the raw key does: the bytes are meant for a pipe to that process, nothing else.
+/// The page keys [`shared_cipher`] derived so far, for [`import_keys`] in a process this one starts.
+///
+/// A page key opens its database just as the raw key does: the bytes are meant for a pipe to that process, nothing
+/// else.
 pub fn export_keys() -> Vec<u8> {
     let slots: Vec<_> = DERIVED
         .get_or_init(Default::default)
@@ -230,8 +232,9 @@ pub fn export_keys() -> Vec<u8> {
     out
 }
 
-/// Take the page keys of [`export_keys`], from the process that started this one, instead of deriving them again;
-/// only the first call counts. A key is used for a file only when it opens it.
+/// Takes the page keys of [`export_keys`] from the process that started this one, so they are not derived again.
+///
+/// Only the first call counts. A key is used for a file only when it opens it.
 pub fn import_keys(bytes: &[u8]) {
     let _ = IMPORTED.set(parse_keys(bytes));
 }
@@ -267,8 +270,10 @@ fn verify_key_with(
     verify_key(db, raw_key)
 }
 
-/// `verify_key`, derived once per process for each raw key and salt: the 256,000 rounds take about 0.1 s, and
-/// the same file is opened again after its snapshot was dropped, or by two threads at once. A thread asking for keys
+/// The page cipher `verify_key` gives, derived once per process for each raw key and salt.
+///
+/// The 256,000 rounds take about 0.1 s, and the same file is opened again after its snapshot was dropped, or by two
+/// threads at once. A thread asking for keys
 /// another one is deriving waits for them instead of deriving them too, and keys handed over by the process that
 /// started this one ([`import_keys`]) are not derived at all.
 pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
@@ -507,6 +512,12 @@ pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> R
     reason = "test values are known to fit, or are meant to wrap"
 )]
 pub mod testutil {
+    //! Encrypted and plain database images for tests.
+    //!
+    //! # Panics
+    //!
+    //! The helpers panic when the setup they build fails, which fails the test that asked for it.
+
     use super::*;
     use aes::cipher::BlockModeEncrypt;
     use rusqlite::Connection;
@@ -550,11 +561,11 @@ pub mod testutil {
         plain_image(&conn)
     }
 
+    /// The plain image of a database made by [`plain_connection`], as it is now.
     #[expect(
         clippy::expect_used,
         reason = "test fixture: a failure means the test setup is broken"
     )]
-    /// The plain image of a database made by [`plain_connection`], as it is now.
     pub fn plain_image(conn: &Connection) -> Vec<u8> {
         let data = conn
             .serialize(rusqlite::MAIN_DB)
@@ -589,6 +600,7 @@ pub mod testutil {
         conn
     }
 
+    /// A plain SQLite image with one table, `t(id integer primary key, v text)`, holding `rows` in order from id 0.
     #[expect(
         clippy::expect_used,
         reason = "test fixture: a failure means the test setup is broken"

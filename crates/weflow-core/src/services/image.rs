@@ -145,9 +145,11 @@ fn lower_file_name(path: &Path) -> Option<String> {
     path.file_name().map(|n| n.to_string_lossy().to_lowercase())
 }
 
-/// Which of the files WeChat keeps of an image (#194): `Thumb`, the thumbnail a chat shows (`<md5>_t.dat`); `Normal`,
-/// the image opened (`<md5>.dat`); `Hd`, the original WeChat downloads on View original (`<md5>_h.dat`); `Best`, the
-/// best of them on this computer. `Normal` falls back to the best there is, `Hd` to nothing.
+/// Which of the files WeChat keeps of an image (#194).
+///
+/// `Thumb` is the thumbnail a chat shows (`<md5>_t.dat`); `Normal`, the image opened (`<md5>.dat`); `Hd`, the
+/// original WeChat downloads on View original (`<md5>_h.dat`); `Best`, the best of them on this computer. `Normal`
+/// falls back to the best there is, `Hd` to nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageVariant {
     Best,

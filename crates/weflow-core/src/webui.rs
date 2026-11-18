@@ -1,6 +1,7 @@
-//! The WebUI's versions (issue #148): built pages published as OCI artifacts on GHCR
-//! (`ghcr.io/334456777/weflow-web:<version>`), downloaded, checked and kept by `weflow` itself, without Docker, ORAS
-//! or Node.js.
+//! The WebUI's versions (issue #148), downloaded, checked and kept by `weflow` itself.
+//!
+//! The versions are built pages published as OCI artifacts on GHCR (`ghcr.io/334456777/weflow-web:<version>`);
+//! fetching them needs no Docker, ORAS or Node.js.
 //!
 //! - Each version is kept with WeFlow's other caches, in `<home>/cache/web/<version>/` (the page and its
 //!   `weflow-web.json`); the one picked with `weflow web use` is named in `<home>/cache/web/current`.

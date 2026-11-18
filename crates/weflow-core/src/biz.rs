@@ -1,3 +1,5 @@
+//! Official accounts: the accounts followed, the articles they send, and the notices of WeChat Pay.
+
 use serde_json::Value;
 
 use crate::contract::{BizArticle, BizMessage, PayRecord};

@@ -2,9 +2,10 @@
 
 use super::xml::{extract_xml_value, normalize_app_message_content};
 
-/// Whether two identifiers are the same person, by the database layer's rule
-/// ([`weflow_native::db::same_identity`]): case-insensitive, and a bare wxid matches its account folder name
-/// (`wxid_abc` and `wxid_abc_1a2b`), so the export and the database agree on who sent what.
+/// Whether two identifiers are the same person, by the database layer's rule ([`weflow_native::db::same_identity`]).
+///
+/// The comparison is case-insensitive, and a bare wxid matches its account folder name (`wxid_abc` and
+/// `wxid_abc_1a2b`), so the export and the database agree on who sent what.
 pub fn is_same_wxid(lhs: &str, rhs: &str) -> bool {
     weflow_native::db::same_identity(lhs, rhs)
 }

@@ -422,7 +422,7 @@ fn parsed_page(
     serde_json::json!(hub.parsed_rows(rows, session))
 }
 
-/// (local_id, database) of each row of a page.
+/// (`local_id`, database) of each row of a page.
 fn places(page: &serde_json::Value) -> Vec<(i64, String)> {
     page.as_array()
         .unwrap()
