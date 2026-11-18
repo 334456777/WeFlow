@@ -5,24 +5,28 @@ use std::io;
 use serde::Serialize;
 use serde_json::ser::Formatter;
 
-/// `serde_json`'s compact format with every `</` inside a string written as `<\/`, so the JSON cannot close the
-/// `<script>` element it is embedded in.
+/// `serde_json`'s compact format with every `<` inside a string written as `\u003c`. The HTML tokenizer then sees no
+/// `<` in the JSON at all: no `</script` that would close the `<script>` element it is embedded in, and no `<!--`
+/// followed by `<script` that would put the element in its double-escaped state, where the page's own `</script>`
+/// no longer closes it.
 struct ScriptSafe;
 
 impl Formatter for ScriptSafe {
-    // `<` and `/` are never escaped, so a `</` of the text always lies within one fragment
+    // outside strings JSON has no `<`; inside them serde_json never escapes it, so it reaches this method
     fn write_string_fragment<W: ?Sized + io::Write>(
         &mut self,
         writer: &mut W,
         fragment: &str,
     ) -> io::Result<()> {
-        let mut rest = fragment;
-        while let Some(at) = rest.find("</") {
-            writer.write_all(&rest.as_bytes()[..=at])?;
-            writer.write_all(b"\\")?;
-            rest = &rest[at + 1..];
+        let mut parts = fragment.split('<');
+        if let Some(first) = parts.next() {
+            writer.write_all(first.as_bytes())?;
         }
-        writer.write_all(rest.as_bytes())
+        for part in parts {
+            writer.write_all(b"\\u003c")?;
+            writer.write_all(part.as_bytes())?;
+        }
+        Ok(())
     }
 }
 
@@ -176,9 +180,16 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Script-safe JSON is compact JSON with every `</` written as `<\/`, also next to escaped characters.
+    fn script_json(value: &serde_json::Value) -> String {
+        let mut out = Vec::new();
+        write_script_json(&mut out, value).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    /// Script-safe JSON is compact JSON with every `<` written as `\u003c`, also next to escaped characters, and
+    /// reads back as the same value.
     #[test]
-    fn script_json_escapes_every_closing_tag() {
+    fn script_json_escapes_every_opening_angle_bracket() {
         for text in [
             "</script>",
             "a</b></c>",
@@ -186,13 +197,36 @@ mod tests {
             "\"</\"\n</",
             "<\\/",
             "</",
+            "<",
+            "a<b<",
             "plain",
         ] {
             let value = json!({ "b": text, "</k": [text, 1] });
-            let mut out = Vec::new();
-            write_script_json(&mut out, &value).unwrap();
-            let want = serde_json::to_string(&value).unwrap().replace("</", "<\\/");
-            assert_eq!(String::from_utf8(out).unwrap(), want, "{text:?}");
+            let got = script_json(&value);
+            let want = serde_json::to_string(&value)
+                .unwrap()
+                .replace('<', "\\u003c");
+            assert_eq!(got, want, "{text:?}");
+            assert!(!got.contains('<'), "{got}");
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&got).unwrap(),
+                value
+            );
+        }
+    }
+
+    /// `<!--` and then `<script` in a message would put the page's `<script>` element in its double-escaped state,
+    /// where the page's own `</script>` does not close it: neither reaches the page.
+    #[test]
+    fn script_json_never_opens_a_comment_or_a_script() {
+        let text = "<!--<script>alert(1)</script>-->";
+        let got = script_json(&json!({ "c": text }));
+        assert_eq!(
+            got,
+            "{\"c\":\"\\u003c!--\\u003cscript>alert(1)\\u003c/script>-->\"}"
+        );
+        for tag in ["<!--", "<script", "</script"] {
+            assert!(!got.contains(tag), "{tag} in {got}");
         }
     }
 }
