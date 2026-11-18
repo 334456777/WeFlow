@@ -40,44 +40,35 @@ impl ServiceHub {
             .danger_accept_invalid_certs(crate::http_client::sticker_certificate_unchecked(cdn_url))
             .build()
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;
-        let mut url = cdn_url.to_string();
-        for _ in 0..5 {
-            let resp = client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
-            let code = resp.status().as_u16();
-            if code == 301 || code == 302 {
-                if let Some(loc) = resp.headers().get("location").and_then(|v| v.to_str().ok()) {
-                    url = loc.to_string();
-                    continue;
-                }
-            }
-            if code != 200 {
-                return Err(AppError::runtime("download failed"));
-            }
-            let bytes = resp
-                .bytes()
-                .await
-                .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
-            if bytes.is_empty() {
-                return Err(AppError::runtime("download failed"));
-            }
-            let ext = match crate::decrypt::detect_image_extension(&bytes) {
-                ".bin" | ".wxgf" => rx(r"(?i)\.(gif|png|jpe?g|webp)(?:\?|$)")
-                    .captures(&url)
-                    .map(|c| format!(".{}", c[1].to_lowercase()))
-                    .unwrap_or_else(|| ".gif".into()),
-                e => e.to_string(),
-            };
-            let path = dir.join(format!("{key}{ext}"));
-            std::fs::write(&path, &bytes).map_err(|e| {
-                AppError::runtime(format!("failed to write {}: {e}", path.display()))
-            })?;
-            return Ok(path);
+        // the client follows redirects itself (reqwest's default policy): the response is the last one
+        let resp = client
+            .get(cdn_url)
+            .send()
+            .await
+            .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
+        if resp.status().as_u16() != 200 {
+            return Err(AppError::runtime("download failed"));
         }
-        Err(AppError::runtime("download failed"))
+        // where the sticker came from, after the redirects: its name may tell the format the bytes do not
+        let url = resp.url().to_string();
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
+        if bytes.is_empty() {
+            return Err(AppError::runtime("download failed"));
+        }
+        let ext = match crate::decrypt::detect_image_extension(&bytes) {
+            ".bin" | ".wxgf" => rx(r"(?i)\.(gif|png|jpe?g|webp)(?:\?|$)")
+                .captures(&url)
+                .map(|c| format!(".{}", c[1].to_lowercase()))
+                .unwrap_or_else(|| ".gif".into()),
+            e => e.to_string(),
+        };
+        let path = dir.join(format!("{key}{ext}"));
+        std::fs::write(&path, &bytes)
+            .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
+        Ok(path)
     }
 
     async fn export_media_for_message(

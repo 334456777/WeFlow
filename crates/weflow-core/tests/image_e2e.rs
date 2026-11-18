@@ -1189,6 +1189,67 @@ async fn voices_of_one_local_id_in_two_message_databases_get_their_own_files() {
     assert_ne!(first, second, "each file holds its own message's voice");
 }
 
+/// A sticker whose address redirects is downloaded from where the redirects end, and when its bytes do not tell its
+/// format, that address's name does.
+#[tokio::test]
+async fn a_redirected_sticker_takes_its_extension_from_the_final_address() {
+    use std::io::{Read, Write};
+    use weflow_native::fixture::{MsgSpec, SessionSpec, T0};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut request = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => request.extend_from_slice(&buf[..n]),
+                }
+            }
+            let response: &[u8] = if request.starts_with(b"GET /sticker ") {
+                b"HTTP/1.1 302 Found\r\nLocation: /cdn/real.png\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            } else if request.starts_with(b"GET /cdn/real.png ") {
+                b"HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nnot an image"
+            } else {
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            };
+            let _ = stream.write_all(response);
+        }
+    });
+    let md5 = md5_hex("redirected sticker");
+    let sticker = format!("<msg><emoji md5=\"{md5}\" cdnurl=\"http://{addr}/sticker\"/></msg>");
+    let (root, hub, _fixture) = common::custom_hub("sticker-redirect", |f| {
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 47,
+        }]);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![MsgSpec::text(1, "wxid_bob", T0, &sticker).of_type(47)],
+            )],
+        );
+    });
+    let out = root.join("exported");
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &out, "emoji", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(r["exported"].as_i64(), Some(1), "{r}");
+    assert_eq!(
+        std::fs::read(out.join(format!("wxid_bob/emojis/{md5}.png"))).unwrap(),
+        b"not an image"
+    );
+}
+
 /// WeChat's media index (`hardlink.db`) only adds to what the folders of the conversation hold (#651): a better
 /// rendition it names wins, an image only it knows is found, and what the folders find is kept otherwise, also for
 /// the many images the index has no row for.
