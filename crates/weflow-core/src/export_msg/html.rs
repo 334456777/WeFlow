@@ -676,12 +676,14 @@ struct VideoInfo {
 /// How much of an MP4's `moov` box is read: it holds the tables of every sample, a few megabytes for a long video.
 const MOOV_MAX: u64 = 32 * 1024 * 1024;
 
-/// [`VideoInfo`] of an MP4 from its `moov` box, wherever in the file it is.
+/// [`VideoInfo`] of an MP4 from its `moov` box, wherever in the file it is. The boxes are walked by the sizes the
+/// file gives (0: the last box, up to the end of the file), each at least as long as its header, so every step moves
+/// forward; a size shorter than the header or one that runs past the largest offset ends the walk.
 fn mp4_info(path: &Path) -> Option<VideoInfo> {
     let mut f = File::open(path).ok()?;
     let len = f.metadata().ok()?.len();
     let mut at = 0u64;
-    while at + 8 <= len {
+    while at.checked_add(8).is_some_and(|head_end| head_end <= len) {
         let mut head = [0u8; 16];
         f.seek(SeekFrom::Start(at)).ok()?;
         f.read_exact(&mut head[..8]).ok()?;
@@ -703,7 +705,7 @@ fn mp4_info(path: &Path) -> Option<VideoInfo> {
             f.take(size.min(MOOV_MAX)).read_to_end(&mut moov).ok()?;
             return mp4_info_of(&moov);
         }
-        at += size;
+        at = at.checked_add(size)?;
     }
     None
 }
@@ -833,5 +835,21 @@ mod tests {
         let mdat = [24u32.to_be_bytes().as_slice(), b"mdat", &[7u8; 16]].concat();
         std::fs::write(&path, [mdat.as_slice(), &moov].concat()).unwrap();
         assert_eq!(mp4_info(&path).map(|v| v.width), Some(360));
+    }
+
+    #[test]
+    fn a_box_size_that_wraps_around_ends_the_walk() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-mp4-bad");
+        let path = dir.join("bad.mp4");
+        let free = [16u32.to_be_bytes().as_slice(), b"free", &[0u8; 8]].concat();
+        // at offset 16 a 64-bit size that brings the next box back to offset 0
+        let back_to_start = (u64::MAX - 15).to_be_bytes();
+        let wrapping = [1u32.to_be_bytes().as_slice(), b"free", &back_to_start].concat();
+        std::fs::write(&path, [free.as_slice(), &wrapping, &[0u8; 16]].concat()).unwrap();
+        assert_eq!(mp4_info(&path), None);
+        // a 64-bit size shorter than its header
+        let short = [1u32.to_be_bytes().as_slice(), b"free", &8u64.to_be_bytes()].concat();
+        std::fs::write(&path, [short.as_slice(), &[0u8; 16]].concat()).unwrap();
+        assert_eq!(mp4_info(&path), None);
     }
 }
