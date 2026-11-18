@@ -163,7 +163,7 @@ impl<T> Newest<T> {
 /// (`mmftstokenizer`), so only the plain `_content` tables behind them are read, with `LIKE`.
 struct FtsIndex {
     path: PathBuf,
-    /// Each `_content` table, with its columns (`c0`…) of [text, local_id, sort_seq, session, create_time].
+    /// Each `_content` table, with its columns (`c0`…) of (text, `local_id`, `sort_seq`, session, `create_time`).
     tables: Vec<(String, [String; 5])>,
     /// The table whose row numbers are the `session_id` of the index.
     users: String,
@@ -231,8 +231,8 @@ fn title_of(xml: &str) -> Option<String> {
     )
 }
 
-/// Where a hit of [`Account::search_messages`] is: its table and local_id when it was scanned, its
-/// conversation, local_id and sort_seq when it comes from WeChat's index.
+/// Where a hit of [`Account::search_messages`] is: its table and `local_id` when it was scanned, its
+/// conversation, `local_id` and `sort_seq` when it comes from WeChat's index.
 fn place(r: &Value) -> String {
     match r.get("_session").and_then(Value::as_str) {
         Some(sid) => format!("{sid}\n{}\n{}", int(r, "local_id"), int(r, "sort_seq")),
@@ -295,7 +295,7 @@ thread_local! {
 }
 
 /// Text messages, and app messages of any kind (`(kind << 32) | 49`): what WeChat's index holds. Each test has its
-/// own `+` to keep SQLite on the sort_seq index, not the type index.
+/// own `+` to keep SQLite on the `sort_seq` index, not the type index.
 const SEARCHABLE_SQL: &str = "(+m.local_type = 1 or (+m.local_type & 4294967295) = 49)";
 
 impl Account {
@@ -343,9 +343,9 @@ impl Account {
         })
     }
 
-    /// The hits of `ix` among `sessions` (with `below`, only those with a sort_seq up to it, and not 0), pushed into
-    /// `hits` as `{sort_seq, create_time, local_id, _session}`; returns the newest sort_seq the index holds for each of
-    /// those sessions it knows.
+    /// The hits of `ix` among `sessions` (with `below`, only those with a `sort_seq` up to it, and not 0), pushed
+    /// into `hits` as `{sort_seq, create_time, local_id, _session}`; returns the newest `sort_seq` the index holds for
+    /// each of those sessions it knows.
     fn search_index(
         &self,
         ix: &FtsIndex,
@@ -664,9 +664,10 @@ impl Account {
         Ok(hits.into_rows())
     }
 
-    /// The hits of one message table under `cond`, matched on [`indexed_text`]: its rows with a sort_seq newest first,
-    /// at most `budget` of them, and with `unsequenced`, the few without one. Also returns, when the budget stopped the
-    /// reading, the sort_seq of the first row left unread: rows above it were all read, not all of those at or below.
+    /// The hits of one message table under `cond`, matched on [`indexed_text`]: its rows with a `sort_seq` newest
+    /// first, at most `budget` of them, and with `unsequenced`, the few without one. Also returns, when the budget
+    /// stopped the reading, the `sort_seq` of the first row left unread: rows above it were all read, not all of those
+    /// at or below.
     #[allow(clippy::too_many_arguments)]
     fn scan_table(
         &self,
@@ -1307,7 +1308,7 @@ mod tests {
                 }
             }
         }
-        // whole rows: the decoded text and the sender
+        // a hit carries its whole row, with the decoded text
         let first = &a.search_messages("pie", None, 1, 0, 0, 0).unwrap()[0].row;
         assert!(first.content.ends_with("Apple pie"));
         assert_eq!(first.sender.as_deref(), Some("wxid_bob"));

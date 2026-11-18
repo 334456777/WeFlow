@@ -1,6 +1,8 @@
-//! Finding the image AES key among the bytes of WeChat's memory: every 16-byte window is tried as a key on the first
-//! encrypted block of a few thumbnails, and a window that turns one of them into the start of an image is a
-//! candidate. The memory readers of `linux_key_helper` and `macos_key_helper` share this search.
+//! Finding the image AES key among the bytes of WeChat's memory.
+//!
+//! Every 16-byte window is tried as a key on the first encrypted block of a few thumbnails, and a window that turns
+//! one of them into the start of an image is a candidate. The memory readers of `linux_key_helper` and
+//! `macos_key_helper` share this search.
 //!
 //! WeChat's memory holds around 10^9 windows, so a check of the first few bytes alone lets random windows through:
 //! [`image_block`] checks the structure of the whole block, and the caller confirms each candidate before taking it.
@@ -35,9 +37,11 @@ impl std::fmt::Display for MemoryScanError {
 
 impl std::error::Error for MemoryScanError {}
 
-/// Whether a decrypted first block is the start of an image file WeChat stores: a JPEG whose first segment is an
-/// `APPn` segment with an ASCII identifier (`JFIF`, `Exif`, ...) or a quantization table, a PNG up to its `IHDR`
-/// chunk type, a GIF with its version, a WebP with its `RIFF`/`WEBP` header, or WeChat's own `wxgf` container.
+/// Whether a decrypted first block is the start of an image file WeChat stores.
+///
+/// That is a JPEG whose first segment is an `APPn` segment with an ASCII identifier (`JFIF`, `Exif`, ...) or a
+/// quantization table, a PNG up to its `IHDR` chunk type, a GIF with its version, a WebP with its `RIFF`/`WEBP`
+/// header, or WeChat's own `wxgf` container.
 #[must_use]
 pub fn image_block(block: &Block) -> bool {
     jpeg_start(block)

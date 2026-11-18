@@ -83,14 +83,15 @@ impl Account {
         )
     }
 
-    /// The cursor of an export: oldest first, full rows but the `source` column, which exports do not use, like
-    /// [`open_message_cursor`](Self::open_message_cursor).
-    /// Without time bounds, collecting its keys reads only the `sort_seq` index instead of every row of the table, taking `create_time`
-    /// as `sort_seq / 1000`, which is how WeChat makes `sort_seq` (`create_time` in milliseconds plus a counter). The
-    /// pages check that against the rows they read: when a table does not follow it, the keys are read from the
-    /// table's rows, the table is remembered for the next exports, and when that changes the pages,
-    /// [`KEYS_CHANGED`] tells the export to start over (issue #39). Bounded cursors read exact `create_time` keys:
-    /// index-derived bounds could exclude an in-range row entirely, so no fetched page could detect its wrong key.
+    /// The cursor of an export: oldest first, full rows but the `source` column, which exports do not use.
+    ///
+    /// It pages like [`open_message_cursor`](Self::open_message_cursor). Without time bounds, collecting its keys
+    /// reads only the `sort_seq` index instead of every row of the table, taking `create_time` as `sort_seq / 1000`,
+    /// which is how WeChat makes `sort_seq` (`create_time` in milliseconds plus a counter). The pages check that
+    /// against the rows they read: when a table does not follow it, the keys are read from the table's rows, the table
+    /// is remembered for the next exports, and when that changes the pages, [`KEYS_CHANGED`] tells the export to start
+    /// over (issue #39). Bounded cursors read exact `create_time` keys: index-derived bounds could exclude an in-range
+    /// row entirely, so no fetched page could detect its wrong key.
     pub fn open_export_cursor(
         &self,
         session_id: &str,

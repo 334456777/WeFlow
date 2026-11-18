@@ -1,3 +1,9 @@
+//! WeFlow's read-only database layer: WeChat's SQLCipher databases read in pure Rust with a bundled SQLite.
+//!
+//! [`cipher_vfs`] and [`sqlcipher`] decrypt the pages as SQLite reads them, [`db::Account`] is the handle of an
+//! account, and [`msg`], [`contact`], [`sns`], [`media`], [`stats`] and [`report`] query one domain each.
+//! [`wcdb::Wcdb`] is the facade the service layer calls, and [`wxkey`] gets the database key from a running WeChat.
+
 pub mod cipher_vfs;
 pub mod contact;
 pub mod db;

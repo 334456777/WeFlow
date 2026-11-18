@@ -1,6 +1,10 @@
+//! Finding the point to capture the key in WeChat's module: its PE sections, its function table and the byte
+//! signature of each WeChat version.
+
 use anyhow::{bail, Context, Result};
 use std::ops::Range;
 
+/// A section of the module: where it starts (relative to the image base) and how long it is.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Section {
     pub rva: usize,
@@ -121,24 +125,30 @@ pub(super) fn function_ranges(bytes: &[u8], text: Section) -> Result<Vec<Range<u
     Ok(ranges)
 }
 
+/// The bytes that mark the capture point in one range of WeChat versions.
 #[derive(Clone, Copy)]
 pub(super) struct Signature {
     pub bytes: &'static [u8],
+    /// Positions in `bytes` that match any byte.
     wildcards: &'static [usize],
+    /// How many bytes before a match the capture point is.
     back: usize,
 }
 
+/// The signature of WeChat before 4.1.4.0 and after 4.1.6.14.
 const OLD: &[u8] = &[
     0x24, 0x50, 0x48, 0xc7, 0x45, 0x00, 0xfe, 0xff, 0xff, 0xff, 0x44, 0x89, 0xcf, 0x44, 0x89, 0xc3,
     0x49, 0x89, 0xd6, 0x48, 0x89, 0xce, 0x48, 0x89,
 ];
+/// The signature of WeChat 4.1.4.0 through 4.1.6.14.
 const MIDDLE: &[u8] = &[
     0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x00, 0x18, 0x48, 0x89, 0x7c, 0x00,
     0x20, 0x41, 0x56, 0x48, 0x83, 0xec, 0x50, 0x41,
 ];
 
-/// The actual helper has three ranges, including a distinct >4.1.6.14 entry.
-/// It intentionally uses the old bytes with a different offset on the newest range.
+/// The signature of WeChat `version`, in the three version ranges of the original `wx_key` helper.
+///
+/// Versions after 4.1.6.14 match the [`OLD`] bytes again, with the capture point at another distance from them.
 pub(super) fn signature(version: [u16; 4]) -> Result<Signature> {
     if version[0] != 4 {
         bail!("unsupported WeChat version (requires WeChat 4.x x64)");

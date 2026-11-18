@@ -1,3 +1,5 @@
+//! Database-key extraction, one implementation of [`WxKey`] per platform.
+
 use anyhow::Result;
 
 /// Database-key extraction on a platform without an implementation; `is_available` is false and

@@ -1,5 +1,5 @@
 //! Print table/column structure and row counts of one database (never row contents).
-//! usage: schema_probe <account_dir> <key_file> <db path relative to db_storage>
+//! Usage: `schema_probe <account_dir> <key_file> <db path relative to db_storage>`
 #![expect(
     clippy::unwrap_used,
     reason = "probe code reports failure by panicking"

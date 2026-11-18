@@ -22,7 +22,7 @@ pub struct MsgTable {
     pub table: String,
 }
 
-/// Sort key of a message: (sort_seq, create_time, local_id, shard index).
+/// Sort key of a message: (`sort_seq`, `create_time`, `local_id`, shard index).
 type Key = (i64, i64, i64, usize);
 
 /// `keys` in the chat's order, oldest or newest first; equal keys of different databases by ascending database
@@ -74,9 +74,10 @@ fn int(row: &Value, key: &str) -> i64 {
     row.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
 
-/// A message's place in its conversation's newest-first order, to page from: its sort key (`sort_seq`, or
-/// `create_time * 1000` without one, then `create_time`, `local_id`) and the number of its `message_<n>.db`. Equal
-/// keys of different databases are listed by ascending database number.
+/// A message's place in its conversation's newest-first order, to page from.
+///
+/// It is the message's sort key (`sort_seq`, or `create_time * 1000` without one, then `create_time`, `local_id`) and
+/// the number of its `message_<n>.db`. Equal keys of different databases are listed by ascending database number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MsgPos {
     pub sort_seq: i64,
@@ -98,6 +99,7 @@ impl MsgPos {
         )
     }
 
+    /// The position a [`token`](Self::token) names; `None` for anything else.
     pub fn parse(token: &str) -> Option<Self> {
         let mut parts = token.trim().split('.');
         let pos = Self {
@@ -128,12 +130,15 @@ impl MsgPos {
     }
 }
 
-/// Whether rows at a position's own place come after it, in a listing across conversations (issue #178): not in its
-/// own conversation (a row there at the same place is the same message, kept by more than one database) nor in
-/// one listed before it, all in one listed after it.
+/// Whether rows at a position's own place come after it, in a listing across conversations (issue #178).
+///
+/// None do in its own conversation (a row there at the same place is the same message, kept by more than one
+/// database) or in one listed before it; all do in one listed after it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ties {
+    /// No row at the position's place comes after it.
     None,
+    /// Every row at the position's place comes after it.
     All,
 }
 
@@ -211,7 +216,7 @@ mod tests {
     pub(super) const T0: i64 = 1_700_000_000;
     pub(super) const DAY: i64 = 2 * 86_400; // two days apart so local-time bucketing cannot merge them
 
-    /// `msgs`: (local_id, day_offset, local_type, real_sender_id, text). `server_id` = create_time offset.
+    /// `msgs`: (`local_id`, `day_offset`, `local_type`, `real_sender_id`, text). `server_id` = `create_time` offset.
     pub(super) fn shard(
         msgs: &[(i64, i64, i64, i64, &str)],
         zstd_local_id: Option<i64>,
@@ -247,7 +252,7 @@ mod tests {
         })
     }
 
-    /// Two shards: ids 1..3 in shard 0 (days 0..2), ids 1..2 in shard 1 (days 3..4); local_id overlaps on purpose.
+    /// Two shards: ids 1..3 in shard 0 (days 0..2), ids 1..2 in shard 1 (days 3..4); `local_id` overlaps on purpose.
     pub(super) fn account(tag: &str) -> (TestDir, Account) {
         let dir = TestDir::new(&format!("weflow-msg-{tag}"));
         std::fs::create_dir_all(dir.join("message")).unwrap();
@@ -292,8 +297,9 @@ mod tests {
         }
     }
 
-    /// An account whose `wxid_bob` messages are `shards`, one `message_<n>.db` each: rows of (local_id, sort_seq as
-    /// an SQL literal, create_time as one). Neither column has a type, so a row can store any SQLite value.
+    /// An account whose `wxid_bob` messages are `shards`, one `message_<n>.db` each: rows of (`local_id`,
+    /// `sort_seq` as an SQL literal, `create_time` as one). Neither column has a type, so a row can store any SQLite
+    /// value.
     pub(super) fn keyed_account(
         tag: &str,
         shards: &[Vec<(i64, String, String)>],

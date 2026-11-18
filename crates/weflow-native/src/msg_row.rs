@@ -1,6 +1,7 @@
-//! The rows of a conversation's `Msg_<md5>` tables (#257, #490), read by the paging, cursor and merge code of
-//! [`msg`](crate::msg) as [`MsgRow`]s: the columns typed, the content inflated and decoded once, the
-//! sender resolved, the database named by its shard number (#491, #492).
+//! The rows of a conversation's `Msg_<md5>` tables (#257, #490), as [`MsgRow`]s.
+//!
+//! The paging, cursor and merge code of [`msg`](crate::msg) reads them with the columns typed, the content inflated
+//! and decoded once, the sender resolved, and the database named by its shard number (#491, #492).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -110,7 +111,8 @@ thread_local! {
 
 /// `bytes` (starting with [`ZSTD_MAGIC`]) inflated, or `None` when they are not valid zstd.
 fn inflate(bytes: &[u8]) -> Option<Vec<u8>> {
-    // input that fails or is cut short is handed to `decode_all`, so it comes out as `decode_all` gives it
+    // input that does not end exactly where a frame ends goes through `decode_all`, which handles errors and
+    // truncation
     DCTX.with(|slot| {
         inflate_with(
             slot.borrow_mut()
