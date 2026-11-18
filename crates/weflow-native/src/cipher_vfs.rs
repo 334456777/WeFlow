@@ -201,10 +201,27 @@ pub struct CipherFile {
     pages_decrypted: AtomicU64,
 }
 
+/// The raw chunks of a file read last, at most [`CHUNKS_KEPT`]; `order` lists each chunk of `chunks` once, the
+/// oldest first.
 #[derive(Default)]
 struct ChunkCache {
     chunks: HashMap<u32, Arc<[u8]>>,
     order: VecDeque<u32>,
+}
+
+impl ChunkCache {
+    /// Keep chunk `idx`, dropping the oldest beyond [`CHUNKS_KEPT`]. Threads that missed the same chunk at once each
+    /// read it and keep it: the later copy replaces the earlier one in its place.
+    fn keep(&mut self, idx: u32, chunk: Arc<[u8]>) {
+        if self.chunks.insert(idx, chunk).is_none() {
+            self.order.push_back(idx);
+        }
+        while self.order.len() > CHUNKS_KEPT {
+            if let Some(old) = self.order.pop_front() {
+                self.chunks.remove(&old);
+            }
+        }
+    }
 }
 
 impl CipherFile {
@@ -380,13 +397,7 @@ impl CipherFile {
         }
         let chunk: Arc<[u8]> = buf.into();
         if let Ok(mut cache) = self.chunks.lock() {
-            cache.chunks.insert(idx, chunk.clone());
-            cache.order.push_back(idx);
-            while cache.order.len() > CHUNKS_KEPT {
-                if let Some(old) = cache.order.pop_front() {
-                    cache.chunks.remove(&old);
-                }
-            }
+            cache.keep(idx, chunk.clone());
         }
         Ok((chunk, first))
     }
@@ -851,6 +862,33 @@ mod tests {
             .unwrap();
         assert_eq!(rows(&mem), values);
         assert!(!cf.is_stale());
+    }
+
+    #[test]
+    fn a_chunk_kept_twice_is_listed_once() {
+        let chunk = |n: u8| -> Arc<[u8]> { vec![n; 4].into() };
+        let mut cache = ChunkCache::default();
+        // two threads missed chunk 0 at once
+        cache.keep(0, chunk(0));
+        cache.keep(0, chunk(1));
+        for idx in 1..CHUNKS_KEPT as u32 {
+            cache.keep(idx, chunk(2));
+        }
+        assert_eq!(cache.chunks.len(), CHUNKS_KEPT);
+        assert_eq!(cache.order.len(), CHUNKS_KEPT);
+        assert_eq!(
+            cache.chunks.get(&0).map(|c| c[0]),
+            Some(1),
+            "the later copy"
+        );
+        // one more pushes out the oldest, and only it
+        cache.keep(CHUNKS_KEPT as u32, chunk(3));
+        assert!(!cache.chunks.contains_key(&0));
+        assert_eq!(
+            (cache.chunks.len(), cache.order.len()),
+            (CHUNKS_KEPT, CHUNKS_KEPT)
+        );
+        assert!(cache.order.iter().all(|idx| cache.chunks.contains_key(idx)));
     }
 
     #[test]
