@@ -121,7 +121,7 @@ impl ServiceHub {
                     .as_deref()
                     .filter(|s| !s.is_empty())
                     .unwrap_or(""),
-                &format!("emoji_{}", msg.local_id),
+                &message_file_stem("emoji", msg),
             );
             let to = MediaTarget {
                 session_dir,
@@ -458,7 +458,7 @@ impl ServiceHub {
                     .filter(|s| !s.is_empty())
                     .or(msg.image_dat_name.as_deref())
                     .unwrap_or(""),
-                &format!("image_{}", msg.local_id),
+                &message_file_stem("image", msg),
             );
             return put(
                 "image",
@@ -491,7 +491,7 @@ impl ServiceHub {
             return put(
                 "voice",
                 "voices",
-                format!("voice_{}.wav", msg.local_id),
+                format!("{}.wav", message_file_stem("voice", msg)),
                 MediaSource::Bytes(&wav),
                 false,
             );
@@ -514,7 +514,7 @@ impl ServiceHub {
                 .and_then(|e| e.to_str())
                 .map(|e| format!(".{e}"))
                 .unwrap_or_else(|| ".mp4".into());
-            let base = api::sanitize_file_name(md5, &format!("video_{}", msg.local_id));
+            let base = api::sanitize_file_name(md5, &message_file_stem("video", msg));
             return put(
                 "video",
                 "videos",
@@ -673,6 +673,14 @@ async fn avatar_picture(url: &str) -> Option<Vec<u8>> {
     crate::image::ImageFormat::of(&bytes)
         .is_some()
         .then_some(bytes)
+}
+
+/// The name of a message's media file when the media has no name of its own: `<kind>_<send time>_<local id>`. A
+/// local id is unique only within one message database, and the messages of a conversation may lie in several, so
+/// the send time tells two messages of one local id apart; both are fixed, so a message gets the same name in every
+/// export.
+fn message_file_stem(kind: &str, msg: &ChatMessage) -> String {
+    format!("{kind}_{}_{}", msg.create_time, msg.local_id)
 }
 
 /// A file message: an app message of type 6.

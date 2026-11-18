@@ -897,7 +897,8 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
     let dir = root.join("exp");
     std::fs::create_dir_all(&dir).unwrap();
     let image_rel = "media/chat/images/aabbccddeeff00112233445566778899.jpg";
-    let voice_rel = "media/chat/voices/voice_4.wav";
+    // named by the voice message's send time and local id
+    let voice_rel = "media/chat/voices/voice_1700000200_4.wav";
 
     let r = serde_json::to_value(
         hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
@@ -1110,7 +1111,7 @@ async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
             "chat.json",
             "chat.txt",
             image_rel,
-            "media/chat/voices/voice_4.wav"
+            "media/chat/voices/voice_1700000200_4.wav"
         ]
         .iter()
         .all(|n| names.iter().any(|m| m == n)),
@@ -1119,6 +1120,73 @@ async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
     let mut image = Vec::new();
     std::io::Read::read_to_end(&mut archive.by_name(image_rel).unwrap(), &mut image).unwrap();
     assert_eq!(image, std::fs::read(dir.join(image_rel)).unwrap());
+}
+
+/// A local id is unique only within one message database: two voice messages of a conversation with the same local
+/// id, in two databases, are copied to two files, under the same names in every export.
+#[tokio::test]
+async fn voices_of_one_local_id_in_two_message_databases_get_their_own_files() {
+    use weflow_native::fixture::{MsgSpec, SessionSpec, VoiceSpec, T0};
+    let voice = |server_id: i64, at: i64| MsgSpec {
+        server_id,
+        ..MsgSpec::text(
+            7,
+            "wxid_bob",
+            at,
+            "<voicemsg length=\"1000\" voicelength=\"1000\"/>",
+        )
+        .of_type(34)
+    };
+    let (root, hub, _fixture) = common::custom_hub("voice-shards", |f| {
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0 + 100,
+            unread: 0,
+            last_msg_type: 34,
+        }]);
+        f.message_shard(0, &[("wxid_bob", vec![voice(5000, T0)])]);
+        f.message_shard(1, &[("wxid_bob", vec![voice(5001, T0 + 100)])]);
+        // two different recordings: a tone encoded at two sample rates
+        let row = |svr_id: i64, create_time: i64, rate: i32| VoiceSpec {
+            chat: "wxid_bob",
+            create_time,
+            local_id: 7,
+            svr_id,
+            data: weflow_silk::testenc::encode_tone(rate),
+            index: "0",
+        };
+        f.media_db(0, &[row(5000, T0, 8000), row(5001, T0 + 100, 24000)]);
+    });
+    let opts = weflow_core::api::ApiMediaOptions {
+        enabled: true,
+        voices: true,
+        ..Default::default()
+    };
+    let names = [
+        format!("media/chat/voices/voice_{T0}_7.wav"),
+        format!("media/chat/voices/voice_{}_7.wav", T0 + 100),
+    ];
+    let dir = root.join("exp");
+    std::fs::create_dir_all(&dir).unwrap();
+    for _ in 0..2 {
+        hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
+            .await
+            .unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("chat.json")).unwrap()).unwrap();
+        let voices: Vec<&str> = json["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["localType"] == 34)
+            .map(|m| m["content"].as_str().unwrap())
+            .collect();
+        assert_eq!(voices, names, "each message points at its own file");
+    }
+    let [first, second] = names.map(|n| std::fs::read(dir.join(n)).unwrap());
+    assert!(first.starts_with(b"RIFF") && second.starts_with(b"RIFF"));
+    assert_ne!(first, second, "each file holds its own message's voice");
 }
 
 /// WeChat's media index (`hardlink.db`) only adds to what the folders of the conversation hold (#651): a better
