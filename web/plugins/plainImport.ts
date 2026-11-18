@@ -1,7 +1,8 @@
 // Vite wraps each import() in a helper that first preloads what the imported chunk needs, its own imports and CSS
-// (#783). The page's one import() is the English (src/i18n), a chunk with neither, so the helper would only call
-// the import, for about 0.6 kB of the first screen's gzip. The build puts in a helper that only calls it, and fails
-// when a chunk loaded with import() has something to preload, or when Vite's helper is no longer the module
+// (#783). The page's import()s load chunks with neither: the English (src/i18n), the sample server (src/mock, which
+// imports only types of the page's code) and the style sheets of the skins (src/skin.ts, as text), so the helper would
+// only call the import, for about 0.6 kB of the first screen's gzip. The build puts in a helper that only calls it,
+// and fails when a chunk loaded with import() has something to preload, or when Vite's helper is no longer the module
 // replaced here.
 import type { Plugin, Rolldown } from 'vite';
 

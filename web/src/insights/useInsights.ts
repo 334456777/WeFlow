@@ -20,32 +20,43 @@ export function useInsights(enabled: boolean, scope: number, filter: InsightFilt
   const reload = useCallback(() => setRound(n => n + 1), []);
   const latest = useRef(state);
   latest.current = state;
+  // the filter of the page shown, and the read of its next page: aborted once another first page is asked for or shown,
+  // so that the records of a filter left are not added to those of the next
+  const shown = useRef(filter);
+  const reading = useRef<AbortController | null>(null);
+  const stopMore = () => { reading.current?.abort(); reading.current = null; };
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
     // a new filter shows its first page; reading again in place keeps the page on screen meanwhile
     if (latest.current.status !== 'ready') setState({ status: 'loading' });
-    getInsights(filter, controller.signal).then(
-      page => setState({ status: 'ready', page, more: page.records.length < page.total, loadingMore: false }),
-      problem => { if (!controller.signal.aborted) setState({ status: 'error', message: messageOf(problem, t('读取见解失败')) }); },
-    );
-    return () => controller.abort();
+    getInsights(filter, controller.signal).then(page => {
+      if (controller.signal.aborted) return;
+      stopMore();
+      shown.current = filter;
+      setState({ status: 'ready', page, more: page.records.length < page.total, loadingMore: false });
+    }, problem => { if (!controller.signal.aborted) setState({ status: 'error', message: messageOf(problem, t('读取见解失败')) }); });
+    return () => { controller.abort(); stopMore(); };
   }, [enabled, scope, filter, round]);
 
   const more = useCallback(() => {
     const now = latest.current;
     if (now.status !== 'ready' || !now.more || now.loadingMore) return;
+    stopMore();
+    const controller = new AbortController();
+    reading.current = controller;
+    const { signal } = controller;
     setState({ ...now, loadingMore: true });
-    getInsights({ ...filter, offset: now.page.records.length }).then(next => {
+    getInsights({ ...shown.current, offset: now.page.records.length }, signal).then(next => {
       const cur = latest.current;
-      if (cur.status !== 'ready') return;
+      if (signal.aborted || cur.status !== 'ready') return;
       const records = [...cur.page.records, ...next.records];
       setState({ ...cur, page: { ...next, records }, more: next.records.length === PAGE && records.length < next.total, loadingMore: false });
     }, problem => {
       const cur = latest.current;
-      if (cur.status === 'ready') setState({ ...cur, loadingMore: false, error: messageOf(problem, t('读取更早的见解失败')) });
+      if (!signal.aborted && cur.status === 'ready') setState({ ...cur, loadingMore: false, error: messageOf(problem, t('读取更早的见解失败')) });
     });
-  }, [filter]);
+  }, []);
 
   /** Marks a record read on the page at once; the server is told by the caller. */
   const markRead = useCallback((id: string) => {

@@ -107,16 +107,22 @@ export function MemberView({ group, member, range, onBack }: { group: Group; mem
   const key = group.username + '|' + member.username + '|' + range.from + '|' + range.to;
   const [state, retry] = useRead(key, signal => getMember(group.username, member.username, range, signal));
   const [page, setPage] = useState<{ messages: MemberMessage[]; more: boolean; cursor: number; loading: boolean; error?: string }>({ messages: [], more: false, cursor: 0, loading: true });
-  const readPage = (cursor: number, signal?: AbortSignal) => {
+  // the reads of the messages of `key`, aborted together once it changes: a later page of the group, member and range
+  // left is not added to those of the next
+  const reads = useRef<AbortController | null>(null);
+  const readPage = (cursor: number) => {
+    const signal = reads.current?.signal;
+    if (!signal || signal.aborted) return;
     setPage(p => ({ ...p, loading: true, error: undefined }));
-    getMemberMessages(group.username, member.username, range, cursor, signal).then(next => setPage(p => ({
-      messages: cursor ? [...p.messages, ...next.messages] : next.messages, more: next.hasMore, cursor: next.nextCursor, loading: false,
-    })), problem => { if (!signal?.aborted) setPage(p => ({ ...p, loading: false, error: (problem instanceof ApiError && problem.message) || t('读取消息失败') })); });
+    getMemberMessages(group.username, member.username, range, cursor, signal).then(next => {
+      if (!signal.aborted) setPage(p => ({ messages: cursor ? [...p.messages, ...next.messages] : next.messages, more: next.hasMore, cursor: next.nextCursor, loading: false }));
+    }, problem => { if (!signal.aborted) setPage(p => ({ ...p, loading: false, error: (problem instanceof ApiError && problem.message) || t('读取消息失败') })); });
   };
   useEffect(() => {
     const controller = new AbortController();
+    reads.current = controller;
     setPage({ messages: [], more: false, cursor: 0, loading: true });
-    readPage(0, controller.signal);
+    readPage(0);
     return () => controller.abort();
   }, [key]);
 

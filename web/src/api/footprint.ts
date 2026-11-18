@@ -27,16 +27,36 @@ export type FootprintFormat = (typeof FOOTPRINT_FORMATS)[number]['value'];
 export const footprintExport = (range: FootprintRange, format: FootprintFormat = 'json') =>
   ({ format, start: range.from || undefined, end: range.to || undefined });
 
-/** The ranges offered: today, yesterday, this week and last week (weeks start on Monday). */
-export function presetRanges(now = new Date()): FootprintRange[] {
+/** The ranges offered by name: today, yesterday, this week and last week (weeks start on Monday). */
+export const PRESETS = ['today', 'yesterday', 'thisWeek', 'lastWeek'] as const;
+export type FootprintPreset = (typeof PRESETS)[number];
+
+/**
+ * The range picked: one of the presets, its days and name worked out each time it is shown (in the page's language,
+ * on the day it is shown), or days of one's own.
+ */
+export type FootprintChoice = { preset: FootprintPreset } | { from: string; to: string };
+
+/** The ranges offered, their days as of `now`. */
+export function presetRanges(now = new Date()): (FootprintRange & { preset: FootprintPreset })[] {
   const day = (offset: number) => { const d = new Date(now); d.setDate(d.getDate() + offset); return dayOf(d.getTime() / 1000); };
   const sinceMonday = (now.getDay() + 6) % 7;
   return [
-    { label: t('今天'), from: day(0), to: day(0) },
-    { label: t('昨天'), from: day(-1), to: day(-1) },
-    { label: t('本周'), from: day(-sinceMonday), to: day(0) },
-    { label: t('上周'), from: day(-sinceMonday - 7), to: day(-sinceMonday - 1) },
+    { preset: 'today', label: t('今天'), from: day(0), to: day(0) },
+    { preset: 'yesterday', label: t('昨天'), from: day(-1), to: day(-1) },
+    { preset: 'thisWeek', label: t('本周'), from: day(-sinceMonday), to: day(0) },
+    { preset: 'lastWeek', label: t('上周'), from: day(-sinceMonday - 7), to: day(-sinceMonday - 1) },
   ];
+}
+
+/** The days and name of the range picked, as of `now`. */
+export function rangeOf(choice: FootprintChoice, now = new Date()): FootprintRange {
+  if ('preset' in choice) {
+    const { label, from, to } = presetRanges(now).find(p => p.preset === choice.preset)!;
+    return { label, from, to };
+  }
+  const { from, to } = choice;
+  return { from, to, label: from === to ? from : t('{from} 至 {to}', { from, to }) };
 }
 
 /** `insight footprint-summary`: the AI's few sentences on the range, from the numbers and the busiest chats and groups. */

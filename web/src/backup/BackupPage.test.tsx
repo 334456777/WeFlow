@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from '#test';
 import { backupParams, backupParts } from '../api/backup';
 import type { Job } from '../api/jobs';
 import type { JobsState } from '../jobs/useJobs';
-import { BackupPage } from './BackupPage';
+import type { Shell } from '../shell/page';
+import { SampleContext } from '../shell/sample';
+import { BackupPage, backupPage } from './BackupPage';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -110,6 +112,22 @@ describe('backup', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看内容' }));
     await act(async () => {});
     expect(screen.getByLabelText('备份的内容').querySelector('.backup-gap')?.textContent).toBe('1 个文件读不了，没有备份进去：msg/attach/a.dat');
+  });
+
+  it('starts afresh for another server or account: the sample\'s backup is not looked at on the server', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: true, data: { version: '1', created_at: 1, wxid: 'wxid_sample', weflow_version: '6', entries: [] } })));
+    const shell = (sample: boolean, scope: number) => ({ backend: sample ? { state: 'offline' } : { state: 'offline', held: true }, jobs: NONE, scope }) as unknown as Shell;
+    const page = (sample: boolean, scope: number) => <SampleContext.Provider value={sample}>{backupPage(shell(sample, scope)).view}</SampleContext.Provider>;
+    const { rerender } = render(page(true, 1));
+    const path = () => (screen.getByRole('textbox', { name: '备份的路径' }) as HTMLInputElement).value;
+    expect(path()).toBe('weflow-backup.zip');
+    fireEvent.click(screen.getByRole('button', { name: '查看' }));
+    await act(async () => {});
+    expect(screen.getByLabelText('备份的内容').textContent).toContain('wxid_sample');
+    // a server takes the sample's place: a new scope
+    rerender(page(false, 2));
+    expect(path()).toBe('');
+    expect(screen.queryByLabelText('备份的内容')).toBeNull();
   });
 
   it('says why a backup cannot be read', async () => {

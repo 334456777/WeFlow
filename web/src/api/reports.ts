@@ -1,6 +1,7 @@
 // The annual report (#208): `report annual years` and `report annual generate`, over one year or all of them.
 import { call, get } from './client';
 import { msg, t } from '../i18n';
+import { baseType } from '../chat/messages';
 import type * as Contract from './contract.gen';
 
 /** `report annual generate`, as the contract says (#430). */
@@ -39,5 +40,12 @@ const KINDS: Record<number, string> = {
   244813135921: msg('[引用回复]'),
 };
 
-/** What a message of the dual report says: its text, or its kind for anything else. */
-export const messageText = (m: DualMessage) => (!m.localType || m.localType === 1 ? m.content : KINDS[m.localType] ? t(KINDS[m.localType]) : t('[消息]'));
+/**
+ * What a message of the dual report says: its text, or its kind for anything else, an app message (a link, a file, …,
+ * its kind in the high bits of its type) by its base type unless the type itself is named.
+ */
+export function messageText(m: DualMessage): string {
+  if (!m.localType || m.localType === 1) return m.content;
+  const kind = KINDS[m.localType] ?? KINDS[baseType(m.localType)];
+  return kind ? t(kind) : t('[消息]');
+}

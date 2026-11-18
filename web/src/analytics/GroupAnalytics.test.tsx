@@ -78,6 +78,29 @@ describe('group analytics', () => {
     expect(onBack).toHaveBeenCalled();
   });
 
+  it('leaves out the earlier messages of a range left: those of the next range stay as they came', async () => {
+    let answerLater: (response: Response) => void = () => {};
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (!url.startsWith('/api/group/member-messages')) {
+        return Promise.resolve(ok({
+          statistics: { totalMessages: 1, textMessages: 1, imageMessages: 0, voiceMessages: 0, videoMessages: 0, emojiMessages: 0, otherMessages: 0, sentMessages: 1, receivedMessages: 0, firstMessageTime: 0, lastMessageTime: 0, activeDays: 1 },
+          timeDistribution: {}, commonPhrases: [], commonEmojis: [],
+        }));
+      }
+      if (url.includes('cursor=50')) return new Promise<Response>(resolve => { answerLater = resolve; });
+      const march = url.includes('start=2026-03-01');
+      return Promise.resolve(ok({ messages: [{ messageKey: march ? 'm1' : 'k1', localType: 1, createTime: 1_760_000_000, parsedContent: march ? '三月的' : '一月的' }], hasMore: !march, nextCursor: 50 }));
+    }));
+    const { rerender } = render(<MemberView group={GROUP} member={BOB} range={{ from: '2026-01-01', to: '2026-01-31' }} onBack={() => {}} />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '显示更早的消息' }));
+    rerender(<MemberView group={GROUP} member={BOB} range={{ from: '2026-03-01', to: '2026-03-31' }} onBack={() => {}} />);
+    await act(async () => {});
+    await act(async () => { answerLater(ok({ messages: [{ messageKey: 'k2', localType: 1, createTime: 1_700_000_000, parsedContent: '一月更早的' }], hasMore: true, nextCursor: 100 })); });
+    expect(Array.from(document.querySelectorAll('.member-messages li .clamp-3'), li => li.textContent)).toEqual(['三月的']);
+    expect(screen.queryByRole('button', { name: '显示更早的消息' })).toBeNull();
+  });
+
   it('exports the members, and the messages of the member shown over the range, as jobs that keep the file', async () => {
     const calls: { url: string; body: unknown }[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { DOC } from '../api/console.fixture';
+import { setLang } from '../i18n';
 import { CommandConsole } from './CommandConsole';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -50,6 +51,33 @@ describe('CommandConsole', () => {
     expect(answer.textContent).toContain('HTTP 200');
     expect(answer.textContent).toContain('退出码 0');
     expect(answer.querySelector('pre')?.textContent).toContain('"localId": 1');
+  });
+
+  it('offers to leave out a choice, naming its default in the page\'s language', async () => {
+    const doc = { paths: { '/chat/export': { get: {
+      operationId: 'chat_export', tags: ['chat'], summary: '导出', 'x-weflow-command': 'chat export',
+      parameters: [
+        { name: 'format', in: 'query', schema: { type: 'string', enum: ['html', 'json'], default: 'html' } },
+        { name: 'order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+      ],
+    } } } };
+    vi.stubGlobal('fetch', vi.fn(async () => json(doc)));
+    const { rerender } = render(<CommandConsole pick={null} onPicked={() => {}} />);
+    await act(async () => {});
+    rerender(<CommandConsole pick="chat export" onPicked={() => {}} />);
+    await act(async () => {});
+    const form = screen.getByRole('form', { name: '运行 chat export' });
+    const first = (name: RegExp) => (within(form).getByLabelText(name) as HTMLSelectElement).options[0].textContent;
+    expect(first(/^format/)).toBe('（默认：html）');
+    expect(first(/^order/)).toBe('（默认）');
+    await setLang('en');
+    try {
+      rerender(<CommandConsole pick={null} onPicked={() => {}} />);
+      expect(first(/^format/)).toBe('(default: html)');
+      expect(first(/^order/)).toBe('(default)');
+    } finally {
+      await setLang('zh');
+    }
   });
 
   it('runs a command that writes a file as a job, and shows a refused one without a way to run it', async () => {

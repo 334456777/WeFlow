@@ -2,7 +2,7 @@
 // was read, for the AI card of the console.
 import { useRef, useState } from 'react';
 import { Footprints } from '@phosphor-icons/react';
-import { presetRanges, type Footprint, type FootprintRange } from '../api/footprint';
+import { rangeOf, type Footprint, type FootprintChoice } from '../api/footprint';
 import type { OpenAt, Page, Shell } from '../shell/page';
 import { Connected, ScrollPage } from '../shell/panels';
 import { FootprintAi, FootprintExport, FootprintPage } from './Footprint';
@@ -10,7 +10,8 @@ import { t } from '../i18n';
 import './footprint.css';
 
 export function useFootprintPage(shell: Shell, openAt: OpenAt): Page {
-  const [range, setRange] = useState<FootprintRange>(() => presetRanges()[0]);
+  const [choice, setChoice] = useState<FootprintChoice>({ preset: 'today' });
+  const range = rangeOf(choice);
   const [keyword, setKeyword] = useState('');
   const [data, setData] = useState<Footprint | null>(null);
   const scroller = useRef<HTMLElement>(null);
@@ -20,7 +21,7 @@ export function useFootprintPage(shell: Shell, openAt: OpenAt): Page {
   ];
   const view = <ScrollPage label={t('我的足迹')} icon={Footprints} scroller={scroller}>
     <Connected backend={shell.backend} offline={t('连接 weflow serve 后，可以在这里查看你和谁聊过天、谁 @过你。')}>
-      <FootprintPage key={shell.scope} range={range} onRange={next => { setRange(next); scroller.current?.scrollTo({ top: 0 }); }}
+      <FootprintPage key={shell.scope} choice={choice} onChoice={next => { setChoice(next); scroller.current?.scrollTo({ top: 0 }); }}
         keyword={keyword} onKeyword={setKeyword} onOpen={openAt} onData={setData} />
     </Connected>
   </ScrollPage>;

@@ -34,13 +34,12 @@ export interface Payment {
 /** Messages of the WeChat Pay account per page. */
 export const PAY_PAGE = 500;
 
+/** The conversations `biz pay-records` reads its notices from: the WeChat Pay account's, and the service notices. */
+export const PAY_SESSIONS: readonly string[] = ['gh_3dfda90e39d6', 'notifymessage'];
+
 /** A page of notices, newest first, from the `offset`-th message of the account on. */
-export async function getPayRecords(offset: number, signal?: AbortSignal): Promise<{ records: PayRecord[]; hasMore: boolean }> {
-  const data = await get<Partial<Contract.PayRecords> | null>('api/biz/pay-records', { limit: PAY_PAGE, offset }, signal);
-  const records = data?.records ?? [];
-  // a server before rc.6 does not say; a full page may have more
-  return { records, hasMore: data?.hasMore ?? records.length >= PAY_PAGE };
-}
+export const getPayRecords = (offset: number, signal?: AbortSignal) =>
+  get<Contract.PayRecords>('api/biz/pay-records', { limit: PAY_PAGE, offset }, signal);
 
 // longest first, so 「付款金额」 is not read as 「金额」
 const LABELS = ['付款金额', '支付金额', '消费金额', '交易金额', '退款金额', '到账金额', '收款金额', '支付方式', '付款方式', '退款方式', '到账方式', '交易状态', '支付状态', '退款状态', '当前状态', '商户名称', '收款方', '收款商户', '商品详情', '商品', '商户', '金额', '方式', '状态'] // i18n-ignore: the labels of a WeChat Pay message, read from it
