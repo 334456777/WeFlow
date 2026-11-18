@@ -273,16 +273,7 @@ pub(crate) async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> A
             zip,
         } => {
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
-            let mut formats: Vec<String> = Vec::new();
-            for f in format
-                .iter()
-                .map(|f| f.trim().to_ascii_lowercase())
-                .filter(|f| !f.is_empty())
-            {
-                if !formats.contains(&f) {
-                    formats.push(f);
-                }
-            }
+            let formats = message_formats(&format);
             let fmt = formats.first().cloned().unwrap_or_else(|| "txt".into());
             let avatars = if no_avatar_download {
                 weflow_core::api::AvatarSource::Local
@@ -324,7 +315,7 @@ pub(crate) async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> A
                 }
                 exts.push(e);
             }
-            let ext = exts[0];
+            let ext = ext_of(&fmt)?;
             let display_pref = parse_display(display_name.as_deref().unwrap_or("group-nickname"))?;
             let safe_name: String = session_id
                 .chars()
@@ -370,6 +361,25 @@ pub(crate) async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> A
             Ok(json!(bundle))
         }
     }
+}
+
+/// The formats `--format` names for `export messages`: trimmed, lowercased, each once, in the order given. Never
+/// empty: `--format ""` (or only commas) stands for the default, txt, as leaving `--format` out does.
+fn message_formats(given: &[String]) -> Vec<String> {
+    let mut formats: Vec<String> = Vec::new();
+    for f in given
+        .iter()
+        .map(|f| f.trim().to_ascii_lowercase())
+        .filter(|f| !f.is_empty())
+    {
+        if !formats.contains(&f) {
+            formats.push(f);
+        }
+    }
+    if formats.is_empty() {
+        formats.push("txt".into());
+    }
+    formats
 }
 
 /// `export messages` in several formats or packed (#342): every format into one folder, the media in its `media/`
@@ -740,5 +750,17 @@ mod tests {
             { "name": "no username" },
         ]);
         assert_eq!(list_users(&list), ["wxid_a", "room@chatroom"]);
+    }
+
+    #[test]
+    fn message_formats_fall_back_to_txt_and_keep_each_once() {
+        let given = |fs: &[&str]| fs.iter().map(|f| f.to_string()).collect::<Vec<_>>();
+        assert_eq!(message_formats(&given(&[""])), ["txt"]);
+        assert_eq!(message_formats(&given(&[" ", ""])), ["txt"]);
+        assert_eq!(message_formats(&[]), ["txt"]);
+        assert_eq!(
+            message_formats(&given(&["HTML", " txt", "html", ""])),
+            ["html", "txt"]
+        );
     }
 }
