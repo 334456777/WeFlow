@@ -10,6 +10,10 @@ use std::path::{Path, PathBuf};
 
 const LOCK_SUFFIX: &str = ".lock";
 
+/// How many ids [`ServeFiles::hold`] tries before giving up. An id is passed over only when its lock file already
+/// exists or a cleanup removed it between its making and its locking, both rare, so a few attempts are plenty.
+const HOLD_ATTEMPTS: usize = 8;
+
 /// A running server's own folder under `serve-files/`, held while this lives and removed when it is dropped.
 #[derive(Debug)]
 pub struct ServeFiles {
@@ -22,20 +26,42 @@ impl ServeFiles {
     /// A new folder of this server's own under `root`, made and held.
     ///
     /// # Errors
-    /// When the folder or its lock file cannot be made, or the lock taken.
+    /// When the folder or its lock file cannot be made, or the lock taken, or none of the few new lock files tried
+    /// stayed in place.
     pub fn hold(root: &Path) -> io::Result<Self> {
+        Self::hold_with(root, rand::random::<u64>)
+    }
+
+    /// [`ServeFiles::hold`] with the ids drawn from `next_id`.
+    fn hold_with(root: &Path, mut next_id: impl FnMut() -> u64) -> io::Result<Self> {
         fs::create_dir_all(root)?;
-        let id = format!("{:016x}", rand::random::<u64>());
-        let lock_path = root.join(format!("{id}{LOCK_SUFFIX}"));
-        let lock = File::create(&lock_path)?;
-        lock.lock()?;
-        let dir = root.join(id);
-        fs::create_dir_all(&dir)?;
-        Ok(Self {
-            dir,
-            lock_path,
-            lock: Some(lock),
-        })
+        for _ in 0..HOLD_ATTEMPTS {
+            let id = format!("{:016x}", next_id());
+            let lock_path = root.join(format!("{id}{LOCK_SUFFIX}"));
+            let lock = match File::create_new(&lock_path) {
+                Ok(lock) => lock,
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(err) => return Err(err),
+            };
+            lock.lock()?;
+            // Until the lock is taken the file has no folder and nobody holding it, which a cleanup removes as a
+            // lock file left alone. A cleanup removes it while holding its lock, so once the lock is taken here
+            // any such removal is over, and the file at `lock_path` is still this one exactly when it is held.
+            if !is_held(&lock_path) {
+                continue;
+            }
+            let dir = root.join(id);
+            fs::create_dir_all(&dir)?;
+            return Ok(Self {
+                dir,
+                lock_path,
+                lock: Some(lock),
+            });
+        }
+        Err(io::Error::other(format!(
+            "{}: none of {HOLD_ATTEMPTS} new lock files stayed in place",
+            root.display()
+        )))
     }
 
     /// Where this server writes the files of its requests, one folder each.
@@ -116,13 +142,24 @@ fn remove_if_unheld(
         }
     }
     if let Some(file) = held {
-        drop(file);
+        // removed while still locked, so a server that was waiting for this lock finds the file gone once it has it
         match fs::remove_file(lock) {
             Ok(()) => removed.push(lock.to_path_buf()),
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
             Err(err) => warnings.push(format!("{}: {err}", lock.display())),
         }
+        drop(file);
     }
+}
+
+/// Whether a lock is held on the file now at `lock`. A server asks this of its own lock file to learn whether the
+/// file there is still the one it locked: a second handle of the same process is refused the lock as well (`flock`
+/// locks belong to the open file description, `LockFileEx` locks to the handle).
+fn is_held(lock: &Path) -> bool {
+    let Ok(file) = File::open(lock) else {
+        return false;
+    };
+    matches!(file.try_lock(), Err(TryLockError::WouldBlock))
 }
 
 #[cfg(test)]
@@ -173,5 +210,39 @@ mod tests {
         let (removed, _) = remove_unheld(&root);
         assert_eq!(removed, [root.join("feedfacecafebeef.lock")]);
         assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_lock_file_is_held_only_while_it_is_the_one_locked() {
+        let root = root("is-held");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("0000000000000001.lock");
+        let lock = File::create_new(&path).unwrap();
+        assert!(!is_held(&path), "nobody has locked it yet");
+        lock.lock().unwrap();
+        assert!(
+            is_held(&path),
+            "a second handle of the same process is refused the lock"
+        );
+
+        fs::remove_file(&path).unwrap();
+        assert!(!is_held(&path), "the locked file was removed");
+        let _other = File::create_new(&path).unwrap();
+        assert!(!is_held(&path), "another file took its place");
+    }
+
+    #[test]
+    fn a_server_passes_over_an_id_already_taken() {
+        let root = root("taken");
+        fs::create_dir_all(&root).unwrap();
+        let taken = root.join("0000000000000001.lock");
+        fs::write(&taken, b"").unwrap();
+        let mut ids = [1, 2].into_iter();
+        let held = ServeFiles::hold_with(&root, || ids.next().unwrap()).unwrap();
+        assert_eq!(held.dir(), root.join("0000000000000002"));
+        assert!(taken.exists());
+
+        let err = ServeFiles::hold_with(&root, || 1).unwrap_err();
+        assert!(err.to_string().contains("stayed in place"), "{err}");
     }
 }
