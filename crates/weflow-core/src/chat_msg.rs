@@ -12,10 +12,10 @@
 use weflow_native::msg_row::MsgRow;
 
 use crate::api::js_parse_int;
-use crate::config::clean_account_dir_name;
 use crate::message::emoji::percent_decode;
 use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message};
+use crate::message::transfer::is_same_wxid;
 use crate::message::xml::{
     extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content, strip_sender_line,
     strip_sender_prefix,
@@ -963,41 +963,18 @@ fn build_message_key(
 
 // ───────────────────────── isSend / sender ─────────────────────────
 
-fn identity_keys(raw: &str) -> Vec<String> {
-    let value = raw.trim();
-    if value.is_empty() {
-        return Vec::new();
-    }
-    let lower = value.to_lowercase();
-    let cleaned = clean_account_dir_name(value).to_lowercase();
-    if !cleaned.is_empty() && cleaned != lower {
-        vec![cleaned, lower]
-    } else {
-        vec![lower]
-    }
-}
-
-/// `resolveMessageIsSend`
+/// `resolveMessageIsSend`: a message whose sender is the account itself ([`is_same_wxid`]) is sent whatever its
+/// stored flag says; otherwise the flag stands, a missing one meaning received. Without a sender or an account the
+/// flag is kept as it is.
 fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) -> Option<i64> {
-    let sender_keys = identity_keys(sender.unwrap_or(""));
-    if sender_keys.is_empty() {
+    let sender = sender.unwrap_or("").trim();
+    if sender.is_empty() || my_wxid.trim().is_empty() {
         return raw;
     }
-    let self_keys = identity_keys(my_wxid.trim());
-    if self_keys.is_empty() {
-        return raw;
-    }
-    let matched = sender_keys.iter().any(|s| {
-        self_keys
-            .iter()
-            .any(|m| s == m || s.starts_with(&format!("{m}_")) || m.starts_with(&format!("{s}_")))
-    });
-    if matched && raw != Some(1) {
-        return Some(1);
-    }
-    match raw {
-        None => Some(if matched { 1 } else { 0 }),
-        r => r,
+    if is_same_wxid(sender, my_wxid) {
+        Some(1)
+    } else {
+        Some(raw.unwrap_or(0))
     }
 }
 
@@ -1393,6 +1370,25 @@ mod tests {
         );
         assert_eq!(resolve_is_send(None, Some("wxid_bob"), "wxid_me"), Some(0));
         assert_eq!(resolve_is_send(None, None, "wxid_me"), None);
+        // the account folder's `_<4 chars>` suffix, either way round
+        assert_eq!(
+            resolve_is_send(Some(0), Some("WXID_ME_1a2b"), "wxid_me"),
+            Some(1)
+        );
+        assert_eq!(resolve_is_send(Some(0), Some("john"), "john_1a2b"), Some(1));
+        // a custom WeChat id is no prefix of another person's
+        assert_eq!(
+            resolve_is_send(Some(0), Some("john_smith"), "john"),
+            Some(0)
+        );
+        assert_eq!(
+            resolve_is_send(Some(0), Some("john"), "john_smith"),
+            Some(0)
+        );
+        assert_eq!(
+            resolve_is_send(Some(1), Some("john_smith"), "john"),
+            Some(1)
+        );
     }
 
     #[test]

@@ -14,6 +14,7 @@ use crate::contract::{
     PhraseCount, ResponseSpeed, SocialInitiative, YearFirstChat,
 };
 use crate::message::emoji::percent_decode;
+use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
 
@@ -125,6 +126,12 @@ fn day_index(dt: chrono::DateTime<Local>) -> i64 {
 
 fn round1(v: f64) -> f64 {
     (v * 10.0).round() / 10.0
+}
+
+/// Whether `sender` is the account itself: the configured wxid or its cleaned form, by the database layer's rule
+/// ([`is_same_wxid`]).
+fn sent_by_me(sender: &str, raw_wxid: &str, cleaned: &str) -> bool {
+    is_same_wxid(sender, raw_wxid) || is_same_wxid(sender, cleaned)
 }
 
 // ── emoji helpers (dual report) ──
@@ -671,25 +678,13 @@ impl ServiceHub {
                         if create_time == 0 {
                             continue;
                         }
-                        let mut sent = row.is_send;
+                        let sent = row.is_send
+                            || sent_by_me(row.sender.as_deref().unwrap_or(""), &raw_wxid, &cleaned);
                         let local_type = if row.local_type == 0 {
                             1
                         } else {
                             row.local_type
                         };
-                        if !sent {
-                            let sender = row.sender.as_deref().unwrap_or("").to_lowercase();
-                            if !sender.is_empty() {
-                                let (r, c) = (raw_wxid.to_lowercase(), cleaned.to_lowercase());
-                                if sender == r
-                                    || sender == c
-                                    || r.starts_with(&format!("{sender}_"))
-                                    || c.starts_with(&format!("{sender}_"))
-                                {
-                                    sent = true;
-                                }
-                            }
-                        }
                         let conv = conversation.entry(sid.clone()).or_insert((0, 0));
                         match last_message.get(sid) {
                             Some(&(t, was_sent)) if create_time - t <= CONVERSATION_GAP => {
@@ -1633,5 +1628,16 @@ mod tests {
             Some("http://e.example/%+5"),
             "a sign is not a hex digit"
         );
+    }
+
+    #[test]
+    fn own_messages_are_told_by_the_account_s_id_not_by_a_prefix() {
+        assert!(sent_by_me("wxid_me", "wxid_me_1a2b", "wxid_me"));
+        assert!(sent_by_me("WXID_ME", "wxid_me_1a2b", "wxid_me"));
+        assert!(sent_by_me("john", "john_1a2b", "john"));
+        // a friend whose custom id is the account's with something after `_`, and the other way round
+        assert!(!sent_by_me("john", "john_smith", "john_smith"));
+        assert!(!sent_by_me("john_smith", "john", "john"));
+        assert!(!sent_by_me("", "john", "john"));
     }
 }

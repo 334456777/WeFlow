@@ -81,6 +81,9 @@ fn uniq(ids: &[String]) -> Vec<String> {
     out
 }
 
+/// The lowercase forms of an id to look it up by: the id, and the id without an account folder's suffix
+/// (`clean_account_dir_name`). Two ids share a key when [`is_same_wxid`](crate::message::transfer::is_same_wxid)
+/// takes them for one account: `john` and `john_1a2b` do, `john` and `john_smith` do not.
 fn identity_keys(raw: &str) -> Vec<String> {
     let value = raw.trim();
     if value.is_empty() {
@@ -1521,4 +1524,31 @@ fn session_id_from_value(value: &Value) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identity_keys_join_an_account_and_its_folder_but_not_another_id() {
+        let shares = |a: &str, b: &str| {
+            let keys = identity_keys(a);
+            identity_keys(b).iter().any(|k| keys.contains(k))
+        };
+        for (a, b, same) in [
+            ("john", "john_1a2b", true),
+            ("WXID_ME", "wxid_me_1a2b", true),
+            ("john", "john_smith", false),
+            ("john_smith", "john", false),
+        ] {
+            assert_eq!(shares(a, b), same, "{a} {b}");
+            assert_eq!(
+                crate::message::transfer::is_same_wxid(a, b),
+                same,
+                "{a} {b}"
+            );
+        }
+        assert!(identity_keys("  ").is_empty());
+    }
 }
