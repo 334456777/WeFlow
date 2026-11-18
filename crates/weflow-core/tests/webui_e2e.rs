@@ -284,6 +284,42 @@ async fn installs_of_one_version_at_once_download_it_once() {
 }
 
 #[tokio::test]
+async fn an_install_clears_the_downloads_of_its_version_left_by_gone_processes() {
+    let reg = Arc::new(Registry_::default());
+    publish(
+        &reg,
+        "0.1.0",
+        package("0.1.0", "1", "5.0.0-rc.5", &[]),
+        "1",
+        "5.0.0-rc.5",
+    );
+    let base = serve(reg.clone()).await;
+    let registry = Registry::new(&base, REPO).unwrap();
+    let (_dir, store) = temp_store("stale-downloads");
+    // a pid above any system's highest; this process's own; another version's; not a download's name
+    let me = std::process::id();
+    let left = [
+        ".download-0.1.0-2147483647-9f0a".to_string(),
+        format!(".download-0.1.0-{me}-9f0b"),
+        ".download-0.1.0-rc.1-2147483647-9f0c".to_string(),
+        ".download-0.1.0-2147483647".to_string(),
+    ];
+    for name in &left {
+        let dir = store.root().join(name).join("site");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.html"), "half").unwrap();
+    }
+
+    webui::install(&store, &registry, "0.1.0", BACKEND, QUIET)
+        .await
+        .unwrap();
+    let mut kept = vec!["0.1.0".to_string()];
+    kept.extend(left[1..].iter().cloned());
+    kept.sort();
+    assert_eq!(entries(&store), kept);
+}
+
+#[tokio::test]
 async fn damaged_and_incompatible_versions_change_nothing() {
     let reg = Arc::new(Registry_::default());
     publish(
