@@ -51,11 +51,20 @@ fn commands_answer_like_the_terminal() {
     assert_eq!(r.status, 400);
 
     // the command checks its arguments as on a terminal: exit code 2 is 400
-    let r = server.call("GET", "/config/get?key=a&key=b", "");
-    let (exit, stdout, _) = run_cli(home, &["--json", "config", "get", "--", "a", "b"]);
+    let r = server.call("GET", "/chat/messages?session-id=x&limit=many", "");
+    let (exit, stdout, _) = run_cli(
+        home,
+        &["--json", "chat", "messages", "--limit=many", "--", "x"],
+    );
     assert_eq!((r.status, exit), (400, 2));
     assert_eq!(r.body, stdout);
     assert_eq!(r.headers["x-weflow-error-code"], "invalid_arguments");
+    // a positional argument given twice is refused by the server: on the command line the second value would go
+    // to the next argument
+    let r = server.call("GET", "/config/get?key=a&key=b", "");
+    assert_eq!(r.status, 400);
+    assert_eq!(r.json()["error"]["code"], "invalid_arguments");
+    assert!(r.body.contains("`key`"), "{}", r.body);
     // the server refuses names the command does not have
     let r = server.call("GET", "/config/path?bogus=1", "");
     assert_eq!(r.status, 400);

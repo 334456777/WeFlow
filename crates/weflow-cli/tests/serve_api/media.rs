@@ -296,6 +296,21 @@ fn media_come_back_as_files_from_the_process() {
     assert_eq!(r.status, 400, "{}", r.body);
     assert_eq!(r.json()["error"]["code"], "invalid_arguments");
     assert!(!Path::new("-").exists());
+    // a value given twice is refused, not handed to the next argument: no message 6 of a conversation `wxid_bob`
+    for (method, route) in [
+        ("GET", "/api/chat/voice-data"),
+        ("POST", "/chat/voice-data"),
+    ] {
+        let r = server.call(
+            method,
+            &format!("{route}?session-id=wxid_bob&session-id=6"),
+            "",
+        );
+        assert_eq!(r.status, 400, "{route}: {}", r.body);
+        assert_eq!(r.json()["error"]["code"], "invalid_arguments", "{route}");
+        assert!(r.body.contains("session-id"), "{route}: {}", r.body);
+    }
+    assert!(!Path::new("-").exists());
 
     // only GET, and the file is the answer
     let r = server.call("POST", &format!("/api/chat/image-data?{query}"), "");

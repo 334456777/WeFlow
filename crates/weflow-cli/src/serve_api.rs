@@ -712,7 +712,8 @@ async fn command_route(
         }
     }
     if media {
-        // satisfies the command line of the child process; nothing is written there
+        // completes the command line clap checks below, which refuses whatever the typed read did not take; no child
+        // process runs it, as one would write a file named `-`
         params.insert("out".into(), vec![Value::String("-".into())]);
     }
     let argv = endpoint
@@ -742,6 +743,13 @@ async fn command_route(
         if let Some(refused) = refused_by_clap(&full) {
             timing.stage("cmd", Some("refused in process"), ran);
             return Ok(timing.on(refused));
+        }
+        if media {
+            return Err(bad_request(
+                "this /api/ media route does not take the request as it is: give each parameter once, as the command \
+                 takes it",
+            )
+            .into());
         }
     }
     // the child answers in the server's language, as a read in process does, whatever the request's

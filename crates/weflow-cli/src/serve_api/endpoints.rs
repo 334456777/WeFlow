@@ -206,9 +206,12 @@ impl Endpoint {
         }
     }
 
-    /// Refuses what the command does not take: a name it has no parameter of, or a switch that is neither true nor
-    /// false. The command itself checks the rest, or the typed reads of `/api/` (#397) do as it would.
+    /// Refuses what the command does not take: a name it has no parameter of, a switch that is neither true nor
+    /// false, or more than one value for a positional argument of one value (on the command line the second value
+    /// would go to the next argument; an option given twice clap refuses itself). The command itself checks the rest,
+    /// or the typed reads of `/api/` (#397) do as it would.
     pub(super) fn check(&self, params: &Params) -> Result<(), String> {
+        let mut singles: BTreeMap<&str, usize> = BTreeMap::new();
         for (key, values) in params {
             let Some(param) = find_param(self, key) else {
                 let known: Vec<&str> = self.params.iter().map(|p| p.name.as_str()).collect();
@@ -230,6 +233,17 @@ impl Endpoint {
                     "parameter `{}` is a switch: pass true or false",
                     param.name
                 ));
+            }
+            if param.kind == Kind::Single && param.index.is_some() {
+                // `session-id` and `session_id` name the same parameter
+                let given = singles.entry(param.name.as_str()).or_default();
+                *given += values.len();
+                if *given > 1 {
+                    return Err(format!(
+                        "parameter `{}` takes one value, not several",
+                        param.name
+                    ));
+                }
             }
         }
         Ok(())
@@ -429,6 +443,41 @@ mod tests {
         );
         let err = argv("config list", &[("bogus", json!(1))]).unwrap_err();
         assert!(err.contains("bogus"), "{err}");
+    }
+
+    /// A positional argument of one value given twice is refused: the second value would go to the next argument.
+    #[test]
+    fn a_single_value_given_twice_is_refused() {
+        for pairs in [
+            vec![("session-id", json!("a")), ("session-id", json!("3"))],
+            vec![("session-id", json!("a")), ("session_id", json!("3"))],
+        ] {
+            let err = argv("chat voice-data", &pairs).unwrap_err();
+            assert!(err.contains("takes one value"), "{pairs:?}: {err}");
+        }
+        // an option given twice is left to clap, which refuses it with its usage
+        assert_eq!(
+            argv(
+                "chat voice-data",
+                &[
+                    ("session-id", json!("a")),
+                    ("msg-id", json!("1")),
+                    ("out", json!("x")),
+                    ("out", json!("y")),
+                ]
+            )
+            .unwrap(),
+            ["chat", "voice-data", "--out=x", "--out=y", "--", "a", "1"]
+        );
+        // an array is one value of its own, passed as JSON text
+        assert_eq!(
+            argv(
+                "chat voice-data",
+                &[("session-id", json!(["a", "3"])), ("msg-id", json!("1"))]
+            )
+            .unwrap(),
+            ["chat", "voice-data", "--", r#"["a","3"]"#, "1"]
+        );
     }
 
     #[test]

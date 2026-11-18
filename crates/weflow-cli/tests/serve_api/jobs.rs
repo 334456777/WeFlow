@@ -160,7 +160,7 @@ fn jobs_run_in_the_background() {
     // a failing command is a failed job with the command's error
     let r = server.request(
         "GET",
-        "/config/get?key=a&key=b",
+        "/chat/messages?session-id=x&limit=many",
         &[("Authorization", &auth), ("Prefer", "respond-async")],
         "",
     );
