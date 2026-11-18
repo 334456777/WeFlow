@@ -89,9 +89,11 @@ fn fix_sns_url(url: &str, token: Option<&str>, is_video: bool) -> String {
     format!("{fixed}{connector}token={token}&idx=1")
 }
 
-/// Whether `url` is an https address of WeChat's Moments media servers: images on `*.qpic.cn` (and
-/// `*.c2c.wechat.com` for accounts abroad), videos and their covers on `*.video.qq.com` and `*.tc.qq.com`. A route
-/// that fetches media for a page takes only these, so it cannot be made to fetch whatever a page names.
+/// Whether `url` is an https address of WeChat's Moments media servers.
+///
+/// Images are on `*.qpic.cn` (and `*.c2c.wechat.com` for accounts abroad), videos and their covers on
+/// `*.video.qq.com` and `*.tc.qq.com`. A route that fetches media for a page takes only these, so it cannot be made
+/// to fetch whatever a page names.
 pub fn is_wechat_media_url(url: &str) -> bool {
     const SERVERS: &[&str] = &[".qpic.cn", ".wechat.com", ".video.qq.com", ".tc.qq.com"];
     let Ok(parsed) = reqwest::Url::parse(url) else {
@@ -559,8 +561,10 @@ pub fn zh_locale_from_ts(ts: i64) -> String {
         .unwrap_or_default()
 }
 
-/// The HTML page of `posts` (see [`crate::export_msg::MomentsPage`]); `saved` holds, post by post and medium by medium,
-/// the files saved of their media, and `avatars` the avatars saved, by username, as paths from the page.
+/// The HTML page of `posts` (see [`crate::export_msg::MomentsPage`]).
+///
+/// `saved` holds, post by post and medium by medium, the files saved of their media, and `avatars` the avatars saved,
+/// by username, as paths from the page.
 pub fn generate_html(
     posts: &[SnsPost],
     saved: &[Vec<SavedMedia>],

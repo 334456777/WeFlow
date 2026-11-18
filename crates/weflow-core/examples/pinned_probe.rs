@@ -1,6 +1,6 @@
 //! Where WeChat keeps that a conversation is pinned (#885): the bits of `SessionTable.status` and of `contact.flag`
 //! over the conversation list, and the first conversations by their place, kind and bits.
-//! usage: pinned_probe <config.json>
+//! Usage: `pinned_probe <config.json>`
 //! No name, WeChat ID, message, key or path is printed: a conversation is its place in the list (by `sort_timestamp`),
 //! its kind and a short hash of its username, so that two runs (before and after pinning one in WeChat) can be told
 //! apart. The config and the databases are only read.

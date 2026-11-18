@@ -1,5 +1,6 @@
-//! Running processes by image name, their command lines, and whether a process id is still running. On Windows the
-//! list comes from a ToolHelp snapshot of the process list.
+//! Running processes by image name, their command lines, and whether a process id is still running.
+//!
+//! On Windows the list comes from a Tool Help snapshot (`CreateToolhelp32Snapshot`) of the process list.
 
 /// Whether process `pid` may still be running. Only a definite "no such process" from the system gives `false`: a
 /// process of another user, an answer that cannot be read, or a platform without a check all give `true`, so a caller

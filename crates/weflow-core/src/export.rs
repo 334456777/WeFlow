@@ -1,3 +1,5 @@
+//! Tables and archives of the exports other than chat records: tables as SQL or Excel, list pages, zip folders.
+
 use std::fs;
 use std::path::Path;
 
@@ -6,9 +8,10 @@ use serde_json::{json, Value};
 
 use crate::locale::{self, Lang};
 
-/// The footprint (`export footprint`) as a timeline, for CSV and Excel (#315): the column names, and a row for each
-/// private-chat segment and each message that @-mentions me, oldest first. `names` gives conversations' and senders'
-/// names by username.
+/// The footprint (`export footprint`) as a timeline, for CSV and Excel (#315).
+///
+/// It gives the column names, and a row for each private-chat segment and each message that @-mentions me, oldest
+/// first. `names` gives conversations' and senders' names by username.
 pub fn footprint_timeline(
     data: &Value,
     names: &std::collections::HashMap<String, String>,
@@ -106,9 +109,10 @@ pub fn footprint_timeline(
     )
 }
 
-/// A list of objects (`export sessions`, `export contacts`) as a table (#659): the columns are the rows' keys in the
-/// order they first appear, and a row has `Null` in the columns it has no key for. What is not a list of objects
-/// gives no columns and no rows.
+/// A list of objects (`export sessions`, `export contacts`) as a table (#659).
+///
+/// The columns are the rows' keys in the order they first appear, and a row has `Null` in the columns it has no key
+/// for. What is not a list of objects gives no columns and no rows.
 pub fn list_table(list: &Value) -> (Vec<String>, Vec<Vec<Value>>) {
     let objects: Vec<&serde_json::Map<String, Value>> = list
         .as_array()
@@ -152,8 +156,10 @@ pub fn export_list_html(page: &crate::export_msg::ListPage<'_>, out: &Path) -> R
     write_file(out, html)
 }
 
-/// A table as SQL in SQLite's dialect: `CREATE TABLE` with a column for each header, then an `INSERT` for each row.
-/// A column that holds only whole numbers and booleans is `INTEGER` (a boolean is 1 or 0), one that holds only
+/// Writes a table to `out` as SQL in SQLite's dialect.
+///
+/// The file has `CREATE TABLE` with a column for each header, then an `INSERT` for each row. A column that holds
+/// only whole numbers and booleans is `INTEGER` (a boolean is 1 or 0), one that holds only
 /// numbers and booleans `REAL`, any other `TEXT`; `Null` is `NULL`. A table without columns is a comment saying so.
 pub fn export_table_sql(
     table: &str,

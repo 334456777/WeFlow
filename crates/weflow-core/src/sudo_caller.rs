@@ -1,5 +1,7 @@
-//! `weflow` run with `sudo` (#855): reading WeChat's memory needs root on Linux and macOS, but the config and the
-//! cache belong to the user who ran `sudo`, not to root. With an effective user of root and a non-zero `SUDO_UID`,
+//! `weflow` run with `sudo` (#855): the config and the cache stay those of the user who ran `sudo`.
+//!
+//! Reading WeChat's memory needs root on Linux and macOS, but the config and the cache belong to the user who ran
+//! `sudo`, not to root. With an effective user of root and a non-zero `SUDO_UID`,
 //! the home folder and the default config folder are that user's, as the password database names them (`sudo`
 //! points `HOME` at root's). What root makes or replaces in WeFlow's home folder is handed back to that user when the
 //! command ends, so that the user can still read and write it without `sudo`.
@@ -31,9 +33,10 @@ pub fn home_dir() -> Option<PathBuf> {
         .or_else(dirs::home_dir)
 }
 
-/// The folder of per-user config files of the user this runs for, as [`dirs::config_dir`] gives it for that user:
-/// `Library/Application Support` in the home folder on macOS, `.config` elsewhere (the caller's `XDG_CONFIG_HOME` is
-/// not known under `sudo`, which clears it).
+/// The folder of per-user config files of the user this runs for, as [`dirs::config_dir`] gives it for that user.
+///
+/// Under `sudo` it is `Library/Application Support` in the caller's home folder on macOS and `.config` elsewhere (the
+/// caller's `XDG_CONFIG_HOME` is not known under `sudo`, which clears it).
 pub fn config_dir() -> Option<PathBuf> {
     match caller() {
         Some(caller) if cfg!(target_os = "macos") => {
@@ -48,9 +51,11 @@ pub fn config_dir() -> Option<PathBuf> {
 /// caller (`None` for one that is not the caller's).
 static ADOPTED: Mutex<Vec<(PathBuf, Option<PathBuf>)>> = Mutex::new(Vec::new());
 
-/// Called before WeFlow makes one of its folders `dir` (the home folder, the cache folder): under `sudo`, when the
-/// nearest part of `dir` that exists belongs to the caller, what root makes in `dir` from now on (and the folders made
-/// to reach it) goes back to the caller at [`hand_back`]. A folder of root's, or of anyone else, is left as it is.
+/// Marks `dir`, one of WeFlow's folders (the home folder, the cache folder), to be handed back to the `sudo` caller.
+///
+/// Called before WeFlow makes `dir`. Under `sudo`, when the nearest part of `dir` that exists belongs to the caller,
+/// what root makes in `dir` from then on (and the folders made to reach it) goes back to the caller at
+/// [`hand_back`]. A folder of root's, or of anyone else, is left as it is.
 pub fn adopt(dir: &Path) {
     let Some(caller) = caller() else {
         return;
@@ -68,9 +73,10 @@ pub fn adopt(dir: &Path) {
     ADOPTED.lock_or_panic().push((dir.to_path_buf(), top));
 }
 
-/// Gives what root owns in the folders [`adopt`] took to the caller of `sudo`, user and group. Symbolic links are
-/// neither followed nor changed, and entries of other owners keep theirs. Failures are logged and skipped: the command
-/// has done its work by then.
+/// Gives what root owns in the folders [`adopt`] took to the caller of `sudo`, user and group.
+///
+/// Symbolic links are neither followed nor changed, and entries of other owners keep theirs. Failures are logged and
+/// skipped: the command has done its work by then.
 pub fn hand_back() {
     let mut tops: Vec<PathBuf> = std::mem::take(&mut *ADOPTED.lock_or_panic())
         .into_iter()

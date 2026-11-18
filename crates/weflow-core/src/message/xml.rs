@@ -317,8 +317,8 @@ pub(super) fn sender_prefix_len(content: &str) -> usize {
 
 /// The name of the sender prefix [`strip_sender_prefix`] removes, and where the text after it starts.
 fn sender_prefix(content: &str) -> Option<(&str, usize)> {
-    // 数据库里的群消息是 "wxid:\n正文"（企业微信成员是 "…@openim:\n正文"）；同一行的 "1:3-1:6" 这类是正文本身，
-    // 不能当作前缀去掉。
+    // a group message is stored as "wxid:\ntext" (a WeCom member's as "…@openim:\ntext"); something like "1:3-1:6" on
+    // one line is the text itself and is not removed as a prefix
     let h = content.as_bytes();
     let start = crate::xml::skip_ws(content, 0);
     let name_len = h[start..]
@@ -503,7 +503,7 @@ mod tests {
         assert_eq!(strip_sender_prefix("wxid_abc:hello"), "hello");
         assert_eq!(strip_sender_prefix("http://x.y"), "http://x.y");
         assert_eq!(strip_sender_prefix("  a-b_c:\nx"), "x");
-        // 正文里的 "1:3-1:6"、"4:1" 不是发送者前缀
+        // "1:3-1:6" and "4:1" in the text are not sender prefixes
         assert_eq!(strip_sender_prefix("1:3-1:6"), "1:3-1:6");
         assert_eq!(strip_sender_prefix("4:1"), "4:1");
         assert_eq!(strip_sender_prefix("10:1 abc"), "10:1 abc");

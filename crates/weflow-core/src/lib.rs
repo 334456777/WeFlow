@@ -1,3 +1,10 @@
+//! WeFlow's business layer, between the command line (`weflow-cli`) and the database layer (`weflow-native`).
+//!
+//! [`services::ServiceHub`] serves every command, one module of `services` per domain; [`reads`] holds the typed
+//! reads the CLI and the command API share and [`contract`] the types of the command API's answers. Exports
+//! (`export*`, [`message`]), message push ([`push`]), the configuration ([`config`]) and the decoding of images,
+//! videos and voices sit beside them.
+
 pub mod api;
 pub mod backup;
 pub mod biz;

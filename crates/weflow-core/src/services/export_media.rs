@@ -334,7 +334,7 @@ impl ServiceHub {
     }
 
     /// The avatars of `users` written to `<dir>/avatars/`: WeChat's copy on this computer, else, with
-    /// [`AvatarSource::Download`], the picture at the contact's avatar address. Returns
+    /// [`AvatarSource::Download`](api::AvatarSource::Download), the picture at the contact's avatar address. Returns
     /// `{ username: <prefix>/avatars/<file> }` for those written; the others keep the page's initial.
     async fn write_avatars(
         &self,

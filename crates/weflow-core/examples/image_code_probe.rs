@@ -1,5 +1,5 @@
 //! Read-only kvcomm probe using the production Rust acquisition path.
-//! Usage: image_code_probe <PRIVATE CLI config> <kvcomm directory> [...]
+//! Usage: `image_code_probe <PRIVATE CLI config> <kvcomm directory> [...]`
 //! Prints diagnostics and verification booleans only, never codes, identities or keys.
 use std::path::{Path, PathBuf};
 use weflow_core::config::{resolve_account_dir, ConfigStore};

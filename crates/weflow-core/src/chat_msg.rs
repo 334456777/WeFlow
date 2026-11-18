@@ -1,5 +1,6 @@
-//! The chat service's `Message` model (WeFlow's `chatService.ts`):
-//! typed message rows → messages with parsed display text, media tokens, links, quotes.
+//! The chat service's `Message` model (WeFlow's `chatService.ts`).
+//!
+//! It turns typed message rows into messages with parsed display text, media tokens, links and quotes.
 //! This one backs the HTTP API, the chat commands and the analytics code; the exporter has its own model in
 //! `message.rs` (`exportService.ts`), whose text differs on purpose: a chat window's line (`[链接] title`,
 //! `[语音消息]`) against an export's (`[引用 …]`, a transfer's direction, a sticker's caption).
@@ -787,9 +788,10 @@ fn parse_emoji_info(content: &str) -> EmojiInfo {
 
 // ───────────────────────── the model ─────────────────────────
 
-/// A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399): its text and the
-/// keys of its media, links, cards and so on, parsed from the row. An optional field is left out when the message has
-/// none; times are Unix seconds.
+/// A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399).
+///
+/// It holds its text and the keys of its media, links, cards and so on, parsed from the row. An optional field is
+/// left out when the message has none; times are Unix seconds.
 #[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {

@@ -221,7 +221,8 @@ impl ServiceHub {
         })
     }
 
-    /// 按会话建好 [`Exporter`](crate::export_msg::Exporter)（联系人名、群昵称、自己的账号），再交给 `f` 使用。
+    /// Builds the conversation's [`Exporter`](crate::export_msg::Exporter) (contact names, group nicknames, the
+    /// account's own id) and hands it to `f`.
     fn with_exporter<R>(
         &self,
         session_id: &str,
@@ -474,8 +475,10 @@ pub(super) fn is_sticker(m: &crate::message::ExportMsg) -> bool {
     m.local_type == 47 || m.sticker_md5.is_some()
 }
 
-/// 查表情描述（用户自己的表情文字，否则商店表情的中文描述），写进 `emoji_caption`，
-/// 导出时显示为 `[表情：描述]`。描述表（md5 → 描述）整张一次读出，见 `emoticon_captions`。
+/// Looks up each sticker's caption and writes it into `emoji_caption`, which the export shows as `[表情：caption]`.
+///
+/// The caption is the user's own text for the sticker, else the store sticker's Chinese description. The table
+/// (md5 → caption) is read whole at once, see `emoticon_captions`.
 pub(super) fn attach_emoji_captions(
     table: &std::collections::HashMap<String, String>,
     messages: &mut [crate::message::ExportMsg],

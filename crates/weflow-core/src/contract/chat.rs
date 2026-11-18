@@ -109,8 +109,10 @@ pub struct Contact {
     pub avatar_url: Option<String>,
 }
 
-/// A message as the query commands list it (`chat resources`, `chat images`, `chat media-stream`…): the main fields
-/// of its row, its text and the keys of its media. An optional field is left out when the message has none.
+/// A message as the query commands list it (`chat resources`, `chat images`, `chat media-stream`…).
+///
+/// It holds the main fields of its row, its text and the keys of its media. An optional field is left out when the
+/// message has none.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageView {
@@ -162,6 +164,7 @@ pub struct MessageView {
 }
 
 impl MessageView {
+    /// The view of `m`, its text written for the account `my_wxid`.
     pub fn of(m: &ExportMsg, my_wxid: &str) -> Self {
         let text = parse_message_content(
             &m.content,
@@ -202,8 +205,9 @@ impl MessageView {
     }
 }
 
-/// A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`): its
-/// columns read with their types, the text inflated and decoded, the sender resolved (#257, #492).
+/// A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`).
+///
+/// Its columns are read with their types, the text inflated and decoded, the sender resolved (#257, #492).
 #[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageRow {

@@ -3,8 +3,10 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// My footprint over a range of days (`insight footprint`): who I talked with and replied to, and where I was
-/// @-mentioned. Its keys are the native layer's, in snake_case. Times are Unix seconds, 0 where there is none.
+/// My footprint over a range of days (`insight footprint`).
+///
+/// It says who I talked with and replied to, and where I was @-mentioned. Its keys are the native layer's, in
+/// `snake_case`. Times are Unix seconds, 0 where there is none.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Footprint {

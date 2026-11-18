@@ -1,3 +1,5 @@
+//! The error every service call returns, its exit codes and the `error` object of a failed answer.
+
 use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
@@ -17,17 +19,24 @@ pub struct ErrorPayload {
     pub details: Option<Value>,
 }
 
+/// The fields of an [`AppError`], read and written through it.
 #[derive(Debug)]
 pub struct AppErrorInner {
+    /// The kind of failure, as [`ErrorPayload::code`] gives it.
     pub code: String,
+    /// What went wrong, for a person, in the language of the run.
     pub message: String,
+    /// The process exit code of a command that fails with this error.
     pub exit_code: i32,
+    /// What some codes add to the message, as [`ErrorPayload::details`] gives it.
     pub details: Option<Value>,
 }
 
-/// The error of every service call. The payload is boxed so that `Result<T, AppError>` stays one pointer wide
-/// instead of over 128 bytes; the fields are still read and written through `Deref`/`DerefMut`
-/// (`err.exit_code`, `err.details = …`), but cannot be moved out that way: use [`AppError::into_message`].
+/// The error of every service call.
+///
+/// The payload is boxed so that `Result<T, AppError>` stays one pointer wide instead of over 128 bytes; the fields are
+/// still read and written through `Deref`/`DerefMut` (`err.exit_code`, `err.details = …`), but cannot be moved out
+/// that way: use [`AppError::into_message`].
 #[derive(Debug, Error)]
 #[error("{}: {}", .0.code, .0.message)]
 pub struct AppError(Box<AppErrorInner>);
@@ -46,9 +55,12 @@ impl std::ops::DerefMut for AppError {
     }
 }
 
+/// The result of a service call.
 pub type AppResult<T> = Result<T, AppError>;
 
 impl AppError {
+    /// An error of the kind `code` that ends a command with `exit_code`; `message` is translated into the language
+    /// of the run.
     pub fn new(code: impl Into<String>, message: impl Into<String>, exit_code: i32) -> Self {
         Self(Box::new(AppErrorInner {
             code: code.into(),
@@ -58,6 +70,7 @@ impl AppError {
         }))
     }
 
+    /// A failure while doing the work (`runtime_error`, exit code 1).
     pub fn runtime(message: impl Into<String>) -> Self {
         Self::new("runtime_error", message, 1)
     }
@@ -68,14 +81,17 @@ impl AppError {
         Self::runtime(message).with_details(serde_json::json!({ "failureKind": "not_found" }))
     }
 
+    /// Arguments that cannot be used as given (`invalid_arguments`, exit code 2).
     pub fn usage(message: impl Into<String>) -> Self {
         Self::new("invalid_arguments", message, 2)
     }
 
+    /// A configuration that is missing or wrong, such as an account without a key (`config_error`, exit code 3).
     pub fn config(message: impl Into<String>) -> Self {
         Self::new("config_error", message, 3)
     }
 
+    /// A failure of the database layer (`native_error`, exit code 4).
     pub fn native(message: impl Into<String>) -> Self {
         Self::new("native_error", message, 4)
     }
@@ -99,6 +115,7 @@ impl AppError {
         }
     }
 
+    /// This error with `details` (see [`AppErrorInner::details`]).
     pub fn with_details(mut self, details: Value) -> Self {
         self.details = Some(details);
         self
@@ -109,6 +126,7 @@ impl AppError {
         self.0.message
     }
 
+    /// The `error` object of a failed answer.
     pub fn payload(&self) -> ErrorPayload {
         ErrorPayload {
             code: self.code.clone(),

@@ -1,5 +1,7 @@
-//! Files and folders only their owner may read (#812): the config file holds the database key, the image keys and
-//! the token of the command API, and the cache holds decrypted images and voices. On Unix they are made with mode
+//! Files and folders only their owner may read (#812).
+//!
+//! The config file holds the database key, the image keys and the token of the command API, and the cache holds
+//! decrypted images and voices. On Unix they are made with mode
 //! 0600 (files) and 0700 (folders). On Windows they take the access of the folder they are made in, which for the
 //! default places is the user's own profile.
 
@@ -40,8 +42,10 @@ pub fn open_options() -> fs::OpenOptions {
     options
 }
 
-/// Whether `path` lets others than its owner in: its group or anyone else may read, write or (a folder) enter it.
-/// False when it cannot be read, and always on Windows, whose access lists this does not judge.
+/// Whether `path` lets others than its owner in.
+///
+/// True when its group or anyone else may read, write or (a folder) enter it. False when it cannot be read, and
+/// always on Windows, whose access lists this does not judge.
 #[must_use]
 pub fn open_to_others(path: &Path) -> bool {
     #[cfg(unix)]

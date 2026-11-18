@@ -1548,7 +1548,8 @@ fn url_encode(s: &str) -> String {
     out
 }
 
-/// A comment of the post itself, as ArkmeJSON lists one its XML does not: without the usernames.
+/// A comment of the post itself as the Arkme JSON export lists it: without the usernames, which its XML does not
+/// have.
 fn legacy_comment(c: &SnsComment) -> SnsComment {
     SnsComment {
         username: None,
@@ -1557,7 +1558,7 @@ fn legacy_comment(c: &SnsComment) -> SnsComment {
     }
 }
 
-/// One post as written into the JSON / ArkmeJSON export, with the files `saved` of its media.
+/// One post as written into the JSON and Arkme JSON exports, with the files `saved` of its media.
 fn export_post_json(p: &SnsPost, saved: &[SavedMedia], arkme: bool) -> Value {
     let local = |path: &Option<String>| path.clone().filter(|l| !l.is_empty());
     let mut o = Map::new();

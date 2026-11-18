@@ -1,5 +1,5 @@
 //! Aggregate profile of a configured account, the numbers the synthetic benchmark account copies (#488, #605).
-//! usage: account_profile_probe <config.json> [--calibrate <profile.json>]
+//! Usage: `account_profile_probe <config.json> [--calibrate <profile.json>]`
 //! Prints one JSON object of counts, proportions and quantiles. No conversation, user name, message content, key or
 //! local path is printed: message types are WeChat's numeric codes, everything else is counted. The config is only
 //! read.

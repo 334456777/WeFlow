@@ -93,8 +93,10 @@ pub fn is_hd_path(path: &str) -> bool {
     stem_and_ext(path).0.ends_with("_hd")
 }
 
-/// `isThumbnailPath`: a substring test of the file name, as in WeFlow's desktop app. The folders are not looked at: a
-/// conversation or a folder named like `wxid_t…` or `my_temp` does not make every image in it a thumbnail.
+/// `isThumbnailPath`: whether `path` names a thumbnail, by a substring test of the file name.
+///
+/// The test is the one of WeFlow's desktop app. The folders are not looked at: a conversation or a folder named like
+/// `wxid_t…` or `my_temp` does not make every image in it a thumbnail.
 pub fn is_thumbnail_path(path: &str) -> bool {
     let l = file_name_lower(path);
     l.contains("_thumb") || l.contains("_t") || l.contains(".t.")
@@ -185,9 +187,11 @@ pub fn session_dir_for_storage(session_id: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The folders under `msg/attach` a conversation's attachments may be in, the likelier first (#657): `md5` of the
-/// whole username, then, when an account folder's suffix (`clean_account_dir_name`) can be cut off it, `md5` of
-/// what is left, the folder the desktop app looked in. A username that is already an md5 is its own folder.
+/// The folders under `msg/attach` a conversation's attachments may be in, the likelier first (#657).
+///
+/// The first is the `md5` of the whole username, then, when an account folder's suffix (`clean_account_dir_name`)
+/// can be cut off it, the `md5` of what is left, the folder the desktop app looked in. A username that is already an
+/// md5 is its own folder.
 pub fn session_dirs_for_storage(session_id: &str) -> Vec<String> {
     let normalized = session_id.trim().to_lowercase();
     if normalized.is_empty() {
@@ -305,6 +309,7 @@ pub fn mime_from_extension(ext: &str) -> Option<&'static str> {
 }
 
 /// The four picture formats WeChat's files, its servers and WeFlow's caches hold, told by a file's first bytes.
+///
 /// Every place that names or serves a picture by its content asks here, then adds what only it knows (WXGF, BMP,
 /// HEIF, the extension it falls back on).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -505,9 +510,11 @@ pub fn is_wxgf(buf: &[u8]) -> bool {
     buf.len() >= 20 && &buf[0..4] == b"wxgf"
 }
 
-/// `unwrapWxgf`: returns the image bytes and, when the data is still an undecoded WXGF blob, why the built-in
-/// decoder ([`crate::hevc`]) could not convert it (`None`: it is an image, or was not WXGF). The candidates are tried in
-/// order; the reason given is the first one's, the stream the others are cut from.
+/// `unwrapWxgf`: the image bytes of `buf`, converted from WXGF when it is a WXGF blob.
+///
+/// When the data is still an undecoded WXGF blob, the second value says why the built-in decoder ([`crate::hevc`])
+/// could not convert it (`None`: it is an image, or was not WXGF). The candidates are tried in order; the reason
+/// given is the first one's, the stream the others are cut from.
 pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<crate::hevc::Unsupported>) {
     if !is_wxgf(&buf) {
         return (buf, None);

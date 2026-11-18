@@ -1,5 +1,5 @@
 //! Read-only inventory and cursor comparison on an existing configured account.
-//! Usage: real_account_probe <isolated config.json> <private inventory.json>
+//! Usage: `real_account_probe <isolated config.json> <private inventory.json>`
 //! The inventory contains conversation identifiers and dates and must remain private. Stdout contains only
 //! aggregate counts. No key, identifier, message content or local account path is printed.
 #![expect(

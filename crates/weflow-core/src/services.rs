@@ -1,3 +1,5 @@
+//! The services the CLI and the command API call, one module per domain, each an `impl` block of [`ServiceHub`].
+
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -53,6 +55,9 @@ impl Freshness {
     }
 }
 
+/// The account of a profile, its config and the state its services keep between calls.
+///
+/// Clones share that state; each has its own copy of the config.
 #[derive(Clone)]
 pub struct ServiceHub {
     ctx: AppContext,

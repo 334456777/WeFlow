@@ -2,7 +2,7 @@
 //! the account's `msg/attach`, and for each WXGF picture tries the candidate streams the way the image service does,
 //! counting why the ones it cannot decode fail. `decoded_jpegs_sha256`, one hash of the JPEGs of all decoded pictures,
 //! tells whether two builds write the same files.
-//! Usage: wxgf_coverage_probe <isolated config.json>
+//! Usage: `wxgf_coverage_probe <isolated config.json>`
 //! Stdout contains only aggregate counts. No key, identifier, file name, image or local path is printed, and nothing
 //! is written.
 

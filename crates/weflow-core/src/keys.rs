@@ -1,6 +1,9 @@
-//! Image-key derivation of `keyService.ts` (`deriveImageKeys`, `verifyDerivedAesKey`,
-//! `_findTemplateData`, `collectWxidCandidates`). The `kvcomm` cache yields *codes*; the AES key
-//! depends on the account's wxid, so candidate wxids are verified against a `_t.dat` template.
+//! Image-key derivation, ported from `keyService.ts`.
+//!
+//! It covers `deriveImageKeys`, `verifyDerivedAesKey`, `_findTemplateData` and `collectWxidCandidates`. The `kvcomm`
+//! cache yields *codes*; the AES key depends on the account's wxid, so candidate wxids are verified against a `_t.dat`
+//! template.
+
 use std::path::{Path, PathBuf};
 
 use aes::cipher::{Array, BlockCipherDecrypt, KeyInit};

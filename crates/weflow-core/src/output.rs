@@ -1,23 +1,26 @@
+//! What a command prints: its JSON answer, status lines and events on stderr, and the progress bar.
+
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::ErrorPayload;
 use crate::sync::MutexExt;
 
+/// The JSON answer of a command: `{ "success": true, "data": … }` or `{ "success": false, "error": … }`.
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum CliResponse<T: Serialize> {
+    /// The command did its work.
     Success {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         data: Option<T>,
     },
-    Failure {
-        success: bool,
-        error: ErrorPayload,
-    },
+    /// The command failed.
+    Failure { success: bool, error: ErrorPayload },
 }
 
+/// The answer of a command that did its work.
 pub fn success<T: Serialize>(data: T) -> CliResponse<T> {
     CliResponse::Success {
         success: true,
@@ -25,6 +28,7 @@ pub fn success<T: Serialize>(data: T) -> CliResponse<T> {
     }
 }
 
+/// The answer of a command that failed.
 pub fn failure(error: ErrorPayload) -> CliResponse<Value> {
     CliResponse::Failure {
         success: false,
@@ -39,6 +43,7 @@ pub fn set_json_output(on: bool) {
     JSON_OUTPUT.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Whether this run prints JSON (see [`set_json_output`]).
 pub fn json_output() -> bool {
     JSON_OUTPUT.load(std::sync::atomic::Ordering::Relaxed)
 }

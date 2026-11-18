@@ -16,7 +16,7 @@ use super::spool::{SenderTally, Spool};
 use super::Exporter;
 
 impl<'a, 'n> Exporter<'a, 'n> {
-    /// `groupMembers` of the arkme export: every sender plus the group's member list, busiest first.
+    /// [`ark_group_members_of`](Self::ark_group_members_of) the senders of `msgs`.
     #[cfg(test)]
     pub(super) fn ark_group_members(&mut self, msgs: &[ExportMsg]) -> Vec<ArkGroupMember> {
         let mut tally = SenderTally::default();
@@ -26,7 +26,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
         self.ark_group_members_of(tally)
     }
 
-    /// [`ark_group_members`](Self::ark_group_members) from a tally of the senders (see [`SenderTally`]).
+    /// `groupMembers` of the arkme export, from a tally of the senders (see [`SenderTally`]): every sender plus the
+    /// group's member list, busiest first.
     pub(super) fn ark_group_members_of(&mut self, tally: SenderTally) -> Vec<ArkGroupMember> {
         let SenderTally { order, counts, .. } = tally;
         let ids: Vec<String> = {

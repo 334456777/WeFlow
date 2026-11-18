@@ -1,3 +1,9 @@
+//! Decrypting the `.dat` files WeChat keeps images in.
+//!
+//! A file without a header is an image as it is, or one XOR-ed with a single byte. A V1 or V2 file (by its six-byte
+//! header) has an AES-128-ECB part, a raw middle and an XOR-ed tail; V1 files use a fixed AES key, V2 files the
+//! account's image key.
+
 use std::path::Path;
 
 use aes::cipher::{BlockModeDecrypt, KeyInit};
@@ -10,12 +16,17 @@ type Aes128EcbDec = ecb::Decryptor<aes::Aes128>;
 const V1_MAGIC: [u8; 6] = [0x07, 0x08, 0x56, 0x31, 0x08, 0x07];
 const V2_MAGIC: [u8; 6] = [0x07, 0x08, 0x56, 0x32, 0x08, 0x07];
 
+/// A decrypted `.dat` file.
 pub struct DecryptResult {
+    /// The decrypted bytes.
     pub data: Vec<u8>,
+    /// Their extension, as [`detect_image_extension`] gives it.
     pub ext: String,
+    /// Whether they are WeChat's own WXGF container rather than a picture.
     pub is_wxgf: bool,
 }
 
+/// The format version of a `.dat` file by its header: 1 or 2, or 0 for a file without one.
 pub fn detect_dat_version(data: &[u8]) -> u8 {
     if data.len() < 6 {
         return 0;
@@ -64,6 +75,13 @@ pub fn parse_aes_key(text: &str) -> Option<[u8; 16]> {
     None
 }
 
+/// Decrypts the bytes of a `.dat` file with the account's XOR key and, for a V2 file, its AES key.
+///
+/// A file without a header that is neither an image nor one when XOR-ed comes back as it is, with `.bin`.
+///
+/// # Errors
+///
+/// A V2 file without `aes_key`, a header of an unknown version, or sizes and padding the file does not hold.
 pub fn decrypt_dat(data: &[u8], xor_key: u8, aes_key: Option<&[u8; 16]>) -> Result<DecryptResult> {
     let version = detect_dat_version(data);
     match version {
@@ -174,6 +192,7 @@ fn read_i32_le(data: &[u8], offset: usize) -> i32 {
     i32::from_le_bytes(bytes)
 }
 
+/// [`decrypt_dat`] of the file at `path`.
 pub fn decrypt_file(
     path: &Path,
     xor_key: u8,
