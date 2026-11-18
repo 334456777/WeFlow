@@ -1348,11 +1348,16 @@ export interface AutoDownloadStopped {
   stopped: boolean;
 }
 
-/** What `image auto-download status` answers: the hook is not part of WeFlow. */
+/**
+ * What `image auto-download status` answers: whether the image auto-download hook is in WeChat. `weflow serve`
+ * answers its `--json` document for the hook it runs itself (on Windows x64 unless `serve_image_auto_download` is
+ * false); the command run on its own, or through `serve` as a job or with `std`, answers for its own process, which
+ * runs none.
+ */
 export interface AutoDownloadStatus {
-  /** Always false. */
+  /** Whether the hook is in WeChat now. */
   isHooked: boolean;
-  /** Always null. */
+  /** The WeChat process hooked; null while none is. */
   pid: number | null;
   /** Whether this computer can download WeChat's images on its own. */
   supported: boolean;

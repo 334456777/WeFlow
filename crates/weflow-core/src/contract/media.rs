@@ -126,13 +126,16 @@ pub struct VoiceData {
     pub data: String,
 }
 
-/// What `image auto-download status` answers: the hook is not part of WeFlow.
+/// What `image auto-download status` answers: whether the image auto-download hook is in WeChat. `weflow serve`
+/// answers its `--json` document for the hook it runs itself (on Windows x64 unless `serve_image_auto_download` is
+/// false); the command run on its own, or through `serve` as a job or with `std`, answers for its own process, which
+/// runs none.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoDownloadStatus {
-    /// Always false.
+    /// Whether the hook is in WeChat now.
     pub is_hooked: bool,
-    /// Always null.
+    /// The WeChat process hooked; null while none is.
     pub pid: Option<u32>,
     /// Whether this computer can download WeChat's images on its own.
     pub supported: bool,
