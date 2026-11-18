@@ -237,6 +237,7 @@ pub struct PushEngine {
     baseline_ready: bool,
 }
 
+/// Drops the entries older than [`RECENT_TTL`]; once per pass, as [`PushEngine::is_fresh`] ignores them anyway.
 fn prune(map: &mut HashMap<String, Instant>) {
     let now = Instant::now();
     map.retain(|_, t| now.duration_since(*t) <= RECENT_TTL);
@@ -357,6 +358,9 @@ impl PushEngine {
             self.baseline_ready = true;
             return out;
         }
+        prune(&mut self.seen);
+        prune(&mut self.recent);
+        prune(&mut self.recently_revoked);
         let previous = self.baseline.clone();
         let mut candidate_ids: HashSet<String> = HashSet::new();
         let candidates: Vec<&Session> = sessions
@@ -435,11 +439,10 @@ impl PushEngine {
 
     fn remember(map: &mut HashMap<String, Instant>, key: &str) {
         map.insert(key.to_string(), Instant::now());
-        prune(map);
     }
 
-    fn is_fresh(map: &mut HashMap<String, Instant>, key: &str) -> bool {
-        prune(map);
+    /// Whether `key` was remembered within [`RECENT_TTL`].
+    fn is_fresh(map: &HashMap<String, Instant>, key: &str) -> bool {
         map.get(key).is_some_and(|t| t.elapsed() < RECENT_TTL)
     }
 
@@ -508,8 +511,8 @@ impl PushEngine {
                 continue;
             }
             let create_time = m.create_time;
-            let seen = Self::is_fresh(&mut self.seen, key);
-            let recent = Self::is_fresh(&mut self.recent, key);
+            let seen = Self::is_fresh(&self.seen, key);
+            let recent = Self::is_fresh(&self.recent, key);
             let revoke = is_revoke_system_message(m);
             if m.is_send != Some(1)
                 && (previous.is_none()
@@ -626,7 +629,7 @@ impl PushEngine {
             self.seen_primed.insert(session_id.clone());
         }
 
-        let (mut pushed_count, mut max_pushed) = (0usize, 0i64);
+        let mut max_pushed = 0i64;
         if scan_recent_revokes {
             let since = self.recent_revoke_scan_since(session, previous);
             let revokes = self.recent_revoke_messages(&session_id, since);
@@ -644,7 +647,7 @@ impl PushEngine {
                     let key = m.message_key.trim().to_string();
                     if key.is_empty()
                         || !is_revoke_system_message(m)
-                        || Self::is_fresh(&mut self.recent, &key)
+                        || Self::is_fresh(&self.recent, &key)
                     {
                         continue;
                     }
@@ -658,12 +661,10 @@ impl PushEngine {
                     Self::remember(&mut self.recent, &key);
                     Self::remember(&mut self.seen, &key);
                     self.bump_baseline(&session_id, m);
-                    pushed_count += 1;
                     max_pushed = max_pushed.max(m.create_time);
                 }
             }
         }
-        let _ = pushed_count;
         PushResult {
             max_fetched_timestamp: max_fetched.max(max_pushed),
             retry: expected_incoming > 0 && observed_incoming < expected_incoming,
@@ -814,16 +815,14 @@ impl PushEngine {
         Self::find_revoked_in(&lookup, revoke, revoked_id).cloned()
     }
 
-    fn is_recently_revoked_original(&mut self, session_id: &str, m: &ChatMessage) -> bool {
+    fn is_recently_revoked_original(&self, session_id: &str, m: &ChatMessage) -> bool {
         let prefix = session_id.trim();
         if prefix.is_empty() {
             return false;
         }
-        prune(&mut self.recently_revoked);
-        message_id_tokens(m).iter().any(|t| {
-            self.recently_revoked
-                .contains_key(&format!("{prefix}\u{0}{t}"))
-        })
+        message_id_tokens(m)
+            .iter()
+            .any(|t| Self::is_fresh(&self.recently_revoked, &format!("{prefix}\u{0}{t}")))
     }
 
     fn remember_revoked_tokens(
@@ -837,7 +836,6 @@ impl PushEngine {
         if prefix.is_empty() {
             return;
         }
-        prune(&mut self.recently_revoked);
         let mut tokens: HashSet<String> = HashSet::new();
         let mut add = |v: &str| {
             let n = normalize_id_token(v);
@@ -1329,6 +1327,21 @@ mod tests {
         assert_eq!(message_display_content(&m[0]).as_deref(), Some("[图片]"));
         assert_eq!(message_display_content(&m[1]).as_deref(), Some("T"));
         assert_eq!(message_display_content(&m[2]).as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn remembered_keys_expire_before_the_pass_prunes_them() {
+        let mut map = HashMap::new();
+        PushEngine::remember(&mut map, "new");
+        assert!(PushEngine::is_fresh(&map, "new"));
+        assert!(!PushEngine::is_fresh(&map, "missing"));
+        // an `Instant` that far back may not exist right after boot
+        if let Some(old) = Instant::now().checked_sub(RECENT_TTL + Duration::from_secs(1)) {
+            map.insert("old".into(), old);
+            assert!(!PushEngine::is_fresh(&map, "old"));
+            prune(&mut map);
+            assert_eq!(map.keys().collect::<Vec<_>>(), ["new"]);
+        }
     }
 
     #[test]
