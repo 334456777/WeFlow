@@ -492,6 +492,46 @@ mod tests {
         );
     }
 
+    /// Every English text of the translations is a help text of the command tree: an entry none uses is stale.
+    #[test]
+    fn every_translation_is_used() {
+        fn walk(cmd: &Command, texts: &mut Vec<String>) {
+            let mut keep = |text: Option<&StyledStr>| texts.extend(text.map(StyledStr::to_string));
+            keep(cmd.get_about());
+            keep(cmd.get_long_about());
+            for arg in cmd.get_arguments() {
+                keep(arg.get_help());
+                keep(arg.get_long_help());
+                for v in arg.get_possible_values() {
+                    keep(v.get_help());
+                }
+            }
+            for sub in cmd.get_subcommands() {
+                walk(sub, texts);
+            }
+        }
+        let mut texts = Vec::new();
+        walk(&build_command::<crate::cli::Cli>(), &mut texts);
+        let unused: Vec<&str> = HELP
+            .iter()
+            .map(|(en, _)| *en)
+            .filter(|en| {
+                !texts
+                    .iter()
+                    .any(|text| translate_with(&[(*en, "")], text).is_some())
+            })
+            .collect();
+        assert!(
+            unused.is_empty(),
+            "translations no help text uses:\n{}",
+            unused
+                .iter()
+                .map(|m| format!("{m:?}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
     /// Every subcommand and every non-global option or argument needs a help text.
     #[test]
     fn every_command_and_argument_has_help() {
