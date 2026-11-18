@@ -7,12 +7,14 @@
 //! layer's cursor fallback, so both paths give the same numbers.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::Result;
 use serde_json::{json, Map, Value};
 
 use crate::db::Account;
+use crate::msg::MsgTable;
 
 /// A new conversation (or footprint segment) starts after this many seconds of silence.
 const GAP: i64 = 3600;
@@ -201,11 +203,18 @@ impl SessionExtras {
 }
 
 impl Account {
-    /// Chronological messages of a session inside `[begin, end]` (all shards merged).
-    fn conversation(&self, session_id: &str, begin: i64, end: i64) -> Result<Vec<Msg>> {
+    /// Chronological messages of a session inside `[begin, end]` from its `tables` (all shards merged); `mine` holds
+    /// the owner's sender ids of each of their databases ([`my_ids_of`](Self::my_ids_of)).
+    fn conversation(
+        &self,
+        tables: &[MsgTable],
+        mine: &HashMap<PathBuf, String>,
+        begin: i64,
+        end: i64,
+    ) -> Result<Vec<Msg>> {
         let mut rows: Vec<Placed> = Vec::new();
-        for t in self.message_tables(session_id)? {
-            rows.extend(self.table_messages(&t, &self.my_ids(&t.db)?, begin, end)?);
+        for t in tables {
+            rows.extend(self.table_messages(t, &mine[&t.db], begin, end)?);
         }
         rows.sort_by_key(|a| a.0);
         Ok(rows.into_iter().map(|(_, m)| m).collect())
@@ -275,7 +284,7 @@ impl Account {
     /// or compressed). Read through SQL altogether when the scan does not read the table.
     fn extras_messages(
         &self,
-        t: &crate::msg::MsgTable,
+        t: &MsgTable,
         mine: &str,
         begin: i64,
         end: i64,
@@ -452,16 +461,10 @@ impl Account {
             (Map::new(), Map::new(), Map::new(), Map::new());
         let mut my_texts: Vec<String> = Vec::new();
         let mut streak: Option<(String, i64, String, String)> = None;
-        let tables = crate::stats::tables_of(self, session_ids)?;
-        let mut mine: HashMap<std::path::PathBuf, String> = HashMap::new();
-        for t in tables.iter().flatten() {
-            if !mine.contains_key(&t.db) {
-                mine.insert(t.db.clone(), self.my_ids(&t.db)?);
-            }
-        }
+        let tables = self.message_tables_of(session_ids)?;
+        let mine = self.my_ids_of(tables.iter().flatten())?;
         // each session read and summed up on a thread of its own: only the sums stay in memory
-        let sessions: Vec<(&String, &Vec<crate::msg::MsgTable>)> =
-            session_ids.iter().zip(&tables).collect();
+        let sessions: Vec<(&String, &Vec<MsgTable>)> = session_ids.iter().zip(&tables).collect();
         let summed = crate::stats::each_table(&sessions, |(_, ts)| {
             let mut placed: Vec<Placed> = Vec::new();
             for t in ts.iter() {
@@ -516,7 +519,8 @@ impl Account {
 
     /// Two-person report statistics for `friend` (see the module docs for the definitions).
     pub fn dual_report_stats(&self, friend: &str, begin: i64, end: i64) -> Result<Value> {
-        let msgs = self.conversation(friend, begin, end)?;
+        let tables = self.message_tables(friend)?;
+        let msgs = self.conversation(&tables, &self.my_ids_of(&tables)?, begin, end)?;
         let (mut words, mut images, mut voices, mut emojis) = (0i64, 0i64, 0i64, 0i64);
         let mut heatmap = vec![vec![0i64; 24]; 7];
         let mut monthly: BTreeMap<String, i64> = BTreeMap::new();
@@ -680,8 +684,10 @@ impl Account {
         // private chats
         let mut sessions: Vec<Value> = Vec::new();
         let mut segments: Vec<Value> = Vec::new();
-        for sid in &private_ids {
-            let msgs = self.conversation(sid, begin, end)?;
+        let private_tables = self.message_tables_of(&private_ids)?;
+        let mine = self.my_ids_of(private_tables.iter().flatten())?;
+        for (sid, tables) in private_ids.iter().zip(&private_tables) {
+            let msgs = self.conversation(tables, &mine, begin, end)?;
             if msgs.is_empty() {
                 continue;
             }
@@ -755,8 +761,8 @@ impl Account {
         // group @-mentions
         let range = range_sql(begin, end);
         let mut mentions: Vec<Value> = Vec::new();
-        for sid in &group_ids {
-            for t in self.message_tables(sid)? {
+        for (sid, tables) in group_ids.iter().zip(self.message_tables_of(&group_ids)?) {
+            for t in tables {
                 let sql = format!(
                     "select m.local_id as local_id, m.create_time as create_time, m.message_content as message_content, m.source as source, \
                      n.user_name as sender_username from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id \

@@ -178,6 +178,28 @@ impl Account {
         self.newest_rows(&tables, offset, limit)
     }
 
+    /// [`message_tables`](Self::message_tables) of each of `session_ids`, in their order. Several conversations are
+    /// looked up in one listing of every shard's tables ([`message_tables_by_name`](Self::message_tables_by_name)), so
+    /// a shard's schema is read once, not once a conversation.
+    pub(crate) fn message_tables_of(&self, session_ids: &[String]) -> Result<Vec<Vec<MsgTable>>> {
+        match session_ids {
+            [] => Ok(Vec::new()),
+            [one] => Ok(vec![self.message_tables(one)?]),
+            many => {
+                let by_name = self.message_tables_by_name()?;
+                Ok(many
+                    .iter()
+                    .map(|sid| {
+                        by_name
+                            .get(&table_name_for(sid))
+                            .cloned()
+                            .unwrap_or_default()
+                    })
+                    .collect())
+            }
+        }
+    }
+
     /// Every message table of the account by its name ([`table_name_for`] a conversation), oldest shard first: one
     /// read of each database, for a listing across conversations (issue #178).
     pub fn message_tables_by_name(&self) -> Result<HashMap<String, Vec<MsgTable>>> {
@@ -338,5 +360,31 @@ mod tests {
         assert_eq!((rows[0].server_id, rows[0].sort_seq), (None, None));
         assert_eq!(rows[0].key(), (T0 * 1000, T0, 1));
         assert!(odd_cell_count() >= before + 2);
+    }
+
+    #[test]
+    fn the_tables_of_several_conversations_are_those_of_each() {
+        let (_dir, acct) = account("tables-of");
+        let ids: Vec<String> = ["wxid_bob", "wxid_nobody", "wxid_bob"]
+            .map(String::from)
+            .to_vec();
+        let places = |ts: &[MsgTable]| -> Vec<(PathBuf, String)> {
+            ts.iter().map(|t| (t.db.clone(), t.table.clone())).collect()
+        };
+        let got = acct.message_tables_of(&ids).unwrap();
+        assert_eq!(got.len(), ids.len());
+        for (sid, ts) in ids.iter().zip(&got) {
+            assert_eq!(
+                places(ts),
+                places(&acct.message_tables(sid).unwrap()),
+                "{sid}"
+            );
+        }
+        assert_eq!(got[0].len(), 2, "both shards, oldest first");
+        assert_eq!(
+            places(&acct.message_tables_of(&ids[..1]).unwrap()[0]),
+            places(&got[0])
+        );
+        assert!(acct.message_tables_of(&[]).unwrap().is_empty());
     }
 }

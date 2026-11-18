@@ -473,8 +473,8 @@ impl Account {
         );
         let want = offset + limit;
         let mut tables = Vec::new();
-        for sid in &sessions {
-            for t in self.message_tables(sid)? {
+        for (sid, ts) in sessions.iter().zip(self.message_tables_of(&sessions)?) {
+            for t in ts {
                 tables.push((sid.clone(), t));
             }
         }
@@ -782,8 +782,8 @@ impl Account {
             usize::MAX
         };
         let mut rows: Newest<SessionRow> = Newest::new(k);
-        for sid in session_ids {
-            for t in self.message_tables(sid)? {
+        for (sid, tables) in session_ids.iter().zip(self.message_tables_of(session_ids)?) {
+            for t in tables {
                 let sql = Self::select_sql(&t, &format!("where m.local_type in ({kinds}){range}"));
                 let table_rows = std::cell::RefCell::new(Newest::new(k));
                 self.read_rows_each(
