@@ -29,6 +29,10 @@ describe('dual report', () => {
     expect(messageText(message('hi', true, 0))).toBe('hi');
     expect(messageText(message('<msg/>', true, 0, 47))).toBe('[表情]');
     expect(messageText(message('<msg/>', true, 0, 244813135921))).toBe('[引用回复]');
+    // a link and a file: the app message's kind in the high bits of the type
+    expect(messageText(message('<msg/>', true, 0, 49))).toBe('[链接或文件]');
+    expect(messageText(message('<msg/>', true, 0, 5 * 2 ** 32 + 49))).toBe('[链接或文件]');
+    expect(messageText(message('<msg/>', true, 0, 6 * 2 ** 32 + 49))).toBe('[链接或文件]');
     expect(messageText(message('<msg/>', true, 0, 10000))).toBe('[消息]');
   });
 
