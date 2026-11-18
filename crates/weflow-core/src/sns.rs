@@ -56,14 +56,8 @@ fn decode_xml_text(text: &str) -> String {
     if text.is_empty() {
         return String::new();
     }
-    let t = rx(r"(?s)<!\[CDATA\[(.*?)\]\]>")
-        .replace_all(text, "$1")
-        .to_string();
-    let t = rx(r"(?i)&amp;").replace_all(&t, "&").to_string();
-    let t = rx(r"(?i)&lt;").replace_all(&t, "<").to_string();
-    let t = rx(r"(?i)&gt;").replace_all(&t, ">").to_string();
-    let t = rx(r"(?i)&quot;").replace_all(&t, "\"").to_string();
-    rx(r"(?i)&#39;").replace_all(&t, "'").to_string()
+    let t = rx(r"(?s)<!\[CDATA\[(.*?)\]\]>").replace_all(text, "$1");
+    crate::xml::decode_entities(&t).into_owned()
 }
 
 static CMT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -972,6 +966,15 @@ mod tests {
         );
         assert_eq!(loc.poi_name.as_deref(), Some("A & B"));
         assert!(parse_location_from_xml("<location/>").is_none());
+    }
+
+    #[test]
+    fn decodes_each_entity_once() {
+        assert_eq!(decode_xml_text("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
+        assert_eq!(decode_xml_text("&lt;b&gt;"), "<b>");
+        assert_eq!(decode_xml_text("<![CDATA[a &amp; b]]>"), "a & b");
+        let loc = parse_location_from_xml(r#"<location poiName="&amp;lt;A&amp;gt;"/>"#).unwrap();
+        assert_eq!(loc.poi_name.as_deref(), Some("&lt;A&gt;"));
     }
 
     fn native_post(kind: i64, raw_xml: &str) -> weflow_native::sns::SnsPost {
