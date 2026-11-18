@@ -79,17 +79,7 @@ pub(crate) fn decode_html_entities(text: &str) -> String {
 
 /// [`decode_html_entities`] without a copy when there is no `&`.
 pub(super) fn decode_html_entities_cow(text: &str) -> std::borrow::Cow<'_, str> {
-    if memchr::memchr(b'&', text.as_bytes()).is_none() {
-        return std::borrow::Cow::Borrowed(text);
-    }
-    let decoded = text
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&apos;", "'");
-    std::borrow::Cow::Owned(decoded)
+    crate::xml::decode_entities(text)
 }
 
 pub(super) fn normalize_app_message_content(content: &str) -> String {
@@ -97,18 +87,16 @@ pub(super) fn normalize_app_message_content(content: &str) -> String {
 }
 
 /// [`normalize_app_message_content`] without a copy when the content has no escaped markup.
+///
+/// Content holding both `&lt;` and `&gt;` is escaped markup and is unescaped one level: each entity is decoded once,
+/// so markup escaped twice comes out escaped once (that is what [`MsgXml::twice`] is for), and an `&amp;quot;` inside
+/// it stays `&quot;` rather than becoming a bare `"` in the middle of an attribute (#922).
 pub(super) fn normalize_app_message_cow(content: &str) -> std::borrow::Cow<'_, str> {
-    use crate::xml::replace_cow;
-    use std::borrow::Cow;
     let has = |entity: &str| memchr::memmem::find(content.as_bytes(), entity.as_bytes()).is_some();
     if has("&lt;") && has("&gt;") {
-        let s = replace_cow(Cow::Borrowed(content), "&lt;", "<");
-        let s = replace_cow(s, "&gt;", ">");
-        let s = replace_cow(s, "&amp;", "&");
-        let s = replace_cow(s, "&quot;", "\"");
-        return replace_cow(s, "&#39;", "'");
+        return crate::xml::decode_entities(content);
     }
-    Cow::Borrowed(content)
+    std::borrow::Cow::Borrowed(content)
 }
 
 /// Whether `content` can contain `word` once normalized ([`normalize_app_message_cow`]). Normalizing replaces each
@@ -1000,21 +988,38 @@ mod tests {
                     .map(|c| c.get(1).unwrap().as_str()),
                 "{s:?}"
             );
-            assert_eq!(
-                decode_html_entities(&s),
-                s.replace("&lt;", "<")
-                    .replace("&gt;", ">")
-                    .replace("&amp;", "&")
-                    .replace("&quot;", "\"")
-                    .replace("&#39;", "'")
-                    .replace("&apos;", "'"),
-                "{s:?}"
-            );
         }
         assert!(
             hits.values().all(|&n| n >= 100),
             "too few matches: {hits:?}"
         );
+    }
+
+    #[test]
+    fn entities_are_decoded_once() {
+        for (input, want) in [
+            ("&amp;lt;b&amp;gt;", "&lt;b&gt;"),
+            ("&lt;b&gt;", "<b>"),
+            ("&amp;quot;&amp;#39;&amp;apos;", "&quot;&#39;&apos;"),
+            ("a &amp; b", "a & b"),
+        ] {
+            assert_eq!(decode_html_entities(input), want, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn normalizing_unescapes_one_level() {
+        assert_eq!(
+            normalize_app_message_content(
+                "&lt;title t=&quot;a &amp;quot; b&quot;&gt;x &amp;lt;y&amp;gt;&lt;/title&gt;"
+            ),
+            "<title t=\"a &quot; b\">x &lt;y&gt;</title>"
+        );
+        // Without escaped markup the content is left as it is.
+        assert_eq!(normalize_app_message_content("a &amp; b"), "a &amp; b");
+        let x = MsgXml::new("&lt;a&gt;&amp;lt;b&amp;gt;&lt;/a&gt;");
+        assert_eq!(x.once(), "<a>&lt;b&gt;</a>");
+        assert_eq!(x.twice(), "<a><b></a>");
     }
 
     #[test]
