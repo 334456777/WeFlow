@@ -463,12 +463,8 @@ impl ServiceHub {
             {
                 continue;
             }
+            // the first of the columns the row has
             let local_type = ["local_type", "localType", "WCDB_CT_local_type"]
-                .iter()
-                .map(|k| num(row, k))
-                .find(|_| true)
-                .unwrap_or(0);
-            let lt = ["local_type", "localType", "WCDB_CT_local_type"]
                 .iter()
                 .find_map(|k| {
                     row.get(*k).map(|v| {
@@ -477,8 +473,8 @@ impl ServiceHub {
                             .unwrap_or(0)
                     })
                 })
-                .unwrap_or(local_type);
-            if lt != 1 {
+                .unwrap_or(0);
+            if local_type != 1 {
                 continue;
             }
             for key in identity_keys(username) {
@@ -1444,19 +1440,17 @@ impl ServiceHub {
         Ok(msgs)
     }
 
-    /// `getLatestMessages`: the newest `limit` messages, oldest first (direct-offset read).
+    /// `getLatestMessages`: the newest `limit` messages (1 to 500), oldest first (direct-offset read).
     pub fn chat_latest_messages(
         &self,
         session_id: &str,
         limit: usize,
     ) -> AppResult<Vec<ChatMessage>> {
         let wcdb = self.open_wcdb()?;
-        let page = limit.max(1);
-        let probe = (page + 1).min(500);
-        let mut rows = wcdb
-            .messages(session_id, crate::num::saturating_i32(probe), 0)
+        let page = limit.clamp(1, 500);
+        let rows = wcdb
+            .messages(session_id, crate::num::saturating_i32(page), 0)
             .map_err(|e| AppError::native(format!("{e:#}")))?;
-        rows.truncate(page);
         let mapped = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
         let is_group = session_id.contains("@chatroom");
         let visible: Vec<ChatMessage> = mapped
