@@ -13,6 +13,7 @@ use crate::contract::{
     FriendCount, LongestStreak, LostFriend, MidnightKing, MonthlyTopFriend, MutualFriend, PeakDay,
     PhraseCount, ResponseSpeed, SocialInitiative, YearFirstChat,
 };
+use crate::message::emoji::percent_decode;
 use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
 
@@ -147,24 +148,6 @@ fn normalize_emoji_url(raw: &str) -> Option<String> {
         url = percent_decode(&url);
     }
     (!url.is_empty()).then_some(url)
-}
-
-fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() + 1 && i + 2 <= b.len().saturating_sub(1) {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
 }
 
 fn extract_emoji_url(content: &str) -> Option<String> {
@@ -1628,5 +1611,27 @@ impl ServiceHub {
         };
         self.emit_progress("dual-report", "done", 100, 100);
         Ok(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emoji_urls_with_broken_escapes_do_not_panic() {
+        // a multi-byte character right after `%`, in the address and in the whole message
+        assert_eq!(normalize_emoji_url("%a中").as_deref(), Some("%a中"));
+        let xml = r#"<msg><emoji cdnurl="http://emoji.example/%a中?m=%E4%B8%AD" /></msg>"#;
+        assert_eq!(
+            extract_emoji_url(xml).as_deref(),
+            Some("http://emoji.example/%a中?m=中")
+        );
+        assert_eq!(emoji_of(&format!("0:{xml}")).1, extract_emoji_url(xml));
+        assert_eq!(
+            normalize_emoji_url("http://e.example/%+5").as_deref(),
+            Some("http://e.example/%+5"),
+            "a sign is not a hex digit"
+        );
     }
 }
