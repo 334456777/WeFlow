@@ -133,10 +133,14 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
   </div>;
 }
 
-/** The page in the workspace: the task centre beside it shows the backup running. */
+/**
+ * The page in the workspace: the task centre beside it shows the backup running. Another server or account (the
+ * scope, which a server taking the sample's place starts too) starts it afresh: the path and the backup read are of
+ * the one before.
+ */
 export function backupPage(shell: Shell): Page {
   const view = <ScrollPage label={t('数据库备份')} icon={Archive}>
-    <Connected backend={shell.backend} offline={t('连接 weflow serve 后，可以在这里备份和恢复数据库。')}><BackupPage jobs={shell.jobs} /></Connected>
+    <Connected backend={shell.backend} offline={t('连接 weflow serve 后，可以在这里备份和恢复数据库。')}><BackupPage key={shell.scope} jobs={shell.jobs} /></Connected>
   </ScrollPage>;
   return { view, shown: ['tasks'] };
 }
