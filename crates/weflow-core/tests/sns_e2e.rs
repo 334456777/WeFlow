@@ -367,6 +367,72 @@ fn exports_json_html_and_arkmejson() {
     );
 }
 
+/// Exports to JSON an account whose Moments are `(tid, create_time)`, returning the exported post ids.
+fn export_posts_with_times(tag: &str, times: &[(i64, i64)]) -> Vec<String> {
+    use weflow_native::fixture::SnsPostSpec;
+    let (root, hub, _f) = common::custom_hub(tag, |f| {
+        let specs: Vec<SnsPostSpec> = times
+            .iter()
+            .map(|&(tid, create_time)| SnsPostSpec {
+                tid,
+                user: "wxid_bob",
+                create_time,
+                desc: "post",
+                kind: 1,
+                media: 0,
+                likes: &[],
+                extra: "",
+            })
+            .collect();
+        f.session_db(&[]);
+        f.contact_db(&[], &[]);
+        f.sns_db(&specs);
+    });
+    let opts = SnsExportOptions {
+        output_dir: root.join("out"),
+        format: "json".into(),
+        ..Default::default()
+    };
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let res = rt.block_on(hub.sns_export_timeline(&opts)).unwrap();
+    let json: Value =
+        serde_json::from_str(&std::fs::read_to_string(res.file_path).unwrap()).unwrap();
+    let ids: Vec<String> = json["posts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(res.post_count, ids.len());
+    ids
+}
+
+#[test]
+fn export_pages_reach_posts_sharing_the_second_of_a_page_end() {
+    use weflow_native::fixture::T0;
+    // one more post than a page, all in the same second
+    let times: Vec<(i64, i64)> = (0..51).map(|i| (3001 + i, T0)).collect();
+    let mut ids = export_posts_with_times("sns-export-same-second", &times);
+    assert_eq!(ids.len(), 51);
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 51, "every post once");
+}
+
+#[test]
+fn export_ends_when_a_full_page_ends_with_posts_without_time() {
+    use weflow_native::fixture::T0;
+    // the first page is full and ends with posts whose time is 0
+    let times: Vec<(i64, i64)> = std::iter::once((5000, T0))
+        .chain((0..50).map(|i| (5001 + i, 0)))
+        .collect();
+    let mut ids = export_posts_with_times("sns-export-zero-time", &times);
+    assert_eq!(ids.len(), 51);
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 51, "every post once");
+}
+
 #[test]
 fn debug_resource_reports_status_and_decryption_headers() {
     let (_root, hub) = common::mock_hub("sns-debug");
