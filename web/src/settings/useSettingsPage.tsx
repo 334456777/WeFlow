@@ -43,7 +43,8 @@ function Sections({ open, pane, children }: { open: SectionId; pane: RefObject<H
 export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { profiles, failed, reload }, recheck, onSetup }: {
   profiles: ProfilesState; recheck(): void; onSetup(): void;
 }): Page {
-  const { backend, connected, profile, mobileDetail, setMobileDetail } = shell;
+  // what is kept on the server: the one that answers, or the sample server in its place (#896)
+  const { backend, usable, health: acting, profile, mobileDetail, setMobileDetail } = shell;
   // held here, as the page is there all the time: a theme that follows the system keeps following it
   const [theme, setTheme] = useTheme();
   const [skin, setSkin] = useSkin();
@@ -76,7 +77,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
         </SettingsSection>;
       case 'accounts':
         return <SettingsSection title={sectionLabel(id)} lead={t('每个配置档案对应一个微信账号。切换档案后，各页重新读取这个账号的记录。')}>
-          {!connected ? offline
+          {!usable ? offline
             : profiles ? <Accounts profiles={profiles} onChanged={reload} onSetup={onSetup} />
               : failed ? <SettingsGroup><SettingRow name={t('读不到账号配置')} text={t('weflow 5.0.0-rc.7 起才能在网页里查看。')}>
                 <button className="secondary-button" type="button" onClick={onSetup}>{t('配置向导')}</button></SettingRow></SettingsGroup>
@@ -88,23 +89,23 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
         </SettingsSection>;
       case 'serve':
         return <SettingsSection title={sectionLabel(id)} lead={t('weflow serve 启动时用的选项，保存在服务端的配置文件里，重启后生效。启动命令里给出的选项优先；留空的项用灰色的默认值。')}>
-          {connected ? <ServeOptions onAi={() => go('ai')} /> : offline}
+          {usable ? <ServeOptions onAi={() => go('ai')} /> : offline}
         </SettingsSection>;
       case 'ai':
         return <SettingsSection title={sectionLabel(id)} lead={t('灵感信箱用的 AI 模型接口，保存在当前档案里。')}>
-          {connected ? <AiSetting profile={profile} engine={health?.insight} onSaved={reload} onServe={() => go('serve')} /> : offline}
+          {usable ? <AiSetting profile={profile} engine={acting?.insight} onSaved={reload} onServe={() => go('serve')} /> : offline}
         </SettingsSection>;
       case 'cache':
         return <SettingsSection title={sectionLabel(id)} lead={t('WeFlow 为读得更快而保存的文件。清理不会动微信自己的文件，需要时会重新生成。')}>
-          {connected ? <CacheSetting /> : offline}
+          {usable ? <CacheSetting /> : offline}
         </SettingsSection>;
       case 'web':
         return <SettingsSection title={sectionLabel(id)} lead={t('网页和 weflow 分开发布，可以在这里换成其他版本。')}>
-          {connected && health ? <WebVersions health={health} /> : <><VersionInUse />{offline}</>}
+          {usable && acting ? <WebVersions health={acting} /> : <><VersionInUse />{offline}</>}
         </SettingsSection>;
       case 'console':
         return <SettingsSection title={sectionLabel(id)} lead={t('CLI 独有的工具，以及按 OpenAPI 运行任意命令的控制台。')}>
-          {connected ? <>
+          {usable ? <>
             <SettingsGroup title={t('CLI 工具')}><AdvancedTools onOpen={setConsolePick} /></SettingsGroup>
             <SettingsGroup title={t('运行命令')}><CommandConsole pick={consolePick} onPicked={consolePicked} /></SettingsGroup>
           </> : offline}
@@ -114,7 +115,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
 
   const view = <BrowserPanel label={t('设置')} className="settings-browser" detail={mobileDetail} onBack={() => setMobileDetail(false)}
     back={t('返回设置')} title={sectionLabel(open)} paneLabel={sectionLabel(open)} pane={pane} detailKey={open}
-    list={<SettingsNav open={open} summaries={summaries} connected={connected} onOpen={go} />}>
+    list={<SettingsNav open={open} summaries={summaries} usable={usable} onOpen={go} />}>
     <Sections open={open} pane={pane}>{section}</Sections>
   </BrowserPanel>;
   return { view };

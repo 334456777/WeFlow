@@ -3,13 +3,15 @@
 // stream is open at most; the queued ones are seen to start by reading the list again while any wait. A page away
 // (#799, see presence.ts) neither follows nor reads again; back, it reads the list and follows the running job anew.
 import { useEffect, useSyncExternalStore } from 'react';
-import { ApiError, type Params } from '../api/client';
+import { ApiError, sampling, type Params } from '../api/client';
 import { dropJob, getJob, isFinished, jobEventsUrl, listJobs, startJob, type Job } from '../api/jobs';
 import { onPresence, present } from '../api/presence';
 import { t } from '../i18n';
 
 /** How often the list is read again while a job waits or runs. */
 const POLL_MS = 2000;
+/** The sample's jobs (#896) send no events: their list, read in the page, is read often instead. */
+const SAMPLE_POLL_MS = 400;
 /** How soon after a job was started the list is read again, to see it leave the queue. */
 const START_MS = 300;
 const LABELS_KEY = 'weflow.jobs';
@@ -78,9 +80,10 @@ function follow(soon = false) {
   clearTimeout(timer);
   if (!users || !present()) { closeStream(); return; }
   const running = state.jobs.find(j => j.status === 'running');
+  const sample = sampling();
   if (stream && stream.id !== running?.id) closeStream();
-  if (running && !stream && typeof EventSource !== 'undefined') openStream(running.id);
-  if (state.jobs.some(j => !isFinished(j.status))) timer = setTimeout(() => { void refreshJobs(); }, soon ? START_MS : POLL_MS);
+  if (running && !stream && !sample && typeof EventSource !== 'undefined') openStream(running.id);
+  if (state.jobs.some(j => !isFinished(j.status))) timer = setTimeout(() => { void refreshJobs(); }, soon ? START_MS : sample ? SAMPLE_POLL_MS : POLL_MS);
 }
 
 function openStream(id: string) {

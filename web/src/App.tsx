@@ -2,7 +2,8 @@
 // Claude.ai. It holds what the pages share (the server, the account, the conversation list, the jobs), opens one page
 // from another and gathers the pages' cards into the one console; each page keeps its own state (#401).
 // Records come from `weflow serve` once connected; until then the sample server of src/mock answers the pages in its
-// place (#879). When the server goes after it was connected, what was read from it stays shown until it is back.
+// place (#879), jobs and settings too (#896). When the server goes after it was connected, what was read from it stays
+// shown until it is back.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
 import { useAnalyticsPage } from './analytics/useAnalyticsPage';
@@ -32,6 +33,7 @@ import { Scrollbar } from './Scrollbar';
 import { SetupDialog } from './settings/SetupDialog';
 import { dismissSetup, setupDismissed, useProfiles } from './settings/useProfiles';
 import { useSettingsPage } from './settings/useSettingsPage';
+import { useActingHealth } from './shell/acting';
 import type { OpenAt, Page, Shell } from './shell/page';
 import { usePreferences } from './shell/preferences';
 import { usePreview } from './shell/PreviewDialog';
@@ -63,6 +65,9 @@ export function App() {
     setSample(loadSample);
     return () => setSample(null);
   }, [sample]);
+  // jobs and settings go to the server that answers, or to the sample server in its place (#896)
+  const usable = connected || sample;
+  const health = useActingHealth(backend, sample);
   const fold = useSidebarFold();
   const [section, setSection] = useState<Navigation>('chat');
   // the records browsed last, which the settings keep, with their cards in the console
@@ -80,9 +85,9 @@ export function App() {
 
   // another server or account (#198): what was read for the one before goes
   const scope = useScope(backend);
-  const jobs = useJobs(connected, scope);
+  const jobs = useJobs(usable, scope);
   // the account setup (#216): it opens by itself when a tab finds the account not set up, and from the settings
-  const profiles = useProfiles(connected, scope);
+  const profiles = useProfiles(usable, scope);
   const profile = profiles.profiles ? currentProfile(profiles.profiles) : undefined;
   const [setupOpen, setSetupOpen] = useState(false);
   useEffect(() => {
@@ -92,7 +97,7 @@ export function App() {
   const [sessions, reloadSessions] = useSessions(records, scope);
   const sessionList = sessions.status === 'ready' ? sessions.sessions : [];
   const sessionNames = useMemo(() => new Map(sessionList.map(s => [s.username, s.displayName || s.username])), [sessionList]);
-  const shell: Shell = { backend, connected, held, records, sample, scope, sessions, sessionList, reloadSessions, jobs, profile, mobileDetail, setMobileDetail, openPreview, toast: setToast };
+  const shell: Shell = { backend, connected, usable, health, held, records, sample, scope, sessions, sessionList, reloadSessions, jobs, profile, mobileDetail, setMobileDetail, openPreview, toast: setToast };
 
   const chat = useChatPage(shell, prefs);
   const selectSection = (value: Navigation) => {
@@ -125,8 +130,8 @@ export function App() {
   const page = pages[section];
   const tasks: Card = {
     id: 'tasks', title: t('任务中心'),
-    summary: connected ? jobsSummary(jobs) : held ? t('已断开') : t('未连接'),
-    content: connected ? <TaskCenter jobs={jobs} names={sessionNames} /> : <p className="empty-text">{t('连接 weflow serve 后，导出等任务会显示在这里。')}</p>,
+    summary: usable ? jobsSummary(jobs) : held ? t('已断开') : t('未连接'),
+    content: usable ? <TaskCenter jobs={jobs} names={sessionNames} /> : <p className="empty-text">{t('连接 weflow serve 后，导出等任务会显示在这里。')}</p>,
   };
   // every card in its first order, the task centre after the open conversation's export; the console keeps each
   // viewer's own order and shows those of the page, or of the records browsed while the settings are open
@@ -159,7 +164,7 @@ export function App() {
       <Scrollbar target={consoleRef} />
     </div>
     {previewDialog}
-    <SetupDialog open={setupOpen} profile={profile} jobs={jobs} platform={'health' in backend ? backend.health.platform : undefined}
+    <SetupDialog open={setupOpen} profile={profile} jobs={jobs} platform={health?.platform}
       onChanged={profiles.reload} onClose={closeSetup} onDone={() => { setSetupOpen(false); selectSection('chat'); }} />
     {shownToast && <div className="toast" role="status" data-state={shownToast.closing ? 'closing' : 'open'}><CheckCircle size={16} />{shownToast.value}</div>}
   </main></SampleContext.Provider>;

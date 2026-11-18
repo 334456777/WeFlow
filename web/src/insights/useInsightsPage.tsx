@@ -21,7 +21,7 @@ export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWit
   const cards = [
     {
       id: 'insights-summary', title: t('见解概况'), summary: page ? t('{n} 条未读', { n: page.unreadCount }) : '',
-      content: <InsightsSummary state={insights.state} engine={'health' in backend ? backend.health.insight : undefined} aiReady={shell.profile?.aiKey} />,
+      content: <InsightsSummary state={insights.state} engine={shell.health?.insight} aiReady={shell.profile?.aiKey} />,
     },
     { id: 'insights-trigger', title: t('生成见解'), summary: name ?? '', content: <InsightTrigger session={filter.session} name={name} onDone={insights.reload} /> },
     { id: 'insights-clear', title: t('删除见解'), content: <InsightClear session={filter.session} name={name} count={count} onDone={insights.reload} /> },

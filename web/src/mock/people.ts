@@ -119,6 +119,11 @@ export const officials: Official[] = [
   { username: WXPAY, name: '微信支付', about: '微信支付的付款和退款通知' },
 ];
 
+/** The name a conversation is listed by: the group's, the official account's, or the person's. */
+export const sessionName = (username: string): string =>
+  groups.find(g => g.username === username)?.name ?? officials.find(o => o.username === username)?.name
+  ?? (username === 'filehelper' ? '文件传输助手' : nameOf(username));
+
 /** The parsed contact list (`chat contacts --parsed`). */
 export function contacts(): Contact[] {
   return [
