@@ -1,9 +1,11 @@
-// All the WeChat Pay notices (#204), read a page after another once per server or account (scope.ts): the page
-// narrows them by days and payee itself, as `biz pay-records` has no filters.
-import { useEffect, useState } from 'react';
+// All the WeChat Pay notices (#204), read a page after another once per server or account (scope.ts), and again when a
+// live message (#201) may have brought another notice: the page narrows them by days and payee itself, as
+// `biz pay-records` has no filters.
+import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
+import { useGathered, useLive } from '../api/live';
 import { t } from '../i18n';
-import { getPayRecords, paymentOf, PAY_PAGE, type Payment } from '../api/pay';
+import { getPayRecords, paymentOf, PAY_PAGE, PAY_SESSIONS, type Payment } from '../api/pay';
 import { dayOf } from '../chat/messages';
 
 export type PaymentsState =
@@ -14,10 +16,20 @@ export type PaymentsState =
 export function usePayments(enabled: boolean, scope: number): [PaymentsState, () => void] {
   const [state, setState] = useState<{ scope: number; value: PaymentsState } | null>(null);
   const [round, setRound] = useState(0);
+  // what was read is kept while the page is left and opened again, as long as the server and account are the same and
+  // no notice may have come since
+  const read = useRef<string | null>(null);
+  const refresh = useGathered(() => setRound(n => n + 1));
+  useLive(event => {
+    if (event.type === 'resumed' || PAY_SESSIONS.includes(event.sessionId)) refresh();
+  });
   useEffect(() => {
-    if (!enabled) return;
+    const key = scope + ':' + round;
+    if (!enabled || read.current === key) return;
+    read.current = key;
     const controller = new AbortController();
     const { signal } = controller;
+    let done = false;
     setState(old => (old?.scope === scope && old.value.status === 'ready' ? old : { scope, value: { status: 'loading', read: 0 } }));
     (async () => {
       const payments: Payment[] = [];
@@ -35,13 +47,24 @@ export function usePayments(enabled: boolean, scope: number): [PaymentsState, ()
       payments.sort((a, b) => b.time - a.time);
       return payments;
     })().then(
-      payments => { if (!signal.aborted) setState({ scope, value: { status: 'ready', payments } }); },
+      payments => {
+        if (signal.aborted) return;
+        done = true;
+        setState({ scope, value: { status: 'ready', payments } });
+      },
       problem => {
         if (signal.aborted) return;
+        done = true;
+        read.current = null;
         setState({ scope, value: { status: 'error', message: (problem instanceof ApiError && problem.message) || t('读取支付记录失败') } });
       },
     );
-    return () => controller.abort();
+    // left before all were read: read them again next time
+    return () => {
+      if (done) return;
+      controller.abort();
+      if (read.current === key) read.current = null;
+    };
   }, [enabled, scope, round]);
   return [state?.scope === scope ? state.value : { status: 'loading', read: 0 }, () => setRound(n => n + 1)];
 }

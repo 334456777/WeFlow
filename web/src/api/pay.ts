@@ -34,6 +34,9 @@ export interface Payment {
 /** Messages of the WeChat Pay account per page. */
 export const PAY_PAGE = 500;
 
+/** The conversations `biz pay-records` reads its notices from: the WeChat Pay account's, and the service notices. */
+export const PAY_SESSIONS: readonly string[] = ['gh_3dfda90e39d6', 'notifymessage'];
+
 /** A page of notices, newest first, from the `offset`-th message of the account on. */
 export async function getPayRecords(offset: number, signal?: AbortSignal): Promise<{ records: PayRecord[]; hasMore: boolean }> {
   const data = await get<Partial<Contract.PayRecords> | null>('api/biz/pay-records', { limit: PAY_PAGE, offset }, signal);
