@@ -154,11 +154,16 @@ describe('useMessages', () => {
     expect(calls).toHaveLength(read);
   });
 
-  it('asks for a newer weflow when the server does not know --parsed', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, error: { code: 'invalid_arguments', message: 'unexpected argument --parsed' } }, 400)));
+  it('says what the server answered when it cannot read the messages, else that they could not be read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, error: { code: 'invalid_arguments', message: '参数无效' } }, 400)));
     const { result } = renderHook(() => useMessages('wxid_a'));
     await waitFor(() => expect(result.current.thread.status).toBe('error'));
-    expect(result.current.thread.error).toContain('chat messages --parsed');
+    expect(result.current.thread.error).toBe('参数无效');
+
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, error: { code: 'internal', message: '' } }, 500)));
+    const other = renderHook(() => useMessages('wxid_b'));
+    await waitFor(() => expect(other.result.current.thread.status).toBe('error'));
+    expect(other.result.current.thread.error).toBe('读取消息失败');
   });
 });
 

@@ -240,7 +240,6 @@ export const en: Record<string, string> = {
   "返回对话列表": "Back to the conversation list",
   "选择左侧的一个会话。": "Choose a conversation on the left.",
   "预览{text}": "Preview {text}",
-  "这个版本的 weflow serve 还不能按类型返回消息或按日期跳转，请更新到支持 chat messages --parsed 和 --since 的版本。": "This version of weflow serve cannot yet return messages by kind or go to a date; update it to a version with chat messages --parsed and --since.",
   "读取消息失败": "Could not read the messages",
   "搜索失败，请重试。": "The search failed; please try again.",
   "weflow 还没有配置账号：{message}": "weflow has no account set up yet: {message}",

@@ -68,16 +68,7 @@ onLive(event => {
   else cache.delete(event.sessionId);
 });
 
-function messageOf(problem: unknown): string {
-  if (problem instanceof ApiError) {
-    // A server without `--parsed` (rc.4 and older) or `--since` refuses the parameter before reading anything.
-    if (problem.status === 400 && problem.code === 'invalid_arguments') {
-      return t('这个版本的 weflow serve 还不能按类型返回消息或按日期跳转，请更新到支持 chat messages --parsed 和 --since 的版本。');
-    }
-    return problem.message || t('读取消息失败');
-  }
-  return t('读取消息失败');
-}
+const messageOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('读取消息失败');
 
 /** The thread around a target: the page of a day, or the messages on both sides of a hit. */
 async function threadAt(sessionId: string, target: Target, seq: number, signal: AbortSignal): Promise<Thread> {
