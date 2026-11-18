@@ -97,8 +97,7 @@ pub fn restore_backup(
             let mut zipped = zip
                 .by_name(&entry.path)
                 .with_context(|| format!("read {}", entry.path))?;
-            let mut out =
-                fs::File::create(&tmp).with_context(|| format!("create {}", tmp.display()))?;
+            let mut out = create_fresh(&tmp)?;
             // checked again: the archive could have changed since pass 1
             verify_copy(&mut zipped, &mut out, entry)?;
             out.sync_all()
@@ -153,6 +152,23 @@ fn create_parent_dirs(target_dir: &Path, relative: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Create `path` as a new file. Whatever already has that name, including a symbolic link, is removed first, and the
+/// file is opened with `create_new`, which fails on anything still in the way instead of following it, so the write
+/// cannot land where a link points.
+fn create_fresh(path: &Path) -> Result<fs::File> {
+    match fs::remove_file(path) {
+        Err(err) if err.kind() != io::ErrorKind::NotFound => {
+            return Err(err).with_context(|| format!("remove {}", path.display()));
+        }
+        _ => {}
+    }
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .with_context(|| format!("create {}", path.display()))
 }
 
 /// Copy `reader` into `out`, failing unless its size and SHA-256 match `expected`.
@@ -349,5 +365,22 @@ mod tests {
         );
         assert!(restore_err(&archive, &target).contains("refusing to restore through the link"));
         assert_eq!(fs::read_dir(&elsewhere).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restore_does_not_follow_a_link_named_like_the_temporary_file() {
+        let dir = temp_dir("weflow-restore-tmp-link");
+        let target = dir.join("target");
+        fs::create_dir_all(&target).unwrap();
+        let outside = dir.join("outside.txt");
+        fs::write(&outside, b"keep me").unwrap();
+        std::os::unix::fs::symlink(&outside, target.join("a.txt.weflow-restore")).unwrap();
+
+        let archive = hand_made_archive(&dir, &[("a.txt", b"restored")], &[("a.txt", b"restored")]);
+        restore_backup(&archive, &target, None, &|_, _| {}).unwrap();
+        assert_eq!(fs::read(&outside).unwrap(), b"keep me");
+        assert_eq!(fs::read(target.join("a.txt")).unwrap(), b"restored");
+        assert!(fs::symlink_metadata(target.join("a.txt.weflow-restore")).is_err());
     }
 }
