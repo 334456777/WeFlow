@@ -107,7 +107,8 @@ pub(super) fn heartbeat() -> Duration {
 pub(super) struct Status {
     /// Drawn at start, so `data` differs between two runs and tells nothing of the configuration.
     seed: std::collections::hash_map::RandomState,
-    /// The configuration the commands read.
+    /// The configuration the commands read at start: the one `data` follows when the config file in use cannot be
+    /// located.
     config: PathBuf,
     /// How it runs (issue #214): its limits and whether the insight engine runs; nothing of the account.
     server: Arc<Value>,
@@ -138,12 +139,15 @@ impl Status {
     }
 
     /// `data` (issue #198): changes when the configuration does (so with the account the commands read) and with
-    /// each run, so a client knows when what it read before may be another account's. A keyed hash, its key drawn
-    /// at start: it says nothing of the configuration itself.
+    /// each run, so a client knows when what it read before may be another account's. The configuration is the
+    /// file the commands read now, its path and its content: `config set config_path` chooses another file while the
+    /// server runs. A keyed hash, its key drawn at start: it says nothing of the configuration itself.
     pub(super) fn data(&self) -> String {
         use std::hash::BuildHasher;
-        let config = std::fs::read(&self.config).unwrap_or_default();
-        format!("{:016x}", self.seed.hash_one(&config))
+        let path =
+            weflow_core::config::default_config_path().unwrap_or_else(|| self.config.clone());
+        let content = std::fs::read(&path).unwrap_or_default();
+        format!("{:016x}", self.seed.hash_one((&path, &content)))
     }
 
     /// The body of `/health`, and the data of `hello`.
