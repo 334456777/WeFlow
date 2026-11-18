@@ -292,17 +292,6 @@ pub fn build_quoted_reply_text(d: &QuotedDisplay) -> String {
     }
 }
 
-pub fn is_quoted_reply_message(local_type: i64, content: &str) -> bool {
-    if local_type == 244813135921 {
-        return true;
-    }
-    let normalized = normalize_app_message_content(content);
-    if !(local_type == 49 || normalized.contains("<appmsg") || normalized.contains("<msg>")) {
-        return false;
-    }
-    extract_app_message_type(&normalized) == "57" || normalized.contains("<refermsg>")
-}
-
 /// Whether the message is a reply (a text quote): only local type 244813135921 and app message type 57 are.
 /// Images, forwarded chat records and others may carry a `<refermsg>` too, and are not text quotes.
 pub fn is_text_quote_message_in(local_type: i64, x: &MsgXml) -> bool {
