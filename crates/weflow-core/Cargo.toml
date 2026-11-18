@@ -35,7 +35,8 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+# `time`: the pause before a model API request is tried again (src/model_api/retry.rs)
+tokio = { workspace = true, features = ["time"] }
 toml.workspace = true
 sha1.workspace = true
 terminal_size.workspace = true
@@ -65,5 +66,7 @@ proptest.workspace = true
 zstd.workspace = true
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
+# the model API the insight tests ask (tests/model_api_e2e.rs, tests/insight_e2e.rs)
+weflow-fake-model = { path = "../weflow-fake-model" }
 # examples/search_probe.rs reads rows through `Account::with_db`
 rusqlite = "0.40"

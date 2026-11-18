@@ -1,6 +1,6 @@
 // The sample's AI insights: what the insight engine noticed in the chats, about WeFlow and about the account's own life,
 // with how each was written. Read, cleared and written anew in the page while it is open (#896).
-import type { InsightCleared, InsightContact, InsightMarked, InsightRecord, InsightReply, InsightSummary } from '../api/contract.gen';
+import type { InsightCleared, InsightContact, InsightMarked, InsightRecord, InsightReply, InsightSummary, ModelList } from '../api/contract.gen';
 import { threads } from './chats';
 import { ago, at, dayOf, NOW } from './clock';
 import { ME, nameOf } from './people';
@@ -56,7 +56,7 @@ export function insightRecord(id: string): { success: boolean; record?: InsightR
     record: {
       ...summaryOf(w), accountScope: ME,
       log: {
-        endpoint: 'https://api.example.com/v1/chat/completions', model: 'sample-model', maxTokens: 512, temperature: 0.7,
+        format: 'openai', endpoint: 'https://api.example.com/v1/chat/completions', model: 'sample-model', maxTokens: 512,
         triggerReason: w.reason, allowContext: true, contextCount: 20,
         systemPrompt: '你是用户的社交助理，根据最近的聊天，用一两句话提醒用户可以做什么。只写具体的事，不编造聊天里没有的内容。',
         userPrompt: '和「' + name + '」最近 20 条消息（示例数据，不是真实的聊天）……',
@@ -105,4 +105,31 @@ export function triggerInsight(session: string): InsightReply {
   };
   written.push(w);
   return { success: true, message: '已生成一条见解。', record: summaryOf(w) };
+}
+
+/** The sample's model API: an address of no one's, by the format the settings name. */
+const sampleEndpoint = (format: string | null) =>
+  format === 'anthropic' ? 'https://api.example.com/v1/messages' : 'https://api.example.com/v1/chat/completions';
+
+/** `insight test`: the sample model answers as asked; no service is reached. */
+export function testModel(format: string | null, model: string | null): InsightReply {
+  return {
+    success: true, message: '连接成功，模型回复：连接成功',
+    probe: {
+      format: format === 'anthropic' ? 'anthropic' : 'openai', endpoint: sampleEndpoint(format),
+      model: model || 'sample-model', reply: '连接成功', durationMs: 840, retries: 0,
+    },
+  };
+}
+
+/** `insight models`: the sample service's models. */
+export function sampleModels(format: string | null): ModelList {
+  return {
+    format: format === 'anthropic' ? 'anthropic' : 'openai', endpoint: sampleEndpoint(format).replace(/\/(chat\/completions|messages)$/, '/models'),
+    models: [
+      { id: 'sample-model', displayName: '示例模型' },
+      { id: 'sample-model-mini', displayName: '示例模型 Mini' },
+      { id: 'sample-reasoner', displayName: '示例推理模型' },
+    ],
+  };
 }

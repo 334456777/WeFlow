@@ -3,17 +3,33 @@
 //! helpers. A desktop notification popup has no CLI counterpart; instead every generated insight
 //! is handed to the caller (the `serve --insight` loop prints it as a JSON line).
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use chrono::{Local, TimeZone, Timelike};
 use serde_json::{json, Value};
 
 use super::*;
 use crate::contract::{
-    InsightCleared, InsightMarked, InsightRecords, InsightReply, InsightTodayStat, Session,
+    InsightCleared, InsightMarked, InsightRecords, InsightReply, InsightTodayStat, ModelList,
+    ModelProbe, Session,
 };
 use crate::insight::{self as ins, fill, RecordFilters, RecordStore};
 use crate::locale::tr;
+use crate::model_api::{ModelApi, Prompt};
 use crate::sync::MutexExt;
+
+/// The most tokens of one answer when `ai_model_api_max_tokens` is not set: room for a short answer and for the
+/// reasoning a model may do first, which counts against the same limit.
+const DEFAULT_MAX_TOKENS: u64 = 4096;
+
+/// The largest `ai_model_api_max_tokens` taken; a larger one is cut to it.
+const LARGEST_MAX_TOKENS: u64 = 2_000_000;
+
+/// How long one request of `insight test` and `insight models` may take.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long one request for an insight or a footprint summary may take: a model that reasons first can take a while.
+const GENERATE_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Default)]
 pub struct InsightState {
@@ -21,14 +37,55 @@ pub struct InsightState {
     today_date: i64,
     last_activity: HashMap<String, i64>,
     last_seen: HashMap<String, i64>,
-    session_cache: Option<(Vec<Session>, std::time::Instant)>,
+    session_cache: Option<(Vec<Session>, Instant)>,
 }
 
-struct AiConfig {
-    base: String,
-    key: String,
-    model: String,
-    max_tokens: u64,
+/// `ai_model_api_max_tokens` as a number of tokens: a number or a numeric text, floored and kept between 1 and
+/// [`LARGEST_MAX_TOKENS`]; [`DEFAULT_MAX_TOKENS`] when it is not set or not a number.
+fn max_tokens_of(value: &Value) -> u64 {
+    let n = match value {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    };
+    match n {
+        Some(n) if n.is_finite() => crate::num::saturating_i64(n.floor())
+            .clamp(1, i64::try_from(LARGEST_MAX_TOKENS).unwrap_or(i64::MAX))
+            .unsigned_abs(),
+        _ => DEFAULT_MAX_TOKENS,
+    }
+}
+
+/// Why `api` cannot be asked yet, in the words of the settings: a model is needed, and a key unless the base URL
+/// names a service of one's own (a local one may take none).
+fn model_api_missing(api: &ModelApi) -> Option<&'static str> {
+    if api.key.trim().is_empty() && api.base_url.trim().is_empty() {
+        return Some(tr("Please enter the API key first", "请先填写 API Key"));
+    }
+    if api.model.trim().is_empty() {
+        return Some(tr("Please enter the model name first", "请先填写模型名称"));
+    }
+    None
+}
+
+fn millis_since(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// What a test trigger says when the model had nothing to say about `name`.
+fn skipped_message(name: &str) -> String {
+    fill(
+        tr(
+            "The model had nothing to say about \"{name}\" (it answered SKIP); no insight was written",
+            "模型认为「{name}」没有可说的（回答了 SKIP），没有生成见解",
+        ),
+        &[("name", name.to_string())],
+    )
+}
+
+/// A failure of the engine, which goes on with the next conversation.
+fn log_failure(why: &str) {
+    eprintln!("[insight] {why}");
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -77,7 +134,8 @@ impl ServiceHub {
         self.fresh_config()
     }
 
-    fn ai_config(&self) -> AiConfig {
+    /// The model API of the profile's settings (`ai_model_api_*`, else WeFlow's older `aiInsightApi*` keys).
+    fn model_api(&self) -> ModelApi {
         let c = self.insight_cfg();
         let p = &self.profile_name;
         let pick = |a: &str, b: &str| {
@@ -88,16 +146,14 @@ impl ServiceHub {
                 first
             }
         };
-        let model = pick("aiModelApiModel", "aiInsightApiModel");
-        AiConfig {
-            base: pick("aiModelApiBaseUrl", "aiInsightApiBaseUrl"),
+        ModelApi {
+            format: cfg_str(&c, p, "aiModelApiFormat")
+                .parse()
+                .unwrap_or_default(),
+            base_url: pick("aiModelApiBaseUrl", "aiInsightApiBaseUrl"),
             key: pick("aiModelApiKey", "aiInsightApiKey"),
-            model: if model.is_empty() {
-                "gpt-4o-mini".into()
-            } else {
-                model
-            },
-            max_tokens: ins::normalize_api_max_tokens(&c.get_key(Some(p), "aiModelApiMaxTokens")),
+            model: pick("aiModelApiModel", "aiInsightApiModel"),
+            max_tokens: max_tokens_of(&c.get_key(Some(p), "aiModelApiMaxTokens")),
         }
     }
 
@@ -200,41 +256,67 @@ impl ServiceHub {
 
     // ── connection test / footprint ──
 
-    /// `testConnection`
+    /// `testConnection`: asks the model API for a short answer, and says where it asked and what came back.
     pub async fn insight_test_connection(&self) -> InsightReply {
-        let ai = self.ai_config();
-        if ai.base.is_empty() || ai.key.is_empty() {
-            return InsightReply::failed(tr(
-                "Please enter the API address and API Key first",
-                "请先填写 API 地址和 API Key",
-            ));
+        let api = self.model_api();
+        if let Some(missing) = model_api_missing(&api) {
+            return InsightReply::failed(missing);
         }
-        let prompt = tr(
-            "Please reply with the four characters \"connection successful\".",
-            "请回复\"连接成功\"四个字。",
-        );
-        match ins::call_api(
-            &ai.base,
-            &ai.key,
-            &ai.model,
-            &[("user", prompt)],
-            15_000,
-            ai.max_tokens,
-        )
-        .await
-        {
-            Ok(r) => InsightReply::done(fill(
-                tr(
-                    "Connection successful. Model reply: {v0}",
-                    "连接成功，模型回复：{v0}",
-                ),
-                &[("v0", r.chars().take(50).collect())],
-            )),
+        let prompt = Prompt {
+            system: None,
+            user: tr(
+                "Please reply with the two words \"connection successful\".",
+                "请回复\"连接成功\"四个字。",
+            ),
+        };
+        let started = Instant::now();
+        match api.complete(&prompt, PROBE_TIMEOUT).await {
+            Ok(reply) => InsightReply {
+                probe: Some(ModelProbe {
+                    format: api.format,
+                    endpoint: api.endpoint(),
+                    model: reply.model.unwrap_or_else(|| api.model.clone()),
+                    duration_ms: millis_since(started),
+                    retries: reply.retries,
+                    reply: reply.text.clone(),
+                }),
+                ..InsightReply::done(fill(
+                    tr(
+                        "Connection successful. Model reply: {v0}",
+                        "连接成功，模型回复：{v0}",
+                    ),
+                    &[("v0", reply.text.chars().take(50).collect())],
+                ))
+            },
             Err(e) => InsightReply::failed(fill(
                 tr("Connection failed: {message}", "连接失败：{message}"),
-                &[("message", e)],
+                &[("message", e.to_string())],
             )),
         }
+    }
+
+    /// `insight models`: the models the model API offers.
+    ///
+    /// # Errors
+    ///
+    /// The settings lack a key, or the service answered with an error or something that is not a list of models.
+    pub async fn insight_models(&self) -> AppResult<ModelList> {
+        let api = self.model_api();
+        if api.key.trim().is_empty() && api.base_url.trim().is_empty() {
+            return Err(AppError::config(tr(
+                "Please enter the API key first",
+                "请先填写 API Key",
+            )));
+        }
+        let models = api
+            .list_models(PROBE_TIMEOUT)
+            .await
+            .map_err(|e| AppError::runtime(e.to_string()))?;
+        Ok(ModelList {
+            format: api.format,
+            endpoint: api.models_endpoint(),
+            models,
+        })
     }
 
     /// `generateFootprintInsight`
@@ -247,12 +329,9 @@ impl ServiceHub {
                 "请先在设置中开启「AI 足迹总结」",
             ));
         }
-        let ai = self.ai_config();
-        if ai.base.is_empty() || ai.key.is_empty() {
-            return InsightReply::failed(tr(
-                "Please fill in the shared AI model settings first (API address and Key)",
-                "请先填写通用 AI 模型配置（API 地址和 Key）",
-            ));
+        let api = self.model_api();
+        if let Some(missing) = model_api_missing(&api) {
+            return InsightReply::failed(missing);
         }
         let num = |v: Option<&Value>| {
             v.and_then(|v| {
@@ -390,26 +469,18 @@ impl ServiceHub {
             .replace("{topPrivateText}", &top_private)
             .replace("{topMentionText}", &top_mention);
         let user = ins::append_current_time(&prompt);
-        match ins::call_api(
-            &ai.base,
-            &ai.key,
-            &ai.model,
-            &[("system", &system), ("user", &user)],
-            25_000,
-            ai.max_tokens,
-        )
-        .await
-        {
-            Ok(r) if r.trim().is_empty() => {
-                InsightReply::failed(tr("The model returned nothing", "模型返回为空"))
-            }
-            Ok(r) => InsightReply {
-                insight: Some(r.trim().to_string()),
+        let prompt = Prompt {
+            system: Some(&system),
+            user: &user,
+        };
+        match api.complete(&prompt, GENERATE_TIMEOUT).await {
+            Ok(reply) => InsightReply {
+                insight: Some(reply.text),
                 ..InsightReply::done(tr("Generated successfully", "生成成功"))
             },
             Err(e) => InsightReply::failed(fill(
                 tr("Generation failed: {message}", "生成失败：{message}"),
-                &[("message", e)],
+                &[("message", e.to_string())],
             )),
         }
     }
@@ -625,18 +696,23 @@ impl ServiceHub {
 
     // ── generation ──
 
-    /// `generateInsightForSession`: returns the stored record when an insight was produced.
+    /// `generateInsightForSession`: the stored record when an insight was produced; `None` when insights are off or
+    /// the model had nothing to say (`SKIP`).
+    ///
+    /// # Errors
+    ///
+    /// The model API is not set up, or asking it failed; the text says why.
     pub async fn insight_generate(
         &self,
         session_id: &str,
         display_name: &str,
         reason: Trigger,
         silent_days: Option<i64>,
-    ) -> Option<ins::InsightRecord> {
+    ) -> Result<Option<ins::InsightRecord>, String> {
         if session_id.is_empty() || !self.insight_enabled() && reason != Trigger::Test {
-            return None;
+            return Ok(None);
         }
-        let ai = self.ai_config();
+        let api = self.model_api();
         let c = self.insight_cfg();
         let p = &self.profile_name;
         let allow_context = c.get_key(Some(p), "aiInsightAllowContext") == Value::Bool(true);
@@ -655,15 +731,8 @@ impl ServiceHub {
             .and_then(|(a, _)| a)
             .map(|a| a.trim().to_string())
             .filter(|a| !a.is_empty());
-        if ai.base.is_empty() || ai.key.is_empty() {
-            eprintln!(
-                "[insight] {}",
-                crate::locale::tr(
-                    "API address or key not configured, skipping",
-                    "未配置 API 地址或密钥，已跳过"
-                )
-            );
-            return None;
+        if let Some(missing) = model_api_missing(&api) {
+            return Err(missing.to_string());
         }
         let mut context = String::new();
         if allow_context {
@@ -703,39 +772,34 @@ impl ServiceHub {
             .collect::<Vec<_>>()
             .join("\n\n");
         let user = ins::append_current_time(&base);
-        let started = std::time::Instant::now();
-        let result = match ins::call_api(
-            &ai.base,
-            &ai.key,
-            &ai.model,
-            &[("system", &system), ("user", &user)],
-            ins::API_TIMEOUT_MS,
-            ai.max_tokens,
-        )
-        .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!(
-                    "[insight] {}",
-                    crate::locale::localize(format!("API call failed ({name}): {e}"))
-                );
-                return None;
-            }
+        let started = Instant::now();
+        let prompt = Prompt {
+            system: Some(&system),
+            user: &user,
         };
-        let duration = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
-        if result.trim().to_uppercase() == "SKIP" || result.trim().starts_with("SKIP") {
-            return None;
+        let reply = api.complete(&prompt, GENERATE_TIMEOUT).await.map_err(|e| {
+            fill(
+                tr(
+                    "Asking the model about {name} failed: {message}",
+                    "为「{name}」请求模型失败：{message}",
+                ),
+                &[("name", name.clone()), ("message", e.to_string())],
+            )
+        })?;
+        let duration = i64::try_from(millis_since(started)).unwrap_or(i64::MAX);
+        let result = reply.text;
+        if result.eq_ignore_ascii_case("SKIP") || result.starts_with("SKIP") {
+            return Ok(None);
         }
         if !self.insight_enabled() && reason != Trigger::Test {
-            return None;
+            return Ok(None);
         }
-        let insight = result.trim().to_string();
+        let insight = result.clone();
         let log = ins::InsightRecordLog {
-            endpoint: ins::build_api_url(&ai.base, "/chat/completions"),
-            model: ai.model.clone(),
-            max_tokens: ai.max_tokens,
-            temperature: ins::API_TEMPERATURE,
+            format: api.format,
+            endpoint: api.endpoint(),
+            model: reply.model.unwrap_or_else(|| api.model.clone()),
+            max_tokens: api.max_tokens,
             trigger_reason: reason.as_str().into(),
             allow_context,
             context_count: context_count as u64,
@@ -790,7 +854,7 @@ impl ServiceHub {
             .entry(session_id.to_string())
             .or_default()
             .push(ins::now_millis());
-        Some(record)
+        Ok(Some(record))
     }
 
     fn record_store_add(
@@ -816,14 +880,30 @@ impl ServiceHub {
         )
     }
 
+    /// `insight trigger <session>`: a test insight for that conversation, whatever the filters say.
+    pub async fn insight_trigger_session(&self, session_id: &str) -> InsightReply {
+        let name = self
+            .chat_contact_avatar(session_id)
+            .map(|(_, n)| n)
+            .unwrap_or_else(|| session_id.to_string());
+        match self
+            .insight_generate(session_id, &name, Trigger::Test, None)
+            .await
+        {
+            Ok(Some(record)) => InsightReply {
+                message: None,
+                record: Some(record.summary()),
+                ..InsightReply::done("")
+            },
+            Ok(None) => InsightReply::failed(skipped_message(&name)),
+            Err(why) => InsightReply::failed(why),
+        }
+    }
+
     /// `triggerTest`: forces an insight for the first eligible private chat.
     pub async fn insight_trigger_test(&self) -> InsightReply {
-        let ai = self.ai_config();
-        if ai.base.is_empty() || ai.key.is_empty() {
-            return InsightReply::failed(tr(
-                "Please enter the API address and Key first",
-                "请先填写 API 地址和 Key",
-            ));
+        if let Some(missing) = model_api_missing(&self.model_api()) {
+            return InsightReply::failed(missing);
         }
         let sessions = match self.chat_sessions_list() {
             Ok(s) => s,
@@ -855,7 +935,11 @@ impl ServiceHub {
             .filter(|s| !s.is_empty())
             .unwrap_or(&id)
             .to_string();
-        let record = self.insight_generate(&id, &name, Trigger::Test, None).await;
+        let record = match self.insight_generate(&id, &name, Trigger::Test, None).await {
+            Ok(Some(record)) => record,
+            Ok(None) => return InsightReply::failed(skipped_message(&name)),
+            Err(why) => return InsightReply::failed(why),
+        };
         let c = self.insight_cfg();
         let notify = c.get_key(Some(&self.profile_name), "aiInsightNotificationEnabled")
             != Value::Bool(false);
@@ -871,7 +955,7 @@ impl ServiceHub {
             fill(tr("A test insight was generated for \"{displayName}\", but AI insight notifications are currently off", "已生成「{displayName}」的测试见解，AI 见解消息通知当前已关闭"), &[("displayName", name)])
         };
         InsightReply {
-            record: record.map(|r| r.summary()),
+            record: Some(record.summary()),
             ..InsightReply::done(message)
         }
     }
@@ -912,12 +996,22 @@ impl ServiceHub {
             }
             let silent = crate::num::saturating_i64(((now - last) / 86_400_000.0).floor());
             let name = s.display_name.clone();
-            if let Some(r) = self
+            match self
                 .insight_generate(&id, &name, Trigger::Silence, Some(silent))
                 .await
             {
-                generated += 1;
-                on_insight(&r);
+                Ok(Some(r)) => {
+                    generated += 1;
+                    on_insight(&r);
+                }
+                Ok(None) => {}
+                Err(why) => {
+                    log_failure(&why);
+                    // the settings are missing: every other conversation would fail alike
+                    if model_api_missing(&self.model_api()).is_some() {
+                        return generated;
+                    }
+                }
             }
         }
         generated
@@ -967,11 +1061,13 @@ impl ServiceHub {
                     st.last_seen.insert(sid.clone(), ts);
                     st.last_activity.insert(sid.clone(), now);
                 }
-                if let Some(r) = self
+                match self
                     .insight_generate(sid, sid, Trigger::Activity, None)
                     .await
                 {
-                    on_insight(&r);
+                    Ok(Some(r)) => on_insight(&r),
+                    Ok(None) => {}
+                    Err(why) => log_failure(&why),
                 }
                 break;
             }
@@ -1006,13 +1102,45 @@ impl ServiceHub {
                 .last_activity
                 .insert(sid.clone(), now);
             let name = s.display_name.clone();
-            if let Some(r) = self
+            match self
                 .insight_generate(&sid, &name, Trigger::Activity, None)
                 .await
             {
-                on_insight(&r);
+                Ok(Some(r)) => on_insight(&r),
+                Ok(None) => {}
+                Err(why) => log_failure(&why),
             }
             break;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn max_tokens_are_read_and_clamped() {
+        assert_eq!(max_tokens_of(&json!(0)), 1);
+        assert_eq!(max_tokens_of(&json!("abc")), DEFAULT_MAX_TOKENS);
+        assert_eq!(max_tokens_of(&Value::Null), DEFAULT_MAX_TOKENS);
+        assert_eq!(max_tokens_of(&json!(9_999_999_999i64)), LARGEST_MAX_TOKENS);
+        assert_eq!(max_tokens_of(&json!(512.9)), 512);
+        assert_eq!(max_tokens_of(&json!(" 300 ")), 300);
+    }
+
+    #[test]
+    fn a_key_or_an_own_service_and_a_model_are_needed() {
+        let api = |base: &str, key: &str, model: &str| ModelApi {
+            base_url: base.into(),
+            key: key.into(),
+            model: model.into(),
+            ..ModelApi::default()
+        };
+        assert!(model_api_missing(&api("", "", "m")).is_some());
+        assert!(model_api_missing(&api("", "k", "")).is_some());
+        assert!(model_api_missing(&api("", "k", "m")).is_none());
+        // a service of one's own may take no key
+        assert!(model_api_missing(&api("http://127.0.0.1:11434/v1", "", "m")).is_none());
     }
 }

@@ -15,7 +15,7 @@ import {
   setSetting, testDatabase, unsetSetting,
 } from './config';
 import { footprint, footprintSummary } from './footprint';
-import { clearInsights, insightRecord, insightRecords, markRead, triggerInsight } from './insights';
+import { clearInsights, insightRecord, insightRecords, markRead, sampleModels, testModel, triggerInsight } from './insights';
 import { dropJob, getJob, jobFileUrl, listJobs, startJob, type Effect } from './jobs';
 import { pictureUrl, voiceSound } from './media';
 import { postCounts, timeline } from './moments';
@@ -296,7 +296,8 @@ const routes: Record<string, Route> = {
   'PUT insight/mark-read': params => markRead(text(params, 'id')),
   'DELETE insight/clear': params => clearInsights(text(params, 'session')),
   'POST insight/trigger': params => triggerInsight(text(params, 'session-id')),
-  'POST insight/test': () => ({ success: true, message: '模型有回应（示例数据）。' }),
+  'POST insight/test': () => testModel(getSetting('ai_model_api_format'), getSetting('ai_model_api_model')),
+  'GET insight/models': () => sampleModels(getSetting('ai_model_api_format')),
   'GET backup/inspect': () => backupManifest(),
 
   // the settings, the account's setup and the server's own upkeep (#896)

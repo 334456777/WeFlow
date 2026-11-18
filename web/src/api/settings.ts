@@ -13,11 +13,14 @@ export async function getSetting(key: string, signal?: AbortSignal): Promise<str
 export const setSetting = (key: string, value: string) => call<Contract.ConfigWritten>('PUT', 'config/set', { key, value });
 export const unsetSetting = (key: string) => call<Contract.ConfigWritten>('DELETE', 'config/unset', { key });
 
-/** `insight test`: asks the AI model API something small with the settings saved. */
-export const testAi = () => call<unknown>('POST', 'insight/test', {});
+/** `insight test`: asks the AI model API something small with the settings saved; says where and what came back. */
+export const testAi = () => call<Contract.InsightReply>('POST', 'insight/test', {});
+
+/** `insight models`: the models the AI model API of the saved settings offers. */
+export const listModels = (signal?: AbortSignal) => call<Contract.ModelList>('GET', 'insight/models', {}, signal);
 
 /** The keys of the AI part, as `config set` names them; the API key is never read back (`config profiles` says it is set). */
-export const AI_KEYS = ['ai_model_api_base_url', 'ai_model_api_model', 'ai_model_api_max_tokens', 'ai_insight_enabled'] as const;
+export const AI_KEYS = ['ai_model_api_format', 'ai_model_api_base_url', 'ai_model_api_model', 'ai_model_api_max_tokens', 'ai_insight_enabled'] as const;
 
 /** The parts of the cache, as `cache clear` takes them (the contract's, #430). */
 export type CachePartName = Contract.CachePart;

@@ -1,14 +1,16 @@
 // `bun run dev` (#333): the page Vite serves from these sources, the same as `bun run build` makes it, over a
 // `weflow serve` of a synthetic account (crates/weflow-cli/examples/dev_account.rs) on a free port with a token of
-// its own, which the proxy adds. Nothing of a real WeChat account is read. With WEFLOW_SERVE_URL set (in the shell or
-// web/.env.local) the proxy goes to that server instead, with WEFLOW_HTTP_TOKEN, and nothing else is started.
+// its own, which the proxy adds. Nothing of a real WeChat account is read. The account's AI settings point at the fake
+// model API (crates/weflow-fake-model), started beside it, unless they name another service. With WEFLOW_SERVE_URL set
+// (in the shell or web/.env.local) the proxy goes to that server instead, with WEFLOW_HTTP_TOKEN, and nothing else is
+// started.
 // WEFLOW_DEV_ACCOUNT=bench (likewise) serves the benchmark account instead (crates/weflow-cli/examples/bench_account.rs,
 // #488): as big and as varied as a real one, but its JPEGs are not pictures; the first build takes a minute or two and
 // about 2.5 GB in target/bench-account.
 // Arguments go on to Vite: `bun run dev --host`. Runs on Bun only (#360), and Vite with it.
 import { join } from 'node:path';
 import { loadEnv } from 'vite';
-import { accounts, buildAccount, startServe } from './account.ts';
+import { accounts, buildAccount, startFakeModel, startServe, useFakeModel } from './account.ts';
 
 const web = join(import.meta.dir, '..');
 
@@ -32,7 +34,13 @@ if (env.WEFLOW_SERVE_URL) {
   process.exit(await page.exited);
 } else {
   const { weflow, home } = buildAccount(chosen);
+  const model = await startFakeModel().catch(error => {
+    console.error(error.message);
+    process.exit(1);
+  });
+  if (useFakeModel(weflow, home, model)) console.log(`fake model API: ${model.openaiBaseUrl} (OpenAI), ${model.anthropicBaseUrl} (Anthropic)`);
   const { serve, url, token } = await startServe(weflow, home, ['--api-only']).catch(error => {
+    model.fake.kill();
     console.error(error.message);
     process.exit(1);
   });
@@ -40,6 +48,7 @@ if (env.WEFLOW_SERVE_URL) {
   const stop = code => {
     page?.kill();
     serve.kill();
+    model.fake.kill();
     process.exit(code);
   };
   serve.exited.then(code => {

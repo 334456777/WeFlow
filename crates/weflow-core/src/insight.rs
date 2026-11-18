@@ -1,5 +1,5 @@
 //! Pure parts of WeFlow's `insightService.ts` and `insightRecordService.ts`: record
-//! storage, the OpenAI-compatible API call, prompt assembly and text helpers.
+//! storage, the Telegram push, prompt assembly and text helpers. The model API itself is [`crate::model_api`].
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -10,10 +10,8 @@ use serde_json::{json, Value};
 use crate::chat_msg::ChatMessage;
 use crate::locale::tr;
 use crate::message::xml::rx;
+use crate::model_api::ModelApiFormat;
 
-pub const API_TIMEOUT_MS: u64 = 45_000;
-pub const API_TEMPERATURE: f64 = 0.7;
-const API_MAX_TOKENS_DEFAULT: u64 = 1024;
 const MAX_RECORDS_PER_SCOPE: usize = 1000;
 const RECORDS_FILE: &str = "weflow-insight-records.json";
 
@@ -39,10 +37,13 @@ pub fn fill(template: &str, vars: &[(&str, String)]) -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRecordLog {
+    /// The format of the model API asked; records written before there was a choice asked an OpenAI one.
+    #[serde(default)]
+    pub format: ModelApiFormat,
     pub endpoint: String,
+    /// The model that answered, as the service names it, else the one asked for.
     pub model: String,
     pub max_tokens: u64,
-    pub temperature: f64,
     pub trigger_reason: String,
     pub allow_context: bool,
     pub context_count: u64,
@@ -336,93 +337,7 @@ fn uuid_v4() -> String {
     )
 }
 
-// ───────────────────────── API ─────────────────────────
-
-pub fn build_api_url(base: &str, path: &str) -> String {
-    let base = base.trim_end_matches('/');
-    if path.starts_with('/') {
-        format!("{base}{path}")
-    } else {
-        format!("{base}/{path}")
-    }
-}
-
-pub fn normalize_api_max_tokens(v: &Value) -> u64 {
-    let n = match v {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.trim().parse::<f64>().ok(),
-        _ => None,
-    };
-    match n {
-        Some(n) if n.is_finite() => {
-            crate::num::saturating_i64(n.floor()).clamp(1, 2_000_000) as u64
-        }
-        _ => API_MAX_TOKENS_DEFAULT,
-    }
-}
-
-/// `callApi`: non-streaming chat completion, returns the trimmed first message.
-pub async fn call_api(
-    base_url: &str,
-    api_key: &str,
-    model: &str,
-    messages: &[(&str, &str)],
-    timeout_ms: u64,
-    max_tokens: u64,
-) -> Result<String, String> {
-    let endpoint = build_api_url(base_url, "/chat/completions");
-    let body = json!({
-        "model": model,
-        "messages": messages.iter().map(|(r, c)| json!({ "role": r, "content": c })).collect::<Vec<_>>(),
-        "max_tokens": normalize_api_max_tokens(&json!(max_tokens)),
-        "temperature": API_TEMPERATURE,
-        "stream": false
-    });
-    let client = crate::http_client::builder()
-        .timeout(std::time::Duration::from_millis(timeout_ms))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let resp = client
-        .post(&endpoint)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {api_key}"))
-        .body(body.to_string())
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_builder() {
-                fill(
-                    tr("Invalid API URL: {endpoint}", "无效的 API URL: {endpoint}"),
-                    &[("endpoint", endpoint.clone())],
-                )
-            } else if e.is_timeout() {
-                tr("API request timed out", "API 请求超时").to_string()
-            } else {
-                crate::http_client::failure(e)
-            }
-        })?;
-    let data = resp.text().await.map_err(crate::http_client::failure)?;
-    let head: String = data.chars().take(200).collect();
-    let parsed: Value = serde_json::from_str(&data).map_err(|_| {
-        fill(
-            tr("JSON parse failed: {v0}", "JSON 解析失败: {v0}"),
-            &[("v0", head.clone())],
-        )
-    })?;
-    match parsed
-        .pointer("/choices/0/message/content")
-        .and_then(Value::as_str)
-    {
-        Some(c) if !c.trim().is_empty() => Ok(c.trim().to_string()),
-        _ => Err(fill(
-            tr(
-                "Unexpected API response format: {v0}",
-                "API 返回格式异常: {v0}",
-            ),
-            &[("v0", head)],
-        )),
-    }
-}
+// ───────────────────────── Telegram ─────────────────────────
 
 /// Telegram Bot API `sendMessage` (HTML parse mode, 15 s timeout).
 pub async fn send_telegram(token: &str, chat_id: &str, text: &str) -> Result<(), String> {
@@ -642,29 +557,6 @@ pub fn normalize_session_id_list(v: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn urls_do_not_gain_a_v1() {
-        assert_eq!(
-            build_api_url("https://api.ohmygpt.com/v1/", "/chat/completions"),
-            "https://api.ohmygpt.com/v1/chat/completions"
-        );
-        assert_eq!(
-            build_api_url("https://x.test", "chat/completions"),
-            "https://x.test/chat/completions"
-        );
-    }
-
-    #[test]
-    fn max_tokens_are_clamped() {
-        assert_eq!(normalize_api_max_tokens(&json!(0)), 1);
-        assert_eq!(normalize_api_max_tokens(&json!("abc")), 1024);
-        assert_eq!(
-            normalize_api_max_tokens(&json!(9_999_999_999i64)),
-            2_000_000
-        );
-        assert_eq!(normalize_api_max_tokens(&json!(512.9)), 512);
-    }
 
     #[test]
     fn filters_follow_the_list_mode() {

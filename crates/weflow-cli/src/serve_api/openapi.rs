@@ -472,7 +472,7 @@ pub(super) fn contract() -> &'static Contract {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
             AnnualReport, BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, DualReport, ExportStats, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightCleared, InsightLookup, InsightMarked, InsightRecords, InsightReply, InsightScan, InsightTodayStat,
-            MemberAnalytics, MemberMessages, MessageLookup, MessageRow, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears,
+            MemberAnalytics, ModelList, MemberMessages, MessageLookup, MessageRow, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears,
             ResourcePage, SearchHit, Session, SnsStats, SnsTimeline, SnsUsers, TransferNames, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
@@ -779,6 +779,7 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("insight mark-read", of(generator.subschema_for::<InsightMarked>()));
         data.insert("insight clear", of(generator.subschema_for::<InsightCleared>()));
         data.insert("insight scan", of(generator.subschema_for::<InsightScan>()));
+        data.insert("insight models", of(generator.subschema_for::<ModelList>()));
         for command in ["insight test", "insight trigger", "insight footprint-summary"] {
             data.insert(command, of(generator.subschema_for::<InsightReply>()));
         }
