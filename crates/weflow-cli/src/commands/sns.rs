@@ -1,12 +1,12 @@
 //! `weflow sns`: Moments, their media and the block-delete trigger.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand, ValueEnum};
 
 use serde_json::{json, Value};
 use weflow_core::error::{AppError, AppResult};
-use weflow_core::services::ServiceHub;
+use weflow_core::services::{ServiceHub, SnsMediaFetch};
 
 #[derive(Args, Debug)]
 pub(crate) struct SnsCommand {
@@ -93,7 +93,7 @@ pub(crate) enum SnsSubcommand {
         /// Decryption key
         #[arg(long)]
         key: Option<String>,
-        /// Output file (default: print base64 in the result)
+        /// Output file (without it: only the size and the file in the cache)
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -189,31 +189,16 @@ pub(crate) async fn handle_sns(command: SnsCommand, hub: &ServiceHub) -> AppResu
         }
         SnsSubcommand::Media { url, key, out } => {
             let fetched = hub.sns_fetch_media(&url, key.as_deref()).await?;
-            let data = fetched.data.unwrap_or_default();
-            match out {
-                Some(path) => {
-                    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-                        std::fs::create_dir_all(parent).map_err(|e| {
-                            AppError::runtime(format!("failed to create {}: {e}", parent.display()))
-                        })?;
-                    }
-                    std::fs::write(&path, &data).map_err(|e| {
-                        AppError::runtime(format!("failed to write {}: {e}", path.display()))
-                    })?;
-                    Ok(json!(weflow_core::contract::SnsMediaFetched {
-                        out: Some(path.to_string_lossy().into_owned()),
-                        content_type: fetched.content_type,
-                        bytes: data.len(),
-                        cache_path: fetched.cache_path,
-                    }))
-                }
-                None => Ok(json!(weflow_core::contract::SnsMediaFetched {
-                    out: None,
-                    content_type: fetched.content_type,
-                    bytes: data.len(),
-                    cache_path: fetched.cache_path,
-                })),
-            }
+            let bytes = match &out {
+                Some(path) => save_media(&fetched, path)?,
+                None => media_size(&fetched)?,
+            };
+            Ok(json!(weflow_core::contract::SnsMediaFetched {
+                out: out.map(|path| path.to_string_lossy().into_owned()),
+                content_type: fetched.content_type,
+                bytes,
+                cache_path: fetched.cache_path,
+            }))
         }
         SnsSubcommand::DownloadEmoji {
             url,
@@ -232,5 +217,44 @@ pub(crate) async fn handle_sns(command: SnsCommand, hub: &ServiceHub) -> AppResu
             TriggerAction::Uninstall => hub.sns_block_delete_uninstall(),
         },
         SnsSubcommand::Delete { post_id } => hub.sns_delete_post(&post_id),
+    }
+}
+
+/// Writes what `sns media` fetched to `path`: the bytes it holds, or a copy of its file in the cache when only the
+/// file was kept (a video found in the cache). Returns the size written.
+fn save_media(fetched: &SnsMediaFetch, path: &Path) -> AppResult<usize> {
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            AppError::runtime(format!("failed to create {}: {e}", parent.display()))
+        })?;
+    }
+    let written =
+        |e: std::io::Error| AppError::runtime(format!("failed to write {}: {e}", path.display()));
+    match (&fetched.data, &fetched.cache_path) {
+        (Some(data), _) => {
+            std::fs::write(path, data).map_err(written)?;
+            Ok(data.len())
+        }
+        (None, Some(cached)) => {
+            let copied = std::fs::copy(cached, path).map_err(written)?;
+            Ok(usize::try_from(copied).unwrap_or(usize::MAX))
+        }
+        (None, None) => Err(AppError::runtime("the media came back empty")),
+    }
+}
+
+/// The size of what `sns media` fetched: the bytes it holds, or its file in the cache.
+fn media_size(fetched: &SnsMediaFetch) -> AppResult<usize> {
+    match (&fetched.data, &fetched.cache_path) {
+        (Some(data), _) => Ok(data.len()),
+        (None, Some(cached)) => {
+            let len = std::fs::metadata(cached)
+                .map_err(|e| {
+                    AppError::runtime(format!("failed to read {}: {e}", cached.display()))
+                })?
+                .len();
+            Ok(usize::try_from(len).unwrap_or(usize::MAX))
+        }
+        (None, None) => Ok(0),
     }
 }

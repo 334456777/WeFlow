@@ -267,6 +267,7 @@ const HELP: &[(&str, &str)] = &[
     ("Export format: json, html or arkmejson", "导出格式：json、html 或 arkmejson"),
     ("Decryption key", "解密密钥"),
     ("Output file (default: print base64 in the result)", "输出文件（默认：在结果中输出 base64）"),
+    ("Output file (without it: only the size and the file in the cache)", "输出文件（不给时只返回大小和缓存中的文件）"),
     ("Sticker URL", "表情地址"),
     ("URL of the encrypted sticker", "加密表情的地址"),
     ("AES key of the encrypted sticker", "加密表情的 AES 密钥"),

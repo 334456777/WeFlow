@@ -464,7 +464,37 @@ fn moments_media_come_from_the_cache_and_only_from_wechat() {
     let video: Vec<u8> = (0..300_000u32).map(|i| (i % 253) as u8).collect();
     cached(video_url, ".mp4", &video);
 
+    // `sns media` copies a video it finds in the cache to `--out`, and gives its size with or without `--out`
+    let saved = root.join("saved").join("video.mp4");
+    let (exit, stdout, stderr) = run_cli(
+        &home,
+        &[
+            "--json",
+            "sns",
+            "media",
+            video_url,
+            "--out",
+            saved.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(exit, 0, "{stdout}{stderr}");
+    let fetched: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(fetched["data"]["bytes"], video.len(), "{fetched}");
+    assert_eq!(std::fs::read(&saved).unwrap(), video);
+    let (exit, stdout, _) = run_cli(&home, &["--json", "sns", "media", video_url]);
+    assert_eq!(exit, 0, "{stdout}");
+    let fetched: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(fetched["data"]["bytes"], video.len(), "{fetched}");
+    assert_eq!(fetched["data"]["out"], Value::Null, "{fetched}");
+
     let server = start(&home, &["--api-token", TOKEN]);
+
+    // and `return=file` sends that copy
+    let body = json!({ "url": video_url });
+    let r = server.call("POST", "/sns/media?return=file", &body.to_string());
+    assert_eq!(r.status, 200, "{}", r.body);
+    let parts = form_parts(&r);
+    assert_eq!(parts[1].1, video);
     let auth = format!("Bearer {TOKEN}");
     let get = |url: &str, extra: &[(&str, &str)]| {
         let mut headers = vec![("Authorization", auth.as_str())];
