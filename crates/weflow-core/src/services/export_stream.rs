@@ -274,7 +274,7 @@ impl PageSource<'_> {
             .into_iter()
             .filter(|m| {
                 let ts = crate::message::msg_row_timestamp(m);
-                start.is_none_or(|s| ts >= s) && end.is_none_or(|e| ts < e)
+                start.is_none_or(|s| ts >= s) && end.is_none_or(|e| ts <= e)
             })
             // drop other senders' rows before parsing them
             .filter(|row| {
