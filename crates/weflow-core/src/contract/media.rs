@@ -92,6 +92,8 @@ pub struct EmojisDownloaded {
     pub found: usize,
     /// The ones downloaded now, not already there.
     pub downloaded: usize,
+    /// The ones whose request or write failed; they are not in `files`.
+    pub failed: usize,
     /// Left out when none was found.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<EmojiFile>>,

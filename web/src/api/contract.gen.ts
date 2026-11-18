@@ -1640,6 +1640,8 @@ export interface EmojisDownloaded {
   found: number;
   /** The ones downloaded now, not already there. */
   downloaded: number;
+  /** The ones whose request or write failed; they are not in `files`. */
+  failed: number;
   /** Left out when none was found. */
   files?: EmojiFile[];
 }

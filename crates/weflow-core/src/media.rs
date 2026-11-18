@@ -37,9 +37,18 @@ fn emoji_meta(content: &str) -> Option<EmojiMeta> {
     Some(EmojiMeta { cdn_url, md5 })
 }
 
+/// What [`download_emojis`] left on disk, and how many stickers it could not download.
+#[derive(Debug, Default)]
+pub struct EmojiDownloads {
+    /// The stickers on disk: the ones already there and the ones downloaded now, in message order.
+    pub files: Vec<crate::contract::EmojiFile>,
+    /// The stickers whose request or write failed; they are not in `files`.
+    pub failed: usize,
+}
+
 /// Downloads each of `metas` into `cache_dir` as `<md5><ext>`, skipping the ones already there; a sticker whose
-/// request or write fails is left out of the result. `progress_cb` gets `(done, total)` before each sticker and once
-/// at the end.
+/// request or write fails is left out of `files` and counted in `failed`. `progress_cb` gets `(done, total)` before
+/// each sticker and once at the end.
 ///
 /// # Errors
 ///
@@ -48,7 +57,7 @@ pub async fn download_emojis(
     metas: &[EmojiMeta],
     cache_dir: &Path,
     progress_cb: &dyn Fn(usize, usize),
-) -> Result<Vec<crate::contract::EmojiFile>> {
+) -> Result<EmojiDownloads> {
     fs::create_dir_all(cache_dir)
         .with_context(|| format!("create emoji cache dir {}", cache_dir.display()))?;
 
@@ -58,43 +67,50 @@ pub async fn download_emojis(
         .context("build reqwest client")?;
 
     let total = metas.len();
-    let mut results = Vec::new();
+    let mut downloads = EmojiDownloads::default();
     for (idx, meta) in metas.iter().enumerate() {
         progress_cb(idx, total);
         // skip a sticker cached already, under any picture extension
-        let existing = find_cached_emoji(cache_dir, &meta.md5);
-        if let Some(p) = existing {
-            results.push(crate::contract::EmojiFile {
+        let file = match find_cached_emoji(cache_dir, &meta.md5) {
+            Some(p) => Some(crate::contract::EmojiFile {
                 md5: meta.md5.clone(),
                 cached: true,
                 path: p.to_string_lossy().into_owned(),
                 size: None,
-            });
-            continue;
-        }
-        match client.get(&meta.cdn_url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                let bytes = match resp.bytes().await {
-                    Ok(b) => b,
-                    Err(_) => continue,
-                };
-                let ext = crate::image::ImageFormat::of(&bytes)
-                    .map_or(".bin", crate::image::ImageFormat::extension);
-                let out_path = cache_dir.join(format!("{}{}", meta.md5, ext));
-                if fs::write(&out_path, &bytes).is_ok() {
-                    results.push(crate::contract::EmojiFile {
-                        md5: meta.md5.clone(),
-                        cached: false,
-                        path: out_path.to_string_lossy().into_owned(),
-                        size: Some(bytes.len()),
-                    });
-                }
-            }
-            _ => continue,
+            }),
+            None => fetch_emoji(&client, meta, cache_dir).await,
+        };
+        match file {
+            Some(file) => downloads.files.push(file),
+            None => downloads.failed += 1,
         }
     }
     progress_cb(total, total);
-    Ok(results)
+    Ok(downloads)
+}
+
+/// Downloads `meta` into `cache_dir`, named after its format; `None` when the request fails, the server answers with
+/// an error status, or the file cannot be written.
+async fn fetch_emoji(
+    client: &reqwest::Client,
+    meta: &EmojiMeta,
+    cache_dir: &Path,
+) -> Option<crate::contract::EmojiFile> {
+    let resp = client.get(&meta.cdn_url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let bytes = resp.bytes().await.ok()?;
+    let ext =
+        crate::image::ImageFormat::of(&bytes).map_or(".bin", crate::image::ImageFormat::extension);
+    let out_path = cache_dir.join(format!("{}{}", meta.md5, ext));
+    fs::write(&out_path, &bytes).ok()?;
+    Some(crate::contract::EmojiFile {
+        md5: meta.md5.clone(),
+        cached: false,
+        path: out_path.to_string_lossy().into_owned(),
+        size: Some(bytes.len()),
+    })
 }
 
 fn find_cached_emoji(cache_dir: &Path, md5: &str) -> Option<PathBuf> {
