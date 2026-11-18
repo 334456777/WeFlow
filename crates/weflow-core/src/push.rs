@@ -336,11 +336,11 @@ impl PushEngine {
         s.last_timestamp > prev.last_timestamp || s.unread_count != prev.unread_count
     }
 
-    fn should_scan_message_backed(&self, prev: Option<&Baseline>, s: &Session) -> bool {
+    /// Whether a scan reads the session's latest messages even though its summary did not change: every
+    /// conversation, private ones included, as a summary can miss a message (one sent in the same second as the last,
+    /// in a chat that is being read so its unread count stays).
+    fn should_scan_message_backed(prev: Option<&Baseline>, s: &Session) -> bool {
         if s.username.is_empty() || s.username.to_lowercase().contains("placeholder_foldgroup") {
-            return false;
-        }
-        if session_type(&s.username) == "private" && !is_revoke_session_summary(s) {
             return false;
         }
         prev.is_some() || s.last_timestamp > 0
@@ -364,7 +364,7 @@ impl PushEngine {
             .filter(|s| {
                 let prev = previous.get(&s.username);
                 self.should_inspect(prev, s)
-                    || (scan_message_backed && self.should_scan_message_backed(prev, s))
+                    || (scan_message_backed && Self::should_scan_message_backed(prev, s))
             })
             .collect();
         for s in candidates {
@@ -1329,6 +1329,35 @@ mod tests {
         assert_eq!(message_display_content(&m[0]).as_deref(), Some("[图片]"));
         assert_eq!(message_display_content(&m[1]).as_deref(), Some("T"));
         assert_eq!(message_display_content(&m[2]).as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn a_scan_reads_private_chats_whose_summary_did_not_change() {
+        let session = |username: &str| Session {
+            username: username.into(),
+            last_timestamp: 100,
+            unread_count: 0,
+            last_msg_type: 1,
+            summary: "hi".into(),
+            display_name: String::new(),
+            avatar_url: None,
+            last_sender_display_name: None,
+        };
+        let prev = Baseline {
+            last_timestamp: 100,
+            unread_count: 0,
+        };
+        for username in ["wxid_bob", "bob", "a@chatroom", "gh_x"] {
+            assert!(
+                PushEngine::should_scan_message_backed(Some(&prev), &session(username)),
+                "{username}"
+            );
+        }
+        assert!(!PushEngine::should_scan_message_backed(
+            Some(&prev),
+            &session("@placeholder_foldgroup")
+        ));
+        assert!(!PushEngine::should_scan_message_backed(None, &session("")));
     }
 
     #[test]
