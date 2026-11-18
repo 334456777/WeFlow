@@ -112,14 +112,15 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
   thread: Thread; loadOlder(): void; loadNewer(): void; reload(): void;
 } {
   const [owned, setOwned] = useState<{ id: string | null; thread: Thread }>(() => ({ id: sessionId, thread: (sessionId && cache.get(sessionId)) || (sessionId ? LOADING : IDLE) }));
-  const pendingJump = jump && jump.sessionId === sessionId && jump.seq !== owned.thread.focus?.seq;
+  /** The `seq` of the last jump taken: going back to its conversation does not take it again. */
+  const handled = useRef<number | null>(null);
+  const pendingJump = jump && jump.sessionId === sessionId && jump.seq !== handled.current;
   const thread = owned.id === sessionId ? owned.thread : pendingJump ? LOADING : (sessionId && cache.get(sessionId)) || (sessionId ? LOADING : IDLE);
   const latest = useRef(thread);
   latest.current = thread;
   const current = useRef(sessionId);
   const paging = useRef<AbortController | null>(null);
   const fresh = useRef(false);
-  const handled = useRef<number | null>(null);
   const [round, setRound] = useState(0);
 
   const update = useCallback((id: string | null, change: Thread | ((old: Thread) => Thread)) => {

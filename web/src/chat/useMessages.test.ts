@@ -126,6 +126,34 @@ describe('useMessages', () => {
     await waitFor(() => expect(result.current.thread.messages.at(-1)?.parsedContent).toBe('m0'));
   });
 
+  it('shows a conversation left by a jump and back at the newest at once when it is opened again (#159)', async () => {
+    const calls = serve(300);
+    const jump: Jump = { sessionId: 'wxid_a', target: { at: 'message', message: message(300, 120) }, seq: 3 };
+    // what each render shows, not only the last one
+    const shown: string[] = [];
+    const { result, rerender } = renderHook(({ id, to }) => {
+      const got = useMessages(id, to);
+      shown.push(id + ':' + got.thread.status);
+      return got;
+    }, { initialProps: { id: 'wxid_a', to: jump as Jump | null } });
+    await waitFor(() => expect(result.current.thread.focus?.seq).toBe(3));
+    expect(result.current.thread.hasNewer).toBe(true);
+    // 「回到最新消息」: the newest page, kept
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.thread.messages.at(-1)?.parsedContent).toBe('m0'));
+    rerender({ id: 'wxid_b', to: jump });
+    await waitFor(() => expect(result.current.thread.status).toBe('ready'));
+    const read = calls.length;
+    shown.length = 0;
+    // the jump is still the last one, taken already: not a render of a skeleton before the newest messages
+    rerender({ id: 'wxid_a', to: jump });
+    await act(async () => {});
+    expect(shown.filter(s => s.startsWith('wxid_a:'))).not.toContain('wxid_a:loading');
+    expect(result.current.thread.status).toBe('ready');
+    expect(result.current.thread.messages.at(-1)?.parsedContent).toBe('m0');
+    expect(calls).toHaveLength(read);
+  });
+
   it('asks for a newer weflow when the server does not know --parsed', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, error: { code: 'invalid_arguments', message: 'unexpected argument --parsed' } }, 400)));
     const { result } = renderHook(() => useMessages('wxid_a'));
