@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from '#test';
 import type { Profile } from '../api/setup';
 import { useJobs } from '../jobs/useJobs';
+import { SetupDialog } from './SetupDialog';
 import { SetupWizard } from './SetupWizard';
 
 afterEach(() => {
@@ -177,5 +178,22 @@ describe('SetupWizard', () => {
     expect(screen.getByRole('button', { name: '已完成数据库目录' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '回到数据库密钥' }));
     expect(currentStep()).toBe('数据库密钥');
+  });
+});
+
+describe('SetupDialog', () => {
+  function Dialog({ profile }: { profile: Profile }) {
+    const jobs = useJobs(true, 0);
+    return <SetupDialog open profile={profile} jobs={jobs} onChanged={() => {}} onClose={() => {}} onDone={() => {}} />;
+  }
+
+  it('starts a profile added under a set-up one at the data directory (#898)', () => {
+    serve({});
+    const setUp: Profile = { ...PROFILE, wxid: 'wxid_a', dbPath: 'D:/xwechat_files', decryptKey: true };
+    const { rerender } = render(<Dialog profile={setUp} />);
+    expect(currentStep()).toContain('图片密钥');
+    rerender(<Dialog profile={{ ...PROFILE, name: 'work' }} />);
+    expect(currentStep()).toContain('数据库目录');
+    expect(screen.queryByRole('button', { name: '已完成数据库目录' })).toBeNull();
   });
 });
