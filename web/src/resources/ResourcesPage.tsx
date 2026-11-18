@@ -215,7 +215,7 @@ export function ResourcesPage({ filter, scroller, onPreview, onOpen }: {
   const media = useMemo(() => items.filter(item => item.resourceType === 'image' || item.resourceType === 'video'), [items]);
   const preview = (item: Resource) => {
     const own = previewOf(item, open);
-    if (!own || own.type === 'file') return;
+    if (!own) return;
     const index = media.indexOf(item);
     onPreview(media.length > 1 && index >= 0 ? { ...own, gallery: { items: media.map(m => previewOf(m, open)!), index } } : own);
   };

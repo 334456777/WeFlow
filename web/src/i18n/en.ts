@@ -40,7 +40,6 @@ export const en: Record<string, string> = {
   "媒体预览": "Media preview",
   "在会话中定位": "Show in the conversation",
   "关闭预览": "Close the preview",
-  "示例文件记录，可查看名称与记录时间。": "A sample file record: its name and time can be seen.",
   "上一个": "Previous",
   "上一个（←）": "Previous (←)",
   "下一个": "Next",

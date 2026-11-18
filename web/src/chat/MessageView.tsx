@@ -14,8 +14,7 @@ import { safeUrl } from '../links';
 
 export type Preview =
   | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb; hd?: PreviewHd }
-  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb }
-  | { type: 'file'; title: string };
+  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb };
 
 /** The original WeChat downloads on View original (`_h.dat`) of a picture the preview shows as opened (`.dat`), to
  * show instead once it is on this computer (#194); `shown` once asked for, `loading` until it has come, `opened` the
@@ -58,7 +57,7 @@ export function mediaPreview(sessionId: string, message: ParsedMessage): Preview
 /** The preview of `message` with the pictures and videos among `messages` to go through. */
 export function withGallery(sessionId: string, messages: readonly ParsedMessage[], message: ParsedMessage): Preview | null {
   const own = mediaPreview(sessionId, message);
-  if (!own || own.type === 'file') return own;
+  if (!own) return null;
   const media = messages.filter(m => mediaPreview(sessionId, m));
   const index = media.findIndex(m => m._cursor === message._cursor);
   if (index < 0 || media.length < 2) return own;

@@ -62,7 +62,6 @@ describe('the gallery of a conversation', () => {
     const messages = [message(1, 3), message(2, 1), message(3, 43), message(4, 3)];
     const preview = withGallery('wxid_a', messages, messages[2])!;
     expect(preview.type).toBe('video');
-    if (preview.type === 'file') throw new Error();
     expect(preview.gallery?.index).toBe(1);
     expect(preview.gallery?.items.map(p => p.type)).toEqual(['image', 'video', 'image']);
     // a lone picture has nothing to go through, and text has no preview
