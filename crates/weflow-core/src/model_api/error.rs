@@ -49,6 +49,8 @@ pub struct StatusError {
     pub request_id: Option<String>,
     /// The requests tried again before the last one failed.
     pub retries: u32,
+    /// A 429 for a quota, a credit or a spend limit used up, which waiting does not restore.
+    pub used_up: bool,
 }
 
 impl StatusError {
@@ -83,6 +85,7 @@ impl StatusError {
             body,
             request_id: request_id.or_else(|| text_of(&value["request_id"])),
             retries: 0,
+            used_up: false,
         }
     }
 
@@ -110,9 +113,9 @@ impl StatusError {
                 "请检查接口地址、接口格式和模型名称。",
             ),
             413 => tr("The prompt is too long.", "提示太长。"),
-            429 if self.out_of_quota() => tr(
-                "The account's quota or credit is used up.",
-                "账户的额度或余额已用完。",
+            429 if self.used_up || self.out_of_quota() => tr(
+                "The account's quota, credit or spend limit is used up.",
+                "账户的额度、余额或消费上限已用完。",
             ),
             429 => tr(
                 "Too many requests; try again later.",
@@ -323,7 +326,9 @@ mod tests {
             None,
         );
         assert!(quota.out_of_quota());
-        assert!(quota.to_string().contains("quota or credit is used up"));
+        assert!(quota
+            .to_string()
+            .contains("quota, credit or spend limit is used up"));
         let busy = StatusError::read(
             429,
             r#"{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}"#,

@@ -307,9 +307,8 @@ impl ModelApi {
             }
             let mut failure = StatusError::read(status, &text, request_id);
             failure.retries = retries;
-            if retries < retry::MAX_RETRIES
-                && retry::worth_retrying(self.format, &failure, asked.is_some())
-            {
+            failure.used_up = retry::used_up(self.format, &failure, asked.is_some());
+            if retries < retry::MAX_RETRIES && retry::worth_retrying(&failure) {
                 if let Some(pause) = retry::pause(asked, retries) {
                     tokio::time::sleep(pause).await;
                     retries += 1;

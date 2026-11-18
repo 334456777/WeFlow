@@ -21,7 +21,7 @@ mod openai;
 mod scenario;
 
 pub use http::Request;
-pub use scenario::{Behaviour, FakeModelInfo, MODELS};
+pub use scenario::{Behaviour, FakeModelInfo, MODELS, REASONING_TOKENS, SLOW_ANSWER};
 
 /// The key the fake takes unless it is started with another.
 pub const KEY: &str = "sk-fake-weflow";

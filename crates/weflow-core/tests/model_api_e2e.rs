@@ -220,6 +220,7 @@ async fn a_used_up_quota_is_not_retried() {
             .await
             .unwrap_err();
         assert_eq!(err.status(), Some(429), "{format}");
+        assert!(err.to_string().contains("is used up"), "{format}: {err}");
         assert_eq!(sent_since(&fake, before), 1, "{format}");
     }
 }

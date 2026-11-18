@@ -21,13 +21,18 @@ const LONGEST_BACKOFF: Duration = Duration::from_secs(8);
 /// which says to try later.
 const LONGEST_REQUESTED: Duration = Duration::from_secs(60);
 
-/// Whether the failure is a transient one, worth trying again. `asked`: the answer gave a pause to wait.
-pub(super) fn worth_retrying(format: ModelApiFormat, failure: &StatusError, asked: bool) -> bool {
+/// Whether a 429 says that a quota, a credit or a spend limit is used up, which waiting does not restore: its error
+/// names one, or it is Anthropic's, which for a spend limit carries no `retry-after`. `asked`: the answer gave a pause.
+pub(super) fn used_up(format: ModelApiFormat, failure: &StatusError, asked: bool) -> bool {
+    failure.status == 429
+        && (failure.out_of_quota() || (format == ModelApiFormat::Anthropic && !asked))
+}
+
+/// Whether the failure is a transient one, worth trying again.
+pub(super) fn worth_retrying(failure: &StatusError) -> bool {
     match failure.status {
-        408 | 409 => true,
-        // Anthropic's 429 for a spend limit carries no `retry-after` and fails until the limit is lifted
-        429 => !failure.out_of_quota() && (asked || format != ModelApiFormat::Anthropic),
-        500..=599 => true,
+        408 | 409 | 500..=599 => true,
+        429 => !failure.used_up,
         _ => false,
     }
 }
@@ -84,17 +89,24 @@ mod tests {
         StatusError::read(status, body, None)
     }
 
+    /// `failure`, marked used up as the request marks it.
+    fn read(format: ModelApiFormat, status: u16, body: &str, asked: bool) -> StatusError {
+        let mut failure = failure(status, body);
+        failure.used_up = used_up(format, &failure, asked);
+        failure
+    }
+
     #[test]
     fn transient_statuses_are_retried() {
         for status in [408, 409, 429, 500, 502, 503, 529] {
             assert!(
-                worth_retrying(ModelApiFormat::OpenAi, &failure(status, "{}"), false),
+                worth_retrying(&read(ModelApiFormat::OpenAi, status, "{}", false)),
                 "{status}"
             );
         }
         for status in [400, 401, 402, 403, 404, 413, 422] {
             assert!(
-                !worth_retrying(ModelApiFormat::OpenAi, &failure(status, "{}"), true),
+                !worth_retrying(&read(ModelApiFormat::OpenAi, status, "{}", true)),
                 "{status}"
             );
         }
@@ -102,18 +114,24 @@ mod tests {
 
     #[test]
     fn a_used_up_quota_is_not_retried() {
-        let quota = failure(
+        let quota = r#"{"error":{"message":"quota","type":"insufficient_quota","code":"insufficient_quota"}}"#;
+        assert!(!worth_retrying(&read(
+            ModelApiFormat::OpenAi,
             429,
-            r#"{"error":{"message":"quota","type":"insufficient_quota","code":"insufficient_quota"}}"#,
-        );
-        assert!(!worth_retrying(ModelApiFormat::OpenAi, &quota, true));
+            quota,
+            true
+        )));
         // Anthropic's spend limit: a 429 without retry-after
-        let limit = failure(
+        let limit = r#"{"type":"error","error":{"type":"rate_limit_error","message":"limit"}}"#;
+        let spent = read(ModelApiFormat::Anthropic, 429, limit, false);
+        assert!(spent.used_up && !worth_retrying(&spent));
+        assert!(spent.to_string().contains("used up"), "{spent}");
+        assert!(worth_retrying(&read(
+            ModelApiFormat::Anthropic,
             429,
-            r#"{"type":"error","error":{"type":"rate_limit_error","message":"limit"}}"#,
-        );
-        assert!(!worth_retrying(ModelApiFormat::Anthropic, &limit, false));
-        assert!(worth_retrying(ModelApiFormat::Anthropic, &limit, true));
+            limit,
+            true
+        )));
     }
 
     #[test]
