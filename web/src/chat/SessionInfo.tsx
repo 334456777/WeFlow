@@ -77,7 +77,8 @@ const MEMBER_ROW = 52;
 const memberName = (m: GroupMember) => m.groupNickname || m.remark || m.displayName || m.nickname || m.username;
 
 function Members({ chatroomId, active }: { chatroomId: string; active: boolean }) {
-  // read once with the names of the group's messages (`getMembers`); a failure is not kept, so a retry reads again
+  // shared with the names of the group's messages (`getMembers`): read again on opening the card after the group had a
+  // live message; a failure is not kept, so a retry reads again
   const [members, reload] = useLoaded<GroupMember[]>(active ? chatroomId : null, () => getMembers(chatroomId), t('读取群成员失败'));
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState<GroupMember | null>(null);

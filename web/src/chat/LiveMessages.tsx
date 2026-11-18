@@ -5,6 +5,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { ArrowClockwise, ArrowDown, CircleNotch } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
+import { onLive } from '../api/live';
 import { getMembers, type GroupMember } from '../api/messages';
 import { currentScope, onNewScope } from '../api/scope';
 import { Avatar } from '../Avatar';
@@ -38,24 +39,42 @@ interface Person { name: string; avatarUrl?: string }
 
 const memberCache = new Map<string, Map<string, Person>>();
 onNewScope(() => memberCache.clear());
+// As `getMembers` keeps them: until the group has a live message or the stream is back after a break (#201). Each
+// letting go is counted, so that a read begun before it is given to its caller and not kept.
+let forgets = 0;
+let resumedAt = 0;
+const forgotAt = new Map<string, number>();
+onLive(event => {
+  forgets++;
+  if (event.type === 'resumed') {
+    resumedAt = forgets;
+    forgotAt.clear();
+    memberCache.clear();
+  } else if (sessionKind(event.sessionId) === 'group') {
+    forgotAt.set(event.sessionId, forgets);
+    memberCache.delete(event.sessionId);
+  }
+});
 
 /**
- * The members of a group, read once and kept: their names in the group and their pictures. The read is shared with
- * the members panel (`getMembers`): a caller whose `signal` is aborted is let go with the abort, the read goes on.
+ * The members of a group, kept as `getMembers` keeps them: their names in the group and their pictures. The read is
+ * shared with the members panel: a caller whose `signal` is aborted is let go with the abort, the read goes on.
  */
 export async function loadMembers(chatroomId: string, signal?: AbortSignal): Promise<Map<string, Person>> {
   const kept = memberCache.get(chatroomId);
   if (kept) return kept;
   const scope = currentScope();
+  const begun = forgets;
   const members = await getMembers(chatroomId);
   signal?.throwIfAborted();
   const map = new Map(members.map((m: GroupMember) => [m.username, { name: m.groupNickname || m.displayName || m.username, avatarUrl: m.avatarUrl || undefined }]));
-  // read for the account before: given to its caller (gone by now), not kept
-  if (scope === currentScope()) memberCache.set(chatroomId, map);
+  // read for the account before, or before the group's members were let go of: given to its caller, not kept
+  const current = scope === currentScope() && resumedAt <= begun && (forgotAt.get(chatroomId) ?? 0) <= begun;
+  if (current) memberCache.set(chatroomId, map);
   return map;
 }
 
-/** Who said what in a group: names and pictures of its members, read once per group. */
+/** Who said what in a group: names and pictures of its members, as `loadMembers` keeps them when the group opens. */
 function useMembers(chatroomId: string | null): Map<string, Person> {
   const [people, setPeople] = useState(() => (chatroomId && memberCache.get(chatroomId)) || new Map<string, Person>());
   useEffect(() => {
