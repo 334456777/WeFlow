@@ -51,6 +51,11 @@ pub struct PayRecord {
     pub title: String,
     /// Its lines, as WeChat writes them (amount, method, state…).
     pub description: String,
+    /// How it was paid, as the card's top line 「使用零钱支付」 names it (「零钱」); null when the card has no top line of that form.
+    pub method: Option<String>,
+    /// Its state, the words before the amount in the title (「已支付」 of 「已支付¥9.99」); null when the title holds no
+    /// amount.
+    pub status: Option<String>,
     /// Who was paid; `WeChat Pay` (in the server's language) when the notice does not say.
     pub merchant_name: String,
     pub merchant_icon: String,

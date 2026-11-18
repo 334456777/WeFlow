@@ -2,7 +2,7 @@ import { describe, expect, it } from '#test';
 import { fenOf, formatYuan, paymentOf, type PayRecord } from './pay';
 
 const record = (title: string, description: string, more: Partial<PayRecord> = {}): PayRecord =>
-  ({ localId: 1, createTime: 1760000000, title, description, merchantName: '', merchantIcon: '', timestamp: 0, ...more });
+  ({ localId: 1, createTime: 1760000000, title, description, method: null, status: null, merchantName: '', merchantIcon: '', timestamp: 0, ...more });
 
 describe('WeChat Pay notices', () => {
   it('reads amounts in fen, with or without the sign, commas and fen', () => {
@@ -17,6 +17,16 @@ describe('WeChat Pay notices', () => {
     const p = paymentOf(record('微信支付凭证', '付款金额¥28.00\n支付方式：零钱\n交易状态 支付成功\n收款方街角咖啡\n商品详情 拿铁', { merchantName: '微信支付', timestamp: 1759990000 }));
     expect(p).toMatchObject({ amount: 2800, refund: false, method: '零钱', status: '支付成功', merchant: '街角咖啡', time: 1759990000 });
     expect(p.lines.at(-1)).toEqual({ label: '商品详情', value: '拿铁' });
+  });
+
+  it('takes the method and state of a receipt card from the server, the labelled lines first', () => {
+    const card = record('已支付¥9.99', '使用零钱支付¥9.99', { method: '零钱', status: '已支付', merchantName: '便利店' });
+    expect(paymentOf(card)).toMatchObject({ amount: 999, refund: false, method: '零钱', status: '已支付', merchant: '便利店' });
+    expect(paymentOf(record('微信支付凭证', '支付方式信用卡\n交易状态支付成功', { method: '零钱', status: '已支付' })))
+      .toMatchObject({ method: '信用卡', status: '支付成功' });
+    // a server before the two fields
+    const { method: _m, status: _s, ...old } = card;
+    expect(paymentOf(old as PayRecord)).toMatchObject({ method: '', status: '' });
   });
 
   it('knows a refund, and falls back to the title and the notice’s payee', () => {

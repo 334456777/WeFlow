@@ -1054,6 +1054,13 @@ export interface PayRecord {
   title: string;
   /** Its lines, as WeChat writes them (amount, method, state…). */
   description: string;
+  /** How it was paid, as the card's top line 「使用零钱支付」 names it (「零钱」); null when the card has no top line of that form. */
+  method: string | null;
+  /**
+   * Its state, the words before the amount in the title (「已支付」 of 「已支付¥9.99」); null when the title holds no
+   * amount.
+   */
+  status: string | null;
   /** Who was paid; `WeChat Pay` (in the server's language) when the notice does not say. */
   merchantName: string;
   merchantIcon: string;

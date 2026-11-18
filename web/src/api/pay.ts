@@ -4,8 +4,9 @@ import { get } from './client';
 import { locale, t } from '../i18n';
 import type * as Contract from './contract.gen';
 
-/** A notice as `biz pay-records` gives it (the contract's, #430); its `description` holds lines such as 「付款金额¥28.00」
- * and 「支付方式零钱」. */
+/** A notice as `biz pay-records` gives it (the contract's, #430). WeChat's receipt card has one line,
+ * 「使用零钱支付¥9.99」, whose method and state the server takes out (`method`, `status`); a `description` of labelled
+ * lines such as 「付款金额¥28.00」 and 「支付方式零钱」 is read line by line. */
 export type PayRecord = Contract.PayRecord;
 
 export interface PayLine {
@@ -79,8 +80,9 @@ export function paymentOf(record: PayRecord): Payment {
     icon: record.merchantIcon || undefined,
     amount,
     refund,
-    method: find(METHOD)?.value ?? '',
-    status: find(STATUS)?.value ?? '',
+    // a server before the two fields gives neither
+    method: find(METHOD)?.value || record.method || '',
+    status: find(STATUS)?.value || record.status || '',
     lines,
   };
 }
