@@ -118,9 +118,6 @@ export type SampleAnswer =
   | { failed: { status: number; code: string; message: string } }
   | { refused: true };
 
-/** A command run as the console runs it: the status, the `X-WeFlow-Exit-Code` and the document (or text). */
-export interface RawAnswer { status: number; exitCode: string | null; body: unknown }
-
 /**
  * What answers the page instead of a server (#879): the sample records of `src/mock`, while no server has answered
  * this page or the one there does not suit it. The page loads it, a chunk of its own, and sets it with `setSample`.
@@ -131,10 +128,6 @@ export interface SampleServer {
   answer(method: Method, path: string, params: Params, async: boolean): SampleAnswer;
   /** The address of a media file of the sample, or of a job's file: what `path` and `params` address on a server. */
   media(path: string, params: Params): string;
-  /** The sample's `/openapi.json`: the commands its console lists. */
-  openapi(): unknown;
-  /** A command run as the console runs it, `std` as its `?std=`. */
-  raw(method: Method, path: string, params: Params, std?: 'in' | 'out' | 'err'): RawAnswer;
 }
 
 interface Sampling { server: Promise<SampleServer>; loaded: SampleServer | null }
@@ -167,9 +160,6 @@ async function answerSample<T>(server: Promise<SampleServer>, method: Method, pa
   // the answer is the page's own, as one read from a server is: what the page does to it leaves the sample as it is
   return structuredClone(answer.data) as T;
 }
-
-/** The sample server while it answers the page; null otherwise. */
-export const sampleServer = (): Promise<SampleServer> | null => sample?.server ?? null;
 
 /** Runs a route: GET and DELETE take the parameters as a query, the other methods as a JSON body. */
 export async function call<T>(method: Method, path: string, params: Params = {}, signal?: AbortSignal, extra: Record<string, string> = {}): Promise<T> {

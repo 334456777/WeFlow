@@ -1,6 +1,6 @@
 // The command console (#217): every command `/openapi.json` describes, as a form from its parameters, run as the
 // server runs it, with the answer shown as it comes (status, exit code and document), and the command line it is.
-import { apiUrl, sampleServer, token, type Params } from './client';
+import { apiUrl, token, type Params } from './client';
 import { t } from '../i18n';
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -88,8 +88,6 @@ export function commandsOf(doc: unknown): ConsoleCommand[] {
  * `{success, data}` document.
  */
 export async function getOpenApi(signal?: AbortSignal): Promise<ConsoleCommand[]> {
-  const sample = sampleServer();
-  if (sample) return commandsOf((await sample).openapi());
   const bearer = token();
   const response = await fetch('/openapi.json', { headers: { Accept: 'application/json', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}) }, signal });
   if (!response.ok) throw new Error(response.status === 401 ? t('令牌不对，读不到命令列表。') : t('读不到命令列表（HTTP {status}）。', { status: response.status }));
@@ -150,12 +148,6 @@ export async function runRaw(cmd: ConsoleCommand, params: Params, std?: 'in' | '
   const inQuery = cmd.method === 'GET' || cmd.method === 'DELETE';
   const bearer = token();
   const started = performance.now();
-  const sample = sampleServer();
-  if (sample) {
-    const answer = (await sample).raw(cmd.method, cmd.path, params, std);
-    signal?.throwIfAborted();
-    return { ...answer, ms: Math.round(performance.now() - started) };
-  }
   const query = { ...(inQuery ? params : {}), ...(std ? { std } : {}) };
   const response = await fetch(apiUrl(cmd.path, query), {
     method: cmd.method, signal,

@@ -98,17 +98,7 @@ describe('the sample server (#896)', () => {
     expect(ask<Job[]>('GET', 'jobs').filter(j => [first.id, second.id, key.id].includes(j.id)).map(j => j.status)).toEqual(['succeeded', 'cancelled']);
   });
 
-  it('answers the command console: its commands, the command line, a read, a change and what the sample does not do', () => {
-    const doc = server.openapi() as { paths: Record<string, Record<string, { 'x-weflow-command': string }>> };
-    expect(doc.paths['/db/open'].get['x-weflow-command']).toBe('db open');
-    expect(server.raw('GET', '/chat/messages', { 'session-id': 'wxid_sample_linmu', limit: 2 }, 'in').body)
-      .toEqual({ argv: ['weflow', '--json', 'chat', 'messages', '--session-id', 'wxid_sample_linmu', '--limit', '2'], stdin: null });
-    const read = server.raw('GET', '/chat/messages', { 'session-id': 'wxid_sample_linmu', limit: 2 });
-    expect(read).toMatchObject({ status: 200, exitCode: '0', body: { success: true } });
-    expect((read.body as { data: unknown[] }).data).toHaveLength(2);
-    expect(server.raw('PUT', '/config/set', { key: 'serve_host', value: '0.0.0.0' }).status).toBe(200);
-    expect(ask('GET', 'api/config/get', { key: 'serve_host' })).toBe('0.0.0.0');
-    expect(server.raw('GET', '/db/open', {}).body).toMatchObject({ success: true, data: { sessions: expect.any(Number) } });
-    expect(server.raw('GET', '/sns/timeline', {}, 'out').body).toEqual(expect.stringContaining('"timeline"'));
+  it('refuses the page\'s versions, which need a server', () => {
+    expect(server.answer('GET', 'web/list', {}, false)).toEqual({ refused: true });
   });
 });

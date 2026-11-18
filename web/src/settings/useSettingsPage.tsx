@@ -43,8 +43,9 @@ function Sections({ open, pane, children }: { open: SectionId; pane: RefObject<H
 export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { profiles, failed, reload }, recheck, onSetup }: {
   profiles: ProfilesState; recheck(): void; onSetup(): void;
 }): Page {
-  // what is kept on the server: the one that answers, or the sample server in its place (#896)
-  const { backend, usable, health: acting, profile, mobileDetail, setMobileDetail } = shell;
+  // what is kept on the server: the one that answers, or the sample server in its place (#896); the page's versions and
+  // the console need a server
+  const { backend, connected, sample, usable, health: acting, profile, mobileDetail, setMobileDetail } = shell;
   // held here, as the page is there all the time: a theme that follows the system keeps following it
   const [theme, setTheme] = useTheme();
   const [skin, setSkin] = useSkin();
@@ -101,11 +102,11 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
         </SettingsSection>;
       case 'web':
         return <SettingsSection title={sectionLabel(id)} lead={t('网页和 weflow 分开发布，可以在这里换成其他版本。')}>
-          {usable && acting ? <WebVersions health={acting} /> : <><VersionInUse />{offline}</>}
+          {connected && acting ? <WebVersions health={acting} /> : <><VersionInUse />{offline}</>}
         </SettingsSection>;
       case 'console':
         return <SettingsSection title={sectionLabel(id)} lead={t('CLI 独有的工具，以及按 OpenAPI 运行任意命令的控制台。')}>
-          {usable ? <>
+          {connected ? <>
             <SettingsGroup title={t('CLI 工具')}><AdvancedTools onOpen={setConsolePick} /></SettingsGroup>
             <SettingsGroup title={t('运行命令')}><CommandConsole pick={consolePick} onPicked={consolePicked} /></SettingsGroup>
           </> : offline}
@@ -115,7 +116,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
 
   const view = <BrowserPanel label={t('设置')} className="settings-browser" detail={mobileDetail} onBack={() => setMobileDetail(false)}
     back={t('返回设置')} title={sectionLabel(open)} paneLabel={sectionLabel(open)} pane={pane} detailKey={open}
-    list={<SettingsNav open={open} summaries={summaries} usable={usable} onOpen={go} />}>
+    list={<SettingsNav open={open} summaries={summaries} connected={connected} sample={sample} onOpen={go} />}>
     <Sections open={open} pane={pane}>{section}</Sections>
   </BrowserPanel>;
   return { view };

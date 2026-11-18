@@ -251,8 +251,10 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: '连接状态' }).textContent).toContain('weflow serve');
     const sections = screen.getByRole('navigation', { name: '设置分组' });
     expect(Array.from(sections.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['连接状态', '账号', '外观与浏览', '启动选项', 'AI 见解', '缓存', '网页版本', '命令控制台']);
-    // no server: the sample server keeps the server's settings in the page (#896), so its sections are usable
+    // no server: the sample server keeps the server's settings in the page (#896), so its sections are usable; the
+    // console needs a server
     expect(within(sections).getByRole('button', { name: /^启动选项/ }).textContent).toContain('地址、端口和并发');
+    expect(within(sections).getByRole('button', { name: /^命令控制台/ }).textContent).toContain('连接后可用');
     fireEvent.click(within(sections).getByRole('button', { name: /^启动选项/ }));
     await waitFor(() => expect(within(screen.getByRole('region', { name: '启动选项' })).getByPlaceholderText('18108')).toBeTruthy());
     fireEvent.click(within(sections).getByRole('button', { name: /^连接状态/ }));

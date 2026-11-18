@@ -11,6 +11,8 @@ interface Section {
   id: SectionId; label: string; icon: Icon;
   /** It reads or writes the server, so it shows nothing of its own without one. */
   online: boolean;
+  /** The sample server answers it in a server's place, keeping its changes in the page (#896). */
+  sample?: boolean;
 }
 
 /** The sections by group, in their order; labels shown through t(). */
@@ -18,15 +20,15 @@ export const SECTION_GROUPS: { label: string; sections: Section[] }[] = [
   {
     label: msg('常规'), sections: [
       { id: 'connection', label: msg('连接状态'), icon: Plugs, online: false },
-      { id: 'accounts', label: msg('账号'), icon: UserCircle, online: true },
+      { id: 'accounts', label: msg('账号'), icon: UserCircle, online: true, sample: true },
       { id: 'appearance', label: msg('外观与浏览'), icon: Palette, online: false },
     ],
   },
   {
     label: 'weflow serve', sections: [
-      { id: 'serve', label: msg('启动选项'), icon: HardDrives, online: true },
-      { id: 'ai', label: msg('AI 见解'), icon: Sparkle, online: true },
-      { id: 'cache', label: msg('缓存'), icon: Broom, online: true },
+      { id: 'serve', label: msg('启动选项'), icon: HardDrives, online: true, sample: true },
+      { id: 'ai', label: msg('AI 见解'), icon: Sparkle, online: true, sample: true },
+      { id: 'cache', label: msg('缓存'), icon: Broom, online: true, sample: true },
       { id: 'web', label: msg('网页版本'), icon: AppWindow, online: false },
     ],
   },
@@ -37,12 +39,13 @@ export const SECTIONS: Section[] = SECTION_GROUPS.flatMap(group => group.section
 
 export const sectionLabel = (id: SectionId) => t(SECTIONS.find(section => section.id === id)!.label);
 
-export function SettingsNav({ open, summaries, usable, onOpen }: {
+export function SettingsNav({ open, summaries, connected, sample, onOpen }: {
   open: SectionId;
   /** Each section's state in a few words. */
   summaries: Record<SectionId, string>;
-  /** What is kept on the server can be used: it answers, or the sample server does in its place (#896). */
-  usable: boolean;
+  connected: boolean;
+  /** The sample server answers in a server's place (#896). */
+  sample: boolean;
   onOpen(id: SectionId): void;
 }) {
   return <div className="session-pane settings-nav-pane">
@@ -51,9 +54,9 @@ export function SettingsNav({ open, summaries, usable, onOpen }: {
       <HoverTrack items=".conversation-row" />
       {SECTION_GROUPS.map(group => <div key={group.label} className="settings-nav-group" role="group" aria-label={t(group.label)}>
         <p className="settings-nav-caption" aria-hidden="true">{t(group.label)}</p>
-        {group.sections.map(({ id, label, icon: Glyph, online }) => {
+        {group.sections.map(({ id, label, icon: Glyph, online, sample: sampled }) => {
           const active = id === open;
-          const idle = online && !usable;
+          const idle = online && !connected && !(sample && sampled);
           return <button type="button" key={id} className={'conversation-row settings-nav-row' + (active ? ' active' : '') + (idle ? ' idle' : '')}
             aria-current={active ? 'true' : undefined} onClick={() => onOpen(id)}>
             <span className="settings-nav-icon" aria-hidden="true"><Glyph size={18} /></span>

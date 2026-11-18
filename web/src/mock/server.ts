@@ -14,7 +14,6 @@ import {
   clearAccount, DATA_DIR, detectDirs, findAccounts, getSetting, planClearAccount, profileSummaries, saveDatabaseKey, saveImageKeys,
   setSetting, testDatabase, unsetSetting,
 } from './config';
-import { DB_SUMMARY, OPENAPI } from './console';
 import { footprint, footprintSummary } from './footprint';
 import { clearInsights, insightRecord, insightRecords, markRead, triggerInsight } from './insights';
 import { dropJob, getJob, jobFileUrl, listJobs, startJob, type Effect } from './jobs';
@@ -24,7 +23,7 @@ import { pushes } from './official';
 import { payRecords } from './pay';
 import { contactRows, contacts, groups, ME, nameOf, officials, people, person, pinned, sessionName } from './people';
 import { annualReport, dualReport, reportYears } from './reports';
-import { clearCache, health, listCache, listWeb, pickWeb, pruneWeb } from './upkeep';
+import { clearCache, health, listCache } from './upkeep';
 
 type Params = Parameters<SampleServer['answer']>[2];
 
@@ -316,9 +315,6 @@ const routes: Record<string, Route> = {
   'DELETE cache/clear-account': params => (flag(params, 'dry-run') ? planClearAccount() : clearAccount()),
   'GET api/cache/list': () => listCache(),
   'DELETE cache/clear': params => clearCache(params),
-  'GET web/list': params => listWeb(flag(params, 'remote')),
-  'PUT web/use': params => pickWeb(text(params, 'version')) ?? new Failure(404, 'not_found', '没有已发布的 ' + text(params, 'version') + ' 版本。'),
-  'DELETE web/prune': () => pruneWeb(),
 };
 
 /** Where the sample's backup is said to be written. */
@@ -353,28 +349,6 @@ function answer(method: string, route: string, params: Params, async: boolean, w
   return data instanceof Failure ? { failed: { status: data.status, code: data.code, message: data.message } } : { data };
 }
 
-/** The flags of a command line, as `weflow` takes them. */
-function flags(params: Params): string[] {
-  return Object.entries(params).flatMap(([key, value]) => {
-    if (value === undefined || value === null || value === '' || value === false) return [];
-    if (value === true) return ['--' + key];
-    return (Array.isArray(value) ? value : [value]).flatMap(item => ['--' + key, String(item)]);
-  });
-}
-
-/** What a command of the console answers that the routes above do not have: as the CLI would, with the sample. */
-function consoleData(command: string, params: Params): unknown {
-  switch (command) {
-    case 'db open': return { accountDir: DATA_DIR + '\\' + ME + '_5f3a', wxid: ME, sessions: sessions().length, ...DB_SUMMARY };
-    case 'key db': return saveDatabaseKey();
-    case 'image auto-download start': return { running: true, pid: 4242, note: '示例数据：微信没有真的在运行。' };
-    default:
-      return command.startsWith('export ')
-        ? { written: false, note: '示例数据：连接 weflow serve 后才能导出真实记录。' }
-        : { note: '示例数据：这条命令在示例里不做什么。', args: flags(params) };
-  }
-}
-
 export const server: SampleServer = {
   answer(method, path, params, async) {
     const [route, query = ''] = path.split('?');
@@ -387,19 +361,5 @@ export const server: SampleServer = {
     const job = /^jobs\/([^/]+)\/file$/.exec(path);
     if (job) return jobFileUrl(decodeURIComponent(job[1])) ?? 'about:blank';
     return pictureUrl('logo');
-  },
-  openapi: () => structuredClone(OPENAPI),
-  raw(method, path, params, std) {
-    const route = path.replace(/^\/+/, '');
-    const command = commandOf(route);
-    if (std === 'in') return { status: 200, exitCode: null, body: { argv: ['weflow', '--json', ...command.split(' '), ...flags(params)], stdin: null } };
-    const read = method === 'GET' ? answer('GET', 'api/' + route, params, false, false) : { refused: true as const };
-    const answered = 'refused' in read ? answer(method, route, params, false, false) : read;
-    const data = 'data' in answered ? answered.data : 'refused' in answered ? consoleData(command, params) : null;
-    if ('failed' in answered) {
-      const body = { success: false, error: { code: answered.failed.code, message: answered.failed.message } };
-      return { status: answered.failed.status, exitCode: '1', body: std === 'out' ? answered.failed.message + '\n' : body };
-    }
-    return { status: 200, exitCode: '0', body: std === 'out' ? JSON.stringify(data, null, 2) + '\n' : { success: true, data } };
   },
 };
