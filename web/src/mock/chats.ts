@@ -489,6 +489,57 @@ export const threads = new Map<string, Message[]>([
     place(AJIE, '学校东门烧烤', '大学路 12 号', 0),
     redPacket(LAOMA, '聚会经费', 4),
   ])],
+
+  // the private chats of the people the statistics rank and the insights speak of (#896), to open from there
+  [AJIE, thread(AJIE, [
+    at(18, '21:15'),
+    say(AJIE, '周末打球不'),
+    say(ME, '这周要发版，下周吧', 6),
+    say(AJIE, '又是 WeFlow 😂', 1),
+    say(AJIE, '你那个软件能导出我们寝室群吗，想看看当年都聊了啥', 2),
+    say(ME, '能，等发完版给你导一份 HTML', 3),
+    say(AJIE, '老规矩，输了请奶茶', 1),
+    say(ME, '好', 1),
+  ])],
+
+  [TEACHER, thread(TEACHER, [
+    at(12, '19:30'),
+    say(TEACHER, '阿远，下周三晚上的课改到周四'),
+    say(ME, '好的老师，周四我能来', 15),
+    say(TEACHER, '上次说的那支狼毫笔，我帮你问了，店里有货', 2),
+    say(ME, '太好了，我周四过去拿', 1),
+    say(TEACHER, '新笔先用温水泡开，别用开水', 3),
+    say(ME, '记住了 🙏', 1),
+  ])],
+
+  [YOUZI, thread(YOUZI, [
+    at(3, '15:40'),
+    say(YOUZI, '阿远！！我上岸了！！'),
+    say(ME, '看到了！恭喜 🎉', 2),
+    say(YOUZI, '复试的时候老师问我毕业设计怎么整理的访谈记录', 1),
+    say(YOUZI, '我说用了家里人写的 WeFlow 😎', 0),
+    say(ME, '哈哈，那得请我喝奶茶', 2),
+    say(YOUZI, '周末回家请你！', 1),
+    sticker(YOUZI, 0),
+  ])],
+
+  [SHEN, thread(SHEN, [
+    ago(2, 6, 30),
+    say(SHEN, '阿远你好，群里问过取密钥的事，私聊打扰一下'),
+    say(SHEN, '管理员终端里运行了，还是提示没有找到微信进程', 0),
+    say(ME, '要先完全退出微信，运行 weflow key db 以后再打开微信，点「进入微信」', 5),
+    say(SHEN, '成功了！谢谢', 12),
+    say(ME, '不客气，有问题随时问', 1),
+  ])],
+
+  [WEI, thread(WEI, [
+    ago(1, 3, 20),
+    say(WEI, '阿远，按你说的先点开图片再取，图片密钥取到了'),
+    say(WEI, '顺便问一下，导出的 HTML 能在手机上看吗', 0),
+    say(ME, '能，HTML 是单个文件，手机浏览器直接打开', 4),
+    say(WEI, '👍 我导一份老照片的聊天给爸妈看看', 2),
+    say(ME, '记得在「附带媒体」里勾上图片', 1),
+  ])],
 ]);
 
 /** How many messages each conversation has not been read, as the list shows. */
