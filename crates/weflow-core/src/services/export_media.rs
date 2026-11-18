@@ -40,44 +40,35 @@ impl ServiceHub {
             .danger_accept_invalid_certs(crate::http_client::sticker_certificate_unchecked(cdn_url))
             .build()
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;
-        let mut url = cdn_url.to_string();
-        for _ in 0..5 {
-            let resp = client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
-            let code = resp.status().as_u16();
-            if code == 301 || code == 302 {
-                if let Some(loc) = resp.headers().get("location").and_then(|v| v.to_str().ok()) {
-                    url = loc.to_string();
-                    continue;
-                }
-            }
-            if code != 200 {
-                return Err(AppError::runtime("download failed"));
-            }
-            let bytes = resp
-                .bytes()
-                .await
-                .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
-            if bytes.is_empty() {
-                return Err(AppError::runtime("download failed"));
-            }
-            let ext = match crate::decrypt::detect_image_extension(&bytes) {
-                ".bin" | ".wxgf" => rx(r"(?i)\.(gif|png|jpe?g|webp)(?:\?|$)")
-                    .captures(&url)
-                    .map(|c| format!(".{}", c[1].to_lowercase()))
-                    .unwrap_or_else(|| ".gif".into()),
-                e => e.to_string(),
-            };
-            let path = dir.join(format!("{key}{ext}"));
-            std::fs::write(&path, &bytes).map_err(|e| {
-                AppError::runtime(format!("failed to write {}: {e}", path.display()))
-            })?;
-            return Ok(path);
+        // the client follows redirects itself (reqwest's default policy): the response is the last one
+        let resp = client
+            .get(cdn_url)
+            .send()
+            .await
+            .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
+        if resp.status().as_u16() != 200 {
+            return Err(AppError::runtime("download failed"));
         }
-        Err(AppError::runtime("download failed"))
+        // where the sticker came from, after the redirects: its name may tell the format the bytes do not
+        let url = resp.url().to_string();
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| AppError::runtime(crate::http_client::failure(e)))?;
+        if bytes.is_empty() {
+            return Err(AppError::runtime("download failed"));
+        }
+        let ext = match crate::decrypt::detect_image_extension(&bytes) {
+            ".bin" | ".wxgf" => rx(r"(?i)\.(gif|png|jpe?g|webp)(?:\?|$)")
+                .captures(&url)
+                .map(|c| format!(".{}", c[1].to_lowercase()))
+                .unwrap_or_else(|| ".gif".into()),
+            e => e.to_string(),
+        };
+        let path = dir.join(format!("{key}{ext}"));
+        std::fs::write(&path, &bytes)
+            .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
+        Ok(path)
     }
 
     async fn export_media_for_message(
@@ -121,7 +112,7 @@ impl ServiceHub {
                     .as_deref()
                     .filter(|s| !s.is_empty())
                     .unwrap_or(""),
-                &format!("emoji_{}", msg.local_id),
+                &message_file_stem("emoji", msg),
             );
             let to = MediaTarget {
                 session_dir,
@@ -196,7 +187,7 @@ impl ServiceHub {
                 .min(local.len().max(1));
             let next = std::sync::atomic::AtomicUsize::new(0);
             let found = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
-            let written = ExportedFiles::default();
+            let run = ExportRun::new(self);
             let shared: &[crate::message::ExportMsg] = msgs;
             std::thread::scope(|scope| {
                 for _ in 0..workers {
@@ -209,7 +200,7 @@ impl ServiceHub {
                             &safe,
                             &session_dir,
                             opts,
-                            Some(&written),
+                            Some(&run),
                         );
                         found.lock_or_panic().push((k, r));
                         let done = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
@@ -231,7 +222,7 @@ impl ServiceHub {
                         &safe,
                         &session_dir,
                         opts,
-                        Some(&written),
+                        Some(&run),
                     );
                 }
             }
@@ -399,8 +390,8 @@ impl ServiceHub {
             .collect()
     }
 
-    /// Images, voices and videos: everything that needs no network, so it can run on several threads (with the
-    /// files they write in `written`, see [`ExportedFiles`]).
+    /// Images, voices and videos: everything that needs no network, so it can run on several threads (sharing
+    /// `run`, the export they belong to, see [`ExportRun`]).
     fn export_local_media(
         &self,
         msg: &ChatMessage,
@@ -408,12 +399,12 @@ impl ServiceHub {
         safe_talker: &str,
         session_dir: &Path,
         opts: &ApiMediaOptions,
-        written: Option<&ExportedFiles>,
+        run: Option<&ExportRun>,
     ) -> Option<ApiExportedMedia> {
         let to = MediaTarget {
             session_dir,
             safe_talker,
-            written,
+            written: run.map(|r| &r.files),
         };
         let put = |kind: &'static str,
                    sub: &str,
@@ -458,7 +449,7 @@ impl ServiceHub {
                     .filter(|s| !s.is_empty())
                     .or(msg.image_dat_name.as_deref())
                     .unwrap_or(""),
-                &format!("image_{}", msg.local_id),
+                &message_file_stem("image", msg),
             );
             return put(
                 "image",
@@ -491,7 +482,7 @@ impl ServiceHub {
             return put(
                 "voice",
                 "voices",
-                format!("voice_{}.wav", msg.local_id),
+                format!("{}.wav", message_file_stem("voice", msg)),
                 MediaSource::Bytes(&wav),
                 false,
             );
@@ -499,13 +490,22 @@ impl ServiceHub {
         if msg.local_type == 43 && opts.videos {
             let md5 = msg.video_md5.as_deref().filter(|m| !m.is_empty())?;
             let xml_md5 = crate::video::parse_video_md5(&msg.raw_content).unwrap_or_default();
-            let video = self.video_file_path(&[md5, &xml_md5])?;
+            let own;
+            let videos = match run {
+                Some(run) => run.videos.as_ref()?,
+                None => {
+                    own = self.video_folder()?;
+                    &own
+                }
+            };
+            let month = crate::image::year_month_from_create_time(Some(msg.create_time));
+            let video = self.video_file_path(videos, &[md5, &xml_md5], &month)?;
             let ext = video
                 .extension()
                 .and_then(|e| e.to_str())
                 .map(|e| format!(".{e}"))
                 .unwrap_or_else(|| ".mp4".into());
-            let base = api::sanitize_file_name(md5, &format!("video_{}", msg.local_id));
+            let base = api::sanitize_file_name(md5, &message_file_stem("video", msg));
             return put(
                 "video",
                 "videos",
@@ -526,6 +526,24 @@ type MediaRank = (bool, u64);
 /// thumbnail, so the export does not depend on the threads' order (issue #52).
 #[derive(Default)]
 pub(super) struct ExportedFiles(std::sync::Mutex<HashMap<PathBuf, MediaRank>>);
+
+/// What the messages of one media export share while their media are copied side by side.
+struct ExportRun {
+    /// The files written so far.
+    files: ExportedFiles,
+    /// WeChat's video folder, listed at most once for the whole export (`None` without an account folder).
+    videos: Option<crate::video::VideoFolder>,
+}
+
+impl ExportRun {
+    /// A media export of `hub`'s account.
+    fn new(hub: &ServiceHub) -> Self {
+        Self {
+            files: ExportedFiles::default(),
+            videos: hub.video_folder(),
+        }
+    }
+}
 
 /// Where the media of one conversation go.
 struct MediaTarget<'a> {
@@ -648,6 +666,14 @@ async fn avatar_picture(url: &str) -> Option<Vec<u8>> {
         .then_some(bytes)
 }
 
+/// The name of a message's media file when the media has no name of its own: `<kind>_<send time>_<local id>`. A
+/// local id is unique only within one message database, and the messages of a conversation may lie in several, so
+/// the send time tells two messages of one local id apart; both are fixed, so a message gets the same name in every
+/// export.
+fn message_file_stem(kind: &str, msg: &ChatMessage) -> String {
+    format!("{kind}_{}_{}", msg.create_time, msg.local_id)
+}
+
 /// A file message: an app message of type 6.
 fn is_file_message(xml_type: Option<&str>) -> bool {
     xml_type == Some("6")
@@ -768,7 +794,7 @@ impl ServiceHub {
             let next = std::sync::atomic::AtomicUsize::new(0);
             let finished = std::sync::atomic::AtomicUsize::new(0);
             let results = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
-            let written = ExportedFiles::default();
+            let run = ExportRun::new(self);
             std::thread::scope(|scope| {
                 for _ in 0..workers {
                     scope.spawn(|| loop {
@@ -777,8 +803,7 @@ impl ServiceHub {
                         let (sid, _, msg) = &work[i];
                         let safe = api::sanitize_file_name(sid, "session");
                         let dir = out.join(&safe);
-                        let r =
-                            self.export_local_media(msg, sid, &safe, &dir, &opts, Some(&written));
+                        let r = self.export_local_media(msg, sid, &safe, &dir, &opts, Some(&run));
                         results.lock_or_panic().push((i, r));
                         let n = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                         self.emit_progress(
@@ -800,7 +825,7 @@ impl ServiceHub {
                     let safe = api::sanitize_file_name(sid, "session");
                     let dir = out.join(&safe);
                     done[i] =
-                        Some(self.export_local_media(msg, sid, &safe, &dir, &opts, Some(&written)));
+                        Some(self.export_local_media(msg, sid, &safe, &dir, &opts, Some(&run)));
                 }
             }
         }

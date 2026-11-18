@@ -220,11 +220,7 @@ pub(super) fn format_forward_chat_record_content(content: &str) -> String {
         .map(|t| extract_xml_value(&normalized, t))
         .find(|v| !v.is_empty())
         .unwrap_or_else(|| "聊天记录".into());
-    let header = if name.is_empty() {
-        "[转发的聊天记录]".to_string()
-    } else {
-        format!("[转发的聊天记录]{name}")
-    };
+    let header = format!("[转发的聊天记录]{name}");
     match parse_chat_history(&normalized) {
         Some(records) if !records.is_empty() => {
             let lines: Vec<String> = records

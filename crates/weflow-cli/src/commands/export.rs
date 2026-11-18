@@ -340,7 +340,7 @@ pub(crate) async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> A
             let request = weflow_core::services::MessageExportRequest {
                 session_id,
                 format: fmt,
-                // the end is inclusive seconds
+                // the request's end is the last second taken: the second before the midnight after `--end`
                 start: start_ts,
                 end: end_ts.map(|e| e - 1),
                 sender,

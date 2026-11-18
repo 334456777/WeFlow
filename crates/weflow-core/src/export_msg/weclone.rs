@@ -5,9 +5,9 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::message::kind::weclone_type_name;
-use crate::message::quote::is_quoted_reply_message;
+use crate::message::quote::is_text_quote_message_in;
 use crate::message::time::format_iso_timestamp;
-use crate::message::xml::extract_xml_value;
+use crate::message::xml::{extract_xml_value, MsgXml};
 use crate::message::*;
 
 use super::format::csv_cell;
@@ -31,7 +31,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 w.write_all(Self::WECLONE_HEADER.as_bytes())?;
                 writer = Some(w);
             }
-            if !is_quoted_reply_message(msg.local_type, &msg.content) {
+            if !is_text_quote(&msg) {
                 rows += 1;
                 let row = self.weclone_row(&msg, rows);
                 if let Some(w) = writer.as_mut() {
@@ -131,9 +131,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     pub(super) fn render_weclone(&mut self, msgs: &[ExportMsg]) -> String {
         let mut out = String::from(Self::WECLONE_HEADER);
-        let rows = msgs
-            .iter()
-            .filter(|m| !is_quoted_reply_message(m.local_type, &m.content));
+        let rows = msgs.iter().filter(|m| !is_text_quote(m));
         for (i, msg) in rows.enumerate() {
             out.push_str(&self.weclone_row(msg, i + 1));
         }
@@ -146,9 +144,16 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 }
 
+/// A quote reply, which WeClone leaves out. An image or a video whose XML carries a `<refermsg>` is not one.
+fn is_text_quote(msg: &ExportMsg) -> bool {
+    is_text_quote_message_in(msg.local_type, &MsgXml::new(&msg.content))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::export_msg::tests::with_exporter;
+    use crate::message::{collect_rows, CollectOptions};
+    use weflow_native::msg_row::MsgRow;
 
     #[test]
     fn weclone_csv() {
@@ -160,5 +165,45 @@ mod tests {
         assert_eq!(lines.len(), 1 + 4);
         assert!(lines[1].starts_with("1,111,text,1,Me Nick,\"hello \"\"world\"\", ok\","));
         assert!(lines[3].contains(",image,0,Bobby,"));
+    }
+
+    #[test]
+    fn images_and_videos_that_carry_a_refermsg_are_rows() {
+        let row = |local_id: i64, local_type: i64, content: &str| MsgRow {
+            local_id,
+            create_time: Some(1_700_000_000 + local_id),
+            local_type,
+            content: content.into(),
+            sender: Some("wxid_bob".into()),
+            ..MsgRow::default()
+        };
+        let refer = "<extcommoninfo><refermsg><svrid>9</svrid></refermsg></extcommoninfo>";
+        let rows = vec![
+            row(1, 3, &format!("<msg><img md5=\"x\"/>{refer}</msg>")),
+            row(2, 43, &format!("<msg><videomsg md5=\"y\"/>{refer}</msg>")),
+            row(3, 49, "<msg><appmsg><title>yes</title><type>57</type><refermsg><type>1</type><content>hi</content><svrid>9</svrid></refermsg></appmsg></msg>"),
+        ];
+        let msgs = collect_rows(
+            rows,
+            &CollectOptions {
+                session_id: "wxid_bob",
+                my_wxid: "wxid_me",
+                start: None,
+                end: None,
+                sender_filter: None,
+            },
+        );
+        let csv = with_exporter(false, |ex, _| ex.render_weclone(&msgs));
+        let lines: Vec<&str> = csv.trim_end().split("\r\n").collect();
+        // the image and the video stay, the quote reply is left out
+        assert_eq!(lines.len(), 1 + 2, "{csv}");
+        assert!(
+            lines[1].starts_with("1,") && lines[1].contains(",image,"),
+            "{csv}"
+        );
+        assert!(
+            lines[2].starts_with("2,") && lines[2].contains(",video,"),
+            "{csv}"
+        );
     }
 }

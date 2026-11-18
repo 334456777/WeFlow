@@ -369,7 +369,10 @@ pub const MESSAGE_EXPORT_FORMATS: &str =
 pub struct MessageExportRequest {
     pub session_id: String,
     pub format: String,
+    /// The first second (Unix time) of the messages exported: a message sent at it is included.
     pub start: Option<i64>,
+    /// The last second (Unix time) of the messages exported: a message sent at it is included, as the message
+    /// cursor and [`collect_rows`](crate::message::collect_rows) take it.
     pub end: Option<i64>,
     pub sender: Option<String>,
     pub display_pref: crate::export_msg::names::DisplayPref,

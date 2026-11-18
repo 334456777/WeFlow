@@ -59,12 +59,13 @@ fn contents(path: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
-/// What a single reader exports: the cursor order (time, then local id, then shard), within `[start, end)`.
+/// What a single reader exports: the cursor order (time, then local id, then shard), within `[start, end]` (both
+/// ends are seconds that are taken).
 fn expected(start: Option<i64>, end: Option<i64>, sender: Option<&str>) -> Vec<String> {
     let mut all = messages();
     all.sort();
     all.into_iter()
-        .filter(|(t, ..)| start.is_none_or(|s| *t >= s) && end.is_none_or(|e| *t < e))
+        .filter(|(t, ..)| start.is_none_or(|s| *t >= s) && end.is_none_or(|e| *t <= e))
         .filter(|(.., who)| sender.is_none_or(|s| s == *who))
         .map(|(_, local, shard, _)| text(local, shard))
         .collect()
@@ -120,7 +121,14 @@ async fn multi_page_exports_keep_every_message_in_reader_order() {
     let out = root.join("range.json");
     hub.export_messages(&request("chatlab", start, end, None), &out)
         .unwrap();
-    assert_eq!(contents(&out), expected(start, end, None));
+    let ranged = expected(start, end, None);
+    // the messages sent in the end second are taken (local ids 1400 and 1401 of shard 1)
+    assert_eq!(
+        ranged[ranged.len() - 2..],
+        [text(1400, 1), text(1401, 1)],
+        "the last second of the range"
+    );
+    assert_eq!(contents(&out), ranged);
     let out = root.join("sender.json");
     hub.export_messages(&request("chatlab", start, end, Some("wxid_me")), &out)
         .unwrap();

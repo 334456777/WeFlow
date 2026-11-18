@@ -897,7 +897,8 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
     let dir = root.join("exp");
     std::fs::create_dir_all(&dir).unwrap();
     let image_rel = "media/chat/images/aabbccddeeff00112233445566778899.jpg";
-    let voice_rel = "media/chat/voices/voice_4.wav";
+    // named by the voice message's send time and local id
+    let voice_rel = "media/chat/voices/voice_1700000200_4.wav";
 
     let r = serde_json::to_value(
         hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
@@ -1110,7 +1111,7 @@ async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
             "chat.json",
             "chat.txt",
             image_rel,
-            "media/chat/voices/voice_4.wav"
+            "media/chat/voices/voice_1700000200_4.wav"
         ]
         .iter()
         .all(|n| names.iter().any(|m| m == n)),
@@ -1119,6 +1120,134 @@ async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
     let mut image = Vec::new();
     std::io::Read::read_to_end(&mut archive.by_name(image_rel).unwrap(), &mut image).unwrap();
     assert_eq!(image, std::fs::read(dir.join(image_rel)).unwrap());
+}
+
+/// A local id is unique only within one message database: two voice messages of a conversation with the same local
+/// id, in two databases, are copied to two files, under the same names in every export.
+#[tokio::test]
+async fn voices_of_one_local_id_in_two_message_databases_get_their_own_files() {
+    use weflow_native::fixture::{MsgSpec, SessionSpec, VoiceSpec, T0};
+    let voice = |server_id: i64, at: i64| MsgSpec {
+        server_id,
+        ..MsgSpec::text(
+            7,
+            "wxid_bob",
+            at,
+            "<voicemsg length=\"1000\" voicelength=\"1000\"/>",
+        )
+        .of_type(34)
+    };
+    let (root, hub, _fixture) = common::custom_hub("voice-shards", |f| {
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0 + 100,
+            unread: 0,
+            last_msg_type: 34,
+        }]);
+        f.message_shard(0, &[("wxid_bob", vec![voice(5000, T0)])]);
+        f.message_shard(1, &[("wxid_bob", vec![voice(5001, T0 + 100)])]);
+        // two different recordings: a tone encoded at two sample rates
+        let row = |svr_id: i64, create_time: i64, rate: i32| VoiceSpec {
+            chat: "wxid_bob",
+            create_time,
+            local_id: 7,
+            svr_id,
+            data: weflow_silk::testenc::encode_tone(rate),
+            index: "0",
+        };
+        f.media_db(0, &[row(5000, T0, 8000), row(5001, T0 + 100, 24000)]);
+    });
+    let opts = weflow_core::api::ApiMediaOptions {
+        enabled: true,
+        voices: true,
+        ..Default::default()
+    };
+    let names = [
+        format!("media/chat/voices/voice_{T0}_7.wav"),
+        format!("media/chat/voices/voice_{}_7.wav", T0 + 100),
+    ];
+    let dir = root.join("exp");
+    std::fs::create_dir_all(&dir).unwrap();
+    for _ in 0..2 {
+        hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
+            .await
+            .unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("chat.json")).unwrap()).unwrap();
+        let voices: Vec<&str> = json["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["localType"] == 34)
+            .map(|m| m["content"].as_str().unwrap())
+            .collect();
+        assert_eq!(voices, names, "each message points at its own file");
+    }
+    let [first, second] = names.map(|n| std::fs::read(dir.join(n)).unwrap());
+    assert!(first.starts_with(b"RIFF") && second.starts_with(b"RIFF"));
+    assert_ne!(first, second, "each file holds its own message's voice");
+}
+
+/// A sticker whose address redirects is downloaded from where the redirects end, and when its bytes do not tell its
+/// format, that address's name does.
+#[tokio::test]
+async fn a_redirected_sticker_takes_its_extension_from_the_final_address() {
+    use std::io::{Read, Write};
+    use weflow_native::fixture::{MsgSpec, SessionSpec, T0};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut request = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => request.extend_from_slice(&buf[..n]),
+                }
+            }
+            let response: &[u8] = if request.starts_with(b"GET /sticker ") {
+                b"HTTP/1.1 302 Found\r\nLocation: /cdn/real.png\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            } else if request.starts_with(b"GET /cdn/real.png ") {
+                b"HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nnot an image"
+            } else {
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            };
+            let _ = stream.write_all(response);
+        }
+    });
+    let md5 = md5_hex("redirected sticker");
+    let sticker = format!("<msg><emoji md5=\"{md5}\" cdnurl=\"http://{addr}/sticker\"/></msg>");
+    let (root, hub, _fixture) = common::custom_hub("sticker-redirect", |f| {
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 47,
+        }]);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![MsgSpec::text(1, "wxid_bob", T0, &sticker).of_type(47)],
+            )],
+        );
+    });
+    let out = root.join("exported");
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &out, "emoji", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(r["exported"].as_i64(), Some(1), "{r}");
+    assert_eq!(
+        std::fs::read(out.join(format!("wxid_bob/emojis/{md5}.png"))).unwrap(),
+        b"not an image"
+    );
 }
 
 /// WeChat's media index (`hardlink.db`) only adds to what the folders of the conversation hold (#651): a better
@@ -1298,6 +1427,64 @@ fn a_video_the_folders_miss_is_found_through_the_media_index() {
         .video_files_for_message("wxid_bob", "21", Some(at + 1))
         .unwrap();
     assert_eq!(std::fs::read(&kept.video).unwrap(), b"listed video");
+}
+
+/// A media export copies the video kept in the folder of the month its message was sent, and one kept in another
+/// month folder.
+#[tokio::test]
+async fn video_exports_find_videos_in_their_month_and_in_others() {
+    use weflow_native::fixture::{Fixture, MsgSpec};
+    let (root, hub, account, _img_dir) = setup("video-export");
+    let at = 1_700_000_000;
+    let month = weflow_core::image::year_month_from_create_time(Some(at));
+    let (in_month, elsewhere, gone) = (md5_hex("in month"), md5_hex("elsewhere"), md5_hex("gone"));
+    let xml =
+        |md5: &str| format!("<msg><videomsg md5=\"{md5}\" length=\"9\" playlength=\"1\" /></msg>");
+    Fixture::open(&root.join("data"), "wxid_me_ab12").message_shard(
+        2,
+        &[(
+            "wxid_bob",
+            vec![
+                MsgSpec::text(20, "wxid_bob", at, &xml(&in_month)).of_type(43),
+                MsgSpec::text(21, "wxid_bob", at + 1, &xml(&elsewhere)).of_type(43),
+                MsgSpec::text(22, "wxid_bob", at + 2, &xml(&gone)).of_type(43),
+            ],
+        )],
+    );
+    let videos = account.join("msg/video");
+    for (folder, md5, bytes) in [
+        (month.as_str(), &in_month, &b"in month"[..]),
+        ("2020-01", &elsewhere, b"elsewhere"),
+    ] {
+        std::fs::create_dir_all(videos.join(folder)).unwrap();
+        std::fs::write(videos.join(folder).join(format!("{md5}.mp4")), bytes).unwrap();
+    }
+
+    let out = root.join("exported");
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &out, "video", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            r["found"].as_i64(),
+            r["exported"].as_i64(),
+            r["missing"].as_i64()
+        ),
+        (Some(3), Some(2), Some(1)),
+        "{r}"
+    );
+    let copied = out.join("wxid_bob/videos");
+    assert_eq!(
+        std::fs::read(copied.join(format!("{in_month}.mp4"))).unwrap(),
+        b"in month"
+    );
+    assert_eq!(
+        std::fs::read(copied.join(format!("{elsewhere}.mp4"))).unwrap(),
+        b"elsewhere"
+    );
 }
 
 /// A file message's file is copied below `files/<month>/`, as WeChat keeps it: found through WeChat's media index,

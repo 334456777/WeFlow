@@ -274,7 +274,7 @@ impl PageSource<'_> {
             .into_iter()
             .filter(|m| {
                 let ts = crate::message::msg_row_timestamp(m);
-                start.is_none_or(|s| ts >= s) && end.is_none_or(|e| ts < e)
+                start.is_none_or(|s| ts >= s) && end.is_none_or(|e| ts <= e)
             })
             // drop other senders' rows before parsing them
             .filter(|row| {
@@ -756,7 +756,7 @@ mod tests {
             .is_err();
             let _ = done.send(panicked);
         });
-        // before the fix the export waited forever for the sleeping workers
+        // the panic halts the gate, which wakes the sleeping workers: the export ends and passes the panic on
         let panicked = finished.recv_timeout(Duration::from_secs(60));
         assert_eq!(panicked, Ok(true), "the export hung or swallowed the panic");
     }
