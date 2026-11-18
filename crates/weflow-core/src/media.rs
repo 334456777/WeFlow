@@ -3,54 +3,43 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::message::xml::extract_xml_value;
+use crate::message::emoji::{extract_emoji_md5, extract_emoji_url};
 
+/// Extensions a downloaded sticker is saved under: the image formats, then `.bin` for any other response.
+const CACHED_EXTENSIONS: [&str; 6] = [".gif", ".png", ".webp", ".jpg", ".jpeg", ".bin"];
+
+/// A sticker to download: its address and the name its file is saved under.
 #[derive(Debug, Clone)]
 pub struct EmojiMeta {
     pub cdn_url: String,
+    /// The sticker's md5 (32 lowercase hex digits), or a 16-hex-digit hash of `cdn_url` when the message has none;
+    /// only hex digits, so it is safe as a file name.
     pub md5: String,
 }
 
+/// The stickers (type 47) among `messages` that have an address, parsed as the chat export parses them.
 pub fn extract_emoji_urls(messages: &[weflow_native::msg_row::MsgRow]) -> Vec<EmojiMeta> {
-    let mut out = Vec::new();
-    for msg in messages {
-        if msg.local_type != 47 {
-            continue;
-        }
-        let content = msg.content.as_str();
-        if content.is_empty() {
-            continue;
-        }
-        // Try attribute-style: cdnurl="..."
-        let cdn_url = extract_attr(content, "cdnurl")
-            .or_else(|| extract_attr(content, "thumburl"))
-            .or_else(|| {
-                let v = extract_xml_value(content, "cdnurl");
-                if v.is_empty() {
-                    None
-                } else {
-                    Some(v)
-                }
-            })
-            .unwrap_or_default();
-        if cdn_url.is_empty() {
-            continue;
-        }
-        let md5 = extract_attr(content, "md5")
-            .or_else(|| {
-                let v = extract_xml_value(content, "md5");
-                if v.is_empty() {
-                    None
-                } else {
-                    Some(v)
-                }
-            })
-            .unwrap_or_else(|| simple_hash(&cdn_url));
-        out.push(EmojiMeta { cdn_url, md5 });
-    }
-    out
+    messages
+        .iter()
+        .filter(|msg| msg.local_type == 47)
+        .filter_map(|msg| emoji_meta(&msg.content))
+        .collect()
 }
 
+fn emoji_meta(content: &str) -> Option<EmojiMeta> {
+    let cdn_url = extract_emoji_url(content)
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())?;
+    let md5 = extract_emoji_md5(content).unwrap_or_else(|| simple_hash(&cdn_url));
+    Some(EmojiMeta { cdn_url, md5 })
+}
+
+/// Downloads each of `metas` into `cache_dir` as `<md5><ext>`, skipping the ones already there; a sticker whose
+/// request or write fails is left out of the result.
+///
+/// # Errors
+///
+/// When `cache_dir` cannot be created or the HTTP client cannot be built.
 pub async fn download_emojis(
     metas: &[EmojiMeta],
     cache_dir: &Path,
@@ -105,25 +94,10 @@ pub async fn download_emojis(
 }
 
 fn find_cached_emoji(cache_dir: &Path, md5: &str) -> Option<PathBuf> {
-    for ext in &[".gif", ".png", ".webp", ".jpg", ".jpeg"] {
-        let p = cache_dir.join(format!("{md5}{ext}"));
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
-}
-
-fn extract_attr(xml: &str, attr: &str) -> Option<String> {
-    let needle = format!("{}=\"", attr);
-    let start = xml.find(&needle)? + needle.len();
-    let end = xml[start..].find('"')? + start;
-    let val = xml[start..end].trim().to_string();
-    if val.is_empty() {
-        None
-    } else {
-        Some(val)
-    }
+    CACHED_EXTENSIONS
+        .iter()
+        .map(|ext| cache_dir.join(format!("{md5}{ext}")))
+        .find(|p| p.exists())
 }
 
 fn simple_hash(s: &str) -> String {
@@ -139,15 +113,80 @@ fn simple_hash(s: &str) -> String {
 mod tests {
     use super::*;
 
+    const MD5: &str = "0123456789abcdef0123456789abcdef";
+
+    fn meta_of(xml: &str) -> Option<EmojiMeta> {
+        extract_emoji_urls(&[emoji_row(47, xml)]).pop()
+    }
+
     #[test]
     fn extract_emoji_urls_from_messages() {
-        let xml =
-            r#"<msg><emoji cdnurl="https://cdn.example.com/emoji.gif" md5="abc123def456" /></msg>"#;
-        let messages = [emoji_row(47, xml), emoji_row(1, "hello")];
+        let xml = format!(
+            r#"<msg><emoji cdnurl="https://cdn.example.com/emoji.gif" md5="{}" /></msg>"#,
+            MD5.to_uppercase()
+        );
+        let messages = [emoji_row(47, &xml), emoji_row(1, "hello")];
         let metas = extract_emoji_urls(&messages);
         assert_eq!(metas.len(), 1);
-        assert_eq!(metas[0].md5, "abc123def456");
-        assert!(metas[0].cdn_url.contains("cdn.example.com"));
+        assert_eq!(metas[0].md5, MD5);
+        assert_eq!(metas[0].cdn_url, "https://cdn.example.com/emoji.gif");
+    }
+
+    #[test]
+    fn an_md5_that_is_not_hex_never_reaches_the_path() {
+        let url = "https://cdn.example.com/emoji?id=1";
+        for md5 in [
+            "../../evil",
+            r"..\..\evil",
+            "/abs/evil",
+            "C:/evil",
+            "abc123def456",
+        ] {
+            let xml = format!(r#"<msg><emoji cdnurl="{url}" md5="{md5}" /></msg>"#);
+            let meta = meta_of(&xml).expect("the sticker has an address");
+            assert_eq!(meta.md5, simple_hash(url), "md5 {md5:?}");
+            assert!(meta.md5.bytes().all(|b| b.is_ascii_hexdigit()), "{meta:?}");
+            let dir = Path::new("out");
+            assert_eq!(
+                dir.join(format!("{}.gif", meta.md5)).parent(),
+                Some(dir),
+                "md5 {md5:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn spaced_attributes_and_escaped_ampersands_are_read() {
+        let xml = format!(
+            r#"<msg><emoji cdnurl = "https://cdn.example.com/e?a=1&amp;filekey=2" md5 = "{MD5}" /></msg>"#
+        );
+        let meta = meta_of(&xml).expect("a spaced cdnurl is read");
+        assert_eq!(meta.cdn_url, "https://cdn.example.com/e?a=1&filekey=2");
+        assert_eq!(meta.md5, MD5);
+    }
+
+    #[test]
+    fn only_androidmd5_takes_its_value_only_when_it_is_an_md5() {
+        let url = "https://cdn.example.com/e";
+        let hex = format!(r#"<msg><emoji cdnurl="{url}" androidmd5="{MD5}" /></msg>"#);
+        assert_eq!(meta_of(&hex).map(|m| m.md5).as_deref(), Some(MD5));
+        let bad = format!(r#"<msg><emoji cdnurl="{url}" androidmd5="../x" /></msg>"#);
+        assert_eq!(meta_of(&bad).map(|m| m.md5), Some(simple_hash(url)));
+    }
+
+    #[test]
+    fn a_sticker_without_an_address_is_skipped() {
+        let xml = format!(r#"<msg><emoji cdnurl="" md5="{MD5}" /></msg>"#);
+        assert!(meta_of(&xml).is_none());
+    }
+
+    #[test]
+    fn a_sticker_saved_as_bin_counts_as_cached() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-emoji-cache");
+        assert_eq!(find_cached_emoji(&dir, MD5), None);
+        let bin = dir.join(format!("{MD5}.bin"));
+        fs::write(&bin, b"not an image").unwrap();
+        assert_eq!(find_cached_emoji(&dir, MD5), Some(bin));
     }
 
     fn emoji_row(local_type: i64, content: &str) -> weflow_native::msg_row::MsgRow {
