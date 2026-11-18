@@ -65,16 +65,28 @@ pub fn disk_usage(path: &Path) -> (u64, u64) {
         })
 }
 
-/// `buildAccountNameMatcher`: a file or folder name belongs to the account when it equals, starts with
-/// `<id>_` or contains one of the ids (case-insensitive).
+/// `buildAccountNameMatcher`: a file or folder name belongs to the account when one of the (lowercase) ids appears
+/// in it as a whole word, case-insensitively: `wxid_abc`, `wxid_abc_1a2b`, `wxid_abc-moments.json` and
+/// `group_my_message_counts_wxid_abc.json` do, `wxid_abc123.json` (another account) does not.
 fn account_name_matches(name: &str, ids: &[String]) -> bool {
     let lowered = name.trim().to_lowercase();
-    !lowered.is_empty()
-        && ids.iter().any(|id| {
-            lowered == *id
-                || lowered.starts_with(&format!("{id}_"))
-                || lowered.contains(id.as_str())
-        })
+    ids.iter().any(|id| contains_word(&lowered, id))
+}
+
+/// Whether `id` appears in `name` with no ASCII letter or digit right before or after it. WeChat ids are ASCII
+/// letters, digits, `_` and `-`, so a neighbouring letter or digit means a longer, different id; `_`, `-`, `.` and
+/// any other character end the id.
+fn contains_word(name: &str, id: &str) -> bool {
+    if id.is_empty() {
+        return false;
+    }
+    let (name, id) = (name.as_bytes(), id.as_bytes());
+    let part_of_id = |at: Option<&u8>| at.is_some_and(u8::is_ascii_alphanumeric);
+    name.windows(id.len()).enumerate().any(|(start, window)| {
+        window == id
+            && !part_of_id(start.checked_sub(1).and_then(|before| name.get(before)))
+            && !part_of_id(name.get(start + id.len()))
+    })
 }
 
 /// Removes a file or folder; true when it was there and is gone.
@@ -290,7 +302,49 @@ mod tests {
         assert!(account_name_matches("wxid_abc", &ids));
         assert!(account_name_matches("WXID_ABC_1a2b", &ids));
         assert!(account_name_matches("export-wxid_abc-2026", &ids));
+        // the names WeFlow writes for the account: its folder, files named after it, the group hint file
+        assert!(account_name_matches("wxid_abc_xxxx", &ids));
+        assert!(account_name_matches("wxid_abc-moments.json", &ids));
+        assert!(account_name_matches("wxid_abc.json", &ids));
+        assert!(account_name_matches(
+            "group_my_message_counts_wxid_abc.json",
+            &ids
+        ));
         assert!(!account_name_matches("wxid_other", &ids));
         assert!(!account_name_matches("", &ids));
+    }
+
+    #[test]
+    fn a_longer_id_is_another_account() {
+        let ids = vec!["wxid_abc".to_string()];
+        for name in [
+            "wxid_abc123.json",
+            "xwxid_abc",
+            "wxid_abcd_1a2b",
+            "2wxid_abc.json",
+        ] {
+            assert!(!account_name_matches(name, &ids), "{name}");
+        }
+        // a short custom WeChat id of an older account
+        let ids = vec!["john".to_string()];
+        assert!(account_name_matches("john_1a2b", &ids));
+        assert!(account_name_matches("chat-john.json", &ids));
+        for name in ["johnny.json", "littlejohn", "john2"] {
+            assert!(!account_name_matches(name, &ids), "{name}");
+        }
+    }
+
+    #[test]
+    fn an_empty_id_matches_nothing() {
+        assert!(!account_name_matches("anything", &[String::new()]));
+        assert!(!account_name_matches("wxid_abc", &[]));
+    }
+
+    #[test]
+    fn an_id_is_found_after_a_partial_match() {
+        // the first `wxid_abc` is part of a longer id, the second stands on its own
+        let ids = vec!["wxid_abc".to_string()];
+        assert!(account_name_matches("wxid_abcd-wxid_abc.json", &ids));
+        assert!(account_name_matches("聊天记录wxid_abc", &ids));
     }
 }

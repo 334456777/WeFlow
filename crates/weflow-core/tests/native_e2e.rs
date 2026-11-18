@@ -899,6 +899,8 @@ fn clearing_account_data_removes_only_that_account() {
     let exports = root.join("exports");
     let mine_export = put(exports.join("wxid_me_chat.json"));
     let other_export = put(exports.join("someone_else.json"));
+    // a longer id that starts with the account's is another account (#907)
+    let longer_id_export = put(exports.join("wxid_me2.json"));
 
     // what `cache clear-account` shows before asking is what goes
     let shown = hub
@@ -916,7 +918,7 @@ fn clearing_account_data_removes_only_that_account() {
     assert!(mine.iter().all(|p| !p.exists()), "{r:?}");
     assert!(!mine_export.exists());
     assert!(
-        other.exists() && other_export.exists(),
+        other.exists() && other_export.exists() && longer_id_export.exists(),
         "other accounts and unrelated exports stay"
     );
 }
