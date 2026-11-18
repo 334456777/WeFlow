@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, expect, it, vi } from '#test';
-import { emitLive } from '../api/live';
-import { LIVE_DELAY_MS, useSessions } from './useSessions';
+import { emitLive, LIVE_READ_MS } from '../api/live';
+import { useSessions } from './useSessions';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
@@ -27,14 +27,14 @@ it('reads the list again while live messages keep coming, not only once they sto
     await act(async () => { await vi.advanceTimersByTimeAsync(every); });
   }
   // read 500 ms after the first message of each gathering: at 500, 1100 and 1700 ms
-  expect(LIVE_DELAY_MS).toBe(500);
+  expect(LIVE_READ_MS).toBe(500);
   expect(reads).toBe(4);
   const state = result.current[0];
   expect(state.status === 'ready' && state.sessions[0].summary).toBe('m4');
 
   // the last message is read once more, and nothing after it
-  await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_DELAY_MS); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_READ_MS); });
   expect(reads).toBe(5);
-  await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_DELAY_MS * 2); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_READ_MS * 2); });
   expect(reads).toBe(5);
 });

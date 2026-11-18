@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSessions, getStatuses, type ChatSession, type SessionStatus } from '../api/chat';
 import { ApiError } from '../api/client';
-import { useGathered, useLive } from '../api/live';
+import { LIVE_READ_MS, useGathered, useLive } from '../api/live';
 import { t } from '../i18n';
 
 export type SessionsState =
@@ -36,8 +36,8 @@ export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => 
   const latest = useRef(state);
   latest.current = state;
 
-  // a burst of messages reads the list once, and messages that keep coming read it every LIVE_DELAY_MS
-  const refresh = useGathered(() => { quiet.current = true; reload(); }, LIVE_DELAY_MS);
+  // a burst of messages reads the list once, and messages that keep coming read it every LIVE_READ_MS
+  const refresh = useGathered(() => { quiet.current = true; reload(); }, LIVE_READ_MS);
   useLive(refresh);
 
   useEffect(() => {
@@ -77,6 +77,3 @@ export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => 
 }
 
 const LOADING: SessionsState = { status: 'loading' };
-
-/** How long live messages are gathered before the list is read again. */
-export const LIVE_DELAY_MS = 500;
