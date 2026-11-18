@@ -1,9 +1,9 @@
-// The preview of a picture, video or file opened on any page (#194): it flies out of the thumbnail it was opened from
-// and back into it, steps through the pictures and videos of a conversation, zooms, shows the original (#338).
+// The preview of a picture or video opened on any page (#194): it flies out of the thumbnail it was opened from and
+// back into it, steps through the pictures and videos of a conversation, zooms, shows the original (#338).
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { flushSync } from 'react-dom';
-import { ArrowSquareOut, CaretLeft, CaretRight, FilePdf, X } from '@phosphor-icons/react';
+import { ArrowSquareOut, CaretLeft, CaretRight, X } from '@phosphor-icons/react';
 import { PreviewImage, PreviewVideo, type Preview } from '../chat/MessageView';
 import { OriginalButton } from '../chat/OriginalButton';
 import { PreviewDownload } from '../chat/PreviewDownload';
@@ -25,12 +25,12 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
   const shownPreview = usePresence(preview);
   const zoom = useRef<ZoomControls>(null);
   // the picture or video before or after in the conversation (#194), and the two each way read ahead of time
-  const gallery = preview && preview.type !== 'file' ? preview.gallery : undefined;
+  const gallery = preview?.gallery;
   const stepPreview = (by: number) => {
     if (!gallery) return;
     const index = gallery.index + by;
     const next = gallery.items[index];
-    if (next && next.type !== 'file') setPreview({ ...next, gallery: { items: gallery.items, index } });
+    if (next) setPreview({ ...next, gallery: { items: gallery.items, index } });
   };
   useEffect(() => {
     if (!gallery) return;
@@ -70,8 +70,8 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
   const opened = useRef<{ thumb: HTMLImageElement; src: string; hd?: string } | null>(null);
   const previewMedia = () => dialogRef.current?.querySelector<HTMLElement>('.zoom-frame img, .preview-video');
   const open = (next: Preview) => {
-    const thumb = next.type === 'file' ? null : thumbnailOf(document.activeElement, pressed.current);
-    if (!thumb || next.type === 'file') { opened.current = null; setPreview(next); return; }
+    const thumb = thumbnailOf(document.activeElement, pressed.current);
+    if (!thumb) { opened.current = null; setPreview(next); return; }
     const shown: Preview = { ...next, thumb: { src: thumb.currentSrc || thumb.src, aspect: thumb.naturalWidth / thumb.naturalHeight } };
     opened.current = { thumb, src: next.src, hd: next.type === 'image' ? next.hd?.src : undefined };
     if (!canFly(prefersReducedMotion(reducedMotion))) { setPreview(shown); return; }
@@ -102,7 +102,7 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     opened.current = null;
     const media = previewMedia();
     const dialog = dialogRef.current;
-    const same = preview && preview.type !== 'file' && (preview.src === back?.src || preview.src === back?.hd);
+    const same = preview && (preview.src === back?.src || preview.src === back?.hd);
     if (back && media && same && inSight(back.thumb) && canFly(prefersReducedMotion(reducedMotion))) {
       dialog?.setAttribute('data-flown', '');
       const frame = dialog?.querySelector<HTMLElement>('.preview-content');
@@ -131,30 +131,26 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     {shownPreview && (() => {
       const shown = shownPreview.value;
       // what the preview shows, also while it fades out after it was let go of (#340)
-      const steps = shown.type !== 'file' ? shown.gallery : undefined;
+      const steps = shown.gallery;
       return <div className="preview-content"><header><strong>{shown.title}{steps && <small className="num"> {steps.index + 1} / {steps.items.length}</small>}</strong>
         <span className="preview-tools">
-          {shown.type !== 'file' && shown.locate && <button type="button" className="icon-button" aria-label={t('在会话中定位')} title={t('在会话中定位')}
+          {shown.locate && <button type="button" className="icon-button" aria-label={t('在会话中定位')} title={t('在会话中定位')}
             onClick={() => { const locate = shown.locate; dialogRef.current?.removeAttribute('data-flown'); opened.current = null; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
           <button type="button" className="icon-button" aria-label={t('关闭预览')} onClick={closePreview}><X size={18} /></button></span></header>
-        {shown.type === 'file'
-          ? <div className="file-preview"><FilePdf size={56} /><h3>{shown.title}</h3><p>{t('示例文件记录，可查看名称与记录时间。')}</p></div>
-          : <>
-            {/* the picture sunk in a hollow of the frame (#341) */}
-            <div className="preview-stage">{shown.type === 'image'
-              ? <PreviewImage key={shown.src} src={shown.src} title={shown.title} controls={zoom} thumb={shown.thumb}
-                onSettled={shown.hd?.loading ? originalSettled : undefined} />
-              : <PreviewVideo key={shown.src} src={shown.src} poster={shown.poster} thumb={shown.thumb} />}</div>
-            <footer className="preview-foot">
-              <span className="preview-foot-side">{shown.type === 'image' && shown.hd && <OriginalButton key={shown.hd.src} hd={shown.hd} onToggle={toggleOriginal} />}</span>
-              {steps && <span className="preview-steps">
-                <button type="button" className="preview-step as-control press-on-hover" aria-label={t('上一个')} title={t('上一个（←）')} disabled={steps.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={16} /></button>
-                <button type="button" className="preview-step as-control press-on-hover" aria-label={t('下一个')} title={t('下一个（→）')} disabled={steps.index === steps.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={16} /></button>
-              </span>}
-              <span className="preview-foot-side end">{(shown.type === 'video' || /\/api\/chat\/image-data/.test(shown.src)) &&
-                <PreviewDownload key={shown.src} src={shown.src} kind={shown.type} original={shown.type === 'image' && Boolean(shown.hd?.shown)} />}</span>
-            </footer>
-          </>}
+        {/* the picture sunk in a hollow of the frame (#341) */}
+        <div className="preview-stage">{shown.type === 'image'
+          ? <PreviewImage key={shown.src} src={shown.src} title={shown.title} controls={zoom} thumb={shown.thumb}
+            onSettled={shown.hd?.loading ? originalSettled : undefined} />
+          : <PreviewVideo key={shown.src} src={shown.src} poster={shown.poster} thumb={shown.thumb} />}</div>
+        <footer className="preview-foot">
+          <span className="preview-foot-side">{shown.type === 'image' && shown.hd && <OriginalButton key={shown.hd.src} hd={shown.hd} onToggle={toggleOriginal} />}</span>
+          {steps && <span className="preview-steps">
+            <button type="button" className="preview-step as-control press-on-hover" aria-label={t('上一个')} title={t('上一个（←）')} disabled={steps.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={16} /></button>
+            <button type="button" className="preview-step as-control press-on-hover" aria-label={t('下一个')} title={t('下一个（→）')} disabled={steps.index === steps.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={16} /></button>
+          </span>}
+          <span className="preview-foot-side end">{(shown.type === 'video' || /\/api\/chat\/image-data/.test(shown.src)) &&
+            <PreviewDownload key={shown.src} src={shown.src} kind={shown.type} original={shown.type === 'image' && Boolean(shown.hd?.shown)} />}</span>
+        </footer>
       </div>;
     })()}
   </dialog>;

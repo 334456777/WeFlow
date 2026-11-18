@@ -30,6 +30,9 @@ export function useLive(listener: (event: LiveEvent) => void): void {
 /** How long a burst of live messages is gathered before a read that starts a command (`chat resources`, …). */
 export const LIVE_COMMAND_MS = 2000;
 
+/** How long a burst of live messages is gathered before a read in the server's process (`/api/chat/sessions`, …). */
+export const LIVE_READ_MS = 500;
+
 /**
  * A function that runs `action` `ms` after it is first called; the calls meanwhile join that run. A busy group
  * then reads at most once every `ms`, and is not put off for as long as messages keep coming.

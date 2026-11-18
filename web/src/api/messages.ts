@@ -2,6 +2,8 @@
 // server as the desktop app parses them (`chat messages --parsed`), so the page reads no WeChat XML.
 import { get, mediaAddress, token, type Params } from './client';
 import type * as Contract from './contract.gen';
+import { forgetKept, keptRead } from './kept';
+import { onLive } from './live';
 
 const MESSAGE_KEYS = [
   'localId', 'serverId', 'localType', 'createTime', 'isSend', 'senderUsername', 'parsedContent', 'appMsgKind',
@@ -59,17 +61,27 @@ export async function getDateCounts(sessionId: string, signal?: AbortSignal): Pr
   return data?.counts ?? {};
 }
 
-export interface GroupMember {
-  username: string;
-  displayName: string;
-  groupNickname?: string;
-  avatarUrl?: string;
-}
+/** A member of a group (`group members`, the contract's). */
+export type GroupMember = Contract.GroupMember;
 
-export async function getMembers(chatroomId: string, signal?: AbortSignal): Promise<GroupMember[]> {
-  const data = await get<Contract.GroupMembers | null>('api/group/members', { 'chatroom-id': chatroomId }, signal);
-  return data?.members ?? [];
+const membersKey = (chatroomId: string) => 'members:' + chatroomId;
+
+/**
+ * The members of a group (`keptRead`): the names of its messages and the members of its details asking at the same
+ * time share one request, and a failure is not kept. A caller that leaves lets the answer go, as another may wait for
+ * it. Kept until the group has a live message (someone may have joined or left) or the stream is back after a break
+ * (#201): the next to ask reads them again.
+ */
+export function getMembers(chatroomId: string): Promise<GroupMember[]> {
+  return keptRead(membersKey(chatroomId), async () => {
+    const data = await get<Contract.GroupMembers | null>('api/group/members', { 'chatroom-id': chatroomId });
+    return data?.members ?? [];
+  });
 }
+onLive(event => {
+  if (event.type === 'resumed') forgetKept(key => key.startsWith(membersKey('')));
+  else forgetKept(key => key === membersKey(event.sessionId));
+});
 
 /**
  * Which files WeChat keeps of a message's image are on the server's computer, and their sizes (bytes) as the message

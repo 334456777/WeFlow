@@ -126,11 +126,44 @@ describe('useMessages', () => {
     await waitFor(() => expect(result.current.thread.messages.at(-1)?.parsedContent).toBe('m0'));
   });
 
-  it('asks for a newer weflow when the server does not know --parsed', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, error: { code: 'invalid_arguments', message: 'unexpected argument --parsed' } }, 400)));
+  it('shows a conversation left by a jump and back at the newest at once when it is opened again (#159)', async () => {
+    const calls = serve(300);
+    const jump: Jump = { sessionId: 'wxid_a', target: { at: 'message', message: message(300, 120) }, seq: 3 };
+    // what each render shows, not only the last one
+    const shown: string[] = [];
+    const { result, rerender } = renderHook(({ id, to }) => {
+      const got = useMessages(id, to);
+      shown.push(id + ':' + got.thread.status);
+      return got;
+    }, { initialProps: { id: 'wxid_a', to: jump as Jump | null } });
+    await waitFor(() => expect(result.current.thread.focus?.seq).toBe(3));
+    expect(result.current.thread.hasNewer).toBe(true);
+    // 「回到最新消息」: the newest page, kept
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.thread.messages.at(-1)?.parsedContent).toBe('m0'));
+    rerender({ id: 'wxid_b', to: jump });
+    await waitFor(() => expect(result.current.thread.status).toBe('ready'));
+    const read = calls.length;
+    shown.length = 0;
+    // the jump is still the last one, taken already: not a render of a skeleton before the newest messages
+    rerender({ id: 'wxid_a', to: jump });
+    await act(async () => {});
+    expect(shown.filter(s => s.startsWith('wxid_a:'))).not.toContain('wxid_a:loading');
+    expect(result.current.thread.status).toBe('ready');
+    expect(result.current.thread.messages.at(-1)?.parsedContent).toBe('m0');
+    expect(calls).toHaveLength(read);
+  });
+
+  it('says what the server answered when it cannot read the messages, else that they could not be read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, error: { code: 'invalid_arguments', message: '参数无效' } }, 400)));
     const { result } = renderHook(() => useMessages('wxid_a'));
     await waitFor(() => expect(result.current.thread.status).toBe('error'));
-    expect(result.current.thread.error).toContain('chat messages --parsed');
+    expect(result.current.thread.error).toBe('参数无效');
+
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, error: { code: 'internal', message: '' } }, 500)));
+    const other = renderHook(() => useMessages('wxid_b'));
+    await waitFor(() => expect(other.result.current.thread.status).toBe('error'));
+    expect(other.result.current.thread.error).toBe('读取消息失败');
   });
 });
 
@@ -174,6 +207,21 @@ describe('live messages (#201)', () => {
     act(() => { emitLive({ type: 'message.new', sessionId: 'wxid_a' }); emitLive({ type: 'message.new', sessionId: 'wxid_a' }); });
     await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(6));
     expect(result.current.thread.messages).toHaveLength(121);
+  });
+
+  it('reads the messages that come while it reads once more, from the last one it read', async () => {
+    const state = { last: 2, recalled: new Set<number>() };
+    const calls = live(state);
+    const { result } = renderHook(() => useMessages('wxid_a'));
+    await waitFor(() => expect(result.current.thread.status).toBe('ready'));
+    state.last = 3;
+    act(() => { for (let i = 0; i < 5; i++) emitLive({ type: 'message.new', sessionId: 'wxid_a' }); });
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[1]).toContain('after=c.2');
+    expect(calls[2]).toContain('after=c.3');
+    expect(texts(result.current.thread)).toEqual(['m0', 'm1', 'm2', 'm3']);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(calls).toHaveLength(3);
   });
 
   it('shows a recall in place, and catches up after a break', async () => {

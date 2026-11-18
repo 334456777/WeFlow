@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowClockwise, Crown, MagnifyingGlass, UserCheck } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
 import { ApiError } from '../api/client';
-import { getDetail, getDetailExtra, getMemberStats, getPanel, type MemberStats, type PanelMember, type SessionDetail, type SessionDetailExtra } from '../api/details';
+import { getDetail, getDetailExtra, getMemberStats, type MemberStats, type SessionDetail, type SessionDetailExtra } from '../api/details';
+import { getMembers, type GroupMember } from '../api/messages';
 import { useGathered, useLive } from '../api/live';
 import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
@@ -73,12 +74,14 @@ export function SessionInfo({ session, active = true }: { session: ChatSession; 
 
 const MEMBER_ROW = 52;
 
-const memberName = (m: PanelMember) => m.groupNickname || m.remark || m.displayName || m.nickname || m.username;
+const memberName = (m: GroupMember) => m.groupNickname || m.remark || m.displayName || m.nickname || m.username;
 
 function Members({ chatroomId, active }: { chatroomId: string; active: boolean }) {
-  const [members, reload] = useLoaded<PanelMember[]>(active ? chatroomId : null, signal => getPanel(chatroomId, signal), t('读取群成员失败'));
+  // shared with the names of the group's messages (`getMembers`): read again on opening the card after the group had a
+  // live message; a failure is not kept, so a retry reads again
+  const [members, reload] = useLoaded<GroupMember[]>(active ? chatroomId : null, () => getMembers(chatroomId), t('读取群成员失败'));
   const [query, setQuery] = useState('');
-  const [chosen, setChosen] = useState<PanelMember | null>(null);
+  const [chosen, setChosen] = useState<GroupMember | null>(null);
   useEffect(() => { setQuery(''); setChosen(null); }, [chatroomId]);
 
   const all = members.status === 'ready' ? members.value : [];
@@ -109,7 +112,7 @@ function Members({ chatroomId, active }: { chatroomId: string; active: boolean }
   </section>;
 }
 
-function MemberDetail({ chatroomId, member, active, onBack }: { chatroomId: string; member: PanelMember; active: boolean; onBack: () => void }) {
+function MemberDetail({ chatroomId, member, active, onBack }: { chatroomId: string; member: GroupMember; active: boolean; onBack: () => void }) {
   const [stats, reload] = useLoaded<MemberStats>(active ? chatroomId + '\n' + member.username : null, signal => getMemberStats(chatroomId, member.username, signal), t('读取成员统计失败'));
   const name = memberName(member);
   const s = stats.status === 'ready' ? stats.value.statistics : null;

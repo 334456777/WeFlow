@@ -7,7 +7,7 @@ import { Article, ArrowClockwise, CircleNotch, Image as ImageIcon } from '@phosp
 import { ApiError } from '../api/client';
 import { BIZ_PAGE, getBizPushes, type BizArticle, type BizPush } from '../api/biz';
 import type { ChatSession } from '../api/chat';
-import { useLive } from '../api/live';
+import { LIVE_READ_MS, useGathered, useLive } from '../api/live';
 import { Avatar } from '../Avatar';
 import { dayOf, formatClock, formatDayHeading } from './messages';
 import { MomentsSkeleton } from '../Skeleton';
@@ -60,18 +60,45 @@ function PushCard({ push }: { push: BizPush }) {
   </article>;
 }
 
+const keyOf = (push: BizPush) => push.localId + ':' + push.createTime;
+
+/**
+ * The first page, read again for a new push or after a break: it takes the place of what it covers (so a push gone
+ * from the account goes), and the older pushes already shown stay below it, so a new push does not take the feed back
+ * to its first page. A page that does not reach the pushes shown (more came meanwhile than a page holds) is the feed
+ * on its own, as the pushes between would be missing.
+ */
+function withFirstPage(old: Feed, pushes: BizPush[]): Feed {
+  const fresh: Feed = { status: 'ready', pushes, hasMore: pushes.length === BIZ_PAGE, loadingMore: false };
+  const oldest = pushes.at(-1);
+  if (old.status !== 'ready' || !oldest || pushes.length < BIZ_PAGE) return fresh;
+  const page = new Set(pushes.map(keyOf));
+  if (!old.pushes.some(push => page.has(keyOf(push)))) return fresh;
+  const until = oldest.createTime ?? 0;
+  const rest = old.pushes.filter(push => (push.createTime ?? 0) <= until && !page.has(keyOf(push)));
+  return { ...fresh, pushes: [...pushes, ...rest], hasMore: rest.length ? old.hasMore : fresh.hasMore };
+}
+
 export function BizPushes({ session }: { session: ChatSession }) {
   const id = session.username;
   const [feed, setFeed] = useState<Feed>(LOADING);
   const [round, setRound] = useState(0);
+  // the older page being read, asked for at the offset of the feed it would follow on from
+  const paging = useRef<AbortController | null>(null);
+  useEffect(() => () => paging.current?.abort(), []);
 
   useEffect(() => {
     const controller = new AbortController();
-    setFeed(LOADING);
+    // read again: what is shown stays meanwhile
+    setFeed(old => (old.status === 'ready' ? old : LOADING));
     getBizPushes(id, 0, controller.signal).then(pushes => {
-      setFeed({ status: 'ready', pushes, hasMore: pushes.length === BIZ_PAGE, loadingMore: false });
+      if (controller.signal.aborted) return;
+      // an older page still on its way was asked for at an offset of the feed before this one
+      paging.current?.abort();
+      setFeed(old => withFirstPage(old, pushes));
     }, problem => {
-      if (!controller.signal.aborted) setFeed({ ...LOADING, status: 'error', error: messageOf(problem) });
+      // a feed shown stays when it cannot be read again
+      if (!controller.signal.aborted) setFeed(old => (old.status === 'ready' ? old : { ...LOADING, status: 'error', error: messageOf(problem) }));
     });
     return () => controller.abort();
   }, [id, round]);
@@ -81,17 +108,27 @@ export function BizPushes({ session }: { session: ChatSession }) {
   const more = useCallback(() => {
     const now = latest.current;
     if (now.status !== 'ready' || !now.hasMore || now.loadingMore) return;
+    const controller = new AbortController();
+    paging.current = controller;
+    const shown = now.pushes;
     setFeed({ ...now, loadingMore: true, error: undefined });
-    getBizPushes(id, now.pushes.length).then(got => setFeed(old => {
-      const seen = new Set(old.pushes.map(p => p.localId + ':' + p.createTime));
-      const added = got.filter(p => !seen.has(p.localId + ':' + p.createTime));
-      return { ...old, pushes: [...old.pushes, ...added], hasMore: got.length === BIZ_PAGE, loadingMore: false };
-    }), problem => setFeed(old => ({ ...old, loadingMore: false, error: messageOf(problem) })));
+    getBizPushes(id, shown.length, controller.signal).then(got => {
+      if (controller.signal.aborted) return;
+      setFeed(old => {
+        if (old.pushes !== shown) return { ...old, loadingMore: false };
+        const seen = new Set(shown.map(keyOf));
+        const added = got.filter(push => !seen.has(keyOf(push)));
+        return { ...old, pushes: [...shown, ...added], hasMore: got.length === BIZ_PAGE, loadingMore: false };
+      });
+    }, problem => {
+      if (!controller.signal.aborted) setFeed(old => ({ ...old, loadingMore: false, error: messageOf(problem) }));
+    });
   }, [id]);
 
-  // a new push of this account, or a break: read the newest again (#201)
+  // a new push of this account, or a break: the newest read again (#201), once for a burst
+  const refresh = useGathered(() => setRound(n => n + 1), LIVE_READ_MS);
   useLive(event => {
-    if (event.type === 'resumed' || event.sessionId === id) setRound(n => n + 1);
+    if (event.type === 'resumed' || event.sessionId === id) refresh();
   });
 
   if (feed.status === 'loading') {
@@ -106,7 +143,7 @@ export function BizPushes({ session }: { session: ChatSession }) {
       <div><h2>{session.displayName || id}</h2><p><Article size={12} />{t('公众号 · 最新的推送在最上面')}</p></div>
     </header>
     {feed.pushes.length
-      ? feed.pushes.map(push => <PushCard key={push.localId + ':' + push.createTime} push={push} />)
+      ? feed.pushes.map(push => <PushCard key={keyOf(push)} push={push} />)
       : <p className="biz-empty">{t('本机没有这个公众号的推送记录。公众号历史文章可能在网页中显示；已删除或尚未保存在本机的消息无法读取。')}</p>}
     {feed.error && <p className="biz-empty" role="alert">{feed.error}</p>}
     {feed.hasMore && <button type="button" className="secondary-button biz-more" onClick={more} disabled={feed.loadingMore}>
