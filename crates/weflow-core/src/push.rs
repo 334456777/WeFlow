@@ -237,6 +237,34 @@ pub struct PushEngine {
     baseline_ready: bool,
 }
 
+/// The `file:` URL of an avatar given as a base64 `data:image/…` URL, written to `dir` under a name taken from its
+/// hash (kept when it is there already); `None` when it is no such URL or cannot be written.
+fn avatar_file_url(dir: &std::path::Path, data_url: &str) -> Option<String> {
+    use sha1::{Digest, Sha1};
+    let caps = rx(r"(?i)^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$").captures(data_url)?;
+    let mime = caps[1].to_lowercase();
+    let bytes = crate::sns::lenient_base64(&caps[2]);
+    if bytes.is_empty() {
+        return None;
+    }
+    let ext = match mime.as_str() {
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => "jpg",
+    };
+    let hash: String = Sha1::digest(data_url.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    std::fs::create_dir_all(dir).ok()?;
+    let path = dir.join(format!("avatar_{hash}.{ext}"));
+    if !path.exists() {
+        std::fs::write(&path, &bytes).ok()?;
+    }
+    Some(crate::video::path_to_file_url(&path))
+}
+
 /// Drops the entries older than [`RECENT_TTL`]; once per pass, as [`PushEngine::is_fresh`] ignores them anyway.
 fn prune(map: &mut HashMap<String, Instant>) {
     let now = Instant::now();
@@ -911,29 +939,7 @@ impl PushEngine {
         if let Some(c) = self.avatar_data_cache.get(&normalized) {
             return Some(c.clone());
         }
-        let caps = rx(r"(?i)^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$").captures(&normalized)?;
-        let mime = caps[1].to_lowercase();
-        let bytes = crate::sns::lenient_base64(&caps[2]);
-        if bytes.is_empty() {
-            return None;
-        }
-        let ext = match mime.as_str() {
-            "image/png" => "png",
-            "image/gif" => "gif",
-            "image/webp" => "webp",
-            _ => "jpg",
-        };
-        use sha1::{Digest, Sha1};
-        let mut h = Sha1::new();
-        h.update(normalized.as_bytes());
-        let hash: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
-        let dir = self.hub.push_avatar_dir();
-        std::fs::create_dir_all(&dir).ok()?;
-        let path = dir.join(format!("avatar_{hash}.{ext}"));
-        if !path.exists() {
-            std::fs::write(&path, &bytes).ok()?;
-        }
-        let url = format!("file://{}", path.to_string_lossy());
+        let url = avatar_file_url(&self.hub.push_avatar_dir(), &normalized)?;
         self.avatar_data_cache.insert(normalized, url.clone());
         Some(url)
     }
@@ -1327,6 +1333,21 @@ mod tests {
         assert_eq!(message_display_content(&m[0]).as_deref(), Some("[图片]"));
         assert_eq!(message_display_content(&m[1]).as_deref(), Some("T"));
         assert_eq!(message_display_content(&m[2]).as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn avatar_files_get_a_well_formed_file_url() {
+        let root = weflow_native::fixture::TestDir::new("weflow-push-avatar");
+        // `#` and `%` are legal in a folder name everywhere; `?` is not on Windows
+        let dir = root.path().join("a #b%c");
+        let png = "data:image/png;base64,iVBORw0KGgo=";
+        let url = avatar_file_url(&dir, png).unwrap();
+        assert!(url.starts_with("file:///"), "{url}");
+        assert!(!url.contains('\\'), "{url}");
+        assert!(url.contains("/a%20%23b%25c/avatar_"), "{url}");
+        assert!(url.ends_with(".png"), "{url}");
+        assert_eq!(avatar_file_url(&dir, png), Some(url), "the same file again");
+        assert_eq!(avatar_file_url(&dir, "http://example.com/a.png"), None);
     }
 
     #[test]
