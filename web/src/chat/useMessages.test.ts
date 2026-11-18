@@ -176,6 +176,21 @@ describe('live messages (#201)', () => {
     expect(result.current.thread.messages).toHaveLength(121);
   });
 
+  it('reads the messages that come while it reads once more, from the last one it read', async () => {
+    const state = { last: 2, recalled: new Set<number>() };
+    const calls = live(state);
+    const { result } = renderHook(() => useMessages('wxid_a'));
+    await waitFor(() => expect(result.current.thread.status).toBe('ready'));
+    state.last = 3;
+    act(() => { for (let i = 0; i < 5; i++) emitLive({ type: 'message.new', sessionId: 'wxid_a' }); });
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[1]).toContain('after=c.2');
+    expect(calls[2]).toContain('after=c.3');
+    expect(texts(result.current.thread)).toEqual(['m0', 'm1', 'm2', 'm3']);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(calls).toHaveLength(3);
+  });
+
   it('shows a recall in place, and catches up after a break', async () => {
     const state = { last: 3, recalled: new Set<number>() };
     live(state);

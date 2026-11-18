@@ -202,34 +202,57 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
   /**
    * Live messages (#201): the ones after the last shown, all of them, below it; with `revised` (a recall, or after a
    * break) the newest page again too, for the messages it changed. A thread left in the past by a jump is not
-   * touched: 「回到最新消息」 reads the newest.
+   * touched: 「回到最新消息」 reads the newest. One catch-up reads at a time: the events that come while it reads are
+   * caught up on together once it is done, from the last message it read, so a burst of messages is read twice at
+   * most and each without waiting.
    */
+  const catching = useRef<{ id: string; again: boolean; revised: boolean } | null>(null);
   const catchUp = useCallback((revised: boolean) => {
     const id = current.current;
     const now = latest.current;
     if (!id || now.status !== 'ready' || now.hasNewer || !now.messages.length) return;
+    const running = catching.current;
+    if (running?.id === id) {
+      running.again = true;
+      running.revised ||= revised;
+      return;
+    }
+    const run = { id, again: false, revised };
+    catching.current = run;
     const scope = currentScope();
     (async () => {
-      const added: ParsedMessage[] = [];
-      let last = now.messages[now.messages.length - 1]._cursor;
+      let from = now.messages[now.messages.length - 1]._cursor;
       for (;;) {
-        const page = (await getMessages(id, { after: last })).slice().reverse();
-        added.push(...page);
-        if (page.length < PAGE_SIZE) break;
-        last = page[page.length - 1]._cursor;
+        const wanted = run.revised;
+        run.again = false;
+        run.revised = false;
+        const added: ParsedMessage[] = [];
+        let last = from;
+        for (;;) {
+          const page = (await getMessages(id, { after: last })).slice().reverse();
+          added.push(...page);
+          if (page.length < PAGE_SIZE) break;
+          last = page[page.length - 1]._cursor;
+        }
+        const newest = wanted ? await getMessages(id, null) : [];
+        if (current.current !== id || scope !== currentScope()) return;
+        const after = from;
+        update(id, old => {
+          // read again or left for the past meanwhile: what was read may not follow on from the messages shown
+          if (old.status !== 'ready' || old.hasNewer || !old.messages.some(m => m._cursor === after)) return old;
+          const changed = new Map(newest.map(m => [m._cursor, m]));
+          const messages = old.messages.map(m => changed.get(m._cursor) ?? m);
+          const seen = new Set(messages.map(m => m._cursor));
+          const next: Thread = { ...old, messages: [...messages, ...added.filter(m => !seen.has(m._cursor))] };
+          remember(id, next, scope);
+          return next;
+        });
+        if (!run.again) return;
+        from = added.at(-1)?._cursor ?? from;
       }
-      const newest = revised ? await getMessages(id, null) : [];
-      if (current.current !== id || scope !== currentScope()) return;
-      update(id, old => {
-        if (old.status !== 'ready' || old.hasNewer) return old;
-        const changed = new Map(newest.map(m => [m._cursor, m]));
-        const messages = old.messages.map(m => changed.get(m._cursor) ?? m);
-        const seen = new Set(messages.map(m => m._cursor));
-        const next: Thread = { ...old, messages: [...messages, ...added.filter(m => !seen.has(m._cursor))] };
-        remember(id, next, scope);
-        return next;
-      });
-    })().catch(() => { /* the next event or break tries again */ });
+    })().catch(() => { /* the next event or break tries again */ }).finally(() => {
+      if (catching.current === run) catching.current = null;
+    });
   }, [update]);
 
   useLive(event => {
