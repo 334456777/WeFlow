@@ -357,6 +357,9 @@ impl FileOut {
             ))
             .into());
         };
+        if let Some(why) = files::not_one_file(command, endpoint, params) {
+            return Err(bad_request(why).into());
+        }
         let given = params
             .iter()
             .find(|(k, _)| find_param(endpoint, k).is_some_and(|p| p.name == "out"))
