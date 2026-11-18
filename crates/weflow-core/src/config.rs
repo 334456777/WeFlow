@@ -559,35 +559,60 @@ impl ProfileConfig {
     }
 }
 
+/// The account folder of `wxid` under the WeChat data directory `db_path` (or `db_path` itself when it is one).
+///
+/// `wxid` is tried as configured first, then without the folder suffix ([`clean_account_dir_name`]): `lily_1998` is
+/// an id of its own as well as `lily` plus a suffix. For each, the folder named exactly that wins, then the folders
+/// named the id plus the `_<4 chars>` suffix WeChat adds, in name order, so the pick does not depend on the directory
+/// listing. With no account folder found, the result is `db_path/<id without suffix>`.
 pub fn resolve_account_dir(db_path: &str, wxid: &str) -> PathBuf {
     let root = expand_home(db_path);
     if is_account_dir(&root) {
         return root;
     }
+    let configured = wxid.trim();
     let cleaned = clean_account_dir_name(wxid);
-    let direct = root.join(&cleaned);
-    if is_account_dir(&direct) {
-        return direct;
-    }
-    if let Ok(entries) = fs::read_dir(&root) {
-        let lower = cleaned.to_lowercase();
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().to_lowercase();
-            let is_match = if lower.starts_with("wxid_") {
-                name.starts_with(&format!("{lower}_"))
-            } else {
-                name == lower || name.starts_with(&format!("{lower}_"))
-            };
-            if is_match && is_account_dir(&path) {
-                return path;
-            }
+    let mut folders: Option<Vec<(String, PathBuf)>> = None;
+    for id in [configured, cleaned.as_str()] {
+        if id.is_empty() {
+            continue;
+        }
+        let direct = root.join(id);
+        if is_account_dir(&direct) {
+            return direct;
+        }
+        let folders = folders.get_or_insert_with(|| account_folders(&root));
+        if let Some((_, path)) = folders.iter().find(|(name, _)| names_account(name, id)) {
+            return path.clone();
         }
     }
-    direct
+    root.join(cleaned)
+}
+
+/// The account folders directly under `root` with their names, sorted by name.
+fn account_folders(root: &Path) -> Vec<(String, PathBuf)> {
+    let mut folders: Vec<(String, PathBuf)> = fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| {
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                entry.path(),
+            )
+        })
+        .filter(|(_, path)| is_account_dir(path))
+        .collect();
+    folders.sort();
+    folders
+}
+
+/// Whether the account folder `name` is account `id`'s: the id itself, or the id plus the `_<4 chars>` suffix.
+///
+/// This is [`weflow_native::db::same_identity`] read one way. A folder named like a shorter id that `id` extends
+/// with a suffix-shaped tail (`john` for `john_ab-c`) is another account's folder.
+fn names_account(name: &str, id: &str) -> bool {
+    name.trim().len() >= id.trim().len() && weflow_native::db::same_identity(name, id)
 }
 
 /// `path` with a leading `~` replaced by the home folder of the user this runs for (the caller's under `sudo`).
@@ -996,6 +1021,71 @@ mod tests {
         fs::create_dir_all(other.join("db_storage")).unwrap();
         fs::create_dir_all(own.join("db_storage")).unwrap();
         assert_eq!(resolve_account_dir(dir.to_str().unwrap(), "wxid_ab12"), own);
+    }
+
+    /// A custom id that starts another account's id resolves to its own folder, not the longer id's.
+    #[test]
+    fn a_custom_id_does_not_resolve_to_a_longer_id_it_starts() {
+        let dir = temp_dir("weflow-account-prefix");
+        let own = dir.join("john_abcd");
+        let other = dir.join("john_smith_wxyz");
+        fs::create_dir_all(own.join("db_storage")).unwrap();
+        fs::create_dir_all(other.join("db_storage")).unwrap();
+        let root = dir.to_str().unwrap();
+        assert_eq!(resolve_account_dir(root, "john"), own);
+        assert_eq!(resolve_account_dir(root, "john_smith"), other);
+    }
+
+    /// With only a longer id's folder present, a shorter id it starts has no folder.
+    #[test]
+    fn a_custom_id_without_its_folder_does_not_take_a_longer_ids() {
+        let dir = temp_dir("weflow-account-prefix-only");
+        fs::create_dir_all(dir.join("john_smith_wxyz/db_storage")).unwrap();
+        assert_eq!(
+            resolve_account_dir(dir.to_str().unwrap(), "john"),
+            dir.join("john")
+        );
+    }
+
+    /// A folder named like a shorter id is not the folder of an id that extends it with a suffix-shaped tail.
+    #[test]
+    fn an_id_does_not_resolve_to_a_shorter_id_it_extends() {
+        let dir = temp_dir("weflow-account-shorter");
+        fs::create_dir_all(dir.join("john/db_storage")).unwrap();
+        let own = dir.join("john_ab-c_wxyz");
+        fs::create_dir_all(own.join("db_storage")).unwrap();
+        assert_eq!(resolve_account_dir(dir.to_str().unwrap(), "john_ab-c"), own);
+    }
+
+    /// An id whose tail looks like the folder suffix still finds its folder before the shorter id's.
+    #[test]
+    fn an_id_with_a_suffix_shaped_tail_resolves_to_its_own_folder() {
+        let dir = temp_dir("weflow-account-tail");
+        let own = dir.join("lily_1998_a1b2");
+        fs::create_dir_all(own.join("db_storage")).unwrap();
+        fs::create_dir_all(dir.join("lily_wxyz/db_storage")).unwrap();
+        assert_eq!(resolve_account_dir(dir.to_str().unwrap(), "lily_1998"), own);
+        // the folder's own name, suffix included, is an id too
+        assert_eq!(
+            resolve_account_dir(dir.to_str().unwrap(), "lily_wxyz"),
+            dir.join("lily_wxyz")
+        );
+    }
+
+    /// Several folders of one account resolve to the first by name, whatever order the directory lists them in.
+    #[test]
+    fn several_folders_of_one_account_resolve_to_the_first_by_name() {
+        let dir = temp_dir("weflow-account-several");
+        for name in ["john_zz99", "john_ab12", "john_mm55"] {
+            fs::create_dir_all(dir.join(name).join("db_storage")).unwrap();
+        }
+        // not account folders: no `db_storage`
+        fs::create_dir_all(dir.join("john_aaaa")).unwrap();
+        fs::write(dir.join("john_0000"), b"").unwrap();
+        assert_eq!(
+            resolve_account_dir(dir.to_str().unwrap(), "john"),
+            dir.join("john_ab12")
+        );
     }
 
     /// A config file from a version that had `weflow ffmpeg set baseurl` still loads: the key is left out.
