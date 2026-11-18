@@ -12,15 +12,18 @@ onLive(event => {
   else cache.delete(event.sessionId);
 });
 
-/** The counts of `sessionId` once asked for (`request`), else null; a calendar shows plain days until they come. */
+/**
+ * The counts of `sessionId` once asked for (`request`), else null; a calendar shows plain days until they come. Each
+ * request finds them kept, or reads them again after a message came: the days known before show meanwhile.
+ */
 export function useDateCounts(sessionId: string | null): { counts: Record<string, number> | null; request(): void } {
-  const [wanted, setWanted] = useState<string | null>(null);
+  const [wanted, setWanted] = useState<{ id: string; seq: number } | null>(null);
   const [counts, setCounts] = useState<{ id: string; counts: Record<string, number> } | null>(null);
 
   useEffect(() => {
-    if (!sessionId || wanted !== sessionId) return;
+    if (!sessionId || wanted?.id !== sessionId) return;
     const kept = cache.get(sessionId);
-    if (kept) { setCounts({ id: sessionId, counts: kept }); return; }
+    if (kept) { setCounts(old => (old?.id === sessionId && old.counts === kept ? old : { id: sessionId, counts: kept })); return; }
     const controller = new AbortController();
     const scope = currentScope();
     getDateCounts(sessionId, controller.signal).then(found => {
@@ -31,7 +34,9 @@ export function useDateCounts(sessionId: string | null): { counts: Record<string
     return () => controller.abort();
   }, [sessionId, wanted]);
 
-  const request = useCallback(() => setWanted(sessionId), [sessionId]);
+  const request = useCallback(() => {
+    if (sessionId) setWanted(old => ({ id: sessionId, seq: (old?.seq ?? 0) + 1 }));
+  }, [sessionId]);
   const known = sessionId ? (counts?.id === sessionId ? counts.counts : cache.get(sessionId) ?? null) : null;
   return { counts: known, request };
 }
