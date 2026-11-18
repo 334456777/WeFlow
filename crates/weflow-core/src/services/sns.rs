@@ -955,32 +955,35 @@ impl ServiceHub {
         let usernames = &opts.usernames;
         let keyword = opts.keyword.as_deref().filter(|k| !k.is_empty());
 
-        // 1. load every post page by page
+        // 1. load every post page by page; the pages follow the timeline's total order
+        // (time, then row id, newest first), so an offset reaches every post, also those
+        // sharing a second or without a time. A post arriving mid-export shifts the later
+        // pages by one, which repeats a post rather than skipping one: the row id drops it.
         let wcdb = self.open_wcdb()?;
         let mut posts: Vec<SnsPost> = Vec::new();
+        let mut loaded = std::collections::HashSet::new();
         let page = 50;
-        let mut end_ts = opts.end;
+        let mut offset = 0i32;
         self.emit_progress("sns", "loading Moments…", 0, 0);
         loop {
             let q = SnsTimelineQuery {
                 limit: page,
-                offset: 0,
+                offset,
                 usernames: usernames.clone(),
                 keyword: keyword.map(str::to_string),
                 start: opts.start,
-                end: end_ts,
+                end: opts.end,
             };
             let batch = match self.sns_timeline_with(&wcdb, &q) {
                 Ok(b) if !b.is_empty() => b,
                 _ => break,
             };
-            let last_ts = batch.last().map_or(0, |p| p.create_time) - 1;
-            let n = batch.len();
-            posts.extend(batch);
-            end_ts = last_ts;
+            let n = crate::num::saturating_i32(batch.len());
+            posts.extend(batch.into_iter().filter(|p| loaded.insert(p.tid.clone())));
             self.emit_progress("sns", "loading Moments…", posts.len(), 0);
-            if crate::num::saturating_i32(n) < page || (opts.start > 0 && last_ts < opts.start) {
-                break;
+            match offset.checked_add(n) {
+                Some(next) if n == page => offset = next,
+                _ => break,
             }
         }
         if posts.is_empty() {
