@@ -729,7 +729,7 @@ impl ServiceHub {
                 }
                 let mut seen: HashSet<(i64, i64)> = HashSet::new();
                 for &code in codes {
-                    let Ok(rows) = wcdb.messages_by_type(sid, code, false, 0, 0) else {
+                    let Ok(rows) = wcdb.messages_by_type(sid, code, false) else {
                         continue;
                     };
                     for m in chat_msg::map_msg_rows(rows, sid, &my) {

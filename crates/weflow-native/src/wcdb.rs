@@ -213,16 +213,15 @@ impl Wcdb {
         self.account()?.session_message_date_counts(session_id)
     }
 
+    /// Every message of one `local_type` (see [`Account::messages_by_type`]).
     pub fn messages_by_type(
         &self,
         session_id: &str,
         local_type: i64,
         ascending: bool,
-        limit: i32,
-        offset: i32,
     ) -> Result<Vec<MsgRow>> {
         self.account()?
-            .messages_by_type(session_id, local_type, ascending, limit, offset)
+            .messages_by_type(session_id, local_type, ascending)
     }
 
     /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
