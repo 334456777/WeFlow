@@ -45,14 +45,6 @@ export async function getDetailExtra(sessionId: string, signal?: AbortSignal): P
   return { firstMessageTime: null, latestMessageTime: null, messageTables: [], ...data };
 }
 
-/** A member of the members panel (`group members`, the contract's). */
-export type PanelMember = Contract.GroupMember;
-
-export async function getPanel(chatroomId: string, signal?: AbortSignal): Promise<PanelMember[]> {
-  const data = await get<Contract.GroupMembers | null>('api/group/members', { 'chatroom-id': chatroomId }, signal);
-  return data?.members ?? [];
-}
-
 /** `group member`: one member's messages in the group. */
 export type MemberStats = Contract.MemberAnalytics;
 

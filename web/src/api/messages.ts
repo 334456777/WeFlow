@@ -2,6 +2,7 @@
 // server as the desktop app parses them (`chat messages --parsed`), so the page reads no WeChat XML.
 import { get, mediaAddress, token, type Params } from './client';
 import type * as Contract from './contract.gen';
+import { keptRead } from './kept';
 
 const MESSAGE_KEYS = [
   'localId', 'serverId', 'localType', 'createTime', 'isSend', 'senderUsername', 'parsedContent', 'appMsgKind',
@@ -59,16 +60,18 @@ export async function getDateCounts(sessionId: string, signal?: AbortSignal): Pr
   return data?.counts ?? {};
 }
 
-export interface GroupMember {
-  username: string;
-  displayName: string;
-  groupNickname?: string;
-  avatarUrl?: string;
-}
+/** A member of a group (`group members`, the contract's). */
+export type GroupMember = Contract.GroupMember;
 
-export async function getMembers(chatroomId: string, signal?: AbortSignal): Promise<GroupMember[]> {
-  const data = await get<Contract.GroupMembers | null>('api/group/members', { 'chatroom-id': chatroomId }, signal);
-  return data?.members ?? [];
+/**
+ * The members of a group, read once for the server and account (`keptRead`): the names of its messages and the members
+ * of its details share the one request. A caller that leaves lets the answer go, as another may wait for it.
+ */
+export function getMembers(chatroomId: string): Promise<GroupMember[]> {
+  return keptRead('members:' + chatroomId, async () => {
+    const data = await get<Contract.GroupMembers | null>('api/group/members', { 'chatroom-id': chatroomId });
+    return data?.members ?? [];
+  });
 }
 
 /**

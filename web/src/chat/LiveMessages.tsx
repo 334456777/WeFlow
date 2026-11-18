@@ -39,12 +39,16 @@ interface Person { name: string; avatarUrl?: string }
 const memberCache = new Map<string, Map<string, Person>>();
 onNewScope(() => memberCache.clear());
 
-/** The members of a group, read once and kept: their names in the group and their pictures. */
+/**
+ * The members of a group, read once and kept: their names in the group and their pictures. The read is shared with
+ * the members panel (`getMembers`): a caller whose `signal` is aborted is let go with the abort, the read goes on.
+ */
 export async function loadMembers(chatroomId: string, signal?: AbortSignal): Promise<Map<string, Person>> {
   const kept = memberCache.get(chatroomId);
   if (kept) return kept;
   const scope = currentScope();
-  const members = await getMembers(chatroomId, signal);
+  const members = await getMembers(chatroomId);
+  signal?.throwIfAborted();
   const map = new Map(members.map((m: GroupMember) => [m.username, { name: m.groupNickname || m.displayName || m.username, avatarUrl: m.avatarUrl || undefined }]));
   // read for the account before: given to its caller (gone by now), not kept
   if (scope === currentScope()) memberCache.set(chatroomId, map);
