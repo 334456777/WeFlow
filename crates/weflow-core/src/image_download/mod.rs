@@ -2,7 +2,9 @@
 //! conversations.
 //!
 //! The hook is installed in the main `Weixin.exe` process and re-checked every 30 seconds, so a restarted WeChat is
-//! hooked again. On every other platform the service reports `supported: false`.
+//! hooked again. A process that could not be hooked is tried again after a delay that doubles with each failure, up
+//! to 32 minutes, as each try reads all of `Weixin.dll`; a new process is tried at once. On every other platform the
+//! service reports `supported: false`.
 //!
 //! This is the Rust replacement for `img_helper.dll`; it is compiled into `weflow.exe` and needs no Visual C++
 //! runtime.
@@ -12,7 +14,7 @@ mod shellcode;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -20,12 +22,57 @@ use crate::sync::MutexExt;
 
 pub use hook::supported;
 
+/// How often the poll thread checks that WeChat is hooked.
+const POLL_INTERVAL: Duration = Duration::from_secs(30);
+/// The longest wait before the poll thread tries again a process it could not hook.
+const MAX_RETRY_DELAY: Duration = Duration::from_secs(32 * 60);
+
 #[derive(Default)]
 struct Inner {
     hook: Option<hook::Hook>,
     pid: Option<u32>,
     whitelist: Vec<String>,
     poll_stop: Option<Arc<AtomicBool>>,
+    failure: Option<Failure>,
+}
+
+/// The last failed hook of a WeChat process, and when the poll thread may try that process again.
+#[derive(Debug)]
+struct Failure {
+    pid: u32,
+    error: String,
+    attempts: u32,
+    retry_at: Instant,
+}
+
+impl Failure {
+    /// A failure to hook `pid` at `now`, counting the failures of the same process before it.
+    fn after(previous: Option<&Failure>, pid: u32, error: String, now: Instant) -> Self {
+        let attempts = previous
+            .filter(|f| f.pid == pid)
+            .map_or(0, |f| f.attempts)
+            .saturating_add(1);
+        Self {
+            pid,
+            error,
+            attempts,
+            retry_at: now + retry_delay(attempts),
+        }
+    }
+
+    /// Whether the poll thread leaves `pid` alone at `now`.
+    fn holds(&self, pid: u32, now: Instant) -> bool {
+        self.pid == pid && now < self.retry_at
+    }
+}
+
+/// The wait after the `attempts`-th failure on one process: [`POLL_INTERVAL`], doubled for each failure before it,
+/// up to [`MAX_RETRY_DELAY`].
+fn retry_delay(attempts: u32) -> Duration {
+    let doublings = attempts.saturating_sub(1);
+    POLL_INTERVAL
+        .saturating_mul(1u32.checked_shl(doublings).unwrap_or(u32::MAX))
+        .min(MAX_RETRY_DELAY)
 }
 
 #[derive(Clone, Default)]
@@ -85,10 +132,20 @@ impl ImageAutoDownload {
                 hook.uninstall();
             }
             inner.pid = None;
+            inner.failure = None;
             return json!({ "success": true, "error": "waiting for WeChat to start" });
         };
         if inner.hook.is_some() && inner.pid == Some(pid) {
             return json!({ "success": true });
+        }
+        if !manual_start {
+            if let Some(failure) = inner
+                .failure
+                .as_ref()
+                .filter(|f| f.holds(pid, Instant::now()))
+            {
+                return json!({ "success": false, "error": failure.error });
+            }
         }
         if let Some(hook) = inner.hook.take() {
             hook.uninstall();
@@ -99,15 +156,31 @@ impl ImageAutoDownload {
             Ok(hook) => {
                 inner.hook = Some(hook);
                 inner.pid = Some(pid);
+                inner.failure = None;
                 json!({ "success": true })
             }
             Err(err) => {
+                let error = if err.is_empty() {
+                    "hook failed".to_string()
+                } else {
+                    err
+                };
+                let failure = Failure::after(inner.failure.as_ref(), pid, error, Instant::now());
+                tracing::warn!(
+                    pid,
+                    attempts = failure.attempts,
+                    error = %failure.error,
+                    retry_in = ?retry_delay(failure.attempts),
+                    "could not hook WeChat for image auto-download"
+                );
+                let answer = json!({ "success": false, "error": failure.error });
+                inner.failure = Some(failure);
                 if manual_start {
                     if let Some(stop) = inner.poll_stop.take() {
                         stop.store(true, Ordering::Relaxed);
                     }
                 }
-                json!({ "success": false, "error": if err.is_empty() { "hook failed".to_string() } else { err } })
+                answer
             }
         }
     }
@@ -124,12 +197,13 @@ impl ImageAutoDownload {
             }
             inner.pid = None;
             inner.whitelist = whitelist;
+            inner.failure = None;
             if inner.poll_stop.is_none() {
                 let stop = Arc::new(AtomicBool::new(false));
                 inner.poll_stop = Some(stop.clone());
                 let me = self.clone();
                 std::thread::spawn(move || loop {
-                    for _ in 0..300 {
+                    for _ in 0..POLL_INTERVAL.as_millis() / 100 {
                         if stop.load(Ordering::Relaxed) {
                             return;
                         }
@@ -155,6 +229,7 @@ impl ImageAutoDownload {
             hook.uninstall();
         }
         inner.pid = None;
+        inner.failure = None;
         json!({ "success": true })
     }
 
@@ -198,6 +273,27 @@ mod tests {
             pick_main_pid(&procs(&[(5, "weixin.exe"), (6, "Weixin.exe")])),
             Some(5)
         );
+    }
+
+    #[test]
+    fn a_process_that_could_not_be_hooked_waits_longer_after_each_failure() {
+        assert_eq!(retry_delay(1), POLL_INTERVAL);
+        assert_eq!(retry_delay(2), POLL_INTERVAL * 2);
+        assert_eq!(retry_delay(3), POLL_INTERVAL * 4);
+        assert_eq!(retry_delay(7), MAX_RETRY_DELAY);
+        assert_eq!(retry_delay(u32::MAX), MAX_RETRY_DELAY);
+        let now = Instant::now();
+        let first = Failure::after(None, 7, "Target function not found".into(), now);
+        assert_eq!(first.attempts, 1);
+        assert!(first.holds(7, now));
+        assert!(!first.holds(8, now), "a new process is tried at once");
+        assert!(!first.holds(7, now + POLL_INTERVAL));
+        let second = Failure::after(Some(&first), 7, "again".into(), now + POLL_INTERVAL);
+        assert_eq!(second.attempts, 2);
+        assert!(second.holds(7, now + POLL_INTERVAL * 2));
+        assert!(!second.holds(7, now + POLL_INTERVAL * 3));
+        let other = Failure::after(Some(&second), 9, "other".into(), now);
+        assert_eq!(other.attempts, 1, "failures are counted per process");
     }
 
     #[test]
