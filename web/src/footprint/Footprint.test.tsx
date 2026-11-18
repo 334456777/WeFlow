@@ -1,8 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
-import { presetRanges, timeline, type Footprint } from '../api/footprint';
+import { presetRanges, rangeOf, timeline, type Footprint } from '../api/footprint';
 import type { Contact } from '../api/contacts';
-import { FootprintAi, FootprintExport, FootprintPage, FootprintView, mentionText } from './Footprint';
+import { setLang } from '../i18n';
+import { FootprintAi, FootprintExport, FootprintPage, FootprintRanges, FootprintView, mentionText } from './Footprint';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -36,13 +37,53 @@ const names = (u: string) => CONTACTS[u];
 describe('my footprint', () => {
   it('offers today, yesterday, this week and last week, weeks from Monday', () => {
     expect(presetRanges(new Date(2026, 9, 21, 15))).toEqual([
-      { label: '今天', from: '2026-10-21', to: '2026-10-21' },
-      { label: '昨天', from: '2026-10-20', to: '2026-10-20' },
-      { label: '本周', from: '2026-10-19', to: '2026-10-21' },
-      { label: '上周', from: '2026-10-12', to: '2026-10-18' },
+      { preset: 'today', label: '今天', from: '2026-10-21', to: '2026-10-21' },
+      { preset: 'yesterday', label: '昨天', from: '2026-10-20', to: '2026-10-20' },
+      { preset: 'thisWeek', label: '本周', from: '2026-10-19', to: '2026-10-21' },
+      { preset: 'lastWeek', label: '上周', from: '2026-10-12', to: '2026-10-18' },
     ]);
     // a Sunday is the end of its week
-    expect(presetRanges(new Date(2026, 9, 25, 15))[2]).toEqual({ label: '本周', from: '2026-10-19', to: '2026-10-25' });
+    expect(presetRanges(new Date(2026, 9, 25, 15))[2]).toEqual({ preset: 'thisWeek', label: '本周', from: '2026-10-19', to: '2026-10-25' });
+    expect(rangeOf({ preset: 'lastWeek' }, new Date(2026, 9, 21, 15))).toEqual({ label: '上周', from: '2026-10-12', to: '2026-10-18' });
+    expect(rangeOf({ from: '2026-10-01', to: '2026-10-03' })).toEqual({ label: '2026-10-01 至 2026-10-03', from: '2026-10-01', to: '2026-10-03' });
+    expect(rangeOf({ from: '2026-10-01', to: '2026-10-01' }).label).toBe('2026-10-01');
+  });
+
+  it('names a preset in the page\'s language, and keeps it picked when the language changes', async () => {
+    const onChoice = vi.fn();
+    const { rerender } = render(<FootprintRanges choice={{ preset: 'today' }} onChoice={onChoice} />);
+    expect(screen.getByRole('button', { name: '今天' }).getAttribute('aria-pressed')).toBe('true');
+    await setLang('en');
+    try {
+      rerender(<FootprintRanges choice={{ preset: 'today' }} onChoice={onChoice} />);
+      expect(screen.getByRole('button', { name: 'Today' }).getAttribute('aria-pressed')).toBe('true');
+      expect(screen.getByRole('button', { name: 'Custom' }).getAttribute('aria-pressed')).toBe('false');
+      expect(screen.queryAllByRole('button', { name: /footprint/i })).toEqual([]);
+      expect(rangeOf({ preset: 'thisWeek' }).label).toBe('This week');
+      fireEvent.click(screen.getByRole('button', { name: 'Yesterday' }));
+      expect(onChoice).toHaveBeenLastCalledWith({ preset: 'yesterday' });
+    } finally {
+      await setLang('zh');
+    }
+  });
+
+  it('reads today again once the day has turned', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => { urls.push(url); return json({ success: true, data: url.startsWith('/api/chat/contacts') ? [] : DATA }); }));
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 21, 23, 59) });
+    try {
+      const props = { choice: { preset: 'today' } as const, onChoice: () => {}, keyword: '', onKeyword: () => {}, onOpen: () => {}, onData: () => {} };
+      const { rerender } = render(<FootprintPage {...props} />);
+      await act(async () => {});
+      expect(urls.at(-1)).toBe('/api/insight/footprint?start=2026-10-21&end=2026-10-21');
+      vi.setSystemTime(new Date(2026, 9, 22, 0, 1));
+      rerender(<FootprintPage {...props} />);
+      await act(async () => {});
+      expect(urls.at(-1)).toBe('/api/insight/footprint?start=2026-10-22&end=2026-10-22');
+      expect(screen.getByRole('button', { name: '今天' }).getAttribute('aria-pressed')).toBe('true');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('puts the chats and the mentions in the order they happened, and takes the sender line off a group message', () => {
@@ -76,14 +117,18 @@ describe('my footprint', () => {
   it('reads the range picked, and a range of its own from the calendar', async () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => { urls.push(url); return json({ success: true, data: url.startsWith('/api/chat/contacts') ? [] : DATA }); }));
-    const onRange = vi.fn();
+    const onChoice = vi.fn();
     const onData = vi.fn();
-    render(<FootprintPage range={{ label: '本周', from: '2026-10-19', to: '2026-10-21' }} onRange={onRange} keyword="" onKeyword={() => {}} onOpen={() => {}} onData={onData} />);
+    const { rerender } = render(<FootprintPage choice={{ from: '2026-10-19', to: '2026-10-21' }} onChoice={onChoice} keyword="" onKeyword={() => {}} onOpen={() => {}} onData={onData} />);
     await act(async () => {});
     expect(urls).toContain('/api/insight/footprint?start=2026-10-19&end=2026-10-21');
     expect(onData).toHaveBeenLastCalledWith(DATA);
+    expect(screen.getByRole('button', { name: '自定义' }).getAttribute('aria-pressed')).toBe('true');
+    rerender(<FootprintPage choice={{ preset: 'yesterday' }} onChoice={onChoice} keyword="" onKeyword={() => {}} onOpen={() => {}} onData={onData} />);
+    await act(async () => {});
+    const yesterday = rangeOf({ preset: 'yesterday' });
     fireEvent.click(screen.getByRole('button', { name: '自定义' }));
-    expect(onRange).toHaveBeenCalledWith({ label: '2026-10-19 至 2026-10-21', from: '2026-10-19', to: '2026-10-21' });
+    expect(onChoice).toHaveBeenCalledWith({ from: yesterday.from, to: yesterday.to });
   });
 
   it('asks the AI with names and counts only, and offers to turn the summary on when it is off', async () => {

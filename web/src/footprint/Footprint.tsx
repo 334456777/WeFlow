@@ -8,7 +8,10 @@ import { DateRange } from '../calendar/DateRange';
 import { Chip } from '../Chip';
 import { contactList, type Contact } from '../api/contacts';
 import { currentScope } from '../api/scope';
-import { FOOTPRINT_FORMATS, footprintExport, getFootprint, presetRanges, summarizeFootprint, timeline, type Footprint, type FootprintFormat, type FootprintRange } from '../api/footprint';
+import {
+  FOOTPRINT_FORMATS, footprintExport, getFootprint, presetRanges, rangeOf, summarizeFootprint, timeline,
+  type Footprint, type FootprintChoice, type FootprintFormat, type FootprintRange,
+} from '../api/footprint';
 import { setSetting } from '../api/settings';
 import { n } from '../analytics/AnalyticsViews';
 import { Failed } from '../reports/AnnualReport';
@@ -34,16 +37,16 @@ export function useNames(): (username: string) => Contact | undefined {
 }
 
 /** The ranges to pick from, and the days of a range of one's own. */
-export function FootprintRanges({ range, onRange }: { range: FootprintRange; onRange(range: FootprintRange): void }) {
-  const presets = presetRanges();
-  const custom = !presets.some(p => p.label === range.label);
+export function FootprintRanges({ choice, onChoice }: { choice: FootprintChoice; onChoice(choice: FootprintChoice): void }) {
+  const range = rangeOf(choice);
+  const preset = 'preset' in choice ? choice.preset : null;
   return <div className="footprint-ranges">
     <div className="choice-chips" role="group" aria-label={t('时间范围')}>
-      {presets.map(p => <Chip key={p.label} label={p.label} pressed={range.label === p.label} onClick={() => onRange(p)} />)}
-      <Chip label={t('自定义')} pressed={custom} onClick={() => { if (!custom) onRange({ ...range, label: range.from === range.to ? range.from : t('{from} 至 {to}', { from: range.from, to: range.to }) }); }} />
+      {presetRanges().map(p => <Chip key={p.preset} label={p.label} pressed={preset === p.preset} onClick={() => onChoice({ preset: p.preset })} />)}
+      <Chip label={t('自定义')} pressed={!preset} onClick={() => { if (preset) onChoice({ from: range.from, to: range.to }); }} />
     </div>
-    {custom && <DateRange label={t('足迹的时间范围')} from={range.from} to={range.to}
-      onChange={r => r.from && onRange({ from: r.from, to: r.to || r.from, label: r.to && r.to !== r.from ? t('{from} 至 {to}', { from: r.from, to: r.to }) : r.from })} />}
+    {!preset && <DateRange label={t('足迹的时间范围')} from={range.from} to={range.to}
+      onChange={r => r.from && onChoice({ from: r.from, to: r.to || r.from })} />}
   </div>;
 }
 
@@ -113,11 +116,12 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
   </div>;
 }
 
-export function FootprintPage({ range, onRange, keyword, onKeyword, onOpen, onData }: {
-  range: FootprintRange; onRange(range: FootprintRange): void; keyword: string; onKeyword(keyword: string): void;
+export function FootprintPage({ choice, onChoice, keyword, onKeyword, onOpen, onData }: {
+  choice: FootprintChoice; onChoice(choice: FootprintChoice): void; keyword: string; onKeyword(keyword: string): void;
   onOpen(session: string, localId: number, createTime: number): void; onData(data: Footprint | null): void;
 }) {
   const names = useNames();
+  const range = rangeOf(choice);
   const [state, retry] = useRead('footprint:' + range.from + ':' + range.to, async signal => {
     onData(null);
     const data = await getFootprint(range, signal);
@@ -125,7 +129,7 @@ export function FootprintPage({ range, onRange, keyword, onKeyword, onOpen, onDa
     return data;
   });
   return <>
-    <FootprintRanges range={range} onRange={onRange} />
+    <FootprintRanges choice={choice} onChoice={onChoice} />
     {state.status === 'error' ? <Failed title={t('读取足迹失败')} message={state.message} onRetry={retry} />
       : state.status === 'loading' ? <div className="analytics-page" aria-busy="true"><GridSkeleton label={t('正在统计{range}的足迹', { range: range.label })} cells={5} /><ListSkeleton label={t('正在读取联络时间线')} rows={5} /></div>
         : <FootprintView data={state.value} keyword={keyword} onKeyword={onKeyword} names={names} onOpen={onOpen} />}
