@@ -33,7 +33,10 @@ export interface SessionRow {
   folded?: { count: number };
 }
 
-const timeOf = (session: ChatSession) => session.sortTimestamp || session.lastTimestamp || 0;
+/** Where WeChat lists a conversation: pinning or unpinning it moves this to that moment (#894). */
+const orderOf = (session: ChatSession) => session.sortTimestamp || session.lastTimestamp || 0;
+/** The time shown on a row: that of the last message, which the preview shows (#894). */
+const timeOf = (session: ChatSession) => session.lastTimestamp || session.sortTimestamp || 0;
 
 /** The last message as WeChat shows it: one line, and in a group whose sender it was, unless it was me. */
 export function previewOf(session: ChatSession): string {
@@ -90,8 +93,10 @@ export function sessionRows(
   const rows: SessionRow[] = [];
   const folded = sessions.filter(isFolded);
   let entry: SessionRow | null = null;
+  let entryOrder = 0;
   if (folded.length && (filter === 'all' || filter === 'group')) {
     const newest = folded[0];
+    entryOrder = orderOf(newest);
     entry = {
       // The group's name in front of its last message, without the sender: one prefix is enough on one line.
       id: FOLDED_ID, name: t('折叠的群聊'), preview: (newest.displayName || newest.username) + '：' + newest.summary.replace(/\s+/g, ' ').trim(),
@@ -104,7 +109,7 @@ export function sessionRows(
   for (const session of sessions) {
     if (isFolded(session) || !wanted(session)) continue;
     if (isPinned(session)) { pinned.push(rowOf(session, statuses[session.username])); continue; }
-    if (entry && entry.time >= timeOf(session)) { rows.push(entry); entry = null; }
+    if (entry && entryOrder >= orderOf(session)) { rows.push(entry); entry = null; }
     rows.push(rowOf(session, statuses[session.username]));
   }
   if (entry) rows.push(entry);

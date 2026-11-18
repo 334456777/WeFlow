@@ -429,7 +429,8 @@ impl ServiceHub {
                     }
                 }
             }
-            let latest = s.last_timestamp.max(s.sort_timestamp).max(latest_snapshot);
+            // sort_timestamp moves when the account is pinned or unpinned, without a message (#894).
+            let latest = s.last_timestamp.max(latest_snapshot);
             if latest > 0 {
                 s.last_timestamp = latest;
                 s.sort_timestamp = s.sort_timestamp.max(latest);

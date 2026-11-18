@@ -68,6 +68,18 @@ describe('sessionRows', () => {
     expect(sessionRows(sessions, pinned, 'all', '陈屿 ').map(r => r.id)).toEqual(['wxid_b']);
     expect(sessionRows(sessions, pinned, 'private', 'wxid').map(r => r.id)).toEqual(['wxid_a', 'wxid_b']);
   });
+
+  it('shows the time of the last message, and lists by where WeChat puts the conversation (#894)', () => {
+    // Pinning or unpinning moves sortTimestamp to that moment and leaves lastTimestamp at the last message.
+    const moved = [
+      session('wxid_b', '陈屿', 600, { lastTimestamp: 100 }),
+      session('g1@chatroom', '家人群', 550, { lastTimestamp: 150 }),
+      ...sessions.filter(s => s.username !== 'wxid_b' && s.username !== 'g1@chatroom'),
+    ];
+    const rows = sessionRows(moved, statuses, 'all', '');
+    expect(rows.map(r => r.id)).toEqual(['wxid_b', FOLDED_ID, 'wxid_a', 'gh_news']);
+    expect(rows.map(r => r.time)).toEqual([100, 150, 500, 300]);
+  });
 });
 
 describe('formatSessionTime', () => {
