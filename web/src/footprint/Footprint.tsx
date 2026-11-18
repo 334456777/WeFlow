@@ -106,7 +106,7 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
             <span className="avatar avatar-initial" aria-hidden="true"><At size={18} /></span>
             <span className="rank-copy">
               <span className="rank-line"><strong>{name(m.session_id)}</strong><span className="num cache-text">{clock(m.create_time)}</span></span>
-              <span className="cache-text clamp-2">{sender ? sender + '：' : ''}{mentionText(m.message_content)}</span>
+              <span className="cache-text clamp-2">{sender ? sender + t('：') : ''}{mentionText(m.message_content)}</span>
             </span>
             <button type="button" className="icon-button" aria-label={t('打开{name}里的这条消息', { name: name(m.session_id) })} title={t('打开聊天')} onClick={() => onOpen(m.session_id, m.local_id, m.create_time)}><ArrowSquareOut size={14} /></button>
           </li></Fragment>;

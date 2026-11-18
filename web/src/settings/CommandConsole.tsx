@@ -37,7 +37,7 @@ function FieldInput({ field, value, onChange }: { field: Field; value: string | 
     input = <label className="toggle"><input id={id} type="checkbox" aria-label={field.name} checked={value === true} onChange={event => onChange(event.target.checked)} /><span /></label>;
   } else if (field.type === 'choice') {
     input = <select id={id} className="console-input" value={String(value)} onChange={event => onChange(event.target.value)}>
-      {!field.required && <option value="">{t('（默认{value}）', { value: field.defaultValue ? '：' + field.defaultValue : '' })}</option>}
+      {!field.required && <option value="">{field.defaultValue ? t('（默认：{value}）', { value: field.defaultValue }) : t('（默认）')}</option>}
       {field.options!.map(o => <option key={o} value={o}>{o}</option>)}
     </select>;
   } else if (field.type === 'list') {

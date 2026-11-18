@@ -12,7 +12,7 @@ const columns = () => COLUMNS.map(c => t(c));
 
 const rowOf = (p: Payment) => [
   dayOf(p.time), formatClock(p.time), p.merchant, p.refund ? t('退款') : t('支出'), p.amount === null ? '' : formatYuan(p.amount).replaceAll(',', ''),
-  p.method, p.status, p.title, p.lines.map(l => (l.label ? l.label + '：' : '') + l.value).join('\n'),
+  p.method, p.status, p.title, p.lines.map(l => (l.label ? l.label + t('：') : '') + l.value).join('\n'),
 ];
 
 /** 「全部商户_2026-10-01_2026-10-12」, for the file's name and heading. */

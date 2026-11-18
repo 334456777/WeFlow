@@ -105,7 +105,7 @@ export function MomentPost({ post, onPreview }: { post: SnsPost; onPreview(previ
   const { pictures: shown, link } = partsOf(post);
   const place = post.location?.poiName || post.location?.city;
   const name = post.nickname || post.username;
-  return <article className="moment" aria-label={name + '，' + when(post.createTime)}>
+  return <article className="moment" aria-label={name + t('，') + when(post.createTime)}>
     <Avatar name={name} url={post.avatarUrl} />
     <div className="moment-body">
       <header><strong className="clamp-1">{name}</strong><time dateTime={new Date(post.createTime * 1000).toISOString()}>{when(post.createTime)}</time></header>

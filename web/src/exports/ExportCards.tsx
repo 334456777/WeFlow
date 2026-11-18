@@ -36,7 +36,7 @@ export function toggleFormat(formats: readonly MessageFormat[], value: MessageFo
 /** Several files come out, or media with them: the server packs them into one zip (`--zip`). */
 export const packed = (formats: readonly MessageFormat[], media: boolean) => formats.length > 1 || media;
 
-export const formatsLabel = (formats: readonly MessageFormat[]) => formats.map(formatLabel).join('、');
+export const formatsLabel = (formats: readonly MessageFormat[]) => formats.map(formatLabel).join(t('、'));
 
 /** The formats as chips, several at once (#342). */
 export function FormatChips({ formats, onChange }: { formats: readonly MessageFormat[]; onChange(formats: MessageFormat[]): void }) {
@@ -58,7 +58,7 @@ export function toggleMedia(kinds: readonly MediaKind[], value: MediaKind): Medi
   return MEDIA_KINDS.map(k => k.value).filter(k => next.has(k));
 }
 
-export const mediaLabel = (kinds: readonly MediaKind[]) => kinds.map(k => t(MEDIA_KINDS.find(m => m.value === k)!.label)).join('、');
+export const mediaLabel = (kinds: readonly MediaKind[]) => kinds.map(k => t(MEDIA_KINDS.find(m => m.value === k)!.label)).join(t('、'));
 
 /** The media as chips, like the formats: any of them, or none. */
 export function MediaChips({ kinds, onChange, label }: { kinds: readonly MediaKind[]; onChange(kinds: MediaKind[]): void; label: string }) {

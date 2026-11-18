@@ -1,5 +1,6 @@
 import { describe, expect, it } from '#test';
-import { DEFAULT_BATCH, exportParams, packed, toggleFormat, toggleMedia } from './ExportCards';
+import { setLang } from '../i18n';
+import { DEFAULT_BATCH, exportParams, formatsLabel, mediaLabel, packed, toggleFormat, toggleMedia } from './ExportCards';
 
 describe('the export formats, several at once (#342)', () => {
   it('puts formats on in the list order, and takes them off, the last too (#353)', () => {
@@ -30,5 +31,17 @@ describe('the media an export copies, each kind on its own (#694)', () => {
     expect(toggleMedia(['file'], 'image')).toEqual(['image', 'file']);
     expect(toggleMedia(['image', 'file'], 'image')).toEqual(['file']);
     expect(toggleMedia(['file'], 'file')).toEqual([]);
+  });
+
+  it('names the formats and the media in the page\'s language, the list marks too', async () => {
+    expect(formatsLabel(['html', 'json'])).toBe('HTML、JSON');
+    expect(mediaLabel(['image', 'voice'])).toBe('图片、语音');
+    await setLang('en');
+    try {
+      expect(formatsLabel(['html', 'json'])).toBe('HTML, JSON');
+      expect(mediaLabel(['image', 'voice'])).toBe('Image, Voice');
+    } finally {
+      await setLang('zh');
+    }
   });
 });
