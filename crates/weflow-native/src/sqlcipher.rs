@@ -270,7 +270,7 @@ fn verify_key_with(
     verify_key(db, raw_key)
 }
 
-/// [`verify_key`], derived once per process for each raw key and salt.
+/// The page cipher `verify_key` gives, derived once per process for each raw key and salt.
 ///
 /// The 256,000 rounds take about 0.1 s, and the same file is opened again after its snapshot was dropped, or by two
 /// threads at once. A thread asking for keys
