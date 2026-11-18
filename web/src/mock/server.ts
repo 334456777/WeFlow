@@ -1,23 +1,37 @@
-// The sample server (#879): it answers the page's reads with the sample records while no `weflow serve` has answered
-// the page, as the command API would (the wiki's command API page), so every page shows them with the components that
-// show a server's. What would change something, start a job or reach WeChat is refused, and the page says so.
+// The sample server (#879): it answers the page while no `weflow serve` has answered it, as the command API would (the
+// wiki's command API page), so every page shows the sample records with the components that show a server's. What
+// changes something is done in the page's memory until it is reloaded (#896): settings, the people left out of the
+// statistics, the insights; jobs run for a few seconds each, and an export hands back a note in place of the records;
+// what reaches WeChat or the server's computer answers as it would there.
 // A chunk of its own, loaded only then: it imports nothing of the page's but types (plugins/plainImport.ts).
-import type { SampleServer } from '../api/client';
+import type { SampleAnswer, SampleServer } from '../api/client';
 import type { GroupMember, MemberAnalytics, Resource, ResourceKind, Session } from '../api/contract.gen';
-import { excludeCandidates, groupHours, groupList, groupMedia, groupMessages, groupRanking, memberMessages, overall, rankings, timeSpread } from './analytics';
+import { excludeCandidates, excludedList, groupHours, groupList, groupMedia, groupMessages, groupRanking, memberMessages, overall, rankings, setExcluded, timeSpread } from './analytics';
 import { backupManifest } from './backup';
 import { dayOf, dayEnd, dayStart, NOW } from './clock';
 import { messageOf, threads, unread, type Message } from './chats';
+import {
+  clearAccount, DATA_DIR, detectDirs, findAccounts, getSetting, planClearAccount, profileSummaries, saveDatabaseKey, saveImageKeys,
+  setSetting, testDatabase, unsetSetting,
+} from './config';
+import { DB_SUMMARY, OPENAPI } from './console';
 import { footprint, footprintSummary } from './footprint';
-import { insightRecord, insightRecords } from './insights';
+import { clearInsights, insightRecord, insightRecords, markRead, triggerInsight } from './insights';
+import { dropJob, getJob, jobFileUrl, listJobs, startJob, type Effect } from './jobs';
 import { pictureUrl, voiceSound } from './media';
 import { postCounts, timeline } from './moments';
 import { pushes } from './official';
 import { payRecords } from './pay';
-import { contactRows, contacts, groups, ME, nameOf, officials, people, person, pinned } from './people';
+import { contactRows, contacts, groups, ME, nameOf, officials, people, person, pinned, sessionName } from './people';
 import { annualReport, dualReport, reportYears } from './reports';
+import { clearCache, health, listCache, listWeb, pickWeb, pruneWeb } from './upkeep';
 
 type Params = Parameters<SampleServer['answer']>[2];
+
+/** An answer of an error, as a server's `{ success: false, error }` with its status. */
+class Failure {
+  constructor(readonly status: number, readonly code: string, readonly message: string) {}
+}
 
 const text = (params: Params, key: string): string => {
   const value = params[key];
@@ -33,17 +47,13 @@ const list = (params: Params, key: string): string[] => {
 };
 const flag = (params: Params, key: string) => params[key] === true || params[key] === 'true';
 
-const nameOfSession = (username: string): string =>
-  groups.find(g => g.username === username)?.name ?? officials.find(o => o.username === username)?.name
-  ?? (username === 'filehelper' ? '文件传输助手' : nameOf(username));
-
 /** The conversation list, newest first: the chats, then the official accounts by their last push. */
 function sessions(): Session[] {
   const rows: Session[] = [];
   for (const [username, messages] of threads) {
     const last = messages[messages.length - 1];
     rows.push({
-      username, type: 0, displayName: nameOfSession(username), summary: last.parsedContent, unreadCount: unread[username] ?? 0,
+      username, type: 0, displayName: sessionName(username), summary: last.parsedContent, unreadCount: unread[username] ?? 0,
       sortTimestamp: last.createTime, lastTimestamp: last.createTime, lastMsgType: last.localType % 4_294_967_296,
       lastMsgSender: last.senderUsername ?? undefined, lastSenderDisplayName: last.senderUsername ? nameOf(last.senderUsername) : undefined,
       messageCountHint: messages.length, selfWxid: ME,
@@ -121,7 +131,7 @@ function resources(): Resource[] {
         senderUsername: m.senderUsername ?? '', text: m.parsedContent, imageMd5: m.imageMd5, appMsgKind: m.appMsgKind,
         content: kind === 'voice' ? `<msg><voicemsg voicelength="${(m.voiceDurationSeconds ?? 0) * 1000}" /></msg>` : '',
         fileName: m.fileName, fileExt: m.fileExt, fileSize: m.fileSize,
-        _cursor: session + ':' + m.localId, sessionDisplayName: nameOfSession(session), sessionId: session, resourceType: kind,
+        _cursor: session + ':' + m.localId, sessionDisplayName: sessionName(session), sessionId: session, resourceType: kind,
       });
     }
   }
@@ -147,7 +157,7 @@ function detail(params: Params) {
   const wxid = text(params, 'session-id');
   const p = person(wxid);
   return {
-    wxid, displayName: nameOfSession(wxid), remark: p?.remark, nickName: p?.nickname ?? nameOfSession(wxid), alias: p?.alias,
+    wxid, displayName: sessionName(wxid), remark: p?.remark, nickName: p?.nickname ?? sessionName(wxid), alias: p?.alias,
     messageCount: threads.get(wxid)?.length ?? 0,
   };
 }
@@ -267,8 +277,9 @@ const routes: Record<string, Route> = {
   'GET api/analytics/overall': () => overall(),
   'GET api/analytics/rankings': params => rankings(number(params, 'limit') ?? 20),
   'GET api/analytics/time': () => timeSpread(),
-  'GET api/analytics/excluded': () => [],
+  'GET api/analytics/excluded': () => excludedList(),
   'GET api/analytics/exclude-candidates': () => excludeCandidates(),
+  'PUT analytics/excluded': params => setExcluded(list(params, 'set')),
   'GET api/group/list': () => groupList(),
   'GET api/group/ranking': params => groupRanking(text(params, 'chatroom-id'), text(params, 'start'), text(params, 'end'), number(params, 'limit') ?? 20),
   'GET api/group/hours': params => groupHours(text(params, 'chatroom-id'), text(params, 'start'), text(params, 'end')),
@@ -283,18 +294,112 @@ const routes: Record<string, Route> = {
   'POST insight/footprint-summary': params => footprintSummary(text(params, 'payload-json')),
   'GET insight/records': params => insightRecords(text(params, 'keyword'), text(params, 'session'), number(params, 'offset') ?? 0, number(params, 'limit') ?? 50),
   'GET api/insight/get': params => insightRecord(text(params, 'id')),
+  'PUT insight/mark-read': params => markRead(text(params, 'id')),
+  'DELETE insight/clear': params => clearInsights(text(params, 'session')),
+  'POST insight/trigger': params => triggerInsight(text(params, 'session-id')),
+  'POST insight/test': () => ({ success: true, message: '模型有回应（示例数据）。' }),
   'GET backup/inspect': () => backupManifest(),
+
+  // the settings, the account's setup and the server's own upkeep (#896)
+  'GET health': () => health(),
+  'GET api/config/profiles': () => profileSummaries(),
+  'GET api/config/get': params => getSetting(text(params, 'key')),
+  'PUT config/set': params => setSetting(text(params, 'key'), text(params, 'value')),
+  'DELETE config/unset': params => unsetSetting(text(params, 'key')),
+  'GET api/db/detect': () => detectDirs(),
+  'GET api/db/wxid': params => findAccounts(text(params, 'root') || DATA_DIR),
+  'GET api/db/test': () => {
+    const tested = testDatabase();
+    return 'problem' in tested ? new Failure(400, 'config_error', tested.problem) : tested.data;
+  },
+  'POST key/image': () => saveImageKeys(),
+  'DELETE cache/clear-account': params => (flag(params, 'dry-run') ? planClearAccount() : clearAccount()),
+  'GET api/cache/list': () => listCache(),
+  'DELETE cache/clear': params => clearCache(params),
+  'GET web/list': params => listWeb(flag(params, 'remote')),
+  'PUT web/use': params => pickWeb(text(params, 'version')) ?? new Failure(404, 'not_found', '没有已发布的 ' + text(params, 'version') + ' 版本。'),
+  'DELETE web/prune': () => pruneWeb(),
 };
 
+/** Where the sample's backup is said to be written. */
+const BACKUP = 'C:\\Users\\sample\\Documents\\WeFlow\\backups\\weflow-backup.zip';
+
+/** What a job of `command` changes once it has succeeded, and the data it answers then. */
+function effectOf(command: string, params: Params): Effect | undefined {
+  switch (command) {
+    case 'key db': return () => saveDatabaseKey();
+    case 'backup create': return () => ({ out: BACKUP, skipped: backupManifest().skipped, unsettled: [] });
+    case 'backup restore': return () => ({ restored: backupManifest().entries.length, target: text(params, 'target') });
+    default: return undefined;
+  }
+}
+
+/** The command of a route: `export/messages` is `export messages`. */
+const commandOf = (route: string) => route.split('/').join(' ');
+
+/** Answers `method route`: a route's data, or its failure; refused when the sample has no such route. */
+function answer(method: string, route: string, params: Params, async: boolean, wantsFile: boolean): SampleAnswer {
+  if (method === 'GET' && route === 'jobs') return { data: listJobs() };
+  const job = /^jobs\/([^/]+)$/.exec(route);
+  if (job && (method === 'GET' || method === 'DELETE')) {
+    const id = decodeURIComponent(job[1]);
+    const found = method === 'GET' ? getJob(id) : dropJob(id);
+    return found ? { data: found } : { failed: { status: 404, code: 'not_found', message: '没有这个任务。' } };
+  }
+  if (async && method !== 'GET') return { data: startJob(commandOf(route), params, wantsFile, effectOf(commandOf(route), params)) };
+  const handler = routes[method + ' ' + route];
+  if (!handler) return { refused: true };
+  const data = handler(params);
+  return data instanceof Failure ? { failed: { status: data.status, code: data.code, message: data.message } } : { data };
+}
+
+/** The flags of a command line, as `weflow` takes them. */
+function flags(params: Params): string[] {
+  return Object.entries(params).flatMap(([key, value]) => {
+    if (value === undefined || value === null || value === '' || value === false) return [];
+    if (value === true) return ['--' + key];
+    return (Array.isArray(value) ? value : [value]).flatMap(item => ['--' + key, String(item)]);
+  });
+}
+
+/** What a command of the console answers that the routes above do not have: as the CLI would, with the sample. */
+function consoleData(command: string, params: Params): unknown {
+  switch (command) {
+    case 'db open': return { accountDir: DATA_DIR + '\\' + ME + '_5f3a', wxid: ME, sessions: sessions().length, ...DB_SUMMARY };
+    case 'key db': return saveDatabaseKey();
+    case 'image auto-download start': return { running: true, pid: 4242, note: '示例数据：微信没有真的在运行。' };
+    default:
+      return command.startsWith('export ')
+        ? { written: false, note: '示例数据：连接 weflow serve 后才能导出真实记录。' }
+        : { note: '示例数据：这条命令在示例里不做什么。', args: flags(params) };
+  }
+}
+
 export const server: SampleServer = {
-  answer(method, path, params) {
-    const route = routes[method + ' ' + path];
-    return route ? { data: route(params) } : { refused: true };
+  answer(method, path, params, async) {
+    const [route, query = ''] = path.split('?');
+    return answer(method, route, params, async, new URLSearchParams(query).get('return') === 'file');
   },
   media(path, params) {
     if (path === 'api/chat/voice-data') return voiceSound();
     if (path === 'api/chat/image-data') return pictureUrl(messageOf(text(params, 'session-id'), number(params, 'msg-id') ?? 0)?.imageMd5 ?? '');
     if (path === 'api/sns/media') return pictureUrl(text(params, 'url').split('/').pop() ?? '');
+    const job = /^jobs\/([^/]+)\/file$/.exec(path);
+    if (job) return jobFileUrl(decodeURIComponent(job[1])) ?? 'about:blank';
     return pictureUrl('logo');
+  },
+  openapi: () => structuredClone(OPENAPI),
+  raw(method, path, params, std) {
+    const route = path.replace(/^\/+/, '');
+    const command = commandOf(route);
+    if (std === 'in') return { status: 200, exitCode: null, body: { argv: ['weflow', '--json', ...command.split(' '), ...flags(params)], stdin: null } };
+    const read = method === 'GET' ? answer('GET', 'api/' + route, params, false, false) : { refused: true as const };
+    const answered = 'refused' in read ? answer(method, route, params, false, false) : read;
+    const data = 'data' in answered ? answered.data : 'refused' in answered ? consoleData(command, params) : null;
+    if ('failed' in answered) {
+      const body = { success: false, error: { code: answered.failed.code, message: answered.failed.message } };
+      return { status: answered.failed.status, exitCode: '1', body: std === 'out' ? answered.failed.message + '\n' : body };
+    }
+    return { status: 200, exitCode: '0', body: std === 'out' ? JSON.stringify(data, null, 2) + '\n' : { success: true, data } };
   },
 };

@@ -1,6 +1,7 @@
 // The sample's AI insights: what the insight engine noticed in the chats, about WeFlow and about the account's own life,
-// with how each was written.
-import type { InsightContact, InsightRecord, InsightSummary } from '../api/contract.gen';
+// with how each was written. Read, cleared and written anew in the page while it is open (#896).
+import type { InsightCleared, InsightContact, InsightMarked, InsightRecord, InsightReply, InsightSummary } from '../api/contract.gen';
+import { threads } from './chats';
 import { ago, at, dayOf, NOW } from './clock';
 import { ME, nameOf } from './people';
 
@@ -63,4 +64,45 @@ export function insightRecord(id: string): { success: boolean; record?: InsightR
       },
     },
   };
+}
+
+/** `insight mark-read <id>`. */
+export function markRead(id: string): InsightMarked {
+  const w = written.find(r => r.id === id);
+  if (!w) return { success: false, error: 'not found' };
+  w.read = true;
+  return { success: true };
+}
+
+/** `insight clear [session]`: every record, or one conversation's. */
+export function clearInsights(session: string): InsightCleared {
+  const before = written.length;
+  for (let i = written.length - 1; i >= 0; i--) if (!session || written[i].session === session) written.splice(i, 1);
+  return { success: true, removed: before - written.length };
+}
+
+let made = 0;
+
+/** The private chats, the one talked in last first. */
+const privateChats = () => [...threads].filter(([id]) => id.startsWith('wxid_') && id !== ME)
+  .sort(([, a], [, b]) => b[b.length - 1].createTime - a[a.length - 1].createTime);
+
+/**
+ * `insight trigger [session]`: one insight now, of that conversation or of the private chat talked in last, from the
+ * last thing said in it with something to it: the other side's first, a reply of a word or two passed over.
+ */
+export function triggerInsight(session: string): InsightReply {
+  const id = session || privateChats()[0]?.[0];
+  const texts = [...(id ? threads.get(id) ?? [] : [])].reverse().filter(m => m.localType === 1);
+  const said = texts.find(m => m.senderUsername !== ME && m.parsedContent.length >= 8) ?? texts.find(m => m.parsedContent.length >= 8) ?? texts[0];
+  if (!id || !said) return { success: false, message: '这个会话最近没有可以总结的文字消息。' };
+  const name = nameOf(id);
+  const line = said.parsedContent.length > 24 ? said.parsedContent.slice(0, 24) + '…' : said.parsedContent;
+  made += 1;
+  const w: Written = {
+    id: 'sample-insight-new-' + made, session: id, at: Math.floor(Date.now() / 1000), reason: 'test', read: false,
+    text: `和${name}最近聊到「${line}」。可以接着这件事回一句，问问后来怎么样了。`,
+  };
+  written.push(w);
+  return { success: true, message: '已生成一条见解。', record: summaryOf(w) };
 }

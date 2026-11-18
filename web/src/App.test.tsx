@@ -80,7 +80,7 @@ describe('App', () => {
     expect(fetch.mock.calls.filter(([url]) => String(url).includes('/api/'))).toEqual([]);
   });
 
-  it('searches the sample conversations, and refuses what would change something (#879)', async () => {
+  it('searches the sample conversations, and exports one as a job of the sample server (#879, #896)', async () => {
     await renderWith(null);
     await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
     const field = screen.getByRole('searchbox', { name: '搜索此会话的消息' });
@@ -88,9 +88,17 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '搜索' }));
     await waitFor(() => expect(document.querySelectorAll('.search-results .search-result')).toHaveLength(1));
     expect(document.querySelector('.search-results')?.textContent).toContain('WAL 解析的 Kani 证明');
+    // the job runs in the page for a few seconds, in the task centre; what it hands back says the sample is not exported
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('这是示例数据，连接 weflow serve 后才能这样做。'));
-  });
+    await waitFor(() => expect(document.querySelector('[data-card="tasks"] .task-list')?.textContent).toContain('导出 WeFlow 开发群 · HTML'));
+    const card = document.querySelector<HTMLElement>('[data-card="export"]')!;
+    const link = await waitFor(() => within(card).getByRole('link', { name: '下载文件' }), { timeout: 8000 });
+    expect(link.getAttribute('href')).toMatch(/^blob:/);
+    expect(link.getAttribute('download')).toBe('WeFlow 示例数据说明.txt');
+    const note = await (await fetch(link.getAttribute('href')!)).text();
+    expect(note).toContain('连接 weflow serve 后才能导出真实记录');
+    expect(note).toContain('任务：导出聊天记录 · WeFlow 开发群');
+  }, 15_000);
 
   it('shows the sample on every page that shows records, said to be the sample (#879)', async () => {
     await renderWith(null);
@@ -243,12 +251,24 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: '连接状态' }).textContent).toContain('weflow serve');
     const sections = screen.getByRole('navigation', { name: '设置分组' });
     expect(Array.from(sections.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['连接状态', '账号', '外观与浏览', '启动选项', 'AI 见解', '缓存', '网页版本', '命令控制台']);
-    expect(within(sections).getByRole('button', { name: /^启动选项/ }).textContent).toContain('连接后可用');
+    // no server: the sample server keeps the server's settings in the page (#896), so its sections are usable
+    expect(within(sections).getByRole('button', { name: /^启动选项/ }).textContent).toContain('地址、端口和并发');
     fireEvent.click(within(sections).getByRole('button', { name: /^启动选项/ }));
-    expect(screen.getByRole('region', { name: '启动选项' }).textContent).toContain('连接 weflow serve 后才能使用。');
-    fireEvent.click(screen.getByRole('button', { name: '查看连接状态' }));
+    await waitFor(() => expect(within(screen.getByRole('region', { name: '启动选项' })).getByPlaceholderText('18108')).toBeTruthy());
+    fireEvent.click(within(sections).getByRole('button', { name: /^连接状态/ }));
     expect(screen.getByRole('region', { name: '连接状态' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: '启动选项' })).toBeNull();
+  });
+
+  it('keeps the sample server\'s settings in the page: saved, read again, gone on reload (#896)', async () => {
+    await renderWith(null);
+    await waitFor(() => expect(screen.getByRole('button', { name: '选择陈屿' })).toBeTruthy());
+    openSettings('启动选项');
+    const port = await waitFor(() => within(screen.getByRole('region', { name: '启动选项' })).getByPlaceholderText('18108'));
+    fireEvent.change(port, { target: { value: '18200' } });
+    fireEvent.click(within(screen.getByRole('region', { name: '启动选项' })).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.getByRole('region', { name: '启动选项' }).textContent).toContain('已保存，重启 weflow serve 后生效。'));
+    expect((within(screen.getByRole('region', { name: '启动选项' })).getByPlaceholderText('18108') as HTMLInputElement).value).toBe('18200');
   });
 
   it('exports the open conversation as a job of the server: progress, cancel, then the file to save (#211)', async () => {

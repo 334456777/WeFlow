@@ -37,11 +37,12 @@ export const SECTIONS: Section[] = SECTION_GROUPS.flatMap(group => group.section
 
 export const sectionLabel = (id: SectionId) => t(SECTIONS.find(section => section.id === id)!.label);
 
-export function SettingsNav({ open, summaries, connected, onOpen }: {
+export function SettingsNav({ open, summaries, usable, onOpen }: {
   open: SectionId;
   /** Each section's state in a few words. */
   summaries: Record<SectionId, string>;
-  connected: boolean;
+  /** What is kept on the server can be used: it answers, or the sample server does in its place (#896). */
+  usable: boolean;
   onOpen(id: SectionId): void;
 }) {
   return <div className="session-pane settings-nav-pane">
@@ -52,7 +53,7 @@ export function SettingsNav({ open, summaries, connected, onOpen }: {
         <p className="settings-nav-caption" aria-hidden="true">{t(group.label)}</p>
         {group.sections.map(({ id, label, icon: Glyph, online }) => {
           const active = id === open;
-          const idle = online && !connected;
+          const idle = online && !usable;
           return <button type="button" key={id} className={'conversation-row settings-nav-row' + (active ? ' active' : '') + (idle ? ' idle' : '')}
             aria-current={active ? 'true' : undefined} onClick={() => onOpen(id)}>
             <span className="settings-nav-icon" aria-hidden="true"><Glyph size={18} /></span>

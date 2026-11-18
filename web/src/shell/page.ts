@@ -1,7 +1,7 @@
 // What the workspace gives each page and what a page gives back (#401). A page keeps its own state, so it stays as it
 // was when another page is opened and back; the workspace picks the page shown and gathers the console's cards.
 import type { ReactNode } from 'react';
-import type { Backend } from '../api/backend';
+import type { Backend, Health } from '../api/backend';
 import type { ChatSession } from '../api/chat';
 import type { Profile } from '../api/setup';
 import type { Card } from '../CardStack';
@@ -12,8 +12,15 @@ import type { JobsState } from '../jobs/useJobs';
 /** What every page shares: the server, the records read once for all pages, and the parts of the screen. */
 export interface Shell {
   backend: Backend;
-  /** The server answers now: what changes it or follows it (jobs, the settings) needs this. */
+  /** The server answers now. */
   connected: boolean;
+  /**
+   * What changes something or follows it (jobs, the settings) can be used: the server answers, or the sample server
+   * answers in its place (#896), keeping what changes in the page.
+   */
+  usable: boolean;
+  /** What `/health` says of the server `usable` acts on: the server's, or the sample server's; null while neither. */
+  health: Health | null;
   /**
    * The page shows the server's records (`holdsRecords`): connected, or gone after it was, when what was read stays
    * shown and what is not read yet is asked for (and fails, saying the server is not reached) until it is back.

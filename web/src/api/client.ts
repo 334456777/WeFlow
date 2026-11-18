@@ -110,17 +110,31 @@ export function apiUrl(path: string, params: Params = {}): string {
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
+ * What the sample server answers a route: its data; its error, as a server's status and `error`; or `refused`, for a
+ * route it does not have. (The chunk imports nothing of the page's, so it builds no ApiError itself.)
+ */
+export type SampleAnswer =
+  | { data: unknown }
+  | { failed: { status: number; code: string; message: string } }
+  | { refused: true };
+
+/** A command run as the console runs it: the status, the `X-WeFlow-Exit-Code` and the document (or text). */
+export interface RawAnswer { status: number; exitCode: string | null; body: unknown }
+
+/**
  * What answers the page instead of a server (#879): the sample records of `src/mock`, while no server has answered
  * this page or the one there does not suit it. The page loads it, a chunk of its own, and sets it with `setSample`.
+ * What changes something is done in the page's memory, and jobs run there (#896).
  */
 export interface SampleServer {
-  /**
-   * The data the route answers, as `weflow serve` would; `refused` for what the sample does not do: any change, a job,
-   * a route it does not have. (The chunk imports nothing of the page's, so it builds no ApiError itself.)
-   */
-  answer(method: Method, path: string, params: Params): { data: unknown } | { refused: true };
-  /** The address of a media file of the sample: what `path` and `params` address on a server. */
+  /** The route answered as `weflow serve` would; `async` for a request that prefers to be run as a job. */
+  answer(method: Method, path: string, params: Params, async: boolean): SampleAnswer;
+  /** The address of a media file of the sample, or of a job's file: what `path` and `params` address on a server. */
   media(path: string, params: Params): string;
+  /** The sample's `/openapi.json`: the commands its console lists. */
+  openapi(): unknown;
+  /** A command run as the console runs it, `std` as its `?std=`. */
+  raw(method: Method, path: string, params: Params, std?: 'in' | 'out' | 'err'): RawAnswer;
 }
 
 interface Sampling { server: Promise<SampleServer>; loaded: SampleServer | null }
@@ -144,18 +158,22 @@ export function mediaAddress(path: string, params: Params): string {
   return sample?.loaded ? sample.loaded.media(path, params) : apiUrl(path, params);
 }
 
-async function answerSample<T>(server: Promise<SampleServer>, method: Method, path: string, params: Params, signal?: AbortSignal): Promise<T> {
+async function answerSample<T>(server: Promise<SampleServer>, method: Method, path: string, params: Params, async: boolean, signal?: AbortSignal): Promise<T> {
   const answering = await server;
   signal?.throwIfAborted();
-  const answer = answering.answer(method, path.replace(/^\/+/, ''), params);
+  const answer = answering.answer(method, path.replace(/^\/+/, ''), params, async);
   if ('refused' in answer) throw new ApiError(0, 'sample', t('这是示例数据，连接 weflow serve 后才能这样做。'));
-  // the answer is the page's own, as one read from a server is: what it changes leaves the sample as it is
+  if ('failed' in answer) throw new ApiError(answer.failed.status, answer.failed.code, answer.failed.message);
+  // the answer is the page's own, as one read from a server is: what the page does to it leaves the sample as it is
   return structuredClone(answer.data) as T;
 }
 
+/** The sample server while it answers the page; null otherwise. */
+export const sampleServer = (): Promise<SampleServer> | null => sample?.server ?? null;
+
 /** Runs a route: GET and DELETE take the parameters as a query, the other methods as a JSON body. */
 export async function call<T>(method: Method, path: string, params: Params = {}, signal?: AbortSignal, extra: Record<string, string> = {}): Promise<T> {
-  if (sample) return answerSample<T>(sample.server, method, path, params, signal);
+  if (sample) return answerSample<T>(sample.server, method, path, params, extra.Prefer === 'respond-async', signal);
   const revision = tokenRevision;
   const inQuery = method === 'GET' || method === 'DELETE';
   const headers: Record<string, string> = { Accept: 'application/json', ...extra };

@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowClockwise, Check, CircleNotch, FolderOpen, Key, X } from '@phosphor-icons/react';
 import type { Health } from '../api/backend';
-import { ApiError } from '../api/client';
+import { ApiError, sampling } from '../api/client';
 import { isFinished, jobEventsUrl } from '../api/jobs';
 import { onPresence, present } from '../api/presence';
 import {
@@ -123,7 +123,8 @@ function useKeyPhase(id: string | null): KeyPhase | null {
   const here = useSyncExternalStore(onPresence, present);
   useEffect(() => { setPhase(null); }, [id]);
   useEffect(() => {
-    if (!id || !here || typeof EventSource === 'undefined') return;
+    // the sample's job (#896) sends no events: it says it is getting ready until it is done
+    if (!id || !here || typeof EventSource === 'undefined' || sampling()) return;
     const source = new EventSource(jobEventsUrl(id));
     source.addEventListener('key_phase', event => { try { setPhase(JSON.parse((event as MessageEvent).data) as KeyPhase); } catch { /* not JSON */ } });
     source.addEventListener('result', () => source.close());

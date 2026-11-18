@@ -20,9 +20,23 @@ const lastWith = (username: string): number | null => {
   return messages?.length ? messages[messages.length - 1].createTime : null;
 };
 
+/** The people the statistics leave out (`analytics excluded`), kept in the page while it is open (#896). */
+let excluded: string[] = [];
+
+export const excludedList = (): string[] => [...excluded];
+
+/** `analytics excluded --set`: replaces the list; an empty one clears it. Answers the list as saved. */
+export function setExcluded(usernames: readonly string[]): string[] {
+  excluded = [...new Set(usernames.filter(Boolean))];
+  return excludedList();
+}
+
+/** The private chats counted: those of the people not left out. */
+const counted = () => PRIVATE.filter(([username]) => !excluded.includes(username));
+
 export function overall(): OverallStatistics {
-  const sent = PRIVATE.reduce((n, [, s]) => n + s, 0);
-  const received = PRIVATE.reduce((n, [, , r]) => n + r, 0);
+  const sent = counted().reduce((n, [, s]) => n + s, 0);
+  const received = counted().reduce((n, [, , r]) => n + r, 0);
   const total = sent + received;
   const image = Math.round(total * 0.087);
   const voice = Math.round(total * 0.032);
@@ -37,7 +51,7 @@ export function overall(): OverallStatistics {
   };
 }
 
-export const rankings = (limit: number): ContactRank[] => PRIVATE.slice(0, limit).map(([username, sent, received]) => ({
+export const rankings = (limit: number): ContactRank[] => counted().slice(0, limit).map(([username, sent, received]) => ({
   username, displayName: person(username)?.name ?? username, wechatId: person(username)?.alias ?? username,
   messageCount: sent + received, sentCount: sent, receivedCount: received, lastMessageTime: lastWith(username),
 }));

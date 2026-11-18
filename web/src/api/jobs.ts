@@ -1,6 +1,6 @@
 // Jobs (#211): commands run in the background with `Prefer: respond-async` — exports above all — their progress
 // as server-sent events, cancelling them, and the file a `return=file` job wrote (the wiki's command API page).
-import { apiUrl, call, get, token, type Params } from './client';
+import { apiUrl, call, get, mediaAddress, token, type Params } from './client';
 import type * as Contract from './contract.gen';
 import { msg, t } from '../i18n';
 
@@ -38,8 +38,11 @@ export const getJob = (id: string, signal?: AbortSignal) => get<Job>('jobs/' + e
 /** Cancels a queued or running job, or forgets a finished one; answers the job as it ended. */
 export const dropJob = (id: string) => call<Job>('DELETE', 'jobs/' + encodeURIComponent(id));
 
-/** The job's file, for a link to save; the token goes in the address, as a link sends no header. */
-export const jobFileUrl = (id: string) => apiUrl('jobs/' + encodeURIComponent(id) + '/file', { access_token: token() });
+/**
+ * The job's file, for a link to save; the token goes in the address, as a link sends no header. The sample's jobs
+ * (#896) keep theirs in the page.
+ */
+export const jobFileUrl = (id: string) => mediaAddress('jobs/' + encodeURIComponent(id) + '/file', { access_token: token() });
 
 export const jobEventsUrl = (id: string) => apiUrl('jobs/' + encodeURIComponent(id) + '/events', { access_token: token() });
 
