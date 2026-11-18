@@ -1042,6 +1042,22 @@ fn typed_source(row: &MsgRow, table_name: &str) -> SourceInfo {
     }
 }
 
+/// The location an app message names, on a message that has none of its own.
+fn fill_location(m: &mut ChatMessage, t: &Type49Info) {
+    if m.location_lat.is_none() {
+        m.location_lat = t.location_lat;
+    }
+    if m.location_lng.is_none() {
+        m.location_lng = t.location_lng;
+    }
+    if m.location_poiname.is_none() {
+        m.location_poiname.clone_from(&t.location_poiname);
+    }
+    if m.location_label.is_none() {
+        m.location_label.clone_from(&t.location_label);
+    }
+}
+
 /// A message of a row's columns; `packed_info` is the row's, the only place besides its text a media file is named.
 fn chat_message(
     fields: RowFields,
@@ -1073,6 +1089,7 @@ fn chat_message(
         sender_username: sender_raw,
         ..Default::default()
     };
+    let app_message = (local_type == 49 || local_type == 8589934592049) && !content.is_empty();
 
     if local_type == 47 && !content.is_empty() {
         let e = parse_emoji_info(&content);
@@ -1128,7 +1145,7 @@ fn chat_message(
             xml_attr(&content, "location", "poiname"),
             extract_xml_value(&content, "poiname"),
         ]));
-    } else if (local_type == 49 || local_type == 8589934592049) && !content.is_empty() {
+    } else if app_message {
         let t = parse_type49_message(&content);
         m.quoted_content = t.quoted_content.clone();
         m.quoted_sender = t.quoted_sender.clone();
@@ -1137,7 +1154,14 @@ fn chat_message(
         (m.quoted_content, m.quoted_sender) = quote_of(&content);
     }
 
-    if content.contains("<appmsg") || content.contains("&lt;appmsg") {
+    let has_appmsg = content.contains("<appmsg") || content.contains("&lt;appmsg");
+    if has_appmsg && app_message {
+        // `t49` is the parse of this content already: only the location it names is not the message's yet
+        if let Some(t) = m.t49.take() {
+            fill_location(&mut m, &t);
+            m.t49 = Some(t);
+        }
+    } else if has_appmsg {
         let t = parse_type49_message(&content);
         let cur = m.t49.get_or_insert_default();
         macro_rules! fill {
@@ -1177,18 +1201,7 @@ fn chat_message(
         fill!(chat_record_title);
         fill!(transfer_payer_username);
         fill!(transfer_receiver_username);
-        if m.location_lat.is_none() {
-            m.location_lat = t.location_lat;
-        }
-        if m.location_lng.is_none() {
-            m.location_lng = t.location_lng;
-        }
-        if m.location_poiname.is_none() {
-            m.location_poiname = t.location_poiname.clone();
-        }
-        if m.location_label.is_none() {
-            m.location_label = t.location_label.clone();
-        }
+        fill_location(&mut m, &t);
         if m.quoted_content.is_none() {
             m.quoted_content = t.quoted_content.clone();
         }
@@ -1273,6 +1286,58 @@ mod tests {
             parsed_content("wxid_me:\nhi", 1, Some("wxid_bob")),
             "wxid_me:\nhi"
         );
+    }
+
+    #[test]
+    fn an_app_message_takes_its_fields_and_location_from_its_parse() {
+        let contents = [
+            r#"<msg><appmsg><title>Bund</title><type>17</type></appmsg><location x="31.2" y="121.5" label="Bund" poiname="外滩"/></msg>"#,
+            "<msg><appmsg><title>f.pdf</title><type>6</type><appattach><totallen>12</totallen><fileext>pdf</fileext>\
+             </appattach><md5>abc</md5></appmsg></msg>",
+            "<msg><appmsg><title>好看</title><type>57</type><refermsg><type>1</type><svrid>9</svrid>\
+             <content>原话</content><displayname>Bob</displayname></refermsg></appmsg></msg>",
+            "&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;T&lt;/title&gt;&lt;type&gt;5&lt;/type&gt;\
+             &lt;url&gt;http://x&lt;/url&gt;&lt;/appmsg&gt;&lt;/msg&gt;",
+        ];
+        for local_type in [49, 8_589_934_592_049] {
+            for content in contents {
+                let row = MsgRow {
+                    local_type,
+                    content: content.into(),
+                    ..MsgRow::default()
+                };
+                let m = map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0);
+                let t = parse_type49_message(content);
+                assert_eq!(
+                    serde_json::to_value(m.t49.as_deref()).unwrap(),
+                    serde_json::to_value(Some(&t)).unwrap(),
+                    "{content}"
+                );
+                assert_eq!(
+                    (m.location_lat, m.location_lng),
+                    (t.location_lat, t.location_lng),
+                    "{content}"
+                );
+                assert_eq!(
+                    (m.location_poiname, m.location_label),
+                    (t.location_poiname, t.location_label),
+                    "{content}"
+                );
+                assert_eq!(
+                    (m.quoted_content, m.quoted_sender),
+                    (t.quoted_content, t.quoted_sender),
+                    "{content}"
+                );
+            }
+        }
+        let location = MsgRow {
+            local_type: 49,
+            content: contents[0].into(),
+            ..MsgRow::default()
+        };
+        let m = map_msg_rows(vec![location], "wxid_bob", "wxid_me").remove(0);
+        assert_eq!((m.location_lat, m.location_lng), (Some(31.2), Some(121.5)));
+        assert_eq!(m.location_label.as_deref(), Some("Bund"));
     }
 
     #[test]
