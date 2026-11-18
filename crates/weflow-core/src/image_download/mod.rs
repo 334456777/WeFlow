@@ -46,24 +46,14 @@ fn pick_main_pid(processes: &[(u32, String)]) -> Option<u32> {
 
 #[cfg(windows)]
 fn find_main_wechat_pid() -> Option<u32> {
-    let all = crate::process::processes();
-    let wechat: Vec<&crate::process::Process> = all
+    // a process whose command line cannot be read (one this user may not open) is left out
+    let lines: Vec<(u32, String)> = crate::process::processes()
         .iter()
         .filter(|p| p.image.eq_ignore_ascii_case("Weixin.exe"))
-        .collect();
-    // a process that cannot be opened is left out, as one whose command line WMI did not give
-    let lines: Vec<(u32, String)> = wechat
-        .iter()
         .filter_map(|p| Some((p.pid, crate::process::command_line(p.pid)?)))
         .collect();
     let main = pick_main_pid(&lines);
-    // the other way to tell it, not trusted yet (#101): the one whose parent is no `Weixin.exe`
-    let rootless: Vec<u32> = wechat
-        .iter()
-        .filter(|p| !wechat.iter().any(|q| q.pid == p.parent))
-        .map(|p| p.pid)
-        .collect();
-    tracing::debug!(?main, ?rootless, "main WeChat process");
+    tracing::debug!(?main, "main WeChat process");
     main
 }
 
