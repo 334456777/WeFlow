@@ -38,5 +38,7 @@ export const payRecords: PayRecord[] = paid.map((p, i) => ({
   description: (p.refund
     ? ['退款金额¥' + p.amount, '退款方式' + p.method, '退款原因' + p.item, '商户名称' + p.merchant, '当前状态已到账']
     : ['付款金额¥' + p.amount, '支付方式' + p.method, '商品详情' + p.item, '收款方' + p.merchant, '交易状态支付成功，对方已收款']).join('\n'),
+  // no receipt card's top line, nor an amount in the title
+  method: null, status: null,
   merchantName: p.merchant, merchantIcon: '', timestamp: p.at, localId: 900 - i, createTime: p.at,
 })).sort((a, b) => b.timestamp - a.timestamp);

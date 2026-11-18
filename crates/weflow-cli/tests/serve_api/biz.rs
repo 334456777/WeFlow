@@ -154,7 +154,9 @@ fn pay_records_include_the_cards_among_the_service_notices() {
     const PAY: &str = "gh_3dfda90e39d6";
     let card = |from: &str, title: &str| {
         format!(
-            "<msg><fromusername>{from}</fromusername><appmsg><title>{title}</title><des>d</des></appmsg></msg>"
+            "<msg><fromusername>{from}</fromusername><appmsg><title>{title}</title><des>d</des><mmreader>\
+             <template_detail><line_content><topline><key><word><![CDATA[使用零钱支付]]></word></key>\
+             </topline></line_content></template_detail></mmreader></appmsg></msg>"
         )
     };
     let home = account_home_with(&root, |f| {
@@ -163,7 +165,7 @@ fn pay_records_include_the_cards_among_the_service_notices() {
             &[(
                 "notifymessage",
                 vec![
-                    MsgSpec::text(1, "notifymessage", T0, &card(PAY, "付款")).of_type(49),
+                    MsgSpec::text(1, "notifymessage", T0, &card(PAY, "已支付¥9.99")).of_type(49),
                     MsgSpec::text(2, "notifymessage", T0 + 60, &card("gh_other", "别的通知"))
                         .of_type(49),
                 ],
@@ -174,7 +176,10 @@ fn pay_records_include_the_cards_among_the_service_notices() {
     let all = server.call("GET", "/biz/pay-records?limit=0", "").json();
     let records = all["data"]["records"].as_array().unwrap();
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0]["title"], "付款");
+    assert_eq!(records[0]["title"], "已支付¥9.99");
+    // the method of the card's top line and the state of its title
+    assert_eq!(records[0]["method"], "零钱");
+    assert_eq!(records[0]["status"], "已支付");
     // a page counts the card of another account too
     let newest = server.call("GET", "/biz/pay-records?limit=1", "").json();
     assert_eq!(newest["data"]["records"].as_array().unwrap().len(), 0);

@@ -45,6 +45,23 @@ fn parse_biz_content_list(xml_str: &str) -> Vec<BizArticle> {
     items
 }
 
+/// How a WeChat Pay card was paid: the method in its top line's key, 「零钱」 of 「使用零钱支付」. Other keys name
+/// something else (the amount, a refund), so they give none.
+fn pay_method(xml: &str) -> Option<String> {
+    let topline = crate::xml::tag_inner(xml, "topline")?;
+    let key = crate::xml::tag_inner(topline, "key")?;
+    let word = extract_xml_value(key, "word");
+    let method = word.strip_prefix("使用")?.strip_suffix("支付")?.trim();
+    (!method.is_empty()).then(|| method.to_string())
+}
+
+/// The state a WeChat Pay title gives before its amount: 「已支付」 of 「已支付¥9.99」.
+fn pay_status(title: &str) -> Option<String> {
+    let (state, _) = title.split_once(['¥', '￥'])?;
+    let state = state.trim();
+    (!state.is_empty()).then(|| state.to_string())
+}
+
 /// A notice, without the message's ids.
 fn parse_pay_xml(xml_str: &str) -> Option<PayRecord> {
     if xml_str.is_empty() {
@@ -66,6 +83,8 @@ fn parse_pay_xml(xml_str: &str) -> Option<PayRecord> {
     let pub_time_str = extract_xml_value(xml_str, "pub_time");
     let pub_time: i64 = pub_time_str.parse().unwrap_or(0);
     Some(PayRecord {
+        method: pay_method(xml_str),
+        status: pay_status(&title),
         title,
         description,
         merchant_name,
@@ -218,6 +237,45 @@ mod tests {
         assert_eq!(result["description"], "¥100");
         assert_eq!(result["merchantName"], "Shop");
         assert_eq!(result["timestamp"], 1700000000);
+    }
+
+    /// A WeChat Pay receipt card as WeChat writes it in the service notices, its values made up.
+    const RECEIPT: &str = "<msg><appmsg><title><![CDATA[已支付¥9.99]]></title>\
+        <des><![CDATA[使用零钱支付¥9.99]]></des><type>5</type><mmreader>\
+        <template_header><title><![CDATA[微信支付凭证]]></title><pub_time>1700000000</pub_time>\
+        <display_name><![CDATA[Shop]]></display_name></template_header>\
+        <template_detail><template_show_type>1</template_show_type><line_content><topline>\
+        <key><word><![CDATA[使用零钱支付]]></word><color><![CDATA[#888888]]></color></key>\
+        <value><word><![CDATA[¥9.99]]></word></value>\
+        </topline></line_content></template_detail></mmreader></appmsg>\
+        <fromusername><![CDATA[gh_3dfda90e39d6]]></fromusername></msg>";
+
+    #[test]
+    fn takes_the_method_and_state_out_of_a_receipt_card() {
+        let record = parse_pay_xml(RECEIPT).expect("a receipt card is a notice");
+        assert_eq!(record.method.as_deref(), Some("零钱"));
+        assert_eq!(record.status.as_deref(), Some("已支付"));
+        assert_eq!(record.description, "使用零钱支付¥9.99");
+        assert_eq!(record.merchant_name, "Shop");
+        assert_eq!(record.timestamp, 1700000000);
+    }
+
+    #[test]
+    fn gives_no_method_or_state_a_notice_does_not_name() {
+        // labelled lines, no top line, a title without an amount
+        let lines = "<msg><appmsg><title>微信支付凭证</title><des>付款金额¥28.00\n支付方式零钱</des></appmsg></msg>";
+        let record = parse_pay_xml(lines).expect("a notice");
+        assert_eq!((record.method, record.status), (None, None));
+        // a top line whose key names no method
+        let amount =
+            "<topline><key><word>退款金额</word></key><value><word>¥5.00</word></value></topline>";
+        assert_eq!(pay_method(amount), None);
+        assert_eq!(
+            pay_method("<topline><key><word>使用支付</word></key></topline>"),
+            None
+        );
+        assert_eq!(pay_status("￥9.99"), None);
+        assert_eq!(pay_status("已退款 ￥5.00").as_deref(), Some("已退款"));
     }
 
     #[test]
