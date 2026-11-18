@@ -606,7 +606,8 @@ impl ServiceHub {
                 .cloned()
                 .unwrap_or_else(|| username.clone());
             let set = |text: String| Some(text).filter(|t| !t.is_empty());
-            let labels = crate::contact_extra::contact_labels(row, &label_names);
+            let extra = crate::contact_extra::ContactRow::new(row);
+            let labels = extra.labels(&label_names);
             let t = last_contact.get(&username).copied().unwrap_or(0);
             let contact = Contact {
                 display_name: display,
@@ -614,8 +615,8 @@ impl ServiceHub {
                 nickname: set(nick),
                 alias: set(alias),
                 labels: Some(labels).filter(|l| !l.is_empty()),
-                detail_description: set(crate::contact_extra::contact_signature(row)),
-                region: set(crate::contact_extra::contact_region(row)),
+                detail_description: set(extra.signature()),
+                region: set(extra.region()),
                 kind,
                 avatar_url: set(first_str(row, &["big_head_url", "small_head_url"])),
                 username,
