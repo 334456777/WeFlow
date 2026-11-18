@@ -1,3 +1,8 @@
+//! `weflow`, the command line of WeFlow, and `weflow serve`, its command API.
+//!
+//! This file is the entry point: the allocator, the dispatch of a parsed command, and the summary and exit code of
+//! the run. Each subcommand is defined and run in its own module under `commands`.
+
 use std::process::ExitCode;
 
 #[cfg(feature = "alloc-stats")]

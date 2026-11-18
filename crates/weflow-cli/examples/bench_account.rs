@@ -1,7 +1,7 @@
 //! The synthetic account of the benchmark workflow (#259, #488): as big and as varied as a real account, drawn from a
 //! seed (see `weflow_native::fixture::bench`).
 //!
-//! usage: bench_account <work dir> --weflow <weflow binary> [--seed N] [--group-messages N] [--conversations N]
+//! Usage: `bench_account <work dir> --weflow <weflow binary> [--seed N] [--group-messages N] [--conversations N]`
 //!                      [--shards N] [--no-media] [--profile <profile.json>]
 //!
 //! `<work dir>/data` holds the account, `<work dir>/home` the WeFlow home pointing at it and `<work dir>/manifest.json`
