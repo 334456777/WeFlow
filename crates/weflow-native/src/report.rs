@@ -223,59 +223,54 @@ impl Account {
     /// The messages of one table inside `[begin, end]`, read through SQL, each with its place.
     fn table_messages(
         &self,
-        t: &crate::msg::MsgTable,
+        t: &MsgTable,
         mine: &str,
         begin: i64,
         end: i64,
     ) -> Result<Vec<Placed>> {
         let range = range_sql(begin, end);
-        let mut rows: Vec<Placed> = Vec::new();
-        {
-            let local =
-                |f: &str| format!("strftime('{f}', m.create_time, 'unixepoch', 'localtime')");
-            let sql = format!(
-                "select m.create_time as t, m.sort_seq as s, m.local_id as l, coalesce(nullif(m.local_type, 0), 1) as k, \
-                 (m.real_sender_id in ({mine})) as mine, cast({h} as integer) as h, cast({w} as integer) as w, \
-                 date(m.create_time, 'unixepoch', 'localtime') as d, \
-                 cast(julianday(date(m.create_time, 'unixepoch', 'localtime')) + 0.5 as integer) as dn, \
-                 case when m.local_type = {TEXT} then m.message_content end as c \
-                 from \"{table}\" m where m.create_time > 0{range}",
-                h = local("%H"),
-                w = local("%w"),
-                table = t.table
-            );
-            // turned into `Msg` as they are read (the JSON rows would be several times larger)
-            let base = rows.len();
-            let cell = std::cell::RefCell::new(&mut rows);
-            self.query_each(
-                &t.db,
-                &sql,
-                &[],
-                || cell.borrow_mut().truncate(base),
-                |r| {
-                    let time = int(&r, "t");
-                    let seq = match int(&r, "s") {
-                        0 => time * 1000,
-                        s => s,
-                    };
-                    cell.borrow_mut().push((
-                        (seq, time, int(&r, "l")),
-                        Msg {
-                            time,
-                            local_id: int(&r, "l"),
-                            kind: int(&r, "k"),
-                            mine: int(&r, "mine") == 1,
-                            hour: int(&r, "h").clamp(0, 23) as usize,
-                            weekday_mon: ((int(&r, "w") + 6) % 7) as usize,
-                            day: text(&r, "d"),
-                            day_no: int(&r, "dn"),
-                            content: text(&r, "c"),
-                        },
-                    ));
-                },
-            )?;
-        }
-        Ok(rows)
+        let local = |f: &str| format!("strftime('{f}', m.create_time, 'unixepoch', 'localtime')");
+        let sql = format!(
+            "select m.create_time as t, m.sort_seq as s, m.local_id as l, coalesce(nullif(m.local_type, 0), 1) as k, \
+             (m.real_sender_id in ({mine})) as mine, cast({h} as integer) as h, cast({w} as integer) as w, \
+             date(m.create_time, 'unixepoch', 'localtime') as d, \
+             cast(julianday(date(m.create_time, 'unixepoch', 'localtime')) + 0.5 as integer) as dn, \
+             case when m.local_type = {TEXT} then m.message_content end as c \
+             from \"{table}\" m where m.create_time > 0{range}",
+            h = local("%H"),
+            w = local("%w"),
+            table = t.table
+        );
+        // turned into `Msg` as they are read (the JSON rows would be several times larger)
+        let rows = std::cell::RefCell::new(Vec::<Placed>::new());
+        self.query_each(
+            &t.db,
+            &sql,
+            &[],
+            || rows.borrow_mut().clear(),
+            |r| {
+                let time = int(&r, "t");
+                let seq = match int(&r, "s") {
+                    0 => time * 1000,
+                    s => s,
+                };
+                rows.borrow_mut().push((
+                    (seq, time, int(&r, "l")),
+                    Msg {
+                        time,
+                        local_id: int(&r, "l"),
+                        kind: int(&r, "k"),
+                        mine: int(&r, "mine") == 1,
+                        hour: int(&r, "h").clamp(0, 23) as usize,
+                        weekday_mon: ((int(&r, "w") + 6) % 7) as usize,
+                        day: text(&r, "d"),
+                        day_no: int(&r, "dn"),
+                        content: text(&r, "c"),
+                    },
+                ));
+            },
+        )?;
+        Ok(rows.into_inner())
     }
 
     /// [`table_messages`](Self::table_messages) for the annual report's extras, read through the leaf scan: a text is
