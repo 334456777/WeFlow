@@ -14,6 +14,7 @@ pub struct CacheUsage {
     pub paths: Vec<PathBuf>,
     /// What `paths` take on disk.
     pub bytes: u64,
+    /// How many files `paths` hold.
     pub files: u64,
 }
 
@@ -21,6 +22,7 @@ pub struct CacheUsage {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheCleared {
+    /// The files and folders removed.
     pub removed_paths: Vec<String>,
     /// What the removed files took on disk.
     pub freed_bytes: u64,
@@ -33,6 +35,7 @@ pub struct CacheCleared {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountCleared {
+    /// The files and folders removed: WeFlow's caches of the account, and the exports named after it.
     pub removed_paths: Vec<String>,
     /// Whether the account was taken out of the profile (`db_path`, `wxid`, the keys).
     pub profile_reset: bool,
@@ -47,6 +50,7 @@ pub struct AccountCleared {
 pub struct RemovalPlan {
     /// Always true.
     pub dry_run: bool,
+    /// The files and folders it would remove.
     pub paths: Vec<PlannedRemoval>,
     /// What they all take on disk.
     pub bytes: u64,
@@ -57,7 +61,9 @@ pub struct RemovalPlan {
 /// A file or folder a removal would take.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct PlannedRemoval {
+    /// The file or folder.
     pub path: PathBuf,
+    /// What it takes on disk; a folder's is that of the files under it.
     pub bytes: u64,
 }
 

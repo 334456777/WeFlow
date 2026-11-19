@@ -12,9 +12,12 @@ use base64::Engine;
 use crate::chat_msg::normalize_video_file_token;
 use crate::message::xml::rx;
 
+/// How a video's cover and thumbnail are given.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PosterFormat {
+    /// As a `data:` URL holding the image.
     DataUrl,
+    /// As a `file://` URL of the image.
     FileUrl,
 }
 
@@ -30,13 +33,16 @@ struct IndexEntry {
 #[derive(Debug, Clone, Default, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoInfo {
+    /// The video file's path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_url: Option<String>,
     /// A `data:` URL, or a `file://` one with `no-data-url`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover_url: Option<String>,
+    /// The small thumbnail, as `coverUrl`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumb_url: Option<String>,
+    /// Whether the video is on this computer.
     pub exists: bool,
 }
 
@@ -208,8 +214,11 @@ pub fn video_info(
 /// may not exist).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoFiles {
+    /// The video, `<md5>.mp4`.
     pub video: PathBuf,
+    /// Its cover, `<md5>.jpg`.
     pub cover: Option<PathBuf>,
+    /// Its small thumbnail, `<md5>_thumb.jpg`.
     pub thumb: Option<PathBuf>,
 }
 
@@ -278,6 +287,7 @@ pub struct VideoFolder {
 }
 
 impl VideoFolder {
+    /// The folder `base`, not listed yet.
     pub fn new(base: PathBuf) -> Self {
         Self {
             base,

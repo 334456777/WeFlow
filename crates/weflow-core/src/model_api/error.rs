@@ -14,20 +14,36 @@ const QUOTED_CHARS: usize = 200;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ModelApiError {
     /// The address cannot be requested.
-    InvalidUrl { endpoint: String },
+    InvalidUrl {
+        /// The address.
+        endpoint: String,
+    },
     /// No answer within the time given to one request.
-    Timeout { seconds: u64 },
+    Timeout {
+        /// That time.
+        seconds: u64,
+    },
     /// The service could not be reached, or the connection broke.
-    Network { cause: String, retries: u32 },
+    Network {
+        /// What the HTTP client said.
+        cause: String,
+        /// The requests tried again before the last one failed.
+        retries: u32,
+    },
     /// The service answered with an error status, or with an error in a successful one.
     Status(Box<StatusError>),
     /// The answer is not what the format answers.
     UnexpectedBody {
+        /// The format asked in.
         format: ModelApiFormat,
+        /// The start of the answer.
         head: String,
     },
     /// The model declined to answer.
-    Refused { reason: Option<String> },
+    Refused {
+        /// What the service gave as the reason, if anything.
+        reason: Option<String>,
+    },
     /// The model stopped at the token limit before it wrote any answer (a reasoning model spends tokens on reasoning).
     Truncated,
     /// The answer holds no text.
@@ -47,12 +63,15 @@ pub enum Request {
 /// An error status of the model API and what its body says.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StatusError {
+    /// The HTTP status; 200 for an error in a successful answer.
     pub status: u16,
+    /// What the request asked for.
     pub request: Request,
     /// The error's type: `error.type` of both formats (`rate_limit_error`, `invalid_request_error`, …).
     pub kind: Option<String>,
     /// OpenAI's `error.code` (`invalid_api_key`, `insufficient_quota`, …).
     pub code: Option<String>,
+    /// The error's message: `error.message` of both formats.
     pub message: Option<String>,
     /// The start of a body that is not an error of either format.
     pub body: Option<String>,

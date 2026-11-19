@@ -9,12 +9,15 @@ use thiserror::Error;
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[schemars(rename = "Error")]
 pub struct ErrorPayload {
+    /// The kind of failure, for a program to tell them apart.
     #[schemars(extend("examples" = [
         "invalid_arguments", "unauthorized", "invalid_host", "not_found", "method_not_allowed",
         "config_error", "busy", "user_interrupt", "runtime_error", "native_error", "unsupported"
     ]))]
     pub code: String,
+    /// What went wrong, for a person, in the language of the run.
     pub message: String,
+    /// What some codes add to the message; left out when there is nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
 }

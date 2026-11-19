@@ -12,15 +12,24 @@ use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CachePart {
+    /// The images decrypted (`Images`).
     Images,
+    /// The voices decoded (`Voices`).
     Voices,
+    /// The stickers downloaded (`Emojis`).
     Emojis,
+    /// The Moments media fetched (`sns_cache`).
     Sns,
+    /// The analytics' saved results (`analytics_cache.json`).
     Analytics,
+    /// The files `weflow serve` and the message push wrote for clients (`api-media`, `push-avatar-files` and the
+    /// served files).
     Api,
+    /// The fingerprints of the keys that opened the databases (`verified-keys`).
     Keys,
     /// Runtime directories and ffmpeg builds earlier versions left in the home folder.
     Runtime,
+    /// The WebUI versions downloaded; `serve` downloads the one it needs again.
     Web,
 }
 
