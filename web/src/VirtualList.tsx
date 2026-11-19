@@ -35,17 +35,29 @@ export function keySeed(key: string): number {
   return (hash >>> 0) / 2 ** 32;
 }
 
+/** The rows drawn: the first, and how many fill the height in sight (0 before the list knows its height). */
+interface Range { first: number; visible: number }
+
+/** The rows to draw for the list scrolled to `top` in a window `height` high. */
+function rangeOf(top: number, height: number, { rowHeight, padding, overscan }: { rowHeight: number; padding: number; overscan: number }): Range {
+  return { first: Math.max(0, Math.floor((top - padding) / rowHeight) - overscan), visible: height ? Math.ceil(height / rowHeight) : 0 };
+}
+
 function VirtualListInner<T>(
   { items, rowHeight, keyOf, renderRow, overscan = 6, padding = 0, track, className, ...rest }: Props<T>,
   ref: ForwardedRef<VirtualListHandle>,
 ) {
   const scroller = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState({ top: 0, height: 0 });
+  // The list draws again only when the rows to draw change, not at every frame of a scroll, which moves the rows
+  // drawn already without them (#961).
+  const [range, setRange] = useState<Range>({ first: 0, visible: 0 });
 
   const measure = useCallback(() => {
     const el = scroller.current;
-    if (el) setView(old => (old.top === el.scrollTop && old.height === el.clientHeight ? old : { top: el.scrollTop, height: el.clientHeight }));
-  }, []);
+    if (!el) return;
+    const next = rangeOf(el.scrollTop, el.clientHeight, { rowHeight, padding, overscan });
+    setRange(old => (old.first === next.first && old.visible === next.visible ? old : next));
+  }, [rowHeight, padding, overscan]);
 
   useLayoutEffect(measure, [measure]);
   useEffect(() => {
@@ -76,8 +88,8 @@ function VirtualListInner<T>(
     },
   }), [padding, rowHeight, measure]);
 
-  const visible = view.height ? Math.ceil(view.height / rowHeight) : FALLBACK_ROWS;
-  const first = Math.max(0, Math.floor((view.top - padding) / rowHeight) - overscan);
+  const visible = range.visible || FALLBACK_ROWS;
+  const first = range.first;
   const last = Math.min(items.length, first + visible + 2 * overscan + 1);
   const rows: ReactNode[] = [];
   for (let i = first; i < last; i++) {
