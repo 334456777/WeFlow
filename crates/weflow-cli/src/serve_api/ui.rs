@@ -18,6 +18,44 @@ use axum::body::Body;
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 
+mod pending;
+
+pub use pending::Pending;
+
+/// What `/ui/` shows: a page, or why there is none.
+#[derive(Clone, Debug)]
+pub enum Ui {
+    /// A built WebUI.
+    Page(UiDir),
+    /// No page while the version wanted is downloaded beside the server, or after that failed (issue #946).
+    Pending(Pending),
+    /// No page at all: `--api-only`, or no version to show.
+    Absent,
+}
+
+impl Ui {
+    /// The page shown, if any.
+    pub fn page(&self) -> Option<&UiDir> {
+        match self {
+            Self::Page(dir) => Some(dir),
+            Self::Pending(_) | Self::Absent => None,
+        }
+    }
+}
+
+/// The answer of `/ui/…` (`rest` as for [`serve`]): the page's files, or when there is none, why.
+pub async fn answer(ui: &Ui, method: &Method, rest: &str, query: Option<&str>) -> Response {
+    match ui {
+        Ui::Page(dir) => serve(dir, method, rest, query).await,
+        Ui::Pending(pending) => pending::answer(pending, method),
+        Ui::Absent => super::error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "no WebUI is served; start serve with --ui-dir <a built WebUI>",
+        ),
+    }
+}
+
 /// A folder holding a built WebUI.
 #[derive(Clone, Debug)]
 pub struct UiDir {

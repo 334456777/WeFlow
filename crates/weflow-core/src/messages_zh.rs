@@ -73,6 +73,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("the package of {} has no index.html", "{} 的安装包里没有 index.html"),
     ("the package of {} holds {} {}", "{} 的安装包里是 {} {}"),
     ("cannot move the WebUI into {}: {}", "无法把网页移入 {}：{}"),
+    ("cannot open WebUI {} in {}", "无法打开 {1} 中的网页 {0}"),
     // config
     ("invalid value '{}' for lang; use en or zh", "lang 的值 '{}' 无效；请使用 en 或 zh"),
     ("invalid value {} for {}; use a whole number from {} to {}", "{1} 的值 {0} 无效；请使用 {2} 到 {3} 之间的整数"),

@@ -161,6 +161,13 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     use weflow_core::sync::RwLockExt;
     let command = command.or_saved(hub.serve_settings());
     let (ui, fetch) = serve_webui(&command, hub).await?;
+    let ui = match (ui, &fetch) {
+        (Some(dir), _) => serve_api::ui::Ui::Page(dir),
+        (None, Some(version)) => serve_api::ui::Ui::Pending(serve_api::ui::Pending::Downloading {
+            version: version.clone(),
+        }),
+        (None, None) => serve_api::ui::Ui::Absent,
+    };
     let ui = std::sync::Arc::new(std::sync::RwLock::new(ui));
 
     let cfg_str = |key: &str| {
@@ -283,7 +290,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     // only its version: a clone of the page kept here would hold its version after the page is replaced
     let shown = ui
         .read_or_panic()
-        .as_ref()
+        .page()
         .map(|ui| ui.version().map(str::to_string));
     started["ui"] = json!(shown.is_some());
     if let Some(version) = &shown {
@@ -317,9 +324,18 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
                 }
                 Err(e) => Err(e),
             };
-            match installed.map(|meta| serve_api::ui::UiDir::open_version(&store, &meta.version)) {
-                Ok(Some(dir)) => {
-                    *ui.write_or_panic() = Some(dir);
+            let opened = installed.and_then(|meta| {
+                serve_api::ui::UiDir::open_version(&store, &meta.version).ok_or_else(|| {
+                    AppError::runtime(format!(
+                        "cannot open WebUI {} in {}",
+                        meta.version,
+                        store.dir(&meta.version).display()
+                    ))
+                })
+            });
+            match opened {
+                Ok(dir) => {
+                    *ui.write_or_panic() = serve_api::ui::Ui::Page(dir);
                     weflow_core::output::event(
                         json!({ "type": "webui_ready", "version": version, "uiUrl": page_url }),
                     );
@@ -327,10 +343,22 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
                         open_in_browser(&page_url);
                     }
                 }
-                Ok(None) => {}
-                Err(e) => weflow_core::output::event(json!({
-                    "type": "webui_unavailable", "version": version, "error": e.message.clone(), "kept": had_page,
-                })),
+                Err(e) => {
+                    let error = weflow_core::locale::localize(e.message.clone());
+                    {
+                        // a page shown meanwhile stays
+                        let mut shown = ui.write_or_panic();
+                        if shown.page().is_none() {
+                            *shown = serve_api::ui::Ui::Pending(serve_api::ui::Pending::Failed {
+                                version: version.clone(),
+                                error,
+                            });
+                        }
+                    }
+                    weflow_core::output::event(json!({
+                        "type": "webui_unavailable", "version": version, "error": e.message.clone(), "kept": had_page,
+                    }));
+                }
             }
         });
     }

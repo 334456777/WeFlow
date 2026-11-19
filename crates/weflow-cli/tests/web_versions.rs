@@ -254,6 +254,18 @@ impl Server {
 
     /// `method target` with the token, and `body` as JSON: (status, body).
     fn send(&self, method: &str, target: &str, body: &str) -> (u16, String) {
+        let raw = self.exchange(method, target, body);
+        let status = raw.split(' ').nth(1).unwrap().parse().unwrap();
+        (
+            status,
+            raw.split_once("\r\n\r\n")
+                .map(|(_, b)| b.to_string())
+                .unwrap_or_default(),
+        )
+    }
+
+    /// `method target` with the token, and `body` as JSON: the whole answer, its head as it came.
+    fn exchange(&self, method: &str, target: &str, body: &str) -> String {
         let addr = self.started["url"]
             .as_str()
             .unwrap()
@@ -268,14 +280,21 @@ impl Server {
         .unwrap();
         let mut raw = String::new();
         stream.read_to_string(&mut raw).unwrap();
-        let status = raw.split(' ').nth(1).unwrap().parse().unwrap();
-        (
-            status,
-            raw.split_once("\r\n\r\n")
-                .map(|(_, b)| b.to_string())
-                .unwrap_or_default(),
-        )
+        raw
     }
+}
+
+/// A registry that takes connections and never answers: a download that runs for as long as the test needs.
+fn stalled_registry() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for stream in listener.incoming().flatten() {
+            held.push(stream);
+        }
+    });
+    format!("http://{addr}")
 }
 
 #[test]
@@ -323,7 +342,40 @@ fn without_the_registry_the_api_runs_alone() {
     assert_eq!(failed["kept"], false);
     assert!(failed["error"].as_str().unwrap().contains("registry"));
     assert_eq!(server.get("/health").0, 200);
-    assert_eq!(server.get("/ui/").0, 404);
+    // the page says why there is none, and what to do
+    let raw = server.exchange("GET", "/ui/", "");
+    assert!(raw.starts_with("HTTP/1.1 503"), "{raw}");
+    assert!(
+        raw.contains("x-weflow-error-code: webui_unavailable"),
+        "{raw}"
+    );
+    assert!(!raw.contains("retry-after"), "{raw}");
+    assert!(
+        raw.contains("could not be downloaded") && raw.contains("--ui-dir"),
+        "{raw}"
+    );
+    assert!(!raw.contains("http-equiv=\"refresh\""), "{raw}");
+}
+
+#[test]
+fn while_the_webui_downloads_its_address_asks_again() {
+    let home = temp_root("downloading");
+    let version = built_in();
+    let server = Server::start(&home, &stalled_registry(), &[]);
+    assert_eq!(server.started["uiDownloading"], version.as_str());
+    let raw = server.exchange("GET", "/ui/chat", "");
+    assert!(raw.starts_with("HTTP/1.1 503"), "{raw}");
+    assert!(
+        raw.contains("x-weflow-error-code: webui_downloading"),
+        "{raw}"
+    );
+    assert!(raw.contains("retry-after: 3"), "{raw}");
+    assert!(raw.contains("http-equiv=\"refresh\""), "{raw}");
+    assert!(
+        raw.contains(&format!("WebUI {version} is being downloaded")),
+        "{raw}"
+    );
+    assert_eq!(server.send("POST", "/ui/", "").0, 405);
 }
 
 #[test]
