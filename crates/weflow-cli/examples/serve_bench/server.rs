@@ -24,11 +24,14 @@ impl Drop for Server {
     }
 }
 
-/// Starts `weflow serve` on a free port; returns it with the milliseconds it took to listen.
+/// Starts `weflow serve` on a free port, with the command API alone (`--api-only`: the WebUI is neither served nor
+/// downloaded, so no download runs in the server while it is measured); returns it with the milliseconds it took to
+/// listen.
 pub(crate) fn start(weflow: &Path, home: &Path, extra: &[String]) -> Result<(Server, f64)> {
     let begin = Instant::now();
     let mut child = weflow_command(weflow, home)
         .args(["--json", "serve", "--port", "0", "--api-token", TOKEN])
+        .arg("--api-only")
         .args(extra)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
