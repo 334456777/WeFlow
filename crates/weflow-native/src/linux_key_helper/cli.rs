@@ -1,9 +1,7 @@
 //! The helper's command line and JSON, including exit codes, for comparison
 //! with the original executable and for a future standalone binary.
 
-use std::path::Path;
-
-use super::{image_local_at, image_mem, platform, process, Hook};
+use super::{image_mem, platform, Hook};
 use crate::image_key_scan::{self, MemoryScanError};
 
 const USAGE: &str = "{\"success\":false,\"result\":\"ERROR:USAGE: helper <pid> [timeout_ms]\"}\n";
@@ -21,12 +19,8 @@ fn success_key(key: &str) -> String {
     format!("{{\"success\":true,\"key\":\"{key}\"}}\n")
 }
 
+/// Runs the helper's command line (`args` includes the program name): its stdout and exit code.
 pub fn run_helper(args: &[String]) -> (String, i32) {
-    let home = process::home_dir();
-    run_helper_at(args, home.as_deref())
-}
-
-pub fn run_helper_at(args: &[String], home: Option<&Path>) -> (String, i32) {
     if args.len() < 2 {
         return (USAGE.to_string(), 1);
     }
@@ -71,10 +65,6 @@ pub fn run_helper_at(args: &[String], home: Option<&Path>) -> (String, i32) {
                 Err(message) => (failure(&format!("ERROR:HOOK_FAILED:{message}")), 0),
             }
         }
-        "image_local" => match image_local_at(home) {
-            Ok(data) => (format!("{{\"success\":true,\"data\":{data}}}\n"), 0),
-            Err(message) => (failure(message), 0),
-        },
         "image_mem" => {
             if args.len() < 4 {
                 return (IMAGE_MEM_USAGE.to_string(), 1);

@@ -229,7 +229,7 @@ fn main() -> Result<()> {
     }
     bench.both(
         "latest 20 (polling)",
-        &format!("/chat/latest?session-id={big}&limit=20"),
+        &format!("/chat/messages?session-id={big}&limit=20"),
     )?;
     if let Some((id, at)) = t.one_message {
         bench.both(

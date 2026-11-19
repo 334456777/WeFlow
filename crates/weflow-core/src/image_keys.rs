@@ -268,7 +268,7 @@ pub fn acquire_image_keys(
     })
 }
 
-/// The `xwechat` directories of Linux WeChat under the home directory, the same places `key image-local` reads.
+/// The `xwechat` directories of Linux WeChat under the home directory.
 const LINUX_XWECHAT_ROOTS: [&str; 3] = [
     ".xwechat",
     "Documents/WeChat_Data/home/.xwechat",
@@ -288,9 +288,8 @@ pub const HAS_DEFAULT_KVCOMM_DIRS: bool = cfg!(any(
 /// The existing `net*/kvcomm` directories (`net`, `net_1`, ...) WeChat keeps.
 ///
 /// They are on Windows under `%APPDATA%\Tencent\xwechat`, on macOS under WeChat's `app_data` in its container, on
-/// Linux x64 under the
-/// `xwechat` directories in the home directory that `key image-local` also reads. The home directory is the
-/// caller's under `sudo` (#861). Other platforms have no known location, so callers must pass directories
+/// Linux x64 under the `xwechat` directories in the home directory. The home directory is the caller's under `sudo`
+/// (#861). Other platforms have no known location, so callers must pass directories
 /// explicitly.
 pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
     if cfg!(windows) {

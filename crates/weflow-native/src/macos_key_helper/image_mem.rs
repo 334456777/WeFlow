@@ -1,4 +1,4 @@
-//! The `ScanMemoryForImageKey` export: find the 16-byte image AES key among WeChat's writable pages (see
+//! The memory scan of `key image-mem`: find the 16-byte image AES key among WeChat's writable pages (see
 //! [`crate::image_key_scan`]).
 
 use mach2::kern_return::KERN_SUCCESS;
@@ -9,20 +9,10 @@ use mach2::vm_region::{vm_region_basic_info_64, VM_REGION_BASIC_INFO_64};
 use mach2::vm_types::{integer_t, mach_vm_size_t};
 
 use super::platform::{deallocate_task, read_memory, task_port, this_task};
-use crate::image_key_scan::{self, find_key, Block, MemoryScanError, READ_OVERLAP};
+use crate::image_key_scan::{find_key, Block, MemoryScanError, READ_OVERLAP};
 
 const CHUNK: usize = 4 * 1024 * 1024;
 const MAX_MAPPING: u64 = 0x320_0001;
-
-/// The AES key as 32 hex characters that decrypts `ciphertext` into the start of an image, or `None` when no
-/// writable page holds one or the memory cannot be read.
-pub fn scan_memory_for_image_key(pid: u32, ciphertext: &str) -> Option<String> {
-    let ciphertext = image_key_scan::parse_ciphertext(ciphertext)?;
-    scan_image_key(pid, &[ciphertext], &mut |_| true)
-        .ok()
-        .flatten()
-        .map(|key| image_key_scan::hex(&key))
-}
 
 /// The first key in WeChat's readable and writable regions that decrypts one of `ciphertexts` into the start of an
 /// image and that `accept` takes; `Ok(None)` when no such key is there.

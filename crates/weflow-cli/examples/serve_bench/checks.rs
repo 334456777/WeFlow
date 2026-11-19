@@ -329,7 +329,7 @@ pub(crate) fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Chec
     let r = c.both(&page(n), &[]).and_then(|d| page_is(d, Vec::new()));
     c.check("messages, past the end", r);
     let r = c
-        .both(&format!("/chat/latest?session-id={room}&limit=20"), &[])
+        .both(&format!("/chat/messages?session-id={room}&limit=20"), &[])
         .and_then(|d| page_is(d, down(n, 20)));
     c.check("latest 20", r);
 
@@ -562,7 +562,7 @@ pub(crate) fn image_request(addr: &str, route: &str, img: &Value, thumb: bool) -
             }
         }
         if thumb {
-            query.push("thumb=true".into());
+            query.push("variant=thumb".into());
         }
         request(
             addr,
@@ -573,7 +573,7 @@ pub(crate) fn image_request(addr: &str, route: &str, img: &Value, thumb: bool) -
     } else {
         let mut body = img.clone();
         if thumb {
-            body["thumb"] = json!(true);
+            body["variant"] = json!("thumb");
         }
         request(
             addr,

@@ -62,7 +62,7 @@ run export media --session "$GROUP" --out "$OUT/media-only"
 run export sessions --out "$OUT/sessions.json"
 run export contacts --out "$OUT/contacts.json"
 run export footprint --out "$OUT/footprint.json"
-run chat voice "$FRIEND" --out "$OUT/voice"
+run export media --session "$FRIEND" --type voice --out "$OUT/voice"
 run chat sessions
 run chat contacts
 run chat detail "$GROUP"

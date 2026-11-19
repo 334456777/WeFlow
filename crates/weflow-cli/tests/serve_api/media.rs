@@ -137,7 +137,7 @@ fn media_come_back_as_files_from_the_process() {
     assert_eq!(r.headers["content-range"], format!("bytes */{len}"));
 
     // a thumbnail for a list: WeChat's own `_t.dat` when there is one, else the image
-    let thumb = format!("/api/chat/image-data?{query}&thumb=true");
+    let thumb = format!("/api/chat/image-data?{query}&variant=thumb");
     assert_eq!(server.call("GET", &thumb, "").bytes, jpeg);
     let small: Vec<u8> = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3].to_vec();
     std::fs::write(
@@ -155,7 +155,7 @@ fn media_come_back_as_files_from_the_process() {
         "POST",
         "/chat/image-data?return=file",
         &format!(
-            r#"{{"session-id": "wxid_bob", "msg-id": "3", "create-time": {}, "thumb": true}}"#,
+            r#"{{"session-id": "wxid_bob", "msg-id": "3", "create-time": {}, "variant": "thumb"}}"#,
             T0 + DAY
         ),
     );
@@ -199,9 +199,10 @@ fn media_come_back_as_files_from_the_process() {
     let r = server.call("GET", &hd_url, "");
     assert_eq!((r.status, r.bytes == original), (200, true));
     assert_eq!(server.call("GET", &normal_url, "").bytes, jpeg);
+    // one file of the image at a time
     assert_eq!(
         server
-            .call("GET", &format!("{normal_url}&thumb=true"), "")
+            .call("GET", &format!("{normal_url}&variant=thumb"), "")
             .status,
         400
     );

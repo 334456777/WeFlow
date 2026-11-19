@@ -35,10 +35,6 @@ pub enum Read {
         limit: usize,
     },
     ChatMessages(MessagePage),
-    ChatLatest {
-        session_id: String,
-        limit: i32,
-    },
     /// `chat message`: by exactly one of `local_id` and `server_id`.
     ChatMessage {
         session_id: String,
@@ -183,7 +179,7 @@ pub enum Read {
     },
     ConfigProfiles,
     DbDetect,
-    /// `db test` (and `db open`): opens the configured account with its key.
+    /// `db test`: opens the configured account with its key.
     DbTest,
     DbWxid {
         root: Option<String>,
@@ -256,9 +252,6 @@ impl Read {
                         .map(crate::contract::MessageRow::from)
                         .collect::<Vec<_>>())
                 })
-            }
-            Read::ChatLatest { session_id, limit } => {
-                hub.message_page(session_id, *limit, 0, None, None)
             }
             Read::ChatMessage {
                 session_id,
@@ -502,7 +495,7 @@ impl Read {
     }
 }
 
-/// The image file `chat image-data --variant` asks for (`best`, `thumb`, `normal`, `hd`); `--thumb` is `thumb`.
+/// The image file `chat image-data --variant` asks for (`best`, `thumb`, `normal`, `hd`).
 pub fn image_variant(variant: &str) -> ImageVariant {
     match variant {
         "thumb" => ImageVariant::Thumb,

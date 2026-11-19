@@ -203,28 +203,6 @@ impl ServiceHub {
         crate::image_keys::acquire_image_keys(kvcomm_dirs, &account, wxid, scan_budget)
     }
 
-    /// Image keys derived from local account directories and `kvcomm` files on Linux.
-    #[cfg_attr(
-        not(all(target_os = "linux", target_arch = "x86_64")),
-        allow(unused_variables)
-    )]
-    pub fn key_image_local(&self) -> AppResult<crate::contract::ImageLocalKeys> {
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            // the caller's home under `sudo`, where WeChat keeps its files (#861)
-            let home = crate::sudo_caller::home_dir();
-            let data = weflow_native::linux_key_helper::image_local_at(home.as_deref())
-                .map_err(|error| AppError::native(format!("{error:#}")))?;
-            serde_json::from_str(&data).map_err(|error| AppError::native(format!("{error:#}")))
-        }
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        {
-            Err(AppError::native(
-                "`key image-local` is only available on Linux x64",
-            ))
-        }
-    }
-
     /// The running WeChat clients, main application first (`key processes`, macOS).
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     pub fn key_processes(&self) -> AppResult<crate::contract::WeChatProcesses> {
@@ -320,33 +298,6 @@ impl ServiceHub {
             pid,
             saved: Vec::new(),
         })
-    }
-
-    /// An image AES key found in WeChat's memory by `image_scan_helper`'s
-    /// rule, on macOS.
-    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
-    pub fn key_scan_image(
-        &self,
-        pid: u32,
-        ciphertext: &str,
-    ) -> AppResult<crate::contract::ImageMemKey> {
-        #[cfg(target_os = "macos")]
-        {
-            let image_aes_key = weflow_native::image_scan_helper::scan(pid, ciphertext);
-            Ok(crate::contract::ImageMemKey {
-                verification: image_aes_key.as_ref().map(|_| "first_block".to_string()),
-                image_aes_key,
-                image_xor_key: None,
-                pid,
-                saved: Vec::new(),
-            })
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            Err(AppError::native(
-                "`key scan-image` is only available on macOS",
-            ))
-        }
     }
 }
 

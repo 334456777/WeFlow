@@ -3,8 +3,8 @@
 //! On ARM64, `Hook` locates the database-key call by scanning WeChat's code,
 //! attaches to WeChat with `ptrace` and stops it there; on x86_64 the key is
 //! read from WeChat's call to CommonCrypto's `CCKeyDerivationPBKDF` with
-//! DTrace, without stopping the client. `scan_image_key` and
-//! `scan_memory_for_image_key` back the image-key scan, and `wechat_processes` lists the running client.
+//! DTrace, without stopping the client. `scan_image_key` backs the image-key scan, and `wechat_processes` lists the
+//! running client.
 //! `cli` keeps the helper's own command line, JSON and exit codes for tests.
 //!
 //! The original executable used Mach exception ports. The ARM64 rewrite lets
@@ -29,7 +29,7 @@ pub use cli::{run_helper, run_helper_at};
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub use dtrace::DTraceHook;
 #[cfg(target_os = "macos")]
-pub use image_mem::{scan_image_key, scan_memory_for_image_key};
+pub use image_mem::scan_image_key;
 #[cfg(target_os = "macos")]
 pub use platform::{get_db_key_target, interrupt, Hook};
 #[cfg(target_os = "macos")]

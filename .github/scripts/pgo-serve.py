@@ -145,7 +145,7 @@ def train(base, group, friend):
         calls.append(("/api/chat/messages", {"session-id": group, "limit": 200, "before": messages[-1]["_cursor"]}))
     image = next((params for path, params in calls if path == "/api/chat/image-data"), None)
     if image:
-        calls.append(("/api/chat/image-data", {**image, "thumb": "true"}))
+        calls.append(("/api/chat/image-data", {**image, "variant": "thumb"}))
     calls.append(("/api/chat/contacts", {"parsed": "true"}))
     for _ in range(2):
         for path, params in calls:

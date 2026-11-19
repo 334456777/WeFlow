@@ -51,7 +51,6 @@ pub(crate) fn read_of(command: Commands) -> Result<Read, Commands> {
                 since: a.since,
                 parsed: a.parsed,
             }),
-            ChatSubcommand::Latest { session_id, limit } => Read::ChatLatest { session_id, limit },
             ChatSubcommand::Message {
                 session_id,
                 local_id,
@@ -232,7 +231,7 @@ pub(crate) fn read_of(command: Commands) -> Result<Read, Commands> {
         },
         Commands::Db(c) => match c.command {
             DbSubcommand::Detect => Read::DbDetect,
-            DbSubcommand::Test | DbSubcommand::Open => Read::DbTest,
+            DbSubcommand::Test => Read::DbTest,
             DbSubcommand::Wxid { root } => Read::DbWxid { root },
             command => return Err(Commands::Db(DbCommand { command })),
         },
@@ -279,7 +278,6 @@ pub(crate) fn media_of(
             session_id,
             msg_id,
             create_time,
-            thumb,
             variant,
             out,
         } => (
@@ -287,7 +285,7 @@ pub(crate) fn media_of(
                 session_id,
                 msg_id,
                 create_time,
-                variant: image_variant(if thumb { "thumb" } else { &variant }),
+                variant: image_variant(&variant),
             },
             Some(out),
         ),

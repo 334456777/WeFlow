@@ -21,7 +21,6 @@ use super::endpoints::{find_param, flag_value, Endpoint, Kind, Params};
 pub(super) const COMMANDS: &[&str] = &[
     "chat sessions",
     "chat messages",
-    "chat latest",
     "chat message",
     "chat contact",
     "chat contacts",
@@ -327,10 +326,6 @@ impl Given {
                     parsed: self.switch("parsed")?,
                 })
             }
-            "chat latest" => Read::ChatLatest {
-                session_id: self.required("session-id")?,
-                limit: self.number_or("limit", 20)?,
-            },
             "chat message" => {
                 if self.given("create-time") && !self.given("local-id") {
                     return Err(Refused);
@@ -368,8 +363,9 @@ impl Given {
                 session_id: self.required("session-id")?,
             },
             "chat detail" => {
+                self.without("fast", &["extra"])?;
                 // the rest of the details is slower to read: it runs in a child process
-                if !self.switch("fast")? || self.switch("extra")? {
+                if !self.switch("fast")? {
                     return Err(Refused);
                 }
                 Read::ChatDetailFast {
@@ -502,7 +498,6 @@ impl Given {
         Ok(match command {
             "chat image-data" => {
                 const VARIANTS: &[&str] = &["best", "thumb", "normal", "hd"];
-                self.without("thumb", &["variant"])?;
                 let variant = self.text("variant")?.unwrap_or_else(|| "best".into());
                 if !VARIANTS.contains(&variant.as_str()) {
                     return Err(Refused);
@@ -511,11 +506,7 @@ impl Given {
                     session_id: self.required("session-id")?,
                     msg_id: self.required("msg-id")?,
                     create_time: self.number("create-time")?,
-                    variant: image_variant(if self.switch("thumb")? {
-                        "thumb"
-                    } else {
-                        &variant
-                    }),
+                    variant: image_variant(&variant),
                 })
             }
             "chat voice-data" => Media::Chat(MediaRead::ChatVoice {
@@ -923,6 +914,33 @@ mod tests {
             });
             assert!(taken > 0, "{name}: no request was taken");
         }
+    }
+
+    /// `chat detail` takes `fast` or `extra`, not both: the command line refuses them together, and so does
+    /// `/api/chat/detail`.
+    #[test]
+    fn chat_detail_takes_fast_or_extra_but_not_both() {
+        use serde_json::json;
+        let both = ["chat", "detail", "--fast", "--extra", "--", "wxid_bob"].map(String::from);
+        assert!(parse(&both).is_none());
+        let endpoints = super::super::Endpoints::new();
+        let ep = endpoints.0.get("chat detail").unwrap();
+        let read = |pairs: &[(&str, Value)]| {
+            Given::new(ep, &super::super::tests::params(pairs)).read("chat detail")
+        };
+        let session = ("session-id", json!("wxid_bob"));
+        assert!(read(&[
+            session.clone(),
+            ("fast", json!(true)),
+            ("extra", json!(true))
+        ])
+        .is_err());
+        assert_eq!(
+            read(&[session, ("fast", json!(true))]).unwrap(),
+            Read::ChatDetailFast {
+                session_id: "wxid_bob".into()
+            }
+        );
     }
 
     #[test]

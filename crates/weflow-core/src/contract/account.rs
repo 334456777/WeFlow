@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
@@ -119,28 +119,7 @@ pub struct ImageKeys {
     pub saved: Vec<String>,
 }
 
-/// What `key image-local` (Linux) answers: the accounts and keys read from local `kvcomm` files.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub struct ImageLocalKeys {
-    pub accounts: Vec<ImageLocalAccount>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub struct ImageLocalAccount {
-    pub wxid: String,
-    pub keys: Vec<ImageLocalKey>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ImageLocalKey {
-    pub code: u32,
-    pub xor_key: u8,
-    pub aes_key: String,
-}
-
-/// What `key image-mem` (Linux x64 and macOS) and `key scan-image` (macOS)
-/// answer: the AES key found in WeChat's memory, if any.
+/// What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ImageMemKey {
     /// The 16-byte AES key as 32 hex characters; left out when nothing matched.

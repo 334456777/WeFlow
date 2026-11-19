@@ -21,10 +21,8 @@ pub(crate) enum DbSubcommand {
         /// Folder to scan
         root: String,
     },
-    /// Test that the configured database can be opened with the key
+    /// Open the configured database with the key and show a short summary
     Test,
-    /// Open the configured database and show a short summary
-    Open,
     /// Show the wxid of the account(s) in the WeChat data directory (the value for `config set wxid`)
     Wxid {
         /// WeChat data directory (default: `db_path` from the config, else the usual locations)
@@ -35,9 +33,8 @@ pub(crate) enum DbSubcommand {
 pub(crate) fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
         DbSubcommand::Scan { root } => Ok(json!(hub.db_scan(root))),
-        DbSubcommand::Detect
-        | DbSubcommand::Test
-        | DbSubcommand::Open
-        | DbSubcommand::Wxid { .. } => unreachable!("a read"),
+        DbSubcommand::Detect | DbSubcommand::Test | DbSubcommand::Wxid { .. } => {
+            unreachable!("a read")
+        }
     }
 }

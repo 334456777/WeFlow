@@ -373,7 +373,7 @@ mod tests {
     /// A NUL byte in a value is refused: no child process could start with it (#822).
     #[test]
     fn a_nul_byte_is_refused() {
-        let err = argv("chat latest", &[("session-id", json!("a\0b"))]).unwrap_err();
+        let err = argv("chat messages", &[("session-id", json!("a\0b"))]).unwrap_err();
         assert!(err.contains("NUL"), "{err}");
     }
 
@@ -382,16 +382,16 @@ mod tests {
         assert_eq!(argv("config list", &[]).unwrap(), ["config", "list"]);
         assert_eq!(
             argv(
-                "chat latest",
+                "chat messages",
                 &[("session-id", json!("-a b")), ("limit", json!(5))]
             )
             .unwrap(),
-            ["chat", "latest", "--limit=5", "--", "-a b"]
+            ["chat", "messages", "--limit=5", "--", "-a b"]
         );
         // snake case is accepted for kebab case
         assert_eq!(
-            argv("chat latest", &[("session_id", json!("x"))]).unwrap(),
-            ["chat", "latest", "--", "x"]
+            argv("chat messages", &[("session_id", json!("x"))]).unwrap(),
+            ["chat", "messages", "--", "x"]
         );
         // repeated positional values, from repeated keys or an array
         assert_eq!(

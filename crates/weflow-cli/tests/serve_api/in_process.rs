@@ -49,7 +49,7 @@ fn reads_run_in_process_with_the_same_answers() {
         "/chat/sessions?limit=1",
         "/chat/messages?session-id=wxid_bob&limit=2&offset=1",
         "/chat/messages?session-id=room1%40chatroom",
-        "/chat/latest?session-id=wxid_bob&limit=1",
+        "/chat/messages?session-id=wxid_bob&limit=1",
         "/chat/message?session-id=wxid_bob&local-id=2",
         "/chat/message?session-id=wxid_bob&local-id=2&parsed=true",
         "/chat/contact?username=wxid_bob",

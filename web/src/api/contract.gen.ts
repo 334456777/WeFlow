@@ -112,7 +112,7 @@ export interface ParsedMessage {
 }
 
 /**
- * A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`).
+ * A message as WeChat keeps it (`chat messages` without `parsed`, the `row` of `chat message`).
  *
  * Its columns are read with their types, the text inflated and decoded, the sender resolved (#257, #492).
  */
@@ -1291,7 +1291,7 @@ export interface MessagesZip {
   media: MediaCopied | null;
 }
 
-/** What `export media` (and `chat voice`) copied. */
+/** What `export media` copied. */
 export interface MediaExport {
   exported: number;
   /** The media messages found. */
@@ -1498,26 +1498,7 @@ export interface CandidateSource {
   parsing: string;
 }
 
-/** What `key image-local` (Linux) answers: the accounts and keys read from local `kvcomm` files. */
-export interface ImageLocalKeys {
-  accounts: ImageLocalAccount[];
-}
-
-export interface ImageLocalAccount {
-  wxid: string;
-  keys: ImageLocalKey[];
-}
-
-export interface ImageLocalKey {
-  code: number;
-  xorKey: number;
-  aesKey: string;
-}
-
-/**
- * What `key image-mem` (Linux x64 and macOS) and `key scan-image` (macOS)
- * answer: the AES key found in WeChat's memory, if any.
- */
+/** What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any. */
 export interface ImageMemKey {
   /** The 16-byte AES key as 32 hex characters; left out when nothing matched. */
   image_aes_key?: string;
@@ -2221,7 +2202,7 @@ export interface Answers {
   "chat counts": Record<string, number>;
   "chat date-counts": SessionDateCounts;
   "chat dates": SessionDates;
-  /** The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept */
+  /** The conversation's details; with `fast`, only its facts; with `extra`, only where its messages are kept */
   "chat detail": SessionDetail | SessionFacts | SessionTables;
   "chat emoji": EmojisDownloaded;
   "chat export-stats": ExportStats;
@@ -2229,7 +2210,6 @@ export interface Answers {
   "chat image-data": MediaWritten;
   "chat image-info": ImageInfo;
   "chat images": ChatImages;
-  "chat latest": MessageRow[];
   "chat media-stream": MediaStream;
   /** With `parsed=true`, the message as the chat window shows it; else its row and the message as the query commands list it */
   "chat message": ParsedMessage | MessageLookup;
@@ -2244,7 +2224,6 @@ export interface Answers {
   "chat tab-counts": TabCounts;
   "chat transfer-names": TransferNames;
   "chat video-data": MediaWritten;
-  "chat voice": MediaExport;
   "chat voice-cache": VoiceCache;
   /** The WAV written to `out`; without it, the WAV in base64 */
   "chat voice-data": MediaWritten | VoiceData;
@@ -2258,7 +2237,6 @@ export interface Answers {
   "config set": ConfigWritten;
   "config unset": ConfigWritten;
   "db detect": DbCandidates;
-  "db open": DbConnection;
   "db scan": DbScan;
   "db test": DbConnection;
   "db wxid": DbAccounts;
@@ -2295,10 +2273,8 @@ export interface Answers {
   "insight trigger": InsightReply;
   "key db": DbKey;
   "key image": ImageKeys;
-  "key image-local": ImageLocalKeys;
   "key image-mem": ImageMemKey;
   "key processes": WeChatProcesses;
-  "key scan-image": ImageMemKey;
   "lang": LangSaved;
   "report annual generate": AnnualReport;
   "report annual years": ReportYears;

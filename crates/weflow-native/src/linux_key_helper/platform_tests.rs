@@ -264,7 +264,7 @@ fn image_mem_finds_the_key_in_the_target() {
 
 #[test]
 fn run_helper_reproduces_the_command_line() {
-    use crate::linux_key_helper::run_helper_at;
+    use crate::linux_key_helper::run_helper;
 
     let args = |values: &[&str]| {
         values
@@ -273,14 +273,14 @@ fn run_helper_reproduces_the_command_line() {
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        run_helper_at(&args(&["helper"]), None).0,
+        run_helper(&args(&["helper"])).0,
         "{\"success\":false,\"result\":\"ERROR:USAGE: helper <pid> [timeout_ms]\"}\n"
     );
-    assert_eq!(run_helper_at(&args(&["helper", "bogus"]), None).1, 1);
+    assert_eq!(run_helper(&args(&["helper", "bogus"])).1, 1);
     let mut target = Target::spawn();
     let _ = target.address();
     let pid = target.child.id().to_string();
-    let (body, status) = run_helper_at(&args(&["helper", "db_scan", &pid]), None);
+    let (body, status) = run_helper(&args(&["helper", "db_scan", &pid]));
     assert_eq!(status, 0);
     let value: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(
@@ -295,7 +295,7 @@ fn run_helper_reproduces_the_command_line() {
 
 #[test]
 fn run_helper_reproduces_the_db_hook_json() {
-    use crate::linux_key_helper::run_helper_at;
+    use crate::linux_key_helper::run_helper;
 
     let mut target = Target::spawn();
     let address = target.address();
@@ -303,16 +303,13 @@ fn run_helper_reproduces_the_db_hook_json() {
     let handle = std::thread::spawn(move || {
         let address = address.to_string();
         let pid = pid.to_string();
-        run_helper_at(
-            &[
-                "helper".to_string(),
-                "db_hook".to_string(),
-                pid,
-                address,
-                "5000".to_string(),
-            ],
-            None,
-        )
+        run_helper(&[
+            "helper".to_string(),
+            "db_hook".to_string(),
+            pid,
+            address,
+            "5000".to_string(),
+        ])
     });
     std::thread::sleep(Duration::from_millis(500));
     target.send("call");

@@ -895,7 +895,7 @@
                       "const": true
                     },
                     "data": {
-                      "description": "The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept",
+                      "description": "The conversation's details; with `fast`, only its facts; with `extra`, only where its messages are kept",
                       "anyOf": [
                         {
                           "$ref": "#/components/schemas/SessionDetail"
@@ -1147,49 +1147,6 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/ChatImages"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/chat/latest": {
-      "get": {
-        "operationId": "api_chat_latest",
-        "x-weflow-command": "chat latest",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/MessageRow"
-                      }
                     }
                   }
                 }
@@ -1652,46 +1609,6 @@
         }
       }
     },
-    "/chat/voice": {
-      "get": {
-        "operationId": "api_chat_voice",
-        "x-weflow-command": "chat voice",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/MediaExport"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/chat/voice-cache": {
       "get": {
         "operationId": "api_chat_voice_cache",
@@ -2125,46 +2042,6 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/DbCandidates"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/db/open": {
-      "get": {
-        "operationId": "api_db_open",
-        "x-weflow-command": "db open",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/DbConnection"
                     }
                   }
                 }
@@ -3601,46 +3478,6 @@
         }
       }
     },
-    "/key/image-local": {
-      "get": {
-        "operationId": "api_key_image_local",
-        "x-weflow-command": "key image-local",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/ImageLocalKeys"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/key/image-mem": {
       "get": {
         "operationId": "api_key_image_mem",
@@ -3702,46 +3539,6 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/WeChatProcesses"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/key/scan-image": {
-      "get": {
-        "operationId": "api_key_scan_image",
-        "x-weflow-command": "key scan-image",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/ImageMemKey"
                     }
                   }
                 }
@@ -5035,7 +4832,7 @@
           "shard",
           "_cursor"
         ],
-        "description": "A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`).\n\nIts columns are read with their types, the text inflated and decoded, the sender resolved (#257, #492)."
+        "description": "A message as WeChat keeps it (`chat messages` without `parsed`, the `row` of `chat message`).\n\nIts columns are read with their types, the text inflated and decoded, the sender resolved (#257, #492)."
       },
       "SearchHit": {
         "type": "object",
@@ -8751,7 +8548,7 @@
           "out",
           "files"
         ],
-        "description": "What `export media` (and `chat voice`) copied."
+        "description": "What `export media` copied."
       },
       "MediaFileExported": {
         "type": "object",
@@ -9279,63 +9076,6 @@
         ],
         "description": "A `kvcomm` file a code was read from, and how its name was read."
       },
-      "ImageLocalKeys": {
-        "type": "object",
-        "properties": {
-          "accounts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ImageLocalAccount"
-            }
-          }
-        },
-        "required": [
-          "accounts"
-        ],
-        "description": "What `key image-local` (Linux) answers: the accounts and keys read from local `kvcomm` files."
-      },
-      "ImageLocalAccount": {
-        "type": "object",
-        "properties": {
-          "wxid": {
-            "type": "string"
-          },
-          "keys": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ImageLocalKey"
-            }
-          }
-        },
-        "required": [
-          "wxid",
-          "keys"
-        ]
-      },
-      "ImageLocalKey": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0
-          },
-          "xorKey": {
-            "type": "integer",
-            "format": "uint8",
-            "minimum": 0,
-            "maximum": 255
-          },
-          "aesKey": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "xorKey",
-          "aesKey"
-        ]
-      },
       "ImageMemKey": {
         "type": "object",
         "properties": {
@@ -9370,7 +9110,7 @@
         "required": [
           "pid"
         ],
-        "description": "What `key image-mem` (Linux x64 and macOS) and `key scan-image` (macOS)\nanswer: the AES key found in WeChat's memory, if any."
+        "description": "What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any."
       },
       "WeChatProcesses": {
         "type": "object",

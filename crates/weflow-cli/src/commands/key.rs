@@ -46,8 +46,6 @@ pub(crate) enum KeySubcommand {
         #[arg(long)]
         save: bool,
     },
-    /// Derive image keys from local account and kvcomm files (Linux)
-    ImageLocal,
     /// Scan WeChat's memory for the image AES key from a ciphertext block (Linux and macOS)
     ImageMem {
         /// WeChat process id (default: the running WeChat)
@@ -60,16 +58,6 @@ pub(crate) enum KeySubcommand {
     },
     /// List the running WeChat processes (macOS)
     Processes,
-    /// Scan WeChat's memory for the image AES key (macOS)
-    ScanImage {
-        /// WeChat process id
-        pid: u32,
-        /// 32 hex characters of the 16-byte encrypted block
-        ciphertext: String,
-        /// Save the key to the active profile instead of printing it
-        #[arg(long)]
-        save: bool,
-    },
 }
 
 /// `--save` (#216): writes the keys a `key` command found to the active profile, and answers their names for the
@@ -152,7 +140,6 @@ pub(crate) fn handle_key(
             }
             Ok(json!(data))
         }
-        KeySubcommand::ImageLocal => Ok(json!(hub.key_image_local()?)),
         KeySubcommand::ImageMem {
             pid,
             ciphertext,
@@ -177,21 +164,6 @@ pub(crate) fn handle_key(
                         .map(|xor| ("image_xor_key", json!(xor))),
                 );
                 data.saved = save_keys(config_path, &keys)?;
-            }
-            Ok(json!(data))
-        }
-        KeySubcommand::ScanImage {
-            pid,
-            ciphertext,
-            save,
-        } => {
-            let mut data = hub.key_scan_image(*pid, ciphertext)?;
-            if *save {
-                let key = data
-                    .image_aes_key
-                    .take()
-                    .ok_or_else(|| AppError::runtime("no image AES key to save"))?;
-                data.saved = save_keys(config_path, &[("image_aes_key", json!(key))])?;
             }
             Ok(json!(data))
         }
@@ -253,7 +225,7 @@ pub(crate) fn key_summary(summary: Summary, data: &Value) -> Option<String> {
     }
 }
 
-/// `key db`, `image` and `scan-image`: the keys under the names `config set` expects, so they can be copied over,
+/// `key db`, `image` and `image-mem`: the keys under the names `config set` expects, so they can be copied over,
 /// or that they were saved.
 fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
@@ -261,15 +233,14 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
         let what = match shown {
             KeyShown::Db => tr("Database key", "数据库密钥"),
             KeyShown::Image => tr("Image keys", "图片密钥"),
-            KeyShown::ImageLocal => tr("Image keys", "图片密钥"),
-            KeyShown::ImageMem | KeyShown::ScanImage
+            KeyShown::ImageMem
                 if data["saved"]
                     .as_array()
                     .is_some_and(|saved| saved.iter().any(|key| key == "image_xor_key")) =>
             {
                 tr("Image keys", "图片密钥")
             }
-            KeyShown::ImageMem | KeyShown::ScanImage => tr("Image AES key", "图片 AES 密钥"),
+            KeyShown::ImageMem => tr("Image AES key", "图片 AES 密钥"),
             KeyShown::Processes => tr("WeChat processes", "微信进程"),
         };
         let mut text = format!(
@@ -313,7 +284,7 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
             }
             Some(text)
         }
-        KeyShown::ImageMem | KeyShown::ScanImage => {
+        KeyShown::ImageMem => {
             let Some(key) = data["image_aes_key"].as_str() else {
                 return Some(format!(
                     "{}\n",
@@ -357,7 +328,6 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
                     .collect()
             })
         }
-        KeyShown::ImageLocal => None,
     }
 }
 
@@ -471,30 +441,6 @@ mod tests {
     }
 
     #[test]
-    fn scan_image_arguments() {
-        let parse =
-            |args: &[&str]| Cli::try_parse_from(["weflow", "key", "scan-image"].iter().chain(args));
-        let Commands::Key(KeyCommand {
-            command:
-                KeySubcommand::ScanImage {
-                    pid,
-                    ciphertext,
-                    save,
-                },
-        }) = parse(&["1234", "00112233445566778899aabbccddeeff", "--save"])
-            .unwrap()
-            .command
-        else {
-            panic!("scan-image command")
-        };
-        assert_eq!(pid, 1234);
-        assert_eq!(ciphertext, "00112233445566778899aabbccddeeff");
-        assert!(save);
-        assert!(parse(&["1234"]).is_err());
-        assert!(parse(&[]).is_err());
-    }
-
-    #[test]
     fn image_mem_summary_shows_the_key_or_that_none_was_found() {
         let found = keys_summary(
             KeyShown::ImageMem,
@@ -502,12 +448,6 @@ mod tests {
         )
         .unwrap();
         assert!(found.contains("image_aes_key: 00112233445566778899aabbccddeeff"));
-        let scanned = keys_summary(
-            KeyShown::ScanImage,
-            &json!({ "image_aes_key": "00112233445566778899aabbccddeeff", "pid": 1 }),
-        )
-        .unwrap();
-        assert_eq!(scanned, found);
         let one_block = keys_summary(
             KeyShown::ImageMem,
             &json!({ "image_aes_key": "00112233445566778899aabbccddeeff", "verification": "first_block", "pid": 1 }),

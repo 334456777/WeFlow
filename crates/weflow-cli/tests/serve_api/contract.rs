@@ -301,12 +301,12 @@ fn db_scan_and_open_fit_the_contract() {
     );
     assert!(misfit.is_empty(), "{misfit:#?}\n{data}");
     assert_eq!(data["accounts"].as_array().unwrap().len(), 1, "{data}");
-    let open = server.call("GET", "/db/open", "");
-    assert_eq!(open.status, 200, "{}", open.body);
+    let test = server.call("GET", "/db/test", "");
+    assert_eq!(test.status, 200, "{}", test.body);
     let misfit = misfits(
         &contract,
         &json!({ "$ref": "#/components/schemas/DbConnection" }),
-        &open.json()["data"],
+        &test.json()["data"],
     );
     assert!(misfit.is_empty(), "{misfit:#?}");
 }
@@ -457,8 +457,8 @@ fn message_and_media_exports_fit_the_contract() {
             "MediaExport",
         ),
         (
-            "/chat/voice",
-            json!({ "session-id": "wxid_bob", "out": out.join("voice") }),
+            "/export/media",
+            json!({ "session": "wxid_bob", "type": "voice", "out": out.join("voice") }),
             "MediaExport",
         ),
     ] {
@@ -852,7 +852,7 @@ fn answers_fit_the_contract() {
     for target in [
         "/api/chat/messages?session-id=wxid_bob&limit=100",
         "/api/chat/messages?session-id=room1%40chatroom",
-        "/api/chat/latest?session-id=wxid_bob&limit=2",
+        "/api/chat/messages?session-id=wxid_bob&limit=2",
         "/api/chat/search?keyword=hello",
         "/api/chat/contacts",
     ] {
