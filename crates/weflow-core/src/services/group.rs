@@ -239,7 +239,7 @@ fn simple_type_name(local_type: i64) -> String {
         266287972401 => "拍一拍".into(),
         8594229559345 => "红包".into(),
         8589934592049 => "转账".into(),
-        other => format!("类型({other})"),
+        other => format!("类型 {other}"),
     }
 }
 

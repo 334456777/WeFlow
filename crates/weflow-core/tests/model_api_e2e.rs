@@ -122,7 +122,7 @@ async fn failures_say_what_the_service_said() {
         "{text}"
     );
     assert!(
-        text.contains("Check the API key") && text.contains("request id req_fake"),
+        text.contains("Check the API key") && text.contains("\nRequest id req_fake"),
         "{text}"
     );
 
@@ -133,7 +133,7 @@ async fn failures_say_what_the_service_said() {
         .unwrap_err()
         .to_string();
     assert!(
-        text.starts_with("HTTP 404 (invalid_request_error, model_not_found)"),
+        text.starts_with("HTTP 404 invalid_request_error, model_not_found:"),
         "{text}"
     );
     assert!(text.contains("the model name"), "{text}");
@@ -191,7 +191,14 @@ async fn transient_failures_are_retried_twice() {
             "{format} {model}"
         );
         assert_eq!(sent_since(&fake, before), 3, "{format} {model}");
-        assert!(err.to_string().contains("tried 2 more times"), "{err}");
+        // on a line of its own, after the request id when there is one
+        let notes = err
+            .to_string()
+            .lines()
+            .last()
+            .unwrap_or_default()
+            .to_lowercase();
+        assert!(notes.contains("tried 2 more times"), "{err}");
     }
     let text = api(&fake, ModelApiFormat::Anthropic, "fake-server-error")
         .complete(&PROMPT, TIMEOUT)

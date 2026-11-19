@@ -77,8 +77,8 @@ fn millis_since(started: Instant) -> u64 {
 fn skipped_message(name: &str, chat_sent: bool) -> String {
     let skipped = fill(
         tr(
-            "The model had nothing to say about \"{name}\" (it answered SKIP); no insight was written",
-            "模型认为「{name}」没有可说的（回答了 SKIP），没有生成见解",
+            "The model had nothing to say about \"{name}\": it answered SKIP, so no insight was written",
+            "模型认为「{name}」没有可说的：它回答了 SKIP，没有生成见解",
         ),
         &[("name", name.to_string())],
     );
@@ -87,14 +87,14 @@ fn skipped_message(name: &str, chat_sent: bool) -> String {
     }
     skipped
         + tr(
-            ". The recent messages are not sent (aiInsightAllowContext is off), so the model saw no chat; turn it on with `weflow config set aiInsightAllowContext true`",
-            "。没有开启发送聊天内容（aiInsightAllowContext），模型没有收到聊天记录；可以用 `weflow config set aiInsightAllowContext true` 开启",
+            "\nThe recent messages are not sent because aiInsightAllowContext is off, so the model saw no chat. Turn it on with `weflow config set aiInsightAllowContext true`.",
+            "\n没有开启发送聊天内容 aiInsightAllowContext，模型没有收到聊天记录。可以用 `weflow config set aiInsightAllowContext true` 开启。",
         )
 }
 
-/// A failure of the engine, which goes on with the next conversation.
+/// A failure of the engine, which goes on with the next conversation: a warning on stderr.
 fn log_failure(why: &str) {
-    eprintln!("[insight] {why}");
+    crate::output::warn(&format!("{}{why}", tr("insight: ", "洞察：")));
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -842,22 +842,16 @@ impl ServiceHub {
                 let text = format!("【WeFlow】 {title}\n\n{insight}");
                 for id in chat_ids.split(',').map(str::trim).filter(|s| !s.is_empty()) {
                     if let Err(e) = ins::send_telegram(&token, id, &text).await {
-                        eprintln!(
-                            "[insight] {}",
-                            crate::locale::localize(format!(
-                                "Telegram push failed (chatId={id}): {e}"
-                            ))
-                        );
+                        log_failure(&crate::locale::localize(format!(
+                            "Telegram push failed for chat {id}: {e}"
+                        )));
                     }
                 }
             } else {
-                eprintln!(
-                    "[insight] {}",
-                    crate::locale::tr(
-                        "Telegram is enabled but the token or chat id is missing",
-                        "已启用 Telegram，但缺少令牌或聊天 ID"
-                    )
-                );
+                log_failure(tr(
+                    "Telegram is enabled but the token or chat id is missing",
+                    "已启用 Telegram，但缺少令牌或聊天 ID",
+                ));
             }
         }
         let mut st = self.insight_state.lock_or_panic();
@@ -943,7 +937,7 @@ impl ServiceHub {
                 && self.insight_allowed(id)
         }) else {
             return InsightReply::failed(
-                tr("No private chat that can be triggered was found (check the allowlist/blocklist mode and the selection list)", "未找到任何可触发的私聊会话（请检查黑白名单模式与选择列表）"),
+                tr("No private chat that can be triggered was found\nCheck the allowlist or blocklist mode and the selection list.", "未找到任何可触发的私聊会话\n请检查黑白名单模式与选择列表。"),
             );
         };
         let id = session.username.trim().to_string();

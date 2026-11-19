@@ -292,7 +292,7 @@ impl Account {
                     if attempt >= STALE_RETRIES {
                         let why = file.read_error().unwrap_or_else(|| e.to_string());
                         return Err(e.context(format!(
-                            "{} kept changing while it was being read ({why})",
+                            "{} kept changing while it was being read: {why}",
                             path.display()
                         )));
                     }

@@ -202,7 +202,7 @@ fn write_backup(
             .map(|s| format!("{}: {}", s.path, s.reason))
             .collect();
         bail!(
-            "cannot read {} file(s) of the account's databases, so no backup was written: {}",
+            "cannot read {} of the account's database files, so no backup was written: {}",
             list.len(),
             list.join("; ")
         );

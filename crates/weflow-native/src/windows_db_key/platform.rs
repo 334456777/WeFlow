@@ -131,7 +131,7 @@ fn locate(pid: u32) -> Result<KeyLocation> {
     }
     // Native AMD64, or AMD64 emulation on an ARM64 host. Never use x64 CONTEXT on ARM64/x86.
     if !(machine == 0x8664 || machine == 0 && native_machine == 0x8664) {
-        bail!("unsupported WeChat architecture (requires x64)");
+        bail!("unsupported WeChat architecture: x64 is required");
     }
     let base = module.modBaseAddr as usize;
     let image_size = module.modBaseSize as usize;

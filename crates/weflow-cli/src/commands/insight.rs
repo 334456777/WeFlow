@@ -23,7 +23,7 @@ pub(crate) enum InsightSubcommand {
         /// Generate for this conversation instead of the first eligible one
         session_id: Option<String>,
     },
-    /// List insight records (newest first)
+    /// List insight records, newest first
     Records {
         /// Only records containing this text
         #[arg(long)]
@@ -31,10 +31,10 @@ pub(crate) enum InsightSubcommand {
         /// Only this conversation
         #[arg(long)]
         session: Option<String>,
-        /// Only records from this time on (Unix seconds)
+        /// Only records from this time on, in Unix seconds
         #[arg(long)]
         start: Option<i64>,
-        /// Only records up to this time (Unix seconds)
+        /// Only records up to this time, in Unix seconds
         #[arg(long)]
         end: Option<i64>,
         /// Maximum number of records
@@ -54,28 +54,28 @@ pub(crate) enum InsightSubcommand {
         /// Record id
         id: String,
     },
-    /// Delete insight records (all, or filtered)
+    /// Delete insight records, all of them or those the filters pick
     Clear {
         /// Only this conversation
         #[arg(long)]
         session: Option<String>,
-        /// Only records from this time on (Unix seconds)
+        /// Only records from this time on, in Unix seconds
         #[arg(long)]
         start: Option<i64>,
-        /// Only records up to this time (Unix seconds)
+        /// Only records up to this time, in Unix seconds
         #[arg(long)]
         end: Option<i64>,
     },
-    /// Today's trigger counts (only meaningful inside a running `serve --insight`)
+    /// Today's trigger counts; only meaningful inside a running `serve --insight`
     TodayStats,
     /// Run the silence scan once
     Scan,
     /// Footprint statistics from the database
     Footprint {
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },

@@ -72,7 +72,7 @@ pub fn date_range_args(
     if let (Some(b), Some(e)) = (b, e) {
         if b >= e {
             return Err(AppError::usage(format!(
-                "--start ({}) is after --end ({})",
+                "--start {} is after --end {}",
                 start.unwrap_or(""),
                 end.unwrap_or("")
             )));

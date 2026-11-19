@@ -157,12 +157,7 @@ impl fmt::Display for StatusError {
             .map(String::as_str)
             .collect();
         if !names.is_empty() {
-            let names = names.join(", ");
-            if zh {
-                write!(f, "（{names}）")?;
-            } else {
-                write!(f, " ({names})")?;
-            }
+            write!(f, " {}", names.join(tr(", ", "、")))?;
         }
         // a sentence of the service's that ends in Latin punctuation takes a space before the hint in either language
         let said = self.message.as_ref().or(self.body.as_ref());
@@ -184,22 +179,21 @@ impl fmt::Display for StatusError {
             }
             f.write_str(hint)?;
         }
+        // what helps to look into it, on a line of its own
         let mut notes = Vec::new();
         if let Some(id) = &self.request_id {
-            notes.push(format!("{}{id}", tr("request id ", "请求 ID：")));
+            notes.push(format!("{}{id}", tr("Request id ", "请求 ID：")));
         }
         if self.retries > 0 {
-            notes.push(
+            let tried = if notes.is_empty() {
+                tr("Tried {n} more times", "已重试 {n} 次")
+            } else {
                 tr("tried {n} more times", "已重试 {n} 次")
-                    .replace("{n}", &self.retries.to_string()),
-            );
+            };
+            notes.push(tried.replace("{n}", &self.retries.to_string()));
         }
         if !notes.is_empty() {
-            if zh {
-                write!(f, "（{}）", notes.join("；"))?;
-            } else {
-                write!(f, " ({})", notes.join("; "))?;
-            }
+            write!(f, "\n{}{}", notes.join(tr("; ", "；")), tr(".", "。"))?;
         }
         Ok(())
     }
@@ -244,7 +238,7 @@ impl fmt::Display for ModelApiError {
                 )?;
                 if *retries > 0 {
                     f.write_str(
-                        &tr(" (tried {n} more times)", "（已重试 {n} 次）")
+                        &tr("; tried {n} more times", "；已重试 {n} 次")
                             .replace("{n}", &retries.to_string()),
                     )?;
                 }
@@ -273,8 +267,8 @@ impl fmt::Display for ModelApiError {
                 }
             }
             ModelApiError::Truncated => f.write_str(tr(
-                "The model reached its token limit before it wrote an answer; raise the most tokens of one reply (ai_model_api_max_tokens).",
-                "模型在写出回答之前就用完了 token 上限，请调高「单次回复的最多 token」（ai_model_api_max_tokens）。",
+                "The model reached its token limit before it wrote an answer; raise the most tokens of one reply, the setting ai_model_api_max_tokens.",
+                "模型在写出回答之前就用完了 token 上限，请调高「单次回复的最多 token」，即设置 ai_model_api_max_tokens。",
             )),
             ModelApiError::Empty => f.write_str(tr("The model answered nothing.", "模型返回为空。")),
         }
@@ -308,7 +302,7 @@ mod tests {
         assert_eq!(openai.code.as_deref(), Some("invalid_api_key"));
         assert_eq!(
             openai.to_string(),
-            "HTTP 401 (invalid_request_error, invalid_api_key): Incorrect API key provided. Check the API key. (request id req_o)"
+            "HTTP 401 invalid_request_error, invalid_api_key: Incorrect API key provided. Check the API key.\nRequest id req_o."
         );
         let anthropic = StatusError::read(
             529,
@@ -318,7 +312,7 @@ mod tests {
         assert_eq!(anthropic.request_id.as_deref(), Some("req_a"));
         assert!(anthropic
             .to_string()
-            .starts_with("HTTP 529 (overloaded_error): Overloaded. The service is unavailable"));
+            .starts_with("HTTP 529 overloaded_error: Overloaded. The service is unavailable"));
     }
 
     #[test]

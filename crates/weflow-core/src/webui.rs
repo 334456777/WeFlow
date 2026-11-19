@@ -137,7 +137,7 @@ fn checked_version(version: &str) -> AppResult<&str> {
         Ok(version)
     } else {
         Err(AppError::usage(format!(
-            "`{version}` is not a WebUI version (such as 0.1.0)"
+            "`{version}` is not a WebUI version; a version looks like 0.1.0"
         )))
     }
 }
@@ -413,7 +413,7 @@ impl Registry {
         AppError::new(
             "network_error",
             format!(
-                "cannot reach the WebUI registry {} ({what}): {e}",
+                "cannot reach the WebUI registry {} for {what}: {e}",
                 self.base
             ),
             1,
@@ -529,7 +529,7 @@ impl Registry {
             .or(manifest.config.as_ref().map(|c| c.media_type.as_str()));
         if kind != Some(ARTIFACT_TYPE) {
             return Err(AppError::runtime(format!(
-                "{version} in the registry is not a WebUI (artifact type {})",
+                "{version} in the registry is not a WebUI: its artifact type is {}",
                 kind.unwrap_or("none")
             )));
         }

@@ -42,13 +42,13 @@ pub(crate) enum AnnualSubcommand {
 pub(crate) enum DualSubcommand {
     /// Generate the report for you and one friend
     Generate {
-        /// Friend's username (wxid)
+        /// Friend's username, the wxid
         #[arg(long)]
         friend: String,
         /// Report year; 0 covers all years
         #[arg(long, default_value_t = 0)]
         year: i32,
-        /// Words to exclude from the phrase rankings (repeatable).
+        /// Words to exclude from the phrase rankings; repeat for several.
         #[arg(long = "exclude-word")]
         exclude_words: Vec<String>,
     },

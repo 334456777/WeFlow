@@ -18,38 +18,34 @@ pub(crate) struct ServeCommand {
     /// Run the AI insight engine
     #[arg(long)]
     insight: bool,
-    /// Listen address (default: 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1].
-    #[expect(
-        rustdoc::broken_intra_doc_links,
-        reason = "the comment is the --help text, which writes the IPv6 loopback address as [::1]"
-    )]
+    /// Listen address; default: 127.0.0.1. On a loopback address the command API only answers requests to localhost, 127.0.0.1 or ::1.
     #[arg(long)]
     host: Option<String>,
-    /// Listen port (default: 18108).
+    /// Listen port; default: 18108.
     #[arg(long)]
     port: Option<u16>,
-    /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run). An empty one counts as none.
+    /// Access token for the HTTP API; default: `http_api_token` from the config. Without one the command API makes one up for each run. An empty one counts as none.
     #[arg(long, env = "WEFLOW_HTTP_TOKEN", hide_env_values = true)]
     api_token: Option<String>,
-    /// Tasks (`POST` commands: exports, keys, backups…) the command API runs at once; more are queued or refused (default: 1)
+    /// Tasks the command API runs at once, the `POST` commands such as exports, keys and backups; more are queued or refused. Default: 1
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
     max_tasks: Option<u16>,
-    /// Other commands the command API runs at once (default: the number of CPUs)
+    /// Other commands the command API runs at once; default: the number of CPUs
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
     max_reads: Option<u16>,
-    /// Images and voices the command API's /api/ media routes decode at once; more wait in line (default: the number of CPUs)
+    /// Images and voices the command API's /api/ media routes decode at once; more wait in line. Default: the number of CPUs
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
     max_media: Option<u16>,
-    /// Print a line on stderr for each request of the command API: method, path (no query), status and time
+    /// Print a line on stderr for each request of the command API: method, path without the query, status and time
     #[arg(long)]
     log_requests: bool,
-    /// Serve the WebUI at /ui/ from this folder (a built WebUI, such as web/dist) for this run only, instead of the installed one
+    /// Serve the WebUI at /ui/ from this folder of a built WebUI, such as web/dist, for this run only, instead of the installed one
     #[arg(long, value_name = "DIR")]
     pub(super) ui_dir: Option<PathBuf>,
     /// Do not open the WebUI in the browser when the server starts
     #[arg(long)]
     no_browser: bool,
-    /// Show this WebUI version for this run (downloaded first when needed), instead of the one picked with `weflow web use`
+    /// Show this WebUI version for this run, downloaded first when needed, instead of the one picked with `weflow web use`
     #[arg(long, value_name = "VERSION", conflicts_with = "ui_dir")]
     pub(super) web_version: Option<String>,
     /// Serve the API alone, without the WebUI
@@ -206,19 +202,16 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         let svc = weflow_core::image_download::ImageAutoDownload::new();
         let started = svc.start(config_whitelist(hub));
         if started["success"] != true {
-            eprintln!(
-                "{}{}",
-                weflow_core::locale::tr(
-                    "warning: image auto download not started: ",
-                    "警告：原图自动下载未启动："
-                ),
-                weflow_core::locale::localize(
+            weflow_core::output::warn(&format!(
+                "{}\n{}",
+                weflow_core::locale::tr("image auto download not started", "原图自动下载未启动"),
+                weflow_core::render::reason_line(&weflow_core::locale::localize(
                     started["error"]
                         .as_str()
                         .unwrap_or("unknown error")
                         .to_string()
-                )
-            );
+                ))
+            ));
         }
         Some(svc)
     } else {
@@ -239,22 +232,23 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     let files_root = hub.serve_files_dir();
     let (_, failed) = weflow_core::serve_files::remove_unheld(&files_root);
     for failure in failed {
-        eprintln!(
+        weflow_core::output::warn(&format!(
             "{}{failure}",
-            weflow_core::locale::tr("warning: cannot clear ", "警告：无法清除 ")
-        );
+            weflow_core::locale::tr("cannot clear ", "无法清除 ")
+        ));
     }
     // held until the server stops, then removed with what is in it
     let serve_files = weflow_core::serve_files::ServeFiles::hold(&files_root)
         .map_err(|err| {
-            eprintln!(
-                "{}{}: {err}",
+            weflow_core::output::warn(&format!(
+                "{}{}\n{}",
                 weflow_core::locale::tr(
-                    "warning: cannot make a folder of this server's own for returned files in ",
-                    "警告：无法为本服务建立存放返回文件的文件夹："
+                    "cannot make a folder of this server's own for returned files in ",
+                    "无法为本服务建立存放返回文件的文件夹："
                 ),
-                files_root.display()
-            );
+                files_root.display(),
+                weflow_core::render::reason_line(&err.to_string())
+            ));
         })
         .ok();
     let files_dir = serve_files
@@ -307,7 +301,14 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     if shown.is_some() && browse {
         open_in_browser(&page_url);
     }
-    // the version wanted is downloaded beside the server, which shows it once it is in place
+    if !bound.ip().is_loopback() {
+        weflow_core::output::warn(weflow_core::locale::tr(
+            "the command API listens beyond this machine\nAnyone with the token can run any weflow command here.",
+            "命令 API 监听在本机以外的地址\n持有令牌的人可以在这台机器上运行任何 weflow 命令。",
+        ));
+    }
+    // the version wanted is downloaded beside the server, which shows it once it is in place; a line says so and
+    // ends with how the download went
     if let Some(version) = fetch {
         let (store, ui, page_url, had_page) = (
             hub.web_store(),
@@ -315,7 +316,13 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
             page_url.clone(),
             shown.is_some(),
         );
+        let downloading = weflow_core::status::begin(
+            weflow_core::locale::tr("Downloading WebUI {version}…", "正在下载网页 {version}…")
+                .replace("{version}", &version),
+        );
         tokio::spawn(async move {
+            use weflow_core::colour::Role;
+            use weflow_core::locale::tr;
             let quiet = |_: u64, _: u64| {};
             let installed = match weflow_core::webui::Registry::default_registry() {
                 Ok(registry) => {
@@ -336,6 +343,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
             match opened {
                 Ok(dir) => {
                     *ui.write_or_panic() = serve_api::ui::Ui::Page(dir);
+                    downloading.finish(tr("done", "完成"), Role::Success);
                     weflow_core::output::event(
                         json!({ "type": "webui_ready", "version": version, "uiUrl": page_url }),
                     );
@@ -344,6 +352,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
                     }
                 }
                 Err(e) => {
+                    downloading.finish(tr("failed", "失败"), Role::Error);
                     let error = weflow_core::locale::localize(e.message.clone());
                     {
                         // a page shown meanwhile stays
@@ -361,15 +370,6 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
                 }
             }
         });
-    }
-    if !bound.ip().is_loopback() {
-        eprintln!(
-            "{}",
-            weflow_core::locale::tr(
-                "warning: the command API listens beyond this machine; anyone with the token can run any weflow command here",
-                "警告：命令 API 监听在本机以外的地址；持有令牌的人可以在这台机器上运行任何 weflow 命令"
-            )
-        );
     }
     let farewell = serve_api::Farewell::default();
     let server = async {

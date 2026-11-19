@@ -24,10 +24,10 @@ pub(crate) struct ExportCommand {
 enum ExportSubcommand {
     /// Export the session list
     Sessions {
-        /// Only these conversations (repeatable; default: all)
+        /// Only these conversations; repeat for several. Default: all
         #[arg(long = "session")]
         sessions: Vec<String>,
-        /// Export format: json (default), csv, txt, html, excel or sql
+        /// Export format: json, csv, txt, html, excel or sql; default: json
         #[arg(long)]
         format: Option<String>,
         /// Output file
@@ -39,7 +39,7 @@ enum ExportSubcommand {
         /// With avatars in --media: use only the avatars WeChat keeps on this computer, download none
         #[arg(long)]
         no_avatar_download: bool,
-        /// Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)
+        /// Pack the export and its media folder into one zip; when `--out` is a folder, <list>.zip goes in it
         #[expect(
             rustdoc::invalid_html_tags,
             reason = "the comment is the --help text, where <list> stands for the list's name"
@@ -49,7 +49,7 @@ enum ExportSubcommand {
     },
     /// Export the contact list
     Contacts {
-        /// Export format: json (default), csv, txt, html, excel or sql
+        /// Export format: json, csv, txt, html, excel or sql; default: json
         #[arg(long)]
         format: Option<String>,
         /// Output file
@@ -58,7 +58,7 @@ enum ExportSubcommand {
         /// The contacts as `chat contacts --parsed` lists them instead of the database rows
         #[arg(long)]
         parsed: bool,
-        /// Only these kinds of contact (repeat for several; with --parsed)
+        /// Only these kinds of contact; repeat for several, and use with --parsed
         #[arg(long, requires = "parsed", value_parser = ["friend", "group", "official", "former_friend"], action = clap::ArgAction::Append)]
         kind: Vec<String>,
         /// avatar: put the avatars on the HTML page, in `media/<output name>/avatars/` beside the output file
@@ -67,7 +67,7 @@ enum ExportSubcommand {
         /// With avatars in --media: use only the avatars WeChat keeps on this computer, download none
         #[arg(long)]
         no_avatar_download: bool,
-        /// Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)
+        /// Pack the export and its media folder into one zip; when `--out` is a folder, <list>.zip goes in it
         #[expect(
             rustdoc::invalid_html_tags,
             reason = "the comment is the --help text, where <list> stands for the list's name"
@@ -77,34 +77,34 @@ enum ExportSubcommand {
     },
     /// Export the footprint statistics
     Footprint {
-        /// Export format: json (default), or csv or excel for the timeline (a row for each private chat and each @ of you)
+        /// Export format: json, or csv or excel for the timeline with a row for each private chat and each @ of you; default: json
         #[arg(long)]
         format: Option<String>,
         /// Output file
         #[arg(long)]
         out: PathBuf,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
-    /// Export the images, voice (WAV), videos, stickers and files of messages
+    /// Export the images, voices as WAV, videos, stickers and files of messages
     Media {
         /// Output directory
         #[arg(long)]
         out: PathBuf,
-        /// Only media of this conversation id (default: all conversations)
+        /// Only media of this conversation id; default: all conversations
         #[arg(long)]
         session: Option<String>,
         /// What to export: image, voice, video, emoji, file or all
         #[arg(long, default_value = "all")]
         r#type: String,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
@@ -112,13 +112,13 @@ enum ExportSubcommand {
     Messages {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
-        /// Output file; with several formats a folder, or with --zip the zip (a folder: <conversation>.zip in it)
+        /// Output file; with several formats a folder, or with --zip the zip, and for a folder <conversation>.zip goes in it
         #[expect(
             rustdoc::invalid_html_tags,
             reason = "the comment is the --help text, where <conversation> stands for the conversation's name"
@@ -128,20 +128,20 @@ enum ExportSubcommand {
         /// txt, json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql; several comma separated
         #[arg(long, value_delimiter = ',', default_value = "txt")]
         format: Vec<String>,
-        /// Pack the export (every format, and the media folder) into one zip
+        /// Pack the export, every format and the media folder, into one zip
         #[arg(long)]
         zip: bool,
-        /// Only export messages sent by this person: their bare wxid, as `chat contacts` lists it (not an account folder name with a `_xxxx` suffix)
+        /// Only export messages sent by this person: their bare wxid, as `chat contacts` lists it, not an account folder name with a `_xxxx` suffix
         #[arg(long)]
         sender: Option<String>,
-        /// How senders are named: group-nickname, remark or nickname (default: group-nickname, i.e. group nickname, then remark, nickname, wxid)
+        /// How senders are named: group-nickname, remark or nickname. Default: group-nickname, which takes the group nickname, then the remark, nickname and wxid
         #[arg(long)]
         display_name: Option<String>,
-        /// Excel: compact columns (time, sender, type, content)
+        /// Excel: compact columns, namely time, sender, type and content
         #[arg(long)]
         excel_compact: bool,
-        /// Copy media next to the export and point the messages at the copies: any of image, voice, video, emoji,
-        /// file, avatar (comma separated) or all. Files go to `media/<output name>/` beside the output file.
+        /// Copy media next to the export and point the messages at the copies: image, voice, video, emoji, file, avatar
+        /// or all, several separated by commas. Files go to `media/<output name>/` beside the output file.
         #[arg(long, value_delimiter = ',')]
         media: Vec<String>,
         /// With avatars in --media: use only the avatars WeChat keeps on this computer, download none

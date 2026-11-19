@@ -16,7 +16,7 @@ pub(crate) struct SnsCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum SnsSubcommand {
-    /// Moments timeline (newest first)
+    /// Moments timeline, newest first
     Timeline {
         /// Number of posts
         #[arg(long, default_value_t = 20)]
@@ -24,16 +24,16 @@ pub(crate) enum SnsSubcommand {
         /// Number of posts to skip
         #[arg(long, default_value_t = 0)]
         offset: i32,
-        /// Only posts of these users (repeatable)
+        /// Only posts of these users; repeat for several
         #[arg(long = "user")]
         users: Vec<String>,
         /// Only posts containing this text
         #[arg(long)]
         keyword: Option<String>,
-        /// Only posts from this time on (Unix seconds, 0 = no limit)
+        /// Only posts from this time on, in Unix seconds; 0 means no limit
         #[arg(long, default_value_t = 0)]
         start: i64,
-        /// Only posts up to this time (Unix seconds, 0 = no limit)
+        /// Only posts up to this time, in Unix seconds; 0 means no limit
         #[arg(long, default_value_t = 0)]
         end: i64,
         /// Download and decrypt images / videos into the cache and inline them as data URLs
@@ -70,34 +70,34 @@ pub(crate) enum SnsSubcommand {
         /// Export format: json, html or arkmejson
         #[arg(long, default_value = "json")]
         format: String,
-        /// Only posts of these users (repeatable)
+        /// Only posts of these users; repeat for several
         #[arg(long = "user")]
         users: Vec<String>,
         /// Only posts containing this text
         #[arg(long)]
         keyword: Option<String>,
-        /// Only posts from this time on (Unix seconds, 0 = no limit)
+        /// Only posts from this time on, in Unix seconds; 0 means no limit
         #[arg(long, default_value_t = 0)]
         start: i64,
-        /// Only posts up to this time (Unix seconds, 0 = no limit)
+        /// Only posts up to this time, in Unix seconds; 0 means no limit
         #[arg(long, default_value_t = 0)]
         end: i64,
         /// Also save images / live photos / videos next to the export
         #[arg(long)]
         media: bool,
     },
-    /// Fetch (and decrypt, with --key) a Moments image or video
+    /// Fetch a Moments image or video, and decrypt it with --key
     Media {
         /// Resource URL
         url: String,
         /// Decryption key
         #[arg(long)]
         key: Option<String>,
-        /// Output file (without it: only the size and the file in the cache)
+        /// Output file; without it only the size and the file in the cache are given
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Download a Moments sticker (plain or AES-GCM encrypted)
+    /// Download a Moments sticker, plain or AES-GCM encrypted
     DownloadEmoji {
         /// Sticker URL
         url: String,
@@ -112,16 +112,16 @@ pub(crate) enum SnsSubcommand {
     DownloadImage {
         /// Image URL
         url: String,
-        /// Output file (default: print base64 in the result)
+        /// Output file; default: print base64 in the result
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Moments block-delete trigger (checking, installing and removing are refused: the database is read-only)
+    /// Moments block-delete trigger; checking, installing and removing are refused, as the database is read-only
     BlockDelete {
         /// check, install or uninstall
         action: TriggerAction,
     },
-    /// Delete a Moments post (always refused: the database is read-only)
+    /// Delete a Moments post; always refused, as the database is read-only
     Delete {
         /// Post id
         post_id: String,

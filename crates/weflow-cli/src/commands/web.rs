@@ -19,7 +19,7 @@ pub(crate) struct WebCommand {
 enum WebSubcommand {
     /// The WebUI `serve` shows: the version in use, the one picked, the default one of this weflow, and where they are kept
     Info,
-    /// WebUI versions kept on this machine, or published ones (--remote) and whether they suit this weflow
+    /// WebUI versions kept on this machine, or with --remote the published ones, and whether they suit this weflow
     List {
         /// List the versions published in the registry instead
         #[arg(long)]
@@ -30,7 +30,7 @@ enum WebSubcommand {
         /// WebUI version, such as 0.1.0
         version: String,
     },
-    /// Pick the WebUI version `serve` shows (downloaded first when needed)
+    /// Pick the WebUI version `serve` shows; it is downloaded first when needed
     Use {
         /// WebUI version, such as 0.1.0
         version: String,
@@ -113,11 +113,11 @@ fn web_shown(store: &WebStore) -> WebShown {
             let fetch = (now.is_none() && !WEB_VERSION.is_empty() && wanted != WEB_VERSION)
                 .then(|| WEB_VERSION.to_string());
             let note = format!(
-                "{}{}",
+                "{}\n{}",
                 weflow_core::locale::localize(refused.message.clone()),
                 weflow_core::locale::tr(
-                    "; run `weflow web update` to pick the newest WebUI that suits this weflow, or `weflow web use <version>` to pick another",
-                    "；运行 `weflow web update` 选用适合这个 weflow 的最新网页，或用 `weflow web use <版本>` 选用其他版本"
+                    "Run `weflow web update` to pick the newest WebUI that suits this weflow, or `weflow web use <version>` to pick another.",
+                    "运行 `weflow web update` 选用适合这个 weflow 的最新网页，或用 `weflow web use <版本>` 选用其他版本。"
                 )
             );
             WebShown {
@@ -143,7 +143,7 @@ pub(super) async fn serve_webui(
     if let Some(dir) = &command.ui_dir {
         let ui = UiDir::open(dir).ok_or_else(|| {
             AppError::usage(format!(
-                "--ui-dir {}: no index.html there; pass the folder of a built WebUI (such as web/dist)",
+                "--ui-dir {}: no index.html there\nPass the folder of a built WebUI, such as web/dist.",
                 dir.display()
             ))
         })?;
@@ -167,7 +167,7 @@ pub(super) async fn serve_webui(
     }
     let shown = web_shown(&store);
     if let Some(note) = &shown.note {
-        eprintln!("{}{note}", weflow_core::locale::tr("warning: ", "警告："));
+        weflow_core::output::warn(note);
     }
     let ui = shown
         .now

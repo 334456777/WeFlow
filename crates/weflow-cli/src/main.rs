@@ -10,6 +10,7 @@ mod alloc_stats;
 mod cli;
 mod commands;
 mod files;
+mod help_style;
 mod i18n;
 mod reads;
 mod serve_api;
@@ -39,6 +40,7 @@ use reads::{json_document, read_of};
 
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
+use weflow_core::colour::{Paint, Role, Stream};
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::output::success;
@@ -213,8 +215,13 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
                 weflow_core::output::event(
                     json!({ "type": "auto_download_started", "status": svc.status() }),
                 );
+                let running = weflow_core::status::begin(weflow_core::locale::tr(
+                    "Image auto download is running; press Ctrl+C to stop it…",
+                    "原图自动下载运行中，按 Ctrl+C 停止…",
+                ));
                 stop::requested().await;
                 svc.stop();
+                running.finish(weflow_core::locale::tr("stopped", "已停止"), Role::Success);
                 Ok(json!(weflow_core::contract::AutoDownloadStopped {
                     stopped: true
                 }))
@@ -290,9 +297,10 @@ fn print_response(response: &weflow_core::output::CliResponse<Value>, summary: O
     let mut value = serde_json::to_value(response).expect("a response serializes");
     weflow_core::locale::localize_json(&mut value);
     let data = value.get("data").cloned().unwrap_or(Value::Null);
-    match summary.and_then(|summary| key_summary(summary, &data)) {
+    let paint = Paint::of(Stream::Stdout);
+    match summary.and_then(|summary| key_summary(summary, &data, paint)) {
         Some(text) => print!("{text}"),
-        None => print!("{}", weflow_core::render::render(&data)),
+        None => print!("{}", weflow_core::render::render(&data, paint)),
     }
 }
 
@@ -300,6 +308,8 @@ fn print_response(response: &weflow_core::output::CliResponse<Value>, summary: O
 /// runs, which takes the command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Summary {
+    /// A command that ends with its outcome on the line that said it was running (`image auto-download start`).
+    AlreadySaid,
     Cache(CacheShown),
     /// `config set`, `unset` and `clear`, which succeed silently: the config file path is not news. A key spelt almost
     /// as one WeFlow reads is named.
@@ -343,6 +353,12 @@ impl Summary {
                 DbSubcommand::Wxid { .. } => Self::DbWxid,
                 _ => return None,
             },
+            Commands::Image(ImageCommand {
+                command:
+                    ImageSubcommand::AutoDownload {
+                        command: AutoDownloadSubcommand::Start { .. },
+                    },
+            }) => Self::AlreadySaid,
             Commands::Key(KeyCommand { command }) => Self::Key(match command {
                 KeySubcommand::Db { .. } => KeyShown::Db,
                 KeySubcommand::Image { .. } => KeyShown::Image,
@@ -389,7 +405,7 @@ fn print_failure(err: &AppError) {
     let details = err.details.as_ref();
     eprint!(
         "{}",
-        weflow_core::render::render_error(&err.message, details)
+        weflow_core::render::render_error(&err.message, details, Paint::of(Stream::Stderr))
     );
 }
 

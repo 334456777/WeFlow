@@ -1,4 +1,4 @@
-//! The terminal: sizes in words, columns, colours and yes/no answers.
+//! The terminal: sizes in words, columns and yes/no answers. Colours are `weflow_core::colour`'s.
 
 pub(crate) fn is_yes(answer: &str) -> bool {
     matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
@@ -57,41 +57,6 @@ pub(crate) fn align_columns(rows: &[Vec<String>]) -> Vec<String> {
         }
     }
     out
-}
-
-/// `text` in green on a terminal; plain when stdout is not one or `NO_COLOR` is set (<https://no-color.org>).
-pub(crate) fn green(text: &str) -> String {
-    use std::io::IsTerminal;
-    let color = std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
-        && std::io::stdout().is_terminal()
-        && enable_ansi();
-    if color {
-        format!("\x1b[32m{text}\x1b[0m")
-    } else {
-        text.to_string()
-    }
-}
-
-/// The Windows console shows ANSI colours only once asked to.
-#[cfg(windows)]
-fn enable_ansi() -> bool {
-    use windows_sys::Win32::System::Console::{
-        GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-        STD_OUTPUT_HANDLE,
-    };
-    // SAFETY: console calls on this process's own stdout handle; `mode` outlives the call that writes it
-    unsafe {
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        let mut mode = 0;
-        GetConsoleMode(handle, &mut mode) != 0
-            && (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0
-                || SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0)
-    }
-}
-
-#[cfg(not(windows))]
-fn enable_ansi() -> bool {
-    true
 }
 
 #[cfg(test)]

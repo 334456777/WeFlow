@@ -233,7 +233,7 @@ impl Hook {
         let ids =
             process::thread_ids(pid).map_err(|_| "Failed to open task directory.".to_string())?;
         if ids.is_empty() {
-            return Err("Failed to attach to any thread. (Permission denied?)".into());
+            return Err("Failed to attach to any thread; permission may be denied.".into());
         }
         let mut threads = BTreeMap::new();
         let mut seen = BTreeSet::new();
@@ -257,7 +257,7 @@ impl Hook {
             }
         }
         if threads.is_empty() {
-            return Err("Failed to attach to any thread. (Permission denied?)".into());
+            return Err("Failed to attach to any thread; permission may be denied.".into());
         }
         let mut hook = Self {
             pid,
@@ -268,7 +268,7 @@ impl Hook {
         for tid in hook.threads.keys().copied().collect::<Vec<_>>() {
             if continue_thread(tid, 0).is_err() {
                 let _ = hook.cleanup();
-                return Err("Failed to attach to any thread. (Permission denied?)".into());
+                return Err("Failed to attach to any thread; permission may be denied.".into());
             }
             if let Some(thread) = hook.threads.get_mut(&tid) {
                 thread.stopped = false;
