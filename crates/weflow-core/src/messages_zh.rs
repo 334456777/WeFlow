@@ -52,16 +52,16 @@ const CATALOG: &[(&str, &str)] = &[
     ("it needs API {}, this weflow serves API {}", "它需要 API {}，这个 weflow 提供 API {}"),
     ("it needs weflow {} or newer, this is {}", "它需要 weflow {} 或更新的版本，当前是 {}"),
     ("no published WebUI version suits this weflow", "没有适合这个 weflow 的已发布网页版本"),
-    ("--ui-dir {}: no index.html there; pass the folder of a built WebUI (such as web/dist)", "--ui-dir {}：该目录下没有 index.html；请指定构建好的网页目录（例如 web/dist）"),
-    ("`{}` is not a WebUI version (such as 0.1.0)", "`{}` 不是网页的版本号（例如 0.1.0）"),
+    ("--ui-dir {}: no index.html there\nPass the folder of a built WebUI, such as web/dist.", "--ui-dir {}：该目录下没有 index.html\n请指定构建好的网页目录，例如 web/dist。"),
+    ("`{}` is not a WebUI version; a version looks like 0.1.0", "`{}` 不是网页的版本号；版本号形如 0.1.0"),
     ("WebUI {} is shown by a running `weflow serve`; stop it first", "网页 {} 正由运行中的 `weflow serve` 显示；请先停止它"),
     ("cannot lock WebUI {}: {}", "无法锁定网页 {}：{}"),
     ("cannot wait for the install of WebUI {}: {}", "无法等待网页 {} 安装完成：{}"),
     ("{} is not WebUI metadata: {}", "{} 不是网页的元数据：{}"),
-    ("cannot reach the WebUI registry {} ({}): {}", "无法访问网页仓库 {}（{}）：{}"),
+    ("cannot reach the WebUI registry {} for {}: {}", "无法访问网页仓库 {0}，读取 {1} 时出错：{2}"),
     ("not in the WebUI registry: {}", "网页仓库中没有：{}"),
     ("{} in the registry has no page", "仓库中的 {} 没有网页"),
-    ("{} in the registry is not a WebUI (artifact type {})", "仓库中的 {} 不是网页（制品类型 {}）"),
+    ("{} in the registry is not a WebUI: its artifact type is {}", "仓库中的 {0} 不是网页：它的制品类型是 {1}"),
     ("the WebUI package of {} is damaged: expected {} bytes with SHA-256 {}, got {} bytes with {}", "网页 {} 的安装包已损坏：应为 {} 字节、SHA-256 为 {}，实际为 {} 字节、SHA-256 为 {}"),
     ("the WebUI package of {} is {} bytes, more than the {} allowed", "网页 {} 的安装包有 {} 字节，超过允许的 {} 字节"),
     ("the WebUI package is refused: {} files, more than {}", "拒绝安装网页安装包：有 {} 个文件，超过 {} 个"),
@@ -186,13 +186,9 @@ const CATALOG: &[(&str, &str)] = &[
     ("{} is not supported: the native database backend opens WeChat's databases read-only", "不支持 {}：原生数据库后端以只读方式打开微信数据库"),
     ("{} is not implemented in the native database backend yet", "原生数据库后端尚未实现 {}"),
     ("Telegram push failed for chat {}: {}", "Telegram 推送到聊天 {0} 失败：{1}"),
-    // backup, WebUI and Weibo
+    // backup and Weibo
     ("refusing to restore through the link {}: it may point outside {}", "拒绝通过链接 {0} 恢复：它可能指向 {1} 以外的位置"),
     ("cannot read {} of the account's database files, so no backup was written: {}", "无法读取账号的 {0} 个数据库文件，没有写出备份：{1}"),
-    ("--ui-dir {}: no index.html there\nPass the folder of a built WebUI, such as web/dist.", "--ui-dir {}：那里没有 index.html\n请指定构建好的网页目录，例如 web/dist。"),
-    ("`{}` is not a WebUI version; a version looks like 0.1.0", "`{}` 不是网页版本号；版本号形如 0.1.0"),
-    ("cannot reach the WebUI registry {} for {}: {}", "连不上网页的发布仓库 {0}，读取 {1} 时出错：{2}"),
-    ("{} in the registry is not a WebUI: its artifact type is {}", "发布仓库中的 {0} 不是网页：它的制品类型是 {1}"),
     ("please enter a valid Weibo UID: digits only", "请输入有效的微博 UID：只能是数字"),
 ];
 
@@ -241,10 +237,16 @@ mod tests {
             )
         };
         let used = |en: &str| {
-            let longest = en.split("{}").max_by_key(|p| p.len()).unwrap_or(en);
-            en.split("{}").any(|piece| {
-                // the code may put in the first words itself (`{what} cannot be converted…`)
-                let mut rest = piece;
+            let longest = en
+                .split("{}")
+                .max_by_key(|p| p.len())
+                .unwrap_or(en)
+                .trim_matches(['`', '\'', ' ']);
+            // a message of contexts joined by `: ` is put together from each of them
+            en.split("{}").flat_map(|p| p.split(": ")).any(|piece| {
+                // the code may put in the first words itself (`{what} cannot be converted…`), or the quotes around a
+                // value with the value (`the WebUI package is refused: {what}`)
+                let mut rest = piece.trim_matches(['`', '\'', ' ']);
                 for _ in 0..3 {
                     if (rest.trim().chars().count() >= 12 || rest == longest) && said(rest) {
                         return true;
@@ -305,9 +307,9 @@ mod tests {
             Some("它需要 weflow 9.0.0 或更新的版本，当前是 6.0.0")
         );
         assert_eq!(
-            translate("cannot reach the WebUI registry https://ghcr.io (tags/list): timed out")
+            translate("cannot reach the WebUI registry https://ghcr.io for tags/list: timed out")
                 .as_deref(),
-            Some("无法访问网页仓库 https://ghcr.io（tags/list）：timed out")
+            Some("无法访问网页仓库 https://ghcr.io，读取 tags/list 时出错：timed out")
         );
         assert_eq!(
             translate("not in the WebUI registry: manifests/0.9.9").as_deref(),
