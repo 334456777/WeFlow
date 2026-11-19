@@ -7,6 +7,7 @@ use crate::serve_api;
 use serde_json::{json, Value};
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::services::ServiceHub;
+use weflow_core::webui::{WebMeta, WebStore};
 
 #[derive(Args, Debug)]
 pub(crate) struct WebCommand {
@@ -53,17 +54,84 @@ pub(super) fn web_backend() -> weflow_core::webui::Backend<'static> {
     }
 }
 
-/// The version `serve` shows without `--ui-dir` and `--web-version`: the one picked with `weflow web use`, else the
-/// default version of this weflow.
-fn web_wanted(store: &weflow_core::webui::WebStore) -> Option<String> {
+/// The version `serve` aims to show without `--ui-dir` and `--web-version`: the one picked with `weflow web use`,
+/// else the default version of this weflow.
+fn web_wanted(store: &WebStore) -> Option<String> {
     store
         .chosen()
         .or_else(|| (!WEB_VERSION.is_empty()).then(|| WEB_VERSION.to_string()))
 }
 
+/// What `serve` shows of the versions kept here when it starts without `--ui-dir` and `--web-version`.
+#[derive(Debug, Default)]
+struct WebShown {
+    /// The version shown when the server starts: kept here, and suits this weflow.
+    now: Option<WebMeta>,
+    /// The version downloaded beside the server, shown once it is in place.
+    fetch: Option<String>,
+    /// Why the version wanted is passed over, and what to do about it, in the language of this run.
+    note: Option<String>,
+}
+
+impl WebShown {
+    /// The version `serve` ends up showing: the one downloaded beside it, else the one it starts with.
+    fn target(&self) -> Option<&str> {
+        self.fetch
+            .as_deref()
+            .or(self.now.as_ref().map(|m| m.version.as_str()))
+    }
+}
+
+/// The version wanted when it is kept and suits this weflow; while it is downloaded, the newest suitable one kept
+/// here. One kept that does not suit (picked before this weflow changed its API, say) gives way to the newest
+/// suitable one kept here, else to the default version of this weflow, downloaded: downloading the one kept again
+/// would not help.
+fn web_shown(store: &WebStore) -> WebShown {
+    let Some(wanted) = web_wanted(store) else {
+        return WebShown::default();
+    };
+    let backend = web_backend();
+    let newest_suitable = || {
+        store.installed().into_iter().find(|m| {
+            backend
+                .refusal(&m.api_version, &m.min_backend_version)
+                .is_none()
+        })
+    };
+    match weflow_core::webui::kept(store, &wanted, backend) {
+        Ok(Some(meta)) => WebShown {
+            now: Some(meta),
+            ..WebShown::default()
+        },
+        Ok(None) => WebShown {
+            now: newest_suitable(),
+            fetch: Some(wanted),
+            note: None,
+        },
+        Err(refused) => {
+            let now = newest_suitable();
+            let fetch = (now.is_none() && !WEB_VERSION.is_empty() && wanted != WEB_VERSION)
+                .then(|| WEB_VERSION.to_string());
+            let note = format!(
+                "{}{}",
+                weflow_core::locale::localize(refused.message.clone()),
+                weflow_core::locale::tr(
+                    "; run `weflow web update` to pick the newest WebUI that suits this weflow, or `weflow web use <version>` to pick another",
+                    "；运行 `weflow web update` 选用适合这个 weflow 的最新网页，或用 `weflow web use <版本>` 选用其他版本"
+                )
+            );
+            WebShown {
+                now,
+                fetch,
+                note: Some(note),
+            }
+        }
+    }
+}
+
 /// The WebUI `serve` starts with, and the version to download beside it (issue #148): none with `--api-only`; the
-/// folder of `--ui-dir`; `--web-version` (downloaded first); else the version wanted, or while it is downloaded,
-/// the newest suitable one kept here.
+/// folder of `--ui-dir`; `--web-version` (downloaded first); else what [`web_shown`] gives, after a warning when the
+/// version wanted is passed over.
 pub(super) async fn serve_webui(
     command: &ServeCommand,
     hub: &ServiceHub,
@@ -97,41 +165,14 @@ pub(super) async fn serve_webui(
                 .await?;
         return Ok((UiDir::open_version(&store, &meta.version), None));
     }
-    let Some(wanted) = web_wanted(&store) else {
-        return Ok((None, None));
-    };
-    let backend = web_backend();
-    // the newest suitable version kept here: shown while the one wanted downloads, or instead of one kept that
-    // does not suit this weflow
-    let fallback = || {
-        store
-            .installed()
-            .into_iter()
-            .find(|m| {
-                backend
-                    .refusal(&m.api_version, &m.min_backend_version)
-                    .is_none()
-            })
-            .and_then(|m| UiDir::open_version(&store, &m.version))
-    };
-    match weflow_core::webui::kept(&store, &wanted, backend) {
-        Ok(Some(meta)) => Ok((UiDir::open_version(&store, &meta.version), None)),
-        Ok(None) => Ok((fallback(), Some(wanted))),
-        // kept by another weflow: downloading it again would not help, but with nothing else suitable kept here (a
-        // version picked before this weflow changed its API, say) the default version of this weflow does
-        Err(refused) => {
-            eprintln!(
-                "{}{}",
-                weflow_core::locale::tr("warning: ", "警告："),
-                weflow_core::locale::localize(refused.message.clone())
-            );
-            let shown = fallback();
-            let default_version =
-                (shown.is_none() && !WEB_VERSION.is_empty() && wanted != WEB_VERSION)
-                    .then(|| WEB_VERSION.to_string());
-            Ok((shown, default_version))
-        }
+    let shown = web_shown(&store);
+    if let Some(note) = &shown.note {
+        eprintln!("{}{note}", weflow_core::locale::tr("warning: ", "警告："));
     }
+    let ui = shown
+        .now
+        .and_then(|meta| UiDir::open_version(&store, &meta.version));
+    Ok((ui, shown.fetch))
 }
 
 /// `weflow web …`: the WebUI versions kept here and published (issue #148).
@@ -139,17 +180,18 @@ pub(crate) async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppRes
     use weflow_core::contract::{
         WebChosen, WebInfo, WebInstalled, WebPruned, WebPublished, WebUpdated,
     };
-    use weflow_core::webui::{self, Registry, WebMeta};
+    use weflow_core::webui::{self, Registry};
     let store = hub.web_store();
     let backend = web_backend();
     let chosen = store.chosen();
-    let wanted = web_wanted(&store);
+    let shown = web_shown(&store);
+    let in_use = shown.now.as_ref().map(|m| m.version.clone());
     let entry = |m: &WebMeta| WebInstalled {
         version: m.version.clone(),
         api_version: m.api_version.clone(),
         min_backend_version: m.min_backend_version.clone(),
         path: store.dir(&m.version),
-        in_use: wanted.as_deref() == Some(m.version.as_str()),
+        in_use: in_use.as_deref() == Some(m.version.as_str()),
         picked: chosen.as_deref() == Some(m.version.as_str()),
         suits: backend
             .refusal(&m.api_version, &m.min_backend_version)
@@ -164,19 +206,17 @@ pub(crate) async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppRes
         )
     };
     match &command.command {
-        WebSubcommand::Info => {
-            let in_use = wanted.as_deref().and_then(|v| store.meta(v));
-            Ok(json!(WebInfo {
-                in_use: in_use.as_ref().map(|m| m.version.clone()),
-                path: in_use.as_ref().map(|m| store.dir(&m.version)),
-                picked: chosen.clone(),
-                built_in: WEB_VERSION.to_string(),
-                wanted: wanted.clone(),
-                downloaded: in_use.is_some(),
-                store: store.root().to_path_buf(),
-                installed: store.installed().into_iter().map(|m| m.version).collect(),
-            }))
-        }
+        WebSubcommand::Info => Ok(json!(WebInfo {
+            path: in_use.as_deref().map(|v| store.dir(v)),
+            in_use: in_use.clone(),
+            picked: chosen.clone(),
+            built_in: WEB_VERSION.to_string(),
+            wanted: shown.target().map(str::to_string),
+            downloaded: shown.fetch.is_none() && shown.now.is_some(),
+            store: store.root().to_path_buf(),
+            installed: store.installed().into_iter().map(|m| m.version).collect(),
+            note: shown.note.clone(),
+        })),
         WebSubcommand::List { remote: false } => Ok(json!(store
             .installed()
             .iter()
@@ -245,7 +285,7 @@ pub(crate) async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppRes
                         1,
                     )
                 })?;
-            let before = wanted.clone();
+            let before = shown.target().map(str::to_string);
             let meta = webui::install(&store, &registry, &newest, backend, &progress).await?;
             store.choose(&meta.version)?;
             Ok(json!(WebUpdated {
@@ -288,7 +328,7 @@ fn published_refusal(
     min_backend_version: Option<&str>,
 ) -> Option<String> {
     match (api_version, min_backend_version) {
-        (Some(api), Some(min)) => backend.refusal(api, min),
+        (Some(api), Some(min)) => backend.refusal(api, min).map(weflow_core::locale::localize),
         _ => Some(
             weflow_core::locale::tr(
                 "its metadata does not say which API and weflow version it needs",

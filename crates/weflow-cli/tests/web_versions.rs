@@ -434,6 +434,27 @@ fn versions_kept_by_another_weflow_are_checked_again() {
 ",
     )
     .unwrap();
+    // web info and web list say what serve shows, and why the version picked is passed over
+    let info = cli(&home, &reg, &["web", "info"]);
+    assert_eq!(info["picked"], "0.0.7", "{info}");
+    assert_eq!(info["inUse"], "0.0.9", "{info}");
+    assert_eq!(info["wanted"], "0.0.9", "{info}");
+    assert_eq!(info["downloaded"], true, "{info}");
+    let note = info["note"].as_str().unwrap_or_default();
+    assert!(
+        note.contains("WebUI 0.0.7 cannot run") && note.contains("weflow web update"),
+        "{info}"
+    );
+    let listed = cli(&home, &reg, &["web", "list"]);
+    let in_use: Vec<&str> = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|v| v["inUse"] == true)
+        .map(|v| v["version"].as_str().unwrap())
+        .collect();
+    assert_eq!(in_use, ["0.0.9"], "{listed}");
+
     let server = Server::start(&home, &reg, &[]);
     assert_eq!(server.started["uiVersion"], "0.0.9");
     assert!(server.started["uiDownloading"].is_null());
@@ -479,6 +500,16 @@ fn a_picked_version_of_another_api_gives_way_to_the_default_one() {
     // upgraded from a weflow of another API, with a version picked there and nothing else kept
     keep(&home, "0.0.6", "0", "0.0.1");
     std::fs::write(home.join("cache").join("web").join("current"), "0.0.6\n").unwrap();
+    let info = cli(&home, &reg, &["web", "info"]);
+    assert!(info["inUse"].is_null(), "{info}");
+    assert_eq!(info["wanted"], version.as_str(), "{info}");
+    assert_eq!(info["downloaded"], false, "{info}");
+    assert!(
+        info["note"]
+            .as_str()
+            .is_some_and(|n| n.contains("needs API 0")),
+        "{info}"
+    );
     let server = Server::start(&home, &reg, &[]);
     assert_eq!(server.started["ui"], false);
     assert_eq!(server.started["uiDownloading"], version.as_str());
@@ -487,6 +518,9 @@ fn a_picked_version_of_another_api_gives_way_to_the_default_one() {
     drop(server);
 
     // kept now: shown at once, offline too
+    let info = cli(&home, "http://127.0.0.1:9", &["web", "info"]);
+    assert_eq!(info["inUse"], version.as_str(), "{info}");
+    assert_eq!(info["downloaded"], true, "{info}");
     let server = Server::start(&home, "http://127.0.0.1:9", &[]);
     assert_eq!(server.started["uiVersion"], version.as_str());
     assert!(server.started["uiDownloading"].is_null());

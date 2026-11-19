@@ -9,19 +9,23 @@ use serde::Serialize;
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WebInfo {
-    /// The version `serve` shows; null when none is downloaded.
+    /// The version `serve` shows when it starts: one kept here that suits this weflow; null when there is none.
     pub in_use: Option<String>,
     pub path: Option<PathBuf>,
     /// The version chosen with `web use`.
     pub picked: Option<String>,
     /// The version this weflow was built for.
     pub built_in: String,
-    /// The version `serve` would show.
+    /// The version `serve` would show: downloaded beside it when it is not kept here.
     pub wanted: Option<String>,
+    /// Whether `wanted` is kept here.
     pub downloaded: bool,
     /// Where the versions are kept.
     pub store: PathBuf,
     pub installed: Vec<String>,
+    /// Why `serve` passes over the version picked (it does not suit this weflow) and what to do about it; null when
+    /// it does not.
+    pub note: Option<String>,
 }
 
 /// A downloaded WebUI version (`web list`, `web install`).
@@ -32,7 +36,7 @@ pub struct WebInstalled {
     pub api_version: String,
     pub min_backend_version: String,
     pub path: PathBuf,
-    /// The one `serve` shows.
+    /// The one `serve` shows when it starts.
     pub in_use: bool,
     /// The one chosen with `web use`.
     pub picked: bool,

@@ -47,6 +47,32 @@ const CATALOG: &[(&str, &str)] = &[
     ("none of the sessions asked for is in the session list", "会话列表里没有所选的会话"),
     ("unsupported export format: {}; supported: json, csv, txt, html, excel, sql", "不支持的导出格式：{}；支持：json、csv、txt、html、excel、sql"),
     ("CSV export expects an array; use --format json for nested data", "CSV 导出需要数组数据；嵌套数据请使用 --format json"),
+    // WebUI
+    ("WebUI {} cannot run with this weflow: it needs API {}, this weflow serves API {}", "网页 {} 无法在这个 weflow 上运行：它需要 API {}，这个 weflow 提供 API {}"),
+    ("WebUI {} cannot run with this weflow: it needs weflow {} or newer, this is {}", "网页 {} 无法在这个 weflow 上运行：它需要 weflow {} 或更新的版本，当前是 {}"),
+    ("WebUI {} cannot run with this weflow: {}", "网页 {} 无法在这个 weflow 上运行：{}"),
+    ("it needs API {}, this weflow serves API {}", "它需要 API {}，这个 weflow 提供 API {}"),
+    ("it needs weflow {} or newer, this is {}", "它需要 weflow {} 或更新的版本，当前是 {}"),
+    ("no published WebUI version suits this weflow", "没有适合这个 weflow 的已发布网页版本"),
+    ("--ui-dir {}: no index.html there; pass the folder of a built WebUI (such as web/dist)", "--ui-dir {}：该目录下没有 index.html；请指定构建好的网页目录（例如 web/dist）"),
+    ("`{}` is not a WebUI version (such as 0.1.0)", "`{}` 不是网页的版本号（例如 0.1.0）"),
+    ("WebUI {} is shown by a running `weflow serve`; stop it first", "网页 {} 正由运行中的 `weflow serve` 显示；请先停止它"),
+    ("cannot lock WebUI {}: {}", "无法锁定网页 {}：{}"),
+    ("cannot wait for the install of WebUI {}: {}", "无法等待网页 {} 安装完成：{}"),
+    ("{} is not WebUI metadata: {}", "{} 不是网页的元数据：{}"),
+    ("cannot reach the WebUI registry {} ({}): {}", "无法访问网页仓库 {}（{}）：{}"),
+    ("not in the WebUI registry: {}", "网页仓库中没有：{}"),
+    ("{} in the registry has no page", "仓库中的 {} 没有网页"),
+    ("{} in the registry is not a WebUI (artifact type {})", "仓库中的 {} 不是网页（制品类型 {}）"),
+    ("the WebUI package of {} is damaged: expected {} bytes with SHA-256 {}, got {} bytes with {}", "网页 {} 的安装包已损坏：应为 {} 字节、SHA-256 为 {}，实际为 {} 字节、SHA-256 为 {}"),
+    ("the WebUI package of {} is {} bytes, more than the {} allowed", "网页 {} 的安装包有 {} 字节，超过允许的 {} 字节"),
+    ("the WebUI package is refused: {} files, more than {}", "拒绝安装网页安装包：有 {} 个文件，超过 {} 个"),
+    ("the WebUI package is refused: `{}` leads out of the folder", "拒绝安装网页安装包：`{}` 指向目录之外"),
+    ("the WebUI package is refused: `{}` is a link", "拒绝安装网页安装包：`{}` 是链接"),
+    ("the WebUI package is refused: it unpacks to more than {} bytes", "拒绝安装网页安装包：解压后超过 {} 字节"),
+    ("the package of {} has no index.html", "{} 的安装包里没有 index.html"),
+    ("the package of {} holds {} {}", "{} 的安装包里是 {} {}"),
+    ("cannot move the WebUI into {}: {}", "无法把网页移入 {}：{}"),
     // config
     ("invalid value '{}' for lang; use en or zh", "lang 的值 '{}' 无效；请使用 en 或 zh"),
     ("invalid value {} for {}; use a whole number from {} to {}", "{1} 的值 {0} 无效；请使用 {2} 到 {3} 之间的整数"),
@@ -189,6 +215,40 @@ mod tests {
             Some("--start（b）晚于 --end（a）")
         );
         assert_eq!(translate("not in the catalog"), None);
+    }
+
+    #[test]
+    fn webui_errors_keep_their_versions_and_reasons() {
+        let backend = crate::webui::Backend {
+            api_version: "2",
+            version: "6.0.0",
+        };
+        let other_api = backend.refusal("1", "0.0.1").unwrap_or_default();
+        assert_eq!(
+            translate(&format!(
+                "WebUI 0.4.1 cannot run with this weflow: {other_api}"
+            ))
+            .as_deref(),
+            Some("网页 0.4.1 无法在这个 weflow 上运行：它需要 API 1，这个 weflow 提供 API 2")
+        );
+        let newer = backend.refusal("2", "9.0.0").unwrap_or_default();
+        assert_eq!(
+            translate(&newer).as_deref(),
+            Some("它需要 weflow 9.0.0 或更新的版本，当前是 6.0.0")
+        );
+        assert_eq!(
+            translate("cannot reach the WebUI registry https://ghcr.io (tags/list): timed out")
+                .as_deref(),
+            Some("无法访问网页仓库 https://ghcr.io（tags/list）：timed out")
+        );
+        assert_eq!(
+            translate("not in the WebUI registry: manifests/0.9.9").as_deref(),
+            Some("网页仓库中没有：manifests/0.9.9")
+        );
+        assert_eq!(
+            translate("the WebUI package of 0.5.0 is damaged: expected 10 bytes with SHA-256 ab, got 9 bytes with cd").as_deref(),
+            Some("网页 0.5.0 的安装包已损坏：应为 10 字节、SHA-256 为 ab，实际为 9 字节、SHA-256 为 cd")
+        );
     }
 
     #[test]

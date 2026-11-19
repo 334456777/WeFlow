@@ -1382,19 +1382,25 @@ export interface VideoMd5 {
 
 /** What `web info` answers: the WebUI `serve` shows, and the versions downloaded. */
 export interface WebInfo {
-  /** The version `serve` shows; null when none is downloaded. */
+  /** The version `serve` shows when it starts: one kept here that suits this weflow; null when there is none. */
   inUse: string | null;
   path: string | null;
   /** The version chosen with `web use`. */
   picked: string | null;
   /** The version this weflow was built for. */
   builtIn: string;
-  /** The version `serve` would show. */
+  /** The version `serve` would show: downloaded beside it when it is not kept here. */
   wanted: string | null;
+  /** Whether `wanted` is kept here. */
   downloaded: boolean;
   /** Where the versions are kept. */
   store: string;
   installed: string[];
+  /**
+   * Why `serve` passes over the version picked (it does not suit this weflow) and what to do about it; null when
+   * it does not.
+   */
+  note: string | null;
 }
 
 /** A downloaded WebUI version (`web list`, `web install`). */
@@ -1403,7 +1409,7 @@ export interface WebInstalled {
   apiVersion: string;
   minBackendVersion: string;
   path: string;
-  /** The one `serve` shows. */
+  /** The one `serve` shows when it starts. */
   inUse: boolean;
   /** The one chosen with `web use`. */
   picked: boolean;
