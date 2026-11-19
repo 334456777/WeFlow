@@ -1657,7 +1657,7 @@ mod tests {
             error(
                 "invalid_arguments",
                 "`chat messages` needs `session-id`",
-                Some(json!({ "usage": "weflow chat messages --session-id <SESSION_ID>" })),
+                Some(json!({ "usage": "weflow chat messages <SESSION_ID> [OPTIONS]" })),
             ),
             error(
                 "runtime_error",
@@ -1677,7 +1677,8 @@ mod tests {
                 "--progress",
                 "export",
                 "messages",
-                "--session-id",
+                "--out=chat.txt",
+                "--",
                 "wxid_bob",
             ]
             .map(String::from)
