@@ -22,9 +22,9 @@ pub(crate) struct ImageTarget {
     /// Message create time (seconds); selects the year-month folder
     #[arg(long)]
     create_time: Option<i64>,
-    /// Return a file path instead of a base64 data URL
+    /// Return the path of the image file instead of a base64 data URL
     #[arg(long)]
-    prefer_file_path: bool,
+    no_data_url: bool,
     /// Do not fall back to scanning by .dat name
     #[arg(long)]
     no_cache_index: bool,
@@ -37,7 +37,7 @@ impl ImageTarget {
             image_md5: self.md5.clone(),
             image_dat_name: self.dat_name.clone(),
             create_time: self.create_time,
-            prefer_file_path: self.prefer_file_path,
+            prefer_file_path: self.no_data_url,
             allow_cache_index: if self.no_cache_index {
                 Some(false)
             } else {

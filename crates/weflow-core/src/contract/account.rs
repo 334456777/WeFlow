@@ -125,7 +125,7 @@ pub struct ImageMemKey {
     /// The 16-byte AES key as 32 hex characters; left out when nothing matched.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_aes_key: Option<String>,
-    /// `key image-mem` without a ciphertext: the XOR key a thumbnail of the account decodes with together with the
+    /// `key image-mem` without `--ciphertext`: the XOR key a thumbnail of the account decodes with together with the
     /// AES key; left out when no thumbnail has an XOR tail that verifies.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_xor_key: Option<u8>,

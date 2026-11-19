@@ -47,18 +47,18 @@ pub(crate) enum SnsSubcommand {
         /// Resource URL
         url: String,
     },
-    /// Export statistics (total posts / friends / mine); --fast reads the cached counts only
+    /// Moments statistics for the export page: total posts, users who posted, your posts
     Stats {
-        /// Only read the cached counts
+        /// Use the counts kept from an earlier read while they have not expired, and skip the slow count over the timeline
         #[arg(long)]
-        fast: bool,
+        prefer_cache: bool,
     },
     /// Post counts per user, or the statistics of one user
     PostCounts {
         /// Statistics of this user only
         #[arg(long)]
         user: Option<String>,
-        /// Prefer the cached counts
+        /// Use the counts kept from an earlier read while they have not expired
         #[arg(long)]
         prefer_cache: bool,
     },

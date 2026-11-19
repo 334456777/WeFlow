@@ -90,7 +90,7 @@ const searchable = (m: Message) => [m.parsedContent, m.fileName, m.linkTitle, m.
 
 function search(params: Params) {
   const keyword = text(params, 'keyword').trim().toLocaleLowerCase();
-  const only = text(params, 'session-id');
+  const only = text(params, 'session');
   const start = number(params, 'start') ?? 0;
   const end = number(params, 'end') ?? 0;
   const offset = number(params, 'offset') ?? 0;
@@ -243,7 +243,7 @@ type Route = (params: Params) => unknown;
 /** The routes the sample answers, by method and path. */
 const routes: Record<string, Route> = {
   'GET api/chat/sessions': () => sessions(),
-  'GET api/chat/statuses': params => Object.fromEntries(list(params, 'usernames').map(username => {
+  'GET api/chat/statuses': params => Object.fromEntries(list(params, 'sessions').map(username => {
     const group = groups.find(g => g.username === username);
     return [username, { isFolded: Boolean(group?.folded), isMuted: Boolean(group?.muted), isPinned: pinned.has(username) }];
   })),
@@ -252,7 +252,7 @@ const routes: Record<string, Route> = {
   'GET api/chat/date-counts': dateCounts,
   'GET api/chat/message': params => messageOf(text(params, 'session-id'), number(params, 'local-id') ?? 0) ?? null,
   'GET api/chat/image-info': params => {
-    const localId = number(params, 'msg-id') ?? 0;
+    const localId = number(params, 'local-id') ?? 0;
     return { thumb: true, normal: true, hd: localId % 2 === 0, normalBytes: 180_000 + localId * 1_000, hdBytes: localId % 2 === 0 ? 2_400_000 + localId * 10_000 : null };
   },
   'GET api/chat/detail': detail,
@@ -326,7 +326,7 @@ function effectOf(command: string, params: Params): Effect | undefined {
   switch (command) {
     case 'key db': return () => saveDatabaseKey();
     case 'backup create': return () => ({ out: BACKUP, skipped: backupManifest().skipped, unsettled: [] });
-    case 'backup restore': return () => ({ restored: backupManifest().entries.length, target: text(params, 'target') });
+    case 'backup restore': return () => ({ restoredTo: text(params, 'out') });
     default: return undefined;
   }
 }
@@ -357,7 +357,7 @@ export const server: SampleServer = {
   },
   media(path, params) {
     if (path === 'api/chat/voice-data') return voiceSound();
-    if (path === 'api/chat/image-data') return pictureUrl(messageOf(text(params, 'session-id'), number(params, 'msg-id') ?? 0)?.imageMd5 ?? '');
+    if (path === 'api/chat/image-data') return pictureUrl(messageOf(text(params, 'session-id'), number(params, 'local-id') ?? 0)?.imageMd5 ?? '');
     if (path === 'api/sns/media') return pictureUrl(text(params, 'url').split('/').pop() ?? '');
     const job = /^jobs\/([^/]+)\/file$/.exec(path);
     if (job) return jobFileUrl(decodeURIComponent(job[1])) ?? 'about:blank';

@@ -69,7 +69,7 @@ run chat detail "$GROUP"
 run chat messages "$GROUP" --limit 5000
 run chat messages "$GROUP" --limit 5000 --parsed
 run chat search 好 --limit 500
-run chat search 好 --session-id "$GROUP" --limit 500 --parsed
+run chat search 好 --session "$GROUP" --limit 500 --parsed
 run chat dates "$GROUP"
 run chat date-counts "$GROUP"
 run chat images "$GROUP"

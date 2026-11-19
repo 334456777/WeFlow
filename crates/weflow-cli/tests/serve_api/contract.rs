@@ -148,7 +148,7 @@ fn chat_media_answers_fit_the_contract() {
         ("GET", "/chat/media-stream?limit=10".into(), String::new(), "MediaStream"),
         (
             "GET",
-            "/chat/voice-cache?session-id=wxid_bob&msg-id=5".into(),
+            "/chat/voice-cache?session-id=wxid_bob&local-id=5".into(),
             String::new(),
             "VoiceCache",
         ),
@@ -181,7 +181,7 @@ fn chat_media_answers_fit_the_contract() {
         (
             "POST",
             "/chat/image-data".into(),
-            json!({ "session-id": "wxid_bob", "msg-id": "3", "create-time": T0 + DAY, "out": image_out })
+            json!({ "session-id": "wxid_bob", "local-id": "3", "create-time": T0 + DAY, "out": image_out })
                 .to_string(),
             "MediaWritten",
         ),
@@ -373,7 +373,7 @@ fn image_and_video_answers_fit_the_contract() {
         "session": "wxid_bob",
         "md5": "aabbccddeeff00112233445566778899",
         "create-time": T0 + DAY,
-        "prefer-file-path": true,
+        "no-data-url": true,
     });
     let payload = json!({
         "sessionId": "wxid_bob",
@@ -381,7 +381,7 @@ fn image_and_video_answers_fit_the_contract() {
         "createTime": T0 + DAY,
     });
     let resolve = format!(
-        "/image/resolve-cache?session=wxid_bob&md5=aabbccddeeff00112233445566778899&create-time={}&prefer-file-path=true",
+        "/image/resolve-cache?session=wxid_bob&md5=aabbccddeeff00112233445566778899&create-time={}&no-data-url=true",
         T0 + DAY
     );
     let parse = format!(
@@ -541,7 +541,7 @@ fn backup_answers_fit_the_contract() {
     let restored = fits(
         "POST",
         "/backup/restore",
-        json!({ "path": out, "target": root.join("restored") }).to_string(),
+        json!({ "path": out, "out": root.join("restored") }).to_string(),
         "BackupRestored",
     );
     assert_eq!(restored.get("stickersRestoredTo"), None, "{restored}");
@@ -567,7 +567,7 @@ fn backup_answers_fit_the_contract() {
     let restored = fits(
         "POST",
         "/backup/restore",
-        json!({ "path": more, "target": root.join("restored-more") }).to_string(),
+        json!({ "path": more, "out": root.join("restored-more") }).to_string(),
         "BackupRestored",
     );
     assert_eq!(
@@ -794,7 +794,7 @@ fn answers_fit_the_contract() {
     assert!(sessions.as_array().unwrap().len() >= 3, "{sessions}");
     // the typed reads (#430), each answering the shape its route says
     for target in [
-        "/api/chat/statuses?usernames=wxid_bob&usernames=room1%40chatroom",
+        "/api/chat/statuses?sessions=wxid_bob&sessions=room1%40chatroom",
         "/api/chat/counts?sessions=wxid_bob&sessions=room1%40chatroom",
         "/api/chat/tab-counts",
         "/api/chat/dates?session-id=wxid_bob",
@@ -803,7 +803,7 @@ fn answers_fit_the_contract() {
         "/api/chat/detail?session-id=wxid_bob",
         "/api/chat/detail?session-id=wxid_bob&extra=true",
         &format!(
-            "/api/chat/image-info?session-id=wxid_bob&msg-id=3&create-time={}",
+            "/api/chat/image-info?session-id=wxid_bob&local-id=3&create-time={}",
             T0 + DAY
         ),
         "/api/group/members?chatroom-id=room1%40chatroom&counts=true",
@@ -971,7 +971,7 @@ fn answers_fit_the_contract() {
     // writes a file, by POST)
     let failure = answer_schema("/api/chat/messages", "default");
     let image = format!(
-        "/api/chat/image-data?session-id=wxid_bob&msg-id=3&create-time={}",
+        "/api/chat/image-data?session-id=wxid_bob&local-id=3&create-time={}",
         T0 + DAY
     );
     for (target, status) in [

@@ -94,7 +94,7 @@ def train(base, group, friend):
     def media_call(path, kind):
         # not every message has its file on disk: the first that answers
         for m in [m for m in messages if m.get("localType") == kind][:10]:
-            params = {"session-id": group, "msg-id": m["localId"], "create-time": m["createTime"]}
+            params = {"session-id": group, "local-id": m["localId"], "create-time": m["createTime"]}
             if get(base, path, params, quiet=True) is not None:
                 return (path, params)
         return None
@@ -138,7 +138,7 @@ def train(base, group, friend):
             ("/api/chat/messages", {"session-id": session, "limit": 200}),
             ("/api/chat/messages", {"session-id": session, "limit": 200, "parsed": "true"}),
             ("/api/chat/messages", {"session-id": session, "limit": 200, "offset": 1000, "parsed": "true"}),
-            ("/api/chat/search", {"keyword": "的", "session-id": session, "parsed": "true"}),
+            ("/api/chat/search", {"keyword": "的", "session": session, "parsed": "true"}),
             ("/api/chat/detail", {"session-id": session, "extra": "true"}),
         ]
     if messages and messages[-1].get("_cursor"):

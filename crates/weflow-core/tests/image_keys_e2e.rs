@@ -58,7 +58,7 @@ fn memory_key(code: u32, wxid: &str) -> [u8; 16] {
     *aes.as_bytes().first_chunk().unwrap()
 }
 
-/// `key image-mem` without a ciphertext: the memory is searched with the first blocks of the newest thumbnails, and a
+/// `key image-mem` without `--ciphertext`: the memory is searched with the first blocks of the newest thumbnails, and a
 /// key is taken only once a thumbnail decodes with it and its XOR tail, or two thumbnails' first blocks decrypt with
 /// it (#853).
 #[test]

@@ -44,7 +44,7 @@ export async function getPostCounts(signal?: AbortSignal): Promise<Record<string
 export type SnsStats = Contract.SnsStats;
 
 export async function getSnsStats(signal?: AbortSignal): Promise<SnsStats> {
-  const data = await get<SnsStats | null>('api/sns/stats', { fast: true }, signal);
+  const data = await get<SnsStats | null>('api/sns/stats', { 'prefer-cache': true }, signal);
   return { totalPosts: data?.totalPosts ?? 0, totalFriends: data?.totalFriends ?? 0, myPosts: data?.myPosts ?? null };
 }
 

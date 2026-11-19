@@ -251,11 +251,11 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
             VideoSubcommand::Info {
                 md5,
                 no_poster,
-                file_url,
+                no_data_url,
             } => Ok(json!(hub.video_info(
                 md5,
                 !*no_poster,
-                if *file_url {
+                if *no_data_url {
                     weflow_core::video::PosterFormat::FileUrl
                 } else {
                     weflow_core::video::PosterFormat::DataUrl

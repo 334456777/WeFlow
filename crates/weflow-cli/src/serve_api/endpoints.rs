@@ -461,7 +461,7 @@ mod tests {
                 "chat voice-data",
                 &[
                     ("session-id", json!("a")),
-                    ("msg-id", json!("1")),
+                    ("local-id", json!("1")),
                     ("out", json!("x")),
                     ("out", json!("y")),
                 ]
@@ -473,7 +473,7 @@ mod tests {
         assert_eq!(
             argv(
                 "chat voice-data",
-                &[("session-id", json!(["a", "3"])), ("msg-id", json!("1"))]
+                &[("session-id", json!(["a", "3"])), ("local-id", json!("1"))]
             )
             .unwrap(),
             ["chat", "voice-data", "--", r#"["a","3"]"#, "1"]

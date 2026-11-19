@@ -349,7 +349,7 @@ impl Given {
             },
             "chat search" => Read::ChatSearch {
                 keyword: self.required("keyword")?,
-                session_id: self.text("session-id")?,
+                session: self.text("session")?,
                 limit: self.number_or("limit", 50)?,
                 offset: self.number_or("offset", 0)?,
                 start: self.number_or("start", 0)?,
@@ -382,7 +382,7 @@ impl Given {
             },
             "chat image-info" => Read::ChatImageInfo {
                 session_id: self.required("session-id")?,
-                msg_id: self.required("msg-id")?,
+                local_id: self.required("local-id")?,
                 create_time: self.number("create-time")?,
             },
             "group members" => Read::GroupMembers {
@@ -405,14 +405,14 @@ impl Given {
             }
             "sns users" => Read::SnsUsers,
             "sns stats" => Read::SnsStats {
-                fast: self.switch("fast")?,
+                prefer_cache: self.switch("prefer-cache")?,
             },
             "sns post-counts" => Read::SnsPostCounts {
                 user: self.text("user")?,
                 prefer_cache: self.switch("prefer-cache")?,
             },
             "chat statuses" => Read::ChatStatuses {
-                usernames: self.list("usernames"),
+                sessions: self.list("sessions"),
             },
             "chat tab-counts" => Read::ChatTabCounts,
             "group list" => Read::GroupList,
@@ -504,21 +504,21 @@ impl Given {
                 }
                 Media::Chat(MediaRead::ChatImage {
                     session_id: self.required("session-id")?,
-                    msg_id: self.required("msg-id")?,
+                    local_id: self.required("local-id")?,
                     create_time: self.number("create-time")?,
                     variant: image_variant(&variant),
                 })
             }
             "chat voice-data" => Media::Chat(MediaRead::ChatVoice {
                 session_id: self.required("session-id")?,
-                msg_id: self.required("msg-id")?,
+                local_id: self.required("local-id")?,
                 create_time: self.number("create-time")?,
                 server_id: self.text("server-id")?,
                 sender: self.text("sender")?,
             }),
             "chat video-data" => Media::Chat(MediaRead::ChatVideo {
                 session_id: self.required("session-id")?,
-                msg_id: self.required("msg-id")?,
+                local_id: self.required("local-id")?,
                 create_time: self.number("create-time")?,
                 thumb: self.switch("thumb")?,
             }),

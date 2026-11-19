@@ -58,7 +58,7 @@ describe('SearchPanel', () => {
     await screen.findByText('已显示 20 条记录', { exact: false });
     const query = new URL(calls[0], 'http://x').searchParams;
     expect(query.get('keyword')).toBe('trip');
-    expect(query.get('session-id')).toBe('wxid_a');
+    expect(query.get('session')).toBe('wxid_a');
     expect(query.get('parsed')).toBe('true');
     expect(query.get('fields')).toContain('_session_id');
     expect(query.get('start')).toBeNull();
@@ -86,7 +86,7 @@ describe('SearchPanel', () => {
     submit('trip');
     await screen.findByText('找到 1 条记录', { exact: false });
     const query = new URL(calls.filter(c => c.includes('/chat/search')).at(-1)!, 'http://x').searchParams;
-    expect(query.get('session-id')).toBeNull();
+    expect(query.get('session')).toBeNull();
     expect(Number(query.get('start'))).toBe(secondsOf({ from: '2026-10-03', to: '' }).start);
     expect(Number(query.get('end'))).toBe(new Date(2026, 9, 9, 23, 59, 59).getTime() / 1000);
     // a hit of a group: the group and the sender, by the name in the group once its members are read

@@ -1369,7 +1369,7 @@ export interface AutoDownloadStatus {
  */
 export interface VideoInfo {
   videoUrl?: string;
-  /** A `data:` URL, or a `file://` one with `file-url`. */
+  /** A `data:` URL, or a `file://` one with `no-data-url`. */
   coverUrl?: string;
   thumbUrl?: string;
   exists: boolean;
@@ -1503,7 +1503,7 @@ export interface ImageMemKey {
   /** The 16-byte AES key as 32 hex characters; left out when nothing matched. */
   image_aes_key?: string;
   /**
-   * `key image-mem` without a ciphertext: the XOR key a thumbnail of the account decodes with together with the
+   * `key image-mem` without `--ciphertext`: the XOR key a thumbnail of the account decodes with together with the
    * AES key; left out when no thumbnail has an XOR tail that verifies.
    */
   image_xor_key?: number;
@@ -2219,7 +2219,7 @@ export interface Answers {
   /** With `parsed=true`, the hits, each with its `_session_id`, as the chat window shows them; else as WeChat keeps them, each with its `_cursor` */
   "chat search": ParsedMessage[] | SearchHit[];
   "chat sessions": Session[];
-  /** Each username asked for, with whether its conversation is folded, muted and pinned */
+  /** Each conversation asked for, with whether it is folded, muted and pinned */
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
   "chat transfer-names": TransferNames;

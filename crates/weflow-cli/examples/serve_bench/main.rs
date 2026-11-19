@@ -268,7 +268,7 @@ fn main() -> Result<()> {
     bench.both(
         "search in the conversation",
         &format!(
-            "/chat/search?keyword={}&session-id={big}&limit=20",
+            "/chat/search?keyword={}&session={big}&limit=20",
             encode(&args.keyword)
         ),
     )?;
@@ -276,7 +276,7 @@ fn main() -> Result<()> {
     bench.both(
         "search in the conversation, a word found nowhere",
         &format!(
-            "/chat/search?keyword={}&session-id={big}&limit=20",
+            "/chat/search?keyword={}&session={big}&limit=20",
             encode(ABSENT)
         ),
     )?;

@@ -46,11 +46,13 @@ pub(crate) enum KeySubcommand {
         #[arg(long)]
         save: bool,
     },
-    /// Scan WeChat's memory for the image AES key from a ciphertext block (Linux and macOS)
+    /// Scan WeChat's memory for the image AES key (Linux x64 and macOS)
     ImageMem {
         /// WeChat process id (default: the running WeChat)
+        #[arg(long)]
         pid: Option<u32>,
         /// 32 hex characters of the 16-byte encrypted block (default: from the newest thumbnails of the configured account, which also give the XOR key)
+        #[arg(long, value_name = "HEX")]
         ciphertext: Option<String>,
         /// Save the keys to the active profile instead of printing them
         #[arg(long)]
@@ -147,7 +149,7 @@ pub(crate) fn handle_key(
         } => {
             if *save && ciphertext.is_some() {
                 return Err(AppError::usage(
-                    "a key found with a given ciphertext is checked against that block only, so it is not saved; run `key image-mem --save` without a ciphertext to check the key against the account's thumbnails",
+                    "a key found with --ciphertext is checked against that block only, so it is not saved; run `key image-mem --save` without --ciphertext to check the key against the account's thumbnails",
                 ));
             }
             let mut data = hub.key_image_mem(*pid, ciphertext.as_deref())?;
@@ -411,9 +413,14 @@ mod tests {
                     ciphertext,
                     save,
                 },
-        }) = parse(&["1234", "00112233445566778899aabbccddeeff"])
-            .unwrap()
-            .command
+        }) = parse(&[
+            "--pid",
+            "1234",
+            "--ciphertext",
+            "00112233445566778899aabbccddeeff",
+        ])
+        .unwrap()
+        .command
         else {
             panic!("image-mem command")
         };
@@ -437,7 +444,9 @@ mod tests {
         };
         assert_eq!((pid, ciphertext), (None, None));
         assert!(save);
-        assert!(parse(&["not-a-pid"]).is_err());
+        assert!(parse(&["--pid", "not-a-pid"]).is_err());
+        // both are options: a bare value is refused
+        assert!(parse(&["1234"]).is_err());
     }
 
     #[test]

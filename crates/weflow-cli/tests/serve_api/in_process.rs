@@ -68,12 +68,12 @@ fn reads_run_in_process_with_the_same_answers() {
         "/sns/timeline?keyword=thi",
         "/sns/users",
         "/sns/stats",
-        "/sns/stats?fast=true",
+        "/sns/stats?prefer-cache=true",
         "/sns/post-counts",
         "/sns/post-counts?prefer-cache=true",
         "/sns/post-counts?user=wxid_bob",
         // #413: the other reads the WebUI asks for
-        "/chat/statuses?usernames=wxid_bob&usernames=room1%40chatroom",
+        "/chat/statuses?sessions=wxid_bob&sessions=room1%40chatroom",
         "/chat/statuses",
         "/chat/tab-counts",
         "/group/list",
@@ -110,10 +110,10 @@ fn reads_run_in_process_with_the_same_answers() {
     // command line can carry a 400 (#822)
     assert_eq!(same("/insight/get?id=none").status, 404);
     for target in [
-        "/api/chat/image-info?session-id=wxid_bob&msg-id=999",
-        "/api/chat/video-data?session-id=wxid_bob&msg-id=999",
-        "/api/chat/voice-data?session-id=wxid_bob&msg-id=999",
-        "/chat/image-info?session-id=wxid_bob&msg-id=999",
+        "/api/chat/image-info?session-id=wxid_bob&local-id=999",
+        "/api/chat/video-data?session-id=wxid_bob&local-id=999",
+        "/api/chat/voice-data?session-id=wxid_bob&local-id=999",
+        "/chat/image-info?session-id=wxid_bob&local-id=999",
         "/backup/inspect?path=no-such-backup.zip",
     ] {
         let r = server.call("GET", target, "");
@@ -492,7 +492,7 @@ fn reads_fail_the_same_in_process_and_in_a_child() {
         assert_eq!(r.json()["error"]["code"], "unauthorized");
         let r = server.request(
             "GET",
-            "/api/chat/image-data?session-id=wxid_bob&msg-id=1",
+            "/api/chat/image-data?session-id=wxid_bob&local-id=1",
             headers,
             "",
         );

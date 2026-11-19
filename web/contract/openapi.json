@@ -1466,7 +1466,7 @@
                     },
                     "data": {
                       "type": "object",
-                      "description": "Each username asked for, with whether its conversation is folded, muted and pinned",
+                      "description": "Each conversation asked for, with whether it is folded, muted and pinned",
                       "additionalProperties": {
                         "$ref": "#/components/schemas/ChatStatus"
                       }
@@ -8688,7 +8688,7 @@
           },
           "coverUrl": {
             "type": "string",
-            "description": "A `data:` URL, or a `file://` one with `file-url`."
+            "description": "A `data:` URL, or a `file://` one with `no-data-url`."
           },
           "thumbUrl": {
             "type": "string"
@@ -9088,7 +9088,7 @@
             "format": "uint8",
             "minimum": 0,
             "maximum": 255,
-            "description": "`key image-mem` without a ciphertext: the XOR key a thumbnail of the account decodes with together with the\nAES key; left out when no thumbnail has an XOR tail that verifies."
+            "description": "`key image-mem` without `--ciphertext`: the XOR key a thumbnail of the account decodes with together with the\nAES key; left out when no thumbnail has an XOR tail that verifies."
           },
           "verification": {
             "type": "string",

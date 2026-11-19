@@ -92,7 +92,7 @@ describe('backup', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '恢复到的文件夹' }), { target: { value: ' /srv/restored ' } });
     fireEvent.click(restore);
     await act(async () => {});
-    expect(calls[1]).toEqual({ method: 'POST', url: '/backup/restore', body: { path: '/srv/cache/serve-files/x/backup.zip', target: '/srv/restored' } });
+    expect(calls[1]).toEqual({ method: 'POST', url: '/backup/restore', body: { path: '/srv/cache/serve-files/x/backup.zip', out: '/srv/restored' } });
     expect(screen.getByText(/^已开始恢复/)).toBeTruthy();
   });
 

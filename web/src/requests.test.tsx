@@ -80,7 +80,7 @@ function answer(url: string): Response {
       return json({ success: true, data: {} });
     case '/api/chat/search': {
       const keyword = params.get('keyword') ?? '';
-      return json({ success: true, data: [{ ...message(params.get('session-id') ?? '', 1), _session_id: params.get('session-id'), _cursor: 'hit.' + keyword, parsedContent: '说到' + keyword }] });
+      return json({ success: true, data: [{ ...message(params.get('session') ?? '', 1), _session_id: params.get('session'), _cursor: 'hit.' + keyword, parsedContent: '说到' + keyword }] });
     }
   }
   throw new TypeError('unexpected ' + url);
@@ -138,7 +138,7 @@ describe('requests of the chat page', () => {
       'GET /jobs',
       'GET /api/config/profiles',
       'GET /api/chat/sessions',
-      'GET /api/chat/statuses?usernames=wxid_lin&usernames=wxid_zhou',
+      'GET /api/chat/statuses?sessions=wxid_lin&sessions=wxid_zhou',
       `GET /api/chat/messages?session-id=wxid_lin&${PAGE}`,
     ]);
     expect(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); })).toEqual([
@@ -149,14 +149,14 @@ describe('requests of the chat page', () => {
     expect(await requestsOf(() => {
       fireEvent.change(screen.getByRole('searchbox', { name: '搜索此会话的消息' }), { target: { value: '消息' } });
       fireEvent.click(screen.getByRole('button', { name: '搜索' }));
-    })).toEqual([`GET /api/chat/search?keyword=消息&session-id=wxid_lin&limit=20&offset=0&parsed=true`]);
+    })).toEqual([`GET /api/chat/search?keyword=消息&session=wxid_lin&limit=20&offset=0&parsed=true`]);
 
     // nothing of the account before is asked of the new one: no conversation is open until its list is read (#402)
     expect(await requestsOf(() => switchAccount('b'))).toEqual([
       'GET /jobs',
       'GET /api/config/profiles',
       'GET /api/chat/sessions',
-      'GET /api/chat/statuses?usernames=wxid_qin',
+      'GET /api/chat/statuses?sessions=wxid_qin',
       `GET /api/chat/messages?session-id=wxid_qin&${PAGE}`,
     ]);
     expect(conversations()).toEqual(['秦川']);

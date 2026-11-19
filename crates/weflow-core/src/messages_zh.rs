@@ -83,7 +83,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("permission denied: cannot read WeChat's memory (pid {}). Run weflow with sudo. ({})", "无法读取微信的内存（pid {0}）。请用 sudo 运行 weflow。（{1}）"),
     ("permission denied: cannot read WeChat's memory (pid {}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({})", "无法读取微信的内存（pid {0}）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（{1}）"),
     ("cannot read WeChat's memory (pid {}): {}", "无法读取微信的内存（pid {0}）：{1}"),
-    ("a key found with a given ciphertext is checked against that block only, so it is not saved; run `key image-mem --save` without a ciphertext to check the key against the account's thumbnails", "用给定密文找到的密钥只验证了这一块，所以不保存；请不带密文运行 `key image-mem --save`，用账号的缩略图验证密钥"),
+    ("a key found with --ciphertext is checked against that block only, so it is not saved; run `key image-mem --save` without --ciphertext to check the key against the account's thumbnails", "用 --ciphertext 找到的密钥只验证了这一块，所以不保存；请不带 --ciphertext 运行 `key image-mem --save`，用账号的缩略图验证密钥"),
     ("no image AES key found in WeChat's memory; open a few images in WeChat, then try again", "在微信的内存中未找到图片 AES 密钥；请在微信里打开几张图片后重试"),
     ("wx_key library not found; key extraction requires the platform-specific native library", "未找到 wx_key 库；提取密钥需要对应平台的原生库"),
     ("no messages found for this session in the given range", "指定范围内未找到该会话的消息"),

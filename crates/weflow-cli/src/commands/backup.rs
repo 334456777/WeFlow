@@ -43,9 +43,9 @@ enum BackupSubcommand {
     Restore {
         /// Backup file
         path: PathBuf,
-        /// Folder to restore into
+        /// Folder to restore into (default: the current directory)
         #[arg(long)]
-        target: Option<PathBuf>,
+        out: Option<PathBuf>,
     },
 }
 
@@ -67,9 +67,9 @@ pub(crate) fn handle_backup(command: &BackupCommand, hub: &ServiceHub) -> AppRes
             Ok(json!(hub.backup_create(out, &options)?))
         }
         BackupSubcommand::Inspect { path } => Ok(json!(hub.backup_inspect(path)?)),
-        BackupSubcommand::Restore { path, target } => {
-            let target_dir = target.as_deref().unwrap_or_else(|| Path::new("."));
-            Ok(json!(hub.backup_restore(path, target_dir)?))
+        BackupSubcommand::Restore { path, out } => {
+            let out = out.as_deref().unwrap_or_else(|| Path::new("."));
+            Ok(json!(hub.backup_restore(path, out)?))
         }
     }
 }

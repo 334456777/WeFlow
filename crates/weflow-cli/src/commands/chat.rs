@@ -34,7 +34,7 @@ pub(crate) enum ChatSubcommand {
         keyword: String,
         /// Only search this conversation (default: all conversations)
         #[arg(long)]
-        session_id: Option<String>,
+        session: Option<String>,
         /// Maximum number of results
         #[arg(long, default_value_t = 50)]
         limit: i32,
@@ -124,8 +124,8 @@ pub(crate) enum ChatSubcommand {
     },
     /// Folded / muted / pinned state of sessions
     Statuses {
-        /// Conversation usernames
-        usernames: Vec<String>,
+        /// Conversation ids
+        sessions: Vec<String>,
     },
     /// Session details (contact info, message count, message tables, first/latest time)
     Detail {
@@ -201,7 +201,7 @@ pub(crate) enum ChatSubcommand {
         #[arg(long)]
         session: Option<String>,
         /// image, video or all
-        #[arg(long, default_value = "all")]
+        #[arg(long = "type", value_name = "TYPE", default_value = "all")]
         media_type: String,
         /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
@@ -230,7 +230,7 @@ pub(crate) enum ChatSubcommand {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
-        msg_id: String,
+        local_id: String,
         /// Message create time (seconds): tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
@@ -249,7 +249,7 @@ pub(crate) enum ChatSubcommand {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
-        msg_id: String,
+        local_id: String,
         /// Message create time (seconds): tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
@@ -265,7 +265,7 @@ pub(crate) enum ChatSubcommand {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
-        msg_id: String,
+        local_id: String,
         /// Message create time (seconds): tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
@@ -275,7 +275,7 @@ pub(crate) enum ChatSubcommand {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
-        msg_id: String,
+        local_id: String,
         /// Message create time (seconds): tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
@@ -291,7 +291,7 @@ pub(crate) enum ChatSubcommand {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
-        msg_id: String,
+        local_id: String,
     },
     /// Decode and cache many voice messages
     VoicePreload {
@@ -479,9 +479,10 @@ pub(crate) async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppRe
             payer,
             receiver
         )?)),
-        ChatSubcommand::VoiceCache { session_id, msg_id } => {
-            Ok(json!(hub.voice_resolve_cache(session_id, msg_id)))
-        }
+        ChatSubcommand::VoiceCache {
+            session_id,
+            local_id,
+        } => Ok(json!(hub.voice_resolve_cache(session_id, local_id))),
         ChatSubcommand::VoicePreload {
             session_id,
             messages_json,

@@ -534,7 +534,7 @@ pub(super) fn contract() -> &'static Contract {
             "chat statuses",
             by_id(
                 of(generator.subschema_for::<ChatStatus>()),
-                "Each username asked for, with whether its conversation is folded, muted and pinned",
+                "Each conversation asked for, with whether it is folded, muted and pinned",
             ),
         );
         data.insert(
@@ -2027,7 +2027,7 @@ mod tests {
                 .map(|p| p["name"].as_str().unwrap())
                 .collect();
             assert!(
-                params.contains(&"session-id") && params.contains(&"msg-id"),
+                params.contains(&"session-id") && params.contains(&"local-id"),
                 "{name}: {params:?}"
             );
             assert!(!params.contains(&"out"), "{name}");

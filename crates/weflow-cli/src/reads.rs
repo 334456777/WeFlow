@@ -69,7 +69,7 @@ pub(crate) fn read_of(command: Commands) -> Result<Read, Commands> {
             ChatSubcommand::Counts { sessions } => Read::ChatCounts { sessions },
             ChatSubcommand::Search {
                 keyword,
-                session_id,
+                session,
                 limit,
                 offset,
                 start,
@@ -77,7 +77,7 @@ pub(crate) fn read_of(command: Commands) -> Result<Read, Commands> {
                 parsed,
             } => Read::ChatSearch {
                 keyword,
-                session_id,
+                session,
                 limit,
                 offset,
                 start,
@@ -108,14 +108,14 @@ pub(crate) fn read_of(command: Commands) -> Result<Read, Commands> {
             },
             ChatSubcommand::ImageInfo {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
             } => Read::ChatImageInfo {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
             },
-            ChatSubcommand::Statuses { usernames } => Read::ChatStatuses { usernames },
+            ChatSubcommand::Statuses { sessions } => Read::ChatStatuses { sessions },
             ChatSubcommand::TabCounts => Read::ChatTabCounts,
             command => return Err(Commands::Chat(ChatCommand { command })),
         },
@@ -254,7 +254,7 @@ pub(crate) fn read_of(command: Commands) -> Result<Read, Commands> {
                 end,
             },
             SnsSubcommand::Users => Read::SnsUsers,
-            SnsSubcommand::Stats { fast } => Read::SnsStats { fast },
+            SnsSubcommand::Stats { prefer_cache } => Read::SnsStats { prefer_cache },
             SnsSubcommand::PostCounts { user, prefer_cache } => {
                 Read::SnsPostCounts { user, prefer_cache }
             }
@@ -276,14 +276,14 @@ pub(crate) fn media_of(
     Ok(match command {
         ChatSubcommand::ImageData {
             session_id,
-            msg_id,
+            local_id,
             create_time,
             variant,
             out,
         } => (
             MediaRead::ChatImage {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
                 variant: image_variant(&variant),
             },
@@ -291,7 +291,7 @@ pub(crate) fn media_of(
         ),
         ChatSubcommand::VoiceData {
             session_id,
-            msg_id,
+            local_id,
             create_time,
             server_id,
             sender,
@@ -299,7 +299,7 @@ pub(crate) fn media_of(
         } => (
             MediaRead::ChatVoice {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
                 server_id,
                 sender,
@@ -308,14 +308,14 @@ pub(crate) fn media_of(
         ),
         ChatSubcommand::VideoData {
             session_id,
-            msg_id,
+            local_id,
             create_time,
             thumb,
             out,
         } => (
             MediaRead::ChatVideo {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
                 thumb,
             },

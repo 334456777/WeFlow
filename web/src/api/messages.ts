@@ -50,7 +50,7 @@ export const SEARCH_PAGE = 20;
 /** Hits newest first, as WeChat's own search matches them; `offset` pages on. */
 export function searchMessages(query: SearchQuery, offset: number, signal?: AbortSignal): Promise<SearchHit[]> {
   return get<SearchHit[]>('api/chat/search', {
-    keyword: query.keyword, 'session-id': query.sessionId ?? undefined, limit: SEARCH_PAGE, offset,
+    keyword: query.keyword, session: query.sessionId ?? undefined, limit: SEARCH_PAGE, offset,
     start: query.start || undefined, end: query.end || undefined, parsed: true, fields: MESSAGE_FIELDS + ',_session_id',
   }, signal);
 }
@@ -90,7 +90,7 @@ onLive(event => {
 export type ImageInfo = Contract.ImageInfo;
 
 export function getImageInfo(sessionId: string, localId: number, createTime: number, signal?: AbortSignal): Promise<ImageInfo> {
-  return get<ImageInfo>('api/chat/image-info', { 'session-id': sessionId, 'msg-id': localId, 'create-time': createTime }, signal);
+  return get<ImageInfo>('api/chat/image-info', { 'session-id': sessionId, 'local-id': localId, 'create-time': createTime }, signal);
 }
 
 /**
@@ -100,7 +100,7 @@ export function getImageInfo(sessionId: string, localId: number, createTime: num
 export function mediaUrl(kind: 'image-data' | 'voice-data' | 'video-data', sessionId: string, message: ParsedMessage, extra: Params = {}): string {
   const bearer = token();
   return mediaAddress('api/chat/' + kind, {
-    'session-id': sessionId, 'msg-id': message.localId, 'create-time': message.createTime, ...extra,
+    'session-id': sessionId, 'local-id': message.localId, 'create-time': message.createTime, ...extra,
     ...(bearer ? { access_token: bearer } : {}),
   });
 }

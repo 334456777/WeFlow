@@ -251,7 +251,7 @@ impl ServiceHub {
             Some(pid) => pid,
             None => find_wechat_pid().ok_or_else(|| {
                 AppError::runtime(
-                    "WeChat process not found; start WeChat and log in, or give its pid",
+                    "WeChat process not found; start WeChat and log in, or pass --pid",
                 )
             })?,
         };

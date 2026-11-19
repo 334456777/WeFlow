@@ -17,9 +17,9 @@ pub(crate) enum VideoSubcommand {
         /// Skip cover / thumbnail images
         #[arg(long)]
         no_poster: bool,
-        /// Return `file://` URLs instead of base64 data URLs for the posters
+        /// Return `file://` URLs for the posters instead of base64 data URLs
         #[arg(long)]
-        file_url: bool,
+        no_data_url: bool,
     },
     /// Extract the video md5 from a message XML payload
     ParseMd5 {
