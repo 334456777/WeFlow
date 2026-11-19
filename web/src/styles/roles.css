@@ -113,30 +113,31 @@
  * children's pseudo-elements, stay the pages' (a conversation's selection bar, a day's marks). The element is
  * positioned for its layer (app.css) where its page does not position it otherwise.
  *
- * The seed (`--seed`): a number in [0, 1) of every element, which stays as it is from one render to the next and
- * under the pointer, for the tilt and for a skin's own rules to draw an element a little differently from its
+ * The seed (`--seed`): a number in [0, 1) of each of these elements, which stays as it is from one render to the next
+ * and under the pointer, for the tilt and for a skin's own rules to draw an element a little differently from its
  * neighbours (an angle, a ragged edge). It comes from the element's place among its siblings, by three moduli that
  * are coprime (105 values before it repeats), and from `--key-seed` where an ancestor gives one: a virtual list's
  * rows, reused for other items as it scrolls, give one from their item's key (VirtualList.tsx). Like every variable
- * that reads another, it is worked out on the element that declares it, so a skin reads it in its rules on the
- * elements, not in its tokens on :root.
+ * that reads another, it is worked out on the element that declares it, so a skin reads it in its rules on these
+ * elements, not in its tokens on :root. Only these elements have one: variables declared on every element of the page
+ * would make every restyle of it slower (#961).
  */
-:where(:root[data-shapes] *) {
+:where(:root[data-shapes]) :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option, .nav-item, .conversation-row, .as-row) {
   --seed-3: 0; --seed-5: 0; --seed-7: 0;
   --seed: mod(calc(var(--key-seed, 0) + var(--seed-3) / 3 + var(--seed-5) / 5 + var(--seed-7) / 7), 1);
+  &:where(:nth-child(3n + 2)) { --seed-3: 1; }
+  &:where(:nth-child(3n + 3)) { --seed-3: 2; }
+  &:where(:nth-child(5n + 2)) { --seed-5: 1; }
+  &:where(:nth-child(5n + 3)) { --seed-5: 2; }
+  &:where(:nth-child(5n + 4)) { --seed-5: 3; }
+  &:where(:nth-child(5n + 5)) { --seed-5: 4; }
+  &:where(:nth-child(7n + 2)) { --seed-7: 1; }
+  &:where(:nth-child(7n + 3)) { --seed-7: 2; }
+  &:where(:nth-child(7n + 4)) { --seed-7: 3; }
+  &:where(:nth-child(7n + 5)) { --seed-7: 4; }
+  &:where(:nth-child(7n + 6)) { --seed-7: 5; }
+  &:where(:nth-child(7n + 7)) { --seed-7: 6; }
 }
-:where(:root[data-shapes] :nth-child(3n + 2)) { --seed-3: 1; }
-:where(:root[data-shapes] :nth-child(3n + 3)) { --seed-3: 2; }
-:where(:root[data-shapes] :nth-child(5n + 2)) { --seed-5: 1; }
-:where(:root[data-shapes] :nth-child(5n + 3)) { --seed-5: 2; }
-:where(:root[data-shapes] :nth-child(5n + 4)) { --seed-5: 3; }
-:where(:root[data-shapes] :nth-child(5n + 5)) { --seed-5: 4; }
-:where(:root[data-shapes] :nth-child(7n + 2)) { --seed-7: 1; }
-:where(:root[data-shapes] :nth-child(7n + 3)) { --seed-7: 2; }
-:where(:root[data-shapes] :nth-child(7n + 4)) { --seed-7: 3; }
-:where(:root[data-shapes] :nth-child(7n + 5)) { --seed-7: 4; }
-:where(:root[data-shapes] :nth-child(7n + 6)) { --seed-7: 5; }
-:where(:root[data-shapes] :nth-child(7n + 7)) { --seed-7: 6; }
 
 :where(:root[data-shapes]) :where(.primary-button, .as-button, .secondary-button, .icon-button, .as-control, .chip, .as-option, .nav-item, .conversation-row, .as-row) {
   isolation: isolate; background: none; box-shadow: none;
