@@ -41,7 +41,7 @@ weflow-core = { path = "../weflow-core" }
 anyhow.workspace = true
 brotli-decompressor = "5"
 flate2.workspace = true
-# examples/dev_account.rs draws the pictures of the account `bun run dev` serves
+# examples/dev_account.rs draws the pictures of the account `bun run dev` serves with WEFLOW_DEV_ACCOUNT=dev
 jpeg-encoder.workspace = true
 # the contract's tests (#400) check answers against web/contract/openapi.json; without the default features it
 # reads no schema from the network or the disk

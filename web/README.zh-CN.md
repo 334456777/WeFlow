@@ -13,7 +13,7 @@
 
 ## 开发
 
-需要 Bun 1.4.3+（版本写在 `package.json` 的 `packageManager` 里）和仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`），不需要 Node.js。
+需要 Bun 1.4.3+（版本写在 `package.json` 的 `packageManager` 里），不需要 Node.js。合成账号和 `bun run smoke` 还需要仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`）。
 
 ```sh
 cd web
@@ -21,26 +21,27 @@ bun install --frozen-lockfile
 bun run dev                               # http://localhost:5173/ui/
 ```
 
-`bun run dev`（`scripts/dev.mjs`，#333）会启动三样东西，停止时一起停：
+`bun run dev`（`scripts/dev.mjs`，#333）只启动 Vite，直接提供这些源码，和 `bun run build` 做出来的是同一个网页。背后没有服务端，网页显示示例数据（`src/mock`，#879），和没有 `weflow serve` 应答时一样：设置、作业和见解在页面的内存里修改和运行，刷新后复原。
 
-- **网页**：Vite 直接提供这些源码，和 `bun run build` 做出来的是同一个网页。
-- **后端**：一个读合成账号的 `weflow serve`（调试版，先自动 `cargo build`），监听 127.0.0.1 上的一个空闲端口，令牌每次随机生成，由代理加上。合成账号由 `crates/weflow-cli/examples/dev_account.rs` 生成在 `target/dev-account/` 里，第一次约 20 秒，其中的「图片测试」一张图片一种情况，对应微信保存的各种图片文件。不读任何真实微信账号。
+设置 `WEFLOW_DEV_ACCOUNT`（在终端或 `web/.env.local` 里）时，还会启动一个读合成账号的服务端，停止时一起停：
+
+- **后端**：一个 `weflow serve`（调试版，先自动 `cargo build`），监听 127.0.0.1 上的一个空闲端口，令牌每次随机生成，由代理加上。不读任何真实微信账号。
+  - `WEFLOW_DEV_ACCOUNT=dev`：由 `crates/weflow-cli/examples/dev_account.rs` 生成在 `target/dev-account/` 里的账号，第一次约 20 秒，其中的「图片测试」一张图片一种情况，对应微信保存的各种图片文件。
+  - `WEFLOW_DEV_ACCOUNT=bench`：基准账号（`crates/weflow-cli/examples/bench_account.rs`，#488），一个 20 万条消息的群和 300 个其他会话，第一次生成约需一两分钟，占用约 2.5 GB。
 - **假模型服务**：`crates/weflow-fake-model`，按 OpenAI 和 Anthropic 的接口文档回答，监听 127.0.0.1 上的一个空闲端口。合成账号的 AI 设置没有指向别的服务时，改为指向它（模型 `fake-chat`），设置页的「测试连接」「获取模型列表」和灵感信箱的手动生成都可以直接试；把模型改成 `fake-rate-limit`、`fake-refusal` 等可以看到各种报错，模型列表见「设置 → AI 见解 → 获取模型列表」。
 
-设置 `WEFLOW_DEV_ACCOUNT=bench`（在终端或 `web/.env.local` 里）时改用基准账号（`crates/weflow-cli/examples/bench_account.rs`，#488）：一个 20 万条消息的群和 300 个其他会话，第一次生成约需一两分钟，占用约 2.5 GB。
-
-要连别的 `weflow serve`（例如真实账号）时，在终端或 `web/.env.local`（不提交）里设置下面的变量，这时只启动 Vite：
+要连别的 `weflow serve`（例如真实账号）时，在终端或 `web/.env.local`（不提交）里设置下面的变量，这时只启动 Vite，由它的代理把 `/ui/` 以外的请求转给那个服务端：
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `WEFLOW_SERVE_URL` | 合成账号 | 那个 `weflow serve` 的地址，例如 `http://127.0.0.1:18108` |
+| `WEFLOW_SERVE_URL` | 无，不转发 | 那个 `weflow serve` 的地址，例如 `http://127.0.0.1:18108` |
 | `WEFLOW_HTTP_TOKEN` | 无 | 它的令牌，由代理加上 |
 
-要从另一台电脑或手机打开开发服务器，运行 `bun run dev --host`，再打开 `http://<这台机器的地址>:5173/ui/`。用合成账号时这样做是安全的。设置了 `WEFLOW_SERVE_URL` 和 `WEFLOW_HTTP_TOKEN` 时不要这样做：代理会把令牌交给任何能访问这个端口的人，他们就能对那个账号运行任何 `weflow` 命令。
+要从另一台电脑或手机打开开发服务器，运行 `bun run dev --host`，再打开 `http://<这台机器的地址>:5173/ui/`。用示例数据或合成账号时这样做是安全的。设置了 `WEFLOW_SERVE_URL` 和 `WEFLOW_HTTP_TOKEN` 时不要这样做：代理会把令牌交给任何能访问这个端口的人，他们就能对那个账号运行任何 `weflow` 命令。
 
 运行 `bun run build` 后，可以用 `weflow serve --ui-dir web/dist` 打开构建出的网页。
 
-`bun run smoke`（#789）用无头 Chrome 试用这份构建，也就是发布出去的网页（由 Preact 渲染，而 `bun test` 用 React）：它像 `bun run dev` 一样编译并启动合成账号的 `weflow serve`，每项检查在一个新标签页里打开网页、操作，检查显示的文字和元素个数，并要求控制台没有错误。需要安装 Chrome（不在常见位置时用 `CHROME` 指定可执行文件）；失败的检查在 `target/web-smoke/` 留下截图。
+`bun run smoke`（#789）用无头 Chrome 试用这份构建，也就是发布出去的网页（由 Preact 渲染，而 `bun test` 用 React）：它像设置了 `WEFLOW_DEV_ACCOUNT=dev` 的 `bun run dev` 一样编译并启动合成账号的 `weflow serve`，每项检查在一个新标签页里打开网页、操作，检查显示的文字和元素个数，并要求控制台没有错误。需要安装 Chrome（不在常见位置时用 `CHROME` 指定可执行文件）；失败的检查在 `target/web-smoke/` 留下截图。
 
 ## 脚本
 
