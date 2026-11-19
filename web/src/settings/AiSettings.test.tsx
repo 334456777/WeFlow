@@ -86,6 +86,33 @@ describe('AI settings', () => {
     expect(calls.filter(c => c.method === 'PUT').map(c => c.body)).toEqual([{ key: 'ai_model_api_format', value: 'anthropic' }]);
   });
 
+  it('turns on sending the recent messages, and takes only a positive count', async () => {
+    const calls = serve((_method, url) => settings({ ai_model_api_model: 'm1' })(url));
+    render(<AiSetting profile={PROFILE} engine={false} onSaved={() => {}} onServe={() => {}} />);
+    await act(async () => {});
+    const sent = screen.getByRole('checkbox', { name: '发送最近的聊天内容' }) as HTMLInputElement;
+    const count = screen.getByLabelText('发送的条数') as HTMLInputElement;
+    // off by default: the model sees no chat, and the count has nothing to count
+    expect(sent.checked).toBe(false);
+    expect(count.disabled).toBe(true);
+    expect(document.body.textContent).toContain('几乎总是回答没有可说的（SKIP）');
+
+    fireEvent.click(sent);
+    expect(count.disabled).toBe(false);
+    const save = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    for (const bad of ['0', '-3', '2.5', 'abc']) {
+      fireEvent.change(count, { target: { value: bad } });
+      expect(save.disabled).toBe(true);
+    }
+    expect(screen.getByText('要填正整数。')).toBeTruthy();
+    fireEvent.change(count, { target: { value: '80' } });
+    fireEvent.click(save);
+    await act(async () => {});
+    expect(calls.filter(c => c.method === 'PUT').map(c => c.body)).toEqual([
+      { key: 'aiInsightAllowContext', value: 'true' }, { key: 'aiInsightContextCount', value: '80' },
+    ]);
+  });
+
   it('shows what the test found, and offers the models the service lists', async () => {
     serve((_method, url) => {
       if (url === '/insight/test') return ok({ success: true, message: '连接成功', probe: {

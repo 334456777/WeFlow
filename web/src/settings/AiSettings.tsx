@@ -1,6 +1,6 @@
 // The AI model API of the insights (#213): its API format (OpenAI's Chat Completions or Anthropic's Messages), the
 // address a question goes to, the key, the model (from the service's own list when asked for), and a test that says
-// where it asked and what came back.
+// where it asked and what came back; and whether the recent messages go with the question, and how many (#950).
 import { useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, CheckCircle, CircleNotch, Key, ListBullets, Plugs, WarningCircle } from '@phosphor-icons/react';
@@ -50,6 +50,8 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   }, []);
   const set = (key: keyof AiForm, value: string) => setForm(old => (old ? { ...old, [key]: value } : old));
   const tokensBad = Boolean(form?.ai_model_api_max_tokens.trim()) && !/^\d+$/.test(form!.ai_model_api_max_tokens.trim());
+  // the server takes a count below 1 as its default
+  const countBad = Boolean(form?.aiInsightContextCount.trim()) && !/^[1-9]\d*$/.test(form!.aiInsightContextCount.trim());
   const changed = Boolean(form && saved && (form.key.trim() || AI_KEYS.some(k => form[k].trim() !== saved[k])));
   const format = formatOf(form?.ai_model_api_format);
   // choosing the format the saved setting means already leaves the setting as it is (unset reads as openai)
@@ -62,7 +64,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (!form || !saved || tokensBad) return;
+    if (!form || !saved || tokensBad || countBad) return;
     setBusy('save'); setNote(null);
     try {
       for (const k of AI_KEYS) {
@@ -101,6 +103,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
 
   if (!form) return <SettingsGroup>{note ? <NoteLine note={note} /> : <GridSkeleton label={t('正在读取 AI 设置')} cells={4} />}</SettingsGroup>;
   const info = formatInfo(format);
+  const chatSent = form.aiInsightAllowContext === 'true';
   const endpoint = endpointOf(format, form.ai_model_api_base_url);
   const testing = test !== null && 'running' in test;
   const listing = models !== null && 'running' in models;
@@ -118,6 +121,20 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
         : engine ? t('weflow serve 正在运行灵感引擎。') : t('weflow serve 没有运行灵感引擎：在「启动选项」里打开，重启后生效。')}>
         <button type="button" className="secondary-button" onClick={onServe}>{t('前往启动选项')}<ArrowRight size={12} /></button>
       </SettingRow>
+    </SettingsGroup>
+
+    <SettingsGroup title={t('发送给模型的内容')} note={t('打开的内容会随提问发给上面配置的模型服务。朋友圈和微博还要按会话绑定，需用 weflow config set 设置。')}>
+      <SettingRow name={t('最近的聊天内容')} text={chatSent
+        ? t('每次生成见解时，发送这个会话最近的聊天记录。')
+        : t('没有打开时，模型只收到提问和当前时间，几乎总是回答没有可说的（SKIP）。')}>
+        <Toggle label={t('发送最近的聊天内容')} checked={chatSent} onChange={on => set('aiInsightAllowContext', on ? 'true' : 'false')} />
+      </SettingRow>
+      <div className="settings-fields">
+        <label className="console-field"><span className="console-field-name">{t('发送的条数')}</span>
+          <input className="console-input" type="text" inputMode="numeric" disabled={!chatSent} placeholder={t('默认 40')} aria-label={t('发送的条数')}
+            value={form.aiInsightContextCount} onChange={e => set('aiInsightContextCount', e.target.value)} />
+          {countBad ? <small className="setting-warning">{t('要填正整数。')}</small> : <small>{t('条数越多，模型看到的越完整，每次请求也越长。')}</small>}</label>
+      </div>
     </SettingsGroup>
 
     <SettingsGroup title={t('模型接口')} note={t('API Key 只保存在服务端，网页只知道它是否已设置。')}
@@ -159,7 +176,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
       {test && <TestResult test={test} />}
     </SettingsGroup>
     <SaveBar note={note ? <NoteLine note={note} /> : changed && <p className="account-note">{t('有未保存的修改。')}</p>}>
-      <button type="submit" className="primary-button" disabled={busy !== null || !changed || tokensBad}>{busy === 'save' ? <CircleNotch size={14} className="spin" /> : null}{t('保存')}</button>
+      <button type="submit" className="primary-button" disabled={busy !== null || !changed || tokensBad || countBad}>{busy === 'save' ? <CircleNotch size={14} className="spin" /> : null}{t('保存')}</button>
     </SaveBar>
   </form>;
 }
