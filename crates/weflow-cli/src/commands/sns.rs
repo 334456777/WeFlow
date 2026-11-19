@@ -116,7 +116,7 @@ pub(crate) enum SnsSubcommand {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Moments block-delete trigger (installing and removing are refused: the database is read-only)
+    /// Moments block-delete trigger (checking, installing and removing are refused: the database is read-only)
     BlockDelete {
         /// check, install or uninstall
         action: TriggerAction,

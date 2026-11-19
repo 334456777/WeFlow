@@ -50,11 +50,11 @@ impl ImageTarget {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum ImageSubcommand {
-    /// Decrypt an image into the image cache. Without --force a cached thumbnail may be returned; with --force the HD original is used when it is on disk (`export media` always behaves like --force)
+    /// Decrypt an image into the image cache
     Decrypt {
         #[command(flatten)]
         target: ImageTarget,
-        /// Prefer the HD rendition
+        /// Use the HD original when it is on disk; without it a cached thumbnail may be returned (`export media` always uses the original)
         #[arg(long)]
         force: bool,
     },
@@ -63,9 +63,9 @@ pub(crate) enum ImageSubcommand {
         #[command(flatten)]
         target: ImageTarget,
     },
-    /// Resolve many images; takes a JSON array of payloads (sessionId, imageMd5, imageDatName, createTime, …)
+    /// Resolve many images
     ResolveBatch {
-        /// JSON array of image payloads
+        /// JSON array of image payloads (sessionId, imageMd5, imageDatName, createTime, …)
         payloads_json: String,
     },
     /// Windows only: make WeChat download original-size images (image auto-download hook)

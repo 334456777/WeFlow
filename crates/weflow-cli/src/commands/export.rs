@@ -36,7 +36,7 @@ enum ExportSubcommand {
         /// avatar: put the avatars on the HTML page, in `media/<output name>/avatars/` beside the output file
         #[arg(long, value_delimiter = ',')]
         media: Vec<String>,
-        /// With --media avatar: only those WeChat keeps on this computer, none downloaded
+        /// With avatars in --media: use only the avatars WeChat keeps on this computer, download none
         #[arg(long)]
         no_avatar_download: bool,
         /// Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)
@@ -64,7 +64,7 @@ enum ExportSubcommand {
         /// avatar: put the avatars on the HTML page, in `media/<output name>/avatars/` beside the output file
         #[arg(long, value_delimiter = ',')]
         media: Vec<String>,
-        /// With --media avatar: only those WeChat keeps on this computer, none downloaded
+        /// With avatars in --media: use only the avatars WeChat keeps on this computer, download none
         #[arg(long)]
         no_avatar_download: bool,
         /// Pack the export and its media folder into one zip (`--out` a folder: <list>.zip in it)
@@ -101,10 +101,10 @@ enum ExportSubcommand {
         /// What to export: image, voice, video, emoji, file or all
         #[arg(long, default_value = "all")]
         r#type: String,
-        /// Only messages from this date, local time, inclusive (YYYY-MM-DD)
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
-        /// Only messages up to this date, local time, inclusive (YYYY-MM-DD)
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },
@@ -125,7 +125,7 @@ enum ExportSubcommand {
         )]
         #[arg(long)]
         out: PathBuf,
-        /// txt (default), json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql; several comma separated
+        /// txt, json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql; several comma separated
         #[arg(long, value_delimiter = ',', default_value = "txt")]
         format: Vec<String>,
         /// Pack the export (every format, and the media folder) into one zip
@@ -144,7 +144,7 @@ enum ExportSubcommand {
         /// file, avatar (comma separated) or all. Files go to `media/<output name>/` beside the output file.
         #[arg(long, value_delimiter = ',')]
         media: Vec<String>,
-        /// With avatars in --media: only those WeChat keeps on this computer, none downloaded
+        /// With avatars in --media: use only the avatars WeChat keeps on this computer, download none
         #[arg(long)]
         no_avatar_download: bool,
     },

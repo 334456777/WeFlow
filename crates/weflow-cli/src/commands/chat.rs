@@ -93,7 +93,7 @@ pub(crate) enum ChatSubcommand {
         #[arg(long)]
         db_path_hint: Option<String>,
     },
-    /// Anti-revoke triggers (installing and removing are refused: the database is read-only)
+    /// Anti-revoke triggers (checking, installing and removing are refused: the database is read-only)
     AntiRevoke {
         #[command(subcommand)]
         command: AntiRevokeSubcommand,
@@ -154,7 +154,7 @@ pub(crate) enum ChatSubcommand {
     ExportStats {
         /// Conversation ids
         sessions: Vec<String>,
-        /// Start date, local time (YYYY-MM-DD)
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
         /// End date, local time, inclusive (YYYY-MM-DD)
@@ -203,7 +203,7 @@ pub(crate) enum ChatSubcommand {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
     },
-    /// Page through image/video messages with the native media scanner
+    /// Image and video messages across sessions, newest first, paged by offset
     MediaStream {
         /// Only this conversation (default: all conversations)
         #[arg(long)]
@@ -247,7 +247,7 @@ pub(crate) enum ChatSubcommand {
         session_id: String,
         /// Local message id
         msg_id: String,
-        /// Message create time (seconds)
+        /// Message create time (seconds): tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
         /// Server message id
@@ -312,7 +312,7 @@ pub(crate) enum ChatSubcommand {
         /// Local message id
         msg_id: String,
     },
-    /// Decode and cache many voice messages; takes a JSON array of {localId, createTime, serverId?, senderWxid?}
+    /// Decode and cache many voice messages
     VoicePreload {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
