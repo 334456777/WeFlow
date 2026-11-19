@@ -134,7 +134,7 @@ function Tile({ item, onPreview, onOpen }: { item: Resource; onPreview(item: Res
   switch (item.resourceType) {
     case 'image':
       return <div className="resource-tile"><button type="button" className="resource-open as-control press-on-hover resource-thumb" aria-label={t('预览图片，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>
-        <Thumb src={mediaUrl('image-data', sid, message, { thumb: true })} label={t('图片')} />
+        <Thumb src={mediaUrl('image-data', sid, message, { variant: 'thumb' })} label={t('图片')} />
       </button>{caption}</div>;
     case 'video':
       return <div className="resource-tile"><button type="button" className="resource-open as-control press-on-hover resource-thumb" aria-label={t('播放视频，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>

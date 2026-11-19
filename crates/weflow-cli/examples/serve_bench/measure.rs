@@ -128,7 +128,7 @@ pub(crate) fn targets(addr: &str) -> Result<Targets> {
             if sid == &big && one_message.is_none() {
                 one_message = id.zip(at);
             }
-            let found = json!({ "session-id": sid, "msg-id": id.map(|i| i.to_string()), "create-time": at });
+            let found = json!({ "session-id": sid, "local-id": id.map(|i| i.to_string()), "create-time": at });
             match number(field(&m, &["local_type", "localType"])) {
                 Some(3) if id.is_some() => images.push(found),
                 Some(43) if id.is_some() => videos.push(found),
@@ -254,7 +254,7 @@ impl Bench<'_> {
         let statuses: Vec<String> = t
             .sessions
             .iter()
-            .map(|s| format!("usernames={}", encode(s)))
+            .map(|s| format!("sessions={}", encode(s)))
             .collect();
         let mut reads = vec![
             (
@@ -289,7 +289,10 @@ impl Bench<'_> {
                 "/sns/timeline?offset=1000".into(),
             ),
             ("sns users".into(), "/sns/users".into()),
-            ("sns stats --fast".into(), "/sns/stats?fast=true".into()),
+            (
+                "sns stats --fast".into(),
+                "/sns/stats?prefer-cache=true".into(),
+            ),
             (
                 "sns post-counts --prefer-cache".into(),
                 "/sns/post-counts?prefer-cache=true".into(),
@@ -531,7 +534,7 @@ impl Bench<'_> {
     /// viewer skips ahead. Only the videos whose file is on the computer count.
     pub(crate) fn videos(&mut self, videos: &[Value]) -> Result<()> {
         let query = |v: &Value| {
-            ["session-id", "msg-id", "create-time"]
+            ["session-id", "local-id", "create-time"]
                 .iter()
                 .filter_map(|k| match &v[*k] {
                     Value::String(s) => Some(format!("{k}={}", encode(s))),

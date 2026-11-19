@@ -229,7 +229,7 @@ fn main() -> Result<()> {
     }
     bench.both(
         "latest 20 (polling)",
-        &format!("/chat/latest?session-id={big}&limit=20"),
+        &format!("/chat/messages?session-id={big}&limit=20"),
     )?;
     if let Some((id, at)) = t.one_message {
         bench.both(
@@ -268,7 +268,7 @@ fn main() -> Result<()> {
     bench.both(
         "search in the conversation",
         &format!(
-            "/chat/search?keyword={}&session-id={big}&limit=20",
+            "/chat/search?keyword={}&session={big}&limit=20",
             encode(&args.keyword)
         ),
     )?;
@@ -276,7 +276,7 @@ fn main() -> Result<()> {
     bench.both(
         "search in the conversation, a word found nowhere",
         &format!(
-            "/chat/search?keyword={}&session-id={big}&limit=20",
+            "/chat/search?keyword={}&session={big}&limit=20",
             encode(ABSENT)
         ),
     )?;

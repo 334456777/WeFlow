@@ -94,7 +94,7 @@ def train(base, group, friend):
     def media_call(path, kind):
         # not every message has its file on disk: the first that answers
         for m in [m for m in messages if m.get("localType") == kind][:10]:
-            params = {"session-id": group, "msg-id": m["localId"], "create-time": m["createTime"]}
+            params = {"session-id": group, "local-id": m["localId"], "create-time": m["createTime"]}
             if get(base, path, params, quiet=True) is not None:
                 return (path, params)
         return None
@@ -138,14 +138,14 @@ def train(base, group, friend):
             ("/api/chat/messages", {"session-id": session, "limit": 200}),
             ("/api/chat/messages", {"session-id": session, "limit": 200, "parsed": "true"}),
             ("/api/chat/messages", {"session-id": session, "limit": 200, "offset": 1000, "parsed": "true"}),
-            ("/api/chat/search", {"keyword": "的", "session-id": session, "parsed": "true"}),
+            ("/api/chat/search", {"keyword": "的", "session": session, "parsed": "true"}),
             ("/api/chat/detail", {"session-id": session, "extra": "true"}),
         ]
     if messages and messages[-1].get("_cursor"):
         calls.append(("/api/chat/messages", {"session-id": group, "limit": 200, "before": messages[-1]["_cursor"]}))
     image = next((params for path, params in calls if path == "/api/chat/image-data"), None)
     if image:
-        calls.append(("/api/chat/image-data", {**image, "thumb": "true"}))
+        calls.append(("/api/chat/image-data", {**image, "variant": "thumb"}))
     calls.append(("/api/chat/contacts", {"parsed": "true"}))
     for _ in range(2):
         for path, params in calls:

@@ -32,7 +32,7 @@ struct IndexEntry {
 pub struct VideoInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_url: Option<String>,
-    /// A `data:` URL, or a `file://` one with `file-url`.
+    /// A `data:` URL, or a `file://` one with `no-data-url`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

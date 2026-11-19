@@ -22,14 +22,18 @@ use crate::commands::video::VideoCommand;
 use crate::commands::serve::ServeCommand;
 use crate::commands::web::WebCommand;
 
+/// Where the global options stand in every command's help: after the command's own options, whose places clap counts
+/// from 0 in the order they are defined.
+const GLOBAL_OPTIONS_ORDER: usize = 1000;
+
 #[derive(Parser, Debug)]
 #[command(name = "weflow", version = concat!(env!("WEFLOW_VERSION"), " (", env!("WEFLOW_BUILD_INFO"), ")"), about = "Native CLI for WeFlow")]
 pub(crate) struct Cli {
     /// Print JSON (for scripts) instead of the human-readable output
-    #[arg(long, global = true)]
+    #[arg(long, global = true, display_order = GLOBAL_OPTIONS_ORDER)]
     pub(crate) json: bool,
     /// Emit NDJSON progress events on stderr (machine-readable)
-    #[arg(long, global = true)]
+    #[arg(long, global = true, display_order = GLOBAL_OPTIONS_ORDER + 1)]
     pub(crate) progress: bool,
     #[command(subcommand)]
     pub(crate) command: Commands,
@@ -73,7 +77,7 @@ pub(crate) enum Commands {
     Serve(ServeCommand),
     /// Create, inspect and restore backups
     Backup(BackupCommand),
-    /// Clear WeFlow's caches
+    /// List and clear WeFlow's caches
     Cache(CacheCommand),
     /// Download, pick and remove versions of the WebUI that `serve` shows
     Web(WebCommand),

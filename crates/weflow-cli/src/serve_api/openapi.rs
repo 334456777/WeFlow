@@ -497,7 +497,7 @@ pub(super) fn contract() -> &'static Contract {
         let message_rows = of(generator.subschema_for::<Vec<MessageRow>>());
         data.insert(
             "chat messages",
-            parsed_or(messages.clone(), "the messages", message_rows.clone()),
+            parsed_or(messages.clone(), "the messages", message_rows),
         );
         data.insert(
             "chat search",
@@ -507,7 +507,6 @@ pub(super) fn contract() -> &'static Contract {
                 of(generator.subschema_for::<Vec<SearchHit>>()),
             ),
         );
-        data.insert("chat latest", message_rows);
         data.insert(
             "chat message",
             json!({
@@ -535,7 +534,7 @@ pub(super) fn contract() -> &'static Contract {
             "chat statuses",
             by_id(
                 of(generator.subschema_for::<ChatStatus>()),
-                "Each username asked for, with whether its conversation is folded, muted and pinned",
+                "Each conversation asked for, with whether it is folded, muted and pinned",
             ),
         );
         data.insert(
@@ -551,7 +550,7 @@ pub(super) fn contract() -> &'static Contract {
         data.insert(
             "chat detail",
             json!({
-                "description": "The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept",
+                "description": "The conversation's details; with `fast`, only its facts; with `extra`, only where its messages are kept",
                 "anyOf": [
                     of(generator.subschema_for::<SessionDetail>()),
                     of(generator.subschema_for::<SessionFacts>()),
@@ -661,9 +660,7 @@ pub(super) fn contract() -> &'static Contract {
                     ],
                 }),
             );
-            for command in ["export media", "chat voice"] {
-                data.insert(command, of(generator.subschema_for::<MediaExport>()));
-            }
+            data.insert("export media", of(generator.subschema_for::<MediaExport>()));
             use weflow_core::contract::{AutoDownloadStatus, AutoDownloadStopped, VideoMd5};
             use weflow_core::services::{ImageBatch, ImageResult};
             for command in ["image decrypt", "image resolve-cache"] {
@@ -701,21 +698,14 @@ pub(super) fn contract() -> &'static Contract {
             data.insert("web use", of(generator.subschema_for::<WebChosen>()));
             data.insert("web update", of(generator.subschema_for::<WebUpdated>()));
             data.insert("web prune", of(generator.subschema_for::<WebPruned>()));
-            use weflow_core::contract::{
-                DbKey, DbScan, ImageKeys, ImageLocalKeys, ImageMemKey, WeChatProcesses,
-            };
+            use weflow_core::contract::{DbKey, DbScan, ImageKeys, ImageMemKey, WeChatProcesses};
             data.insert("db scan", of(generator.subschema_for::<DbScan>()));
             data.insert("key db", of(generator.subschema_for::<DbKey>()));
             data.insert("key image", of(generator.subschema_for::<ImageKeys>()));
             data.insert(
-                "key image-local",
-                of(generator.subschema_for::<ImageLocalKeys>()),
-            );
-            data.insert(
                 "key image-mem",
                 of(generator.subschema_for::<ImageMemKey>()),
             );
-            data.insert("key scan-image", of(generator.subschema_for::<ImageMemKey>()));
             data.insert(
                 "key processes",
                 of(generator.subschema_for::<WeChatProcesses>()),
@@ -768,10 +758,7 @@ pub(super) fn contract() -> &'static Contract {
         }
         data.insert("db detect", of(generator.subschema_for::<DbCandidates>()));
         data.insert("db wxid", of(generator.subschema_for::<DbAccounts>()));
-        // `db open` is the read `db test` is
-        for command in ["db test", "db open"] {
-            data.insert(command, of(generator.subschema_for::<DbConnection>()));
-        }
+        data.insert("db test", of(generator.subschema_for::<DbConnection>()));
         data.insert("insight footprint", of(generator.subschema_for::<Footprint>()));
         data.insert("chat export-stats", of(generator.subschema_for::<ExportStats>()));
         data.insert("chat transfer-names", of(generator.subschema_for::<TransferNames>()));
@@ -1670,7 +1657,7 @@ mod tests {
             error(
                 "invalid_arguments",
                 "`chat messages` needs `session-id`",
-                Some(json!({ "usage": "weflow chat messages --session-id <SESSION_ID>" })),
+                Some(json!({ "usage": "weflow chat messages <SESSION_ID> [OPTIONS]" })),
             ),
             error(
                 "runtime_error",
@@ -1690,7 +1677,8 @@ mod tests {
                 "--progress",
                 "export",
                 "messages",
-                "--session-id",
+                "--out=chat.txt",
+                "--",
                 "wxid_bob",
             ]
             .map(String::from)
@@ -2040,7 +2028,7 @@ mod tests {
                 .map(|p| p["name"].as_str().unwrap())
                 .collect();
             assert!(
-                params.contains(&"session-id") && params.contains(&"msg-id"),
+                params.contains(&"session-id") && params.contains(&"local-id"),
                 "{name}: {params:?}"
             );
             assert!(!params.contains(&"out"), "{name}");

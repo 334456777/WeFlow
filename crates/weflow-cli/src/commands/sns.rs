@@ -47,18 +47,18 @@ pub(crate) enum SnsSubcommand {
         /// Resource URL
         url: String,
     },
-    /// Export statistics (total posts / friends / mine); --fast reads the cached counts only
+    /// Moments statistics for the export page: total posts, users who posted, your posts
     Stats {
-        /// Only read the cached counts
+        /// Use the counts kept from an earlier read while they have not expired, and skip the slow count over the timeline
         #[arg(long)]
-        fast: bool,
+        prefer_cache: bool,
     },
     /// Post counts per user, or the statistics of one user
     PostCounts {
         /// Statistics of this user only
         #[arg(long)]
         user: Option<String>,
-        /// Prefer the cached counts
+        /// Use the counts kept from an earlier read while they have not expired
         #[arg(long)]
         prefer_cache: bool,
     },
@@ -116,7 +116,7 @@ pub(crate) enum SnsSubcommand {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Moments block-delete trigger (installing and removing are refused: the database is read-only)
+    /// Moments block-delete trigger (checking, installing and removing are refused: the database is read-only)
     BlockDelete {
         /// check, install or uninstall
         action: TriggerAction,

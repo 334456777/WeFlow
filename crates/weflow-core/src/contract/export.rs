@@ -61,7 +61,7 @@ pub struct MediaCopied {
     pub dir: PathBuf,
 }
 
-/// What `export media` (and `chat voice`) copied.
+/// What `export media` copied.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaExport {

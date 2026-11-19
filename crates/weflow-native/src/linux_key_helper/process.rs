@@ -1,6 +1,5 @@
 //! `/proc` access shared by the database and image modes.
 
-use std::ffi::CStr;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -126,22 +125,4 @@ pub(super) fn read_memory_partial(pid: u32, address: usize, bytes: &mut [u8]) ->
         return Err(io::Error::last_os_error());
     }
     Ok(read as usize)
-}
-
-pub(super) fn home_dir() -> Option<PathBuf> {
-    if let Some(home) = std::env::var_os("HOME") {
-        if !home.is_empty() {
-            return Some(PathBuf::from(home));
-        }
-    }
-    // SAFETY: `getpwuid` returns a pointer to a static passwd entry; the
-    // fields are read immediately and only `pw_dir` is copied.
-    let passwd = unsafe { libc::getpwuid(libc::getuid()) };
-    if passwd.is_null() {
-        return None;
-    }
-    // SAFETY: `passwd` is the non-null entry returned above; `pw_dir` is a
-    // NUL-terminated string owned by the C library.
-    let directory = unsafe { CStr::from_ptr((*passwd).pw_dir) };
-    Some(PathBuf::from(directory.to_string_lossy().into_owned()))
 }

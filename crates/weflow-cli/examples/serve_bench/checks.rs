@@ -329,7 +329,7 @@ pub(crate) fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Chec
     let r = c.both(&page(n), &[]).and_then(|d| page_is(d, Vec::new()));
     c.check("messages, past the end", r);
     let r = c
-        .both(&format!("/chat/latest?session-id={room}&limit=20"), &[])
+        .both(&format!("/chat/messages?session-id={room}&limit=20"), &[])
         .and_then(|d| page_is(d, down(n, 20)));
     c.check("latest 20", r);
 
@@ -412,7 +412,7 @@ pub(crate) fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Chec
     let r = c
         .both(
             &format!(
-                "/chat/search?keyword={}&session-id={room}&limit=20",
+                "/chat/search?keyword={}&session={room}&limit=20",
                 encode(CHECKED_KEYWORD)
             ),
             &[],
@@ -446,7 +446,7 @@ pub(crate) fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Chec
     let r = c
         .both(
             &format!(
-                "/chat/search?keyword={}&session-id={room}&limit=20",
+                "/chat/search?keyword={}&session={room}&limit=20",
                 encode(ABSENT)
             ),
             &[],
@@ -522,7 +522,7 @@ pub(crate) fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Chec
     let r = (|| -> Result<()> {
         for k in 0..5 {
             let i = latest_image - k * IMAGE_EVERY;
-            let img = json!({ "session-id": ROOM, "msg-id": i.to_string(), "create-time": T0 + i * STEP });
+            let img = json!({ "session-id": ROOM, "local-id": i.to_string(), "create-time": T0 + i * STEP });
             let plain: Vec<u8> = image_dat(81_920, i).iter().map(|b| b ^ XOR_KEY).collect();
             let child = image_request(addr, "sub", &img, false)?;
             ensure!(child.status == 200, "image {i}: status {}", child.status);
@@ -549,12 +549,12 @@ pub(crate) fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Chec
     c
 }
 
-/// The image of a message (`{"session-id", "msg-id", "create-time"}`), or its thumbnail, through one route: `POST`
+/// The image of a message (`{"session-id", "local-id", "create-time"}`), or its thumbnail, through one route: `POST`
 /// with the file in the answer for the child process, `GET` answering the file itself for `/api/`.
 pub(crate) fn image_request(addr: &str, route: &str, img: &Value, thumb: bool) -> Result<Reply> {
     if route == "api" {
         let mut query = Vec::new();
-        for key in ["session-id", "msg-id", "create-time"] {
+        for key in ["session-id", "local-id", "create-time"] {
             match &img[key] {
                 Value::String(s) => query.push(format!("{key}={}", encode(s))),
                 Value::Number(n) => query.push(format!("{key}={n}")),
@@ -562,7 +562,7 @@ pub(crate) fn image_request(addr: &str, route: &str, img: &Value, thumb: bool) -
             }
         }
         if thumb {
-            query.push("thumb=true".into());
+            query.push("variant=thumb".into());
         }
         request(
             addr,
@@ -573,7 +573,7 @@ pub(crate) fn image_request(addr: &str, route: &str, img: &Value, thumb: bool) -
     } else {
         let mut body = img.clone();
         if thumb {
-            body["thumb"] = json!(true);
+            body["variant"] = json!("thumb");
         }
         request(
             addr,

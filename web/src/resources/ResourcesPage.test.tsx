@@ -67,7 +67,7 @@ describe('the resource browser (#206)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^播放视频，家人群/ }));
     const preview = onPreview.mock.calls[0][0];
     expect(preview.type).toBe('video');
-    expect(preview.src).toContain('/api/chat/video-data?session-id=room%40chatroom&msg-id=3');
+    expect(preview.src).toContain('/api/chat/video-data?session-id=room%40chatroom&local-id=3');
     expect(preview.gallery?.index).toBe(1);
     expect(preview.gallery?.items.map(p => p.type)).toEqual(['image', 'video']);
     preview.locate?.();

@@ -251,11 +251,11 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
             VideoSubcommand::Info {
                 md5,
                 no_poster,
-                file_url,
+                no_data_url,
             } => Ok(json!(hub.video_info(
                 md5,
                 !*no_poster,
-                if *file_url {
+                if *no_data_url {
                     weflow_core::video::PosterFormat::FileUrl
                 } else {
                     weflow_core::video::PosterFormat::DataUrl
@@ -319,9 +319,7 @@ enum CacheShown {
 enum KeyShown {
     Db,
     Image,
-    ImageLocal,
     ImageMem,
-    ScanImage,
     Processes,
 }
 
@@ -348,9 +346,7 @@ impl Summary {
             Commands::Key(KeyCommand { command }) => Self::Key(match command {
                 KeySubcommand::Db { .. } => KeyShown::Db,
                 KeySubcommand::Image { .. } => KeyShown::Image,
-                KeySubcommand::ImageLocal => KeyShown::ImageLocal,
                 KeySubcommand::ImageMem { .. } => KeyShown::ImageMem,
-                KeySubcommand::ScanImage { .. } => KeyShown::ScanImage,
                 KeySubcommand::Processes => KeyShown::Processes,
             }),
             _ => return None,

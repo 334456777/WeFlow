@@ -68,7 +68,7 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
     if (!manifest || !target.trim()) return;
     setBusy('restore'); setLookNote(null);
     try {
-      await runJob(t('恢复备份'), 'POST', 'backup/restore', { path: manifest.path, target: target.trim() }, false);
+      await runJob(t('恢复备份'), 'POST', 'backup/restore', { path: manifest.path, out: target.trim() }, false);
       setLookNote({ text: t('已开始恢复：先完整校验备份，校验通过才写入。进度在任务中心。') });
     } catch (problem) {
       setLookNote({ text: reason(problem, t('没有开始，请重试。')), error: true });

@@ -35,10 +35,6 @@ pub enum Read {
         limit: usize,
     },
     ChatMessages(MessagePage),
-    ChatLatest {
-        session_id: String,
-        limit: i32,
-    },
     /// `chat message`: by exactly one of `local_id` and `server_id`.
     ChatMessage {
         session_id: String,
@@ -56,9 +52,10 @@ pub enum Read {
     ChatCounts {
         sessions: Vec<String>,
     },
+    /// `chat search`: in the conversation `session`, or in all of them.
     ChatSearch {
         keyword: String,
-        session_id: Option<String>,
+        session: Option<String>,
         limit: i32,
         offset: i32,
         start: i32,
@@ -86,7 +83,7 @@ pub enum Read {
     },
     ChatImageInfo {
         session_id: String,
-        msg_id: String,
+        local_id: String,
         create_time: Option<i64>,
     },
     GroupMembers {
@@ -104,7 +101,7 @@ pub enum Read {
     },
     SnsUsers,
     SnsStats {
-        fast: bool,
+        prefer_cache: bool,
     },
     SnsPostCounts {
         user: Option<String>,
@@ -112,7 +109,7 @@ pub enum Read {
     },
     /// Whether each conversation is folded, muted and pinned.
     ChatStatuses {
-        usernames: Vec<String>,
+        sessions: Vec<String>,
     },
     ChatTabCounts,
     GroupList,
@@ -183,7 +180,7 @@ pub enum Read {
     },
     ConfigProfiles,
     DbDetect,
-    /// `db test` (and `db open`): opens the configured account with its key.
+    /// `db test`: opens the configured account with its key.
     DbTest,
     DbWxid {
         root: Option<String>,
@@ -257,9 +254,6 @@ impl Read {
                         .collect::<Vec<_>>())
                 })
             }
-            Read::ChatLatest { session_id, limit } => {
-                hub.message_page(session_id, *limit, 0, None, None)
-            }
             Read::ChatMessage {
                 session_id,
                 local_id,
@@ -286,21 +280,15 @@ impl Read {
             Read::ChatCounts { sessions } => Ok(json!(hub.chat_counts(sessions)?)),
             Read::ChatSearch {
                 keyword,
-                session_id,
+                session,
                 limit,
                 offset,
                 start,
                 end,
                 parsed,
             } => {
-                let hits = hub.search(
-                    keyword,
-                    session_id.as_deref(),
-                    *limit,
-                    *offset,
-                    *start,
-                    *end,
-                )?;
+                let hits =
+                    hub.search(keyword, session.as_deref(), *limit, *offset, *start, *end)?;
                 Ok(if *parsed {
                     json!(hub.parsed_hits(hits))
                 } else {
@@ -333,11 +321,11 @@ impl Read {
             }
             Read::ChatImageInfo {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
             } => Ok(json!(hub.image_info_for_message(
                 session_id,
-                msg_id,
+                local_id,
                 *create_time
             )?)),
             Read::GroupMembers {
@@ -373,16 +361,16 @@ impl Read {
             Read::SnsUsers => Ok(json!(crate::contract::SnsUsers {
                 usernames: hub.sns_usernames_list()?
             })),
-            Read::SnsStats { fast } => {
-                Ok(json!(hub.sns_export_stats(Freshness::cached_if(*fast))?))
-            }
+            Read::SnsStats { prefer_cache } => Ok(json!(
+                hub.sns_export_stats(Freshness::cached_if(*prefer_cache))?
+            )),
             Read::SnsPostCounts { user, prefer_cache } => match user {
                 Some(u) => Ok(json!(hub.sns_user_post_stats(u)?)),
                 None => Ok(json!(
                     hub.sns_user_post_counts(Freshness::cached_if(*prefer_cache))?
                 )),
             },
-            Read::ChatStatuses { usernames } => Ok(json!(hub.chat_statuses(usernames)?)),
+            Read::ChatStatuses { sessions } => Ok(json!(hub.chat_statuses(sessions)?)),
             Read::ChatTabCounts => Ok(json!(hub.chat_tab_counts()?)),
             Read::GroupList => Ok(json!(hub.group_chats()?)),
             Read::GroupRanking {
@@ -502,7 +490,7 @@ impl Read {
     }
 }
 
-/// The image file `chat image-data --variant` asks for (`best`, `thumb`, `normal`, `hd`); `--thumb` is `thumb`.
+/// The image file `chat image-data --variant` asks for (`best`, `thumb`, `normal`, `hd`).
 pub fn image_variant(variant: &str) -> ImageVariant {
     match variant {
         "thumb" => ImageVariant::Thumb,
@@ -518,14 +506,14 @@ pub fn image_variant(variant: &str) -> ImageVariant {
 pub enum MediaRead {
     ChatImage {
         session_id: String,
-        msg_id: String,
+        local_id: String,
         create_time: Option<i64>,
         variant: ImageVariant,
     },
     /// Decoded to WAV.
     ChatVoice {
         session_id: String,
-        msg_id: String,
+        local_id: String,
         create_time: Option<i64>,
         server_id: Option<String>,
         sender: Option<String>,
@@ -533,7 +521,7 @@ pub enum MediaRead {
     /// The video as WeChat keeps it, or with `thumb` its thumbnail, else its cover.
     ChatVideo {
         session_id: String,
-        msg_id: String,
+        local_id: String,
         create_time: Option<i64>,
         thumb: bool,
     },
@@ -571,12 +559,12 @@ impl MediaRead {
         match self {
             MediaRead::ChatImage {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
                 variant,
             } => {
                 let bytes =
-                    hub.image_variant_for_message(session_id, msg_id, *create_time, *variant)?;
+                    hub.image_variant_for_message(session_id, local_id, *create_time, *variant)?;
                 Ok(MediaFile {
                     mime: image_mime(&bytes),
                     body: MediaBody::Bytes(bytes),
@@ -584,14 +572,14 @@ impl MediaRead {
             }
             MediaRead::ChatVoice {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
                 server_id,
                 sender,
             } => Ok(MediaFile {
                 body: MediaBody::Bytes(hub.voice_data(
                     session_id,
-                    msg_id,
+                    local_id,
                     *create_time,
                     server_id.as_deref(),
                     sender.as_deref(),
@@ -600,11 +588,11 @@ impl MediaRead {
             }),
             MediaRead::ChatVideo {
                 session_id,
-                msg_id,
+                local_id,
                 create_time,
                 thumb,
             } => {
-                let files = hub.video_files_for_message(session_id, msg_id, *create_time)?;
+                let files = hub.video_files_for_message(session_id, local_id, *create_time)?;
                 let path = video_file(&files, *thumb)?;
                 if !*thumb {
                     return Ok(MediaFile {

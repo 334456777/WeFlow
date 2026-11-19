@@ -205,7 +205,7 @@ impl MessageView {
     }
 }
 
-/// A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`).
+/// A message as WeChat keeps it (`chat messages` without `parsed`, the `row` of `chat message`).
 ///
 /// Its columns are read with their types, the text inflated and decoded, the sender resolved (#257, #492).
 #[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]

@@ -149,7 +149,7 @@ describe('App', () => {
     // live messages are on unless turned off
     expect(screen.getByRole('status').textContent).toBe('实时');
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '折叠的群聊']);
-    expect(calls).toContain('/api/chat/statuses?usernames=wxid_a&usernames=g%40chatroom');
+    expect(calls).toContain('/api/chat/statuses?sessions=wxid_a&sessions=g%40chatroom');
     // The first conversation is opened; its details and media are read only once their cards open (#200).
     expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true');
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);

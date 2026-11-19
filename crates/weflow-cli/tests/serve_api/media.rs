@@ -54,7 +54,7 @@ fn media_come_back_as_files_from_the_process() {
     let auth = format!("Bearer {TOKEN}");
 
     // the image: its bytes, the same as the child process writes, with an ETag that answers 304
-    let query = format!("session-id=wxid_bob&msg-id=3&create-time={}", T0 + DAY);
+    let query = format!("session-id=wxid_bob&local-id=3&create-time={}", T0 + DAY);
     let r = server.call("GET", &format!("/api/chat/image-data?{query}"), "");
     assert_eq!(r.status, 200, "{}", r.body);
     assert_eq!(r.headers["content-type"], "image/jpeg");
@@ -71,7 +71,7 @@ fn media_come_back_as_files_from_the_process() {
         "POST",
         "/chat/image-data?return=file",
         &format!(
-            r#"{{"session-id": "wxid_bob", "msg-id": "3", "create-time": {}}}"#,
+            r#"{{"session-id": "wxid_bob", "local-id": "3", "create-time": {}}}"#,
             T0 + DAY
         ),
     );
@@ -137,7 +137,7 @@ fn media_come_back_as_files_from_the_process() {
     assert_eq!(r.headers["content-range"], format!("bytes */{len}"));
 
     // a thumbnail for a list: WeChat's own `_t.dat` when there is one, else the image
-    let thumb = format!("/api/chat/image-data?{query}&thumb=true");
+    let thumb = format!("/api/chat/image-data?{query}&variant=thumb");
     assert_eq!(server.call("GET", &thumb, "").bytes, jpeg);
     let small: Vec<u8> = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3].to_vec();
     std::fs::write(
@@ -155,7 +155,7 @@ fn media_come_back_as_files_from_the_process() {
         "POST",
         "/chat/image-data?return=file",
         &format!(
-            r#"{{"session-id": "wxid_bob", "msg-id": "3", "create-time": {}, "thumb": true}}"#,
+            r#"{{"session-id": "wxid_bob", "local-id": "3", "create-time": {}, "variant": "thumb"}}"#,
             T0 + DAY
         ),
     );
@@ -199,9 +199,10 @@ fn media_come_back_as_files_from_the_process() {
     let r = server.call("GET", &hd_url, "");
     assert_eq!((r.status, r.bytes == original), (200, true));
     assert_eq!(server.call("GET", &normal_url, "").bytes, jpeg);
+    // one file of the image at a time
     assert_eq!(
         server
-            .call("GET", &format!("{normal_url}&thumb=true"), "")
+            .call("GET", &format!("{normal_url}&variant=thumb"), "")
             .status,
         400
     );
@@ -233,7 +234,7 @@ fn media_come_back_as_files_from_the_process() {
 
     // the voice, decoded to WAV: the same as the child process prints in base64
     let query = format!(
-        "session-id=wxid_bob&msg-id=6&create-time={voice_at}&server-id=9000000000001&sender=wxid_bob"
+        "session-id=wxid_bob&local-id=6&create-time={voice_at}&server-id=9000000000001&sender=wxid_bob"
     );
     let r = server.call("GET", &format!("/api/chat/voice-data?{query}"), "");
     assert_eq!(r.status, 200, "{}", r.body);
@@ -251,7 +252,7 @@ fn media_come_back_as_files_from_the_process() {
         "POST",
         "/chat/voice-data",
         &format!(
-            r#"{{"session-id": "wxid_bob", "msg-id": "6", "create-time": {voice_at}, "server-id": "9000000000001", "sender": "wxid_bob"}}"#
+            r#"{{"session-id": "wxid_bob", "local-id": "6", "create-time": {voice_at}, "server-id": "9000000000001", "sender": "wxid_bob"}}"#
         ),
     );
     assert_eq!(child.status, 200, "{}", child.body);
@@ -284,12 +285,12 @@ fn media_come_back_as_files_from_the_process() {
     };
     // a text message has no image
     failed(
-        "/api/chat/image-data?session-id=wxid_bob&msg-id=1",
-        r#"{"session-id": "wxid_bob", "msg-id": "1", "out": "unused.jpg"}"#,
+        "/api/chat/image-data?session-id=wxid_bob&local-id=1",
+        r#"{"session-id": "wxid_bob", "local-id": "1", "out": "unused.jpg"}"#,
     );
     failed(
-        "/api/chat/voice-data?session-id=wxid_bob&msg-id=99",
-        r#"{"session-id": "wxid_bob", "msg-id": "99"}"#,
+        "/api/chat/voice-data?session-id=wxid_bob&local-id=99",
+        r#"{"session-id": "wxid_bob", "local-id": "99"}"#,
     );
     // a command line that does not parse is reported by the child process, which writes nothing
     let r = server.call("GET", "/api/chat/image-data?session-id=wxid_bob", "");
@@ -318,7 +319,7 @@ fn media_come_back_as_files_from_the_process() {
     assert_eq!(r.headers["allow"], "GET");
     let r = server.call(
         "GET",
-        "/api/chat/image-data?session-id=wxid_bob&msg-id=3&out=x.jpg",
+        "/api/chat/image-data?session-id=wxid_bob&local-id=3&out=x.jpg",
         "",
     );
     assert_eq!(r.status, 400, "{}", r.body);
@@ -369,7 +370,7 @@ fn videos_are_sent_in_the_parts_asked_for() {
     });
     let server = start(&home, &["--api-token", TOKEN]);
     let auth = format!("Bearer {TOKEN}");
-    let query = format!("session-id=wxid_bob&msg-id=7&create-time={at}");
+    let query = format!("session-id=wxid_bob&local-id=7&create-time={at}");
     let get = |extra: &[(&str, &str)], q: &str| {
         let mut headers = vec![("Authorization", auth.as_str())];
         headers.extend_from_slice(extra);
@@ -427,7 +428,7 @@ fn videos_are_sent_in_the_parts_asked_for() {
     let child = server.call(
         "POST",
         "/chat/video-data?return=file",
-        &format!(r#"{{"session-id": "wxid_bob", "msg-id": "7", "create-time": {at}}}"#),
+        &format!(r#"{{"session-id": "wxid_bob", "local-id": "7", "create-time": {at}}}"#),
     );
     assert_eq!(child.status, 200, "{}", child.body);
     let parts = form_parts(&child);
@@ -438,13 +439,16 @@ fn videos_are_sent_in_the_parts_asked_for() {
     // not on this computer: 404; not a video: 400
     let r = get(
         &[],
-        &format!("session-id=wxid_bob&msg-id=8&create-time={}", at + 60),
+        &format!("session-id=wxid_bob&local-id=8&create-time={}", at + 60),
     );
     assert_eq!(r.status, 404, "{}", r.body);
     assert_eq!(r.json()["error"]["details"]["failureKind"], "not_found");
     let r = get(
         &[],
-        &format!("session-id=wxid_bob&msg-id=5&create-time={}", T0 + 4 * DAY),
+        &format!(
+            "session-id=wxid_bob&local-id=5&create-time={}",
+            T0 + 4 * DAY
+        ),
     );
     assert_eq!(r.status, 400, "{}", r.body);
 }
@@ -616,7 +620,7 @@ fn images_of_a_username_with_a_folder_like_suffix_are_found() {
     for (session, _, _, jpeg) in &cases {
         let own = server.call(
             "GET",
-            &format!("/api/chat/image-data?session-id={session}&msg-id=1&create-time={at}"),
+            &format!("/api/chat/image-data?session-id={session}&local-id=1&create-time={at}"),
             "",
         );
         assert_eq!(own.status, 200, "{session}: {}", own.body);
@@ -624,7 +628,7 @@ fn images_of_a_username_with_a_folder_like_suffix_are_found() {
         let child = server.call(
             "POST",
             "/chat/image-data?return=file",
-            &json!({ "session-id": session, "msg-id": "1", "create-time": at }).to_string(),
+            &json!({ "session-id": session, "local-id": "1", "create-time": at }).to_string(),
         );
         assert_eq!(child.status, 200, "{session}: {}", child.body);
         assert_eq!(&form_parts(&child)[1].1, jpeg, "{session}");

@@ -425,6 +425,25 @@ fn the_startup_message_gives_the_webui_address_with_the_token() {
     assert!(url.ends_with(&format!("/ui/?token={TOKEN}")), "{url}");
 }
 
+/// `serve --help` names the variable the token may come from, never the token it holds.
+#[test]
+fn help_does_not_show_the_token_of_the_environment() {
+    const SECRET: &str = "token-of-the-environment-6f1d";
+    let root = temp_root("help-token");
+    for lang in ["en", "zh"] {
+        let out = weflow(&root)
+            .env("WEFLOW_LANG", lang)
+            .env("WEFLOW_HTTP_TOKEN", SECRET)
+            .args(["serve", "--help"])
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{lang}");
+        let help = String::from_utf8_lossy(&out.stdout);
+        assert!(help.contains("WEFLOW_HTTP_TOKEN"), "{lang}: {help}");
+        assert!(!help.contains(SECRET), "{lang}: {help}");
+    }
+}
+
 /// Without a token one is made up; an empty one, from the command line or the environment, is none (#808): it
 /// would let in an empty `access_token`.
 #[test]

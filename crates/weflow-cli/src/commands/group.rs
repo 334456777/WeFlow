@@ -19,7 +19,7 @@ pub(crate) struct GroupCommand {
 pub(crate) enum GroupSubcommand {
     /// Group chats with member counts
     List,
-    /// Members panel (friend flag, owner, group nickname, optional message counts)
+    /// Members of a group chat (friend flag, owner, group nickname; message counts with --counts)
     Members {
         /// Group chat id (xxx@chatroom)
         chatroom_id: String,

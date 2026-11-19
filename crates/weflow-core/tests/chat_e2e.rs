@@ -521,7 +521,7 @@ fn pages_from_a_cursor_follow_the_offset_order() {
             "after row {at}"
         );
     }
-    // every row has a cursor, also `chat latest`'s
+    // every row has a cursor, also those of the newest page (`chat messages` without a cursor or offset)
     assert!(hub.message_page("wxid_bob", 2, 0, None, None).unwrap()[1]["_cursor"].is_string());
     let err = hub
         .message_page("wxid_bob", 2, 0, Some("1.2.3"), None)

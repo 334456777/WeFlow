@@ -12,7 +12,7 @@ const message = { _cursor: 'c3', localId: 3, localType: 3, createTime: 1_700_000
 describe('the original of a picture (#194)', () => {
   it('opens the image WeChat shows when it is opened, with its original beside', () => {
     const preview = imagePreview('wxid_a', message, '图片');
-    expect(preview.src).toContain('/api/chat/image-data?session-id=wxid_a&msg-id=3&create-time=1700000000&variant=normal');
+    expect(preview.src).toContain('/api/chat/image-data?session-id=wxid_a&local-id=3&create-time=1700000000&variant=normal');
     expect(preview.hd).toMatchObject({ sessionId: 'wxid_a', localId: 3, createTime: 1_700_000_000 });
     expect(preview.hd?.src).toContain('variant=hd');
   });
@@ -23,7 +23,7 @@ describe('the original of a picture (#194)', () => {
     const onShow = vi.fn();
     render(<OriginalButton hd={imagePreview('wxid_a', message, '图片').hd!} onToggle={onShow} />);
     const button = await screen.findByRole('button', { name: /^查看高清原图 2\.3 MB$/ });
-    expect(fetch.mock.calls[0][0]).toContain('/api/chat/image-info?session-id=wxid_a&msg-id=3&create-time=1700000000');
+    expect(fetch.mock.calls[0][0]).toContain('/api/chat/image-info?session-id=wxid_a&local-id=3&create-time=1700000000');
     fireEvent.click(button);
     expect(onShow).toHaveBeenCalledWith(true);
   });

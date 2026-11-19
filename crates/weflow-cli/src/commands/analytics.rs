@@ -21,10 +21,10 @@ pub(crate) enum AnalyticsSubcommand {
         /// Number of contacts
         #[arg(long, default_value_t = 20)]
         limit: usize,
-        /// First day (YYYY-MM-DD, local time)
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
-        /// Last day, inclusive (YYYY-MM-DD)
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },

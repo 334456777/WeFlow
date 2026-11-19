@@ -22,9 +22,9 @@ pub(crate) struct ImageTarget {
     /// Message create time (seconds); selects the year-month folder
     #[arg(long)]
     create_time: Option<i64>,
-    /// Return a file path instead of a base64 data URL
+    /// Return the path of the image file instead of a base64 data URL
     #[arg(long)]
-    prefer_file_path: bool,
+    no_data_url: bool,
     /// Do not fall back to scanning by .dat name
     #[arg(long)]
     no_cache_index: bool,
@@ -37,7 +37,7 @@ impl ImageTarget {
             image_md5: self.md5.clone(),
             image_dat_name: self.dat_name.clone(),
             create_time: self.create_time,
-            prefer_file_path: self.prefer_file_path,
+            prefer_file_path: self.no_data_url,
             allow_cache_index: if self.no_cache_index {
                 Some(false)
             } else {
@@ -50,11 +50,11 @@ impl ImageTarget {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum ImageSubcommand {
-    /// Decrypt an image into the image cache. Without --force a cached thumbnail may be returned; with --force the HD original is used when it is on disk (`export media` always behaves like --force)
+    /// Decrypt an image into the image cache
     Decrypt {
         #[command(flatten)]
         target: ImageTarget,
-        /// Prefer the HD rendition
+        /// Use the HD original when it is on disk; without it a cached thumbnail may be returned (`export media` always uses the original)
         #[arg(long)]
         force: bool,
     },
@@ -63,9 +63,9 @@ pub(crate) enum ImageSubcommand {
         #[command(flatten)]
         target: ImageTarget,
     },
-    /// Resolve many images; takes a JSON array of payloads (sessionId, imageMd5, imageDatName, createTime, …)
+    /// Resolve many images
     ResolveBatch {
-        /// JSON array of image payloads
+        /// JSON array of image payloads (sessionId, imageMd5, imageDatName, createTime, …)
         payloads_json: String,
     },
     /// Windows only: make WeChat download original-size images (image auto-download hook)

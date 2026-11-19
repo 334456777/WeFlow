@@ -79,9 +79,9 @@ pub(crate) enum InsightSubcommand {
         #[arg(long)]
         end: Option<String>,
     },
-    /// AI footprint summary; takes the JSON payload {rangeLabel, summary, privateSegments, mentionGroups}
+    /// AI footprint summary
     FootprintSummary {
-        /// JSON payload
+        /// JSON payload {rangeLabel, summary, privateSegments, mentionGroups}
         payload_json: String,
     },
 }

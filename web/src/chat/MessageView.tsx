@@ -135,7 +135,7 @@ export function MessageView({ sessionId, message, onPreview }: {
   const text = message.parsedContent;
   switch (kindOf(message)) {
     case 'image': {
-      const thumb = mediaUrl('image-data', sessionId, message, { thumb: true });
+      const thumb = mediaUrl('image-data', sessionId, message, { variant: 'thumb' });
       return <button type="button" className="photo-button" aria-label={t('预览图片')}
         onClick={() => onPreview(mediaPreview(sessionId, message)!)}>
         <MediaThumb src={thumb} label={t('图片')} />

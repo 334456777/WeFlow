@@ -296,7 +296,7 @@
       "code": "invalid_arguments",
       "message": "`chat messages` needs `session-id`",
       "details": {
-        "usage": "weflow chat messages --session-id <SESSION_ID>"
+        "usage": "weflow chat messages <SESSION_ID> [OPTIONS]"
       }
     },
     {
@@ -321,7 +321,8 @@
         "--progress",
         "export",
         "messages",
-        "--session-id",
+        "--out=chat.txt",
+        "--",
         "wxid_bob"
       ],
       "createdAt": 1700000000000,
@@ -341,7 +342,8 @@
         "--progress",
         "export",
         "messages",
-        "--session-id",
+        "--out=chat.txt",
+        "--",
         "wxid_bob"
       ],
       "createdAt": 1700000000000,
@@ -366,7 +368,8 @@
         "--progress",
         "export",
         "messages",
-        "--session-id",
+        "--out=chat.txt",
+        "--",
         "wxid_bob"
       ],
       "createdAt": 1700000000000,
@@ -400,7 +403,8 @@
         "--progress",
         "export",
         "messages",
-        "--session-id",
+        "--out=chat.txt",
+        "--",
         "wxid_bob"
       ],
       "createdAt": 1700000000000,
@@ -427,7 +431,8 @@
         "--progress",
         "export",
         "messages",
-        "--session-id",
+        "--out=chat.txt",
+        "--",
         "wxid_bob"
       ],
       "createdAt": 1700000000000,

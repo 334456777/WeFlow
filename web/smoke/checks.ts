@@ -55,7 +55,7 @@ async function navigate(page: Page, label: string, panel: string): Promise<void>
 }
 
 /** The picture of 「图片测试」 whose message is `id` (dev_account.rs: ① is 2, ⑧ is 16), opened in the preview. */
-export const picture = (id: number) => `.message-row:has(img.message-thumb[src*="msg-id=${id}&"]) button[aria-label="预览图片"]`;
+export const picture = (id: number) => `.message-row:has(img.message-thumb[src*="local-id=${id}&"]) button[aria-label="预览图片"]`;
 
 export const checks: Check[] = [
   {
@@ -276,9 +276,9 @@ export const checks: Check[] = [
         };
       };
       await page.click(picture(16));
-      await page.until('⑧ in the preview', p => p.open && p.place === '8 / 9' && p.decoded && p.src.includes('msg-id=16&'), preview);
+      await page.until('⑧ in the preview', p => p.open && p.place === '8 / 9' && p.decoded && p.src.includes('local-id=16&'), preview);
       await page.click('dialog.preview-dialog button[aria-label="上一个"]');
-      await page.until('⑦ in the preview', p => p.open && p.place === '7 / 9' && p.decoded && p.src.includes('msg-id=14&'), preview);
+      await page.until('⑦ in the preview', p => p.open && p.place === '7 / 9' && p.decoded && p.src.includes('local-id=14&'), preview);
       await page.press('Escape');
       await page.until('the preview closed', p => !p.open, preview);
       await page.click(picture(16));

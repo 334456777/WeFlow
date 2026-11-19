@@ -24,7 +24,7 @@ const PHONE = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
 /** What the page may log: ⑨ of 「图片测试」 has none of its files (dev_account.rs), so its thumbnail and its image are
  * not found, as they would not be for a real picture never downloaded. */
 const expected = (problem: Problem) => problem.source === 'network' && problem.text.includes('status of 404')
-  && /\/api\/chat\/image-data\?session-id=wxid_devpictures&msg-id=18&/.test(problem.text);
+  && /\/api\/chat\/image-data\?session-id=wxid_devpictures&local-id=18&/.test(problem.text);
 
 /** Runs `check` in a new tab: whether it passed. The tab is closed after it, and with it its connections to the server
  * (a tab keeps one open for the live messages, and Chrome opens six at most to a server); so are the tabs the check

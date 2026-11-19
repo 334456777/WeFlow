@@ -157,7 +157,7 @@ describe('the samples of the contract (#400)', () => {
     const problems: ApiError[] = [];
     for (let i = 0; i < 3; i++) await getMessages('wxid_bob', null).catch(problem => problems.push(problem));
     expect(problems.map(p => [p.status, p.code, p.message, p.details])).toEqual([
-      [400, 'invalid_arguments', usage.message, { usage: 'weflow chat messages --session-id <SESSION_ID>' }],
+      [400, 'invalid_arguments', usage.message, { usage: 'weflow chat messages <SESSION_ID> [OPTIONS]' }],
       [404, 'runtime_error', 'the video has no thumbnail or cover', { failureKind: 'not_found' }],
       [503, 'busy', 'too many reads at once', undefined],
     ]);

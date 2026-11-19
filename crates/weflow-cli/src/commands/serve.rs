@@ -29,7 +29,7 @@ pub(crate) struct ServeCommand {
     #[arg(long)]
     port: Option<u16>,
     /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run). An empty one counts as none.
-    #[arg(long, env = "WEFLOW_HTTP_TOKEN")]
+    #[arg(long, env = "WEFLOW_HTTP_TOKEN", hide_env_values = true)]
     api_token: Option<String>,
     /// Tasks (`POST` commands: exports, keys, backups…) the command API runs at once; more are queued or refused (default: 1)
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]

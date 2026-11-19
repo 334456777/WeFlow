@@ -423,7 +423,7 @@ impl ServiceHub {
     }
 
     /// `getExportStats` / `getExportStatsFast`: returns `{totalPosts, totalFriends, myPosts}`. With
-    /// [`Freshness::Cached`] (`--fast`), what was kept will do, and the slow fallback over the timeline is skipped.
+    /// [`Freshness::Cached`] (`--prefer-cache`), what was kept will do, and the slow fallback over the timeline is skipped.
     pub fn sns_export_stats(&self, freshness: Freshness) -> AppResult<SnsStats> {
         let prefer_cache = freshness == Freshness::Cached;
         let allow_fallback = !prefer_cache;
