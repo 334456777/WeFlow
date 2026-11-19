@@ -20,16 +20,19 @@ name: Bench
 #
 # With `night` (the default), commits are measured at night in Japan, 23:30 to 05:00
 # (#688): the queue job puts the request at the end of the queue on the gh-pages branch (bench/queue.json,
-# `.github/scripts/bench_queue.py`) and the run ends; the run this workflow starts every day at 23:30 measures the
-# requests there in order, and one asked for during the night is measured at once. Once the night is over no further
-# commit starts, and what is left stays in the queue for the next night. Nothing waits in a concurrency group, where a
+# `.github/scripts/bench_queue.py`) and the run ends; a run of this workflow's schedule measures the requests there in
+# order from 23:30, and one asked for during the night is measured at once. Once the night is over no further commit
+# starts, and what is left stays in the queue for the next night. GitHub starts a run of the schedule hours late at
+# times, and drops some (#957): the schedule fires twice before the night, a run that comes before 23:30 waits for it
+# in the queue job, on GitHub's machine, and the first run of the night takes the queue, while a later one that night
+# or one after the night leaves the runner alone (the queue's `taken`). Nothing waits in a concurrency group, where a
 # run queued behind another is cancelled by the next: the runner takes one job at a time, the others wait for it in
 # turn, and the pushes to gh-pages try again on a fresh checkout when another push came first. `night` off measures
 # at once, after whatever the runner is doing, and so does a run started on another branch than the default one: the
 # queue is measured and published by the default branch's workflow, so a trial on a branch with its publish job
-# turned off stays a trial. The run at 23:30 first queues each PR labeled `bench` merged since it last looked, before
-# and after it, once (the queue's `labeled` holds the PRs it looked at). It asks for the runner only when there is
-# something for it: a request in the queue, or Friday night, after the calibration task of #605
+# turned off stays a trial. A run of the schedule first queues each PR labeled `bench` merged since it last looked,
+# before and after it, once (the queue's `labeled` holds the PRs it looked at). It asks for the runner only when there
+# is something for it: a request in the queue, or Friday night, after the calibration task of #605
 # (`.github/bench/calibrate.ps1`) ran: when it changed the profile, the new environment is measured first on the
 # releases and the PRs labeled `bench`, from 23:30, so it has the whole night. A run whose runner is not there leaves
 # the queue as it is for the next night.
@@ -107,9 +110,11 @@ on:
         required: false
         default: true
         type: boolean
-  # the queue, every night at 23:30 in Japan
+  # the queue, every night from 23:30 in Japan: fired at 18:17 and 21:17 there, off the hour, as GitHub may start a run
+  # of the schedule hours late or drop it (#957); a run that comes before the night waits for it in the queue job
   schedule:
-    - cron: "30 14 * * *"
+    - cron: "17 9 * * *"
+    - cron: "17 12 * * *"
 
 permissions:
   contents: read
@@ -132,10 +137,27 @@ jobs:
       # the PRs labeled bench, read on the schedule
       issues: read
       pull-requests: read
+    # a hosted job's limit, which the wait for the night stays within
+    timeout-minutes: 360
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       request: ${{ steps.plan.outputs.request }}
     steps:
+      # A run of the schedule that comes before 23:30 in Japan waits here for the night, so that it checks out what the
+      # repository and the queue hold by then; one that comes during the night goes on at once, and one that comes
+      # later than this wait allows only looks for PRs labeled bench (bench_queue.py).
+      - name: Wait for the night
+        if: github.event_name == 'schedule'
+        shell: bash
+        run: |
+          # seconds into the day in Japan, which keeps no summer time, and from there to 23:30 (bench_queue.py's NIGHT)
+          now=$(( ($(date -u +%s) + 9 * 3600) % 86400 ))
+          left=$(( 23 * 3600 + 30 * 60 - now ))
+          if [ "$left" -gt 0 ] && [ "$left" -le $(( 5 * 3600 + 30 * 60 )) ]; then
+            echo "waiting $((left / 60)) minutes for 23:30 in Japan"
+            sleep "$left"
+          fi
+
       # the history and the tags, to resolve the commits asked for
       - uses: actions/checkout@v7
         with:
