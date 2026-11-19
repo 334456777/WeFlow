@@ -1,6 +1,6 @@
-// The synthetic accounts `bun run dev` (#333) and `bun run smoke` (#789) serve: made by an example of weflow-cli into
-// target/, and a `weflow serve` of one on a free port of 127.0.0.1 with a token of its own. Nothing of a real WeChat
-// account is read.
+// The synthetic accounts `bun run dev` with WEFLOW_DEV_ACCOUNT (#333) and `bun run smoke` (#789) serve: made by an
+// example of weflow-cli into target/, and a `weflow serve` of one on a free port of 127.0.0.1 with a token of its own.
+// Nothing of a real WeChat account is read.
 import { join, resolve } from 'node:path';
 
 const web = join(import.meta.dir, '..');

@@ -13,7 +13,7 @@ This file covers development only. The rest is in the wiki, in Chinese:
 
 ## Development
 
-Needs Bun 1.4.3+ (the version is pinned in `packageManager` of `package.json`) and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`); no Node.js.
+Needs Bun 1.4.3+ (the version is pinned in `packageManager` of `package.json`); no Node.js. The synthetic accounts and `bun run smoke` also need the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`).
 
 ```sh
 cd web
@@ -21,26 +21,27 @@ bun install --frozen-lockfile
 bun run dev                               # http://localhost:5173/ui/
 ```
 
-`bun run dev` (`scripts/dev.mjs`, #333) starts three things, and stopping it stops them all:
+`bun run dev` (`scripts/dev.mjs`, #333) starts Vite alone, which serves these sources as they are, the same page `bun run build` makes. No server is behind it, so the page shows the sample records (`src/mock`, #879), as it does wherever no `weflow serve` answers: settings, jobs and insights change and run in the page's memory, and a reload brings the sample back.
 
-- **the page**: Vite serves these sources as they are, the same page `bun run build` makes.
-- **the server**: a `weflow serve` (debug build, `cargo build` first) of a synthetic account, on a free port of 127.0.0.1 with a random token, which the proxy adds. The account is made by `crates/weflow-cli/examples/dev_account.rs` in `target/dev-account/` (about 20 s the first time); its 「图片测试」 chat has one picture per case of the files WeChat keeps of a picture. Nothing of a real WeChat account is read.
+With `WEFLOW_DEV_ACCOUNT` (in the shell or `web/.env.local`) it also starts a server of a synthetic account, and stopping it stops them all:
+
+- **the server**: a `weflow serve` (debug build, `cargo build` first) on a free port of 127.0.0.1 with a random token, which the proxy adds. Nothing of a real WeChat account is read.
+  - `WEFLOW_DEV_ACCOUNT=dev`: the account made by `crates/weflow-cli/examples/dev_account.rs` in `target/dev-account/` (about 20 s the first time); its 「图片测试」 chat has one picture per case of the files WeChat keeps of a picture.
+  - `WEFLOW_DEV_ACCOUNT=bench`: the benchmark account (`crates/weflow-cli/examples/bench_account.rs`, #488), a group of 200,000 messages and 300 other conversations. The first build takes a minute or two and about 2.5 GB.
 - **a fake model API**: `crates/weflow-fake-model`, which answers as OpenAI's and Anthropic's API documents describe, on a free port of 127.0.0.1. Unless the synthetic account's AI settings name another service, they point at it (model `fake-chat`), so the settings' test and model list and the manual insight of the inbox work as they are; a model such as `fake-rate-limit` or `fake-refusal` shows the errors, and the settings list them all (Settings → AI insights → list the models).
 
-With `WEFLOW_DEV_ACCOUNT=bench` (in the shell or `web/.env.local`) it serves the benchmark account instead (`crates/weflow-cli/examples/bench_account.rs`, #488): a group of 200,000 messages and 300 other conversations. The first build takes a minute or two and about 2.5 GB.
-
-To work against another `weflow serve`, a real account for instance, set these in the shell or `web/.env.local` (not committed); then only Vite starts:
+To work against another `weflow serve`, a real account for instance, set these in the shell or `web/.env.local` (not committed); then only Vite starts, and its proxy hands everything outside `/ui/` to that server:
 
 | Variable | Default | |
 |---|---|---|
-| `WEFLOW_SERVE_URL` | the synthetic account | Where that `weflow serve` listens, for example `http://127.0.0.1:18108` |
+| `WEFLOW_SERVE_URL` | none: no proxy | Where that `weflow serve` listens, for example `http://127.0.0.1:18108` |
 | `WEFLOW_HTTP_TOKEN` | none | Its token, which the proxy adds |
 
-To open the dev server from another computer or a phone, run `bun run dev --host` and open `http://<this machine's address>:5173/ui/`. On the synthetic account that is safe. With `WEFLOW_SERVE_URL` and `WEFLOW_HTTP_TOKEN`, do not: the proxy hands the token to everyone who can reach the port, and with it every `weflow` command on that account.
+To open the dev server from another computer or a phone, run `bun run dev --host` and open `http://<this machine's address>:5173/ui/`. With the sample records or a synthetic account that is safe. With `WEFLOW_SERVE_URL` and `WEFLOW_HTTP_TOKEN`, do not: the proxy hands the token to everyone who can reach the port, and with it every `weflow` command on that account.
 
 After `bun run build`, `weflow serve --ui-dir web/dist` opens the built page.
 
-`bun run smoke` (#789) tries that build in headless Chrome, the page as it is released (rendered by Preact, while `bun test` runs React): it builds and starts a `weflow serve` of the synthetic account as `bun run dev` does, and each check opens the page in a new tab, works it, and checks the text and the number of elements shown and that the console has no error. It needs Chrome (`CHROME` names its executable when it is not where it is usually installed); a check that fails leaves a screenshot in `target/web-smoke/`.
+`bun run smoke` (#789) tries that build in headless Chrome, the page as it is released (rendered by Preact, while `bun test` runs React): it builds and starts a `weflow serve` of the synthetic account as `bun run dev` does with `WEFLOW_DEV_ACCOUNT=dev`, and each check opens the page in a new tab, works it, and checks the text and the number of elements shown and that the console has no error. It needs Chrome (`CHROME` names its executable when it is not where it is usually installed); a check that fails leaves a screenshot in `target/web-smoke/`.
 
 ## Scripts
 

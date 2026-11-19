@@ -1,5 +1,5 @@
-//! The synthetic account `bun run dev` in `web/` serves (#333): made-up people, chats and pictures in real encrypted
-//! databases, so the page can be worked on and tried by hand without a WeChat account.
+//! The synthetic account `WEFLOW_DEV_ACCOUNT=dev bun run dev` in `web/` serves (#333): made-up people, chats and
+//! pictures in real encrypted databases, so the page can be worked on and tried by hand without a WeChat account.
 //!
 //! Usage: `dev_account <work dir> --weflow <weflow binary>`
 //!

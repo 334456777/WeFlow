@@ -10,11 +10,13 @@ import { WEB_META, webMeta } from './plugins/webMeta.ts';
 export default defineConfig(({ mode }) => {
   // WEFLOW_* from the shell or web/.env.local; `weflow serve` reads the same WEFLOW_HTTP_TOKEN
   const env = loadEnv(mode, process.cwd(), 'WEFLOW_');
-  const target = env.WEFLOW_SERVE_URL || 'http://127.0.0.1:18108';
+  const target = env.WEFLOW_SERVE_URL;
   const token = env.WEFLOW_HTTP_TOKEN;
 
   // Everything outside /ui/ belongs to `weflow serve`: the command routes (/chat/sessions), /api/, /jobs, /health,
-  // /openapi.json. `/` itself stays with Vite, which sends it on to /ui/.
+  // /openapi.json. `/` itself stays with Vite, which sends it on to /ui/. Without WEFLOW_SERVE_URL nothing is proxied,
+  // not even to the default port of `weflow serve`, where an account may be served: no server answers the page, which
+  // then shows the sample records (src/mock, #879).
   const api: ProxyOptions = {
     target,
     changeOrigin: true,
@@ -26,7 +28,7 @@ export default defineConfig(({ mode }) => {
       });
     },
   };
-  const proxy = { '^/(?!ui(/|$)|$)': api };
+  const proxy = target ? { '^/(?!ui(/|$)|$)': api } : undefined;
 
   return {
     // weflow serve hosts the WebUI under /ui/ (#146)
