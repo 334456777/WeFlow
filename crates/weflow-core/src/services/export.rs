@@ -456,7 +456,7 @@ fn check_sender(sender: Option<&str>, my_wxid: &str) -> AppResult<()> {
 fn no_messages(req: &MessageExportRequest) -> AppError {
     match req.sender.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(sender) => AppError::runtime(format!(
-            "no messages from {sender} in this session in the given range (--sender takes the bare wxid, as `chat contacts` lists it)"
+            "no messages from {sender} in this session in the given range\n--sender takes the bare wxid, as `chat contacts` lists it."
         )),
         None => AppError::runtime("no messages found for this session in the given range"),
     }

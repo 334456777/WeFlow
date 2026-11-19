@@ -4,12 +4,14 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
-use crate::term::{align_columns, format_bytes, green, is_yes};
+use crate::term::{align_columns, format_bytes, is_yes};
 use crate::CacheShown;
 use serde_json::{json, Value};
+use weflow_core::colour::{Paint, Role, Stream};
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::contract::{PlannedRemoval, RemovalPlan};
 use weflow_core::error::{AppError, AppResult};
+use weflow_core::render::labelled;
 use weflow_core::services::{CachePart, ServiceHub};
 
 #[derive(Args, Debug)]
@@ -127,7 +129,7 @@ pub(crate) fn handle_cache(
                     .chain(["--all".to_string()])
                     .collect();
                 return Err(AppError::usage(format!(
-                    "choose what to clear: {} (`weflow cache list` shows each part)",
+                    "choose what to clear: {}\n`weflow cache list` shows each part.",
                     options.join(", ")
                 )));
             }
@@ -177,8 +179,8 @@ pub(crate) fn handle_cache(
                 return Ok(json!(removal_plan(targets, &ACCOUNT_KEYS)));
             }
             let heading = tr(
-                "About to remove these files and take the account out of the profile (db_path, wxid, decrypt_key and the image keys):",
-                "将要删除以下文件，并把当前账号移出配置档案（db_path、wxid、decrypt_key 和图片密钥）：",
+                "About to remove these files and take the account out of the profile: db_path, wxid, decrypt_key and the image keys go.",
+                "将要删除以下文件，并把当前账号移出配置档案：db_path、wxid、decrypt_key 和图片密钥会被删除。",
             );
             if !confirm_removal(heading, &targets, *yes)? {
                 return Ok(json!(Cancelled { cancelled: true }));
@@ -256,9 +258,13 @@ fn confirm_removal(heading: &str, targets: &[RemovalTarget], yes: bool) -> AppRe
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
         return Err(AppError::usage("this removes files; add --yes to confirm"));
     }
-    let mut text = format!("{heading}\n");
+    let paint = Paint::of(Stream::Stderr);
+    let mut text = format!("{}\n", paint.paint(Role::Strong, heading));
     if targets.is_empty() {
-        text.push_str(&format!("  {}\n", tr("(no files)", "（没有文件）")));
+        text.push_str(&format!(
+            "  {}\n",
+            paint.paint(Role::Muted, tr("No files.", "没有文件。"))
+        ));
     }
     let rows: Vec<Vec<String>> = targets
         .iter()
@@ -273,7 +279,10 @@ fn confirm_removal(heading: &str, targets: &[RemovalTarget], yes: bool) -> AppRe
     for line in align_columns(&rows) {
         text.push_str(&format!("  {line}\n"));
     }
-    text.push_str(tr("Remove them? [y/N] ", "确认清理？[y/N] "));
+    text.push_str(tr(
+        "Remove them? Type y to confirm, anything else cancels: ",
+        "确认清理？输入 y 确认，其他输入取消：",
+    ));
     let mut err = std::io::stderr();
     let _ = err.write_all(text.as_bytes());
     let _ = err.flush();
@@ -284,9 +293,11 @@ fn confirm_removal(heading: &str, targets: &[RemovalTarget], yes: bool) -> AppRe
     Ok(is_yes(&answer))
 }
 
-/// `cache list` as a table under a green header; `cache clear` / `clear-account`: what was removed.
-pub(super) fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
+/// `cache list` as a table under a bold header; `cache clear` / `clear-account`: what was removed, in green, the
+/// paths grey.
+pub(super) fn cache_summary(shown: CacheShown, data: &Value, paint: Paint) -> Option<String> {
     use weflow_core::locale::tr;
+    let success = |text: &str| paint.paint(Role::Success, text);
     match shown {
         CacheShown::List => {
             let header = [
@@ -312,7 +323,7 @@ pub(super) fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
                 ]);
             }
             let mut lines = align_columns(&rows).into_iter();
-            let mut out = format!("{}\n", green(&lines.next()?));
+            let mut out = format!("{}\n", paint.paint(Role::Strong, &lines.next()?));
             lines.for_each(|l| out.push_str(&format!("{l}\n")));
             Some(out)
         }
@@ -356,29 +367,35 @@ pub(super) fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
             if removed.is_empty() {
                 out.push_str(tr("Nothing to remove.\n", "没有需要清理的文件。\n"));
             } else {
-                out.push_str(tr("Removed:\n", "已清理：\n"));
-                removed
-                    .iter()
-                    .for_each(|p| out.push_str(&format!("  {p}\n")));
+                out.push_str(&format!("{}\n", success(tr("Removed:", "已清理："))));
+                removed.iter().for_each(|p| {
+                    out.push_str(&format!("  {}\n", paint.paint(Role::Muted, p)));
+                });
             }
             if let Some(freed) = data["freedBytes"].as_u64().filter(|&b| b > 0) {
                 out.push_str(&format!(
-                    "{}{}\n",
-                    tr("Freed ", "共释放 "),
-                    format_bytes(freed)
+                    "{}\n",
+                    success(
+                        &tr("Freed {size}", "共释放 {size}")
+                            .replace("{size}", &format_bytes(freed))
+                    )
                 ));
             }
             if data["profileReset"] == true {
-                out.push_str(tr(
-                    "The account was taken out of the profile.\n",
-                    "已把当前账号移出配置档案。\n",
+                out.push_str(&format!(
+                    "{}\n",
+                    success(tr(
+                        "The account was taken out of the profile.",
+                        "已把当前账号移出配置档案。",
+                    ))
                 ));
             }
             for warning in data["warnings"].as_array().into_iter().flatten() {
-                out.push_str(&format!(
-                    "{}{}\n",
-                    tr("warning: ", "警告："),
-                    warning.as_str().unwrap_or_default()
+                out.push_str(&labelled(
+                    tr("warning:", "警告："),
+                    Role::Warning,
+                    warning.as_str().unwrap_or_default(),
+                    paint,
                 ));
             }
             Some(out)

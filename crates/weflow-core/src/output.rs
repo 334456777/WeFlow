@@ -1,8 +1,10 @@
-//! What a command prints: its JSON answer, status lines and events on stderr, and the progress bar.
+//! What a command prints: its JSON answer, events and warnings on stderr, and the progress bar. Lines that say what
+//! is under way are in [`crate::status`].
 
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::colour::{Paint, Role, Stream};
 use crate::error::ErrorPayload;
 use crate::sync::MutexExt;
 
@@ -48,68 +50,67 @@ pub fn json_output() -> bool {
     JSON_OUTPUT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-static STATUS_WIDTH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-
-/// Rewrites one status line in place on stderr (a terminal only, never with `--json`); [`end_status_line`] finishes it.
-pub fn status_line(text: &str) {
-    use std::io::{IsTerminal, Write};
-    if json_output() || !std::io::stderr().is_terminal() {
-        return;
-    }
-    let width = crate::render::display_width(text);
-    let previous = STATUS_WIDTH.swap(width, std::sync::atomic::Ordering::Relaxed);
-    let mut err = std::io::stderr();
-    let _ = write!(
-        err,
-        "\r{text}{}",
-        " ".repeat(previous.saturating_sub(width))
-    );
-    let _ = err.flush();
-}
-
-/// Ends the line started by [`status_line`] so that normal output can follow.
-pub fn end_status_line() {
-    if STATUS_WIDTH.swap(0, std::sync::atomic::Ordering::Relaxed) > 0 {
-        eprintln!();
-    }
-}
-
-/// A status event on stderr: one JSON line with `--json`, a short text for people otherwise.
+/// A status event on stderr: one JSON line with `--json`, lines for people otherwise.
 pub fn event(event: Value) {
     if json_output() {
+        crate::status::break_line();
         eprintln!("{event}");
     } else {
-        eprint!("{}", human_event(&event));
+        let text = human_event(&event, Paint::of(Stream::Stderr));
+        if !text.is_empty() {
+            crate::status::say(&text);
+        }
     }
 }
 
-fn human_event(event: &Value) -> String {
-    use crate::render::render;
-    let zh = || crate::locale::current() == crate::locale::Lang::Zh;
+/// A warning on stderr: `warning: <message>` for people, with what to do on the lines after it; a `warning` event
+/// with `--json`.
+pub fn warn(message: &str) {
+    event(serde_json::json!({ "type": "warning", "message": message }));
+}
+
+/// The text of `event` for people; empty for an event that is said another way (a pending line, the result).
+fn human_event(event: &Value, paint: Paint) -> String {
+    use crate::render::{labelled, render};
     let text = |key: &str| event[key].as_str().unwrap_or("").to_string();
     let enabled = |key: &str| event[key].as_bool() == Some(true);
+    let field = |label: &str, value: &str| crate::render::field(label, value, paint);
     match event["type"].as_str().unwrap_or("") {
-        "key_status" => format!("{}\n", text("message")),
-        "auto_download_started" => format!(
-            "{}\n",
-            tr(
-                "image auto download started (Ctrl+C to stop)",
-                "原图自动下载已启动（按 Ctrl+C 停止）"
-            )
+        "warning" | "key_status" => labelled(
+            tr("warning:", "警告："),
+            Role::Warning,
+            &text("message"),
+            paint,
         ),
+        // the command shows a pending line until it stops
+        "auto_download_started" => String::new(),
         "insight" => format!(
             "{}\n{}",
-            tr("insight record:", "洞察记录："),
-            render(&event["record"])
+            paint.paint(Role::Strong, tr("Insight record", "洞察记录")),
+            render(&event["record"], paint)
         ),
-        "request" => format!(
-            "{} {} {} {} {:.1} ms\n",
-            chrono::Local::now().format("%H:%M:%S"),
-            text("method"),
-            text("path"),
-            event["status"],
-            event["ms"].as_f64().unwrap_or(0.0)
-        ),
+        "request" => {
+            let status = event["status"].as_u64().unwrap_or(0);
+            let role = match status {
+                500.. => Role::Error,
+                400..=499 => Role::Warning,
+                _ => Role::Success,
+            };
+            format!(
+                "{} {} {} {} {}\n",
+                paint.paint(
+                    Role::Muted,
+                    &chrono::Local::now().format("%H:%M:%S").to_string()
+                ),
+                text("method"),
+                text("path"),
+                paint.paint(role, &status.to_string()),
+                paint.paint(
+                    Role::Muted,
+                    &format!("{:.1} ms", event["ms"].as_f64().unwrap_or(0.0))
+                )
+            )
+        }
         "server_started" => {
             let mut services = vec![tr("HTTP API", "HTTP API")];
             for (key, en, zh) in [
@@ -120,61 +121,61 @@ fn human_event(event: &Value) -> String {
                     services.push(tr(en, zh));
                 }
             }
-            let mut out = format!(
-                "{} {}\n{} {}\n",
-                tr("server started:", "服务已启动："),
-                text("url"),
-                tr("running:", "运行中："),
-                services.join(", ")
+            let mut out = labelled(
+                tr("Server started:", "服务已启动："),
+                Role::Success,
+                &text("url"),
+                paint,
             );
+            out.push_str(&field(
+                tr("Running:", "运行中："),
+                &services.join(tr(", ", "、")),
+            ));
             if let Some(token) = event["generatedToken"].as_str() {
-                out.push_str(&format!(
-                    "{} {token}\n{}\n",
-                    tr("access token:", "访问令牌："),
+                out.push_str(&field(tr("Access token:", "访问令牌："), token));
+                out.push_str(&paint.paint(
+                    Role::Muted,
                     tr(
-                        "(made up for this run; set http_api_token or pass --api-token to keep one)",
-                        "（本次启动临时生成；设置 http_api_token 或传入 --api-token 可固定）"
-                    )
+                        "The token is made up for this run; set http_api_token or pass --api-token to keep one.",
+                        "令牌只在本次运行有效；设置 http_api_token 或传入 --api-token 可固定令牌。",
+                    ),
                 ));
+                out.push('\n');
             }
             if let Some(url) = event["uiUrl"].as_str() {
-                out.push_str(&format!("{} {url}\n", tr("web UI:", "网页：")));
+                out.push_str(&field(tr("Web UI:", "网页："), url));
             }
-            if let Some(version) = event["uiDownloading"].as_str() {
-                out.push_str(&if zh() {
-                    format!("（正在下载网页 {version}，下载完成后即可打开）\n")
-                } else {
-                    format!("(downloading WebUI {version}; it shows once it is in place)\n")
-                });
-            } else if event["ui"] == false {
-                out.push_str(&format!(
-                    "{}\n",
+            // a WebUI being downloaded is said on a pending line of its own
+            if event["ui"] == false && event["uiDownloading"].is_null() {
+                out.push_str(&paint.paint(
+                    Role::Muted,
                     tr(
-                        "(API only: no WebUI; pass --ui-dir with the folder of a built WebUI to serve one)",
-                        "（只提供 API：没有网页；用 --ui-dir 指定构建好的网页目录即可提供网页）"
-                    )
+                        "API only, no WebUI. Pass --ui-dir with the folder of a built WebUI to serve one.",
+                        "只提供 API，没有网页。用 --ui-dir 指定构建好的网页目录即可提供网页。",
+                    ),
                 ));
+                out.push('\n');
             }
             out
         }
-        "webui_ready" => {
-            let (version, url) = (text("version"), text("uiUrl"));
-            if zh() {
-                format!("网页 {version} 已下载完成：{url}\n")
-            } else {
-                format!("WebUI {version} is in place: {url}\n")
-            }
-        }
+        "webui_ready" => field(tr("Web UI:", "网页："), &text("uiUrl")),
+        // after the pending line that ends with `failed`
         "webui_unavailable" => {
-            let (version, error) = (text("version"), crate::locale::localize(text("error")));
-            match (zh(), enabled("kept")) {
-                (true, true) => format!("网页 {version} 下载失败（{error}），继续使用已有的版本\n"),
-                (true, false) => format!("网页 {version} 下载失败（{error}），只提供 API\n"),
-                (false, true) => format!("WebUI {version} could not be downloaded ({error}); the version already here is shown\n"),
-                (false, false) => format!("WebUI {version} could not be downloaded ({error}); the API runs alone\n"),
-            }
+            let then = if enabled("kept") {
+                tr(
+                    "The version already here is shown.",
+                    "继续使用已有的网页版本。",
+                )
+            } else {
+                tr("The API runs alone.", "只提供 API。")
+            };
+            let error = crate::locale::localize(text("error"));
+            format!(
+                "{}\n{then}\n",
+                paint.paint(Role::Muted, &crate::render::reason_line(&error))
+            )
         }
-        _ => render(event),
+        _ => render(event, paint),
     }
 }
 
@@ -299,7 +300,7 @@ fn render_bar(
         _ => String::new(),
     };
     format!(
-        "{message}  [{bar}] {percent}%  {current}/{total}  {} {}{eta}",
+        "{message}  {bar} {percent}%  {current}/{total}  {} {}{eta}",
         tr("elapsed", "已用时"),
         format_duration(elapsed_secs)
     )
@@ -417,6 +418,10 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
                 return;
             }
             st.last_draw = Some(now);
+            if !st.drawn {
+                // the bar takes a line of its own, below an open pending line
+                crate::status::break_line();
+            }
             // one write: return to column 0, overwrite in place, pad over a longer previous line
             let width = line.chars().count();
             let pad = st.last_width.saturating_sub(width);
@@ -437,8 +442,9 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
     }
 }
 
-/// Erases the automatic progress bar (call before printing the final result).
+/// Erases the automatic progress bar and ends an open pending line (call before printing the final result).
 pub fn finish_progress() {
+    crate::status::break_line();
     let mut st = bar_state().lock_or_panic();
     if st.drawn {
         use std::io::Write;
@@ -460,7 +466,12 @@ mod tests {
     #[test]
     fn bar_shows_percentage_and_eta() {
         let s = render_bar("exporting images", 4056, 7800, 227, Some(208), 16, 0);
-        assert!(s.starts_with("exporting images  [████████░░░░░░░░] 52%  4056/7800  elapsed 3m47s  remaining 3m28s"), "{s}");
+        assert!(
+            s.starts_with(
+                "exporting images  ████████░░░░░░░░ 52%  4056/7800  elapsed 3m47s  remaining 3m28s"
+            ),
+            "{s}"
+        );
     }
 
     #[test]

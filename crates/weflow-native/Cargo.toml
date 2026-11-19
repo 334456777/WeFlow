@@ -33,10 +33,12 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 libc = "0.2"
 
-# `macos_key_helper` attaches to WeChat with `task_for_pid` and reads its memory through Mach
+# `macos_key_helper` attaches to WeChat with `task_for_pid` and reads its memory through Mach; its steps are debug
+# events (`RUST_LOG=debug`)
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
 mach2 = "0.5"
+tracing.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

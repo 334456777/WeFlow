@@ -416,8 +416,8 @@ fn key_pointer(arguments: &KeyArguments) -> Option<u64> {
 
 #[cfg(target_arch = "aarch64")]
 fn log_hit(arguments: &KeyArguments) {
-    eprintln!(
-        "[xkey_helper] breakpoint hit! x0=0x{:x} x1=0x{:x} x2=0x{:x} x3=0x{:x} x4=0x{:x}",
+    tracing::debug!(
+        "breakpoint hit! x0=0x{:x} x1=0x{:x} x2=0x{:x} x3=0x{:x} x4=0x{:x}",
         arguments.registers[0],
         arguments.registers[1],
         arguments.registers[2],
@@ -428,8 +428,8 @@ fn log_hit(arguments: &KeyArguments) {
 
 #[cfg(target_arch = "x86_64")]
 fn log_hit(arguments: &KeyArguments) {
-    eprintln!(
-        "[xkey_helper] breakpoint hit! rdi=0x{:x} rsi=0x{:x} rdx=0x{:x} rcx=0x{:x}",
+    tracing::debug!(
+        "breakpoint hit! rdi=0x{:x} rsi=0x{:x} rdx=0x{:x} rcx=0x{:x}",
         arguments.registers[0],
         arguments.registers[1],
         arguments.registers[2],
@@ -468,7 +468,7 @@ enum Hit {
 impl Hook {
     /// Attaches to `pid`, finds the database-key sink and sets the breakpoint.
     pub fn start(pid: u32, timeout: Duration) -> Result<Self, String> {
-        eprintln!("[xkey_helper] SearchForHookAddress start...");
+        tracing::debug!("SearchForHookAddress start...");
         let task = match task_port(pid) {
             Ok(task) => task,
             Err(error) => return Err(format!("attach:{error}")),
@@ -484,9 +484,9 @@ impl Hook {
                 });
             }
         };
-        eprintln!("[xkey_helper] SearchForHookAddress OK: target=0x{target:x} msg=");
-        eprintln!(
-            "[xkey_helper] CaptureKeyByBreakpoint start: target=0x{target:x} timeout={}",
+        tracing::debug!("SearchForHookAddress OK: target=0x{target:x} msg=");
+        tracing::debug!(
+            "CaptureKeyByBreakpoint start: target=0x{target:x} timeout={}",
             timeout.as_millis()
         );
         let mut hook = Self {
@@ -508,7 +508,7 @@ impl Hook {
     }
 
     fn attach_and_patch(&mut self) -> Result<(), String> {
-        eprintln!("[*] attaching debugger to pid={} ...", self.pid);
+        tracing::debug!("attaching debugger to pid={} ...", self.pid);
         if !ptrace(libc::PT_ATTACH, self.pid, std::ptr::null_mut(), 0) {
             return Err(format!(
                 "ptrace_attach_failed:{}",
@@ -531,7 +531,7 @@ impl Hook {
             }
             std::thread::sleep(POLL);
         }
-        eprintln!("[*] debugger attached, patching breakpoint ...");
+        tracing::debug!("debugger attached, patching breakpoint ...");
         self.stopped = true;
         let original = read_memory(self.task, self.target, 4)?;
         self.original = u32::from_le_bytes(
@@ -554,11 +554,11 @@ impl Hook {
             ));
         }
         self.stopped = false;
-        eprintln!(
-            "[*] hook installed @ 0x{:x} (native-ptrace/breakpoint)",
+        tracing::debug!(
+            "hook installed at 0x{:x}: native ptrace breakpoint",
             self.target
         );
-        eprintln!("[*] target continued, waiting hook trigger ...");
+        tracing::debug!("target continued, waiting hook trigger ...");
         Ok(())
     }
 
@@ -715,16 +715,18 @@ impl Hook {
             set_instruction_pointer(&mut state, self.target);
             let _ = write_state(*thread, &state);
             let Some(pointer) = key_pointer(&arguments) else {
-                eprintln!(
-                    "[xkey_helper] skip: x1=0x{:x} x2={} (not the 32-byte key call, continuing...)",
-                    arguments.pointer, arguments.length
+                tracing::debug!(
+                    "skip: x1=0x{:x} x2={}, not the 32-byte key call; continuing",
+                    arguments.pointer,
+                    arguments.length
                 );
                 result = Hit::Skip;
                 break;
             };
-            eprintln!(
-                "[xkey_helper] args ok: x1=0x{:x} x2={} (reading 32 bytes)",
-                arguments.pointer, arguments.length
+            tracing::debug!(
+                "args ok: x1=0x{:x} x2={}; reading 32 bytes",
+                arguments.pointer,
+                arguments.length
             );
             let key = match read_memory(self.task, pointer, KEY_LENGTH_USIZE) {
                 Ok(key) if key.len() == KEY_LENGTH_USIZE => hex(&key),
@@ -798,47 +800,54 @@ impl Drop for Hook {
 
 fn locate(pid: u32, task: task_t) -> Result<u64, String> {
     let executable = process::executable_path(pid)?;
-    eprintln!("[DEBUG] Scanner target main exec={executable}");
+    tracing::debug!("Scanner target main exec={executable}");
     let version = module::read_version(&executable);
     let known_rva = module::known_rva(version.as_deref());
-    eprintln!(
-        "[DEBUG] WeChat version {}, KNOWN_RVA=0x{known_rva:x}",
+    tracing::debug!(
+        "WeChat version {}, KNOWN_RVA=0x{known_rva:x}",
         version.as_deref().unwrap_or("unknown")
     );
     let modules = list_modules(task)?;
     let selected = match module::select(&modules) {
         module::Choice::WechatDylib(module) => {
-            eprintln!(
-                "[DEBUG] Selected wechat.dylib (size={:.1}MB)",
+            tracing::debug!(
+                "Selected wechat.dylib, size={:.1}MB",
                 module.size as f64 / (1024.0 * 1024.0)
             );
             module
         }
         module::Choice::Main(module) => {
-            eprintln!(
-                "[DEBUG] Selected main WeChat binary (size={:.1}MB)",
+            tracing::debug!(
+                "Selected main WeChat binary, size={:.1}MB",
                 module.size as f64 / (1024.0 * 1024.0)
             );
             module
         }
         module::Choice::Ambiguous => {
-            return Err("scan:Both wechat.dylib and main binary >100MB found (ambiguous)".into());
+            return Err(
+                "scan:Both wechat.dylib and the main binary are over 100MB, so which to scan is ambiguous".into(),
+            );
         }
         module::Choice::None => {
-            return Err("scan:No suitable module found (wechat.dylib or WeChat >100MB)".into());
+            return Err(
+                "scan:No suitable module found: neither wechat.dylib nor a WeChat binary over 100MB".into(),
+            );
         }
     };
-    eprintln!(
-        "[DEBUG] Scanner module={} base=0x{:x} size=0x{:x}",
-        selected.path, selected.base, selected.size
+    tracing::debug!(
+        "Scanner module={} base=0x{:x} size=0x{:x}",
+        selected.path,
+        selected.base,
+        selected.size
     );
     scan_module(task, &selected, known_rva)
 }
 
 fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<u64, String> {
-    eprintln!(
-        "[DEBUG] SemanticScan: module.base=0x{:x} module.size=0x{:x}",
-        module.base, module.size
+    tracing::debug!(
+        "SemanticScan: module.base=0x{:x} module.size=0x{:x}",
+        module.base,
+        module.size
     );
     let end = module.base.saturating_add(module.size);
     let mut candidates = Vec::new();
@@ -874,7 +883,7 @@ fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<
             && size <= MAX_REGION
         {
             range += 1;
-            eprintln!("[DEBUG] Scanning range #{range}: addr=0x{address:x} size=0x{size:x}");
+            tracing::debug!("Scanning range #{range}: addr=0x{address:x} size=0x{size:x}");
             let mut offset = 0;
             while offset < size {
                 let length = (size - offset).min(CHUNK) as usize;
@@ -902,7 +911,7 @@ fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<
         }
         address = address.saturating_add(size);
     }
-    eprintln!("[DEBUG] semantic candidates={}", candidates.len());
+    tracing::debug!("semantic candidates={}", candidates.len());
     let mut strict = Vec::new();
     for candidate in &candidates {
         let Ok(window) = read_memory(task, *candidate, 0x80) else {
@@ -921,10 +930,10 @@ fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<
             }
         }
     }
-    eprintln!("[DEBUG] semantic strict candidates={}", strict.len());
+    tracing::debug!("semantic strict candidates={}", strict.len());
     let picked = locator::pick(&strict, module.base, known_rva)
         .ok_or_else(|| "scan:Sink pattern not found".to_string())?;
-    eprintln!("[DEBUG] semantic strict picked=0x{picked:x}");
+    tracing::debug!("semantic strict picked=0x{picked:x}");
     Ok(picked)
 }
 

@@ -137,7 +137,7 @@ fn create_parent_dirs(target_dir: &Path, relative: &Path) -> Result<()> {
         path.push(part);
         match fs::symlink_metadata(&path) {
             Ok(meta) if meta.file_type().is_symlink() => bail!(
-                "refusing to restore through the link {} (it may point outside {})",
+                "refusing to restore through the link {}: it may point outside {}",
                 path.display(),
                 target_dir.display()
             ),

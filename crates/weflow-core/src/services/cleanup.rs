@@ -232,7 +232,7 @@ impl ServiceHub {
         let id = self.my_wxid_cleaned();
         if id.is_empty() {
             return Err(AppError::config(
-                "no current account (wxid) configured, nothing to clear",
+                "no current account configured: wxid is not set, so there is nothing to clear",
             ));
         }
         let ids = [id.to_lowercase()];

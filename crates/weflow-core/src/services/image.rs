@@ -296,9 +296,9 @@ fn unsupported_image_message(create_time: Option<i64>, reason: crate::hevc::Unsu
         None => "WXGF image".to_string(),
     };
     if reason.is_damaged() {
-        format!("{what} cannot be converted: the data is damaged ({reason})")
+        format!("{what} cannot be converted because the data is damaged: {reason}")
     } else {
-        format!("{what} cannot be converted: its format is not supported yet ({reason})")
+        format!("{what} cannot be converted because its format is not supported yet: {reason}")
     }
 }
 
@@ -1656,15 +1656,12 @@ mod tests {
         use crate::hevc::Unsupported;
         let date = crate::message::time::format_timestamp(1_700_000_000);
         assert_eq!(
-            unsupported_image_message(
-                Some(1_700_000_000),
-                Unsupported::Tool("P and B slices (inter prediction)")
-            ),
-            format!("WXGF image sent {date} cannot be converted: its format is not supported yet (P and B slices (inter prediction))")
+            unsupported_image_message(Some(1_700_000_000), Unsupported::BitDepth(10)),
+            format!("WXGF image sent {date} cannot be converted because its format is not supported yet: 10-bit samples")
         );
         assert_eq!(
             unsupported_image_message(None, Unsupported::NoPicture),
-            "WXGF image cannot be converted: the data is damaged (no picture)"
+            "WXGF image cannot be converted because the data is damaged: no picture"
         );
     }
 

@@ -15,7 +15,7 @@ const SECTION_HEADER: usize = 0x40;
 
 const MISSING_SECTIONS: &str = "Failed to find .rodata or .text section.";
 const NO_STRING: &str = "String not found in .rodata.";
-const NO_XREF: &str = "String xref (lea rsi) not found in .text.";
+const NO_XREF: &str = "String xref by lea rsi not found in .text.";
 const NO_LEA_RDI: &str = "Failed to locate lea rdi before string xref.";
 const NO_UNKNOWN: &str = "No lea rsi, unk_VA found.";
 const NO_PROLOGUE: &str = "Failed to find function prologue.";

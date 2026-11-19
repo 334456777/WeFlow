@@ -204,7 +204,7 @@ impl ServiceHub {
             )
             .ok_or_else(|| {
                 AppError::not_found(
-                    "voice data not found (play the voice message in WeChat once first)",
+                    "voice data not found\nPlay the voice message in WeChat once first.",
                 )
             })?;
         let wav = Self::silk_to_wav(&silk)?;

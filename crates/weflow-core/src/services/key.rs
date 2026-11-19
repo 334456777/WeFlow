@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 
 use super::ServiceHub;
 use crate::error::{AppError, AppResult};
+use crate::locale::tr;
 
 impl ServiceHub {
     /// `key:autoGetDbKey`. WeChat only produces the key while it opens its databases, so on Windows and Linux the
@@ -47,20 +48,17 @@ impl ServiceHub {
         pid_override: Option<u32>,
         timeout_secs: u64,
     ) -> AppResult<crate::contract::DbKey> {
-        use crate::output::{end_status_line, status_line};
         use weflow_native::wxkey::DbKeyError;
         let started = std::time::Instant::now();
         let remaining = || timeout_secs.saturating_sub(started.elapsed().as_secs());
         let timeout_error = || {
             AppError::native(format!(
-                "timed out after {timeout_secs} s without getting the key; quit WeChat completely, reopen it and click \"Enter WeChat\" in the login window, then run the command again"
+                "timed out after {timeout_secs} s without getting the key\nQuit WeChat completely, reopen it and click \"Enter WeChat\" in the login window, then run the command again."
             ))
         };
-
-        let interrupted = || {
-            end_status_line();
-            AppError::new("user_interrupt", "interrupted by user", 130)
-        };
+        let interrupted = || AppError::new("user_interrupt", "interrupted by user", 130);
+        // the wait under way, said on a line that ends with how it ended
+        let mut waiting = WaitLine::default();
         let pid = match pid_override {
             Some(pid) => pid,
             None if cfg!(any(windows, target_os = "linux")) => {
@@ -76,39 +74,47 @@ impl ServiceHub {
                         }
                     },
                     timeout_secs,
-                    &mut |event| report_wait(event),
+                    &mut |event| waiting.report(event),
                 );
-                end_status_line();
                 if key_db_interrupted() {
+                    waiting.end(WaitEnd::Interrupted);
                     return Err(interrupted());
                 }
-                found.ok_or_else(timeout_error)?
+                let Some(pid) = found else {
+                    waiting.end(WaitEnd::TimedOut);
+                    return Err(timeout_error());
+                };
+                waiting.end(WaitEnd::Done);
+                pid
             }
             None => find_wechat_pid().ok_or_else(|| {
                 AppError::runtime(
-                    "WeChat process not found; start WeChat first, or pass --pid (`weflow key processes` lists WeChat's processes)",
+                    "WeChat process not found\nStart WeChat first, or pass --pid; `weflow key processes` lists WeChat's processes.",
                 )
             })?,
         };
         let login_phase = || {
             phase(
                 json!({ "type": "key_phase", "phase": "login", "pid": pid }),
-                if crate::locale::current() == crate::locale::Lang::Zh {
-                    format!("检测到微信（pid {pid}）请在登录窗口点击「进入微信」。")
-                } else {
-                    format!("WeChat found (pid {pid}). Click \"Enter WeChat\" in the login window.")
-                },
+                &tr(
+                    "WeChat found, pid {pid}. Click \"Enter WeChat\" in the login window.",
+                    "检测到微信，pid {pid}。请在登录窗口点击「进入微信」。",
+                )
+                .replace("{pid}", &pid.to_string()),
             )
         };
         // the macOS hook is tried again once at most: more tries can set off the system's protection (#806)
         let mut tried_again = false;
+        let failed = |waiting: &mut WaitLine, how: WaitEnd, err: AppError| {
+            waiting.end(how);
+            Err(err)
+        };
         let key = loop {
             if key_db_interrupted() {
-                return Err(interrupted());
+                return failed(&mut waiting, WaitEnd::Interrupted, interrupted());
             }
             if remaining() == 0 {
-                end_status_line();
-                return Err(timeout_error());
+                return failed(&mut waiting, WaitEnd::TimedOut, timeout_error());
             }
             // wx_key's own progress messages are noise; only its errors are shown, and the login prompt waits
             // until the hook is in place (#872)
@@ -117,13 +123,12 @@ impl ServiceHub {
                     login_phase();
                 }
                 if level == 2 {
-                    end_status_line();
                     crate::output::event(
                         json!({ "type": "key_status", "level": level, "message": crate::locale::localize(msg.to_string()) }),
                     );
                 }
             };
-            let mut on_tick = |left: u64| status_line(&wait_text(Wait::Key, left));
+            let mut on_tick = |left: u64| waiting.tick(Wait::Key, left);
             match wxkey.get_db_key_with_tick(
                 pid,
                 std::time::Duration::from_secs(remaining()),
@@ -132,34 +137,34 @@ impl ServiceHub {
             ) {
                 Ok(key) => break key,
                 Err(DbKeyError::AccessDenied(detail)) => {
-                    end_status_line();
                     let hint = if cfg!(target_os = "linux") {
                         format!(
-                            "permission denied: cannot attach to WeChat (pid {pid}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({detail})"
+                            "permission denied: cannot attach to WeChat, pid {pid}\nRun weflow as root, or allow ptrace through /proc/sys/kernel/yama/ptrace_scope.\nReason: {detail}"
                         )
                     } else if cfg!(target_os = "macos") {
                         format!(
-                            "permission denied: cannot attach to WeChat (pid {pid}). Run weflow with sudo, and check that macOS lets it debug other processes (System Integrity Protection, code signing). ({detail})"
+                            "permission denied: cannot attach to WeChat, pid {pid}\nRun weflow with sudo, and check that macOS lets it debug other processes: System Integrity Protection and code signing decide it.\nReason: {detail}"
                         )
                     } else {
                         format!(
-                            "permission denied: cannot open the WeChat process (pid {pid}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({detail})"
+                            "permission denied: cannot open the WeChat process, pid {pid}\nRun the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator.\nReason: {detail}"
                         )
                     };
-                    return Err(AppError::native(hint));
+                    return failed(&mut waiting, WaitEnd::Failed, AppError::native(hint));
                 }
                 Err(DbKeyError::Timeout) => {
-                    end_status_line();
-                    return Err(timeout_error());
+                    return failed(&mut waiting, WaitEnd::TimedOut, timeout_error());
                 }
-                Err(DbKeyError::Interrupted) => return Err(interrupted()),
+                Err(DbKeyError::Interrupted) => {
+                    return failed(&mut waiting, WaitEnd::Interrupted, interrupted());
+                }
                 // the process may not be ready to be hooked right after it started: try again
                 Err(DbKeyError::NotReady(_)) if remaining() > 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 Err(DbKeyError::Unsupported(detail)) => {
-                    end_status_line();
-                    return Err(AppError::native(unsupported_wechat(&detail)));
+                    let err = AppError::native(unsupported_wechat(&detail));
+                    return failed(&mut waiting, WaitEnd::Failed, err);
                 }
                 Err(DbKeyError::Other(detail)) if cfg!(target_os = "macos") => {
                     match macos_hook_failed(&detail, tried_again || remaining() == 0) {
@@ -168,18 +173,21 @@ impl ServiceHub {
                             std::thread::sleep(std::time::Duration::from_secs(1));
                         }
                         Some(message) => {
-                            end_status_line();
-                            return Err(AppError::native(message));
+                            return failed(
+                                &mut waiting,
+                                WaitEnd::Failed,
+                                AppError::native(message),
+                            );
                         }
                     }
                 }
                 Err(other) => {
-                    end_status_line();
-                    return Err(AppError::native(other.to_string()));
+                    let err = AppError::native(other.to_string());
+                    return failed(&mut waiting, WaitEnd::Failed, err);
                 }
             }
         };
-        end_status_line();
+        waiting.end(WaitEnd::Done);
         Ok(crate::contract::DbKey {
             decrypt_key: Some(key),
             method: "wx_key".into(),
@@ -251,7 +259,7 @@ impl ServiceHub {
             Some(pid) => pid,
             None => find_wechat_pid().ok_or_else(|| {
                 AppError::runtime(
-                    "WeChat process not found; start WeChat and log in, or pass --pid",
+                    "WeChat process not found\nStart WeChat and log in, or pass --pid.",
                 )
             })?,
         };
@@ -261,7 +269,7 @@ impl ServiceHub {
                 let block = weflow_native::image_key_scan::parse_ciphertext(text.trim())
                     .ok_or_else(|| {
                         AppError::usage(
-                            "the ciphertext must be 32 hex characters (one 16-byte block)",
+                            "the ciphertext must be 32 hex characters, one 16-byte block",
                         )
                     })?;
                 scan_image_memory(pid, &[block], &mut |_| true)?
@@ -309,7 +317,7 @@ fn linux_ptrace_check() -> AppResult<()> {
     match ptrace_access() {
         PtraceAccess::Allowed => Ok(()),
         PtraceAccess::NeedsCapability { scope } => Err(AppError::native(format!(
-            "permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is {scope}. Run weflow as root, or set ptrace_scope to 0"
+            "permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is {scope}\nRun weflow as root, or set ptrace_scope to 0."
         ))),
         PtraceAccess::Disabled => Err(AppError::native(
             "permission denied: /proc/sys/kernel/yama/ptrace_scope is 3, which stops every process from attaching to WeChat, root included, until the system restarts",
@@ -321,7 +329,7 @@ fn linux_ptrace_check() -> AppResult<()> {
 /// fully started, or its version is one the hook does not know (#806).
 fn unsupported_wechat(detail: &str) -> String {
     format!(
-        "cannot find where WeChat takes its database key ({detail}); make sure WeChat has fully started and is in front, otherwise this WeChat version is not supported yet (4.1.7 and 4.1.8.100 are known to work)"
+        "cannot find where WeChat takes its database key\nMake sure WeChat has fully started and is in front; otherwise this WeChat version is not supported yet. WeChat 4.1.7 and 4.1.8.100 are known to work.\nReason: {detail}"
     )
 }
 
@@ -331,12 +339,12 @@ fn unsupported_wechat(detail: &str) -> String {
 fn macos_hook_failed(detail: &str, last: bool) -> Option<String> {
     if detail == "process_died_while_waiting" {
         return Some(
-            "WeChat quit while the command waited for the key; reopen WeChat, then run the command again".into(),
+            "WeChat quit while the command waited for the key\nReopen WeChat, then run the command again.".into(),
         );
     }
     last.then(|| {
         format!(
-            "cannot hook WeChat ({detail}); quit WeChat completely and restart the Mac before trying again, as more tries can set off macOS's protection"
+            "cannot hook WeChat\nQuit WeChat completely and restart the Mac before trying again, as more tries can set off macOS's protection.\nReason: {detail}"
         )
     })
 }
@@ -373,14 +381,14 @@ fn scan_image_memory(
         match error {
             MemoryScanError::PermissionDenied(detail) if cfg!(target_os = "macos") => {
                 AppError::native(format!(
-                    "permission denied: cannot read WeChat's memory (pid {pid}). Run weflow with sudo. ({detail})"
+                    "permission denied: cannot read WeChat's memory, pid {pid}\nRun weflow with sudo.\nReason: {detail}"
                 ))
             }
             MemoryScanError::PermissionDenied(detail) => AppError::native(format!(
-                "permission denied: cannot read WeChat's memory (pid {pid}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({detail})"
+                "permission denied: cannot read WeChat's memory, pid {pid}\nRun weflow as root, or allow ptrace through /proc/sys/kernel/yama/ptrace_scope.\nReason: {detail}"
             )),
             MemoryScanError::Failed(detail) => AppError::native(format!(
-                "cannot read WeChat's memory (pid {pid}): {detail}"
+                "cannot read WeChat's memory, pid {pid}: {detail}"
             )),
         }
     })
@@ -429,71 +437,115 @@ enum WaitEvent {
     Tick { phase: Wait, remaining: u64 },
 }
 
-/// The remaining-time line shown while waiting.
-fn wait_text(phase: Wait, remaining: u64) -> String {
-    let zh = crate::locale::current() == crate::locale::Lang::Zh;
-    let what = match (phase, zh) {
-        (Wait::Quit, true) => "等待微信退出…",
-        (Wait::Quit, false) => "Waiting for WeChat to quit...",
-        (Wait::Open, true) => "等待微信启动…",
-        (Wait::Open, false) => "Waiting for WeChat to start...",
-        (Wait::Key, true) => "等待密钥…",
-        (Wait::Key, false) => "Waiting for the key...",
-    };
-    if zh {
-        format!("{what}（剩余 {remaining} 秒自动退出）")
-    } else {
-        format!("{what} (exits automatically in {remaining} s)")
+/// What a wait is for, at the start of its line.
+fn wait_head(phase: Wait) -> &'static str {
+    match phase {
+        Wait::Quit => tr("Waiting for WeChat to quit…", "等待微信退出…"),
+        Wait::Open => tr("Waiting for WeChat to start…", "等待微信启动…"),
+        Wait::Key => tr("Waiting for the key…", "等待密钥…"),
     }
 }
 
-/// One status message: JSON event with `--json`, a plain line otherwise.
-fn phase(json_event: Value, text: String) {
-    crate::output::end_status_line();
+/// How a wait ended, at the end of its line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WaitEnd {
+    Done,
+    TimedOut,
+    Interrupted,
+    Failed,
+}
+
+/// The line of the wait under way: `Waiting for the key…`, a grey countdown after it, and how it ended in its place.
+#[derive(Debug, Default)]
+struct WaitLine(Option<(Wait, crate::status::Pending)>);
+
+impl WaitLine {
+    /// Shows how long `phase` may still take, starting its line when it is a new wait (the one before ended well).
+    fn tick(&mut self, phase: Wait, remaining: u64) {
+        if self.0.as_ref().map(|(shown, _)| *shown) != Some(phase) {
+            self.end(WaitEnd::Done);
+            self.0 = Some((phase, crate::status::begin(wait_head(phase))));
+        }
+        if let Some((_, line)) = &self.0 {
+            line.tick(
+                &tr("exits in {n} s", "{n} 秒后自动退出").replace("{n}", &remaining.to_string()),
+            );
+        }
+    }
+
+    /// Ends the line of the wait under way, if any.
+    fn end(&mut self, how: WaitEnd) {
+        use crate::colour::Role;
+        let Some((_, line)) = self.0.take() else {
+            return;
+        };
+        let (text, role) = match how {
+            WaitEnd::Done => (tr("done", "完成"), Role::Success),
+            WaitEnd::TimedOut => (tr("timed out", "超时"), Role::Error),
+            WaitEnd::Interrupted => (tr("interrupted", "已中断"), Role::Warning),
+            WaitEnd::Failed => (tr("failed", "失败"), Role::Error),
+        };
+        line.finish(text, role);
+    }
+
+    fn report(&mut self, event: WaitEvent) {
+        match event {
+            WaitEvent::AskQuit(pids) => {
+                self.end(WaitEnd::Done);
+                let list = pids
+                    .iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                // the tray is at the bottom right on Windows; Linux desktops put it anywhere, or have none (WSLg)
+                let how = if cfg!(windows) {
+                    tr(
+                        "system tray icon → right click → Quit WeChat",
+                        "右下角托盘图标 → 右键 → 退出微信",
+                    )
+                } else {
+                    tr(
+                        "choose Quit from WeChat's tray icon or its menu",
+                        "从托盘图标或微信的菜单中选择退出",
+                    )
+                };
+                phase(
+                    json!({ "type": "key_phase", "phase": "quit_wechat", "pids": pids }),
+                    &format!(
+                        "{}\n{how}",
+                        tr(
+                            "WeChat is running, pid {list}. Quit it completely first:",
+                            "微信正在运行，pid {list}。请先完全退出微信：",
+                        )
+                        .replace("{list}", &list)
+                    ),
+                );
+            }
+            WaitEvent::AskOpen { was_running } => {
+                self.end(WaitEnd::Done);
+                phase(
+                    json!({ "type": "key_phase", "phase": "open_wechat", "wasRunning": was_running }),
+                    if was_running {
+                        tr("Open WeChat again.", "请重新打开微信。")
+                    } else {
+                        tr(
+                            "WeChat is not running. Open it.",
+                            "未检测到微信，请打开微信。",
+                        )
+                    },
+                );
+            }
+            WaitEvent::Tick { phase, remaining } => self.tick(phase, remaining),
+        }
+    }
+}
+
+/// One status message: JSON event with `--json`, a line of its own otherwise.
+fn phase(json_event: Value, text: &str) {
     if crate::output::json_output() {
         crate::output::event(json_event);
     } else {
-        eprintln!("{text}");
-    }
-}
-
-fn report_wait(event: WaitEvent) {
-    let zh = crate::locale::current() == crate::locale::Lang::Zh;
-    match event {
-        WaitEvent::AskQuit(pids) => {
-            let list = pids
-                .iter()
-                .map(u32::to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
-            // the tray is at the bottom right on Windows; Linux desktops put it anywhere, or have none (WSLg)
-            let how = match (cfg!(windows), zh) {
-                (true, true) => "右下角托盘图标 → 右键 → 退出微信",
-                (true, false) => "system tray icon -> right click -> Quit WeChat",
-                (false, true) => "从托盘图标或微信的菜单中选择退出",
-                (false, false) => "choose Quit from WeChat's tray icon or its menu",
-            };
-            phase(
-                json!({ "type": "key_phase", "phase": "quit_wechat", "pids": pids }),
-                if zh {
-                    format!("检测到微信正在运行（pid {list}）请先完全退出微信：\n{how}")
-                } else {
-                    format!("WeChat is running (pid {list}). Quit it completely first:\n{how}")
-                },
-            );
-        }
-        WaitEvent::AskOpen { was_running } => phase(
-            json!({ "type": "key_phase", "phase": "open_wechat", "wasRunning": was_running }),
-            match (was_running, zh) {
-                (true, true) => "微信已退出，请重新打开微信。".to_string(),
-                (true, false) => "WeChat has quit. Open it again.".to_string(),
-                (false, true) => "未检测到微信，请打开微信。".to_string(),
-                (false, false) => "WeChat is not running. Open it.".to_string(),
-            },
-        ),
-        WaitEvent::Tick { phase, remaining } => {
-            crate::output::status_line(&wait_text(phase, remaining))
-        }
+        crate::status::say(text);
     }
 }
 
@@ -609,13 +661,13 @@ mod tests {
         assert_eq!(macos_hook_failed(breakpoint, false), None);
         let last = macos_hook_failed(breakpoint, true).unwrap();
         assert!(
-            last.contains(breakpoint) && last.contains("restart the Mac"),
+            last.contains(&format!("\nReason: {breakpoint}")) && last.contains("restart the Mac"),
             "{last}"
         );
         let quit = macos_hook_failed("process_died_while_waiting", false).unwrap();
         assert!(quit.starts_with("WeChat quit"), "{quit}");
         let scan = unsupported_wechat("Sink pattern not found");
-        assert!(scan.contains("(Sink pattern not found)"), "{scan}");
+        assert!(scan.ends_with("\nReason: Sink pattern not found"), "{scan}");
     }
 
     /// Drives `wait_for_fresh_wechat` with a scripted process list; each `sleep` is one second.

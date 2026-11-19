@@ -172,7 +172,7 @@ pub fn acquire_image_keys(
 ) -> AppResult<crate::contract::ImageKeys> {
     if directories.is_empty() || budget == 0 {
         return Err(AppError::usage(
-            "Rust image-key acquisition needs kvcomm directories (none found; pass --kvcomm-dir) and a nonzero scan budget",
+            "image-key acquisition needs kvcomm directories and a nonzero scan budget\nNo kvcomm directory was found: pass --kvcomm-dir, and keep --scan-budget above 0.",
         ));
     }
     let collection = collect_codes(directories);

@@ -97,7 +97,7 @@ fn normalize_uid(input: &str) -> Result<String, String> {
     if let Some(c) = re.captures(t) {
         return Ok(c[1].to_string());
     }
-    Err("please enter a valid Weibo UID (digits only)".into())
+    Err("please enter a valid Weibo UID: digits only".into())
 }
 
 /// `sanitizeWeiboText`

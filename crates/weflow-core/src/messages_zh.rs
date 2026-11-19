@@ -4,8 +4,7 @@
 use crate::locale::translate_with;
 
 const CATALOG: &[(&str, &str)] = &[
-    ("Rust image-key acquisition needs kvcomm directories (none found; pass --kvcomm-dir) and a nonzero scan budget", "Rust 图片取钥需要 kvcomm 目录（未找到，请用 --kvcomm-dir 指定）和非零扫描预算"),
-    ("`key image` is not supported on this platform yet", "`key image` 暂不支持此平台"),
+    ("image-key acquisition needs kvcomm directories and a nonzero scan budget\nNo kvcomm directory was found: pass --kvcomm-dir, and keep --scan-budget above 0.", "图片取钥需要 kvcomm 目录和非零的扫描预算\n未找到 kvcomm 目录：请用 --kvcomm-dir 指定，并让 --scan-budget 大于 0。"),
     ("`key processes` is only available on macOS", "`key processes` 仅支持 macOS"),
     ("`key image-mem` is only available on Linux x64 and macOS", "`key image-mem` 仅支持 Linux x64 和 macOS"),
     ("No kvcomm directory could be read", "所有 kvcomm 目录均无法读取"),
@@ -15,14 +14,14 @@ const CATALOG: &[(&str, &str)] = &[
     ("Multiple distinct image-key pairs match the selected account; no pair was chosen", "多个不同图片密钥组合匹配选定账号，未选择任何组合"),
     // CLI
     ("this removes files; add --yes to confirm", "此操作会删除文件；请加上 --yes 确认"),
-    ("choose what to clear: {} (`weflow cache list` shows each part)", "请选择要清理的部分：{}（`weflow cache list` 可查看各部分）"),
+    ("choose what to clear: {}\n`weflow cache list` shows each part.", "请选择要清理的部分：{}\n`weflow cache list` 可查看各部分。"),
     ("failed to read the answer: {}", "读取输入失败：{}"),
     ("auto download failed to start", "原图自动下载启动失败"),
     ("the operation failed", "操作失败"),
     ("payloads_json must be a JSON array: {}", "payloads_json 必须是 JSON 数组：{}"),
-    ("invalid value '{}' for {}; use a whole number of seconds (0 or more)", "{1} 的值 '{0}' 无效；请使用整数秒数（0 或更大）"),
+    ("invalid value '{}' for {}; use a whole number of seconds, 0 or more", "{1} 的值 '{0}' 无效；请使用不小于 0 的整数秒数"),
     ("pass exactly one of --local-id or --server-id", "--local-id 与 --server-id 必须且只能指定其一"),
-    ("local id {} names {} messages in different message databases; pick one with --create-time (see details.candidates)", "本地 ID {} 在不同的消息库中对应 {} 条消息；请用 --create-time 指定其中一条（见 details.candidates）"),
+    ("local id {} names {} messages in different message databases\nPick one with --create-time; details.candidates lists them.", "本地 ID {} 在不同的消息库中对应 {} 条消息\n请用 --create-time 指定其中一条；details.candidates 列出了这些消息。"),
     ("failed to create {}: {}", "创建 {} 失败：{}"),
     ("failed to write {}: {}", "写入 {} 失败：{}"),
     ("failed to read {}: {}", "读取 {} 失败：{}"),
@@ -35,10 +34,9 @@ const CATALOG: &[(&str, &str)] = &[
     ("--media avatar puts the avatars on the HTML page; use --format html", "--media avatar 把头像放在 HTML 页面上；请使用 --format html"),
     ("--zip writes a zip: give --out a folder or a .zip file", "--zip 写出的是 zip：--out 请给文件夹或 .zip 文件"),
     ("unsupported media type: {}; use image, voice, video, emoji, file or all", "不支持的媒体类型：{}；请使用 image、voice、video、emoji、file 或 all"),
-    ("--start ({}) is after --end ({})", "--start（{0}）晚于 --end（{1}）"),
-    ("request failed", "请求失败"),
+    ("--start {} is after --end {}", "--start {0} 晚于 --end {1}"),
     ("payload_json must be JSON: {}", "payload_json 必须是合法的 JSON：{}"),
-    ("invalid listen address: {}", "监听地址无效：{}"),
+    ("invalid listen address {}: {}", "监听地址 {0} 无效：{1}"),
     ("failed to bind HTTP server: {}", "绑定 HTTP 服务失败：{}"),
     ("HTTP server stopped: {}", "HTTP 服务已停止：{}"),
     ("interrupted by user", "已被用户中断"),
@@ -88,35 +86,34 @@ const CATALOG: &[(&str, &str)] = &[
     ("wxid is not configured", "未配置 wxid"),
     ("no account or database path configured", "未配置账号或数据库路径"),
     ("account directory not found", "未找到账号目录"),
-    ("no current account (wxid) configured, nothing to clear", "未配置当前账号（wxid），没有可清理的内容"),
+    ("no current account configured: wxid is not set, so there is nothing to clear", "未配置当前账号：没有设置 wxid，没有可清理的内容"),
     // services
     ("failed to create HTTP client: {}", "创建 HTTP 客户端失败：{}"),
     ("failed to download image: {}", "下载图片失败：{}"),
     ("image download failed with status {}", "图片下载失败，状态码 {}"),
     ("failed to read image response: {}", "读取图片响应失败：{}"),
-    ("timed out after {} s without getting the key; quit WeChat completely, reopen it and click \"Enter WeChat\" in the login window, then run the command again", "等待超时（{} 秒），没有获取到密钥。请确认已完全退出微信后重新打开，并在登录窗口点击「进入微信」，然后重新运行。"),
+    ("timed out after {} s without getting the key\nQuit WeChat completely, reopen it and click \"Enter WeChat\" in the login window, then run the command again.", "等待 {} 秒后超时，没有获取到密钥\n请完全退出微信后重新打开，在登录窗口点击「进入微信」，然后重新运行命令。"),
     ("no WeChat data directory found; pass the directory or run config set db_path", "未找到微信数据目录；请指定目录或运行 config set db_path"),
     ("no WeChat account directory found in {}", "在 {} 中没有找到微信账号目录"),
-    ("WeChat process not found; start WeChat first, or pass --pid (`weflow key processes` lists WeChat's processes)", "未找到微信进程；请先启动微信，或传入 --pid（`weflow key processes` 列出微信的进程）"),
-    ("permission denied: cannot attach to WeChat (pid {}). Run weflow with sudo, and check that macOS lets it debug other processes (System Integrity Protection, code signing). ({})", "无法附加到微信进程（pid {0}）。请用 sudo 运行 weflow，并检查 macOS 是否允许它调试其他进程（系统完整性保护、代码签名）。（{1}）"),
-    ("cannot find where WeChat takes its database key ({}); make sure WeChat has fully started and is in front, otherwise this WeChat version is not supported yet (4.1.7 and 4.1.8.100 are known to work)", "找不到微信使用数据库密钥的位置（{}）；请确认微信已完全启动并在前台，否则是这个微信版本尚未适配（已知 4.1.7 和 4.1.8.100 可用）"),
-    ("WeChat quit while the command waited for the key; reopen WeChat, then run the command again", "等待密钥时微信已退出；请重新打开微信，再运行命令"),
-    ("cannot hook WeChat ({}); quit WeChat completely and restart the Mac before trying again, as more tries can set off macOS's protection", "无法挂钩微信（{}）；请彻底退出微信并重启 Mac 后再试，反复尝试可能触发 macOS 的保护机制"),
-    ("permission denied: cannot open the WeChat process (pid {}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({})", "无法打开微信进程（pid {0}）。请以管理员身份运行终端，关闭可能拦截的安全软件，并确认微信本身没有以管理员身份运行。（{1}）"),
-    ("permission denied: cannot attach to WeChat (pid {}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({})", "无法附加到微信进程（pid {0}）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（{1}）"),
-    ("permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is {}. Run weflow as root, or set ptrace_scope to 0", "/proc/sys/kernel/yama/ptrace_scope 为 {} 时，weflow 无法附加到微信进程。请以 root 运行 weflow，或把 ptrace_scope 设为 0"),
-    ("permission denied: /proc/sys/kernel/yama/ptrace_scope is 3, which stops every process from attaching to WeChat, root included, until the system restarts", "/proc/sys/kernel/yama/ptrace_scope 为 3，在系统重启前任何进程（包括 root）都无法附加到微信进程"),
-    ("the ciphertext must be 32 hex characters (one 16-byte block)", "密文必须是 32 个十六进制字符（一个 16 字节的块）"),
-    ("permission denied: cannot read WeChat's memory (pid {}). Run weflow with sudo. ({})", "无法读取微信的内存（pid {0}）。请用 sudo 运行 weflow。（{1}）"),
-    ("permission denied: cannot read WeChat's memory (pid {}). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. ({})", "无法读取微信的内存（pid {0}）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（{1}）"),
-    ("cannot read WeChat's memory (pid {}): {}", "无法读取微信的内存（pid {0}）：{1}"),
+    ("WeChat process not found\nStart WeChat first, or pass --pid; `weflow key processes` lists WeChat's processes.", "未找到微信进程\n请先启动微信，或传入 --pid；`weflow key processes` 列出微信的进程。"),
+    ("WeChat process not found\nStart WeChat and log in, or pass --pid.", "未找到微信进程\n请先启动微信并登录，或传入 --pid。"),
+    ("permission denied: cannot attach to WeChat, pid {}\nRun weflow with sudo, and check that macOS lets it debug other processes: System Integrity Protection and code signing decide it.\nReason: {}", "无法附加到微信进程，pid {0}\n请用 sudo 运行 weflow，并检查 macOS 是否允许它调试其他进程：这由系统完整性保护和代码签名决定。\n原因：{1}"),
+    ("cannot find where WeChat takes its database key\nMake sure WeChat has fully started and is in front; otherwise this WeChat version is not supported yet. WeChat 4.1.7 and 4.1.8.100 are known to work.\nReason: {}", "找不到微信使用数据库密钥的位置\n请确认微信已完全启动并在前台；否则是这个微信版本尚未适配。已知微信 4.1.7 和 4.1.8.100 可用。\n原因：{}"),
+    ("WeChat quit while the command waited for the key\nReopen WeChat, then run the command again.", "等待密钥时微信已退出\n请重新打开微信，再运行命令。"),
+    ("cannot hook WeChat\nQuit WeChat completely and restart the Mac before trying again, as more tries can set off macOS's protection.\nReason: {}", "无法挂钩微信\n请彻底退出微信并重启 Mac 后再试，反复尝试可能触发 macOS 的保护机制。\n原因：{}"),
+    ("permission denied: cannot open the WeChat process, pid {}\nRun the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator.\nReason: {}", "无法打开微信进程，pid {0}\n请以管理员身份运行终端，关闭可能拦截的安全软件，并确认微信本身没有以管理员身份运行。\n原因：{1}"),
+    ("permission denied: cannot attach to WeChat, pid {}\nRun weflow as root, or allow ptrace through /proc/sys/kernel/yama/ptrace_scope.\nReason: {}", "无法附加到微信进程，pid {0}\n请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。\n原因：{1}"),
+    ("permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is {}\nRun weflow as root, or set ptrace_scope to 0.", "/proc/sys/kernel/yama/ptrace_scope 为 {} 时，weflow 无法附加到微信进程\n请以 root 运行 weflow，或把 ptrace_scope 设为 0。"),
+    ("permission denied: /proc/sys/kernel/yama/ptrace_scope is 3, which stops every process from attaching to WeChat, root included, until the system restarts", "/proc/sys/kernel/yama/ptrace_scope 为 3，在系统重启前任何进程都无法附加到微信进程，root 也不例外"),
+    ("the ciphertext must be 32 hex characters, one 16-byte block", "密文必须是 32 个十六进制字符，即一个 16 字节的块"),
+    ("permission denied: cannot read WeChat's memory, pid {}\nRun weflow with sudo.\nReason: {}", "无法读取微信的内存，pid {0}\n请用 sudo 运行 weflow。\n原因：{1}"),
+    ("permission denied: cannot read WeChat's memory, pid {}\nRun weflow as root, or allow ptrace through /proc/sys/kernel/yama/ptrace_scope.\nReason: {}", "无法读取微信的内存，pid {0}\n请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。\n原因：{1}"),
+    ("cannot read WeChat's memory, pid {}: {}", "无法读取微信的内存，pid {0}：{1}"),
     ("a key found with --ciphertext is checked against that block only, so it is not saved; run `key image-mem --save` without --ciphertext to check the key against the account's thumbnails", "用 --ciphertext 找到的密钥只验证了这一块，所以不保存；请不带 --ciphertext 运行 `key image-mem --save`，用账号的缩略图验证密钥"),
     ("no image AES key found in WeChat's memory; open a few images in WeChat, then try again", "在微信的内存中未找到图片 AES 密钥；请在微信里打开几张图片后重试"),
-    ("wx_key library not found; key extraction requires the platform-specific native library", "未找到 wx_key 库；提取密钥需要对应平台的原生库"),
     ("no messages found for this session in the given range", "指定范围内未找到该会话的消息"),
-    ("no messages from {} in this session in the given range (--sender takes the bare wxid, as `chat contacts` lists it)", "指定范围内该会话没有 {} 发送的消息（--sender 只接受裸 wxid，即 `chat contacts` 列出的形式）"),
+    ("no messages from {} in this session in the given range\n--sender takes the bare wxid, as `chat contacts` lists it.", "指定范围内该会话没有 {} 发送的消息\n--sender 只接受裸 wxid，即 `chat contacts` 列出的形式。"),
     ("--sender takes the bare wxid: use {}, not the account folder name {}", "--sender 只接受裸 wxid：请使用 {}，而不是账号文件夹名 {}"),
-    ("{} is not yet ported to the native Rust CLI", "{} 尚未移植到原生 Rust CLI"),
     ("no message sessions found", "未找到消息会话"),
     ("session table error: {}", "会话表错误：{}"),
     ("invalid CDN URL", "CDN 地址无效"),
@@ -140,11 +137,11 @@ const CATALOG: &[(&str, &str)] = &[
     ("HTTP {}", "HTTP {}"),
     ("image decryption failed: unrecognized image format", "图片解密失败：无法识别的图片格式"),
     ("empty image data", "图片数据为空"),
-    ("invalid image data (wrong key or corrupt cache)", "图片数据无效（密钥错误或缓存已损坏）"),
+    ("invalid image data: wrong key or corrupt cache", "图片数据无效：密钥错误或缓存已损坏"),
     ("failed to download the emoji", "下载表情失败"),
     ("SILK decode failed: {}", "SILK 解码失败：{}"),
     ("message timestamp not found", "未找到消息时间戳"),
-    ("voice data not found (play the voice message in WeChat once first)", "未找到语音数据（请先在微信中播放一次该语音消息）"),
+    ("voice data not found\nPlay the voice message in WeChat once first.", "未找到语音数据\n请先在微信中播放一次该语音消息。"),
     // progress
     ("downloading emojis", "正在下载表情"),
     ("creating backup", "正在创建备份"),
@@ -165,20 +162,18 @@ const CATALOG: &[(&str, &str)] = &[
     ("export finished", "导出完成"),
     ("aggregating…", "正在汇总…"),
     ("copying media", "正在复制媒体"),
-    ("WXGF image sent {} cannot be converted: the data is damaged ({})", "{0} 发送的 WXGF 图片无法转换：数据已损坏（{1}）"),
-    ("WXGF image sent {} cannot be converted: its format is not supported yet ({})", "{0} 发送的 WXGF 图片无法转换：暂不支持它的格式（{1}）"),
-    ("WXGF image cannot be converted: the data is damaged ({})", "WXGF 图片无法转换：数据已损坏（{}）"),
-    ("WXGF image cannot be converted: its format is not supported yet ({})", "WXGF 图片无法转换：暂不支持它的格式（{}）"),
+    ("WXGF image sent {} cannot be converted because the data is damaged: {}", "{0} 发送的 WXGF 图片无法转换，数据已损坏：{1}"),
+    ("WXGF image sent {} cannot be converted because its format is not supported yet: {}", "{0} 发送的 WXGF 图片无法转换，暂不支持它的格式：{1}"),
+    ("WXGF image cannot be converted because the data is damaged: {}", "WXGF 图片无法转换，数据已损坏：{}"),
+    ("WXGF image cannot be converted because its format is not supported yet: {}", "WXGF 图片无法转换，暂不支持它的格式：{}"),
     ("scanning messages", "正在扫描消息"),
     ("exporting {} media", "正在导出{}媒体"),
     ("reading messages", "正在读取消息"),
     ("writing formats", "正在写出各个格式"),
     // result fields and hints
-    ("no insight was generated (AI not configured, request failed, or the model answered SKIP)", "未生成洞察（AI 未配置、请求失败，或模型回答了 SKIP）"),
     ("waiting for WeChat to start", "正在等待微信启动"),
-    ("core component initialization failed", "核心组件初始化失败"),
     ("hook failed", "挂钩失败"),
-    ("missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "missing = 文件不在磁盘上（微信中未下载）或无法解析的媒体消息；表情需要联网。thumbOnly = 导出的图片只有缩略图（请先在微信中打开原图，再重新导出以获得高清图）"),
+    ("missing = media messages whose file is not on disk, as WeChat has not downloaded it, or could not be resolved; stickers need network access.\nthumbOnly = exported images that are only the thumbnail; open the original in WeChat, then export again for the HD image.", "missing = 文件不在磁盘上的媒体消息，即微信还没有下载，或无法解析；表情需要联网。\nthumbOnly = 导出的图片只有缩略图；请先在微信中打开原图，再重新导出以获得高清图。"),
     ("missing image identifier", "缺少图片标识"),
     ("cached image not found", "未找到缓存的图片"),
     ("image file not found, open the image in WeChat and retry", "未找到图片文件，请先在微信中打开该图片后重试"),
@@ -190,7 +185,15 @@ const CATALOG: &[(&str, &str)] = &[
     ("record id is empty", "记录 ID 为空"),
     ("{} is not supported: the native database backend opens WeChat's databases read-only", "不支持 {}：原生数据库后端以只读方式打开微信数据库"),
     ("{} is not implemented in the native database backend yet", "原生数据库后端尚未实现 {}"),
-    ("Telegram push failed (chatId={}): {}", "Telegram 推送失败（chatId={0}）：{1}"),
+    ("Telegram push failed for chat {}: {}", "Telegram 推送到聊天 {0} 失败：{1}"),
+    // backup, WebUI and Weibo
+    ("refusing to restore through the link {}: it may point outside {}", "拒绝通过链接 {0} 恢复：它可能指向 {1} 以外的位置"),
+    ("cannot read {} of the account's database files, so no backup was written: {}", "无法读取账号的 {0} 个数据库文件，没有写出备份：{1}"),
+    ("--ui-dir {}: no index.html there\nPass the folder of a built WebUI, such as web/dist.", "--ui-dir {}：那里没有 index.html\n请指定构建好的网页目录，例如 web/dist。"),
+    ("`{}` is not a WebUI version; a version looks like 0.1.0", "`{}` 不是网页版本号；版本号形如 0.1.0"),
+    ("cannot reach the WebUI registry {} for {}: {}", "连不上网页的发布仓库 {0}，读取 {1} 时出错：{2}"),
+    ("{} in the registry is not a WebUI: its artifact type is {}", "发布仓库中的 {0} 不是网页：它的制品类型是 {1}"),
+    ("please enter a valid Weibo UID: digits only", "请输入有效的微博 UID：只能是数字"),
 ];
 
 pub fn translate(message: &str) -> Option<String> {
@@ -200,6 +203,70 @@ pub fn translate(message: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    /// The text of every `.rs` file under `dir`, but this catalog's.
+    fn sources_under(dir: &Path, text: &mut String) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                sources_under(&path, text);
+            } else if path.extension().is_some_and(|e| e == "rs")
+                && !path.ends_with("messages_zh.rs")
+            {
+                text.push_str(&std::fs::read_to_string(&path).unwrap_or_default());
+            }
+        }
+    }
+
+    /// Every message the catalog translates is still said somewhere in the source: an entry whose message was
+    /// reworded or removed would never be used again.
+    #[test]
+    fn every_entry_has_a_message_in_the_source() {
+        let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut sources = String::new();
+        for krate in ["weflow-cli", "weflow-core", "weflow-native"] {
+            sources_under(&crates.join(krate).join("src"), &mut sources);
+        }
+        // a piece between placeholders as a string literal writes it
+        let said = |piece: &str| {
+            sources.contains(
+                &piece
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\n', "\\n"),
+            )
+        };
+        let used = |en: &str| {
+            let longest = en.split("{}").max_by_key(|p| p.len()).unwrap_or(en);
+            en.split("{}").any(|piece| {
+                // the code may put in the first words itself (`{what} cannot be converted…`)
+                let mut rest = piece;
+                for _ in 0..3 {
+                    if (rest.trim().chars().count() >= 12 || rest == longest) && said(rest) {
+                        return true;
+                    }
+                    match rest.trim_start().split_once(' ') {
+                        Some((_, tail)) => rest = tail,
+                        None => break,
+                    }
+                }
+                false
+            })
+        };
+        let unused: Vec<&str> = CATALOG
+            .iter()
+            .map(|(en, _)| *en)
+            .filter(|en| !used(en))
+            .collect();
+        assert!(
+            unused.is_empty(),
+            "no message in the source for {unused:#?}"
+        );
+    }
 
     #[test]
     fn translates_fixed_and_templated_messages() {
@@ -212,8 +279,8 @@ mod tests {
             Some("写入 out.txt 失败：denied")
         );
         assert_eq!(
-            translate("--start (b) is after --end (a)").as_deref(),
-            Some("--start（b）晚于 --end（a）")
+            translate("--start b is after --end a").as_deref(),
+            Some("--start b 晚于 --end a")
         );
         assert_eq!(translate("not in the catalog"), None);
     }
@@ -255,16 +322,16 @@ mod tests {
     #[test]
     fn linux_ptrace_refusals_are_translated() {
         assert_eq!(
-            translate("permission denied: cannot attach to WeChat (pid 42). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. (Operation not permitted)").as_deref(),
-            Some("无法附加到微信进程（pid 42）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（Operation not permitted）")
+            translate("permission denied: cannot attach to WeChat, pid 42\nRun weflow as root, or allow ptrace through /proc/sys/kernel/yama/ptrace_scope.\nReason: Operation not permitted").as_deref(),
+            Some("无法附加到微信进程，pid 42\n请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。\n原因：Operation not permitted")
         );
         assert_eq!(
-            translate("permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is 1. Run weflow as root, or set ptrace_scope to 0").as_deref(),
-            Some("/proc/sys/kernel/yama/ptrace_scope 为 1 时，weflow 无法附加到微信进程。请以 root 运行 weflow，或把 ptrace_scope 设为 0")
+            translate("permission denied: weflow cannot attach to WeChat while /proc/sys/kernel/yama/ptrace_scope is 1\nRun weflow as root, or set ptrace_scope to 0.").as_deref(),
+            Some("/proc/sys/kernel/yama/ptrace_scope 为 1 时，weflow 无法附加到微信进程\n请以 root 运行 weflow，或把 ptrace_scope 设为 0。")
         );
         assert_eq!(
-            translate("permission denied: cannot read WeChat's memory (pid 42). Run weflow as root or allow ptrace through /proc/sys/kernel/yama/ptrace_scope. (denied)").as_deref(),
-            Some("无法读取微信的内存（pid 42）。请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。（denied）")
+            translate("permission denied: cannot read WeChat's memory, pid 42\nRun weflow as root, or allow ptrace through /proc/sys/kernel/yama/ptrace_scope.\nReason: denied").as_deref(),
+            Some("无法读取微信的内存，pid 42\n请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。\n原因：denied")
         );
     }
 
@@ -284,13 +351,13 @@ mod tests {
     #[test]
     fn an_unconverted_wxgf_image_keeps_its_date_and_reason() {
         assert_eq!(
-            translate("WXGF image sent 2023-11-15 06:13:20 cannot be converted: its format is not supported yet (P and B slices (inter prediction))").as_deref(),
-            Some("2023-11-15 06:13:20 发送的 WXGF 图片无法转换：暂不支持它的格式（P and B slices (inter prediction)）")
+            translate("WXGF image sent 2023-11-15 06:13:20 cannot be converted because its format is not supported yet: 10-bit samples").as_deref(),
+            Some("2023-11-15 06:13:20 发送的 WXGF 图片无法转换，暂不支持它的格式：10-bit samples")
         );
         assert_eq!(
-            translate("WXGF image cannot be converted: the data is damaged (no picture)")
+            translate("WXGF image cannot be converted because the data is damaged: no picture")
                 .as_deref(),
-            Some("WXGF 图片无法转换：数据已损坏（no picture）")
+            Some("WXGF 图片无法转换，数据已损坏：no picture")
         );
     }
 }

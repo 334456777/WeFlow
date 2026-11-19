@@ -62,7 +62,7 @@ pub(crate) fn message_by_local_id(
             })
             .collect();
         return Err(AppError::usage(format!(
-            "local id {local_id} names {} messages in different message databases; pick one with --create-time (see details.candidates)",
+            "local id {local_id} names {} messages in different message databases\nPick one with --create-time; details.candidates lists them.",
             rows.len()
         ))
         .with_details(json!({ "candidates": candidates })));

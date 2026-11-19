@@ -789,7 +789,7 @@ impl ServiceHub {
             .ok_or_else(|| AppError::runtime("empty image data"))?;
         if !sns::detect_image_mime(&data, "").starts_with("image/") {
             return Err(AppError::runtime(
-                "invalid image data (wrong key or corrupt cache)",
+                "invalid image data: wrong key or corrupt cache",
             ));
         }
         use base64::Engine;
