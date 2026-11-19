@@ -28,10 +28,20 @@ export function settle(group: HTMLElement, items = itemsOf(group)): void {
   if (!items.length) return;
   const focused = items.find(item => item === document.activeElement);
   const stop = focused ?? items.find(item => item.dataset.rovingStop === 'true') ?? items.find(item => item.matches(CHOSEN)) ?? items[0];
+  // only what changes: a tab index or a mark set again is still a change of the element, to its styles and to whoever
+  // watches it (#961)
   for (const item of items) {
-    item.tabIndex = item === stop ? 0 : -1;
-    if (item !== stop) delete item.dataset.rovingStop;
+    const index = item === stop ? 0 : -1;
+    if (item.tabIndex !== index) item.tabIndex = index;
+    if (item !== stop && item.dataset.rovingStop !== undefined) delete item.dataset.rovingStop;
   }
+}
+
+/** Whether a change of the page may change a group's Tab stop: a change inside a group, or a group that comes. */
+function touchesGroup(record: MutationRecord): boolean {
+  const target = record.target instanceof Element ? record.target : record.target.parentElement;
+  if (target?.closest(GROUPS)) return true;
+  return Array.from(record.addedNodes).some(node => node instanceof Element && (node.matches(GROUPS) || node.querySelector(GROUPS) !== null));
 }
 
 /** The index the key moves to from `index` among `count`, or null for a key the group does not take. */
@@ -72,7 +82,8 @@ export function useRovingFocus(): void {
     };
     const later = () => { if (!queued) queued = requestAnimationFrame(settleAll); };
     settleAll();
-    const watch = new MutationObserver(later);
+    // the changes outside every group (a scrollbar showing, a panel folding) leave the groups as they are
+    const watch = new MutationObserver(records => { if (records.some(touchesGroup)) later(); });
     watch.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'aria-selected', 'aria-current', 'class', 'disabled'] });
 
     const keydown = (event: KeyboardEvent) => {

@@ -432,9 +432,10 @@ time, .num { font-variant-numeric: tabular-nums; }
 .card-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--duration-panel) var(--ease-snap); }
 .card.collapsed .card-body { grid-template-rows: 0fr; }
 /* The body clips only while it folds and once folded: open, the controls in it cast their shadows past its edges,
-   which a clip would cut square (#354). Opening, it clips until it has opened all the way. */
-.card-inner { min-height: 0; overflow: visible; transition: overflow 0s var(--duration-panel) allow-discrete; }
-.card.collapsed .card-inner { overflow: hidden; transition-delay: 0s; }
+   which a clip would cut square (#354). Opening, it clips until it has opened all the way. Folded away, the loading
+   sweeps in it stop (`--sweep`, below) once it has folded all the way, and go on as it starts to open. */
+.card-inner { min-height: 0; overflow: visible; transition: overflow 0s var(--duration-panel) allow-discrete, --sweep 0s allow-discrete; }
+.card.collapsed .card-inner { overflow: hidden; --sweep: paused; transition-delay: 0s, var(--duration-panel); }
 /* The body clips while it folds, so the content keeps 4px above it: room for the focus ring of a field at the top. */
 .card-content { container-type: inline-size; padding: var(--space-1) var(--space-4) var(--space-4); }
 .card-lead { display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-bottom: var(--space-3); color: var(--fg-muted); font-size: var(--text-xs); }
@@ -657,11 +658,16 @@ time, .num { font-variant-numeric: tabular-nums; }
 }
 .toast[data-state='closing'] { animation: toast-out var(--duration-exit) var(--ease-out) both; }
 
-/* Loading placeholder: a sweep of light over it, for pages that wait on the API. */
+/*
+ * Loading placeholder: a sweep of light over it, for pages that wait on the API. The sweep is painted again at each of
+ * its frames, and the page's styles worked out again for it: where it cannot be seen, in a card folded away (above),
+ * `--sweep` pauses it, so that the frames of the rest of the page do not carry it (#961).
+ */
+@property --sweep { syntax: 'running | paused'; inherits: true; initial-value: running; }
 .skeleton {
   border-radius: var(--radius-sm); box-shadow: var(--skeleton-shadow);
   background: linear-gradient(90deg, transparent 25%, var(--skeleton-sweep) 40%, transparent 55%) 0 0 / 300% 100%;
-  animation: shimmer var(--loop-sweep) ease-in-out infinite;
+  animation: shimmer var(--loop-sweep) ease-in-out infinite; animation-play-state: var(--sweep);
 }
 
 @keyframes dialog-in { from { opacity: 0; transform: translateY(var(--enter-offset)) scale(var(--enter-scale)); } }

@@ -1,5 +1,5 @@
 // The conversation list of the chat page (#197): search, a filter by kind, folded groups, and a virtual list.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { ArrowClockwise, ArrowLeft, BellSlash, MagnifyingGlass, PushPin, UsersThree } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
@@ -18,9 +18,10 @@ const ROW_HEIGHT = 58;
 const LIST_PADDING = 8;
 const SKELETON_ROWS = 8;
 
-function SessionItem({ row, active, now, onClick }: { row: SessionRow; active: boolean; now: Date; onClick(): void }) {
+/** A row of the list; drawn again only when what it shows changes, so a scroll draws only the rows it brings in (#961). */
+const SessionItem = memo(function SessionItem({ row, active, now, onOpen }: { row: SessionRow; active: boolean; now: Date; onOpen(row: SessionRow): void }) {
   return <button type="button" data-row-id={row.id} className={'conversation-row' + (active ? ' active' : '') + (row.muted ? ' muted' : '')}
-    aria-label={row.folded ? t('打开折叠的群聊，共 {count} 个', { count: row.folded.count }) : t('选择{name}', { name: row.name })} aria-pressed={row.folded ? undefined : active} onClick={onClick}>
+    aria-label={row.folded ? t('打开折叠的群聊，共 {count} 个', { count: row.folded.count }) : t('选择{name}', { name: row.name })} aria-pressed={row.folded ? undefined : active} onClick={() => onOpen(row)}>
     {row.folded ? <span className="avatar avatar-initial" aria-hidden="true"><UsersThree size={20} /></span> : <Avatar name={row.name} url={row.avatarUrl} />}
     <span className="conversation-copy">
       <span className="conversation-head"><span className="conversation-name">{row.name}</span>
@@ -35,7 +36,7 @@ function SessionItem({ row, active, now, onClick }: { row: SessionRow; active: b
       </span>
     </span>
   </button>;
-}
+});
 
 /** The conversation list, or where its read stands. */
 export function SessionList({ state, selectedId, onSelect, onRetry, officials = [], onFilter }: {
@@ -73,6 +74,10 @@ export function SessionList({ state, selectedId, onSelect, onRetry, officials = 
     if (row.id === FOLDED_ID) { setFoldedView(true); setQuery(''); return; }
     onSelect(row.id);
   };
+  // the same function from one render to the next, for the rows (SessionItem), calling the latest `open`
+  const opener = useRef(open);
+  opener.current = open;
+  const onOpen = useCallback((row: SessionRow) => opener.current(row), []);
 
   // Up and down move to the next conversation and open it, as in WeChat; Home and End go to either end.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -101,7 +106,7 @@ export function SessionList({ state, selectedId, onSelect, onRetry, officials = 
   } else {
     body = <VirtualList ref={list} data-roving="vertical" data-roving-items=".conversation-row" data-roving-keys="off" className="conversation-list scroll-area" aria-label={t('会话列表')} items={rows} rowHeight={ROW_HEIGHT} padding={LIST_PADDING} track=".conversation-row"
       keyOf={row => row.id} onKeyDown={onKeyDown}
-      renderRow={row => <SessionItem row={row} active={row.id === selectedId} now={now} onClick={() => open(row)} />} />;
+      renderRow={row => <SessionItem row={row} active={row.id === selectedId} now={now} onOpen={onOpen} />} />;
   }
 
   return <div className="session-pane">

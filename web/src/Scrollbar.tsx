@@ -36,42 +36,55 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
     let room = 0;
     let linger = 0;
 
-    const fade = () => {
-      const frame = fades.current;
-      if (!frame) return;
-      const [top, bottom] = frame.firstElementChild!.children;
-      const overflow = room > 1 && area.clientHeight > 0;
-      frame.classList.toggle('scrollable', overflow);
-      top.classList.toggle('shown', overflow && area.scrollTop > 1);
-      bottom.classList.toggle('shown', overflow && area.scrollTop < room - 1);
-      if (!overflow) return;
-      frame.style.left = area.offsetLeft + area.clientLeft + 'px';
-      frame.style.top = area.offsetTop + area.clientTop + 'px';
-      frame.style.width = area.clientWidth + 'px';
-      frame.style.height = area.clientHeight + 'px';
-      // the area's shape, whatever the skin makes it: its corners and its clip
-      const shape = getComputedStyle(area);
-      frame.style.borderRadius = shape.borderRadius;
-      frame.style.clipPath = shape.clipPath;
+    // It runs at every frame of a scroll, and of a panel that grows or shrinks (the sidebar folding): everything is
+    // read first and only then written, so that the page is laid out once a frame and not again for each read (#961),
+    // and a style is set only when it changes.
+    const set = (element: HTMLElement, property: 'left' | 'top' | 'width' | 'height' | 'borderRadius' | 'clipPath' | 'transform', value: string) => {
+      if (element.style[property] !== value) element.style[property] = value;
     };
     const place = () => {
       const { scrollHeight, clientHeight, scrollTop } = area;
       room = scrollHeight - clientHeight;
       const overflow = room > 1 && clientHeight > 0;
+      const left = area.offsetLeft + area.clientLeft;
+      const top = area.offsetTop + area.clientTop;
+      const width = area.clientWidth;
+      // the bar's own width, from its style: it takes none on the page while there is nothing to scroll
+      const barWidth = overflow ? Number.parseFloat(getComputedStyle(bar).width) || 0 : 0;
+      // the area's shape, whatever the skin makes it: its corners and its clip
+      const shape = overflow && fades.current ? getComputedStyle(area) : null;
+      const radius = shape?.borderRadius ?? '';
+      const clip = shape?.clipPath ?? '';
+
       bar.classList.toggle('scrollable', overflow);
-      fade();
+      const frame = fades.current;
+      if (frame) {
+        const [above, below] = frame.firstElementChild!.children;
+        frame.classList.toggle('scrollable', overflow);
+        above.classList.toggle('shown', overflow && scrollTop > 1);
+        below.classList.toggle('shown', overflow && scrollTop < room - 1);
+        if (overflow) {
+          set(frame, 'left', left + 'px');
+          set(frame, 'top', top + 'px');
+          set(frame, 'width', width + 'px');
+          set(frame, 'height', clientHeight + 'px');
+          set(frame, 'borderRadius', radius);
+          set(frame, 'clipPath', clip);
+        }
+      }
       if (!overflow) return;
       const height = clientHeight - 2 * INSET;
-      bar.style.top = area.offsetTop + area.clientTop + INSET + 'px';
-      bar.style.left = area.offsetLeft + area.clientLeft + area.clientWidth - bar.offsetWidth + 'px';
-      bar.style.height = height + 'px';
+      set(bar, 'top', top + INSET + 'px');
+      set(bar, 'left', left + width - barWidth + 'px');
+      set(bar, 'height', height + 'px');
       const size = Math.min(height, Math.max(MIN_THUMB, (height * clientHeight) / scrollHeight));
       travel = height - size;
-      knob.style.height = size + 'px';
-      knob.style.transform = 'translateY(' + (travel * Math.min(1, scrollTop / room)) + 'px)';
+      set(knob, 'height', size + 'px');
+      set(knob, 'transform', 'translateY(' + (travel * Math.min(1, scrollTop / room)) + 'px)');
     };
     const show = () => {
-      bar.classList.add('active');
+      // added only when it is not there: adding it again would still be a change of the class to whoever watches
+      if (!bar.classList.contains('active')) bar.classList.add('active');
       window.clearTimeout(linger);
       linger = window.setTimeout(() => bar.classList.remove('active'), LINGER_MS);
     };

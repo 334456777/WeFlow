@@ -31,6 +31,26 @@ describe('VirtualList', () => {
     expect(list.scrollTop).toBe(1001 * 58 - 580);
   });
 
+  it('draws its rows again only when the rows in sight change, not at every scroll (#961)', async () => {
+    let drawn = 0;
+    const { container } = render(<VirtualList items={items} rowHeight={58} keyOf={item => item} renderRow={item => { drawn += 1; return <span>{item}</span>; }} />);
+    const list = container.querySelector('.virtual-list') as HTMLElement;
+    Object.defineProperty(list, 'clientHeight', { value: 580, configurable: true });
+    const scrollTo = async (top: number) => {
+      list.scrollTop = top;
+      list.dispatchEvent(new Event('scroll'));
+      await act(() => new Promise(resolve => requestAnimationFrame(() => resolve(undefined))));
+    };
+    await scrollTo(1);
+    const settled = drawn;
+    await scrollTo(20);
+    await scrollTo(57);
+    expect(drawn).toBe(settled);
+    await scrollTo(58 * 10);
+    expect(drawn).toBeGreaterThan(settled);
+    expect(Array.from(container.querySelectorAll('.virtual-row'), row => row.textContent)).toContain('row 14');
+  });
+
   it('gives each row a seed of its item’s key, the same wherever the row is drawn (#831)', () => {
     const ref = createRef<VirtualListHandle>();
     const { container } = render(<VirtualList ref={ref} items={items} rowHeight={58} keyOf={item => item} renderRow={item => <span>{item}</span>} />);
