@@ -70,7 +70,7 @@ weflow key image --save
 ```powershell
 weflow db test
 ```
-> stdout: `accountDir: C:\Users\<你>\Documents\xwechat_files\wxid_xxxxxxxx_xxxx`<br>&emsp;&emsp;&emsp;&emsp13;`connected: true`
+> stdout: `accountDir: C:\Users\<你>\Documents\xwechat_files\wxid_xxxxxxxx_xxxx`<br>stdout: `connected: true`
 
 6. 尝试列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
 ```powershell
