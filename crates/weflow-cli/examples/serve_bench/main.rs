@@ -8,7 +8,8 @@
 //! Build both programs in the same profile, then run the example:
 //! `cargo build --release -p weflow-cli --bin weflow --example serve_bench`, then
 //! `target/release/examples/serve_bench <work dir> --home <WEFLOW_HOME>`. The `weflow` one folder above the example
-//! is started unless `--weflow` names another.
+//! is started unless `--weflow` names another. It runs with `--api-only`: the WebUI is neither served nor downloaded,
+//! so the arguments after `--` cannot include `--ui-dir` or `--web-version`.
 //!
 //! The synthetic account: `<work dir>/data` (rebuilt only when a size option changes) holds one group with
 //! `--messages` messages (default 200000) over 4 message databases, every 20th an image whose `.dat` files exist for
