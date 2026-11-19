@@ -429,7 +429,7 @@ impl<'c> Lazy<'c> {
     /// Bytes `from..to` of the page, decrypted.
     fn bytes(&mut self, from: usize, to: usize) -> Result<&[u8]> {
         if from > to || to > USABLE {
-            bail!("a cell runs past the page ({from}..{to})");
+            bail!("a cell runs past the page: bytes {from}..{to}");
         }
         let (mut block, end) = (from / BLOCK, to.div_ceil(BLOCK));
         while block < end {

@@ -37,7 +37,7 @@ pub fn parse_key(hex_key: &str) -> Result<[u8; 32]> {
     let hex_key = hex_key.trim();
     if hex_key.len() != 64 {
         bail!(
-            "database key must be 64 hex characters (got {})",
+            "database key must be 64 hex characters, got {}",
             hex_key.len()
         );
     }
@@ -127,7 +127,7 @@ impl PageCipher {
         mac.update(signed);
         mac.update(&pgno.to_le_bytes());
         mac.verify_slice(stored_mac).map_err(|_| {
-            anyhow!("HMAC check failed for page {pgno} (wrong key, or the page is corrupt)")
+            anyhow!("HMAC check failed for page {pgno}: wrong key, or the page is corrupt")
         })
     }
 
@@ -165,10 +165,10 @@ impl PageCipher {
 /// Cheap key check: derive the keys and verify page 1 of `db`.
 fn verify_key(db: &[u8], raw_key: &[u8; 32]) -> Result<PageCipher> {
     if db.len() < PAGE_SIZE {
-        bail!("file is smaller than one page ({} bytes)", db.len());
+        bail!("file is smaller than one page: {} bytes", db.len());
     }
     if &db[..SQLITE_MAGIC.len()] == SQLITE_MAGIC {
-        bail!("file is a plain (unencrypted) SQLite database");
+        bail!("file is a plain SQLite database, not an encrypted one");
     }
     let cipher = PageCipher::derive(raw_key, &db[..SALT_LEN]);
     check_page1(&cipher, db)?;

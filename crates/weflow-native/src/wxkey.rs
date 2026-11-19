@@ -265,8 +265,8 @@ pub enum DbKeyError {
 impl std::fmt::Display for DbKeyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::AccessDenied(d) => write!(f, "access denied: cannot open the WeChat process ({d})"),
-            Self::Timeout => write!(f, "timed out waiting for the key; log in to WeChat (or restart it) while the command is running"),
+            Self::AccessDenied(d) => write!(f, "access denied: cannot open the WeChat process: {d}"),
+            Self::Timeout => write!(f, "timed out waiting for the key; log in to WeChat, or restart it, while the command is running"),
             Self::Interrupted => write!(f, "interrupted by user"),
             Self::NotReady(m) | Self::Unsupported(m) | Self::Other(m) => write!(f, "{m}"),
         }
@@ -282,8 +282,8 @@ mod tests {
     fn the_macos_hooks_failures_are_told_apart() {
         let kind = |m: &str| macos_db_key_error(m.to_string());
         for scan in [
-            "scan:No suitable module found (wechat.dylib or WeChat >100MB)",
-            "scan:Both wechat.dylib and main binary >100MB found (ambiguous)",
+            "scan:No suitable module found: neither wechat.dylib nor a WeChat binary over 100MB",
+            "scan:Both wechat.dylib and the main binary are over 100MB, so which to scan is ambiguous",
             "scan:Sink pattern not found",
         ] {
             assert_eq!(

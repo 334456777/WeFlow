@@ -876,7 +876,7 @@ impl ServiceHub {
                 .map(|(k, n)| (k.to_string(), n))
                 .collect(),
             thumb_only,
-            note: "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)".into(),
+            note: "missing = media messages whose file is not on disk, as WeChat has not downloaded it, or could not be resolved; stickers need network access.\nthumbOnly = exported images that are only the thumbnail; open the original in WeChat, then export again for the HD image.".into(),
             sessions: sessions.len(),
             out: out.to_path_buf(),
             files,

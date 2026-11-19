@@ -23,9 +23,9 @@ pub(crate) enum DbSubcommand {
     },
     /// Open the configured database with the key and show a short summary
     Test,
-    /// Show the wxid of the account(s) in the WeChat data directory (the value for `config set wxid`)
+    /// Show the wxid of each account in the WeChat data directory, the value `config set wxid` takes
     Wxid {
-        /// WeChat data directory (default: `db_path` from the config, else the usual locations)
+        /// WeChat data directory; default: `db_path` from the config, else the usual locations
         root: Option<String>,
     },
 }

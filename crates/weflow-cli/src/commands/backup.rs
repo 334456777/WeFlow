@@ -21,16 +21,16 @@ enum BackupSubcommand {
         /// Output file
         #[arg(long)]
         out: PathBuf,
-        /// Also back up the images WeChat keeps (msg/attach)
+        /// Also back up the images WeChat keeps in msg/attach
         #[arg(long)]
         images: bool,
-        /// Also back up the videos WeChat keeps (msg/video)
+        /// Also back up the videos WeChat keeps in msg/video
         #[arg(long)]
         videos: bool,
-        /// Also back up the files sent and received (msg/file)
+        /// Also back up the files sent and received, kept in msg/file
         #[arg(long)]
         files: bool,
-        /// Also back up the stickers WeFlow downloaded (its sticker cache)
+        /// Also back up the stickers WeFlow downloaded, its sticker cache
         #[arg(long)]
         emojis: bool,
     },
@@ -43,7 +43,7 @@ enum BackupSubcommand {
     Restore {
         /// Backup file
         path: PathBuf,
-        /// Folder to restore into (default: the current directory)
+        /// Folder to restore into; default: the current directory
         #[arg(long)]
         out: Option<PathBuf>,
     },

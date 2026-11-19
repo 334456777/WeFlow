@@ -615,7 +615,7 @@ fn register_vfs() -> Result<()> {
         match ffi::sqlite3_vfs_register(Box::leak(vfs), 0) {
             ffi::SQLITE_OK => Ok(()),
             rc => Err(format!(
-                "cannot register the decrypting SQLite VFS (code {rc})"
+                "cannot register the decrypting SQLite VFS: code {rc}"
             )),
         }
     })

@@ -151,7 +151,7 @@ const MIDDLE: &[u8] = &[
 /// Versions after 4.1.6.14 match the [`OLD`] bytes again, with the capture point at another distance from them.
 pub(super) fn signature(version: [u16; 4]) -> Result<Signature> {
     if version[0] != 4 {
-        bail!("unsupported WeChat version (requires WeChat 4.x x64)");
+        bail!("unsupported WeChat version: WeChat 4.x x64 is required");
     }
     Ok(if version > [4, 1, 6, 14] {
         Signature {

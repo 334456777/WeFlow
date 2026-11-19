@@ -54,9 +54,10 @@ jpeg-decoder = { version = "0.3", default-features = false }
 [target."cfg(unix)".dependencies]
 libc = "0.2"
 
-# lists running processes (WeChat's pids) without starting `tasklist`, and reads their command lines (#101)
+# lists running processes (WeChat's pids) without starting `tasklist`, and reads their command lines (#101); turns on
+# colours in the console (`colour`)
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Diagnostics_Debug", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_System_Threading", "Wdk_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Diagnostics_Debug", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_System_Threading", "Wdk_System_Threading"] }
 
 [dev-dependencies]
 # tests/webui_e2e.rs serves WebUI packages from a registry of its own

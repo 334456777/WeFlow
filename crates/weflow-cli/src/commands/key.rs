@@ -7,8 +7,10 @@ use clap::{Args, Subcommand};
 use super::cache::cache_summary;
 use crate::{serve_api, KeyShown, Summary};
 use serde_json::{json, Value};
+use weflow_core::colour::{Paint, Role};
 use weflow_core::config::ConfigStore;
 use weflow_core::error::{AppError, AppResult};
+use weflow_core::render::{field, labelled};
 use weflow_core::services::ServiceHub;
 
 #[derive(Args, Debug)]
@@ -19,9 +21,9 @@ pub(crate) struct KeyCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum KeySubcommand {
-    /// Hook WeChat and wait for the database key (keep the command running and log in to WeChat)
+    /// Hook WeChat and wait for the database key; keep the command running and log in to WeChat
     Db {
-        /// WeChat process id (default: the first Weixin.exe / WeChat.exe found)
+        /// WeChat process id; default: the first Weixin.exe or WeChat.exe found
         #[arg(long)]
         pid: Option<u32>,
         /// How long to wait for the key, in seconds
@@ -31,34 +33,34 @@ pub(crate) enum KeySubcommand {
         #[arg(long)]
         save: bool,
     },
-    /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template; Windows, Linux x64 and macOS)
+    /// Derive the image keys from WeChat's kvcomm cache and verify them against a .dat template; Windows, Linux x64 and macOS
     Image {
-        /// Account directory to search for templates (default: the configured account directory)
+        /// Account directory to search for templates; default: the configured account directory
         #[arg(long)]
         user_dir: Option<String>,
-        /// kvcomm directories (repeat for net, net_1, etc.; default on Windows, Linux x64 and macOS: WeChat's existing net*/kvcomm directories)
+        /// kvcomm directories; repeat for net, net_1 and the like. Default on Windows, Linux x64 and macOS: WeChat's existing net*/kvcomm directories
         #[arg(long, action = clap::ArgAction::Append)]
         kvcomm_dir: Vec<PathBuf>,
-        /// Maximum filesystem entries scanned for templates in the selected account (default: 10000)
+        /// Maximum filesystem entries scanned for templates in the selected account; default: 10000
         #[arg(long)]
         scan_budget: Option<usize>,
         /// Save the keys to the active profile instead of printing them
         #[arg(long)]
         save: bool,
     },
-    /// Scan WeChat's memory for the image AES key (Linux x64 and macOS)
+    /// Scan WeChat's memory for the image AES key; Linux x64 and macOS
     ImageMem {
-        /// WeChat process id (default: the running WeChat)
+        /// WeChat process id; default: the running WeChat
         #[arg(long)]
         pid: Option<u32>,
-        /// 32 hex characters of the 16-byte encrypted block (default: from the newest thumbnails of the configured account, which also give the XOR key)
+        /// 32 hex characters of the 16-byte encrypted block; default: taken from the newest thumbnails of the configured account, which also give the XOR key
         #[arg(long, value_name = "HEX")]
         ciphertext: Option<String>,
         /// Save the keys to the active profile instead of printing them
         #[arg(long)]
         save: bool,
     },
-    /// List the running WeChat processes (macOS)
+    /// List the running WeChat processes; macOS only
     Processes,
 }
 
@@ -174,19 +176,23 @@ pub(crate) fn handle_key(
 }
 
 /// The answer of `summary`'s command in words, or `None` to show it as it is.
-pub(crate) fn key_summary(summary: Summary, data: &Value) -> Option<String> {
+pub(crate) fn key_summary(summary: Summary, data: &Value, paint: Paint) -> Option<String> {
     use weflow_core::locale::tr;
+    let field = |name: &str, value: &str| field(name, value, paint);
     match summary {
-        Summary::Cache(shown) => cache_summary(shown, data),
+        Summary::AlreadySaid => Some(String::new()),
+        Summary::Cache(shown) => cache_summary(shown, data, paint),
         // silent unless the key is spelt almost as one WeFlow reads (#813)
         Summary::ConfigSaved => Some(match data["didYouMean"].as_str() {
-            Some(known) => format!(
-                "{}\n",
-                tr(
-                    "Saved, but WeFlow does not read this key; did you mean {known}?",
-                    "已保存，但 WeFlow 不读取这个键；是否想写 {known}？"
+            Some(known) => labelled(
+                tr("warning:", "警告："),
+                Role::Warning,
+                &tr(
+                    "saved, but WeFlow does not read this key\nDid you mean {known}?",
+                    "已保存，但 WeFlow 不读取这个键\n是否想写 {known}？",
                 )
-                .replace("{known}", known)
+                .replace("{known}", known),
+                paint,
             ),
             None => String::new(),
         }),
@@ -204,33 +210,45 @@ pub(crate) fn key_summary(summary: Summary, data: &Value) -> Option<String> {
                     tr("No WeChat data directory found", "未找到微信数据目录")
                 )
             } else {
-                found.iter().map(|p| format!("db_path: {p}\n")).collect()
+                found.iter().map(|p| field("db_path:", p)).collect()
             })
         }
         Summary::DbWxid => {
             let accounts = data["accounts"].as_array()?;
             Some(match accounts.as_slice() {
-                [one] => format!("wxid: {}\n", one["wxid"].as_str()?),
+                [one] => field("wxid:", one["wxid"].as_str()?),
                 many => many
                     .iter()
                     .map(|a| {
-                        format!(
-                            "wxid: {}  {}\n",
-                            a["wxid"].as_str().unwrap_or(""),
-                            a["path"].as_str().unwrap_or("")
+                        field(
+                            "wxid:",
+                            &format!(
+                                "{}  {}",
+                                a["wxid"].as_str().unwrap_or(""),
+                                paint.paint(Role::Muted, a["path"].as_str().unwrap_or(""))
+                            ),
                         )
                     })
                     .collect(),
             })
         }
-        Summary::Key(shown) => keys_summary(shown, data),
+        Summary::Key(shown) => keys_summary(shown, data, paint),
     }
 }
 
 /// `key db`, `image` and `image-mem`: the keys under the names `config set` expects, so they can be copied over,
-/// or that they were saved.
-fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
+/// or that they were saved. What was obtained is green; what was not checked is a yellow line of its own.
+fn keys_summary(shown: KeyShown, data: &Value, paint: Paint) -> Option<String> {
     use weflow_core::locale::tr;
+    let field = |name: &str, value: &str| field(name, value, paint);
+    let success = |text: &str| format!("{}\n", paint.paint(Role::Success, text));
+    let caveat = |text: &str| format!("{}\n", paint.paint(Role::Warning, text));
+    let header_unverified = || {
+        caveat(tr(
+            "The AES header is verified; XOR and the complete pair are not.",
+            "AES 首块已验证；XOR 与整组密钥尚未验证。",
+        ))
+    };
     if data.get("saved").is_some() {
         let what = match shown {
             KeyShown::Db => tr("Database key", "数据库密钥"),
@@ -245,44 +263,38 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
             KeyShown::ImageMem => tr("Image AES key", "图片 AES 密钥"),
             KeyShown::Processes => tr("WeChat processes", "微信进程"),
         };
-        let mut text = format!(
-            "{}\n",
-            tr(
+        let mut text = success(
+            &tr(
                 "{what} obtained and saved to the active profile",
-                "已获取{what}，已保存到当前档案"
+                "已获取{what}，已保存到当前档案",
             )
-            .replace("{what}", what)
+            .replace("{what}", what),
         );
         if data["verified"] == false {
-            text.push_str(tr(
-                "(AES header verified; XOR and the complete pair are not verified)\n",
-                "（AES 首块已验证；XOR 与整组密钥尚未验证）\n",
-            ));
+            text.push_str(&header_unverified());
         }
         return Some(text);
     }
     match shown {
         KeyShown::Db => {
             let key = data["decrypt_key"].as_str()?;
-            Some(format!(
-                "{}\ndecrypt_key: {key}\n",
-                tr("Database key obtained", "已获取数据库密钥")
-            ))
+            Some(
+                success(tr("Database key obtained", "已获取数据库密钥"))
+                    + &field("decrypt_key:", key),
+            )
         }
         KeyShown::Image => {
             let xor = &data["image_xor_key"];
             let aes = data["image_aes_key"].as_str()?;
-            let mut text = format!(
-                "{}\nimage_xor_key: {}\nimage_aes_key: {aes}\n",
-                tr("Image keys obtained", "已获取图片密钥"),
-                xor.as_i64()
-                    .map_or_else(|| xor.to_string(), |n| n.to_string())
-            );
+            let mut text = success(tr("Image keys obtained", "已获取图片密钥"));
+            text.push_str(&field(
+                "image_xor_key:",
+                &xor.as_i64()
+                    .map_or_else(|| xor.to_string(), |n| n.to_string()),
+            ));
+            text.push_str(&field("image_aes_key:", aes));
             if data["verified"] == false {
-                text.push_str(tr(
-                    "(AES header verified; XOR and the complete pair are not verified)\n",
-                    "（AES 首块已验证；XOR 与整组密钥尚未验证）\n",
-                ));
+                text.push_str(&header_unverified());
             }
             Some(text)
         }
@@ -294,20 +306,18 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
                 ));
             };
             let mut text = match data["image_xor_key"].as_u64() {
-                Some(xor) => format!(
-                    "{}\nimage_xor_key: {xor}\nimage_aes_key: {key}\n",
-                    tr("Image keys obtained", "已获取图片密钥")
-                ),
-                None => format!(
-                    "{}\nimage_aes_key: {key}\n",
-                    tr("Image AES key obtained", "已获取图片 AES 密钥")
-                ),
+                Some(xor) => {
+                    success(tr("Image keys obtained", "已获取图片密钥"))
+                        + &field("image_xor_key:", &xor.to_string())
+                }
+                None => success(tr("Image AES key obtained", "已获取图片 AES 密钥")),
             };
+            text.push_str(&field("image_aes_key:", key));
             if data["verification"] == "first_block" {
-                text.push_str(tr(
-                    "(only the given block was checked; the key is not verified against the account's images)\n",
-                    "（只验证了给定的这一块，未用账号的图片验证这个密钥）\n",
-                ));
+                text.push_str(&caveat(tr(
+                    "Only the given block was checked; the key is not verified against the account's images.",
+                    "只验证了给定的这一块，未用账号的图片验证这个密钥。",
+                )));
             }
             Some(text)
         }
@@ -316,17 +326,24 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
             Some(if processes.is_empty() {
                 format!("{}\n", tr("No WeChat process found", "未找到微信进程"))
             } else {
-                processes
+                let rows: Vec<Vec<String>> = processes
                     .iter()
                     .map(|process| {
-                        let main = if process["main"] == true { "*" } else { " " };
-                        format!(
-                            "{main} {}  {}  {}\n",
-                            process["pid"].as_u64().unwrap_or(0),
-                            process["name"].as_str().unwrap_or(""),
-                            process["path"].as_str().unwrap_or("")
-                        )
+                        vec![
+                            process["pid"].as_u64().unwrap_or(0).to_string(),
+                            process["name"].as_str().unwrap_or("").to_string(),
+                            if process["main"] == true {
+                                tr("main", "主程序").to_string()
+                            } else {
+                                String::new()
+                            },
+                            process["path"].as_str().unwrap_or("").to_string(),
+                        ]
                     })
+                    .collect();
+                crate::term::align_columns(&rows)
+                    .into_iter()
+                    .map(|line| format!("{line}\n"))
                     .collect()
             })
         }
@@ -338,6 +355,14 @@ mod tests {
     use super::*;
     use crate::cli::{Cli, Commands};
     use clap::Parser;
+
+    fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
+        super::keys_summary(shown, data, Paint::plain())
+    }
+
+    fn key_summary(summary: Summary, data: &Value) -> Option<String> {
+        super::key_summary(summary, data, Paint::plain())
+    }
 
     #[test]
     fn saved_keys_go_to_the_profile() {
@@ -499,6 +524,9 @@ mod tests {
         .unwrap();
         assert!(text.contains("7"));
         assert!(text.contains("WeChat.app"));
+        let first = text.lines().next().unwrap();
+        assert!(first.contains("main") || first.contains("主程序"), "{text}");
+        assert!(!text.contains('*') && !text.contains('('), "{text}");
         let empty = keys_summary(KeyShown::Processes, &json!({ "processes": [] })).unwrap();
         assert!(empty.contains("No WeChat process") || empty.contains("未找到"));
     }

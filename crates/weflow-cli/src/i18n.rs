@@ -115,11 +115,11 @@ const BUILTIN: &[(&str, &str)] = &[
     ("Arguments:", "参数："),
     (
         "Print help (see more with '--help')",
-        "打印帮助（使用 '--help' 查看更多）",
+        "打印帮助；--help 显示更多",
     ),
     (
         "Print help (see a summary with '-h')",
-        "打印帮助（使用 '-h' 查看摘要）",
+        "打印帮助；-h 显示摘要",
     ),
     ("Print help", "打印帮助"),
     ("Print version", "打印版本"),
@@ -196,7 +196,6 @@ const BUILTIN: &[(&str, &str)] = &[
         "  tip: to pass '{}' as a value, use '{}'",
         "  提示：如需将 '{0}' 作为值传入，请使用 '{1}'",
     ),
-    ("  [possible values: {}]", "  [可选值：{}]"),
     (
         "  tip: some similar values exist: {}",
         "  提示：存在相似的值：{}",
@@ -205,9 +204,6 @@ const BUILTIN: &[(&str, &str)] = &[
         "  tip: a similar value exists: '{}'",
         "  提示：存在相似的值：'{}'",
     ),
-    ("[possible values: {}]", "[可选值：{}]"),
-    ("[default: {}]", "[默认值：{}]"),
-    ("[env: {}]", "[环境变量：{}]"),
     ("  Usage: {}", "  用法：{}"),
     ("Usage: {}", "用法：{}"),
 ];
@@ -226,20 +222,17 @@ fn localize_rendered(text: &str) -> String {
 fn inline_notes(line: &str) -> String {
     let mut line = line.to_string();
     for (en, zh) in [
-        ("[possible values: ", "[可选值："),
-        ("[default: ", "[默认值："),
-        ("[env: ", "[环境变量："),
         (
             "Print this message or the help of the given subcommand(s)",
             "打印此消息或指定子命令的帮助",
         ),
         (
             "Print help (see more with '--help')",
-            "打印帮助（使用 '--help' 查看更多）",
+            "打印帮助；--help 显示更多",
         ),
         (
             "Print help (see a summary with '-h')",
-            "打印帮助（使用 '-h' 查看摘要）",
+            "打印帮助；-h 显示摘要",
         ),
         ("Print help", "打印帮助"),
         ("Print version", "打印版本"),
@@ -293,14 +286,16 @@ pub fn try_parse_from<T: CommandFactory + FromArgMatches>(args: &[String]) -> Re
         .and_then(|m| T::from_arg_matches(&m))
 }
 
-/// What clap says of `err`, in the active language, the options last in a usage line.
+/// What clap says of `err`, in the active language, the options last in a usage line and its bracketed notes in
+/// words.
 fn rendered(err: &Error) -> String {
     let text = options_last(&err.to_string());
-    if locale::current() == Lang::Zh {
+    let text = if locale::current() == Lang::Zh {
         localize_rendered(&text)
     } else {
         text
-    }
+    };
+    crate::help_style::plain_notes(&text)
 }
 
 /// The `--json` document of a parse error and its exit code, as `--json` prints them; `None` for help and the
@@ -365,6 +360,8 @@ fn exit_with(err: Error) -> ! {
             std::process::exit(exit);
         }
     }
+    use crate::help_style::painted;
+    use weflow_core::colour::{Paint, Stream};
     let text = rendered(&err);
     match err.kind() {
         ErrorKind::DisplayHelp
@@ -372,12 +369,12 @@ fn exit_with(err: Error) -> ! {
         | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
             let to_stderr = err.kind() == ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand;
             if to_stderr {
-                eprint!("{text}");
+                eprint!("{}", painted(&text, Paint::of(Stream::Stderr)));
             } else {
-                print!("{text}");
+                print!("{}", painted(&text, Paint::of(Stream::Stdout)));
             }
         }
-        _ => eprint!("{text}"),
+        _ => eprint!("{}", painted(&text, Paint::of(Stream::Stderr))),
     }
     std::process::exit(err.exit_code());
 }

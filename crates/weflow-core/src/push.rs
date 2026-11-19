@@ -1076,7 +1076,7 @@ impl PushEngine {
             .map(|c| c.trim().to_string())
             .filter(|c| !c.is_empty())
             .unwrap_or_else(|| "未知内容".into());
-        let content = format!("对方撤回了一条消息（rawid：{raw_id}） 内容为“{safe}”");
+        let content = format!("对方撤回了一条消息，rawid：{raw_id}，内容为“{safe}”");
         self.remember_revoked_tokens(&session_id, original.as_ref(), revoked_id.as_deref(), m);
         if session_id.ends_with("@chatroom") {
             let info = self.hub.chat_contact_avatar(&session_id);

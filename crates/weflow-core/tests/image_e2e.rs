@@ -581,7 +581,9 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
     let sent = weflow_core::message::time::format_timestamp(1_700_000_000);
     assert_eq!(
         r.error.unwrap(),
-        format!("WXGF image sent {sent} cannot be converted: the data is damaged (no picture)")
+        format!(
+            "WXGF image sent {sent} cannot be converted because the data is damaged: no picture"
+        )
     );
     assert!(
         !hub.image_resolve_cache(&p).success,
