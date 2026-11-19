@@ -755,6 +755,11 @@ impl Account {
     }
 
     /// Image/video messages across sessions, newest first; returns the page and whether more remain.
+    ///
+    /// Each conversation gives only its newest `offset + limit + 1` rows of the types, read through the
+    /// `(local_type, sort_seq)` index ([`typed_before`](Self::typed_before)), so a page costs what the rows up to it
+    /// do, not every image and video of the account. Rows tied on their sort key keep the order of `session_ids`,
+    /// then of the shards. `limit <= 0` asks for every row after `offset`.
     pub fn scan_media_stream(
         &self,
         session_ids: &[String],
@@ -764,50 +769,34 @@ impl Account {
         limit: i32,
         offset: i32,
     ) -> Result<(Vec<SessionRow>, bool)> {
-        let kinds = match media_type {
-            1 => vec![IMAGE],
-            2 => vec![VIDEO],
-            _ => vec![IMAGE, VIDEO],
+        let kinds: &[i64] = match media_type {
+            1 => &[IMAGE],
+            2 => &[VIDEO],
+            _ => &[IMAGE, VIDEO],
         };
-        let kinds = kinds
-            .iter()
-            .map(i64::to_string)
-            .collect::<Vec<_>>()
-            .join(",");
-        let range = range_sql(begin, end);
-        let offset = offset.max(0) as usize;
-        // `limit <= 0` asks for everything after `offset`
-        let k = if limit > 0 {
-            offset + limit as usize
-        } else {
-            usize::MAX
-        };
-        let mut rows: Newest<SessionRow> = Newest::new(k);
+        let offset = usize::try_from(offset).unwrap_or(0);
+        let page_end = usize::try_from(limit)
+            .ok()
+            .filter(|&l| l > 0)
+            .map(|l| offset.saturating_add(l));
+        // one row past the page from each conversation tells whether more remain; -1 reads them all
+        let want = page_end.map_or(-1, |e| {
+            i64::try_from(e.saturating_add(1)).unwrap_or(i64::MAX)
+        });
+        let mut rows: Newest<SessionRow> = Newest::new(page_end.unwrap_or(usize::MAX));
         for (sid, tables) in session_ids.iter().zip(self.message_tables_of(session_ids)?) {
-            for t in tables {
-                let sql = Self::select_sql(&t, &format!("where m.local_type in ({kinds}){range}"));
-                let table_rows = std::cell::RefCell::new(Newest::new(k));
-                self.read_rows_each(
-                    &t,
-                    &sql,
-                    &[],
-                    || *table_rows.borrow_mut() = Newest::new(k),
-                    |row| {
-                        table_rows.borrow_mut().push_keyed(
-                            row.key(),
-                            SessionRow {
-                                session_id: sid.clone(),
-                                row,
-                            },
-                        );
+            for row in self.typed_before(&tables, kinds, None, (begin, end), 0, want)? {
+                rows.push_keyed(
+                    row.key(),
+                    SessionRow {
+                        session_id: sid.clone(),
+                        row,
                     },
-                )?;
-                rows.absorb(table_rows.into_inner());
+                );
             }
         }
-        let found = rows.found;
+        let more = page_end.is_some_and(|e| rows.found > e);
         let page: Vec<SessionRow> = rows.into_rows().into_iter().skip(offset).collect();
-        let more = limit > 0 && found > offset + limit as usize;
         Ok((page, more))
     }
 
@@ -1527,6 +1516,118 @@ mod tests {
         assert_eq!(both, rows);
         let (page, more) = a.scan_media_stream(&ids, 1, 0, 0, 1, 1).unwrap();
         assert!(page.is_empty() && !more);
+    }
+
+    /// Every page of `scan_media_stream` is the slice a stable newest-first sort of all the matching rows gives
+    /// (conversations in the order asked, then shards), with ties across conversations and shards, rows without a
+    /// `sort_seq`, other types mixed in and a time range.
+    #[test]
+    fn media_stream_pages_are_slices_of_every_row_sorted() {
+        use crate::fixture::{Fixture, MsgSpec};
+        let root = TestDir::new("weflow-media-stream-pages");
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        // a fixed LCG keeps it reproducible; small ranges make ties common
+        let mut x: u64 = 7;
+        let mut next = |m: u64| {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            i64::try_from((x >> 33) % m).expect("small")
+        };
+        let sessions = ["wxid_bob", "room1@chatroom", "wxid_carol"];
+        for shard in 0..2u32 {
+            let per_session: Vec<(&str, Vec<MsgSpec>)> = sessions
+                .iter()
+                .map(|&sid| {
+                    let msgs = (1..=40)
+                        .map(|local_id| {
+                            let create_time = T0 + next(6) * 60;
+                            let local_type =
+                                [IMAGE, VIDEO, 1, 34][usize::try_from(next(4)).expect("small")];
+                            let spec = MsgSpec::text(
+                                local_id,
+                                "wxid_bob",
+                                create_time,
+                                &format!("{sid}/{shard}/{local_id}"),
+                            )
+                            .of_type(local_type);
+                            // a few rows without a sort_seq, the rest on a coarse grid so keys tie across tables
+                            match next(5) {
+                                0 => spec.with_sort_seq(0),
+                                _ => spec.with_sort_seq(create_time * 1000 + next(3)),
+                            }
+                        })
+                        .collect();
+                    (sid, msgs)
+                })
+                .collect();
+            f.message_shard(shard, &per_session);
+        }
+        let a = Account::new(f.db_storage(), &f.key_hex()).unwrap();
+        let ids: Vec<String> = sessions.iter().map(|s| (*s).to_string()).collect();
+
+        for (media_type, kinds) in [(1, "3"), (2, "43"), (0, "3,43")] {
+            for (begin, end) in [(0, 0), (T0 + 60, T0 + 240)] {
+                let mut every: Vec<SessionRow> = Vec::new();
+                for (sid, tables) in ids.iter().zip(a.message_tables_of(&ids).unwrap()) {
+                    for t in &tables {
+                        let sql = Account::select_sql(
+                            t,
+                            &format!("where m.local_type in ({kinds}){}", range_sql(begin, end)),
+                        );
+                        every.extend(a.read_rows(t, &sql, &[]).unwrap().into_iter().map(|row| {
+                            SessionRow {
+                                session_id: sid.clone(),
+                                row,
+                            }
+                        }));
+                    }
+                }
+                every.sort_by_key(|p| std::cmp::Reverse(p.row.key()));
+                assert!(
+                    every.len() > 20,
+                    "enough rows to page through: {}",
+                    every.len()
+                );
+                for (limit, offset) in [
+                    (1, 0),
+                    (5, 0),
+                    (5, 3),
+                    (7, 14),
+                    (50, 0),
+                    (3, every.len() - 2),
+                    (4, every.len() + 1),
+                    (0, 0),
+                    (0, 9),
+                ] {
+                    let (page, more) = a
+                        .scan_media_stream(
+                            &ids,
+                            media_type,
+                            begin,
+                            end,
+                            i32::try_from(limit).unwrap(),
+                            i32::try_from(offset).unwrap(),
+                        )
+                        .unwrap();
+                    let want: Vec<&SessionRow> = every
+                        .iter()
+                        .skip(offset)
+                        .take(if limit == 0 { usize::MAX } else { limit })
+                        .collect();
+                    let got: Vec<&SessionRow> = page.iter().collect();
+                    assert_eq!(
+                        got, want,
+                        "type {media_type}, range ({begin}, {end}), limit {limit}, offset {offset}"
+                    );
+                    assert_eq!(
+                        more,
+                        limit > 0 && every.len() > offset + limit,
+                        "more: type {media_type}, limit {limit}, offset {offset}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
