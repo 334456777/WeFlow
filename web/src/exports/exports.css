@@ -15,7 +15,7 @@
 .format-lane-bar {
   display: block; height: 4px; margin-top: 2px; border-radius: var(--radius-full); box-shadow: var(--track-shadow);
   background: linear-gradient(90deg, transparent 30%, var(--fg-muted) 50%, transparent 70%) 0 0 / 300% 100%;
-  animation: shimmer var(--loop-sweep) linear infinite;
+  animation: shimmer var(--loop-sweep) linear infinite; animation-play-state: var(--sweep);
 }
 .format-lanes .done { color: var(--fg); }
 .format-lanes .done .format-lane-bar { background: var(--fg-muted); animation: none; }
