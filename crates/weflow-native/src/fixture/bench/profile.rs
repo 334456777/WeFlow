@@ -24,30 +24,45 @@ pub type Spread = (f64, f64, f64);
 pub struct Profile {
     /// The day it was measured, `YYYY-MM-DD`.
     pub measured: String,
+    /// The messages' types and columns.
     pub messages: MessageProfile,
+    /// When the messages are sent.
     pub time: TimeProfile,
+    /// What the texts hold.
     pub text: TextProfile,
+    /// The groups.
     pub groups: GroupProfile,
+    /// The media files.
     pub media: MediaProfile,
 }
 
+/// The shares of the messages' types and columns.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MessageProfile {
     /// `(local_type, share)`; an app message's local type is `(its type << 32) | 49`.
     pub types: Vec<(i64, f64)>,
+    /// The share of a group's messages the owner sends.
     pub sent_in_group: f64,
+    /// The share of a private chat's messages the owner sends.
     pub sent_in_private: f64,
+    /// The share of a group's messages that @-mention someone.
     pub at_in_group: f64,
+    /// The share of messages with a `source` (`msgsource` XML).
     pub with_source: f64,
+    /// The share of those sources stored compressed.
     pub source_compressed: f64,
+    /// The share of messages whose `sort_seq` is days away from their time.
     pub sort_seq_off: f64,
+    /// The share of messages whose `sort_seq` is 0.
     pub sort_seq_missing: f64,
     /// The content size in bytes by type (the size of the XML of all but text), and of the types not listed.
     pub content_bytes: Vec<(i64, Spread)>,
+    /// The content size in bytes of the types `content_bytes` does not list.
     pub content_bytes_other: Spread,
 }
 
+/// When the messages are sent.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TimeProfile {
@@ -59,18 +74,25 @@ pub struct TimeProfile {
     pub burst_gaps: Vec<(i64, i64, f64)>,
 }
 
+/// What the texts hold.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextProfile {
     /// Lengths in characters, as `(from, to, share)`.
     pub chars: Vec<(u32, u32, f64)>,
+    /// The share of texts with an emoji character.
     pub with_emoji: f64,
+    /// The share of texts with a WeChat emoji in brackets, `[微笑]`.
     pub with_bracket_emoji: f64,
+    /// The share of texts of more than one line.
     pub with_newline: f64,
+    /// The share of texts with a control character in them.
     pub with_odd_control: f64,
+    /// The share of texts with an address.
     pub with_url: f64,
 }
 
+/// The groups.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GroupProfile {
@@ -78,28 +100,41 @@ pub struct GroupProfile {
     pub share: f64,
     /// The biggest group: members, and how many of them ever speak.
     pub big_members: usize,
+    /// How many of the biggest group's members ever speak.
     pub big_speakers: usize,
     /// Who speaks in a group: the member of rank `r` (from 0) says `(r + 1 + q) ^ -s` of it.
     pub speaker_q: f64,
+    /// The `s` of `speaker_q`'s formula.
     pub speaker_s: f64,
 }
 
+/// The media files.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MediaProfile {
     /// Which files of a picture are on the computer: `(thumbnail, image, original, share)`.
     pub image_sets: Vec<(bool, bool, bool, f64)>,
+    /// The size of a thumbnail's `.dat` file.
     pub thumb_bytes: Spread,
+    /// The size of an image's `.dat` file.
     pub image_bytes: Spread,
+    /// The size of an original's `.dat` file.
     pub hd_bytes: Spread,
     /// What the image file holds, as `(png, jpeg, wxgf)` shares.
     pub image_formats: (f64, f64, f64),
+    /// What an original's file holds, as `image_formats`.
     pub hd_formats: (f64, f64, f64),
+    /// The size of a video.
     pub video_bytes: Spread,
+    /// The size of a video's thumbnail.
     pub video_thumb_bytes: Spread,
+    /// The share of videos whose thumbnail is on the computer.
     pub video_thumb_here: f64,
+    /// The share of videos that are on the computer.
     pub video_here: f64,
+    /// The size of a file sent or received.
     pub file_bytes: Spread,
+    /// The share of files that are on the computer.
     pub file_here: f64,
 }
 

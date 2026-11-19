@@ -15,6 +15,8 @@ license = "Unlicense"
 
 # Lints every member inherits (`[lints] workspace = true`); CI turns warnings into errors (issue #142).
 [workspace.lints.rust]
+# every public item, and every crate root (tests, examples and build scripts too), has a doc comment (#915)
+missing_docs = "warn"
 # the proofs of `cargo kani` (#501)
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 

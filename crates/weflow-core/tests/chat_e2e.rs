@@ -1,3 +1,5 @@
+//! The chat reads on a synthetic account: pages of messages and their cursors, resources, voices, group hints and
+//! the anti-revoke conversations.
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"

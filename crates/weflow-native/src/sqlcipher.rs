@@ -527,7 +527,9 @@ pub mod testutil {
 
     type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
+    /// The raw database key of the test databases.
     pub const KEY: [u8; 32] = [7u8; 32];
+    /// The salt of the test databases.
     pub const SALT: [u8; 16] = *b"0123456789abcdef";
 
     /// Encrypt one plaintext page exactly as SQLCipher 4 does (test-only mirror of `decrypt_page`).
@@ -677,6 +679,7 @@ pub mod testutil {
         wal
     }
 
+    /// A plain SQLite file encrypted page by page as SQLCipher 4 writes it, each page with its own IV.
     pub fn encrypt_db(plain: &[u8], cipher: &PageCipher) -> Vec<u8> {
         let mut out = Vec::new();
         for (i, page) in plain.chunks(PAGE_SIZE).enumerate() {

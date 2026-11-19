@@ -1,3 +1,5 @@
+//! The AI insights against the fake model service: the connection test, triggers, the silence scan and the
+//! footprint's summary, in both API formats.
 #![cfg(target_os = "linux")]
 mod common;
 

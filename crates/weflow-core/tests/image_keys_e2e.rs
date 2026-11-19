@@ -1,3 +1,5 @@
+//! Getting the image keys: the codes of the `kvcomm` folders, the sample thumbnails, and which pair of keys is
+//! verified.
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"

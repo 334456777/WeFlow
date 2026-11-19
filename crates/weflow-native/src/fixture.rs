@@ -62,6 +62,7 @@ impl TestDir {
         Self(dir)
     }
 
+    /// The directory.
     pub fn path(&self) -> &Path {
         self.0.path()
     }
@@ -81,23 +82,38 @@ impl AsRef<Path> for TestDir {
     }
 }
 
+/// One `SessionTable` row for [`Fixture::session_db`].
 pub struct SessionSpec<'a> {
+    /// The conversation.
     pub username: &'a str,
+    /// The last message as the list shows it.
     pub summary: &'a str,
+    /// Its time, also the row's `sort_timestamp`.
     pub last_timestamp: i64,
+    /// `unread_count`.
     pub unread: i64,
+    /// The last message's type.
     pub last_msg_type: i64,
 }
 
+/// One `contact` row for [`Fixture::contact_db`]; [`ContactSpec::new`] leaves the rest empty.
 #[derive(Clone)]
 pub struct ContactSpec<'a> {
+    /// The wxid.
     pub username: &'a str,
+    /// WeChat's `local_type`: 1 for a friend, 0 with a pinyin for a former friend.
     pub local_type: i64,
+    /// The nickname.
     pub nick_name: &'a str,
+    /// The remark.
     pub remark: &'a str,
+    /// The WeChat ID.
     pub alias: &'a str,
+    /// The avatar's address, as `big_head_url`.
     pub avatar: &'a str,
+    /// The `flag` bits (folded, muted, pinned…).
     pub flag: i64,
+    /// `chat_room_notify`: 1 when a group's notifications are off.
     pub chat_room_notify: i64,
     /// The `description` column.
     pub description: &'a str,
@@ -106,6 +122,7 @@ pub struct ContactSpec<'a> {
 }
 
 impl<'a> ContactSpec<'a> {
+    /// A contact with only a username, a type and a nickname.
     pub const fn new(username: &'a str, local_type: i64, nick_name: &'a str) -> Self {
         Self {
             username,
@@ -122,21 +139,30 @@ impl<'a> ContactSpec<'a> {
     }
 }
 
+/// One group for [`Fixture::contact_db`]: its `chat_room` row and its members.
 pub struct RoomSpec<'a> {
+    /// The group, `…@chatroom`.
     pub username: &'a str,
+    /// Its owner's wxid.
     pub owner: &'a str,
     /// (member username, group nickname or "" for none)
     pub members: &'a [(&'a str, &'a str)],
 }
 
+/// One message row; [`MsgSpec::text`] makes a text message, the `with_*` methods change it.
 #[derive(Clone)]
 pub struct MsgSpec {
+    /// The row's id in its table.
     pub local_id: i64,
+    /// WeChat's id of the message.
     pub server_id: i64,
+    /// WeChat's type of the message.
     pub local_type: i64,
     /// Username of the sender; empty for none.
     pub sender: &'static str,
+    /// When it was sent, in Unix seconds.
     pub create_time: i64,
+    /// The text, or the XML of a message that is not text.
     pub content: String,
     /// Store `content` as a zstd blob, as WCDB does for some message types.
     pub compressed: bool,
@@ -147,6 +173,7 @@ pub struct MsgSpec {
 }
 
 impl MsgSpec {
+    /// A text message with the server id `1000 + local_id`.
     pub fn text(local_id: i64, sender: &'static str, create_time: i64, content: &str) -> Self {
         Self {
             local_id,
@@ -160,18 +187,22 @@ impl MsgSpec {
             sort_seq: None,
         }
     }
+    /// With this `sort_seq`.
     pub fn with_sort_seq(mut self, sort_seq: i64) -> Self {
         self.sort_seq = Some(sort_seq);
         self
     }
+    /// With this `source`.
     pub fn with_source(mut self, source: &str) -> Self {
         self.source = source.to_string();
         self
     }
+    /// Of this type.
     pub fn of_type(mut self, local_type: i64) -> Self {
         self.local_type = local_type;
         self
     }
+    /// With its content stored compressed.
     pub fn compressed(mut self) -> Self {
         self.compressed = true;
         self
@@ -181,11 +212,17 @@ impl MsgSpec {
 /// One row of WeChat's full-text index, for [`Fixture::message_fts_db`].
 #[derive(Clone)]
 pub struct FtsSpec<'a> {
+    /// The text indexed.
     pub text: String,
+    /// The message's id in its table.
     pub local_id: i64,
+    /// The message's `sort_seq`.
     pub sort_seq: i64,
+    /// The message's type.
     pub local_type: i64,
+    /// The conversation.
     pub session: &'a str,
+    /// When it was sent.
     pub create_time: i64,
 }
 
@@ -193,10 +230,15 @@ pub struct FtsSpec<'a> {
 pub struct SnsPostSpec<'a> {
     /// Stored as-is (a negative value stands for an unsigned snowflake above `i64::MAX`).
     pub tid: i64,
+    /// The poster.
     pub user: &'a str,
+    /// When it was posted.
     pub create_time: i64,
+    /// Its text.
     pub desc: &'a str,
+    /// Its `<ContentObject><type>`.
     pub kind: i64,
+    /// How many pictures it has.
     pub media: usize,
     /// (username, nickname) of each liker
     pub likes: &'a [(&'a str, &'a str)],
@@ -233,19 +275,29 @@ impl SnsPostSpec<'_> {
 
 /// One `VoiceInfo` row for [`Fixture::media_db`].
 pub struct VoiceSpec<'a> {
+    /// The conversation's username.
     pub chat: &'a str,
+    /// When the message was sent.
     pub create_time: i64,
+    /// The message's id in its table.
     pub local_id: i64,
+    /// WeChat's id of the message.
     pub svr_id: i64,
+    /// The audio, or one fragment of it.
     pub data: Vec<u8>,
+    /// `data_index`: the fragment's place.
     pub index: &'a str,
 }
 
 /// One own-sticker row for [`Fixture::emoticon_db`].
 pub struct EmoticonSpec {
+    /// The sticker's MD5.
     pub md5: &'static str,
+    /// Its caption.
     pub caption: &'static str,
+    /// Its `cdn_url`.
     pub cdn_url: &'static str,
+    /// Its `extern_url`.
     pub extern_url: &'static str,
 }
 
@@ -253,12 +305,19 @@ pub struct EmoticonSpec {
 /// Images live in `<dir1>/<dir2>/Img/`, videos in `<dir1>/`, files in `<dir1>/`.
 #[derive(Clone)]
 pub struct HardlinkSpec<'a> {
+    /// The message's MD5 of the file.
     pub md5: &'a str,
+    /// The file's name.
     pub file_name: &'a str,
+    /// What it is: 1 file, 2 image, 3 video, 4 directory entry.
     pub kind: i64,
+    /// The first folder's name.
     pub dir1: &'a str,
+    /// The second folder's name; empty for none.
     pub dir2: &'a str,
+    /// The file's size.
     pub size: i64,
+    /// When it was written.
     pub modify_time: i64,
 }
 
@@ -276,6 +335,7 @@ impl<'a> HardlinkSpec<'a> {
         }
     }
 
+    /// A video stored under the month `month`.
     pub fn video(md5: &'a str, file_name: &'a str, month: &'a str) -> Self {
         Self {
             md5,
@@ -381,8 +441,11 @@ fn message_table_schema(table: &str) -> String {
     )
 }
 
+/// A synthetic account on disk, whose databases its methods write.
 pub struct Fixture {
+    /// The folder the account folder is in.
     pub root: PathBuf,
+    /// The account folder, the one holding `db_storage`.
     pub account_dir: PathBuf,
     cipher: PageCipher,
 }
@@ -419,10 +482,12 @@ impl Fixture {
         }
     }
 
+    /// The database key, in hex, as `decrypt_key` takes it.
     pub fn key_hex(&self) -> String {
         hex(&KEY)
     }
 
+    /// The account's `db_storage` folder.
     pub fn db_storage(&self) -> PathBuf {
         self.account_dir.join("db_storage")
     }
@@ -435,6 +500,7 @@ impl Fixture {
         .unwrap();
     }
 
+    /// `sns/sns.db` with the posts.
     pub fn sns_db(&self, posts: &[SnsPostSpec]) {
         let rows: Vec<(i64, &str, String)> =
             posts.iter().map(|p| (p.tid, p.user, p.xml())).collect();
@@ -453,6 +519,7 @@ impl Fixture {
         );
     }
 
+    /// `message/media_<n>.db` with the voices.
     pub fn media_db(&self, n: u32, voices: &[VoiceSpec]) {
         /// (chat id, create time, local id, server id, data, chat name)
         type VoiceRow<'a> = (i64, i64, i64, i64, Vec<u8>, &'a str);
@@ -584,6 +651,7 @@ impl Fixture {
         );
     }
 
+    /// `session/session.db` with the conversations.
     pub fn session_db(&self, sessions: &[SessionSpec]) {
         let rows: Vec<(String, String, i64, i64, i64)> = sessions
             .iter()
@@ -613,6 +681,7 @@ impl Fixture {
         );
     }
 
+    /// `contact/contact.db` with the contacts and the groups.
     pub fn contact_db(&self, contacts: &[ContactSpec], rooms: &[RoomSpec]) {
         self.contact_db_with_labels(contacts, rooms, &[]);
     }
@@ -776,6 +845,7 @@ impl Fixture {
 
 /// Base timestamp of the standard world (2023-11-14 22:13:20 UTC).
 pub const T0: i64 = 1_700_000_000;
+/// A day in seconds.
 pub const DAY: i64 = 86_400;
 
 impl Fixture {
