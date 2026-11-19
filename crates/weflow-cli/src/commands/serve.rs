@@ -18,38 +18,34 @@ pub(crate) struct ServeCommand {
     /// Run the AI insight engine
     #[arg(long)]
     insight: bool,
-    /// Listen address (default: 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1].
-    #[expect(
-        rustdoc::broken_intra_doc_links,
-        reason = "the comment is the --help text, which writes the IPv6 loopback address as [::1]"
-    )]
+    /// Listen address; default: 127.0.0.1. On a loopback address the command API only answers requests to localhost, 127.0.0.1 or ::1.
     #[arg(long)]
     host: Option<String>,
-    /// Listen port (default: 18108).
+    /// Listen port; default: 18108.
     #[arg(long)]
     port: Option<u16>,
-    /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run). An empty one counts as none.
+    /// Access token for the HTTP API; default: `http_api_token` from the config. Without one the command API makes one up for each run. An empty one counts as none.
     #[arg(long, env = "WEFLOW_HTTP_TOKEN", hide_env_values = true)]
     api_token: Option<String>,
-    /// Tasks (`POST` commands: exports, keys, backups…) the command API runs at once; more are queued or refused (default: 1)
+    /// Tasks the command API runs at once, the `POST` commands such as exports, keys and backups; more are queued or refused. Default: 1
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
     max_tasks: Option<u16>,
-    /// Other commands the command API runs at once (default: the number of CPUs)
+    /// Other commands the command API runs at once; default: the number of CPUs
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
     max_reads: Option<u16>,
-    /// Images and voices the command API's /api/ media routes decode at once; more wait in line (default: the number of CPUs)
+    /// Images and voices the command API's /api/ media routes decode at once; more wait in line. Default: the number of CPUs
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
     max_media: Option<u16>,
-    /// Print a line on stderr for each request of the command API: method, path (no query), status and time
+    /// Print a line on stderr for each request of the command API: method, path without the query, status and time
     #[arg(long)]
     log_requests: bool,
-    /// Serve the WebUI at /ui/ from this folder (a built WebUI, such as web/dist) for this run only, instead of the installed one
+    /// Serve the WebUI at /ui/ from this folder of a built WebUI, such as web/dist, for this run only, instead of the installed one
     #[arg(long, value_name = "DIR")]
     pub(super) ui_dir: Option<PathBuf>,
     /// Do not open the WebUI in the browser when the server starts
     #[arg(long)]
     no_browser: bool,
-    /// Show this WebUI version for this run (downloaded first when needed), instead of the one picked with `weflow web use`
+    /// Show this WebUI version for this run, downloaded first when needed, instead of the one picked with `weflow web use`
     #[arg(long, value_name = "VERSION", conflicts_with = "ui_dir")]
     pub(super) web_version: Option<String>,
     /// Serve the API alone, without the WebUI

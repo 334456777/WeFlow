@@ -29,10 +29,10 @@ const GLOBAL_OPTIONS_ORDER: usize = 1000;
 #[derive(Parser, Debug)]
 #[command(name = "weflow", version = concat!(env!("WEFLOW_VERSION"), " (", env!("WEFLOW_BUILD_INFO"), ")"), about = "Native CLI for WeFlow")]
 pub(crate) struct Cli {
-    /// Print JSON (for scripts) instead of the human-readable output
+    /// Print JSON for scripts instead of the human-readable output
     #[arg(long, global = true, display_order = GLOBAL_OPTIONS_ORDER)]
     pub(crate) json: bool,
-    /// Emit NDJSON progress events on stderr (machine-readable)
+    /// Emit machine-readable NDJSON progress events on stderr
     #[arg(long, global = true, display_order = GLOBAL_OPTIONS_ORDER + 1)]
     pub(crate) progress: bool,
     #[command(subcommand)]
@@ -63,7 +63,7 @@ pub(crate) enum Commands {
     Group(GroupCommand),
     /// Annual and dual-person reports
     Report(ReportCommand),
-    /// Moments (SNS) timeline, export and block-delete trigger
+    /// Moments, WeChat's SNS: timeline, export and block-delete trigger
     Sns(SnsCommand),
     /// Official accounts and WeChat Pay records
     Biz(BizCommand),

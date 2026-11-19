@@ -10,7 +10,7 @@ pub(crate) struct VideoCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum VideoSubcommand {
-    /// Look up the on-disk video (and optional cover/thumbnail) for a message md5
+    /// Look up the on-disk video of a message md5, with its cover or thumbnail if there is one
     Info {
         /// Video md5 from the message
         md5: String,

@@ -14,17 +14,17 @@ pub(crate) struct AnalyticsCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum AnalyticsSubcommand {
-    /// Overall chat statistics (private chats, honouring the exclusion list)
+    /// Overall statistics of private chats, honouring the exclusion list
     Overall,
     /// Contacts ranked by message count
     Rankings {
         /// Number of contacts
         #[arg(long, default_value_t = 20)]
         limit: usize,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
@@ -32,7 +32,7 @@ pub(crate) enum AnalyticsSubcommand {
     Time,
     /// Show the exclusion list, or replace it with --set
     Excluded {
-        /// Comma-separated usernames that replace the list (pass "" to clear it)
+        /// Comma-separated usernames that replace the list; pass "" to clear it
         #[arg(long = "set", value_delimiter = ',', num_args = 0..)]
         set: Option<Vec<String>>,
     },

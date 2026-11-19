@@ -10,6 +10,7 @@ mod alloc_stats;
 mod cli;
 mod commands;
 mod files;
+mod help_style;
 mod i18n;
 mod reads;
 mod serve_api;

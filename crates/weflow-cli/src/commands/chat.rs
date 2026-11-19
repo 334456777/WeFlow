@@ -22,7 +22,7 @@ pub(crate) struct ChatCommand {
 pub(crate) enum ChatSubcommand {
     /// List conversations, newest first
     Sessions {
-        /// Maximum number of sessions (0 = all)
+        /// Maximum number of sessions; 0 means all
         #[arg(long, default_value_t = 0)]
         limit: usize,
     },
@@ -32,7 +32,7 @@ pub(crate) enum ChatSubcommand {
     Search {
         /// Text to search for
         keyword: String,
-        /// Only search this conversation (default: all conversations)
+        /// Only search this conversation; default: all conversations
         #[arg(long)]
         session: Option<String>,
         /// Maximum number of results
@@ -41,51 +41,51 @@ pub(crate) enum ChatSubcommand {
         /// Number of results to skip
         #[arg(long, default_value_t = 0)]
         offset: i32,
-        /// Only messages from this time on (Unix seconds, 0 = no limit)
+        /// Only messages from this time on, in Unix seconds; 0 means no limit
         #[arg(long, default_value_t = 0)]
         start: i32,
-        /// Only messages up to this time (Unix seconds, 0 = no limit)
+        /// Only messages up to this time, in Unix seconds; 0 means no limit
         #[arg(long, default_value_t = 0)]
         end: i32,
-        /// Each hit parsed (type, text, quote, media, link, file, …) instead of the database row
+        /// Each hit parsed into type, text, quote, media, link, file and so on, instead of the database row
         #[arg(long)]
         parsed: bool,
     },
     /// List all contacts
     Contacts {
-        /// The contact list sorted and classified (friends, groups, official accounts, former friends, with names, labels, region, signature and avatar) instead of the database rows
+        /// The contact list sorted and classified into friends, groups, official accounts and former friends, with names, labels, region, signature and avatar, instead of the database rows
         #[arg(long)]
         parsed: bool,
     },
     /// Show one contact
     Contact {
-        /// Contact username (wxid)
+        /// Contact username, the wxid
         username: String,
     },
-    /// Edit a message (always refused: the database is read-only)
+    /// Edit a message; always refused, as the database is read-only
     UpdateMessage {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
         local_id: i64,
-        /// Message create time (seconds)
+        /// Message create time in seconds
         create_time: i32,
         /// New message content
         content: String,
     },
-    /// Delete a message (always refused: the database is read-only)
+    /// Delete a message; always refused, as the database is read-only
     DeleteMessage {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
         local_id: i64,
-        /// Message create time (seconds)
+        /// Message create time in seconds
         create_time: i32,
         /// Database file the message is stored in
         #[arg(long)]
         db_path_hint: Option<String>,
     },
-    /// Anti-revoke triggers (checking, installing and removing are refused: the database is read-only)
+    /// Anti-revoke triggers; checking, installing and removing are refused, as the database is read-only
     AntiRevoke {
         #[command(subcommand)]
         command: AntiRevokeSubcommand,
@@ -100,14 +100,14 @@ pub(crate) enum ChatSubcommand {
         /// Server message id
         #[arg(long)]
         server_id: Option<String>,
-        /// Create time (seconds) of the message, with --local-id: tells apart messages of different message databases that share the local id
+        /// Create time of the message in seconds, with --local-id: tells apart messages of different message databases that share the local id
         #[arg(long, requires = "local_id")]
         create_time: Option<i64>,
         /// The message alone, parsed as `chat messages --parsed` gives it, with its `_cursor`
         #[arg(long)]
         parsed: bool,
     },
-    /// Dates that have messages in a session (YYYY-MM-DD)
+    /// Dates that have messages in a session, as YYYY-MM-DD
     Dates {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
@@ -127,29 +127,29 @@ pub(crate) enum ChatSubcommand {
         /// Conversation ids
         sessions: Vec<String>,
     },
-    /// Session details (contact info, message count, message tables, first/latest time)
+    /// Session details: contact info, message count, message tables, and the first and latest time
     Detail {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
-        /// Only the fast part (contact info + message count)
+        /// Only the fast part: contact info and message count
         #[arg(long, conflicts_with = "extra")]
         fast: bool,
-        /// Only the extra part (tables, first/latest time)
+        /// Only the extra part: tables and the first and latest time
         #[arg(long)]
         extra: bool,
     },
-    /// Mark all sessions as read (always refused: the database is read-only)
+    /// Mark all sessions as read; always refused, as the database is read-only
     MarkRead,
-    /// Contact counts per tab (friends, groups, official accounts, former friends)
+    /// Contact counts per tab: friends, groups, official accounts and former friends
     TabCounts,
     /// Per-session statistics used by the export page
     ExportStats {
         /// Conversation ids
         sessions: Vec<String>,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
         /// Skip mutual group / friend relations
@@ -158,7 +158,7 @@ pub(crate) enum ChatSubcommand {
     },
     /// Read or set the cached "my message count" of a group chat
     GroupHint {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
         /// Store this value as the "my message count"
         #[arg(long)]
@@ -166,16 +166,16 @@ pub(crate) enum ChatSubcommand {
     },
     /// List image / video / voice / file messages across sessions
     Resources {
-        /// Only this conversation (default: all conversations)
+        /// Only this conversation; default: all conversations
         #[arg(long)]
         session: Option<String>,
-        /// image, video, voice, file (repeatable)
+        /// image, video, voice or file; repeat for several
         #[arg(long = "type")]
         types: Vec<String>,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
         /// Maximum number of results
@@ -185,7 +185,7 @@ pub(crate) enum ChatSubcommand {
         #[arg(long)]
         before: Option<String>,
     },
-    /// All image identifiers of a session (md5 / dat name), newest first
+    /// All image identifiers of a session, md5 and dat name, newest first
     Images {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
@@ -197,16 +197,16 @@ pub(crate) enum ChatSubcommand {
     },
     /// Image and video messages across sessions, newest first, paged by offset
     MediaStream {
-        /// Only this conversation (default: all conversations)
+        /// Only this conversation; default: all conversations
         #[arg(long)]
         session: Option<String>,
         /// image, video or all
         #[arg(long = "type", value_name = "TYPE", default_value = "all")]
         media_type: String,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
         /// Maximum number of results
@@ -218,29 +218,29 @@ pub(crate) enum ChatSubcommand {
     },
     /// Resolve payer / receiver display names of a transfer message
     TransferNames {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
-        /// Payer username (wxid)
+        /// Payer username, the wxid
         payer: String,
-        /// Receiver username (wxid)
+        /// Receiver username, the wxid
         receiver: String,
     },
-    /// Decode one voice message (SILK) into a 24 kHz WAV file
+    /// Decode one SILK voice message into a 24 kHz WAV file
     VoiceData {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
         local_id: String,
-        /// Message create time (seconds): tells apart messages of different message databases that share the local id
+        /// Message create time in seconds: tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
         /// Server message id
         #[arg(long)]
         server_id: Option<String>,
-        /// Sender wxid (important in group chats)
+        /// Sender wxid, which matters in group chats
         #[arg(long)]
         sender: Option<String>,
-        /// Output WAV path (default: print base64 in the JSON result)
+        /// Output WAV path; default: print base64 in the JSON result
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -250,33 +250,33 @@ pub(crate) enum ChatSubcommand {
         session_id: String,
         /// Local message id
         local_id: String,
-        /// Message create time (seconds): tells apart messages of different message databases that share the local id
+        /// Message create time in seconds: tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
-        /// Which file of the image: best (the best on this computer), thumb (WeChat's own thumbnail, a few KB; the image when there is none), normal (the image as opened), hd (the original WeChat downloads on View original; only when it has)
+        /// Which file of the image: best is the best on this computer; thumb is WeChat's own thumbnail of a few KB, or the image when there is none; normal is the image as opened; hd is the original WeChat downloads on View original, only once it has
         #[arg(long, value_parser = ["best", "thumb", "normal", "hd"], default_value = "best")]
         variant: String,
         /// Output file
         #[arg(long)]
         out: PathBuf,
     },
-    /// Which files of a message's image are on this computer (thumbnail, image, HD original) and their sizes
+    /// Which files of a message's image are on this computer, among the thumbnail, the image and the HD original, and their sizes
     ImageInfo {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
         local_id: String,
-        /// Message create time (seconds): tells apart messages of different message databases that share the local id
+        /// Message create time in seconds: tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
     },
-    /// Copy the video of one message (as WeChat keeps it, MP4) to a file
+    /// Copy the video of one message to a file, the MP4 as WeChat keeps it
     VideoData {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
         local_id: String,
-        /// Message create time (seconds): tells apart messages of different message databases that share the local id
+        /// Message create time in seconds: tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
         /// WeChat's own thumbnail of the video, or its cover when there is none, instead of the video
@@ -320,16 +320,16 @@ pub(crate) struct PageArgs {
     /// Number of results to skip
     #[arg(long, default_value_t = 0)]
     pub(crate) offset: i32,
-    /// Only messages older than this one: the `_cursor` of the last message of the previous page (as fast however far back)
+    /// Only messages older than this one: the `_cursor` of the last message of the previous page, as fast however far back
     #[arg(long, conflicts_with_all = ["offset", "after"])]
     pub(crate) before: Option<String>,
-    /// Only messages newer than this one (the `_cursor` of a message): the closest ones, still newest first
+    /// Only messages newer than this one, given by its `_cursor`: the closest ones, still newest first
     #[arg(long, conflicts_with = "offset")]
     pub(crate) after: Option<String>,
-    /// The messages from where this time (Unix seconds) falls in the chat's order: the earliest ones, still newest first, as when a chat window jumps to a day
+    /// The messages from where this time, in Unix seconds, falls in the chat's order: the earliest ones, still newest first, as when a chat window jumps to a day
     #[arg(long, conflicts_with_all = ["offset", "before", "after"])]
     pub(crate) since: Option<i64>,
-    /// Each message parsed (type, text, quote, media, link, file, …) instead of the database row
+    /// Each message parsed into type, text, quote, media, link, file and so on, instead of the database row
     #[arg(long)]
     pub(crate) parsed: bool,
 }
@@ -338,17 +338,17 @@ pub(crate) struct PageArgs {
 pub(crate) enum AntiRevokeSubcommand {
     /// Sessions that anti-revoke can be installed for
     Sessions,
-    /// Check whether the anti-revoke trigger is installed for sessions (refused: the database is read-only)
+    /// Check whether the anti-revoke trigger is installed for sessions; refused, as the database is read-only
     Check {
         /// Conversation ids
         sessions: Vec<String>,
     },
-    /// Install the anti-revoke trigger for sessions (refused: the database is read-only)
+    /// Install the anti-revoke trigger for sessions; refused, as the database is read-only
     Install {
         /// Conversation ids
         sessions: Vec<String>,
     },
-    /// Remove the anti-revoke trigger from sessions (refused: the database is read-only)
+    /// Remove the anti-revoke trigger from sessions; refused, as the database is read-only
     Uninstall {
         /// Conversation ids
         sessions: Vec<String>,

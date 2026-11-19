@@ -19,7 +19,7 @@ pub(crate) struct WebCommand {
 enum WebSubcommand {
     /// The WebUI `serve` shows: the version in use, the one picked, the default one of this weflow, and where they are kept
     Info,
-    /// WebUI versions kept on this machine, or published ones (--remote) and whether they suit this weflow
+    /// WebUI versions kept on this machine, or with --remote the published ones, and whether they suit this weflow
     List {
         /// List the versions published in the registry instead
         #[arg(long)]
@@ -30,7 +30,7 @@ enum WebSubcommand {
         /// WebUI version, such as 0.1.0
         version: String,
     },
-    /// Pick the WebUI version `serve` shows (downloaded first when needed)
+    /// Pick the WebUI version `serve` shows; it is downloaded first when needed
     Use {
         /// WebUI version, such as 0.1.0
         version: String,

@@ -19,9 +19,9 @@ pub(crate) struct GroupCommand {
 pub(crate) enum GroupSubcommand {
     /// Group chats with member counts
     List,
-    /// Members of a group chat (friend flag, owner, group nickname; message counts with --counts)
+    /// Members of a group chat with friend flag, owner and group nickname; --counts adds message counts
     Members {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
         /// Include per-member message counts
         #[arg(long)]
@@ -29,58 +29,58 @@ pub(crate) enum GroupSubcommand {
     },
     /// Most active members
     Ranking {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
         /// Number of members
         #[arg(long, default_value_t = 20)]
         limit: usize,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
     /// Messages per hour of day
     Hours {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
     /// Message type mix
     Media {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
-    /// One member's statistics (types, hours, common phrases and emoji)
+    /// One member's statistics: types, hours, common phrases and emoji
     Member {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
-        /// Member username (wxid)
+        /// Member username, the wxid
         username: String,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
-    /// A page of one member's messages (newest first)
+    /// A page of one member's messages, newest first
     MemberMessages {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
-        /// Member username (wxid)
+        /// Member username, the wxid
         username: String,
         /// Number of messages
         #[arg(long, default_value_t = 50)]
@@ -88,31 +88,31 @@ pub(crate) enum GroupSubcommand {
         /// Cursor returned as `nextCursor` by the previous page
         #[arg(long, default_value_t = 0)]
         cursor: usize,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
-    /// Export a member's messages (.csv or .xlsx)
+    /// Export a member's messages to .csv or .xlsx
     ExportMemberMessages {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
-        /// Member username (wxid)
+        /// Member username, the wxid
         username: String,
         /// Output file
         out: PathBuf,
-        /// Start date, local time, inclusive (YYYY-MM-DD)
+        /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         start: Option<String>,
-        /// End date, local time, inclusive (YYYY-MM-DD)
+        /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
     },
-    /// Export the member list (.csv or .xlsx)
+    /// Export the member list to .csv or .xlsx
     ExportMembers {
-        /// Group chat id (xxx@chatroom)
+        /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
         /// Output file
         out: PathBuf,

@@ -24,15 +24,15 @@ pub(crate) struct CacheCommand {
 pub(crate) enum CacheSubcommand {
     /// Show each part of the cache: the option of `cache clear` that removes it, its size and where it is
     List,
-    /// Remove the chosen parts of the cache; shows what goes and asks [y/N] first
+    /// Remove the chosen parts of the cache; shows what goes and asks for y first
     Clear(CacheClearArgs),
     /// Remove WeFlow's data of the current account and take the account out of this profile
     ///
     /// The account's cached images, voices, stickers, Moments, analytics and key fingerprints are removed, then
-    /// db_path, wxid, decrypt_key and the image keys of the profile. Shows what goes and asks [y/N] first. WeChat's own
+    /// db_path, wxid, decrypt_key and the image keys of the profile. Shows what goes and asks for y first. WeChat's own
     /// files are never touched.
     ClearAccount {
-        /// Folder of exports; files and folders named after the account are removed too (repeatable)
+        /// Folder of exports; files and folders named after the account are removed too. Repeat for several
         #[arg(long = "exports-dir")]
         exports_dir: Vec<PathBuf>,
         /// Do not ask before removing
@@ -61,16 +61,16 @@ pub(crate) struct CacheClearArgs {
     /// The analytics aggregate earlier versions kept
     #[arg(long)]
     analytics: bool,
-    /// Media exported and avatars pushed by the HTTP API, and files returned by `serve` (`?return=file`)
+    /// Media exported and avatars pushed by the HTTP API, and files `serve` returns for `?return=file`
     #[arg(long)]
     api: bool,
-    /// Fingerprints of keys that worked (the next command checks the key again)
+    /// Fingerprints of keys that worked; the next command checks the key again
     #[arg(long)]
     keys: bool,
     /// Runtime directories earlier versions unpacked, and the ffmpeg builds they installed in ffmpeg/
     #[arg(long)]
     runtime: bool,
-    /// WebUI versions downloaded by `weflow web` and `serve` (the one `serve` needs is downloaded again)
+    /// WebUI versions downloaded by `weflow web` and `serve`; the one `serve` needs is downloaded again
     #[arg(long)]
     web: bool,
     /// Every part above
@@ -246,8 +246,8 @@ fn cache_part_label(part: CachePart) -> &'static str {
     }
 }
 
-/// Lists `targets` on stderr under `heading` and asks [y/N]; only `y` or `yes` goes ahead, anything else (Enter
-/// included) is a no. `yes` skips the question; without a terminal to ask on, it is required.
+/// Lists `targets` on stderr under `heading` and asks for `y`; only `y` or `yes` goes ahead, anything else, Enter
+/// included, is a no. `yes` skips the question; without a terminal to ask on, it is required.
 fn confirm_removal(heading: &str, targets: &[RemovalTarget], yes: bool) -> AppResult<bool> {
     use std::io::{IsTerminal, Write};
     use weflow_core::locale::tr;

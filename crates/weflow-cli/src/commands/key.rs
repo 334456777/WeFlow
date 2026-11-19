@@ -21,9 +21,9 @@ pub(crate) struct KeyCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum KeySubcommand {
-    /// Hook WeChat and wait for the database key (keep the command running and log in to WeChat)
+    /// Hook WeChat and wait for the database key; keep the command running and log in to WeChat
     Db {
-        /// WeChat process id (default: the first Weixin.exe / WeChat.exe found)
+        /// WeChat process id; default: the first Weixin.exe or WeChat.exe found
         #[arg(long)]
         pid: Option<u32>,
         /// How long to wait for the key, in seconds
@@ -33,34 +33,34 @@ pub(crate) enum KeySubcommand {
         #[arg(long)]
         save: bool,
     },
-    /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template; Windows, Linux x64 and macOS)
+    /// Derive the image keys from WeChat's kvcomm cache and verify them against a .dat template; Windows, Linux x64 and macOS
     Image {
-        /// Account directory to search for templates (default: the configured account directory)
+        /// Account directory to search for templates; default: the configured account directory
         #[arg(long)]
         user_dir: Option<String>,
-        /// kvcomm directories (repeat for net, net_1, etc.; default on Windows, Linux x64 and macOS: WeChat's existing net*/kvcomm directories)
+        /// kvcomm directories; repeat for net, net_1 and the like. Default on Windows, Linux x64 and macOS: WeChat's existing net*/kvcomm directories
         #[arg(long, action = clap::ArgAction::Append)]
         kvcomm_dir: Vec<PathBuf>,
-        /// Maximum filesystem entries scanned for templates in the selected account (default: 10000)
+        /// Maximum filesystem entries scanned for templates in the selected account; default: 10000
         #[arg(long)]
         scan_budget: Option<usize>,
         /// Save the keys to the active profile instead of printing them
         #[arg(long)]
         save: bool,
     },
-    /// Scan WeChat's memory for the image AES key (Linux x64 and macOS)
+    /// Scan WeChat's memory for the image AES key; Linux x64 and macOS
     ImageMem {
-        /// WeChat process id (default: the running WeChat)
+        /// WeChat process id; default: the running WeChat
         #[arg(long)]
         pid: Option<u32>,
-        /// 32 hex characters of the 16-byte encrypted block (default: from the newest thumbnails of the configured account, which also give the XOR key)
+        /// 32 hex characters of the 16-byte encrypted block; default: taken from the newest thumbnails of the configured account, which also give the XOR key
         #[arg(long, value_name = "HEX")]
         ciphertext: Option<String>,
         /// Save the keys to the active profile instead of printing them
         #[arg(long)]
         save: bool,
     },
-    /// List the running WeChat processes (macOS)
+    /// List the running WeChat processes; macOS only
     Processes,
 }
 

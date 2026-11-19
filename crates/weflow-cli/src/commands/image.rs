@@ -10,7 +10,7 @@ pub(crate) struct ImageCommand {
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct ImageTarget {
-    /// Conversation the image belongs to (locates msg/attach/<md5(session)>/…)
+    /// Conversation the image belongs to; its images are in the folder under msg/attach/ named by the md5 of its id
     #[arg(long)]
     session: Option<String>,
     /// Image md5 from the message
@@ -19,7 +19,7 @@ pub(crate) struct ImageTarget {
     /// Image .dat file name
     #[arg(long)]
     dat_name: Option<String>,
-    /// Message create time (seconds); selects the year-month folder
+    /// Message create time in seconds; selects the year-month folder
     #[arg(long)]
     create_time: Option<i64>,
     /// Return the path of the image file instead of a base64 data URL
@@ -54,7 +54,7 @@ pub(crate) enum ImageSubcommand {
     Decrypt {
         #[command(flatten)]
         target: ImageTarget,
-        /// Use the HD original when it is on disk; without it a cached thumbnail may be returned (`export media` always uses the original)
+        /// Use the HD original when it is on disk; without it a cached thumbnail may be returned. `export media` always uses the original
         #[arg(long)]
         force: bool,
     },
@@ -65,10 +65,10 @@ pub(crate) enum ImageSubcommand {
     },
     /// Resolve many images
     ResolveBatch {
-        /// JSON array of image payloads (sessionId, imageMd5, imageDatName, createTime, …)
+        /// JSON array of image payloads with sessionId, imageMd5, imageDatName, createTime and so on
         payloads_json: String,
     },
-    /// Windows only: make WeChat download original-size images (image auto-download hook)
+    /// Windows only: make WeChat download original-size images with the image auto-download hook
     AutoDownload {
         #[command(subcommand)]
         command: AutoDownloadSubcommand,
@@ -77,9 +77,9 @@ pub(crate) enum ImageSubcommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum AutoDownloadSubcommand {
-    /// Hook WeChat and keep the hook alive until interrupted (re-hooks after a WeChat restart)
+    /// Hook WeChat and keep the hook alive until interrupted; it hooks again after WeChat restarts
     Start {
-        /// Conversation ids to download originals for (default: `autoDownloadWhitelist` from the config)
+        /// Conversation ids to download originals for; default: `autoDownloadWhitelist` from the config
         #[arg(long, value_delimiter = ',')]
         whitelist: Vec<String>,
     },
