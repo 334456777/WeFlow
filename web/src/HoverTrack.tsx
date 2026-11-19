@@ -26,23 +26,28 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
     let scrolledAt = 0;
 
     const place = (item: HTMLElement, slide: boolean) => {
+      // all read before anything is written, so that the page is not laid out again in between (#961)
       const box = group.getBoundingClientRect();
       const at = item.getBoundingClientRect();
       const x = at.left - box.left - group.clientLeft + group.scrollLeft;
       const y = at.top - box.top - group.clientTop + group.scrollTop;
+      // the item's outline, whatever the skin makes it (#831): its corners, its clip (on the item, or on its shape
+      // layer under a skin with shapes, styles/roles.css) and its turn
+      const shape = getComputedStyle(item);
+      const clip = shape.clipPath && shape.clipPath !== 'none' ? shape.clipPath : getComputedStyle(item, '::before').clipPath;
+      const radius = shape.borderRadius;
+      const rotate = shape.rotate ?? '';
       if (!slide) hollow.style.transition = 'none';
       hollow.style.width = at.width + 'px';
       hollow.style.height = at.height + 'px';
       // `translate`, not `transform`: it applies before `scale`, so a press shrinks the hollow about its own centre
       hollow.style.translate = `${x}px ${y}px`;
-      // the item's outline, whatever the skin makes it (#831): its corners, its clip (on the item, or on its shape
-      // layer under a skin with shapes, styles/roles.css) and its turn
-      const shape = getComputedStyle(item);
-      const clip = shape.clipPath && shape.clipPath !== 'none' ? shape.clipPath : getComputedStyle(item, '::before').clipPath;
-      hollow.style.borderRadius = shape.borderRadius;
+      hollow.style.borderRadius = radius;
       hollow.style.clipPath = clip ?? '';
-      hollow.style.rotate = shape.rotate ?? '';
-      if (!slide) { void hollow.offsetWidth; hollow.style.transition = ''; }
+      hollow.style.rotate = rotate;
+      // In place at once: the styles are worked out with no transition before it is given back. Working out the
+      // hollow's style is enough for that (a property that needs no layout to read); nothing needs to be laid out.
+      if (!slide) { void getComputedStyle(hollow).opacity; hollow.style.transition = ''; }
     };
     const show = (item: HTMLElement) => {
       // it slides only from where it is showing; coming in from outside (or right after a scroll) it appears in place
@@ -91,7 +96,11 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
     // the item changed (a row taken by another conversation, the sidebar folding): follow it at once
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { if (current?.isConnected) place(current, false); else if (current) hide(); });
     resize?.observe(group);
-    const changed = new MutationObserver(() => { if (current) hollow.dataset.state = !current.isConnected ? 'off' : current.matches(quiet) ? 'quiet' : 'on'; });
+    const changed = new MutationObserver(() => {
+      if (!current) return;
+      const state = !current.isConnected ? 'off' : current.matches(quiet) ? 'quiet' : 'on';
+      if (hollow.dataset.state !== state) hollow.dataset.state = state;
+    });
     changed.observe(group, { subtree: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-current'], childList: true });
 
     group.addEventListener('pointerover', over);

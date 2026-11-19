@@ -68,9 +68,11 @@ export function pageIn(elements: Iterable<Element>, { turn = true, detail = fals
     pageInEnds.set(element, end);
     element.addEventListener('animationend', end);
     element.addEventListener('animationcancel', end);
-    // from its start again when another turn comes before it ends
+    // From its start again when another turn comes before it ends: the element's style is worked out without the
+    // animation before it is given back. A property that needs no layout to read is enough for that, so the page
+    // that has just come in is not laid out here, ahead of its frame (#961).
     element.style.animation = 'none';
-    void element.offsetWidth;
+    void getComputedStyle(element).animationName;
     element.style.animation = own;
   }
 }
