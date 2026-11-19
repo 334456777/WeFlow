@@ -18,7 +18,7 @@ mod error;
 mod openai;
 mod retry;
 
-pub use error::{ModelApiError, StatusError};
+pub use error::{ModelApiError, Request, StatusError};
 
 /// The wire format a model API speaks.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -214,11 +214,19 @@ impl ModelApi {
     ///
     /// # Errors
     ///
-    /// As [`ModelApi::complete`], and when the answer is not a list of models.
+    /// As [`ModelApi::complete`], and when the answer is not a list of models; an error status is marked
+    /// [`Request::Models`], so a service without the list is told apart from a wrong address.
     pub async fn list_models(&self, timeout: Duration) -> Result<Vec<ModelInfo>, ModelApiError> {
         let (text, _) = self
             .exchange(Method::GET, &self.models_endpoint(), None, timeout)
-            .await?;
+            .await
+            .map_err(|err| match err {
+                ModelApiError::Status(mut failure) => {
+                    failure.request = Request::Models;
+                    ModelApiError::Status(failure)
+                }
+                other => other,
+            })?;
         let value = self.json_of(&text)?;
         match self.format {
             ModelApiFormat::OpenAi => openai::models(&value),

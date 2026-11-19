@@ -34,10 +34,21 @@ pub enum ModelApiError {
     Empty,
 }
 
+/// What the failed request asked for, which decides what to check.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Request {
+    /// A question to the model.
+    #[default]
+    Answer,
+    /// The list of models, which some services do not offer.
+    Models,
+}
+
 /// An error status of the model API and what its body says.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StatusError {
     pub status: u16,
+    pub request: Request,
     /// The error's type: `error.type` of both formats (`rate_limit_error`, `invalid_request_error`, …).
     pub kind: Option<String>,
     /// OpenAI's `error.code` (`invalid_api_key`, `insufficient_quota`, …).
@@ -79,6 +90,7 @@ impl StatusError {
             .filter(|b| !b.is_empty());
         Self {
             status,
+            request: Request::Answer,
             kind,
             code,
             message,
@@ -107,6 +119,11 @@ impl StatusError {
             403 => tr(
                 "The key may not use this model or address.",
                 "这个 Key 无权使用该模型或地址。",
+            ),
+            // the request names no model: the address has no list, which is what some services offer
+            404 | 405 if self.request == Request::Models => tr(
+                "This address has no list of models: some services offer none, so enter the model name yourself. If testing the connection fails too, check the API address and the API format.",
+                "这个地址没有模型列表：有的服务不提供模型列表，请直接填写模型名称。如果「测试连接」也失败，再检查接口地址和接口格式。",
             ),
             404 => tr(
                 "Check the API address, the API format and the model name.",
@@ -316,6 +333,20 @@ mod tests {
         );
         let long = "x".repeat(500);
         assert_eq!(quote(&long).chars().count(), QUOTED_CHARS + 1);
+    }
+
+    #[test]
+    fn a_missing_model_list_is_not_a_wrong_model() {
+        let mut missing = StatusError::read(404, r#"{"error":{"message":"Not Found"}}"#, None);
+        assert!(missing.to_string().contains("the model name."), "{missing}");
+        missing.request = Request::Models;
+        let text = missing.to_string();
+        assert!(
+            text.starts_with("HTTP 404: Not Found. This address has no list of models"),
+            "{text}"
+        );
+        missing.status = 401;
+        assert!(missing.to_string().contains("Check the API key."));
     }
 
     #[test]

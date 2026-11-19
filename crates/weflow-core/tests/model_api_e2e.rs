@@ -267,3 +267,19 @@ async fn both_formats_list_the_models() {
     assert_eq!(requests[1].query, "limit=1000");
     assert_eq!(requests[1].header("anthropic-version"), Some("2026-10-21"));
 }
+
+#[tokio::test]
+async fn a_service_without_a_model_list_says_so() {
+    let fake = FakeModel::start().unwrap();
+    for format in [ModelApiFormat::OpenAi, ModelApiFormat::Anthropic] {
+        let mut listless = api(&fake, format, "fake-chat");
+        listless.base_url = format!("{}/no-list", listless.base_url);
+        let err = listless.list_models(TIMEOUT).await.unwrap_err();
+        assert_eq!(err.status(), Some(404), "{format}");
+        let text = err.to_string();
+        assert!(
+            text.contains("no list of models") && !text.contains("the model name."),
+            "{format}: {text}"
+        );
+    }
+}
