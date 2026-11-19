@@ -2,6 +2,7 @@
 // the stream while 「实时消息」 is on; the conversation list and the open conversation read again from it.
 import { useCallback, useEffect, useRef } from 'react';
 
+/** What the live stream says. */
 export type LiveEvent =
   /** A message came, or one was recalled, in a conversation. */
   | { type: 'message.new' | 'message.revoke'; sessionId: string }
@@ -10,6 +11,7 @@ export type LiveEvent =
 
 const listeners = new Set<(event: LiveEvent) => void>();
 
+/** Hands `event` to every listener. */
 export function emitLive(event: LiveEvent): void {
   for (const listener of [...listeners]) listener(event);
 }

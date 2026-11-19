@@ -18,6 +18,7 @@ export function downloadName(src: string, kind: 'image' | 'video', type: string,
   return (kind === 'video' ? t('微信视频') : t('微信图片')) + stamp + (original ? t('_原图') : '') + '.' + extension;
 }
 
+/** The 「下载」 button of the preview. */
 export function PreviewDownload({ src, kind, original }: { src: string; kind: 'image' | 'video'; original: boolean }) {
   const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle');
   const save = async () => {

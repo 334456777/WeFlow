@@ -50,6 +50,7 @@ export function FootprintRanges({ choice, onChoice }: { choice: FootprintChoice;
   </div>;
 }
 
+/** The footprint read: the counts, the timeline narrowed to `keyword`, and the groups that mentioned me. */
 export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
   data: Footprint; keyword: string; onKeyword(keyword: string): void;
   names(username: string): Contact | undefined; onOpen(session: string, localId: number, createTime: number): void;
@@ -116,6 +117,7 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
   </div>;
 }
 
+/** The footprint page: the range picked, and the footprint over it once read. */
 export function FootprintPage({ choice, onChoice, keyword, onKeyword, onOpen, onData }: {
   choice: FootprintChoice; onChoice(choice: FootprintChoice): void; keyword: string; onKeyword(keyword: string): void;
   onOpen(session: string, localId: number, createTime: number): void; onData(data: Footprint | null): void;

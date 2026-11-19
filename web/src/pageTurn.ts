@@ -4,6 +4,7 @@
 // under it. Both stay as they are with reduced motion, where pageIn plays nothing.
 import { useSyncExternalStore } from 'react';
 
+/** The two counts of page turns. */
 export interface PageTurns {
   /** Turns so far: pages and details. */
   turn: number;

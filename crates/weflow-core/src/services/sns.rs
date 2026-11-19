@@ -38,40 +38,59 @@ pub(crate) struct SnsState {
     unchecked_client: Option<reqwest::Client>,
 }
 
+/// Which posts `sns timeline` lists.
 #[derive(Clone, Debug, Default)]
 pub struct SnsTimelineQuery {
+    /// The most posts.
     pub limit: i32,
+    /// The posts skipped, newest first.
     pub offset: i32,
+    /// Only the posts of these wxids; all when empty.
     pub usernames: Vec<String>,
+    /// Only the posts holding this text.
     pub keyword: Option<String>,
+    /// Unix seconds: only posts from then on; 0 for no bound.
     pub start: i64,
+    /// Unix seconds: only posts up to then; 0 for no bound.
     pub end: i64,
 }
 
+/// What `sns export` writes.
 #[derive(Clone, Debug, Default)]
 pub struct SnsExportOptions {
+    /// The folder the export goes to.
     pub output_dir: PathBuf,
     /// `json` | `html` | `arkmejson`
     pub format: String,
+    /// Only the posts of these wxids; all when empty.
     pub usernames: Vec<String>,
+    /// Only the posts holding this text.
     pub keyword: Option<String>,
     /// Also save the pictures, live photos and videos next to the export.
     pub export_media: bool,
+    /// Unix seconds: only posts from then on; 0 for no bound.
     pub start: i64,
+    /// Unix seconds: only posts up to then; 0 for no bound.
     pub end: i64,
 }
 
 /// Result of `downloadImage` / `fetchAndDecryptImage`.
 #[derive(Clone, Debug, Default)]
 pub struct SnsMediaFetch {
+    /// The file, decrypted when there was a key; none for a video, which is only kept on disk.
     pub data: Option<Vec<u8>>,
+    /// Its MIME type.
     pub content_type: String,
+    /// Where WeFlow keeps it; none when it was not kept.
     pub cache_path: Option<PathBuf>,
 }
 
+/// What the Moments media proxy answers for an address.
 #[derive(Clone, Debug)]
 pub enum SnsProxyResult {
+    /// A picture, as a data URL.
     DataUrl(String),
+    /// A video, as the file WeFlow keeps it in; none when it was not kept.
     VideoPath(Option<PathBuf>),
 }
 
@@ -309,6 +328,7 @@ impl ServiceHub {
             .collect())
     }
 
+    /// Who has posts in Moments, the one who posted last first (`sns users`).
     pub fn sns_usernames_list(&self) -> AppResult<Vec<String>> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb.sns_usernames().map_err(err_native)?;
@@ -516,6 +536,10 @@ impl ServiceHub {
         }
     }
 
+    /// How many posts one person has (`sns post-counts --user`), from the counts kept while they are fresh.
+    ///
+    /// # Errors
+    /// A usage error for an empty username; a native error when the posts cannot be counted.
     pub fn sns_user_post_stats(&self, username: &str) -> AppResult<UserPosts> {
         let username = username.trim();
         if username.is_empty() {
@@ -530,11 +554,13 @@ impl ServiceHub {
 
     // ── block-delete trigger / delete ──
 
+    /// Whether the trigger that keeps deleted posts is installed; refused by the read-only database layer.
     pub fn sns_block_delete_status(&self) -> AppResult<Value> {
         let v = self.sns_block_delete("check")?;
         Ok(json!({ "success": true, "installed": v["installed"].as_bool().unwrap_or(false) }))
     }
 
+    /// Installs the trigger that keeps deleted posts; refused by the read-only database layer.
     pub fn sns_block_delete_install(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let (rc, msg) = wcdb
@@ -551,6 +577,7 @@ impl ServiceHub {
         }
     }
 
+    /// Removes the trigger that keeps deleted posts; refused by the read-only database layer.
     pub fn sns_block_delete_uninstall(&self) -> AppResult<Value> {
         let _ = self.sns_block_delete("uninstall")?;
         Ok(json!({ "success": true }))
@@ -1624,6 +1651,11 @@ impl ServiceHub {
         wcdb.sns_delete_post(post_id).map_err(AppError::from_native)
     }
 
+    /// Downloads the image at `url` (`sns download-image`), decrypted with the image keys when it is a `.dat`
+    /// payload; written to `out`, else answered in base64.
+    ///
+    /// # Errors
+    /// When the download fails or `out` cannot be written.
     pub async fn sns_download_image(
         &self,
         url: &str,
@@ -1705,6 +1737,7 @@ impl ServiceHub {
         }
     }
 
+    /// The official accounts followed (`biz accounts`), each with the time of its last push.
     pub fn biz_accounts(&self) -> AppResult<Value> {
         let contacts = self.contacts()?;
         let sessions = self.sessions()?;
@@ -1712,6 +1745,7 @@ impl ServiceHub {
         Ok(json!({ "accounts": accounts }))
     }
 
+    /// A page of an official account's pushes, newest first (`biz messages`).
     pub fn biz_messages(
         &self,
         username: &str,

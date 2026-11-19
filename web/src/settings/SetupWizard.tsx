@@ -16,6 +16,7 @@ import { SteadyLabel } from '../Chip';
 import { findJob, removeJob, runJob, type JobsState } from '../jobs/useJobs';
 import { msg, t } from '../i18n';
 
+/** The steps of the setup, in order, their names marked with `msg()`. */
 export const STEPS = [
   // shown through t()
   { id: 'dir', label: msg('数据库目录') }, { id: 'key', label: msg('数据库密钥') },
@@ -280,6 +281,7 @@ function TestStep({ onDone, onBack }: { onDone(): void; onBack(step: Step): void
   </>;
 }
 
+/** The setup of the current profile, one step at a time. */
 export function SetupWizard({ profile, jobs, platform, onChanged, onDone, onClose }: {
   /** The current profile as `config profiles` last said, or undefined while it is read. */
   profile: Profile | undefined;

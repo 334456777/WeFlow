@@ -9,12 +9,15 @@ const LARGEST_BODY: usize = 16 << 20;
 /// A request the fake received.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Request {
+    /// The HTTP method.
     pub method: String,
     /// The path without its query.
     pub path: String,
+    /// The query, without its `?`; empty when there is none.
     pub query: String,
     /// The headers, their names in lower case.
     pub headers: Vec<(String, String)>,
+    /// The body, read as UTF-8 with invalid bytes replaced.
     pub body: String,
 }
 

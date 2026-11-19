@@ -4,7 +4,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 
+/** The smallest zoom: the picture fits the frame. */
 export const MIN_SCALE = 1;
+/** The largest zoom. */
 export const MAX_SCALE = 8;
 /** How much one wheel step (100 deltaY) zooms: e^(0.15) ≈ 1.16×. */
 const WHEEL = 0.0015;
@@ -12,7 +14,9 @@ const WHEEL = 0.0015;
 const DEAD_ZONE = 4;
 const DOUBLE = 2.5;
 
+/** How the picture is shown: its zoom, and its offset in pixels from the frame's centre. */
 export interface View { scale: number; x: number; y: number }
+/** The picture fitting the frame, centred. */
 export const FIT: View = { scale: 1, x: 0, y: 0 };
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
@@ -28,12 +32,14 @@ export function zoomAt(view: View, scale: number, px: number, py: number, width:
   return keep({ scale: next, x: px - (px - view.x) * k, y: py - (py - view.y) * k }, width, height);
 }
 
+/** `view` moved back inside the frame, the picture `width` × `height` at scale 1. */
 export function keep(view: View, width: number, height: number): View {
   const roomX = (width * view.scale - width) / 2;
   const roomY = (height * view.scale - height) / 2;
   return { scale: view.scale, x: clamp(view.x, -roomX, roomX), y: clamp(view.y, -roomY, roomY) };
 }
 
+/** What the preview's buttons do to the picture: zoom about the centre, or fit it again. */
 export interface ZoomControls { zoomBy(factor: number): void; reset(): void }
 
 /** `sized`: the picture's size and what shows until it loads, when the preview knows its shape beforehand (#194). */

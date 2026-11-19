@@ -6,8 +6,10 @@ import { t } from '../i18n';
 import { getOverall, getRankings, getTimeSpread, type Overall, type Ranked, type TimeSpread } from '../api/analytics';
 import { getGroups, type Group } from '../api/groups';
 
+/** How many private chats the rankings list. */
 export const RANKED = 20;
 
+/** The private chats' analytics as read: not yet, being read, read, or why it failed. */
 export type AnalyticsState =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -41,6 +43,7 @@ export function useAnalytics(enabled: boolean, scope: number): [AnalyticsState, 
   return [state, reload];
 }
 
+/** The group chats as read: not yet, being read, read, or why it failed. */
 export type GroupsState =
   | { status: 'idle' }
   | { status: 'loading' }

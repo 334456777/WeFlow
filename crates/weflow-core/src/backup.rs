@@ -40,6 +40,7 @@ pub struct BackupEntry {
     /// Its path in the backup: `db_storage/…`, `msg/attach/…`, `msg/video/…`, `msg/file/…` or `emojis/…`; a backup
     /// of an older WeFlow can also hold `FileStorage/…`.
     pub path: String,
+    /// The SHA-256 of its content, in lowercase hex.
     pub sha256: String,
     /// Bytes.
     pub size: u64,
@@ -52,9 +53,11 @@ pub struct BackupManifest {
     pub version: String,
     /// Unix seconds.
     pub created_at: u64,
+    /// The account backed up.
     pub wxid: String,
     /// The WeFlow that wrote it.
     pub weflow_version: String,
+    /// The files in it.
     pub entries: Vec<BackupEntry>,
     /// Files of the media and stickers that could not be read and are not in the backup. Left out when there are
     /// none, and in a backup of an older WeFlow.
@@ -75,6 +78,10 @@ pub struct SkippedFile {
     pub reason: String,
 }
 
+/// The manifest of the backup at `archive_path`.
+///
+/// # Errors
+/// When the file cannot be opened, is not a zip, or holds no manifest that reads as one.
 pub fn inspect_backup(archive_path: &Path) -> Result<BackupManifest> {
     let file =
         fs::File::open(archive_path).with_context(|| format!("open {}", archive_path.display()))?;

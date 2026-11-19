@@ -3,9 +3,12 @@
 import { call, get } from './client';
 import type * as Contract from './contract.gen';
 
+/** A version kept on the server's machine (`web list`). */
 export type KeptVersion = Contract.WebInstalled;
+/** A published version (`web list --remote`). */
 export type PublishedVersion = Contract.WebPublished;
 
+/** `web list`: the versions kept on the server's machine. */
 export const listKept = (signal?: AbortSignal) => get<KeptVersion[]>('web/list', {}, signal);
 
 /** Asks the registry, so it takes a few seconds and fails offline. */

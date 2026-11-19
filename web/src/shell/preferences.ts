@@ -7,6 +7,7 @@ const LIVE_KEY = 'weflow.live';
 const MEDIA_KEY = 'weflow.media';
 const MOTION_KEY = 'weflow.reduced-motion';
 
+/** The page's own settings, kept in this browser: live messages, the media to show, reduced motion. */
 export interface Preferences {
   realtime: boolean;
   setRealtime(on: boolean): void;
@@ -34,6 +35,7 @@ export function keptMedia(text: string | null): MediaKind[] {
   }
 }
 
+/** The settings as kept, and their setters, which keep them. */
 export function usePreferences(): Preferences {
   const [realtime, setLive] = useState(() => read(LIVE_KEY, text => text !== 'off'));
   const setRealtime = (on: boolean) => { setLive(on); keep(LIVE_KEY, on ? 'on' : 'off'); };

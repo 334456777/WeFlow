@@ -14,8 +14,11 @@ use crate::sync::MutexExt;
 /// The user who ran `sudo weflow …`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Caller {
+    /// Their user id (`SUDO_UID`).
     pub uid: u32,
+    /// Their group id (`SUDO_GID`).
     pub gid: u32,
+    /// Their home directory.
     pub home: PathBuf,
 }
 

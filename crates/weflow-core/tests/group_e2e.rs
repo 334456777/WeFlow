@@ -1,3 +1,4 @@
+//! The group reads on a synthetic account: the members panel, the group list and one member's analytics and exports.
 mod common;
 
 #[test]

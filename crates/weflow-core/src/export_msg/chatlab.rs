@@ -179,6 +179,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         (self.chatlab_finish_members(members), messages)
     }
 
+    /// Writes `msgs` to `out` in ChatLab's format: one JSON document, or JSON Lines with `jsonl`.
+    ///
+    /// # Errors
+    /// When the file cannot be written.
     pub fn write_chatlab(&mut self, msgs: &[ExportMsg], out: &Path, jsonl: bool) -> Result<()> {
         let format = if jsonl {
             EntryFormat::ChatlabJsonl

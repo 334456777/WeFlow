@@ -138,6 +138,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         out
     }
 
+    /// Writes `msgs` to `out` as WeClone's CSV, without quote replies.
+    ///
+    /// # Errors
+    /// When the file cannot be written.
     pub fn write_weclone(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
         let text = self.render_weclone(msgs);
         write_bytes(out, text.as_bytes())

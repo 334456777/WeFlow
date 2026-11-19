@@ -23,17 +23,22 @@ pub struct Unsupported(pub String);
 /// One argument of a generic by-name call (after the implicit account).
 #[derive(Clone, Copy, Debug)]
 pub enum Arg<'a> {
+    /// A text argument, often JSON.
     S(&'a str),
+    /// A 32-bit integer, such as a time in seconds.
     I32(i32),
+    /// A 64-bit integer, such as a message id.
     I64(i64),
 }
 
+/// The handle of one account's databases that the service layer calls; closed until [`Wcdb::open`].
 #[derive(Default)]
 pub struct Wcdb {
     native: Option<Account>,
 }
 
 impl Wcdb {
+    /// A closed handle.
     pub fn new() -> Self {
         Self::default()
     }
@@ -127,22 +132,29 @@ impl Wcdb {
         Some(salt)
     }
 
+    /// Whether the account at `account_dir` opens with `hex_key`: [`open`](Self::open), then [`close`](Self::close).
+    ///
+    /// # Errors
+    /// As [`open`](Self::open).
     pub fn test_connection(&mut self, account_dir: &Path, hex_key: &str) -> Result<()> {
         self.open(account_dir, hex_key, None)?;
         self.close();
         Ok(())
     }
 
+    /// Closes the handle; later calls fail with "WCDB is not connected" until it is opened again.
     pub fn close(&mut self) {
         self.native = None;
     }
 
     // ── sessions and messages ──
 
+    /// The rows of `SessionTable`, newest first (see [`Account::sessions`]).
     pub fn sessions(&self) -> Result<Value> {
         self.account()?.sessions()
     }
 
+    /// A newest-first page of a conversation's messages across the message databases (see [`Account::messages`]).
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Vec<MsgRow>> {
         self.account()?.messages(session_id, limit, offset)
     }
@@ -197,18 +209,25 @@ impl Wcdb {
         Ok(account.warm(&account.chat_databases()))
     }
 
+    /// How many messages a conversation has (see [`Account::message_count`]).
     pub fn message_count(&self, session_id: &str) -> Result<i32> {
         self.account()?.message_count(session_id)
     }
 
+    /// The days a conversation has messages on, `YYYY-MM-DD` in local time, oldest first (see
+    /// [`Account::message_dates`]).
     pub fn message_dates(&self, session_id: &str) -> Result<Value> {
         self.account()?.message_dates(session_id)
     }
 
+    /// `{ username: count }`: how many messages each of `session_ids` has (see
+    /// [`Account::session_message_counts`]).
     pub fn session_message_counts(&self, session_ids: &[String]) -> Result<Value> {
         self.account()?.session_message_counts(session_ids)
     }
 
+    /// `{ "YYYY-MM-DD": count }`: a conversation's messages by local day (see
+    /// [`Account::session_message_date_counts`]).
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
         self.account()?.session_message_date_counts(session_id)
     }
@@ -235,10 +254,14 @@ impl Wcdb {
             .messages_by_local_id(session_id, local_id, create_time)
     }
 
+    /// The message of a conversation with the server id `svrid`, a decimal string that may pass 2^53 (see
+    /// [`Account::message_by_server_id`]).
     pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Option<MsgRow>> {
         self.account()?.message_by_server_id(session_id, svrid)
     }
 
+    /// Opens a cursor over a conversation's messages between `begin` and `end` (seconds; 0 is unbounded) and returns
+    /// its id (see [`Account::open_message_cursor`]).
     pub fn open_message_cursor(
         &self,
         session_id: &str,
@@ -294,6 +317,7 @@ impl Wcdb {
         self.account()?.fetch_message_page(cursor, page)
     }
 
+    /// Closes a cursor and frees what it holds (see [`Account::close_message_cursor`]).
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
         self.account()?.close_message_cursor(cursor)
     }
@@ -367,26 +391,33 @@ impl Wcdb {
         )
     }
 
+    /// One contact's row, `{}` when it is unknown (see [`Account::contact`]).
     pub fn contact(&self, username: &str) -> Result<Value> {
         self.account()?.contact(username)
     }
 
+    /// Every row of `contact` (see [`Account::contacts`]).
     pub fn contacts(&self) -> Result<Value> {
         self.account()?.contacts()
     }
 
+    /// `{ "private", "group", "official", "former_friend" }`: how many contacts of each kind (see
+    /// [`Account::contact_type_counts`]).
     pub fn contact_type_counts(&self) -> Result<Value> {
         self.account()?.contact_type_counts()
     }
 
+    /// How many members a group has (see [`Account::group_member_count`]).
     pub fn group_member_count(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.group_member_count(chatroom_id)
     }
 
+    /// A group's members as WeFlow's desktop app lists them (see [`Account::group_members`]).
     pub fn group_members(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.group_members(chatroom_id)
     }
 
+    /// `{ username: group nickname }` of a group's members (see [`Account::group_nicknames`]).
     pub fn group_nicknames(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.group_nicknames(chatroom_id)
     }
@@ -398,20 +429,27 @@ impl Wcdb {
             .session_totals(session_ids, begin as i64, end as i64)
     }
 
+    /// A group's statistics between `begin` and `end`: messages by sender, by hour and by type (see
+    /// [`Account::group_stats`]).
     pub fn group_stats(&self, chatroom_id: &str, begin: i32, end: i32) -> Result<Value> {
         self.account()?
             .group_stats(chatroom_id, begin as i64, end as i64)
     }
 
+    /// The local years, newest first, in which any of `session_ids` has messages (see
+    /// [`Account::available_years`]).
     pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
         self.account()?.available_years(session_ids)
     }
 
+    /// The dual report's statistics of the chat with `session_id` between `begin` and `end` (see
+    /// [`Account::dual_report_stats`]).
     pub fn dual_report_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
         self.account()?
             .dual_report_stats(session_id, begin as i64, end as i64)
     }
 
+    /// The footprint over the range and conversations `options` gives (see [`Account::footprint_stats`]).
     pub fn footprint_stats(&self, options: &Value) -> Result<Value> {
         self.account()?.footprint_stats(options)
     }
@@ -436,42 +474,53 @@ impl Wcdb {
         )
     }
 
+    /// The owner's Moments between `begin` and `end`: posts and their types, who liked them most and whose posts the
+    /// owner liked most (see [`Account::sns_annual_stats`]).
     pub fn sns_annual_stats(&self, begin: i32, end: i32) -> Result<Value> {
         self.account()?.sns_annual_stats(begin as i64, end as i64)
     }
 
+    /// Who has Moments posts, the one who posted last first (see [`Account::sns_usernames`]).
     pub fn sns_usernames(&self) -> Result<Value> {
         self.account()?.sns_usernames()
     }
 
+    /// `{ username: posts }` of every poster (see [`Account::sns_post_counts`]).
     pub fn sns_post_counts(&self) -> Result<Value> {
         self.account()?.sns_post_counts()
     }
 
+    /// `{ total_posts, total_friends, my_posts }` of the Moments (see [`Account::sns_export_stats`]).
     pub fn sns_export_stats(&self, my_wxid: Option<&str>) -> Result<Value> {
         self.account()?.sns_export_stats(my_wxid)
     }
 
+    /// Refused: it would check a trigger in WeChat's Moments database.
     pub fn sns_block_delete_check(&self) -> Result<Value> {
         self.read_only("sns_block_delete_check")
     }
 
+    /// Refused: it would install a trigger in WeChat's Moments database.
     pub fn sns_block_delete_install(&self) -> Result<Value> {
         self.read_only("sns_block_delete_install")
     }
 
+    /// Refused: it would remove a trigger from WeChat's Moments database.
     pub fn sns_block_delete_uninstall(&self) -> Result<Value> {
         self.read_only("sns_block_delete_uninstall")
     }
 
+    /// Refused: it would delete a post from WeChat's Moments database.
     pub fn sns_delete_post(&self, _post_id: &str) -> Result<Value> {
         self.read_only("sns_delete_post")
     }
 
+    /// The rows of a read-only statement on one database, as JSON objects (see [`Account::exec_query`]).
     pub fn exec_query(&self, kind: &str, path: &str, sql: &str) -> Result<Value> {
         self.account()?.exec_query(kind, Some(path), sql)
     }
 
+    /// Refused: it would change a message in WeChat's database.
     pub fn update_message(
         &self,
         _session_id: &str,
@@ -482,6 +531,7 @@ impl Wcdb {
         self.read_only("update_message")
     }
 
+    /// Refused: it would delete a message from WeChat's database.
     pub fn delete_message(
         &self,
         _session_id: &str,
@@ -492,14 +542,17 @@ impl Wcdb {
         self.read_only("delete_message")
     }
 
+    /// Refused: it would check a conversation's anti-revoke trigger in WeChat's database.
     pub fn anti_revoke_check(&self, _session_id: &str) -> Result<Value> {
         self.read_only("anti_revoke_check")
     }
 
+    /// Refused: it would install an anti-revoke trigger in WeChat's database.
     pub fn anti_revoke_install(&self, _session_id: &str) -> Result<Value> {
         self.read_only("anti_revoke_install")
     }
 
+    /// Refused: it would remove an anti-revoke trigger from WeChat's database.
     pub fn anti_revoke_uninstall(&self, _session_id: &str) -> Result<Value> {
         self.read_only("anti_revoke_uninstall")
     }
@@ -524,10 +577,13 @@ impl Wcdb {
         )
     }
 
+    /// Refused: it would mark every conversation read in WeChat's database.
     pub fn mark_all_sessions_read(&self) -> Result<Value> {
         self.read_only("mark_all_sessions_read")
     }
 
+    /// `{ username: name }` of the usernames in the JSON array `usernames_json`: the remark, else the nickname, else
+    /// the alias, else the username (see [`Account::display_names`]).
     pub fn display_names(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
             .display_names(&crate::contact::usernames_from_json(usernames_json))
@@ -538,34 +594,46 @@ impl Wcdb {
         self.account()?.head_image(username)
     }
 
+    /// `{ username: url }` of the contacts in `usernames_json` that have an avatar (see [`Account::avatar_urls`]).
     pub fn avatar_urls(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
             .avatar_urls(&crate::contact::usernames_from_json(usernames_json))
     }
 
+    /// `{ chatroom: count }` of the groups in `chatroom_ids_json` (see [`Account::group_member_counts`]).
     pub fn group_member_counts(&self, chatroom_ids_json: &str) -> Result<Value> {
         self.account()?
             .group_member_counts(&crate::contact::usernames_from_json(chatroom_ids_json))
     }
 
+    /// Whether each conversation of `usernames_json` is folded, muted and pinned (see
+    /// [`Account::contact_status`]).
     pub fn contact_status(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
             .contact_status(&crate::contact::usernames_from_json(usernames_json))
     }
 
+    /// `{ username: alias }` of the contacts in `usernames_json` with a WeChat ID (see
+    /// [`Account::contact_alias_map`]).
     pub fn contact_alias_map(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
             .contact_alias_map(&crate::contact::usernames_from_json(usernames_json))
     }
 
+    /// `{ "ext_buffer": "<hex>" }` of a group, `{}` when it is unknown (see [`Account::chat_room_ext_buffer`]).
     pub fn chat_room_ext_buffer(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.chat_room_ext_buffer(chatroom_id)
     }
 
+    /// One row for each table of a conversation: its database, its name, its messages and their first and last time
+    /// (see [`Account::message_table_stats`]).
     pub fn message_table_stats(&self, session_id: &str) -> Result<Value> {
         self.account()?.message_table_stats(session_id)
     }
 
+    /// What the annual report reads besides the totals: the heatmap, the midnight messages, who opened the
+    /// conversations, my replies, the peak day, my phrases and the longest streak (see
+    /// [`Account::annual_report_extras`]).
     pub fn annual_report_extras(
         &self,
         session_ids_json: &str,
@@ -600,6 +668,7 @@ impl Wcdb {
         self.account()?.file_hardlinks(md5)
     }
 
+    /// The download address of the sticker `md5` (see [`Account::emoticon_cdn_url`]).
     pub fn emoticon_cdn_url(&self, md5: &str) -> Result<String> {
         self.account()?.emoticon_cdn_url(md5)
     }
@@ -609,6 +678,7 @@ impl Wcdb {
         self.account()?.emoticon_captions()
     }
 
+    /// A voice message's audio as lowercase hex, `""` when there is none (see [`Account::voice_data`]).
     pub fn voice_data(
         &self,
         create_time: i32,
@@ -624,11 +694,15 @@ impl Wcdb {
         )
     }
 
+    /// The audio of each voice message the JSON array `requests_json` asks for, `[{ "hex": … }]` in its order (see
+    /// [`Account::voice_data_batch`]).
     pub fn voice_data_batch(&self, requests_json: &str) -> Result<Value> {
         self.account()?
             .voice_data_batch(&serde_json::from_str(requests_json).unwrap_or_default())
     }
 
+    /// Each conversation's messages by type, and their first and last time, within the range of `options_json` (see
+    /// [`Account::session_message_type_stats_batch`]).
     pub fn session_message_type_stats_batch(
         &self,
         session_ids_json: &str,

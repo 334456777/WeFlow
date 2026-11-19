@@ -5,6 +5,7 @@ import { AppWindow, Broom, Gear, HardDrives, Palette, Plugs, Sparkle, TerminalWi
 import { HoverTrack } from '../HoverTrack';
 import { msg, t } from '../i18n';
 
+/** A section of the settings. */
 export type SectionId = 'connection' | 'accounts' | 'appearance' | 'serve' | 'ai' | 'cache' | 'web' | 'console';
 
 interface Section {
@@ -35,10 +36,13 @@ export const SECTION_GROUPS: { label: string; sections: Section[] }[] = [
   { label: msg('高级'), sections: [{ id: 'console', label: msg('命令控制台'), icon: TerminalWindow, online: true }] },
 ];
 
+/** Every section, in their order. */
 export const SECTIONS: Section[] = SECTION_GROUPS.flatMap(group => group.sections);
 
+/** A section's name in the page's language. */
 export const sectionLabel = (id: SectionId) => t(SECTIONS.find(section => section.id === id)!.label);
 
+/** The list of sections, each with its state; those that need a server are marked while there is none. */
 export function SettingsNav({ open, summaries, connected, sample, onOpen }: {
   open: SectionId;
   /** Each section's state in a few words. */

@@ -23,6 +23,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
     /// A sheet with more rows than this is written in constant-memory mode (no hyperlinks, rows go to disk).
     pub(super) const EXCEL_BIG: usize = 20000;
 
+    /// Writes `msgs` to `out` as an Excel workbook, a new sheet every 1 048 576 rows.
+    ///
+    /// # Errors
+    /// When the workbook cannot be written.
     pub fn write_excel(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
         self.write_excel_rows(msgs, msgs.len() > Self::EXCEL_BIG, out, SHEET_ROWS)?;
         Ok(())

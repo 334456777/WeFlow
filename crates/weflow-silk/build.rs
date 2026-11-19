@@ -1,3 +1,5 @@
+//! Compiles the vendored Skype SILK SDK (`vendor/`) into the static library the decoder links.
+
 use std::error::Error;
 use std::path::PathBuf;
 

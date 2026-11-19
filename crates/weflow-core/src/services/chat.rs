@@ -146,12 +146,18 @@ fn basename(path: &str) -> String {
     path.rsplit(['/', '\\']).next().unwrap_or("").to_string()
 }
 
+/// Which messages `chat resources` lists.
 #[derive(Clone, Debug, Default)]
 pub struct ResourceQuery {
+    /// The conversation; all of them when none.
     pub session_id: Option<String>,
+    /// `image`, `video`, `voice` and `file`; all of them when empty.
     pub types: Vec<String>,
+    /// Unix seconds: only messages from then on; 0 for no bound.
     pub begin: i64,
+    /// Unix seconds: only messages up to then; 0 for no bound.
     pub end: i64,
+    /// The most messages of the page.
     pub limit: usize,
     /// The `nextCursor` of the page before
     pub before: Option<String>,
@@ -225,6 +231,7 @@ impl ServiceHub {
 
     // ── per-day statistics ──
 
+    /// The local days a conversation has messages on, oldest first (`chat dates`); none when they cannot be read.
     pub fn chat_dates(&self, session_id: &str) -> AppResult<SessionDates> {
         let wcdb = self.open_wcdb()?;
         let dates = wcdb
@@ -238,6 +245,7 @@ impl ServiceHub {
         })
     }
 
+    /// A conversation's messages by local day (`chat date-counts`).
     pub fn chat_date_counts(&self, session_id: &str) -> AppResult<SessionDateCounts> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
@@ -278,6 +286,7 @@ impl ServiceHub {
             .collect())
     }
 
+    /// Whether each of `usernames` is folded, muted and pinned (`chat statuses`), once each, in the order given.
     pub fn chat_statuses(&self, usernames: &[String]) -> AppResult<IndexMap<String, ChatStatus>> {
         let ids = uniq(usernames);
         if ids.is_empty() {
@@ -306,10 +315,13 @@ impl ServiceHub {
             .collect())
     }
 
+    /// Refused by the read-only database layer: marking every conversation read writes to WeChat's database.
     pub fn chat_mark_all_read(&self) -> AppResult<Value> {
         self.open_wcdb()?.mark_all_sessions_read().map_err(native)
     }
 
+    /// The rows of `SessionTable` but for the official accounts', the conversations an anti-revoke trigger may
+    /// guard.
     pub fn chat_anti_revoke_sessions(&self) -> AppResult<Value> {
         let sessions = self.sessions()?;
         let kept: Vec<Value> = sessions
@@ -332,6 +344,10 @@ impl ServiceHub {
 
     // ── session detail ──
 
+    /// Who a conversation is with and how many messages it has (`chat detail --fast`).
+    ///
+    /// # Errors
+    /// A usage error for an empty id; a native error when the databases cannot be read.
     pub fn chat_detail_fast(&self, session_id: &str) -> AppResult<SessionFacts> {
         let id = session_id.trim();
         if id.is_empty() {
@@ -376,6 +392,10 @@ impl ServiceHub {
         })
     }
 
+    /// Where a conversation's messages are kept, and their first and last time (`chat detail --extra`).
+    ///
+    /// # Errors
+    /// A usage error for an empty id; a native error when the databases cannot be opened.
     pub fn chat_detail_extra(&self, session_id: &str) -> AppResult<SessionTables> {
         let id = session_id.trim();
         if id.is_empty() {
@@ -433,6 +453,8 @@ impl ServiceHub {
         })
     }
 
+    /// [`Self::chat_detail_fast`] and [`Self::chat_detail_extra`] together (`chat detail`); the tables are empty when
+    /// they cannot be read.
     pub fn chat_detail(&self, session_id: &str) -> AppResult<SessionDetail> {
         Ok(SessionDetail {
             facts: self.chat_detail_fast(session_id)?,
@@ -442,6 +464,7 @@ impl ServiceHub {
 
     // ── export statistics ──
 
+    /// How many contacts of each kind there are (`chat tab-counts`).
     pub fn chat_tab_counts(&self) -> AppResult<TabCounts> {
         serde_json::from_value(self.contact_type_counts()?)
             .map_err(|err| AppError::native(format!("{err:#}")))
@@ -656,6 +679,10 @@ impl ServiceHub {
             .unwrap_or_default()
     }
 
+    /// Saves `count` as the group's own message count (`chat group-hint --set`), kept per account in the cache.
+    ///
+    /// # Errors
+    /// A usage error when `chatroom_id` is not a group's id.
     pub fn set_group_hint(&self, chatroom_id: &str, count: i64) -> AppResult<GroupHint> {
         if !chatroom_id.trim().ends_with("@chatroom") {
             return Err(AppError::usage("invalid group chat id"));
@@ -686,6 +713,10 @@ impl ServiceHub {
         })
     }
 
+    /// The group's own message count as saved (`chat group-hint`); all left out when none was.
+    ///
+    /// # Errors
+    /// A usage error when `chatroom_id` is not a group's id.
     pub fn group_hint(&self, chatroom_id: &str) -> AppResult<GroupHint> {
         if !chatroom_id.trim().ends_with("@chatroom") {
             return Err(AppError::usage("invalid group chat id"));
@@ -1109,6 +1140,7 @@ impl ServiceHub {
 }
 
 impl ServiceHub {
+    /// The rows of `SessionTable`, newest first, as WeChat keeps them.
     pub fn sessions(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.sessions()
@@ -1288,18 +1320,21 @@ impl ServiceHub {
             .collect()
     }
 
+    /// Every row of `contact`, as WeChat keeps them (`chat contacts` without `--parsed`).
     pub fn contacts(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contacts()
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
+    /// One contact's row, `{}` when it is unknown (`chat contact`).
     pub fn contact(&self, username: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contact(username)
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
+    /// Refused by the read-only database layer (`chat update-message`).
     pub fn update_message(
         &self,
         session_id: &str,
@@ -1312,6 +1347,7 @@ impl ServiceHub {
             .map_err(AppError::from_native)
     }
 
+    /// Refused by the read-only database layer (`chat delete-message`).
     pub fn delete_message(
         &self,
         session_id: &str,
@@ -1324,6 +1360,11 @@ impl ServiceHub {
             .map_err(AppError::from_native)
     }
 
+    /// `chat anti-revoke`: `check`, `install` or `uninstall` the anti-revoke trigger of each conversation; the
+    /// read-only database layer refuses all three.
+    ///
+    /// # Errors
+    /// The first conversation's failure when every one failed; otherwise each result says how it went.
     pub fn anti_revoke(
         &self,
         action: &str,
@@ -1367,12 +1408,14 @@ impl ServiceHub {
         Ok(crate::contract::AntiRevokeResults { results })
     }
 
+    /// `{ "private", "group", "official", "former_friend" }`: how many contacts of each kind.
     pub fn contact_type_counts(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contact_type_counts()
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
+    /// A group's members, their group nicknames and their count, as one JSON object.
     pub fn group_members(&self, chatroom_id: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let members = wcdb

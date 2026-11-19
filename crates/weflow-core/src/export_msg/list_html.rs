@@ -21,7 +21,9 @@ const LIST_EN: &str = include_str!("list.en.html");
 /// What a list page shows: how it draws the rows, and its title.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListKind {
+    /// The conversations (`export sessions`).
     Sessions,
+    /// The contacts (`export contacts`).
     Contacts,
 }
 
@@ -47,8 +49,11 @@ impl ListKind {
 /// A list to write as a page.
 #[derive(Debug)]
 pub struct ListPage<'a> {
+    /// Which list it is.
     pub kind: ListKind,
+    /// The names of the columns, as the other formats of the export name them.
     pub columns: &'a [String],
+    /// The rows, one value for each column.
     pub rows: &'a [Vec<Value>],
     /// `{ username: path from the page }` of the avatars written beside the page; the rows of the others show their
     /// name's first character.

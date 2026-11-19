@@ -3,6 +3,7 @@
 // official accounts. Every name and WeChat ID here is made up.
 import type { Contact } from '../api/contract.gen';
 
+/** Someone of the sample, as their contact says them. */
 export interface Person {
   username: string;
   /** The name the list shows: the remark when there is one, else the nickname. */
@@ -22,6 +23,7 @@ export interface Person {
 /** The account the sample is of. */
 export const ME = 'wxid_sample_ayuan';
 
+/** Everyone of the sample, the account first. */
 export const people: Person[] = [
   { username: ME, name: '阿远', nickname: '阿远', alias: 'ayuan_dev', region: '中国 杭州', about: '在写 WeFlow', phrases: ['好', '收到', '已经'] },
   { username: 'wxid_sample_linmu', name: '林沐', nickname: '沐沐', remark: '林沐', alias: 'linmu_design', region: '中国 上海', labels: ['WeFlow', '设计'], about: '正在给 WeFlow 画皮肤', phrases: ['皮肤', '阴影', '好看'] },
@@ -50,9 +52,12 @@ export const people: Person[] = [
   { username: 'wxid_sample_dabing', name: '大兵', nickname: '大兵', region: '中国 乌鲁木齐', labels: ['室友'] },
 ];
 
+/** The person `username`; undefined for one the sample does not have. */
 export const person = (username: string): Person | undefined => people.find(p => p.username === username);
+/** The name the list shows for `username`; the username itself for one the sample does not have. */
 export const nameOf = (username: string): string => person(username)?.name ?? username;
 
+/** A group of the sample. */
 export interface Group {
   username: string;
   name: string;
@@ -63,15 +68,24 @@ export interface Group {
   muted?: boolean;
 }
 
+/** WeFlow's developers. */
 export const DEV = 'sample_weflow_dev@chatroom';
+/** The talk about the WebUI's design. */
 export const DESIGN = 'sample_webui_design@chatroom';
+/** WeFlow's users, folded and muted. */
 export const USERS = 'sample_weflow_users@chatroom';
+/** The account's family. */
 export const FAMILY = 'sample_family@chatroom';
+/** Wednesday's table tennis. */
 export const PINGPONG = 'sample_pingpong@chatroom';
+/** A calligraphy society. */
 export const CALLIGRAPHY = 'sample_calligraphy@chatroom';
+/** A reading group, folded and muted. */
 export const MINDFUL = 'sample_mindful@chatroom';
+/** Old roommates. */
 export const DORM = 'sample_dorm404@chatroom';
 
+/** The sample's groups. */
 export const groups: Group[] = [
   {
     username: DEV, name: 'WeFlow 开发群', owner: ME,
@@ -101,15 +115,19 @@ export const groups: Group[] = [
 /** The conversations pinned to the top (#885): the WeFlow group, the family, the one loved and mother. */
 export const pinned = new Set([DEV, FAMILY, 'wxid_sample_xiaolu', 'wxid_sample_mom']);
 
+/** An official account of the sample. */
 export interface Official {
   username: string;
   name: string;
   about: string;
 }
 
+/** WeFlow's release notes. */
 export const WEFLOW_NEWS = 'gh_sample_weflow';
+/** WeChat Pay, whose notices the payments page lists. */
 export const WXPAY = 'gh_sample_wxpay';
 
+/** The official accounts the sample follows. */
 export const officials: Official[] = [
   { username: WEFLOW_NEWS, name: 'WeFlow 更新日志', about: 'WeFlow 的发布说明和使用技巧' },
   { username: 'gh_sample_rustnotes', name: 'Rust 编程手记', about: '写给 Rust 开发者的实践笔记' },

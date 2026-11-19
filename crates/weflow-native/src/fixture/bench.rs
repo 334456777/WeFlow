@@ -47,9 +47,11 @@ use world::{assign_shards, Conversation, Kind, World};
 
 /// The account's own user name, and its folder (the name and four more characters, as WeChat names it).
 pub const OWNER: &str = "wxid_benchme";
+/// The account's folder: [`OWNER`] and four more characters.
 pub const ACCOUNT_DIR: &str = "wxid_benchme_b3n9";
 /// The image keys of the account's `.dat` files (V2: AES for the head, XOR for the tail).
 pub const IMAGE_XOR_KEY: u8 = 0x5a;
+/// The AES key of the account's `.dat` files, as [`IMAGE_XOR_KEY`] is the XOR key.
 pub const IMAGE_AES_KEY: &str = "b3nchm4rk1m4g3k3";
 /// The newest moment of the account (2025-10-09 08:53:20 UTC): fixed, so a seed gives the same account on any day.
 const END: i64 = 1_760_000_000;
@@ -63,6 +65,7 @@ const MIB: usize = 1 << 20;
 /// What to build.
 #[derive(Clone, Debug)]
 pub struct BenchSpec {
+    /// What every random choice starts from: the same seed builds the same account.
     pub seed: u64,
     /// Messages of the biggest group.
     pub group_messages: usize,

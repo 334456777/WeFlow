@@ -46,6 +46,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         String::from_utf8(sql).unwrap_or_default()
     }
 
+    /// Writes `msgs` to `out` as SQL statements that create a table and insert them.
+    ///
+    /// # Errors
+    /// When the file cannot be written.
     pub fn write_sql(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
         let sql = self.render_sql(msgs);
         write_bytes(out, sql.as_bytes())

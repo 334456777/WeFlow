@@ -3,6 +3,7 @@
 import type { ModelApiFormat } from '../api/contract.gen';
 import { msg } from '../i18n';
 
+/** An API format: its name and what it is, its service's base URL and the path a question goes to. */
 export type Format = { id: ModelApiFormat; label: string; text: string; base: string; path: string };
 
 /** Shown through t(). */
@@ -21,6 +22,7 @@ export const FORMATS: readonly Format[] = [
 export const formatOf = (value: string | null | undefined): ModelApiFormat =>
   value?.trim().toLowerCase() === 'anthropic' ? 'anthropic' : 'openai';
 
+/** The format `id`; OpenAI's for one it does not know. */
 export const formatInfo = (id: ModelApiFormat): Format => FORMATS.find(f => f.id === id) ?? FORMATS[0];
 
 /** Where a question goes for the base URL `base`: the format's own service when it is empty; OpenAI's adds

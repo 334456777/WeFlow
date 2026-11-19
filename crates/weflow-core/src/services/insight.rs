@@ -97,10 +97,14 @@ fn log_failure(why: &str) {
     crate::output::warn(&format!("{}{why}", tr("insight: ", "洞察：")));
 }
 
+/// Why the engine writes an insight; the record's `triggerReason`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Trigger {
+    /// New messages in a conversation (`activity`).
     Activity,
+    /// A conversation silent for a while (`silence`).
     Silence,
+    /// `insight trigger` asked for it (`test`), even with the insights turned off.
     Test,
 }
 
@@ -166,6 +170,7 @@ impl ServiceHub {
         }
     }
 
+    /// Whether the profile turned the AI insights on (`ai_insight_enabled`).
     pub fn insight_enabled(&self) -> bool {
         self.insight_cfg()
             .get_key(Some(&self.profile_name), "aiInsightEnabled")
@@ -223,18 +228,22 @@ impl ServiceHub {
 
     // ── records ──
 
+    /// A page of the account's insight records (`insight records`; see [`RecordStore::list`]).
     pub fn insight_list_records(&self, f: &RecordFilters) -> InsightRecords {
         self.record_store().list(&self.insight_scope(), f)
     }
 
+    /// One of the account's insight records (`insight get`; see [`RecordStore::get`]).
     pub fn insight_get_record(&self, id: &str) -> crate::contract::InsightLookup {
         self.record_store().get(&self.insight_scope(), id)
     }
 
+    /// Marks one of the account's insight records read (`insight mark-read`; see [`RecordStore::mark_read`]).
     pub fn insight_mark_record_read(&self, id: &str) -> InsightMarked {
         self.record_store().mark_read(&self.insight_scope(), id)
     }
 
+    /// Removes the account's insight records that `f` matches (`insight clear`; see [`RecordStore::clear`]).
     pub fn insight_clear_records(&self, f: &RecordFilters) -> InsightCleared {
         self.record_store().clear(&self.insight_scope(), f)
     }

@@ -11,6 +11,7 @@ const labels: Record<Backend['state'], string> = {
 /** The state in a word or two, as the sidebar shows it. */
 export const backendLabel = (backend: Backend) => backend.state === 'offline' && backend.held ? t('已断开') : t(labels[backend.state]);
 
+/** The state in a sentence: what is happening, and what to do about it. */
 export function backendDetail(backend: Backend): string {
   switch (backend.state) {
     case 'checking': return t('正在检查 weflow serve。');

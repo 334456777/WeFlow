@@ -8,11 +8,13 @@ import { t } from '../i18n';
 import { getPayRecords, paymentOf, PAY_PAGE, PAY_SESSIONS, type Payment } from '../api/pay';
 import { dayOf } from '../chat/messages';
 
+/** The notices as read: how many so far, all of them newest first, or why it failed. */
 export type PaymentsState =
   | { status: 'loading'; read: number }
   | { status: 'ready'; payments: Payment[] }
   | { status: 'error'; message: string };
 
+/** Every WeChat Pay notice, read once `enabled`, and what reads them again. */
 export function usePayments(enabled: boolean, scope: number): [PaymentsState, () => void] {
   const [state, setState] = useState<{ scope: number; value: PaymentsState } | null>(null);
   const [round, setRound] = useState(0);
@@ -69,6 +71,7 @@ export function usePayments(enabled: boolean, scope: number): [PaymentsState, ()
   return [state?.scope === scope ? state.value : { status: 'loading', read: 0 }, () => setRound(n => n + 1)];
 }
 
+/** What the page narrows the payments to. */
 export interface PayFilter {
   /** One payee, or all of them. */
   merchant: string | null;
@@ -77,6 +80,7 @@ export interface PayFilter {
   to: string;
 }
 
+/** Every payment. */
 export const ALL_PAYMENTS: PayFilter = { merchant: null, from: '', to: '' };
 
 /** The payments of the filter's days. */
@@ -88,9 +92,11 @@ export function withinDays(payments: Payment[], { from, to }: Pick<PayFilter, 'f
   });
 }
 
+/** The payments of the filter's days and payee. */
 export const matches = (payments: Payment[], filter: PayFilter) =>
   withinDays(payments, filter).filter(p => filter.merchant === null || p.merchant === filter.merchant);
 
+/** A payee, and how often and how much was paid there. */
 export interface Merchant {
   name: string;
   icon?: string;
@@ -112,6 +118,7 @@ export function merchantsOf(payments: Payment[]): Merchant[] {
   return [...byName.values()].sort((a, b) => b.spent - a.spent || b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'));
 }
 
+/** The totals of some payments. */
 export interface PayTotals {
   count: number;
   /** Fen paid, and fen refunded. */
@@ -121,6 +128,7 @@ export interface PayTotals {
   unknown: number;
 }
 
+/** The totals of `payments`: how many, fen paid, fen refunded, and how many name no amount. */
 export function totalsOf(payments: Payment[]): PayTotals {
   const totals: PayTotals = { count: payments.length, paid: 0, refunded: 0, unknown: 0 };
   for (const p of payments) {

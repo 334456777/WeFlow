@@ -152,9 +152,13 @@ fn lower_file_name(path: &Path) -> Option<String> {
 /// falls back to the best there is, `Hd` to nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageVariant {
+    /// The best file on this computer.
     Best,
+    /// The thumbnail, `<md5>_t.dat`.
     Thumb,
+    /// The image opened, `<md5>.dat`, else the best there is.
     Normal,
+    /// The original, `<md5>_h.dat`, else nothing.
     Hd,
 }
 
@@ -202,19 +206,28 @@ impl Rendition {
     }
 }
 
+/// Which image message's image to decrypt, and how to answer (`image decrypt`, `resolve-cache`, `resolve-batch`).
 #[derive(Default, Clone, Debug)]
 pub struct ImagePayload {
+    /// The conversation's username.
     pub session_id: Option<String>,
+    /// The image's MD5, as a message's `imageMd5`.
     pub image_md5: Option<String>,
+    /// The name of its `.dat` file, as a message's `imageDatName`.
     pub image_dat_name: Option<String>,
+    /// When the message was sent, which narrows the search for the file.
     pub create_time: Option<i64>,
+    /// Answer the decrypted file's path rather than a data URL of it.
     pub prefer_file_path: bool,
-    /// `allowCacheIndex !== false`
+    /// `allowCacheIndex !== false`: whether a file named after the normalized `.dat` name or the MD5 may be taken
+    /// when the exact one is not found.
     pub allow_cache_index: Option<bool>,
+    /// Decrypt the original again rather than answer a thumbnail decrypted before.
     pub force: bool,
 }
 
 impl ImagePayload {
+    /// The payload of a JSON object with the WebUI's `camelCase` keys; a key that is missing or empty is unset.
     pub fn from_json(v: &Value) -> Self {
         let s = |k: &str| {
             v.get(k)
@@ -242,9 +255,12 @@ impl ImagePayload {
 #[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageResult {
+    /// Whether the image was found and decrypted.
     pub success: bool,
+    /// The decrypted image: its path, or a data URL of it without `preferFilePath`; left out on failure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_path: Option<String>,
+    /// What went wrong; left out on success.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Why it failed: `not_found`, `no_key`, `unsupported_image`, …
@@ -263,6 +279,7 @@ pub struct ImageResult {
 pub struct ImageBatch {
     /// Always true; each row says how it went.
     pub success: bool,
+    /// One result for each payload, in their order.
     pub rows: Vec<ImageResult>,
 }
 
@@ -477,6 +494,7 @@ impl ServiceHub {
         }
     }
 
+    /// The folder of the decrypted images, `Images` in the cache folder, made when it is missing.
     pub fn image_cache_root(&self) -> PathBuf {
         let root = self.cache_base().join("Images");
         let _ = std::fs::create_dir_all(&root);

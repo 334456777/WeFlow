@@ -16,6 +16,7 @@ export const MESSAGE_FORMATS = [
   { value: 'json', label: 'JSON' }, { value: 'arkme-json', label: 'Arkme JSON' }, { value: 'chatlab', label: 'ChatLab' },
   { value: 'chatlab-jsonl', label: 'ChatLab JSONL' }, { value: 'weclone', label: 'WeClone' }, { value: 'sql', label: 'SQL' },
 ] as const;
+/** A format of `export messages`. */
 export type MessageFormat = typeof MESSAGE_FORMATS[number]['value'];
 
 /** Formats that write the same extension, of which an export takes one. */
@@ -36,6 +37,7 @@ export function toggleFormat(formats: readonly MessageFormat[], value: MessageFo
 /** Several files come out, or media with them: the server packs them into one zip (`--zip`). */
 export const packed = (formats: readonly MessageFormat[], media: boolean) => formats.length > 1 || media;
 
+/** The formats' names in a row. */
 export const formatsLabel = (formats: readonly MessageFormat[]) => formats.map(formatLabel).join(t('、'));
 
 /** The formats as chips, several at once (#342). */
@@ -50,6 +52,7 @@ export const MEDIA_KINDS = [
   { value: 'image', label: msg('图片') }, { value: 'voice', label: msg('语音') }, { value: 'video', label: msg('视频') },
   { value: 'emoji', label: msg('表情') }, { value: 'file', label: msg('文件') }, { value: 'avatar', label: msg('头像') },
 ] as const;
+/** A kind of media `export messages --media` copies. */
 export type MediaKind = typeof MEDIA_KINDS[number]['value'];
 
 /** The media picked after `value` was pressed: taken off, or put on in the list's order. */
@@ -58,6 +61,7 @@ export function toggleMedia(kinds: readonly MediaKind[], value: MediaKind): Medi
   return MEDIA_KINDS.map(k => k.value).filter(k => next.has(k));
 }
 
+/** The media's names in a row, in the page's language. */
 export const mediaLabel = (kinds: readonly MediaKind[]) => kinds.map(k => t(MEDIA_KINDS.find(m => m.value === k)!.label)).join(t('、'));
 
 /** The media as chips, like the formats: any of them, or none. */
@@ -70,6 +74,7 @@ export function MediaChips({ kinds, onChange, label }: { kinds: readonly MediaKi
 const NAMES = [{ value: 'group-nickname', label: msg('群昵称') }, { value: 'remark', label: msg('备注') }, { value: 'nickname', label: msg('昵称') }] as const;
 type NameChoice = typeof NAMES[number]['value'];
 
+/** How the conversations picked are exported: the formats, the days, the names, the media, Excel's compact columns. */
 export interface BatchOptions {
   formats: MessageFormat[];
   from: string;
@@ -79,6 +84,7 @@ export interface BatchOptions {
   compact: boolean;
 }
 
+/** HTML of every day, senders by their group nickname, without media. */
 export const DEFAULT_BATCH: BatchOptions = { formats: ['html'], from: '', to: '', names: 'group-nickname', media: [], compact: false };
 
 /** The parameters of `export messages` for one conversation. */
@@ -92,12 +98,15 @@ export function exportParams(session: string, options: BatchOptions) {
   };
 }
 
+/** A format's name. */
 export const formatLabel = (format: MessageFormat) => MESSAGE_FORMATS.find(f => f.value === format)!.label;
 
+/** What the batch exports, for a closed card's header: how many conversations, the formats and the media. */
 export function batchSummary(picked: number, options: BatchOptions): string {
   return (picked ? t('{n} 个会话', { n: picked }) : t('未选会话')) + ' · ' + formatsLabel(options.formats) + (options.media.length ? ' · ' + t('含{kinds}', { kinds: mediaLabel(options.media) }) : '');
 }
 
+/** The card of how the conversations picked are exported. */
 export function BatchExport({ picked, options, onChange }: {
   picked: ChatSession[];
   options: BatchOptions;

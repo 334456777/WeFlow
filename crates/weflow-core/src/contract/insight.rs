@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Footprint {
+    /// The counts over the range.
     pub summary: FootprintSummary,
     /// The private chats with a message in the range, the latest first.
     pub private_sessions: Vec<FootprintSession>,
@@ -19,6 +20,7 @@ pub struct Footprint {
     pub mentions: Vec<FootprintMention>,
     /// The groups of those, the one with the most first.
     pub mention_groups: Vec<MentionGroup>,
+    /// How it was read.
     pub diagnostics: FootprintDiagnostics,
 }
 
@@ -31,6 +33,7 @@ impl Footprint {
     }
 }
 
+/// The counts of the footprint.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintSummary {
@@ -42,7 +45,9 @@ pub struct FootprintSummary {
     pub private_outbound_people: u64,
     /// Replied over inbound, from 0 to 1.
     pub private_reply_rate: f64,
+    /// The mentions listed.
     pub mention_count: u64,
+    /// The groups of those.
     pub mention_group_count: u64,
 }
 
@@ -50,15 +55,23 @@ pub struct FootprintSummary {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintSession {
+    /// The other party's wxid.
     pub session_id: String,
+    /// The messages they sent in the range.
     pub incoming_count: i64,
+    /// The messages I sent in the range.
     pub outgoing_count: i64,
+    /// Whether both of us wrote.
     pub replied: bool,
+    /// The time of their first message.
     pub first_incoming_ts: i64,
+    /// The time of my first message after it.
     pub first_reply_ts: i64,
+    /// The time of the last message.
     pub latest_ts: i64,
-    /// The message to open the chat at, by its local id and time.
+    /// The message to open the chat at, the last one, by its local id and time.
     pub anchor_local_id: i64,
+    /// The time of that message.
     pub anchor_create_time: i64,
 }
 
@@ -66,19 +79,33 @@ pub struct FootprintSession {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintSegment {
+    /// The other party's wxid.
     pub session_id: String,
+    /// Its place among the chat's stretches, from 1.
     pub segment_index: i64,
+    /// The time of its first message.
     pub start_ts: i64,
+    /// The time of its last message.
     pub end_ts: i64,
+    /// From the first message to the last, in seconds.
     pub duration_sec: i64,
+    /// The messages they sent.
     pub incoming_count: i64,
+    /// The messages I sent.
     pub outgoing_count: i64,
+    /// All its messages.
     pub message_count: i64,
+    /// Whether both of us wrote.
     pub replied: bool,
+    /// The time of their first message.
     pub first_incoming_ts: i64,
+    /// The time of my first message after it.
     pub first_reply_ts: i64,
+    /// As `end_ts`.
     pub latest_ts: i64,
+    /// The message to open the chat at, the first one, by its local id and time.
     pub anchor_local_id: i64,
+    /// As `start_ts`.
     pub anchor_create_time: i64,
 }
 
@@ -86,10 +113,15 @@ pub struct FootprintSegment {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintMention {
+    /// The group's id, `…@chatroom`.
     pub session_id: String,
+    /// The message's id in its conversation's table.
     pub local_id: i64,
+    /// When it was sent.
     pub create_time: i64,
+    /// Who sent it; empty when the row does not say.
     pub sender_username: String,
+    /// Its text as WeChat keeps it.
     pub message_content: String,
     /// The message's `source` XML, which lists who it mentions.
     pub source: String,
@@ -99,8 +131,11 @@ pub struct FootprintMention {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MentionGroup {
+    /// The group's id, `…@chatroom`.
     pub session_id: String,
+    /// The mentions listed in it.
     pub count: i64,
+    /// The time of the last of them.
     pub latest_ts: i64,
 }
 
@@ -110,12 +145,19 @@ pub struct MentionGroup {
 pub struct FootprintDiagnostics {
     /// Whether a list was cut at its limit.
     pub truncated: bool,
+    /// Whether the private chats were cut at their limit.
     pub private_truncated: bool,
+    /// Whether the mentions were cut at their limit.
     pub mention_truncated: bool,
+    /// The message databases of the account.
     pub scanned_dbs: u64,
+    /// How long the reading took.
     pub elapsed_ms: u64,
+    /// The private chats looked through.
     pub private_session_count: u64,
+    /// The groups looked through.
     pub group_session_count: u64,
+    /// Always false.
     pub fallback_used: bool,
 }
 
@@ -123,9 +165,12 @@ pub struct FootprintDiagnostics {
 /// failure of the command instead, so an answer that succeeds holds `success: true` and the record.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightLookup {
+    /// Always true.
     pub success: bool,
+    /// The record.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record: Option<crate::insight::InsightRecord>,
+    /// Always left out.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -134,16 +179,22 @@ pub struct InsightLookup {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightSummary {
+    /// The record's id, as `insight get` takes it.
     pub id: String,
     /// Unix milliseconds.
     pub created_at: i64,
+    /// The conversation it is about.
     pub session_id: String,
+    /// The conversation's name.
     pub display_name: String,
+    /// The address of the conversation's avatar; left out when there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
     /// Why it was written: `activity`, `silence`, `test`, …
     pub trigger_reason: String,
+    /// What the model wrote.
     pub insight: String,
+    /// Whether it was marked read.
     pub read: bool,
 }
 
@@ -153,11 +204,13 @@ pub struct InsightSummary {
 pub struct InsightRecords {
     /// Always true.
     pub success: bool,
+    /// The records of the page.
     pub records: Vec<InsightSummary>,
     /// The records the filters match.
     pub total: usize,
     /// The account's records written today.
     pub today_count: usize,
+    /// The account's records not read yet.
     pub unread_count: usize,
     /// Everyone with a record, the most records first.
     pub contacts: Vec<InsightContact>,
@@ -167,10 +220,13 @@ pub struct InsightRecords {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightContact {
+    /// The conversation's username.
     pub session_id: String,
+    /// The conversation's name.
     pub display_name: String,
     /// Its records.
     pub count: usize,
+    /// The address of its avatar; left out when there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
 }
@@ -179,7 +235,9 @@ pub struct InsightContact {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightTodayStat {
+    /// The conversation's username.
     pub session_id: String,
+    /// The records written about it today.
     pub count: usize,
     /// When, `HH:MM` local time.
     pub times: Vec<String>,
@@ -188,7 +246,9 @@ pub struct InsightTodayStat {
 /// What `insight mark-read` answers; a record not found is a failure of the command.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightMarked {
+    /// Always true.
     pub success: bool,
+    /// Always left out.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -206,6 +266,7 @@ pub struct InsightCleared {
 /// command fails with `message` instead.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightReply {
+    /// Always true.
     pub success: bool,
     /// What happened, in the server's language.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -225,6 +286,7 @@ pub struct InsightReply {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelProbe {
+    /// The API format asked in.
     pub format: crate::model_api::ModelApiFormat,
     /// The address asked.
     pub endpoint: String,
@@ -242,9 +304,11 @@ pub struct ModelProbe {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelList {
+    /// The API format asked in.
     pub format: crate::model_api::ModelApiFormat,
     /// The address asked.
     pub endpoint: String,
+    /// The models, in the service's order.
     pub models: Vec<crate::model_api::ModelInfo>,
 }
 
@@ -272,6 +336,8 @@ impl InsightReply {
 /// What `insight scan` answers: the insights the silence scan wrote.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightScan {
+    /// How many it wrote.
     pub generated: usize,
+    /// The records written.
     pub records: Vec<InsightSummary>,
 }

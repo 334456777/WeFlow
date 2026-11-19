@@ -24,6 +24,7 @@ pub struct ImageInfo {
 /// The images of a conversation (`chat images`), the newest first, each once.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ChatImages {
+    /// The image messages.
     pub images: Vec<ImageRef>,
 }
 
@@ -31,7 +32,9 @@ pub struct ChatImages {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageRef {
+    /// The image's MD5, as a message's `imageMd5`; null when the message has none.
     pub image_md5: Option<String>,
+    /// The name of its `.dat` file, as a message's `imageDatName`; null when the message has none.
     pub image_dat_name: Option<String>,
     /// Null when the message has no time.
     pub create_time: Option<i64>,
@@ -40,6 +43,7 @@ pub struct ImageRef {
 /// The voice messages of a conversation (`chat voice-messages`), the newest first.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct VoiceMessages {
+    /// The voice messages.
     pub messages: Vec<MessageView>,
 }
 
@@ -47,7 +51,9 @@ pub struct VoiceMessages {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaStream {
+    /// The messages of the page.
     pub items: Vec<MediaStreamItem>,
+    /// Whether there are messages past this page.
     pub has_more: bool,
     /// The `offset` of the next page.
     pub next_offset: usize,
@@ -57,9 +63,12 @@ pub struct MediaStream {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaStreamItem {
+    /// The message, its fields at the top level.
     #[serde(flatten)]
     pub message: MessageView,
+    /// The conversation's username.
     pub session_id: String,
+    /// The conversation's name as the conversation list shows it.
     pub session_display_name: String,
     /// `image` or `video`.
     pub media_type: String,
@@ -71,6 +80,7 @@ pub struct MediaStreamItem {
 pub struct VoiceCache {
     /// Always true.
     pub success: bool,
+    /// Whether the voice was decoded already.
     pub has_cache: bool,
     /// The WAV, in base64; left out without one.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,6 +92,7 @@ pub struct VoiceCache {
 pub struct VoicesPrepared {
     /// Always true.
     pub success: bool,
+    /// The voices decoded or found decoded already.
     pub prepared: usize,
 }
 
@@ -102,9 +113,11 @@ pub struct EmojisDownloaded {
 /// A sticker `chat emoji` has on disk.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct EmojiFile {
+    /// The sticker's MD5.
     pub md5: String,
     /// Already there before.
     pub cached: bool,
+    /// The file.
     pub path: String,
     /// Bytes downloaded; left out for one already there.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -116,7 +129,9 @@ pub struct EmojiFile {
 pub struct MediaWritten {
     /// Always true.
     pub success: bool,
+    /// The file written.
     pub path: String,
+    /// Its size.
     pub bytes: u64,
 }
 
@@ -125,6 +140,7 @@ pub struct MediaWritten {
 pub struct VoiceData {
     /// Always true.
     pub success: bool,
+    /// The WAV, in base64.
     pub data: String,
 }
 
@@ -153,5 +169,6 @@ pub struct AutoDownloadStopped {
 /// The MD5 a video message names (`video parse-md5`); null when its XML has none.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct VideoMd5 {
+    /// The video's MD5, as a message's `videoMd5`.
     pub md5: Option<String>,
 }

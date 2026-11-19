@@ -193,6 +193,7 @@ pub struct ContactRow<'row> {
 }
 
 impl<'row> ContactRow<'row> {
+    /// The row, its `extra_buffer` not decoded yet.
     pub fn new(row: &'row Value) -> Self {
         Self {
             row,

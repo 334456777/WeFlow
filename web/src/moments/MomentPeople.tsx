@@ -11,6 +11,7 @@ import { t } from '../i18n';
 const ROW_HEIGHT = 58;
 const ALL = '@all';
 
+/** The posters, 「全部」 first, each with how many posts; where the reading stands until it is done. */
 export function MomentPeople({ state, total, selected, onSelect, onRetry }: {
   state: PeopleState;
   /** All the posts, from `sns stats`, once known. */

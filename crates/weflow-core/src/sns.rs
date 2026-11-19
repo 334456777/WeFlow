@@ -109,6 +109,7 @@ pub fn is_wechat_media_url(url: &str) -> bool {
         && SERVERS.iter().any(|s| host.ends_with(s))
 }
 
+/// Whether a Moments address names a video rather than a picture or a video's cover (`vweixinthumb`).
 pub fn is_video_url(url: &str) -> bool {
     if url.is_empty() || url.contains("vweixinthumb") {
         return false;
@@ -116,6 +117,7 @@ pub fn is_video_url(url: &str) -> bool {
     url.contains("snsvideodownload") || url.contains("video") || url.contains(".mp4")
 }
 
+/// The MIME type of `buf` by its first bytes: an image's, `video/mp4` for another ISO media file, else `fallback`.
 pub fn detect_image_mime(buf: &[u8], fallback: &str) -> String {
     if buf.len() < 4 {
         return fallback.to_string();
@@ -292,9 +294,12 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<SnsComment> {
     items
 }
 
+/// Someone who liked a post, as its XML names them.
 #[derive(Clone, Debug, Default)]
 pub struct LikeUser {
+    /// Their wxid; none when the XML leaves it out.
     pub username: Option<String>,
+    /// Their name; none when the XML leaves it out.
     pub nickname: Option<String>,
 }
 
@@ -313,6 +318,7 @@ fn like_list(xml: &str) -> Option<String> {
 const LIKE_ITEM: &str =
     r"(?is)<(?:LikeUser|likeUser|user_comment)>(.*?)</(?:LikeUser|likeUser|user_comment)>";
 
+/// Who liked the post `xml`, in its order; empty when it lists none.
 pub fn parse_like_users_from_xml(xml: &str) -> Vec<LikeUser> {
     if xml.is_empty() {
         return Vec::new();
@@ -417,9 +423,12 @@ fn parse_location_from_xml(xml: &str) -> Option<SnsLocation> {
 
 // ───────────────────────── timeline enrichment ─────────────────────────
 
+/// What the timeline knows of a poster from their contact.
 #[derive(Clone, Debug, Default)]
 pub struct CachedContact {
+    /// Their name, as WeFlow's cache of contacts has it.
     pub display_name: Option<String>,
+    /// The address of their avatar.
     pub avatar_url: Option<String>,
 }
 
@@ -495,7 +504,9 @@ pub fn enrich_post(post: weflow_native::sns::SnsPost, contact: Option<&CachedCon
 /// The files an export saved next to it of one medium of a post: the picture or video, and a live photo's video.
 #[derive(Clone, Debug, Default)]
 pub struct SavedMedia {
+    /// The picture or video, as a path from the page; none when it was not saved.
     pub file: Option<String>,
+    /// A live photo's video, as a path from the page; none when there is none or it was not saved.
     pub live: Option<String>,
 }
 
@@ -552,6 +563,8 @@ fn zh_locale_string(dt: chrono::DateTime<chrono::Local>) -> String {
     )
 }
 
+/// The local time of the Unix seconds `ts` as `toLocaleString('zh-CN')` writes it, `2026/9/30 15:04:05`; empty
+/// for a time that cannot be.
 pub fn zh_locale_from_ts(ts: i64) -> String {
     use chrono::TimeZone;
     chrono::Local

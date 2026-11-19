@@ -6,7 +6,9 @@ use serde::Serialize;
 /// The pushes of an official account (`biz messages`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct BizMessages {
+    /// The official account, `gh_…`.
     pub username: String,
+    /// Its pushes; messages without content are left out.
     pub messages: Vec<BizMessage>,
 }
 
@@ -16,10 +18,15 @@ pub struct BizMessages {
 pub struct BizMessage {
     /// The message's id in its table; null when its row does not say.
     pub local_id: Option<i64>,
+    /// When it was sent; null when its row does not say.
     pub create_time: Option<i64>,
+    /// The lead article's title; empty when the push has none.
     pub title: String,
+    /// The lead article's summary.
     pub description: String,
+    /// The lead article's address.
     pub url: String,
+    /// The lead article's cover image: its `cover`, else its `thumburl`.
     pub cover: String,
     /// The other articles of the push.
     pub content_list: Vec<BizArticle>,
@@ -28,9 +35,13 @@ pub struct BizMessage {
 /// An article sent with a push.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct BizArticle {
+    /// Never empty: an article without a title is left out.
     pub title: String,
+    /// The article's address.
     pub url: String,
+    /// Its cover image: its `cover`, else its `thumburl`.
     pub cover: String,
+    /// Its `summary`, else its `digest`.
     pub summary: String,
 }
 
@@ -38,6 +49,7 @@ pub struct BizArticle {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PayRecords {
+    /// The notices of the page.
     pub records: Vec<PayRecord>,
     /// Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as
     /// its other messages are left out.
@@ -48,6 +60,7 @@ pub struct PayRecords {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PayRecord {
+    /// The notice's title, such as 「已支付¥9.99」.
     pub title: String,
     /// Its lines, as WeChat writes them (amount, method, state…).
     pub description: String,
@@ -58,9 +71,12 @@ pub struct PayRecord {
     pub status: Option<String>,
     /// Who was paid; `WeChat Pay` (in the server's language) when the notice does not say.
     pub merchant_name: String,
+    /// The address of the payee's icon; empty when the notice has none.
     pub merchant_icon: String,
     /// When it was published, in Unix seconds; 0 when the notice does not say.
     pub timestamp: i64,
+    /// The message's id in its table.
     pub local_id: Option<i64>,
+    /// When the message was received; null when its row does not say.
     pub create_time: Option<i64>,
 }

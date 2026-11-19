@@ -3,6 +3,7 @@ import type { JobProgress } from '../api/jobs';
 import { t } from '../i18n';
 import { MESSAGE_FORMATS } from './ExportCards';
 
+/** A lane for each format of the job's progress; nothing for a job of one format. */
 export function FormatLanes({ progress }: { progress: JobProgress | null | undefined }) {
   const formats = progress?.formats;
   if (!formats?.length) return null;

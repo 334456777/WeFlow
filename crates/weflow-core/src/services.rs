@@ -85,6 +85,7 @@ impl ServiceHub {
         }
     }
 
+    /// The config file this hub was loaded from.
     pub fn config_path(&self) -> &Path {
         &self.ctx.config_path
     }
@@ -105,6 +106,7 @@ impl ServiceHub {
         crate::webui::WebStore::new(self.ctx.cache_dir().join("web"))
     }
 
+    /// Reports the progress of a long command (see [`crate::output::progress`]).
     pub fn emit_progress(&self, stage: &str, message: &str, current: usize, total: usize) {
         crate::output::progress(stage, message, current, total);
     }
@@ -173,14 +175,20 @@ impl ServiceHub {
         self.config.get_key(Some(&self.profile_name), key)
     }
 
+    /// The configured account's databases, opened; the key is proved unless it opened the same databases before.
+    ///
+    /// # Errors
+    /// As [`Self::db_test`].
     pub fn open_wcdb_pub(&self) -> AppResult<weflow_native::wcdb::Wcdb> {
         self.open_wcdb()
     }
 
+    /// The account's wxid without the suffix of its folder's name; empty when it is not set.
     pub fn my_wxid_pub(&self) -> String {
         self.my_wxid_cleaned()
     }
 
+    /// Where the message push keeps the avatars it serves, `push-avatar-files` in the cache folder.
     pub fn push_avatar_dir(&self) -> PathBuf {
         self.cache_base().join("push-avatar-files")
     }

@@ -1,3 +1,5 @@
+//! Moments on a synthetic account: the counts, the media fetched from a local server and decrypted, stickers and the
+//! exports.
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"

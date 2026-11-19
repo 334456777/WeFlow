@@ -108,8 +108,11 @@ fn remote_ntdll_symbol(pid: u32, name: &[u8]) -> Result<usize> {
 
 /// Read-only inspection of the candidate and client version, without debugger attachment.
 pub struct KeyLocation {
+    /// Where the hook stops, in the WeChat process.
     pub address: usize,
+    /// The same place as an offset into `Weixin.dll`.
     pub module_offset: usize,
+    /// The version of `Weixin.dll`, `a.b.c.d`.
     pub version: String,
 }
 
@@ -253,9 +256,13 @@ struct Output {
 /// Counts only; never stores or exposes register values, pointers or key material.
 #[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct CaptureDiagnostics {
+    /// Times the hook stopped WeChat.
     pub breakpoint_hits: u64,
+    /// Stops whose argument did not name a 32-byte key.
     pub invalid_arguments: u64,
+    /// Stops whose argument could not be read.
     pub unreadable_arguments: u64,
+    /// Stops whose key could not be read.
     pub unreadable_keys: u64,
 }
 
@@ -320,15 +327,25 @@ pub struct Hook {
     worker: Option<JoinHandle<Result<()>>>,
     output: Arc<Mutex<Output>>,
     _interrupt: InterruptGuard,
+    /// The version of the hooked `Weixin.dll`, `a.b.c.d`.
     pub version: String,
 }
 
 impl Hook {
+    /// Finds where WeChat `pid` takes the database key and attaches a debugger that stops there.
+    ///
+    /// # Errors
+    /// When the process or its `Weixin.dll` cannot be read, its version has no known signature, the debugger cannot
+    /// attach within 15 seconds, or the run is interrupted.
     pub fn start(pid: u32) -> Result<Self> {
         let location = Self::inspect(pid)?;
         Self::start_at(pid, location.address, location.version)
     }
 
+    /// Where the hook would stop in WeChat `pid`, found by reading its memory, without attaching.
+    ///
+    /// # Errors
+    /// For the current process or PID 0, and when the process or its `Weixin.dll` cannot be read or matched.
     pub fn inspect(pid: u32) -> Result<KeyLocation> {
         if pid == 0 || pid == std::process::id() {
             bail!("cannot inspect the current process or PID zero");
@@ -381,6 +398,10 @@ impl Hook {
         }
     }
 
+    /// The key, as 64 lowercase hex characters, once it was caught; `None` until then.
+    ///
+    /// # Errors
+    /// When the debugger failed or was interrupted.
     pub fn poll(&mut self) -> Result<Option<String>> {
         let mut output = self.output.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(error) = &output.error {
@@ -389,6 +410,7 @@ impl Hook {
         Ok(output.key.take())
     }
 
+    /// What the hook counted so far.
     pub fn diagnostics(&self) -> CaptureDiagnostics {
         self.output
             .lock()
@@ -397,6 +419,11 @@ impl Hook {
             .clone()
     }
 
+    /// Stops the debugger and waits for it to restore WeChat's debug registers and detach; dropping the hook does
+    /// the same.
+    ///
+    /// # Errors
+    /// What the debugger's thread failed with, or its panic.
     pub fn cleanup(&mut self) -> Result<()> {
         let _ = self.stop.send(());
         if let Some(worker) = self.worker.take() {

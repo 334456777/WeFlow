@@ -14,12 +14,19 @@ use crate::sync::MutexExt;
 pub enum CliResponse<T: Serialize> {
     /// The command did its work.
     Success {
+        /// Always true.
         success: bool,
+        /// What it answered; left out when it answers nothing.
         #[serde(skip_serializing_if = "Option::is_none")]
         data: Option<T>,
     },
     /// The command failed.
-    Failure { success: bool, error: ErrorPayload },
+    Failure {
+        /// Always false.
+        success: bool,
+        /// What went wrong.
+        error: ErrorPayload,
+    },
 }
 
 /// The answer of a command that did its work.
@@ -345,6 +352,8 @@ pub fn progress_formats(formats: &[(String, bool)]) {
     );
 }
 
+/// Reports that `current` of `total` steps of `stage` are done, as the [`ProgressMode`] says: an NDJSON `progress`
+/// event on stderr with `--progress`, else a progress bar on a terminal once the command has run for the delay set.
 pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
     let message = &crate::locale::localize(message.to_string());
     let mut st = bar_state().lock_or_panic();

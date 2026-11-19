@@ -18,6 +18,7 @@ export type ParsedMessage = Pick<Contract.ParsedMessage, (typeof MESSAGE_KEYS)[n
 
 const MESSAGE_FIELDS = ['_cursor', ...MESSAGE_KEYS].join(',');
 
+/** Messages per page of a conversation. */
 export const PAGE_SIZE = 50;
 
 /** Where a page starts: the newest messages, those older or newer than a message's `_cursor`, or a time on. */
@@ -36,6 +37,7 @@ export function getMessages(sessionId: string, from: PageFrom, signal?: AbortSig
 /** A hit of `chat search --parsed`: the message, and the conversation it is in. */
 export type SearchHit = ParsedMessage & { _session_id: string };
 
+/** What `chat search` looks for. */
 export interface SearchQuery {
   keyword: string;
   /** One conversation, or all of them. */
@@ -45,6 +47,7 @@ export interface SearchQuery {
   end: number;
 }
 
+/** Hits per page of a search. */
 export const SEARCH_PAGE = 20;
 
 /** Hits newest first, as WeChat's own search matches them; `offset` pages on. */
@@ -89,6 +92,7 @@ onLive(event => {
  */
 export type ImageInfo = Contract.ImageInfo;
 
+/** `chat image-info` of a message, read in the server's process. */
 export function getImageInfo(sessionId: string, localId: number, createTime: number, signal?: AbortSignal): Promise<ImageInfo> {
   return get<ImageInfo>('api/chat/image-info', { 'session-id': sessionId, 'local-id': localId, 'create-time': createTime }, signal);
 }

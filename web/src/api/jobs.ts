@@ -4,6 +4,7 @@ import { apiUrl, call, get, mediaAddress, token, type Params } from './client';
 import type * as Contract from './contract.gen';
 import { msg, t } from '../i18n';
 
+/** Where a job stands: queued, running, or how it ended. */
 export type JobStatus = Contract.JobStatus;
 
 /** A command's `--progress` event. */
@@ -24,6 +25,7 @@ export type Job = Omit<Contract.Job, 'progress' | 'result'> & {
   result?: { success?: boolean; data?: Record<string, unknown>; error?: { code?: string; message?: string } } | null;
 };
 
+/** Whether the job has ended: succeeded, failed or cancelled. */
 export const isFinished = (status: JobStatus) => status === 'succeeded' || status === 'failed' || status === 'cancelled';
 
 /** Starts `method path` as a job; with `file`, the job keeps the file the command writes. */
@@ -31,8 +33,10 @@ export function startJob(method: 'POST' | 'GET', path: string, params: Params, f
   return call<Job>(method, path + (file ? '?return=file' : ''), params, signal, { Prefer: 'respond-async' });
 }
 
+/** `GET /jobs`: the jobs the server keeps. */
 export const listJobs = (signal?: AbortSignal) => get<Job[]>('jobs', {}, signal);
 
+/** `GET /jobs/<id>`: one job, with its result once it ended. */
 export const getJob = (id: string, signal?: AbortSignal) => get<Job>('jobs/' + encodeURIComponent(id), {}, signal);
 
 /** Cancels a queued or running job, or forgets a finished one; answers the job as it ended. */
@@ -44,6 +48,7 @@ export const dropJob = (id: string) => call<Job>('DELETE', 'jobs/' + encodeURICo
  */
 export const jobFileUrl = (id: string) => mediaAddress('jobs/' + encodeURIComponent(id) + '/file', { access_token: token() });
 
+/** The address of the job's server-sent events; the token goes in the address, as `EventSource` sends no header. */
 export const jobEventsUrl = (id: string) => apiUrl('jobs/' + encodeURIComponent(id) + '/events', { access_token: token() });
 
 /**

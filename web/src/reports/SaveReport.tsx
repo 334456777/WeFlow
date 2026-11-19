@@ -5,6 +5,7 @@ import { safeName, saveFile } from '../files';
 import { reportHtml, reportPng } from './reportFiles';
 import { t } from '../i18n';
 
+/** The buttons that save the report `find` gives, as a PNG or as an HTML page. */
 export function SaveReport({ find }: { find(): HTMLElement | null }) {
   const [busy, setBusy] = useState<'png' | 'html' | null>(null);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);

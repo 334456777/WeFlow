@@ -19,6 +19,7 @@ use cbc::cipher::{block_padding::NoPadding, BlockModeDecrypt, InnerIvInit};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
+/// The page size of WeChat's databases, in bytes, reserved tail included.
 pub const PAGE_SIZE: usize = 4096;
 const SALT_LEN: usize = 16;
 const IV_LEN: usize = 16;
@@ -65,6 +66,8 @@ pub struct PageCipher {
 }
 
 impl PageCipher {
+    /// The keys of a file with `salt`, derived from the database key `raw_key` (PBKDF2-HMAC-SHA512, 256 000
+    /// rounds: slow on purpose).
     pub fn derive(raw_key: &[u8; 32], salt: &[u8]) -> Self {
         let mut enc_key = [0u8; 32];
         pbkdf2::pbkdf2_hmac::<Sha512>(raw_key, salt, KDF_ITER, &mut enc_key);
@@ -524,7 +527,9 @@ pub mod testutil {
 
     type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
+    /// The raw database key of the test databases.
     pub const KEY: [u8; 32] = [7u8; 32];
+    /// The salt of the test databases.
     pub const SALT: [u8; 16] = *b"0123456789abcdef";
 
     /// Encrypt one plaintext page exactly as SQLCipher 4 does (test-only mirror of `decrypt_page`).
@@ -674,6 +679,7 @@ pub mod testutil {
         wal
     }
 
+    /// A plain SQLite file encrypted page by page as SQLCipher 4 writes it, each page with its own IV.
     pub fn encrypt_db(plain: &[u8], cipher: &PageCipher) -> Vec<u8> {
         let mut out = Vec::new();
         for (i, page) in plain.chunks(PAGE_SIZE).enumerate() {

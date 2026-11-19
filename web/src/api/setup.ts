@@ -8,8 +8,10 @@ import type * as Contract from './contract.gen';
 /** A row of `config profiles`: the keys only as whether they are set (the contract's, #430). */
 export type Profile = Contract.ProfileSummary;
 
+/** An account of a WeChat data directory (`db wxid`). */
 export type Account = Contract.DbAccount;
 
+/** `config profiles`, read in the server's process. */
 export const getProfiles = (signal?: AbortSignal) => get<Profile[]>('api/config/profiles', {}, signal);
 
 /** The current profile, or undefined when the config names one it does not have. */

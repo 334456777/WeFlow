@@ -47,10 +47,12 @@ pub(super) fn get_transfer_prefix(
     "[转账]"
 }
 
+/// Whether an export's text of a message is a transfer's: it starts with `[转账]` or `[转账收款]`.
 pub fn is_transfer_export_content(content: &str) -> bool {
     content.starts_with("[转账]") || content.starts_with("[转账收款]")
 }
 
+/// A transfer's text with `desc` in parentheses after its `[转账]` or `[转账收款]`.
 pub fn append_transfer_desc(content: &str, desc: &str) -> String {
     let prefix = if content.starts_with("[转账收款]") {
         "[转账收款]"

@@ -1,3 +1,5 @@
+//! The images of a synthetic account: decrypting and caching them, the thumbnail and the original, and copying them
+//! into exports.
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"

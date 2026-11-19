@@ -8,6 +8,7 @@ import { AnnualReportPage, Failed } from './AnnualReport';
 import { DualReportPage, type Friend } from './DualReport';
 import { t } from '../i18n';
 
+/** The years to pick, then the report of the year picked. */
 export function ReportsPage({ mode, year, onYear, friend, onFriend }: {
   mode: 'annual' | 'dual'; year: number | null; onYear(year: number): void; friend: Friend | null; onFriend(friend: Friend): void;
 }) {

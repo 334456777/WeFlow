@@ -20,6 +20,7 @@ export function onNewScope(forget: () => void): void {
   forgetters.add(forget);
 }
 
+/** Starts a new scope and forgets what the old one kept. */
 export function newScope(): void {
   scope += 1;
   for (const forget of forgetters) forget();

@@ -8,6 +8,7 @@ use crate::message::xml::rx;
 
 // ───────────────────────── naming ─────────────────────────
 
+/// Whether `s` is 32 hex digits.
 pub fn looks_like_md5(s: &str) -> bool {
     s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
@@ -59,6 +60,7 @@ fn is_thumbnail_dat(name: &str) -> bool {
     l.contains("_t.dat") || l.contains(".t.dat") || l.contains("_thumb.dat")
 }
 
+/// Whether the `.dat` file is an original WeChat downloaded: its name ends in `_h`, `.h`, `_hd` or `.hd`.
 pub fn is_hd_dat_path(dat_path: &str) -> bool {
     let name = file_name_lower(dat_path);
     let Some(stem) = name.strip_suffix(".dat") else {
@@ -67,10 +69,12 @@ pub fn is_hd_dat_path(dat_path: &str) -> bool {
     stem.ends_with("_h") || stem.ends_with(".h") || stem.ends_with("_hd") || stem.ends_with(".hd")
 }
 
+/// Whether the `.dat` file is a thumbnail: `_t.dat`, `.t.dat` or `_thumb.dat`.
 pub fn is_t_variant_dat(dat_path: &str) -> bool {
     is_thumbnail_dat(&file_name_lower(dat_path))
 }
 
+/// Whether the `.dat` file is the image of `base_md5` itself, `<md5>.dat`.
 pub fn is_base_dat_path(dat_path: &str, base_md5: &str) -> bool {
     let base = base_md5.trim().to_lowercase();
     !base.is_empty() && file_name_lower(dat_path) == format!("{base}.dat")
@@ -220,6 +224,8 @@ fn md5_hex(text: &str) -> String {
         .collect()
 }
 
+/// Whether a `.dat` file named `file_name` may be a file of the image `base_md5` (lowercase): `<md5>.dat`, a variant
+/// such as `<md5>_t.dat`, or a name that normalizes to the MD5.
 pub fn is_hardlink_candidate_name(file_name: &str, base_md5: &str) -> bool {
     let lower = file_name.trim().to_lowercase();
     let Some(base) = lower.strip_suffix(".dat") else {
@@ -237,6 +243,7 @@ pub fn is_hardlink_candidate_name(file_name: &str, base_md5: &str) -> bool {
     normalize_dat_base(base) == base_md5
 }
 
+/// Whether `path` lies in a folder of images (`img`, `image` or `msgimg`).
 pub fn is_img_scoped_dat_path(path: &str) -> bool {
     rx(r"[\\/](img|image|msgimg)[\\/]").is_match(&path.to_lowercase())
 }
@@ -245,6 +252,8 @@ pub fn is_img_scoped_dat_path(path: &str) -> bool {
 
 const CACHE_EXTENSIONS: [&str; 5] = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
 
+/// Where the image decrypted from `dat_path` is kept in the cache `root`:
+/// `<conversation>/<month>/<md5><variant suffix><ext>`.
 pub fn cache_output_path(
     root: &Path,
     dat_path: &str,
@@ -260,6 +269,8 @@ pub fn cache_output_path(
         .join(format!("{normalized}{suffix}{ext}"))
 }
 
+/// Every place in the cache `root` the image decrypted from `dat_path` may be kept, the most likely first: the
+/// layout of [`cache_output_path`] (with `prefer_hd`, the original's suffix first), then the older layouts.
 pub fn cache_output_candidates(
     root: &Path,
     dat_path: &str,
@@ -291,6 +302,7 @@ pub fn cache_output_candidates(
     out
 }
 
+/// Whether `path` has the extension of an image the cache keeps (GIF, PNG, JPEG or WebP).
 pub fn is_image_file(path: &str) -> bool {
     matches!(
         stem_and_ext(path).1.as_str(),
@@ -298,6 +310,7 @@ pub fn is_image_file(path: &str) -> bool {
     )
 }
 
+/// The MIME type of an image extension, with its dot and in any case; `None` for one it does not know.
 pub fn mime_from_extension(ext: &str) -> Option<&'static str> {
     match ext.to_lowercase().as_str() {
         ".gif" => Some("image/gif"),
@@ -314,9 +327,13 @@ pub fn mime_from_extension(ext: &str) -> Option<&'static str> {
 /// HEIF, the extension it falls back on).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageFormat {
+    /// GIF.
     Gif,
+    /// PNG.
     Png,
+    /// JPEG.
     Jpeg,
+    /// WebP.
     Webp,
 }
 
@@ -506,6 +523,7 @@ pub fn wxgf_embedded_image(buf: &[u8]) -> Option<&[u8]> {
     None
 }
 
+/// Whether `buf` is a WXGF image, WeChat's HEVC container: it starts with `wxgf`.
 pub fn is_wxgf(buf: &[u8]) -> bool {
     buf.len() >= 20 && &buf[0..4] == b"wxgf"
 }

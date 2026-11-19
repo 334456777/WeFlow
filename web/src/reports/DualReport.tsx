@@ -15,6 +15,7 @@ import { locale, t } from '../i18n';
 /** Up to this many people are listed; the rest are found by name. */
 const LISTED = 50;
 
+/** A friend the dual report may be with. */
 export interface Friend { username: string; displayName: string; avatarUrl?: string }
 
 /** The friend of the report, picked from the private chats: those talked to most first, the others by name. */
@@ -75,6 +76,7 @@ function Exchange({ label, messages, me, friend }: { label: string; messages: Du
   </ol>;
 }
 
+/** The dual report, moment by moment. */
 export function DualReportView({ report }: { report: DualReport }) {
   const r = report;
   const span = r.year ? t('{year} 年', { year: r.year }) : t('这些年');

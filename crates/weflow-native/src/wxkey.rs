@@ -17,14 +17,17 @@ pub struct WxKey;
     all(target_os = "linux", target_arch = "x86_64")
 )))]
 impl WxKey {
+    /// The extractor of this platform.
     pub fn new() -> Result<Self> {
         Ok(Self)
     }
 
+    /// Always false.
     pub fn is_available(&self) -> bool {
         false
     }
 
+    /// Always fails: there is no extraction on this platform.
     pub fn get_db_key_with_tick(
         &self,
         _pid: u32,
@@ -38,17 +41,28 @@ impl WxKey {
     }
 }
 
+/// Database-key extraction on Windows: a hook in the WeChat process catches the key when the user logs in.
 #[cfg(windows)]
 pub struct WxKey;
 
 #[cfg(windows)]
 impl WxKey {
+    /// The extractor of this platform.
     pub fn new() -> Result<Self> {
         Ok(Self)
     }
+    /// Whether this build can extract the key: on x64 only.
     pub fn is_available(&self) -> bool {
         cfg!(target_arch = "x86_64")
     }
+    /// Hooks the WeChat process `pid` and waits up to `timeout` for the key, as 64 lowercase hex characters.
+    ///
+    /// `on_status` hears each step with a level (0 information, 1 progress, 2 a failure's diagnostics); `on_tick`
+    /// hears the seconds left whenever they change.
+    ///
+    /// # Errors
+    /// [`DbKeyError`]: the process cannot be opened or is not ready, no key came in time, or the run was
+    /// interrupted.
     pub fn get_db_key_with_tick(
         &self,
         pid: u32,
@@ -116,15 +130,18 @@ impl WxKey {
     }
 }
 
+/// Database-key extraction on Linux x64: `ptrace` stops WeChat where it takes the key.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub struct WxKey;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl WxKey {
+    /// The extractor of this platform.
     pub fn new() -> Result<Self> {
         Ok(Self)
     }
 
+    /// Always true.
     pub fn is_available(&self) -> bool {
         true
     }
@@ -169,15 +186,18 @@ fn db_key_error(message: String) -> DbKeyError {
     }
 }
 
+/// Database-key extraction on macOS: DTrace on x86_64, `ptrace` at the key's sink on ARM64.
 #[cfg(target_os = "macos")]
 pub struct WxKey;
 
 #[cfg(target_os = "macos")]
 impl WxKey {
+    /// The extractor of this platform.
     pub fn new() -> Result<Self> {
         Ok(Self)
     }
 
+    /// Always true.
     pub fn is_available(&self) -> bool {
         true
     }
@@ -248,17 +268,21 @@ fn macos_db_key_error(message: String) -> DbKeyError {
     }
 }
 
+/// Why the database key was not extracted.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DbKeyError {
     /// The process could not be opened (needs administrator rights / a security product interferes).
     AccessDenied(String),
+    /// No key came before the time ran out: the user did not log in, or WeChat did not take the key.
     Timeout,
+    /// The run was interrupted (Ctrl+C).
     Interrupted,
     /// WeChat has just started and its modules are not ready for inspection.
     NotReady(String),
     /// The hook found nowhere to stop in this WeChat (macOS: no module to scan, or no call that takes the database
     /// key in it): another try finds the same (#806).
     Unsupported(String),
+    /// Any other failure, as the hook said it.
     Other(String),
 }
 

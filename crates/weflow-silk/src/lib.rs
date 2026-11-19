@@ -43,13 +43,20 @@ const MAX_INTERNAL_FRAMES: usize = 5;
 /// Samples the decoder may write per call: 20 ms at 48 kHz, twice over.
 const SCRATCH_SAMPLES: i16 = 960 * 2;
 
+/// Why a SILK stream could not be decoded.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SilkError {
+    /// The stream does not start with `#!SILK_V3` (after WeChat's optional `0x02` byte).
     InvalidHeader,
+    /// The stream ends inside a packet or its length.
     TruncatedPayload,
+    /// A packet's length is negative but not the end marker -1.
     InvalidPacketLength,
+    /// A packet is longer than 1024 bytes.
     PayloadTooLarge,
+    /// A packet holds more than 5 frames.
     TooManyInternalFrames,
+    /// The SDK failed with this code.
     Sdk(i32),
 }
 

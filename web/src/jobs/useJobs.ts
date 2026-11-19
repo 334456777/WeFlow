@@ -16,6 +16,7 @@ const SAMPLE_POLL_MS = 400;
 const START_MS = 300;
 const LABELS_KEY = 'weflow.jobs';
 
+/** The jobs of the server, as the task centre shows them. */
 export interface JobsState {
   /** Newest first. */
   jobs: Job[];

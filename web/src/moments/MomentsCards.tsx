@@ -12,6 +12,7 @@ import { locale, t } from '../i18n';
 const startOf = (day: string) => (day ? parseDay(day).getTime() / 1000 : 0);
 const endOf = (day: string) => (day ? parseDay(addDays(day, 1)).getTime() / 1000 - 1 : 0);
 
+/** What the filter narrows to, for a closed card's header: the words, by date, or 「全部」. */
 export function filterSummary(filter: SnsFilter): string {
   const parts = [filter.keyword.trim() && t('「{keyword}」', { keyword: filter.keyword.trim() }), (filter.start || filter.end) && t('按日期')].filter(Boolean);
   return parts.length ? parts.join(' · ') : t('全部');

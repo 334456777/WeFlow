@@ -12,8 +12,10 @@
 import { useState, useSyncExternalStore } from 'react';
 import { msg } from './i18n';
 
+/** A colour theme a skin may have. */
 export type ThemeName = 'light' | 'dark';
 
+/** A skin as the settings offer it. */
 export interface Skin {
   /** `data-skin`, and the name kept. */
   id: string;
@@ -31,6 +33,7 @@ export interface Skin {
   shapes?: boolean;
 }
 
+/** The default skin's id: neumorphism, whose sheet is styles/neumorphism.css. */
 export const DEFAULT_SKIN = 'neumorphism';
 
 /** The skins to choose from, the default first. A skin's sheet is styles/skins/<id>.css, every rule of it in the
@@ -40,6 +43,7 @@ export const SKINS: Skin[] = [
   { id: 'sticker', label: msg('贴纸'), themes: ['light', 'dark'], sheet: () => import('./styles/skins/sticker.css?inline'), shapes: true },
 ];
 
+/** The key of `localStorage` the skin chosen is kept under. */
 export const SKIN_KEY = 'weflow.skin';
 
 const skinOf = (id: string | null | undefined): Skin => SKINS.find(skin => skin.id === id) ?? SKINS[0];

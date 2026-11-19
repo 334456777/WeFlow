@@ -91,8 +91,10 @@ function useMembers(chatroomId: string | null): Map<string, Person> {
 
 /** The members known for a group, for the names of search hits; empty until its messages were shown. */
 export const memberName = (chatroomId: string, username: string) => memberCache.get(chatroomId)?.get(username)?.name;
+/** Whether the members of the group are known yet. */
 export const membersKnown = (chatroomId: string) => memberCache.has(chatroomId);
 
+/** The messages of the conversation `session`, from the newest or from where `jump` points. */
 export function LiveMessages({ session, scroller, jump, onPreview }: {
   session: ChatSession; scroller: RefObject<HTMLElement | null>; jump: Jump | null; onPreview(preview: Preview): void;
 }) {

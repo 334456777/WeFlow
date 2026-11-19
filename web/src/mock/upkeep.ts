@@ -15,6 +15,7 @@ const cache = new Map<CachePart, { files: number; bytes: number }>([
 
 const pathOf = (part: CachePart) => CACHE_DIR + '\\' + part;
 
+/** `cache list`: each part of the sample's cache, as it is now. */
 export const listCache = (): CacheUsage[] =>
   [...cache].map(([part, use]) => ({ part, paths: use.files ? [pathOf(part)] : [], bytes: use.bytes, files: use.files }));
 

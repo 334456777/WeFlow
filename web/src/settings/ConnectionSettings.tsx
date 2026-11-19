@@ -24,6 +24,7 @@ function serverDetail(health: Health): string | null {
 /** The dot of each state, as the sidebar shows it. */
 const DOTS: Record<Backend['state'], string> = { checking: 'exporting', ready: 'done', offline: '', incompatible: 'error', unauthorized: 'error' };
 
+/** The connection's state, the server's version and options, and the token. */
 export function ConnectionSettings({ backend, recheck }: { backend: Backend; recheck(): void }) {
   const [tokenSaved, setTokenSaved] = useState(() => Boolean(token()));
   useEffect(() => onAuth(event => { if (event === 'token') setTokenSaved(Boolean(token())); }), []);

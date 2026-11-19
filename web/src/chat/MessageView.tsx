@@ -12,6 +12,7 @@ import { ZoomImage, type ZoomControls } from './ZoomImage';
 import { t } from '../i18n';
 import { safeUrl } from '../links';
 
+/** What the preview dialog shows: an image or a video, and how to go through the others of its gallery. */
 export type Preview =
   | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb; hd?: PreviewHd }
   | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb };
@@ -74,6 +75,7 @@ function RemoteImage({ src, className, alt = '' }: { src: string; className?: st
 /** One voice plays at a time across the page. */
 let playing: { audio: HTMLAudioElement; stop(): void } | null = null;
 
+/** A voice message's bubble, which plays it, decoded on the server, when pressed. */
 export function Voice({ sessionId, message, className = 'message-bubble voice-bubble' }: { sessionId: string; message: ParsedMessage; className?: string }) {
   const [state, setState] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -129,6 +131,7 @@ function Record({ message }: { message: ParsedMessage }) {
   </div>;
 }
 
+/** One message, drawn by its kind. */
 export function MessageView({ sessionId, message, onPreview }: {
   sessionId: string; message: ParsedMessage; onPreview(preview: Preview): void;
 }) {
@@ -219,6 +222,7 @@ function MediaError({ src, what }: { src: string; what: string }) {
   return <div className="file-preview"><Warning size={40} /><h3>{t('{what}无法显示', { what })}</h3><p>{reason || t('正在查找原因…')}</p></div>;
 }
 
+/** The image of the preview, zoomable; why it cannot be shown when it fails to load. */
 export function PreviewImage({ src, title, controls, thumb, onSettled }: { src: string; title: string; controls?: Ref<ZoomControls>; thumb?: PreviewThumb; onSettled?(): void }) {
   const [failed, setFailed] = useState(false);
   return failed
@@ -226,6 +230,7 @@ export function PreviewImage({ src, title, controls, thumb, onSettled }: { src: 
     : <ZoomImage ref={controls} src={src} alt={title} onLoad={onSettled} onError={() => { setFailed(true); onSettled?.(); }} sized={thumb && previewSize(thumb)} />;
 }
 
+/** The video of the preview; why it cannot be shown when it fails to load. */
 export function PreviewVideo({ src, poster, thumb }: { src: string; poster?: string; thumb?: PreviewThumb }) {
   const [failed, setFailed] = useState(false);
   return failed

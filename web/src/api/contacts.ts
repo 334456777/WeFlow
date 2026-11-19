@@ -3,14 +3,17 @@ import { get } from './client';
 import { msg } from '../i18n';
 import { keptRead } from './kept';
 
+/** A contact of `chat contacts --parsed`, and its kind: the contract's. */
 export type { Contact, ContactKind } from './contract.gen';
 import type { Contact, ContactKind } from './contract.gen';
 
+/** The kinds of contact, in the order the tabs list them. */
 export const CONTACT_KINDS: ContactKind[] = ['friend', 'group', 'official', 'former_friend'];
-// shown through t()
+/** Each kind's name, marked with `msg()` and shown through `t()`. */
 export const contactKindLabels: Record<ContactKind, string> = { friend: msg('好友'), group: msg('群聊'), official: msg('公众号'), former_friend: msg('曾经的好友') };
 
 
+/** `chat contacts --parsed`; a row without a username or a type is left out. */
 export async function getContacts(signal?: AbortSignal): Promise<Contact[]> {
   const data = await get<unknown>('api/chat/contacts', { parsed: true }, signal);
   return Array.isArray(data) ? data.filter((c): c is Contact => typeof c?.username === 'string' && typeof c?.type === 'string') : [];
@@ -30,6 +33,7 @@ export function matchContacts(contacts: readonly Contact[], query: string): Cont
     .some(v => v?.toLocaleLowerCase().includes(needle)));
 }
 
+/** How many contacts of each kind there are. */
 export function countKinds(contacts: readonly Contact[]): Record<ContactKind, number> {
   const counts: Record<ContactKind, number> = { friend: 0, group: 0, official: 0, former_friend: 0 };
   for (const c of contacts) if (c.type in counts) counts[c.type] += 1;
@@ -41,4 +45,5 @@ export const CONTACT_FORMATS = [
   { value: 'excel', label: 'Excel' }, { value: 'csv', label: 'CSV' }, { value: 'json', label: 'JSON' }, { value: 'html', label: 'HTML' },
   { value: 'txt', label: 'TXT' }, { value: 'sql', label: 'SQL' },
 ] as const;
+/** A format of `export contacts`. */
 export type ContactFormat = typeof CONTACT_FORMATS[number]['value'];

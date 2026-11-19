@@ -47,6 +47,7 @@ const categoryOf = (section: Navigation): Category => section === 'moments' || s
 /** The sample server, a chunk of its own: downloaded only by a page that no server answers. */
 const loadSample = (): Promise<SampleServer> => import('./mock/server').then(module => module.server);
 
+/** The whole page: the navigation, the open page and the console, with the state they share. */
 export function App() {
   // the keyboard (#195): one Tab stop per group, arrows within it; / to search
   useRovingFocus();

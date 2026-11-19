@@ -101,6 +101,7 @@ function partsOf(post: SnsPost): { pictures: SnsMedia[]; link?: SnsMedia } {
   return { pictures: media.filter(m => isWechatMedia(m.url)), link: media.find(m => m.url && !isWechatMedia(m.url)) };
 }
 
+/** One post: its poster, its text, its pictures or video, where it was made, its likes and comments. */
 export function MomentPost({ post, onPreview }: { post: SnsPost; onPreview(preview: Preview): void }) {
   const { pictures: shown, link } = partsOf(post);
   const place = post.location?.poiName || post.location?.city;

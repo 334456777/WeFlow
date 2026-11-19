@@ -36,6 +36,7 @@ impl ModelApiFormat {
     /// The names `ai_model_api_format` takes.
     pub const NAMES: [&'static str; 2] = ["openai", "anthropic"];
 
+    /// Its name, one of [`Self::NAMES`].
     pub fn as_str(self) -> &'static str {
         match self {
             ModelApiFormat::OpenAi => "openai",
@@ -90,10 +91,13 @@ impl FromStr for ModelApiFormat {
 /// A model API as the settings give it.
 #[derive(Clone, Default)]
 pub struct ModelApi {
+    /// The wire format it speaks.
     pub format: ModelApiFormat,
     /// The service's base URL; empty is the service of the format itself ([`ModelApiFormat::default_base_url`]).
     pub base_url: String,
+    /// The API key.
     pub key: String,
+    /// The model asked for.
     pub model: String,
     /// The most tokens of one answer, reasoning included where the model reasons.
     pub max_tokens: u64,
@@ -114,7 +118,9 @@ impl fmt::Debug for ModelApi {
 /// What is asked: the instructions and the user's text.
 #[derive(Clone, Copy, Debug)]
 pub struct Prompt<'a> {
+    /// The system prompt; none sends only the user's text.
     pub system: Option<&'a str>,
+    /// The user's text.
     pub user: &'a str,
 }
 

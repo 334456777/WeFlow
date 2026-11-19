@@ -10,6 +10,7 @@ import { formatDate, t } from '../i18n';
 
 type View = 'days' | 'months' | 'years';
 
+/** What a calendar shows and does. */
 export interface CalendarProps {
   /** The chosen days: one day (`from` = `to`), a range, or none (''). */
   from: string;
@@ -28,6 +29,7 @@ export interface CalendarProps {
 
 const YEARS = 12;
 
+/** A month of days, or a view of months or years, that calls `onPick` with the day picked. */
 export function Calendar({ from, to, range, pending, initial, max, marks, onPick }: CalendarProps) {
   const [focus, setFocus] = useState(() => clampDay(initial, max));
   const [view, setView] = useState<View>('days');

@@ -15,6 +15,7 @@ import './analytics.css';
 
 type Member = { username: string; displayName: string; avatarUrl?: string };
 
+/** The chat analytics page: its view and its console cards. */
 export function useAnalyticsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { records, scope } = shell;
   const [mode, setMode] = useState<'private' | 'group'>('private');

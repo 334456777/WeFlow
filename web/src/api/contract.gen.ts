@@ -10,11 +10,13 @@ export interface Session {
   username: string;
   /** WeChat's type of the conversation's row; 0 for an official account WeChat lists without one. */
   type: number;
+  /** The messages not read in WeChat yet. */
   unreadCount: number;
   /** The last message as the list shows it. */
   summary: string;
   /** What the list is ordered by; 0 for an official account WeChat lists without a conversation. */
   sortTimestamp: number;
+  /** The time of the last message; 0 when WeChat's row does not say. */
   lastTimestamp: number;
   /** WeChat's type of the last message, as a message's `localType`. */
   lastMsgType: number;
@@ -24,9 +26,11 @@ export interface Session {
   displayName: string;
   /** In a group: who sent the last message. */
   lastMsgSender?: string;
+  /** In a group: the name of who sent the last message. */
   lastSenderDisplayName?: string;
   /** The account's own wxid. */
   selfWxid: string;
+  /** The address of the conversation's avatar; left out when there is none. */
   avatarUrl?: string;
 }
 
@@ -41,6 +45,7 @@ export interface ParsedMessage {
   serverId: string;
   /** WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…). */
   localType: number;
+  /** When it was sent. */
   createTime: number;
   /** WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little. */
   sortSeq: number;
@@ -52,53 +57,110 @@ export interface ParsedMessage {
   parsedContent: string;
   /** The message as WeChat keeps it (often XML). */
   rawContent: string;
+  /** A sticker's address on WeChat's servers. */
   emojiCdnUrl?: string;
+  /** A sticker's MD5. */
   emojiMd5?: string;
+  /**
+   * What a reply quotes, as the chat window shows it; an image, video or voice that answers a message has
+   * `__SVRID__<server id>__` naming it.
+   */
   quotedContent?: string;
+  /** The name of whom a reply quotes. */
   quotedSender?: string;
+  /** An image's MD5, as its XML gives it. */
   imageMd5?: string;
+  /** The name of an image's `.dat` file, from the row's packed info or the XML. */
   imageDatName?: string;
+  /** The MD5 that names a video's file, in lowercase. */
   videoMd5?: string;
+  /** A voice's length in seconds, rounded. */
   voiceDurationSeconds?: number;
+  /** An image's AES key on WeChat's servers (`<img aeskey>`). */
   aesKey?: string;
+  /** An image's `encrypver`. */
   encrypVer?: number;
+  /** The address of an image's or a sticker's thumbnail on WeChat's servers. */
   cdnThumbUrl?: string;
+  /** The username a contact card shares. */
   cardUsername?: string;
+  /** The nickname a contact card shows. */
   cardNickname?: string;
+  /** The address of a contact card's avatar. */
   cardAvatarUrl?: string;
+  /** A location's latitude. */
   locationLat?: number;
+  /** A location's longitude. */
   locationLng?: number;
+  /** The name of a location's place. */
   locationPoiname?: string;
+  /** A location's label, its address as WeChat shows it. */
   locationLabel?: string;
+  /**
+   * The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a
+   * quote, `2000` a transfer, `2001` a red packet…
+   */
   xmlType?: string;
+  /** The title: a link's or a mini program's, a file's name, a transfer's memo. */
   linkTitle?: string;
+  /** The address it opens. */
   linkUrl?: string;
+  /** The address of its thumbnail. */
   linkThumb?: string;
+  /**
+   * What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,
+   * `red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`.
+   */
   appMsgKind?: string;
+  /** Its description (`<des>`). */
   appMsgDesc?: string;
+  /** The name of the app that sent it (`<appname>`). */
   appMsgAppName?: string;
+  /** The name of the account it comes from (`<sourcename>`), such as an official account's. */
   appMsgSourceName?: string;
+  /** The username of the account it comes from (`<sourceusername>`). */
   appMsgSourceUsername?: string;
+  /** The address of its thumbnail or cover. */
   appMsgThumbUrl?: string;
+  /** The address of a song (`<musicurl>`, `<playurl>`). */
   appMsgMusicUrl?: string;
+  /** The address of its data (`<dataurl>`, `<lowurl>`). */
   appMsgDataUrl?: string;
+  /** The label of a location it names. */
   appMsgLocationLabel?: string;
+  /** The name of a Channels account. */
   finderNickname?: string;
+  /** The username of a Channels account. */
   finderUsername?: string;
+  /** A Channels video's cover. */
   finderCoverUrl?: string;
+  /** The address of a Channels account's avatar. */
   finderAvatar?: string;
+  /** A Channels video's length, in seconds. */
   finderDuration?: number;
+  /** A song's album cover. */
   musicAlbumUrl?: string;
+  /** A song's address to play. */
   musicUrl?: string;
+  /** A gift's picture. */
   giftImageUrl?: string;
+  /** A gift's wish. */
   giftWish?: string;
+  /** A gift's price, as the message writes it. */
   giftPrice?: string;
+  /** A file's name. */
   fileName?: string;
+  /** A file's size, in bytes. */
   fileSize?: number;
+  /** A file's extension, without its dot. */
   fileExt?: string;
+  /** A file's MD5, in lowercase. */
   fileMd5?: string;
+  /** Who pays a transfer. */
   transferPayerUsername?: string;
+  /** Who receives a transfer. */
   transferReceiverUsername?: string;
+  /** A chat record's title; 「聊天记录」 when it has none. */
   chatRecordTitle?: string;
   /** The message's key: the same message has the same key on every machine. It is opaque; only compare it. */
   messageKey: string;
@@ -125,7 +187,9 @@ export interface MessageRow {
   localType: number;
   /** Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none. */
   sortSeq?: number;
+  /** When it was sent; left out when WeChat stored none. */
   createTime?: number;
+  /** WeChat's `status` column; left out when WeChat stored none. */
   status?: number;
   /** The sender's username; left out when WeChat's table of names has none for it. */
   sender?: string;
@@ -156,7 +220,9 @@ export interface SearchHit {
   localType: number;
   /** Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none. */
   sortSeq?: number;
+  /** When it was sent; left out when WeChat stored none. */
   createTime?: number;
+  /** WeChat's `status` column; left out when WeChat stored none. */
   status?: number;
   /** The sender's username; left out when WeChat's table of names has none for it. */
   sender?: string;
@@ -181,6 +247,7 @@ export interface SearchHit {
 
 /** `chat message` without `parsed`: the message as WeChat keeps it, and as the query commands list it. */
 export interface MessageLookup {
+  /** The message as WeChat keeps it. */
   row: MessageRow;
   /** Null when the row could not be read as a message. */
   message: MessageView | null;
@@ -193,33 +260,49 @@ export interface MessageLookup {
  * message has none.
  */
 export interface MessageView {
+  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
   localId: number;
   /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
   serverId: string;
+  /** When it was sent. */
   createTime: number;
   /** WeChat's type of the message, as a parsed message's `localType`. */
   localType: number;
   /** 1 when I sent it, else 0. */
   isSend: number;
+  /** Who sent it; empty when the row does not say. */
   senderUsername: string;
   /** The message as WeChat keeps it (often XML). */
   content: string;
   /** Its text as the chat window shows it; null when it has none. */
   text: string | null;
+  /** An image's MD5, as a parsed message's `imageMd5`. */
   imageMd5?: string;
+  /** The name of an image's `.dat` file, as a parsed message's `imageDatName`. */
   imageDatName?: string;
+  /** The MD5 that names a video's file, as a parsed message's `videoMd5`. */
   videoMd5?: string;
+  /** A sticker's MD5. */
   emojiMd5?: string;
+  /** A sticker's address on WeChat's servers. */
   emojiCdnUrl?: string;
+  /** An app message's `<type>`, as a parsed message's `xmlType`. */
   xmlType?: string;
+  /** A file's name. */
   fileName?: string;
+  /** A file's extension, without its dot. */
   fileExt?: string;
+  /** A file's MD5. */
   fileMd5?: string;
   /** In bytes. */
   fileSize?: number;
+  /** A location's latitude. */
   locationLat?: number;
+  /** A location's longitude. */
   locationLng?: number;
+  /** The name of a location's place. */
   locationPoiname?: string;
+  /** A location's label, its address as WeChat shows it. */
   locationLabel?: string;
   /** The kind of an app message (`link`, `file`, `music`…). */
   appMsgKind?: string;
@@ -230,10 +313,13 @@ export interface MessageView {
  * name. A text field is left out when it is empty.
  */
 export interface Contact {
+  /** The contact's wxid, `…@chatroom` for a group, `gh_…` for an official account. */
   username: string;
   /** The remark, else the nickname, else the WeChat ID, else the username. */
   displayName: string;
+  /** My remark for them. */
   remark?: string;
+  /** The name they gave themselves. */
   nickname?: string;
   /** The WeChat ID. */
   alias?: string;
@@ -241,8 +327,11 @@ export interface Contact {
   labels?: string[];
   /** The signature. */
   detailDescription?: string;
+  /** The region they gave. */
   region?: string;
+  /** What the contact is. */
   type: ContactKind;
+  /** The address of their avatar. */
   avatarUrl?: string;
 }
 
@@ -251,7 +340,9 @@ export type ContactKind = "friend" | "group" | "official" | "former_friend";
 
 /** A page of `chat resources`. */
 export interface ResourcePage {
+  /** The messages of the page. */
   items: Resource[];
+  /** Whether there are messages past this page. */
   hasMore: boolean;
   /** The `_cursor` of the last item, to pass as `before` for the next page; null on the last page. */
   nextCursor: string | null;
@@ -259,40 +350,59 @@ export interface ResourcePage {
 
 /** A message of `chat resources`, newest first. */
 export interface Resource {
+  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
   localId: number;
   /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
   serverId: string;
+  /** When it was sent. */
   createTime: number;
   /** WeChat's type of the message, as a parsed message's `localType`. */
   localType: number;
   /** 1 when I sent it, else 0. */
   isSend: number;
+  /** Who sent it; empty when the row does not say. */
   senderUsername: string;
   /** The message as WeChat keeps it (often XML). */
   content: string;
   /** Its text as the chat window shows it; null when it has none. */
   text: string | null;
+  /** An image's MD5, as a parsed message's `imageMd5`. */
   imageMd5?: string;
+  /** The name of an image's `.dat` file, as a parsed message's `imageDatName`. */
   imageDatName?: string;
+  /** The MD5 that names a video's file, as a parsed message's `videoMd5`. */
   videoMd5?: string;
+  /** A sticker's MD5. */
   emojiMd5?: string;
+  /** A sticker's address on WeChat's servers. */
   emojiCdnUrl?: string;
+  /** An app message's `<type>`, as a parsed message's `xmlType`. */
   xmlType?: string;
+  /** A file's name. */
   fileName?: string;
+  /** A file's extension, without its dot. */
   fileExt?: string;
+  /** A file's MD5. */
   fileMd5?: string;
   /** In bytes. */
   fileSize?: number;
+  /** A location's latitude. */
   locationLat?: number;
+  /** A location's longitude. */
   locationLng?: number;
+  /** The name of a location's place. */
   locationPoiname?: string;
+  /** A location's label, its address as WeChat shows it. */
   locationLabel?: string;
   /** The kind of an app message (`link`, `file`, `music`…). */
   appMsgKind?: string;
   /** Where the message stands in the listing (not in its conversation): `before` reads on from it. */
   _cursor: string;
+  /** The conversation's name as the conversation list shows it. */
   sessionDisplayName: string;
+  /** The conversation's username. */
   sessionId: string;
+  /** What the message holds. */
   resourceType: ResourceKind;
 }
 
@@ -301,7 +411,9 @@ export type ResourceKind = "image" | "video" | "voice" | "file";
 
 /** Whether a conversation is folded, muted and pinned (`chat statuses` answers one for each username asked for). */
 export interface ChatStatus {
+  /** Folded into WeChat's folded chats. */
   isFolded: boolean;
+  /** Its notifications are muted. */
   isMuted: boolean;
   /** Pinned to the top of WeChat's conversation list (#885). */
   isPinned: boolean;
@@ -309,21 +421,29 @@ export interface ChatStatus {
 
 /** How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them. */
 export interface TabCounts {
+  /** Friends. */
   private: number;
+  /** Group chats. */
   group: number;
+  /** Official accounts. */
   official: number;
+  /** People who were friends. */
   former_friend: number;
 }
 
 /** The days a conversation has messages on (`chat dates`), as `YYYY-MM-DD` in the server's time zone, oldest first. */
 export interface SessionDates {
+  /** The conversation's username. */
   sessionId: string;
+  /** The days. */
   dates: string[];
 }
 
 /** How many messages a conversation has on each day it has any (`chat date-counts`), by `YYYY-MM-DD`. */
 export interface SessionDateCounts {
+  /** The conversation's username. */
   sessionId: string;
+  /** The messages of each day, in the server's time zone. */
   counts: Record<string, number>;
 }
 
@@ -333,14 +453,21 @@ export interface SessionDetail {
   wxid: string;
   /** The remark, else the nickname, else the alias, else the username. */
   displayName: string;
+  /** My remark for them. */
   remark?: string;
+  /** The name they gave themselves, or a group's name. */
   nickName?: string;
+  /** The WeChat ID. */
   alias?: string;
+  /** The address of the avatar. */
   avatarUrl?: string;
+  /** How many messages the conversation has. */
   messageCount: number;
   /** The time of its first message; null when its tables do not say. */
   firstMessageTime: number | null;
+  /** The time of its last message; null when its tables do not say. */
   latestMessageTime: number | null;
+  /** The tables that hold its messages. */
   messageTables: MessageTable[];
 }
 
@@ -348,7 +475,9 @@ export interface SessionDetail {
 export interface MessageTable {
   /** The database's file name, such as `message_0.db`. */
   dbName: string;
+  /** The table's name, `Msg_<MD5 of the username>`. */
   tableName: string;
+  /** The messages in it. */
   count: number;
 }
 
@@ -358,10 +487,15 @@ export interface SessionFacts {
   wxid: string;
   /** The remark, else the nickname, else the alias, else the username. */
   displayName: string;
+  /** My remark for them. */
   remark?: string;
+  /** The name they gave themselves, or a group's name. */
   nickName?: string;
+  /** The WeChat ID. */
   alias?: string;
+  /** The address of the avatar. */
   avatarUrl?: string;
+  /** How many messages the conversation has. */
   messageCount: number;
 }
 
@@ -369,7 +503,9 @@ export interface SessionFacts {
 export interface SessionTables {
   /** The time of its first message; null when its tables do not say. */
   firstMessageTime: number | null;
+  /** The time of its last message; null when its tables do not say. */
   latestMessageTime: number | null;
+  /** The tables that hold its messages. */
   messageTables: MessageTable[];
 }
 
@@ -393,7 +529,9 @@ export interface GroupChat {
   username: string;
   /** Its name, else its id. */
   displayName: string;
+  /** How many members it has. */
   memberCount: number;
+  /** The address of its avatar; left out when it has none. */
   avatarUrl?: string;
 }
 
@@ -402,26 +540,35 @@ export interface GroupChat {
  * then friends, then by how many messages they sent.
  */
 export interface GroupMembers {
+  /** The group's id, `…@chatroom`. */
   chatroomId: string;
+  /** How many members there are. */
   count: number;
   /** When the panel was built, in Unix milliseconds. */
   updatedAt: number;
+  /** The members. */
   members: GroupMember[];
 }
 
 /** A member of a group's members panel. */
 export interface GroupMember {
+  /** The member's wxid. */
   username: string;
   /** Their name as WeChat shows it in the group. */
   displayName: string;
-  /** The fields of their contact; empty when they are not a contact. */
+  /** The nickname of their contact; empty when they are not a contact. */
   nickname: string;
+  /** The WeChat ID of their contact; empty when they are not a contact or chose none. */
   alias: string;
+  /** My remark for them; empty when they are not a contact or have none. */
   remark: string;
   /** The name they gave themselves in this group; empty when none. */
   groupNickname: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
+  /** Whether they own the group. */
   isOwner: boolean;
+  /** Whether they are my friend. */
   isFriend: boolean;
   /** How many messages they sent in the group; 0 unless `counts=true`. */
   messageCount: number;
@@ -429,14 +576,19 @@ export interface GroupMember {
 
 /** Who sent how many messages in a group (`group ranking`), the most first. */
 export interface GroupRank {
+  /** Who. */
   member: RankedMember;
+  /** How many messages they sent in the range asked for. */
   messageCount: number;
 }
 
 /** A member of a ranking. */
 export interface RankedMember {
+  /** The member's wxid. */
   username: string;
+  /** Their name as WeChat shows it in the group. */
   displayName: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
 }
 
@@ -448,7 +600,9 @@ export interface GroupHours {
 
 /** How many messages of each kind a group has (`group media`), the most first. */
 export interface GroupMedia {
+  /** The kinds of message, the most first. */
   typeCounts: MediaCount[];
+  /** All the messages counted. */
   total: number;
 }
 
@@ -458,34 +612,47 @@ export interface MediaCount {
   type: number;
   /** Its name in Chinese. */
   name: string;
+  /** How many messages of it there are. */
   count: number;
 }
 
 /** What one member of a group sent (`group member`). */
 export interface MemberAnalytics {
+  /** The numbers of their messages. */
   statistics: MemberStatistics;
   /** By the hour, `"0"` to `"23"`, in the server's time zone. */
   timeDistribution: Record<string, number>;
   /** What they said most, the most first, up to 10. */
   commonPhrases: PhraseCount[];
+  /** The WeChat emojis (`[微笑]` and the like) in their text, the most used first, up to 10. */
   commonEmojis: EmojiCount[];
 }
 
 /** The numbers of a member's messages. */
 export interface MemberStatistics {
+  /** All their messages. */
   totalMessages: number;
+  /** Text, quotes included. */
   textMessages: number;
+  /** Images. */
   imageMessages: number;
+  /** Voice messages. */
   voiceMessages: number;
+  /** Videos. */
   videoMessages: number;
+  /** Stickers. */
   emojiMessages: number;
+  /** Every other kind. */
   otherMessages: number;
+  /** As `totalMessages`. */
   sentMessages: number;
   /** Always 0: a member's messages are all sent by them. */
   receivedMessages: number;
   /** The time of their first message; null when they sent none. */
   firstMessageTime: number | null;
+  /** The time of their last message; null when they sent none. */
   lastMessageTime: number | null;
+  /** The days, in the server's time zone, with a message of theirs. */
   activeDays: number;
   /** By WeChat's type of the message, as `localType`. */
   messageTypeCounts: Record<string, number>;
@@ -493,19 +660,25 @@ export interface MemberStatistics {
 
 /** A phrase and how often it was said. */
 export interface PhraseCount {
+  /** A text message of at most 20 characters, counted whole. */
   phrase: string;
+  /** How many times it was sent. */
   count: number;
 }
 
 /** An emoji and how often it was sent. */
 export interface EmojiCount {
+  /** The emoji as the text writes it, `[微笑]`. */
   emoji: string;
+  /** How many times it was used. */
   count: number;
 }
 
 /** A page of a member's messages in a group (`group member-messages`), newest first. */
 export interface MemberMessages {
+  /** The messages of the page. */
   messages: ChatMessage[];
+  /** Whether there are messages past this page. */
   hasMore: boolean;
   /** Pass it as `cursor` for the next page. */
   nextCursor: number;
@@ -524,6 +697,7 @@ export interface ChatMessage {
   serverId: string;
   /** WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…). */
   localType: number;
+  /** When it was sent. */
   createTime: number;
   /** WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little. */
   sortSeq: number;
@@ -535,53 +709,110 @@ export interface ChatMessage {
   parsedContent: string;
   /** The message as WeChat keeps it (often XML). */
   rawContent: string;
+  /** A sticker's address on WeChat's servers. */
   emojiCdnUrl?: string;
+  /** A sticker's MD5. */
   emojiMd5?: string;
+  /**
+   * What a reply quotes, as the chat window shows it; an image, video or voice that answers a message has
+   * `__SVRID__<server id>__` naming it.
+   */
   quotedContent?: string;
+  /** The name of whom a reply quotes. */
   quotedSender?: string;
+  /** An image's MD5, as its XML gives it. */
   imageMd5?: string;
+  /** The name of an image's `.dat` file, from the row's packed info or the XML. */
   imageDatName?: string;
+  /** The MD5 that names a video's file, in lowercase. */
   videoMd5?: string;
+  /** A voice's length in seconds, rounded. */
   voiceDurationSeconds?: number;
+  /** An image's AES key on WeChat's servers (`<img aeskey>`). */
   aesKey?: string;
+  /** An image's `encrypver`. */
   encrypVer?: number;
+  /** The address of an image's or a sticker's thumbnail on WeChat's servers. */
   cdnThumbUrl?: string;
+  /** The username a contact card shares. */
   cardUsername?: string;
+  /** The nickname a contact card shows. */
   cardNickname?: string;
+  /** The address of a contact card's avatar. */
   cardAvatarUrl?: string;
+  /** A location's latitude. */
   locationLat?: number;
+  /** A location's longitude. */
   locationLng?: number;
+  /** The name of a location's place. */
   locationPoiname?: string;
+  /** A location's label, its address as WeChat shows it. */
   locationLabel?: string;
+  /**
+   * The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a
+   * quote, `2000` a transfer, `2001` a red packet…
+   */
   xmlType?: string;
+  /** The title: a link's or a mini program's, a file's name, a transfer's memo. */
   linkTitle?: string;
+  /** The address it opens. */
   linkUrl?: string;
+  /** The address of its thumbnail. */
   linkThumb?: string;
+  /**
+   * What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,
+   * `red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`.
+   */
   appMsgKind?: string;
+  /** Its description (`<des>`). */
   appMsgDesc?: string;
+  /** The name of the app that sent it (`<appname>`). */
   appMsgAppName?: string;
+  /** The name of the account it comes from (`<sourcename>`), such as an official account's. */
   appMsgSourceName?: string;
+  /** The username of the account it comes from (`<sourceusername>`). */
   appMsgSourceUsername?: string;
+  /** The address of its thumbnail or cover. */
   appMsgThumbUrl?: string;
+  /** The address of a song (`<musicurl>`, `<playurl>`). */
   appMsgMusicUrl?: string;
+  /** The address of its data (`<dataurl>`, `<lowurl>`). */
   appMsgDataUrl?: string;
+  /** The label of a location it names. */
   appMsgLocationLabel?: string;
+  /** The name of a Channels account. */
   finderNickname?: string;
+  /** The username of a Channels account. */
   finderUsername?: string;
+  /** A Channels video's cover. */
   finderCoverUrl?: string;
+  /** The address of a Channels account's avatar. */
   finderAvatar?: string;
+  /** A Channels video's length, in seconds. */
   finderDuration?: number;
+  /** A song's album cover. */
   musicAlbumUrl?: string;
+  /** A song's address to play. */
   musicUrl?: string;
+  /** A gift's picture. */
   giftImageUrl?: string;
+  /** A gift's wish. */
   giftWish?: string;
+  /** A gift's price, as the message writes it. */
   giftPrice?: string;
+  /** A file's name. */
   fileName?: string;
+  /** A file's size, in bytes. */
   fileSize?: number;
+  /** A file's extension, without its dot. */
   fileExt?: string;
+  /** A file's MD5, in lowercase. */
   fileMd5?: string;
+  /** Who pays a transfer. */
   transferPayerUsername?: string;
+  /** Who receives a transfer. */
   transferReceiverUsername?: string;
+  /** A chat record's title; 「聊天记录」 when it has none. */
   chatRecordTitle?: string;
   /** The message's key: the same message has the same key on every machine. It is opaque; only compare it. */
   messageKey: string;
@@ -589,17 +820,27 @@ export interface ChatMessage {
 
 /** The private chats counted together (`analytics overall`), but for the people left out. */
 export interface OverallStatistics {
+  /** All the messages. */
   totalMessages: number;
+  /** Text, quotes included. */
   textMessages: number;
+  /** Images. */
   imageMessages: number;
+  /** Voice messages. */
   voiceMessages: number;
+  /** Videos. */
   videoMessages: number;
+  /** Stickers. */
   emojiMessages: number;
+  /** Every other kind. */
   otherMessages: number;
+  /** The ones I sent. */
   sentMessages: number;
+  /** The ones I received. */
   receivedMessages: number;
   /** The time of the first message; null without messages. */
   firstMessageTime: number | null;
+  /** The time of the last message; null without messages. */
   lastMessageTime: number | null;
   /** The days with a message. */
   activeDays: number;
@@ -609,13 +850,19 @@ export interface OverallStatistics {
 
 /** A private chat of `analytics rankings`, the one with the most messages first. */
 export interface ContactRank {
+  /** The other party's wxid. */
   username: string;
+  /** The remark, else the nickname, else the WeChat ID, else the username. */
   displayName: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
   /** The WeChat ID they chose, else the username when it is not a `wxid_…`; else empty. */
   wechatId: string;
+  /** The messages of the chat in the range asked for. */
   messageCount: number;
+  /** The ones I sent. */
   sentCount: number;
+  /** The ones I received. */
   receivedCount: number;
   /** The time of the last message; null without messages. */
   lastMessageTime: number | null;
@@ -636,8 +883,11 @@ export interface TimeDistribution {
  * out already.
  */
 export interface ExcludeCandidate {
+  /** The other party's wxid. */
   username: string;
+  /** The remark, else the nickname, else the WeChat ID, else the username. */
   displayName: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
   /** As in a ranking. */
   wechatId: string;
@@ -645,6 +895,7 @@ export interface ExcludeCandidate {
 
 /** A page of Moments posts (`sns timeline`), the newest first. */
 export interface SnsTimeline {
+  /** The posts of the page. */
   timeline: SnsPost[];
 }
 
@@ -654,9 +905,11 @@ export interface SnsPost {
   id: string;
   /** The row's id in WeChat's table, in decimal. */
   tid: string;
+  /** The poster's wxid. */
   username: string;
   /** The poster's name: the post's own, else the contact's, else the username. */
   nickname: string;
+  /** When it was posted; 0 when the post does not say. */
   createTime: number;
   /** The text of the post. */
   contentDesc: string;
@@ -664,33 +917,48 @@ export interface SnsPost {
   type: number;
   /** The post's XML as WeChat keeps it. */
   rawXml: string;
+  /** Its pictures or video. */
   media: SnsMedia[];
   /** The names of those who liked it. */
   likes: string[];
+  /** Its comments, in the order of the post's XML. */
   comments: SnsComment[];
   /** The key of the post's video, which opens its cover too. */
   videoKey?: string;
+  /** The address of the poster's avatar; left out when there is none. */
   avatarUrl?: string;
+  /** Where it was posted; left out when the post does not say. */
   location?: SnsLocation;
 }
 
 /** A picture or video of a post: addresses on WeChat's servers, fetched and decrypted by `sns media` with `key`. */
 export interface SnsMedia {
-  url: string;
-  thumb: string;
-  md5?: string;
-  token?: string;
-  key?: string;
-  encIdx?: string;
   /**
-   * With `with-media`: the server's addresses, `url` and `thumb` being those of the files it fetched, and where
-   * it fetched them or a proxy of the server serves them.
+   * The full picture or the video: WeChat's address, over https and with `token`; with `with-media`, as
+   * `resolvedUrl`, else WeChat's.
    */
+  url: string;
+  /** The thumbnail, as `url`. */
+  thumb: string;
+  /** The file's MD5, as the post gives it. */
+  md5?: string;
+  /** The access token WeChat's server asks for. */
+  token?: string;
+  /** The key that decrypts the file, to pass to `sns media`. */
+  key?: string;
+  /** The `enc_idx` attribute the post gives the file. */
+  encIdx?: string;
+  /** With `with-media`: WeChat's address of the full picture or the video. */
   rawUrl?: string;
+  /** With `with-media`: WeChat's address of the thumbnail. */
   rawThumb?: string;
+  /** With `with-media`: the file fetched and decrypted, as a data URL, else `proxyUrl`. */
   resolvedUrl?: string;
+  /** With `with-media`: the thumbnail, as `resolvedUrl`. */
   resolvedThumbUrl?: string;
+  /** With `with-media`: the route of `weflow serve` that fetches and decrypts the file (`/api/sns/media`). */
   proxyUrl?: string;
+  /** With `with-media`: the route that fetches and decrypts the thumbnail. */
   proxyThumbUrl?: string;
   /** The moving part of a live photo. */
   livePhoto?: SnsLivePhoto;
@@ -698,63 +966,97 @@ export interface SnsMedia {
 
 /** The video of a live photo. */
 export interface SnsLivePhoto {
+  /** The video, as a picture's `url`. */
   url: string;
+  /** Its thumbnail, as a picture's `thumb`. */
   thumb: string;
+  /** The access token WeChat's server asks for. */
   token?: string;
+  /** The key that decrypts the video; the picture's key opens it when it has none. */
   key?: string;
+  /** The video's MD5, as the post gives it. */
   md5?: string;
+  /** The `enc_idx` attribute the post gives the video. */
   encIdx?: string;
-  /** With `with-media`: as for the picture it moves. */
+  /** With `with-media`: as a picture's `rawUrl`. */
   rawUrl?: string;
+  /** With `with-media`: as a picture's `rawThumb`. */
   rawThumb?: string;
+  /** With `with-media`: as a picture's `resolvedUrl`. */
   resolvedUrl?: string;
+  /** With `with-media`: as a picture's `resolvedThumbUrl`. */
   resolvedThumbUrl?: string;
+  /** With `with-media`: as a picture's `proxyUrl`. */
   proxyUrl?: string;
+  /** With `with-media`: as a picture's `proxyThumbUrl`. */
   proxyThumbUrl?: string;
 }
 
 /** A comment on a post. */
 export interface SnsComment {
+  /** WeChat's id of the comment; one made up (`cmt_…`) when the post gives none. */
   id: string;
+  /** The commenter's name. */
   nickname: string;
+  /** The commenter's wxid; left out when the post does not say. */
   username?: string;
+  /** Its text; empty for a comment of stickers only. */
   content: string;
   /** The comment it answers; empty when none. */
   refCommentId: string;
+  /** The wxid of whom it answers; left out when it answers no one or the post does not say. */
   refUsername?: string;
+  /** The name of whom it answers; left out as `refUsername`. */
   refNickname?: string;
+  /** The stickers in it; left out when there are none. */
   emojis?: SnsEmoji[];
 }
 
 /** A sticker in a comment. */
 export interface SnsEmoji {
+  /** Its plain address; empty when it has only `encryptUrl`. */
   url: string;
+  /** Its MD5; empty when the comment does not say. */
   md5: string;
+  /** In pixels; null when the comment does not say. */
   width: number | null;
+  /** In pixels; null when the comment does not say. */
   height: number | null;
+  /** The address of its encrypted file; left out when it has none. */
   encryptUrl?: string;
+  /** The AES key of `encryptUrl`; left out when it has none. */
   aesKey?: string;
 }
 
 /** Where a post was made, as much as it says. */
 export interface SnsLocation {
+  /** In degrees, as the post writes it. */
   latitude?: number;
+  /** In degrees, as the post writes it. */
   longitude?: number;
+  /** The city. */
   city?: string;
+  /** The country. */
   country?: string;
+  /** The name of the place. */
   poiName?: string;
+  /** The place's address. */
   poiAddress?: string;
+  /** The place's address as a name. */
   poiAddressName?: string;
+  /** The label the post shows for it. */
   label?: string;
 }
 
 /** Who has posts in Moments (`sns users`), the one who posted last first. */
 export interface SnsUsers {
+  /** Their wxids. */
   usernames: string[];
 }
 
 /** How many Moments posts there are (`sns stats`). */
 export interface SnsStats {
+  /** The posts kept on this computer. */
   totalPosts: number;
   /** How many people posted them. */
   totalFriends: number;
@@ -764,12 +1066,15 @@ export interface SnsStats {
 
 /** How many Moments posts one person has (`sns post-counts --user`). */
 export interface UserPosts {
+  /** Their wxid. */
   username: string;
+  /** Their posts kept on this computer. */
   totalPosts: number;
 }
 
 /** The years with private messages (`report annual years`), the latest first. */
 export interface ReportYears {
+  /** The years, in the server's time zone. */
   years: number[];
   /**
    * How they were found: `native` (WeChat's own index), `table-scan` (the time span of each table) or
@@ -782,6 +1087,7 @@ export interface ReportYears {
 export interface AnnualReport {
   /** 0 for all the years. */
   year: number;
+  /** The messages of the private chats. */
   totalMessages: number;
   /** The private chats with messages. */
   totalFriends: number;
@@ -789,27 +1095,43 @@ export interface AnnualReport {
   coreFriends: CoreFriend[];
   /** Months 1–12. */
   monthlyTopFriends: MonthlyTopFriend[];
+  /** Null without messages. */
   peakDay: PeakDay | null;
+  /** Null without messages. */
   longestStreak: LongestStreak | null;
+  /** Messages by weekday and hour. */
   activityHeatmap: ActivityHeatmap;
+  /** Null without messages between 0:00 and 6:00. */
   midnightKing: MidnightKing | null;
+  /** The address of my avatar; left out when there is none. */
   selfAvatarUrl?: string;
+  /** Null when no friend has 50 or more messages each way. */
   mutualFriend: MutualFriend | null;
+  /** Null without conversations. */
   socialInitiative: SocialInitiative | null;
+  /** Null when I answered nothing. */
   responseSpeed: ResponseSpeed | null;
   /** My phrases said at least twice, the most said first. */
   topPhrases: PhraseCount[];
+  /** Left out when my Moments cannot be read. */
   snsStats?: AnnualSnsStats;
+  /** Null when no friend fits. */
   lostFriend: LostFriend | null;
 }
 
 /** One of the three private chats with the most messages. */
 export interface CoreFriend {
+  /** The friend's wxid. */
   username: string;
+  /** The remark, else the nickname, else the WeChat ID, else the username. */
   displayName: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
+  /** The chat's messages. */
   messageCount: number;
+  /** The ones I sent. */
   sentCount: number;
+  /** The ones I received. */
   receivedCount: number;
 }
 
@@ -819,7 +1141,9 @@ export interface MonthlyTopFriend {
   month: number;
   /** 「暂无」 for a month without messages. */
   displayName: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
+  /** Their messages in the month; 0 for a month without messages. */
   messageCount: number;
 }
 
@@ -827,14 +1151,19 @@ export interface MonthlyTopFriend {
 export interface PeakDay {
   /** `YYYY-MM-DD`. */
   date: string;
+  /** The day's messages. */
   messageCount: number;
+  /** The name of the friend most of them are with. */
   topFriend: string;
+  /** The day's messages with that friend. */
   topFriendCount: number;
 }
 
 /** The most days in a row talked with one friend. */
 export interface LongestStreak {
+  /** The friend's name. */
   friendName: string;
+  /** How many days in a row. */
   days: number;
   /** `YYYY-MM-DD`. */
   startDate: string;
@@ -850,7 +1179,9 @@ export interface ActivityHeatmap {
 
 /** Who the most messages between 0:00 and 6:00 are with. */
 export interface MidnightKing {
+  /** The friend's name. */
   displayName: string;
+  /** Their messages between 0:00 and 6:00. */
   count: number;
   /** Of all the messages between 0:00 and 6:00, to one decimal. */
   percentage: number;
@@ -858,34 +1189,53 @@ export interface MidnightKing {
 
 /** The friend whose sent and received messages, 50 or more each, are closest to even. */
 export interface MutualFriend {
+  /** The friend's name. */
   displayName: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
+  /** The messages I sent them. */
   sentCount: number;
+  /** The messages they sent me. */
   receivedCount: number;
   /** Sent ÷ received, to two decimals. */
   ratio: number;
 }
 
-/** Conversations opened by me or by them. */
+/**
+ * Conversations opened by me or by them.
+ *
+ * A conversation starts with the first message after an hour without any.
+ */
 export interface SocialInitiative {
+  /** The conversations I opened. */
   initiatedChats: number;
+  /** The conversations they opened. */
   receivedChats: number;
   /** The share opened by me, in percent to one decimal. */
   initiativeRate: number;
   /** Whom I opened the most conversations with; left out when I opened none. */
   topInitiatedFriend?: string;
+  /** How many conversations I opened with them; left out when I opened none. */
   topInitiatedCount?: number;
 }
 
-/** How fast I answer, in seconds. */
+/**
+ * How fast I answer, in seconds.
+ *
+ * An answer is my message after theirs in the same conversation, within a day.
+ */
 export interface ResponseSpeed {
+  /** The mean over all my answers. */
   avgResponseTime: number;
+  /** The name of the friend I answer fastest on average. */
   fastestFriend: string;
+  /** My mean answer to that friend. */
   fastestTime: number;
 }
 
 /** My Moments in the annual report. */
 export interface AnnualSnsStats {
+  /** My posts. */
   totalPosts: number;
   /** My posts by WeChat's post type. */
   typeCounts?: Record<string, number>;
@@ -897,18 +1247,31 @@ export interface AnnualSnsStats {
 
 /** A friend and a count. */
 export interface FriendCount {
+  /** The friend's wxid. */
   username: string;
+  /** The likes counted. */
   count: number;
+  /** The remark, else the nickname, else the WeChat ID, else the username. */
   displayName: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
 }
 
-/** A friend talked to much more in an earlier period than later. */
+/**
+ * A friend talked to much more in an earlier period than later.
+ *
+ * The earlier period has more than 80 messages and more than five times as many as the later one.
+ */
 export interface LostFriend {
+  /** The friend's wxid. */
   username: string;
+  /** The remark, else the nickname, else the WeChat ID, else the username. */
   displayName: string;
+  /** The address of their avatar; left out when there is none. */
   avatarUrl?: string;
+  /** The messages of the earlier period. */
   earlyCount: number;
+  /** The messages of the later period. */
   lateCount: number;
   /** The earlier period, as the report says it: 「去年的这个时候」 and the like. */
   periodDesc: string;
@@ -918,10 +1281,15 @@ export interface LostFriend {
 export interface DualReport {
   /** 0 for all the years. */
   year: number;
+  /** My name. */
   selfName: string;
+  /** The address of my avatar; left out when there is none. */
   selfAvatarUrl?: string;
+  /** The friend's wxid. */
   friendUsername: string;
+  /** The remark, else the nickname, else the WeChat ID, else the username. */
   friendName: string;
+  /** The address of the friend's avatar; left out when there is none. */
   friendAvatarUrl?: string;
   /** The first message ever between the two. */
   firstChat: DualMessage | null;
@@ -929,6 +1297,7 @@ export interface DualReport {
   firstChatMessages: DualMessage[];
   /** The first message of the year; null for all the years. */
   yearFirstChat: YearFirstChat | null;
+  /** The counts. */
   stats: DualStats;
   /** Phrases said at least twice by either, the most said first. */
   topPhrases: PhraseCount[];
@@ -938,10 +1307,13 @@ export interface DualReport {
   friendExclusivePhrases: PhraseCount[];
   /** Seven rows, Monday first, of 24 hours each. */
   heatmap?: number[][];
+  /** Who opened the conversations. */
   initiative?: DualInitiative;
+  /** How fast I answer; left out when I answered nothing. */
   response?: DualResponse;
   /** Messages by month, `YYYY-MM`. */
   monthly?: Record<string, number>;
+  /** The most days in a row the two talked; left out without messages. */
   streak?: DualStreak;
 }
 
@@ -949,6 +1321,7 @@ export interface DualReport {
 export interface DualMessage {
   /** Its text; raw for anything but text. */
   content: string;
+  /** Whether I sent it. */
   isSentByMe: boolean;
   /** Who sent it; only on `firstChat`, where the row says. */
   senderUsername?: string;
@@ -956,6 +1329,7 @@ export interface DualMessage {
   createTime: number;
   /** `YYYY-MM-DD HH:MM:SS`, local time. */
   createTimeStr: string;
+  /** WeChat's type of the message, as a parsed message's `localType`. */
   localType: number;
   /** A sticker's MD5. */
   emojiMd5?: string;
@@ -967,43 +1341,73 @@ export interface DualMessage {
 export interface YearFirstChat {
   /** Milliseconds. */
   createTime: number;
+  /** `YYYY-MM-DD HH:MM:SS`, local time. */
   createTimeStr: string;
+  /** Its text; raw for anything but text. */
   content: string;
+  /** Whether I sent it. */
   isSentByMe: boolean;
+  /** The friend's name. */
   friendName: string;
   /** The year's first messages, at most 10. */
   firstThreeMessages: DualMessage[];
+  /** WeChat's type of the message, as a parsed message's `localType`. */
   localType: number;
+  /** A sticker's MD5. */
   emojiMd5?: string;
+  /** A sticker's address. */
   emojiCdnUrl?: string;
 }
 
 /** The counts of the dual report, and each one's most sent sticker. */
 export interface DualStats {
+  /** All the messages between the two. */
   totalMessages: number;
   /** The characters of the text messages. */
   totalWords: number;
+  /** Images. */
   imageCount: number;
+  /** Voice messages. */
   voiceCount: number;
+  /** Stickers. */
   emojiCount: number;
+  /** The MD5 of the sticker I sent most; left out when I sent none. */
   myTopEmojiMd5?: string;
+  /** Its address; left out when neither its message nor the sticker database has one. */
   myTopEmojiUrl?: string;
+  /** The MD5 of the sticker the friend sent most; left out when they sent none. */
   friendTopEmojiMd5?: string;
+  /** Its address; left out when neither its message nor the sticker database has one. */
   friendTopEmojiUrl?: string;
+  /** How many times I sent mine. */
   myTopEmojiCount?: number;
+  /** How many times the friend sent theirs. */
   friendTopEmojiCount?: number;
 }
 
-/** Conversations opened by me, or by them. */
+/**
+ * Conversations opened by me, or by them.
+ *
+ * A conversation starts with the first message after an hour without any.
+ */
 export interface DualInitiative {
+  /** The conversations I opened. */
   initiated: number;
+  /** The conversations the friend opened. */
   received: number;
 }
 
-/** How fast I answer the friend, in seconds. */
+/**
+ * How fast I answer the friend, in seconds.
+ *
+ * An answer is my message after theirs in the same conversation, within a day.
+ */
 export interface DualResponse {
+  /** The mean, rounded. */
   avg: number;
+  /** The fastest answer. */
   fastest: number;
+  /** The slowest answer. */
   slowest: number;
   /** The answers counted. */
   count: number;
@@ -1011,14 +1415,19 @@ export interface DualResponse {
 
 /** The most days in a row the two talked. */
 export interface DualStreak {
+  /** How many days in a row. */
   days: number;
+  /** The first day, `YYYY-MM-DD`. */
   startDate: string;
+  /** The last day, `YYYY-MM-DD`. */
   endDate: string;
 }
 
 /** The pushes of an official account (`biz messages`). */
 export interface BizMessages {
+  /** The official account, `gh_…`. */
   username: string;
+  /** Its pushes; messages without content are left out. */
   messages: BizMessage[];
 }
 
@@ -1026,10 +1435,15 @@ export interface BizMessages {
 export interface BizMessage {
   /** The message's id in its table; null when its row does not say. */
   localId: number | null;
+  /** When it was sent; null when its row does not say. */
   createTime: number | null;
+  /** The lead article's title; empty when the push has none. */
   title: string;
+  /** The lead article's summary. */
   description: string;
+  /** The lead article's address. */
   url: string;
+  /** The lead article's cover image: its `cover`, else its `thumburl`. */
   cover: string;
   /** The other articles of the push. */
   contentList: BizArticle[];
@@ -1037,14 +1451,19 @@ export interface BizMessage {
 
 /** An article sent with a push. */
 export interface BizArticle {
+  /** Never empty: an article without a title is left out. */
   title: string;
+  /** The article's address. */
   url: string;
+  /** Its cover image: its `cover`, else its `thumburl`. */
   cover: string;
+  /** Its `summary`, else its `digest`. */
   summary: string;
 }
 
 /** A page of WeChat Pay notices (`biz pay-records`), newest first. */
 export interface PayRecords {
+  /** The notices of the page. */
   records: PayRecord[];
   /**
    * Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as
@@ -1055,6 +1474,7 @@ export interface PayRecords {
 
 /** A WeChat Pay notice. */
 export interface PayRecord {
+  /** The notice's title, such as 「已支付¥9.99」. */
   title: string;
   /** Its lines, as WeChat writes them (amount, method, state…). */
   description: string;
@@ -1067,18 +1487,23 @@ export interface PayRecord {
   status: string | null;
   /** Who was paid; `WeChat Pay` (in the server's language) when the notice does not say. */
   merchantName: string;
+  /** The address of the payee's icon; empty when the notice has none. */
   merchantIcon: string;
   /** When it was published, in Unix seconds; 0 when the notice does not say. */
   timestamp: number;
+  /** The message's id in its table. */
   localId: number | null;
+  /** When the message was received; null when its row does not say. */
   createTime: number | null;
 }
 
 /** A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys. */
 export interface ProfileSummary {
+  /** The profile's name, as `config set current_profile` takes it. */
   name: string;
   /** Whether the commands read it. */
   current: boolean;
+  /** The account's wxid; null when it is not set. */
   wxid: string | null;
   /** The WeChat data directory. */
   dbPath: string | null;
@@ -1100,16 +1525,18 @@ export interface CacheUsage {
   paths: string[];
   /** What `paths` take on disk. */
   bytes: number;
+  /** How many files `paths` hold. */
   files: number;
 }
 
 /** A part of WeFlow's cache that is listed and cleared on its own. */
-export type CachePart = "images" | "voices" | "emojis" | "sns" | "analytics" | "api" | "keys" | "web" | "runtime";
+export type CachePart = "images" | "voices" | "emojis" | "sns" | "analytics" | "api" | "keys" | "runtime" | "web";
 
 /** What `cache clear` or `clear-account` would remove (`--dry-run`), for a page that asks first. */
 export interface RemovalPlan {
   /** Always true. */
   dryRun: boolean;
+  /** The files and folders it would remove. */
   paths: PlannedRemoval[];
   /** What they all take on disk. */
   bytes: number;
@@ -1119,7 +1546,9 @@ export interface RemovalPlan {
 
 /** A file or folder a removal would take. */
 export interface PlannedRemoval {
+  /** The file or folder. */
   path: string;
+  /** What it takes on disk; a folder's is that of the files under it. */
   bytes: number;
 }
 
@@ -1131,6 +1560,7 @@ export interface Cancelled {
 
 /** What `cache clear` removed. */
 export interface CacheCleared {
+  /** The files and folders removed. */
   removedPaths: string[];
   /** What the removed files took on disk. */
   freedBytes: number;
@@ -1140,6 +1570,7 @@ export interface CacheCleared {
 
 /** What `cache clear-account` removed. */
 export interface AccountCleared {
+  /** The files and folders removed: WeFlow's caches of the account, and the exports named after it. */
   removedPaths: string[];
   /** Whether the account was taken out of the profile (`db_path`, `wxid`, the keys). */
   profileReset: boolean;
@@ -1160,12 +1591,15 @@ export interface ConfigWritten {
 
 /** WeFlow's config file (`config list`): the profiles and the settings shared by all of them. */
 export interface ConfigStore {
+  /** The profile the commands read; `default` in a new file. */
   current_profile: string;
   /** Output language chosen with `weflow lang en|zh` (`None` = follow the system). */
   lang: string | null;
   /** Options of `weflow serve` saved here (`serve_*` keys), used where its command line gives none. */
   serve: ServeSettings;
+  /** The profiles, by name. */
   profiles: Record<string, ProfileConfig>;
+  /** The file's other top-level keys, kept as they are. */
   extra: Record<string, unknown>;
 }
 
@@ -1196,33 +1630,51 @@ export interface ServeSettings {
 
 /** One profile of the config file: an account and its settings. */
 export interface ProfileConfig {
+  /** WeChat's data directory (`db_path`). */
   db_path: string | null;
+  /** The database key, in hex (`decrypt_key`). */
   decrypt_key: string | null;
+  /** The account's wxid (`wxid`). */
   wxid: string | null;
+  /** The image XOR key, 0 to 255 (`image_xor_key`). */
   image_xor_key: number | null;
+  /** The image AES key (`image_aes_key`). */
   image_aes_key: string | null;
+  /**
+   * The folder of the cached images, voices, stickers and Moments (`cache_path`); `cache` beside the config file
+   * when unset.
+   */
   cache_path: string | null;
+  /** The access token of `weflow serve`'s HTTP API (`http_api_token`). */
   http_api_token: string | null;
   /**
    * The API format of the model API, `openai` or `anthropic`. Kept as text, so that a file edited by hand still
    * loads; read as `openai` when it is neither.
    */
   ai_model_api_format: string | null;
+  /** The model API's base URL; the service of the format when unset. */
   ai_model_api_base_url: string | null;
+  /** The model API's key. */
   ai_model_api_key: string | null;
+  /** The model asked for. */
   ai_model_api_model: string | null;
+  /** The most tokens of one answer. */
   ai_model_api_max_tokens: number | null;
+  /** Whether the AI insights run. */
   ai_insight_enabled: boolean | null;
+  /** The profile's other keys (those the WebUI keeps, such as `autoDownloadWhitelist`), kept as they are. */
   extra: Record<string, unknown>;
 }
 
 /** The language `weflow lang` saved: `en` or `zh`. */
 export interface LangSaved {
+  /** `en` or `zh`. */
   lang: string;
 }
 
 /** The file an export wrote (`export sessions`, `contacts`, `footprint`). */
 export interface ExportWritten {
+  /** The file. */
   out: string;
   /** The format it was written in: `json`, `csv`, `excel`, … */
   format: string;
@@ -1242,6 +1694,7 @@ export interface SnsExported {
   success: boolean;
   /** Empty when no post matched, and nothing was written. */
   filePath: string;
+  /** The posts written. */
   postCount: number;
   /** The media files copied beside it. */
   mediaCount: number;
@@ -1253,7 +1706,9 @@ export interface MessagesExported {
   out: string;
   /** The messages written. */
   count: number;
+  /** The conversation's username. */
   session: string;
+  /** The format written: `json`, `html`, `txt`, … */
   format: string;
   /** The media copied beside it, with `media`. */
   media?: MediaCopied;
@@ -1263,9 +1718,11 @@ export interface MessagesExported {
 export interface MediaCopied {
   /** The media messages asked for. */
   requested: number;
+  /** The ones whose file was copied. */
   exported: number;
   /** The ones whose file is not on disk, or could not be read or converted. */
   missing: number;
+  /** The folder they went to, `media/<name of the export>` beside the export. */
   dir: string;
 }
 
@@ -1276,7 +1733,9 @@ export type MessagesBundle = MessagesFolder | MessagesZip;
 export interface MessagesFolder {
   /** The folder. */
   out: string;
+  /** The formats written, in the order asked for. */
   formats: string[];
+  /** Each format's file, in the same order. */
   files: MessagesExported[];
 }
 
@@ -1284,6 +1743,7 @@ export interface MessagesFolder {
 export interface MessagesZip {
   /** The zip. */
   out: string;
+  /** The formats packed, in the order asked for. */
   formats: string[];
   /** Each format's file, named as it is inside the zip. */
   files: MessagesExported[];
@@ -1293,9 +1753,11 @@ export interface MessagesZip {
 
 /** What `export media` copied. */
 export interface MediaExport {
+  /** The files written; as many as `files`. */
   exported: number;
   /** The media messages found. */
   found: number;
+  /** The media messages whose file could not be written: `found` less `exported`. */
   missing: number;
   /** The missing ones by kind: `image`, `voice`, `video`, `emoji`. */
   missingByKind: Record<string, number>;
@@ -1305,18 +1767,25 @@ export interface MediaExport {
   note: string;
   /** The conversations looked through. */
   sessions: number;
+  /** The folder written to; each conversation's files are in a subfolder named after it. */
   out: string;
+  /** The files written. */
   files: MediaFileExported[];
 }
 
 /** A media file `export media` wrote. */
 export interface MediaFileExported {
+  /** The conversation's username. */
   session: string;
   /** `image`, `voice`, `video` or `emoji`. */
   kind: string;
+  /** The file's name. */
   fileName: string;
+  /** The file. */
   path: string;
+  /** The message's `localId`. */
   localId: number;
+  /** When the message was sent. */
   createTime: number;
   /** An image's: the file is only its thumbnail. */
   isThumb?: boolean;
@@ -1324,8 +1793,11 @@ export interface MediaFileExported {
 
 /** Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead. */
 export interface ImageResult {
+  /** Whether the image was found and decrypted. */
   success: boolean;
+  /** The decrypted image: its path, or a data URL of it without `preferFilePath`; left out on failure. */
   localPath?: string;
+  /** What went wrong; left out on success. */
   error?: string;
   /** Why it failed: `not_found`, `no_key`, `unsupported_image`, … */
   failureKind?: string;
@@ -1339,6 +1811,7 @@ export interface ImageResult {
 export interface ImageBatch {
   /** Always true; each row says how it went. */
   success: boolean;
+  /** One result for each payload, in their order. */
   rows: ImageResult[];
 }
 
@@ -1368,15 +1841,19 @@ export interface AutoDownloadStatus {
  * `VideoInfo`, when there is nothing.
  */
 export interface VideoInfo {
+  /** The video file's path. */
   videoUrl?: string;
   /** A `data:` URL, or a `file://` one with `no-data-url`. */
   coverUrl?: string;
+  /** The small thumbnail, as `coverUrl`. */
   thumbUrl?: string;
+  /** Whether the video is on this computer. */
   exists: boolean;
 }
 
 /** The MD5 a video message names (`video parse-md5`); null when its XML has none. */
 export interface VideoMd5 {
+  /** The video's MD5, as a message's `videoMd5`. */
   md5: string | null;
 }
 
@@ -1384,6 +1861,7 @@ export interface VideoMd5 {
 export interface WebInfo {
   /** The version `serve` shows when it starts: one kept here that suits this weflow; null when there is none. */
   inUse: string | null;
+  /** The folder of `in_use`; null when there is none. */
   path: string | null;
   /** The version chosen with `web use`. */
   picked: string | null;
@@ -1395,6 +1873,7 @@ export interface WebInfo {
   downloaded: boolean;
   /** Where the versions are kept. */
   store: string;
+  /** The versions kept there. */
   installed: string[];
   /**
    * Why `serve` passes over the version picked (it does not suit this weflow) and what to do about it; null when
@@ -1405,9 +1884,13 @@ export interface WebInfo {
 
 /** A downloaded WebUI version (`web list`, `web install`). */
 export interface WebInstalled {
+  /** The WebUI's version, as `web use` takes it. */
   version: string;
+  /** The API version it was built for (`weflow.apiVersion` of its `package.json`). */
   apiVersion: string;
+  /** The oldest weflow it works with (`weflow.minBackendVersion`). */
   minBackendVersion: string;
+  /** Its folder. */
   path: string;
   /** The one `serve` shows when it starts. */
   inUse: boolean;
@@ -1419,34 +1902,45 @@ export interface WebInstalled {
 
 /** A published WebUI version (`web list --remote`). */
 export interface WebPublished {
+  /** The WebUI's version, as `web install` takes it. */
   version: string;
-  /** Bytes. */
+  /** The size of its download, in bytes. */
   size: number;
+  /** The API version it was built for; null when its metadata leaves it out. */
   apiVersion: string | null;
+  /** The oldest weflow it works with; null when its metadata leaves it out. */
   minBackendVersion: string | null;
+  /** Whether it suits this weflow. */
   suits: boolean;
   /** Why it does not suit; null when it does. */
   why: string | null;
+  /** Whether it is kept here already. */
   downloaded: boolean;
 }
 
 /** The WebUI version `web use` chose. */
 export interface WebChosen {
+  /** The version, downloaded first when it was not kept here. */
   version: string;
+  /** Its folder. */
   path: string;
 }
 
 /** The WebUI version `web update` moved to. */
 export interface WebUpdated {
+  /** The newest published release that suits this weflow, else the newest pre-release that does. */
   version: string;
   /** The version wanted before; null when there was none. */
   before: string | null;
+  /** Its folder. */
   path: string;
 }
 
 /** What `web prune` did. */
 export interface WebPruned {
+  /** The versions removed: all but the one chosen and the one this weflow was built for. */
   removed: string[];
+  /** The versions kept after it. */
   kept: string[];
   /** Versions a running `serve` shows, kept until it stops. */
   shown: string[];
@@ -1454,7 +1948,9 @@ export interface WebPruned {
 
 /** The accounts `db scan` found under a folder: those with a `db_storage` folder. */
 export interface DbScan {
+  /** The folder scanned, with the home directory expanded. */
   root: string;
+  /** Its subfolders that are account folders; empty when it cannot be read. */
   accounts: ScannedAccount[];
 }
 
@@ -1462,6 +1958,7 @@ export interface DbScan {
 export interface ScannedAccount {
   /** The folder's name. */
   wxid: string;
+  /** The folder. */
   path: string;
 }
 
@@ -1479,12 +1976,15 @@ export interface DbKey {
 
 /** The image keys `key image` derived from the `kvcomm` cache and checked against the account's images. */
 export interface ImageKeys {
-  /** Left out with `save`, as `image_aes_key`: they went to the profile instead. */
+  /** The XOR key; left out with `save`, where it went to the profile instead. */
   image_xor_key?: number;
+  /** The AES key, 16 hex characters; left out with `save`, where it went to the profile instead. */
   image_aes_key?: string;
   /** Both keys were checked: the AES key on an image header and the XOR key on a whole image. */
   verified: boolean;
+  /** Always true: the AES key decrypted the header of one of the account's thumbnails. */
   aes_verified: boolean;
+  /** Whether a thumbnail decoded as a whole JPEG with both keys; as `verified`. */
   xor_verified: boolean;
   /** How: `jpeg_decode_and_xor_tail` or `aes_header_only`. */
   verification: string;
@@ -1500,7 +2000,9 @@ export interface ImageKeys {
 
 /** A `kvcomm` file a code was read from, and how its name was read. */
 export interface CandidateSource {
+  /** The file. */
   path: string;
+  /** How its name was read: `loose_decimal_tokens`, each number between underscores taken as a code. */
   parsing: string;
 }
 
@@ -1519,6 +2021,7 @@ export interface ImageMemKey {
    * decrypt into image headers) or `first_block` (only the given ciphertext was checked).
    */
   verification?: string;
+  /** The WeChat process whose memory was read. */
   pid: number;
   /** With `save`: the profile keys written. */
   saved?: string[];
@@ -1530,12 +2033,17 @@ export interface ImageMemKey {
  * Helper, `WeChatAppEx` and crashpad processes are left out.
  */
 export interface WeChatProcesses {
+  /** The processes; empty when WeChat is not running. */
   processes: WeChatProcess[];
 }
 
+/** A running WeChat client. */
 export interface WeChatProcess {
+  /** The process id. */
   pid: number;
+  /** The process's name. */
   name: string;
+  /** The executable. */
   path: string;
   /** Whether it is the main client rather than a helper. */
   main: boolean;
@@ -1543,12 +2051,15 @@ export interface WeChatProcess {
 
 /** The images of a conversation (`chat images`), the newest first, each once. */
 export interface ChatImages {
+  /** The image messages. */
   images: ImageRef[];
 }
 
 /** What names an image message's file. */
 export interface ImageRef {
+  /** The image's MD5, as a message's `imageMd5`; null when the message has none. */
   imageMd5: string | null;
+  /** The name of its `.dat` file, as a message's `imageDatName`; null when the message has none. */
   imageDatName: string | null;
   /** Null when the message has no time. */
   createTime: number | null;
@@ -1556,12 +2067,15 @@ export interface ImageRef {
 
 /** The voice messages of a conversation (`chat voice-messages`), the newest first. */
 export interface VoiceMessages {
+  /** The voice messages. */
   messages: MessageView[];
 }
 
 /** A page of image and video messages across conversations (`chat media-stream`), the newest first. */
 export interface MediaStream {
+  /** The messages of the page. */
   items: MediaStreamItem[];
+  /** Whether there are messages past this page. */
   hasMore: boolean;
   /** The `offset` of the next page. */
   nextOffset: number;
@@ -1569,37 +2083,55 @@ export interface MediaStream {
 
 /** A message of `chat media-stream`. */
 export interface MediaStreamItem {
+  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
   localId: number;
   /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
   serverId: string;
+  /** When it was sent. */
   createTime: number;
   /** WeChat's type of the message, as a parsed message's `localType`. */
   localType: number;
   /** 1 when I sent it, else 0. */
   isSend: number;
+  /** Who sent it; empty when the row does not say. */
   senderUsername: string;
   /** The message as WeChat keeps it (often XML). */
   content: string;
   /** Its text as the chat window shows it; null when it has none. */
   text: string | null;
+  /** An image's MD5, as a parsed message's `imageMd5`. */
   imageMd5?: string;
+  /** The name of an image's `.dat` file, as a parsed message's `imageDatName`. */
   imageDatName?: string;
+  /** The MD5 that names a video's file, as a parsed message's `videoMd5`. */
   videoMd5?: string;
+  /** A sticker's MD5. */
   emojiMd5?: string;
+  /** A sticker's address on WeChat's servers. */
   emojiCdnUrl?: string;
+  /** An app message's `<type>`, as a parsed message's `xmlType`. */
   xmlType?: string;
+  /** A file's name. */
   fileName?: string;
+  /** A file's extension, without its dot. */
   fileExt?: string;
+  /** A file's MD5. */
   fileMd5?: string;
   /** In bytes. */
   fileSize?: number;
+  /** A location's latitude. */
   locationLat?: number;
+  /** A location's longitude. */
   locationLng?: number;
+  /** The name of a location's place. */
   locationPoiname?: string;
+  /** A location's label, its address as WeChat shows it. */
   locationLabel?: string;
   /** The kind of an app message (`link`, `file`, `music`…). */
   appMsgKind?: string;
+  /** The conversation's username. */
   sessionId: string;
+  /** The conversation's name as the conversation list shows it. */
   sessionDisplayName: string;
   /** `image` or `video`. */
   mediaType: string;
@@ -1609,6 +2141,7 @@ export interface MediaStreamItem {
 export interface VoiceCache {
   /** Always true. */
   success: boolean;
+  /** Whether the voice was decoded already. */
   hasCache: boolean;
   /** The WAV, in base64; left out without one. */
   data?: string;
@@ -1618,6 +2151,7 @@ export interface VoiceCache {
 export interface VoicesPrepared {
   /** Always true. */
   success: boolean;
+  /** The voices decoded or found decoded already. */
   prepared: number;
 }
 
@@ -1635,9 +2169,11 @@ export interface EmojisDownloaded {
 
 /** A sticker `chat emoji` has on disk. */
 export interface EmojiFile {
+  /** The sticker's MD5. */
   md5: string;
   /** Already there before. */
   cached: boolean;
+  /** The file. */
   path: string;
   /** Bytes downloaded; left out for one already there. */
   size?: number;
@@ -1658,14 +2194,19 @@ export interface GroupHint {
 
 /** What `chat anti-revoke check` answers for each conversation asked for. */
 export interface AntiRevokeResults {
+  /** One for each conversation, in the order asked for. */
   results: AntiRevokeResult[];
 }
 
 /** One conversation's anti-revoke check. */
 export interface AntiRevokeResult {
+  /** The conversation's username. */
   sessionId: string;
+  /** Whether the check ran. */
   success: boolean;
+  /** What the database layer answered; left out when it failed. */
   data?: unknown;
+  /** Why it failed; left out when it ran. */
   error?: string;
 }
 
@@ -1673,7 +2214,9 @@ export interface AntiRevokeResult {
 export interface MediaWritten {
   /** Always true. */
   success: boolean;
+  /** The file written. */
   path: string;
+  /** Its size. */
   bytes: number;
 }
 
@@ -1681,6 +2224,7 @@ export interface MediaWritten {
 export interface VoiceData {
   /** Always true. */
   success: boolean;
+  /** The WAV, in base64. */
   data: string;
 }
 
@@ -1688,7 +2232,9 @@ export interface VoiceData {
 export interface SnsMediaFetched {
   /** The file it was written to, with `out`. */
   out?: string;
+  /** Its MIME type. */
   contentType: string;
+  /** Its size, decrypted when there was a key. */
   bytes: number;
   /** Where WeFlow keeps it; null when it was not kept. */
   cachePath: string | null;
@@ -1700,14 +2246,19 @@ export interface SnsResourceProbe {
   success: boolean;
   /** The HTTP status. */
   status: number;
+  /** The headers that matter. */
   headers: SnsResourceHeaders;
 }
 
 /** The answer headers that matter for decrypting a Moments resource; null when the server left one out. */
 export interface SnsResourceHeaders {
+  /** `X-Enc`. */
   "x-enc": string | null;
+  /** `X-Time`. */
   "x-time": string | null;
+  /** `Content-Length`. */
   "content-length": string | null;
+  /** `Content-Type`. */
   "content-type": string | null;
 }
 
@@ -1715,6 +2266,7 @@ export interface SnsResourceHeaders {
 export interface SnsEmojiSaved {
   /** Always true. */
   success: boolean;
+  /** The file in WeFlow's cache. */
   localPath: string;
 }
 
@@ -1723,7 +2275,9 @@ export type SnsImageDownload = SnsImageSaved | SnsImageInline;
 
 /** The image written to `out`. */
 export interface SnsImageSaved {
+  /** The address it was downloaded from. */
   url: string;
+  /** The file written. */
   out: string;
   /** The image's extension, with its dot. */
   ext: string;
@@ -1733,6 +2287,7 @@ export interface SnsImageSaved {
 
 /** The image in base64, without `out`. */
 export interface SnsImageInline {
+  /** The address it was downloaded from. */
   url: string;
   /** The image's extension, with its dot. */
   ext: string;
@@ -1744,9 +2299,11 @@ export interface SnsImageInline {
 
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
+  /** The backup file. */
   out: string;
   /** The files in it. */
   entries: number;
+  /** The account backed up. */
   wxid: string;
   /** Unix seconds. */
   createdAt: number;
@@ -1773,9 +2330,11 @@ export interface BackupManifest {
   version: string;
   /** Unix seconds. */
   created_at: number;
+  /** The account backed up. */
   wxid: string;
   /** The WeFlow that wrote it. */
   weflow_version: string;
+  /** The files in it. */
   entries: BackupEntry[];
   /**
    * Files of the media and stickers that could not be read and are not in the backup. Left out when there are
@@ -1796,6 +2355,7 @@ export interface BackupEntry {
    * of an older WeFlow can also hold `FileStorage/…`.
    */
   path: string;
+  /** The SHA-256 of its content, in lowercase hex. */
   sha256: string;
   /** Bytes. */
   size: number;
@@ -1803,6 +2363,7 @@ export interface BackupEntry {
 
 /** Where `backup restore` put the files. */
 export interface BackupRestored {
+  /** The folder the backup was restored into. */
   restoredTo: string;
   /** WeFlow's sticker cache, where the stickers of the backup went; left out when it held none. */
   stickersRestoredTo?: string;
@@ -1810,17 +2371,21 @@ export interface BackupRestored {
 
 /** The default places of WeChat's data directory (`db detect`). */
 export interface DbCandidates {
+  /** The places WeChat keeps it by default on this system, whether they exist or not. */
   candidates: DbCandidate[];
 }
 
 /** A place WeChat's data directory may be. */
 export interface DbCandidate {
+  /** The directory, with the home directory expanded. */
   path: string;
+  /** Whether it exists. */
   exists: boolean;
 }
 
 /** The accounts in WeChat's data directory (`db wxid`). */
 export interface DbAccounts {
+  /** The account folders found in it. */
   accounts: DbAccount[];
 }
 
@@ -1834,6 +2399,7 @@ export interface DbAccount {
 
 /** That the databases open with the configured key (`db test`); a failure is an error instead. */
 export interface DbConnection {
+  /** The account's folder whose databases were opened. */
   accountDir: string;
   /** Always true. */
   connected: boolean;
@@ -1846,6 +2412,7 @@ export interface DbConnection {
  * `snake_case`. Times are Unix seconds, 0 where there is none.
  */
 export interface Footprint {
+  /** The counts over the range. */
   summary: FootprintSummary;
   /** The private chats with a message in the range, the latest first. */
   private_sessions: FootprintSession[];
@@ -1855,9 +2422,11 @@ export interface Footprint {
   mentions: FootprintMention[];
   /** The groups of those, the one with the most first. */
   mention_groups: MentionGroup[];
+  /** How it was read. */
   diagnostics: FootprintDiagnostics;
 }
 
+/** The counts of the footprint. */
 export interface FootprintSummary {
   /** The people who wrote to me. */
   private_inbound_people: number;
@@ -1867,48 +2436,77 @@ export interface FootprintSummary {
   private_outbound_people: number;
   /** Replied over inbound, from 0 to 1. */
   private_reply_rate: number;
+  /** The mentions listed. */
   mention_count: number;
+  /** The groups of those. */
   mention_group_count: number;
 }
 
 /** A private chat of the footprint. */
 export interface FootprintSession {
+  /** The other party's wxid. */
   session_id: string;
+  /** The messages they sent in the range. */
   incoming_count: number;
+  /** The messages I sent in the range. */
   outgoing_count: number;
+  /** Whether both of us wrote. */
   replied: boolean;
+  /** The time of their first message. */
   first_incoming_ts: number;
+  /** The time of my first message after it. */
   first_reply_ts: number;
+  /** The time of the last message. */
   latest_ts: number;
-  /** The message to open the chat at, by its local id and time. */
+  /** The message to open the chat at, the last one, by its local id and time. */
   anchor_local_id: number;
+  /** The time of that message. */
   anchor_create_time: number;
 }
 
 /** A stretch of a private chat. */
 export interface FootprintSegment {
+  /** The other party's wxid. */
   session_id: string;
+  /** Its place among the chat's stretches, from 1. */
   segment_index: number;
+  /** The time of its first message. */
   start_ts: number;
+  /** The time of its last message. */
   end_ts: number;
+  /** From the first message to the last, in seconds. */
   duration_sec: number;
+  /** The messages they sent. */
   incoming_count: number;
+  /** The messages I sent. */
   outgoing_count: number;
+  /** All its messages. */
   message_count: number;
+  /** Whether both of us wrote. */
   replied: boolean;
+  /** The time of their first message. */
   first_incoming_ts: number;
+  /** The time of my first message after it. */
   first_reply_ts: number;
+  /** As `end_ts`. */
   latest_ts: number;
+  /** The message to open the chat at, the first one, by its local id and time. */
   anchor_local_id: number;
+  /** As `start_ts`. */
   anchor_create_time: number;
 }
 
 /** A group message that @-mentions me. */
 export interface FootprintMention {
+  /** The group's id, `…@chatroom`. */
   session_id: string;
+  /** The message's id in its conversation's table. */
   local_id: number;
+  /** When it was sent. */
   create_time: number;
+  /** Who sent it; empty when the row does not say. */
   sender_username: string;
+  /** Its text as WeChat keeps it. */
   message_content: string;
   /** The message's `source` XML, which lists who it mentions. */
   source: string;
@@ -1916,8 +2514,11 @@ export interface FootprintMention {
 
 /** A group I was @-mentioned in. */
 export interface MentionGroup {
+  /** The group's id, `…@chatroom`. */
   session_id: string;
+  /** The mentions listed in it. */
   count: number;
+  /** The time of the last of them. */
   latest_ts: number;
 }
 
@@ -1925,12 +2526,19 @@ export interface MentionGroup {
 export interface FootprintDiagnostics {
   /** Whether a list was cut at its limit. */
   truncated: boolean;
+  /** Whether the private chats were cut at their limit. */
   private_truncated: boolean;
+  /** Whether the mentions were cut at their limit. */
   mention_truncated: boolean;
+  /** The message databases of the account. */
   scanned_dbs: number;
+  /** How long the reading took. */
   elapsed_ms: number;
+  /** The private chats looked through. */
   private_session_count: number;
+  /** The groups looked through. */
   group_session_count: number;
+  /** Always false. */
   fallback_used: boolean;
 }
 
@@ -1942,21 +2550,31 @@ export interface ExportStats {
 
 /** One conversation's messages by type, within the range asked for, and its relations. */
 export interface SessionExportStats {
+  /** All the messages. */
   totalMessages: number;
+  /** Voice messages (type 34). */
   voiceMessages: number;
+  /** Images (type 3). */
   imageMessages: number;
+  /** Videos (type 43). */
   videoMessages: number;
+  /** Stickers (type 47). */
   emojiMessages: number;
+  /** Transfers (app messages of sub-type 2000). */
   transferMessages: number;
+  /** Red packets (app messages of sub-type 2001). */
   redPacketMessages: number;
+  /** Voice and video calls (type 50). */
   callMessages: number;
-  /** Left out without messages. */
+  /** The time of the first message; left out without messages. */
   firstTimestamp?: number;
+  /** The time of the last message; left out without messages. */
   lastTimestamp?: number;
   /** A group's: my messages in it. */
   groupMyMessages?: number;
   /** A group's: the members who said something. */
   groupActiveSpeakers?: number;
+  /** A group's: its members. */
   groupMemberCount?: number;
   /** A group's, with relations: its members who are my friends. */
   groupMutualFriends?: number;
@@ -1966,7 +2584,9 @@ export interface SessionExportStats {
 
 /** The names a group's transfer message shows for its two sides (`chat transfer-names`). */
 export interface TransferNames {
+  /** Who paid. */
   payerName: string;
+  /** Who received it. */
   receiverName: string;
 }
 
@@ -1975,22 +2595,35 @@ export interface TransferNames {
  * failure of the command instead, so an answer that succeeds holds `success: true` and the record.
  */
 export interface InsightLookup {
+  /** Always true. */
   success: boolean;
+  /** The record. */
   record?: InsightRecord;
+  /** Always left out. */
   error?: string;
 }
 
 /** An insight the engine wrote about a conversation. */
 export interface InsightRecord {
+  /** A UUID. */
   id: string;
+  /** The account it belongs to: `wxid:<wxid>`, else `db:` and a hash of the data directory. */
   accountScope: string;
+  /** Unix milliseconds. */
   createdAt: number;
+  /** The conversation it is about. */
   sessionId: string;
+  /** The conversation's name. */
   displayName: string;
+  /** The address of the conversation's avatar; left out when there is none. */
   avatarUrl?: string;
+  /** Why it was written: `activity`, `silence`, `test`, … */
   triggerReason: string;
+  /** What the model wrote. */
   insight: string;
+  /** Whether it was marked read. */
   read: boolean;
+  /** What was asked of the model, and what it answered. */
   log: InsightRecordLog;
 }
 
@@ -1998,18 +2631,29 @@ export interface InsightRecord {
 export interface InsightRecordLog {
   /** The format of the model API asked; records written before there was a choice asked an OpenAI one. */
   format: ModelApiFormat;
+  /** The address asked. */
   endpoint: string;
   /** The model that answered, as the service names it, else the one asked for. */
   model: string;
+  /** The most tokens the answer could have. */
   maxTokens: number;
+  /** Why it was asked: `activity`, `silence`, `test`, … */
   triggerReason: string;
+  /** Whether the conversation's latest messages went with the question. */
   allowContext: boolean;
+  /** How many of them, at most. */
   contextCount: number;
+  /** The system prompt sent. */
   systemPrompt: string;
+  /** The user prompt sent. */
   userPrompt: string;
+  /** The model's answer as it came. */
   rawOutput: string;
+  /** The insight kept from it. */
   finalInsight: string;
+  /** From the question to the answer. */
   durationMs: number;
+  /** When the answer came, in Unix milliseconds. */
   createdAt: number;
 }
 
@@ -2020,11 +2664,13 @@ export type ModelApiFormat = "openai" | "anthropic";
 export interface InsightRecords {
   /** Always true. */
   success: boolean;
+  /** The records of the page. */
   records: InsightSummary[];
   /** The records the filters match. */
   total: number;
   /** The account's records written today. */
   todayCount: number;
+  /** The account's records not read yet. */
   unreadCount: number;
   /** Everyone with a record, the most records first. */
   contacts: InsightContact[];
@@ -2032,30 +2678,41 @@ export interface InsightRecords {
 
 /** An insight record as lists and events name it, without its log. */
 export interface InsightSummary {
+  /** The record's id, as `insight get` takes it. */
   id: string;
   /** Unix milliseconds. */
   createdAt: number;
+  /** The conversation it is about. */
   sessionId: string;
+  /** The conversation's name. */
   displayName: string;
+  /** The address of the conversation's avatar; left out when there is none. */
   avatarUrl?: string;
   /** Why it was written: `activity`, `silence`, `test`, … */
   triggerReason: string;
+  /** What the model wrote. */
   insight: string;
+  /** Whether it was marked read. */
   read: boolean;
 }
 
 /** A conversation with insight records. */
 export interface InsightContact {
+  /** The conversation's username. */
   sessionId: string;
+  /** The conversation's name. */
   displayName: string;
   /** Its records. */
   count: number;
+  /** The address of its avatar; left out when there is none. */
   avatarUrl?: string;
 }
 
 /** How often the engine wrote about a conversation today (`insight today-stats`). */
 export interface InsightTodayStat {
+  /** The conversation's username. */
   sessionId: string;
+  /** The records written about it today. */
   count: number;
   /** When, `HH:MM` local time. */
   times: string[];
@@ -2063,7 +2720,9 @@ export interface InsightTodayStat {
 
 /** What `insight mark-read` answers; a record not found is a failure of the command. */
 export interface InsightMarked {
+  /** Always true. */
   success: boolean;
+  /** Always left out. */
   error?: string;
 }
 
@@ -2077,15 +2736,19 @@ export interface InsightCleared {
 
 /** What `insight scan` answers: the insights the silence scan wrote. */
 export interface InsightScan {
+  /** How many it wrote. */
   generated: number;
+  /** The records written. */
   records: InsightSummary[];
 }
 
 /** The models the model API offers (`insight models`), as the service lists them. */
 export interface ModelList {
+  /** The API format asked in. */
   format: ModelApiFormat;
   /** The address asked. */
   endpoint: string;
+  /** The models, in the service's order. */
   models: ModelInfo[];
 }
 
@@ -2102,6 +2765,7 @@ export interface ModelInfo {
  * command fails with `message` instead.
  */
 export interface InsightReply {
+  /** Always true. */
   success: boolean;
   /** What happened, in the server's language. */
   message?: string;
@@ -2115,6 +2779,7 @@ export interface InsightReply {
 
 /** What `insight test` asked of the model API and what it answered. */
 export interface ModelProbe {
+  /** The API format asked in. */
   format: ModelApiFormat;
   /** The address asked. */
   endpoint: string;
@@ -2164,8 +2829,11 @@ export interface JobFile {
  * `details` adds what some codes have to say.
  */
 export interface Error {
+  /** The kind of failure, for a program to tell them apart. */
   code: string;
+  /** What went wrong, for a person, in the language of the run. */
   message: string;
+  /** What some codes add to the message; left out when there is nothing. */
   details?: unknown;
 }
 

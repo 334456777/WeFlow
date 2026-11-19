@@ -37,6 +37,7 @@ function SessionItem({ row, active, now, onClick }: { row: SessionRow; active: b
   </button>;
 }
 
+/** The conversation list, or where its read stands. */
 export function SessionList({ state, selectedId, onSelect, onRetry, officials = [], onFilter }: {
   state: SessionsState;
   selectedId: string | null;

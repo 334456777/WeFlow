@@ -14,7 +14,9 @@ pub struct MessagesExported {
     pub out: PathBuf,
     /// The messages written.
     pub count: usize,
+    /// The conversation's username.
     pub session: String,
+    /// The format written: `json`, `html`, `txt`, …
     pub format: String,
     /// The media copied beside it, with `media`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -25,7 +27,9 @@ pub struct MessagesExported {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum MessagesBundle {
+    /// Each format written to its file in one folder.
     Folder(MessagesFolder),
+    /// The formats packed into a zip.
     Zip(MessagesZip),
 }
 
@@ -34,7 +38,9 @@ pub enum MessagesBundle {
 pub struct MessagesFolder {
     /// The folder.
     pub out: PathBuf,
+    /// The formats written, in the order asked for.
     pub formats: Vec<String>,
+    /// Each format's file, in the same order.
     pub files: Vec<MessagesExported>,
 }
 
@@ -43,6 +49,7 @@ pub struct MessagesFolder {
 pub struct MessagesZip {
     /// The zip.
     pub out: PathBuf,
+    /// The formats packed, in the order asked for.
     pub formats: Vec<String>,
     /// Each format's file, named as it is inside the zip.
     pub files: Vec<MessagesExported>,
@@ -55,9 +62,11 @@ pub struct MessagesZip {
 pub struct MediaCopied {
     /// The media messages asked for.
     pub requested: usize,
+    /// The ones whose file was copied.
     pub exported: usize,
     /// The ones whose file is not on disk, or could not be read or converted.
     pub missing: usize,
+    /// The folder they went to, `media/<name of the export>` beside the export.
     pub dir: PathBuf,
 }
 
@@ -65,9 +74,11 @@ pub struct MediaCopied {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaExport {
+    /// The files written; as many as `files`.
     pub exported: usize,
     /// The media messages found.
     pub found: usize,
+    /// The media messages whose file could not be written: `found` less `exported`.
     pub missing: usize,
     /// The missing ones by kind: `image`, `voice`, `video`, `emoji`.
     pub missing_by_kind: BTreeMap<String, usize>,
@@ -77,7 +88,9 @@ pub struct MediaExport {
     pub note: String,
     /// The conversations looked through.
     pub sessions: usize,
+    /// The folder written to; each conversation's files are in a subfolder named after it.
     pub out: PathBuf,
+    /// The files written.
     pub files: Vec<MediaFileExported>,
 }
 
@@ -85,12 +98,17 @@ pub struct MediaExport {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaFileExported {
+    /// The conversation's username.
     pub session: String,
     /// `image`, `voice`, `video` or `emoji`.
     pub kind: String,
+    /// The file's name.
     pub file_name: String,
+    /// The file.
     pub path: String,
+    /// The message's `localId`.
     pub local_id: i64,
+    /// When the message was sent.
     pub create_time: i64,
     /// An image's: the file is only its thumbnail.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -100,6 +118,7 @@ pub struct MediaFileExported {
 /// The file an export wrote (`export sessions`, `contacts`, `footprint`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ExportWritten {
+    /// The file.
     pub out: PathBuf,
     /// The format it was written in: `json`, `csv`, `excel`, …
     pub format: String,
@@ -122,6 +141,7 @@ pub struct SnsExported {
     pub success: bool,
     /// Empty when no post matched, and nothing was written.
     pub file_path: PathBuf,
+    /// The posts written.
     pub post_count: usize,
     /// The media files copied beside it.
     pub media_count: usize,
@@ -138,17 +158,26 @@ pub struct ExportStats {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionExportStats {
+    /// All the messages.
     pub total_messages: i64,
+    /// Voice messages (type 34).
     pub voice_messages: i64,
+    /// Images (type 3).
     pub image_messages: i64,
+    /// Videos (type 43).
     pub video_messages: i64,
+    /// Stickers (type 47).
     pub emoji_messages: i64,
+    /// Transfers (app messages of sub-type 2000).
     pub transfer_messages: i64,
+    /// Red packets (app messages of sub-type 2001).
     pub red_packet_messages: i64,
+    /// Voice and video calls (type 50).
     pub call_messages: i64,
-    /// Left out without messages.
+    /// The time of the first message; left out without messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_timestamp: Option<i64>,
+    /// The time of the last message; left out without messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_timestamp: Option<i64>,
     /// A group's: my messages in it.
@@ -157,6 +186,7 @@ pub struct SessionExportStats {
     /// A group's: the members who said something.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_active_speakers: Option<i64>,
+    /// A group's: its members.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_member_count: Option<i64>,
     /// A group's, with relations: its members who are my friends.

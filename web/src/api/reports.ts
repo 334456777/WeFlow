@@ -7,6 +7,7 @@ import type * as Contract from './contract.gen';
 /** `report annual generate`, as the contract says (#430). */
 export type AnnualReport = Contract.AnnualReport;
 
+/** `report annual years`, read in the server's process. */
 export const getReportYears = (signal?: AbortSignal) => get<Contract.ReportYears>('api/report/annual/years', {}, signal);
 // a report is generated, which the command API takes as a POST (#336)
 export const getAnnualReport = (year: number, signal?: AbortSignal) => call<AnnualReport>('POST', 'report/annual/generate', { year }, signal);
@@ -32,6 +33,7 @@ export type DualMessage = Contract.DualMessage;
 /** `report dual generate`: me and one friend, over one year or all of them. */
 export type DualReport = Contract.DualReport;
 
+/** `report dual generate` with `friend` over `year` (0 for all the years), a POST as a report is generated. */
 export const getDualReport = (friend: string, year: number, signal?: AbortSignal) => call<DualReport>('POST', 'report/dual/generate', { friend, year }, signal);
 
 // shown through t()

@@ -34,6 +34,7 @@ export type SessionDetail = Contract.SessionFacts;
 /** `chat detail --extra`: the first and latest message, in Unix seconds, and where the messages are kept. */
 export type SessionDetailExtra = Contract.SessionTables;
 
+/** `chat detail --fast`, read in the server's process; a field the server leaves out reads as empty. */
 export async function getDetail(sessionId: string, signal?: AbortSignal): Promise<SessionDetail> {
   const data = await get<SessionDetail | null>('api/chat/detail', { 'session-id': sessionId, fast: true }, signal);
   return { wxid: sessionId, displayName: '', messageCount: 0, ...data };
@@ -48,6 +49,7 @@ export async function getDetailExtra(sessionId: string, signal?: AbortSignal): P
 /** `group member`: one member's messages in the group. */
 export type MemberStats = Contract.MemberAnalytics;
 
+/** `group member`, read in the server's process. */
 export const getMemberStats = (chatroomId: string, username: string, signal?: AbortSignal) =>
   get<MemberStats>('api/group/member', { 'chatroom-id': chatroomId, username }, signal);
 
@@ -58,8 +60,10 @@ export type ResourceType = Contract.ResourceKind;
  * conversation; `lookupMessage` finds that. */
 export type Resource = Contract.Resource;
 
+/** A page of `chat resources`. */
 export type ResourcePage = Contract.ResourcePage;
 
+/** Messages per page of the resources. */
 export const RESOURCE_PAGE = 60;
 
 /** The conversation's images, videos and files, newest first: from the newest, or from the `nextCursor` of a page. */

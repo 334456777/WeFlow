@@ -4480,7 +4480,8 @@
           },
           "unreadCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages not read in WeChat yet."
           },
           "summary": {
             "type": "string",
@@ -4493,7 +4494,8 @@
           },
           "lastTimestamp": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of the last message; 0 when WeChat's row does not say."
           },
           "lastMsgType": {
             "type": "integer",
@@ -4514,14 +4516,16 @@
             "description": "In a group: who sent the last message."
           },
           "lastSenderDisplayName": {
-            "type": "string"
+            "type": "string",
+            "description": "In a group: the name of who sent the last message."
           },
           "selfWxid": {
             "type": "string",
             "description": "The account's own wxid."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of the conversation's avatar; left out when there is none."
           }
         },
         "required": [
@@ -4556,7 +4560,8 @@
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent."
           },
           "sortSeq": {
             "type": "integer",
@@ -4587,154 +4592,202 @@
             "description": "The message as WeChat keeps it (often XML)."
           },
           "emojiCdnUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's address on WeChat's servers."
           },
           "emojiMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's MD5."
           },
           "quotedContent": {
-            "type": "string"
+            "type": "string",
+            "description": "What a reply quotes, as the chat window shows it; an image, video or voice that answers a message has\n`__SVRID__<server id>__` naming it."
           },
           "quotedSender": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of whom a reply quotes."
           },
           "imageMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "An image's MD5, as its XML gives it."
           },
           "imageDatName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of an image's `.dat` file, from the row's packed info or the XML."
           },
           "videoMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "The MD5 that names a video's file, in lowercase."
           },
           "voiceDurationSeconds": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "A voice's length in seconds, rounded."
           },
           "aesKey": {
-            "type": "string"
+            "type": "string",
+            "description": "An image's AES key on WeChat's servers (`<img aeskey>`)."
           },
           "encrypVer": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "An image's `encrypver`."
           },
           "cdnThumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of an image's or a sticker's thumbnail on WeChat's servers."
           },
           "cardUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "The username a contact card shares."
           },
           "cardNickname": {
-            "type": "string"
+            "type": "string",
+            "description": "The nickname a contact card shows."
           },
           "cardAvatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of a contact card's avatar."
           },
           "locationLat": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's latitude."
           },
           "locationLng": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's longitude."
           },
           "locationPoiname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of a location's place."
           },
           "locationLabel": {
-            "type": "string"
+            "type": "string",
+            "description": "A location's label, its address as WeChat shows it."
           },
           "xmlType": {
-            "type": "string"
+            "type": "string",
+            "description": "The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a\nquote, `2000` a transfer, `2001` a red packet…"
           },
           "linkTitle": {
-            "type": "string"
+            "type": "string",
+            "description": "The title: a link's or a mini program's, a file's name, a transfer's memo."
           },
           "linkUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address it opens."
           },
           "linkThumb": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its thumbnail."
           },
           "appMsgKind": {
-            "type": "string"
+            "type": "string",
+            "description": "What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,\n`red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`."
           },
           "appMsgDesc": {
-            "type": "string"
+            "type": "string",
+            "description": "Its description (`<des>`)."
           },
           "appMsgAppName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of the app that sent it (`<appname>`)."
           },
           "appMsgSourceName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of the account it comes from (`<sourcename>`), such as an official account's."
           },
           "appMsgSourceUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "The username of the account it comes from (`<sourceusername>`)."
           },
           "appMsgThumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its thumbnail or cover."
           },
           "appMsgMusicUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of a song (`<musicurl>`, `<playurl>`)."
           },
           "appMsgDataUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its data (`<dataurl>`, `<lowurl>`)."
           },
           "appMsgLocationLabel": {
-            "type": "string"
+            "type": "string",
+            "description": "The label of a location it names."
           },
           "finderNickname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of a Channels account."
           },
           "finderUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "The username of a Channels account."
           },
           "finderCoverUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A Channels video's cover."
           },
           "finderAvatar": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of a Channels account's avatar."
           },
           "finderDuration": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "A Channels video's length, in seconds."
           },
           "musicAlbumUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A song's album cover."
           },
           "musicUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A song's address to play."
           },
           "giftImageUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A gift's picture."
           },
           "giftWish": {
-            "type": "string"
+            "type": "string",
+            "description": "A gift's wish."
           },
           "giftPrice": {
-            "type": "string"
+            "type": "string",
+            "description": "A gift's price, as the message writes it."
           },
           "fileName": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's name."
           },
           "fileSize": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "A file's size, in bytes."
           },
           "fileExt": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's extension, without its dot."
           },
           "fileMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's MD5, in lowercase."
           },
           "transferPayerUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "Who pays a transfer."
           },
           "transferReceiverUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "Who receives a transfer."
           },
           "chatRecordTitle": {
-            "type": "string"
+            "type": "string",
+            "description": "A chat record's title; 「聊天记录」 when it has none."
           },
           "messageKey": {
             "type": "string",
@@ -4787,11 +4840,13 @@
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent; left out when WeChat stored none."
           },
           "status": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "WeChat's `status` column; left out when WeChat stored none."
           },
           "sender": {
             "type": "string",
@@ -4858,11 +4913,13 @@
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent; left out when WeChat stored none."
           },
           "status": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "WeChat's `status` column; left out when WeChat stored none."
           },
           "sender": {
             "type": "string",
@@ -4914,7 +4971,8 @@
         "type": "object",
         "properties": {
           "row": {
-            "$ref": "#/components/schemas/MessageRow"
+            "$ref": "#/components/schemas/MessageRow",
+            "description": "The message as WeChat keeps it."
           },
           "message": {
             "anyOf": [
@@ -4939,7 +4997,8 @@
         "properties": {
           "localId": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The message's id in its conversation's table; with `createTime`, the key of `chat message`."
           },
           "serverId": {
             "type": "string",
@@ -4947,7 +5006,8 @@
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent."
           },
           "localType": {
             "type": "integer",
@@ -4960,7 +5020,8 @@
             "description": "1 when I sent it, else 0."
           },
           "senderUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "Who sent it; empty when the row does not say."
           },
           "content": {
             "type": "string",
@@ -4974,31 +5035,40 @@
             "description": "Its text as the chat window shows it; null when it has none."
           },
           "imageMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "An image's MD5, as a parsed message's `imageMd5`."
           },
           "imageDatName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of an image's `.dat` file, as a parsed message's `imageDatName`."
           },
           "videoMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "The MD5 that names a video's file, as a parsed message's `videoMd5`."
           },
           "emojiMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's MD5."
           },
           "emojiCdnUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's address on WeChat's servers."
           },
           "xmlType": {
-            "type": "string"
+            "type": "string",
+            "description": "An app message's `<type>`, as a parsed message's `xmlType`."
           },
           "fileName": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's name."
           },
           "fileExt": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's extension, without its dot."
           },
           "fileMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's MD5."
           },
           "fileSize": {
             "type": "integer",
@@ -5007,17 +5077,21 @@
           },
           "locationLat": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's latitude."
           },
           "locationLng": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's longitude."
           },
           "locationPoiname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of a location's place."
           },
           "locationLabel": {
-            "type": "string"
+            "type": "string",
+            "description": "A location's label, its address as WeChat shows it."
           },
           "appMsgKind": {
             "type": "string",
@@ -5040,17 +5114,20 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The contact's wxid, `…@chatroom` for a group, `gh_…` for an official account."
           },
           "displayName": {
             "type": "string",
             "description": "The remark, else the nickname, else the WeChat ID, else the username."
           },
           "remark": {
-            "type": "string"
+            "type": "string",
+            "description": "My remark for them."
           },
           "nickname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name they gave themselves."
           },
           "alias": {
             "type": "string",
@@ -5068,13 +5145,16 @@
             "description": "The signature."
           },
           "region": {
-            "type": "string"
+            "type": "string",
+            "description": "The region they gave."
           },
           "type": {
-            "$ref": "#/components/schemas/ContactKind"
+            "$ref": "#/components/schemas/ContactKind",
+            "description": "What the contact is."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar."
           }
         },
         "required": [
@@ -5088,11 +5168,18 @@
         "oneOf": [
           {
             "type": "string",
-            "enum": [
-              "friend",
-              "group",
-              "official"
-            ]
+            "const": "friend",
+            "description": "A friend."
+          },
+          {
+            "type": "string",
+            "const": "group",
+            "description": "A group chat."
+          },
+          {
+            "type": "string",
+            "const": "official",
+            "description": "An official account."
           },
           {
             "type": "string",
@@ -5109,10 +5196,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Resource"
-            }
+            },
+            "description": "The messages of the page."
           },
           "hasMore": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether there are messages past this page."
           },
           "nextCursor": {
             "type": [
@@ -5134,7 +5223,8 @@
         "properties": {
           "localId": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The message's id in its conversation's table; with `createTime`, the key of `chat message`."
           },
           "serverId": {
             "type": "string",
@@ -5142,7 +5232,8 @@
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent."
           },
           "localType": {
             "type": "integer",
@@ -5155,7 +5246,8 @@
             "description": "1 when I sent it, else 0."
           },
           "senderUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "Who sent it; empty when the row does not say."
           },
           "content": {
             "type": "string",
@@ -5169,31 +5261,40 @@
             "description": "Its text as the chat window shows it; null when it has none."
           },
           "imageMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "An image's MD5, as a parsed message's `imageMd5`."
           },
           "imageDatName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of an image's `.dat` file, as a parsed message's `imageDatName`."
           },
           "videoMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "The MD5 that names a video's file, as a parsed message's `videoMd5`."
           },
           "emojiMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's MD5."
           },
           "emojiCdnUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's address on WeChat's servers."
           },
           "xmlType": {
-            "type": "string"
+            "type": "string",
+            "description": "An app message's `<type>`, as a parsed message's `xmlType`."
           },
           "fileName": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's name."
           },
           "fileExt": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's extension, without its dot."
           },
           "fileMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's MD5."
           },
           "fileSize": {
             "type": "integer",
@@ -5202,17 +5303,21 @@
           },
           "locationLat": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's latitude."
           },
           "locationLng": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's longitude."
           },
           "locationPoiname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of a location's place."
           },
           "locationLabel": {
-            "type": "string"
+            "type": "string",
+            "description": "A location's label, its address as WeChat shows it."
           },
           "appMsgKind": {
             "type": "string",
@@ -5223,13 +5328,16 @@
             "description": "Where the message stands in the listing (not in its conversation): `before` reads on from it."
           },
           "sessionDisplayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's name as the conversation list shows it."
           },
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "resourceType": {
-            "$ref": "#/components/schemas/ResourceKind"
+            "$ref": "#/components/schemas/ResourceKind",
+            "description": "What the message holds."
           }
         },
         "required": [
@@ -5249,12 +5357,27 @@
         "description": "A message of `chat resources`, newest first."
       },
       "ResourceKind": {
-        "type": "string",
-        "enum": [
-          "image",
-          "video",
-          "voice",
-          "file"
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "image",
+            "description": "An image (type 3)."
+          },
+          {
+            "type": "string",
+            "const": "video",
+            "description": "A video (type 43)."
+          },
+          {
+            "type": "string",
+            "const": "voice",
+            "description": "A voice message (type 34)."
+          },
+          {
+            "type": "string",
+            "const": "file",
+            "description": "A file message."
+          }
         ],
         "description": "What a message of `chat resources` holds."
       },
@@ -5262,10 +5385,12 @@
         "type": "object",
         "properties": {
           "isFolded": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Folded into WeChat's folded chats."
           },
           "isMuted": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Its notifications are muted."
           },
           "isPinned": {
             "type": "boolean",
@@ -5285,21 +5410,25 @@
           "private": {
             "type": "integer",
             "format": "int64",
+            "description": "Friends.",
             "default": 0
           },
           "group": {
             "type": "integer",
             "format": "int64",
+            "description": "Group chats.",
             "default": 0
           },
           "official": {
             "type": "integer",
             "format": "int64",
+            "description": "Official accounts.",
             "default": 0
           },
           "former_friend": {
             "type": "integer",
             "format": "int64",
+            "description": "People who were friends.",
             "default": 0
           }
         },
@@ -5315,13 +5444,15 @@
         "type": "object",
         "properties": {
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "dates": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The days."
           }
         },
         "required": [
@@ -5334,14 +5465,16 @@
         "type": "object",
         "properties": {
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "counts": {
             "type": "object",
             "additionalProperties": {
               "type": "integer",
               "format": "int64"
-            }
+            },
+            "description": "The messages of each day, in the server's time zone."
           }
         },
         "required": [
@@ -5362,20 +5495,25 @@
             "description": "The remark, else the nickname, else the alias, else the username."
           },
           "remark": {
-            "type": "string"
+            "type": "string",
+            "description": "My remark for them."
           },
           "nickName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name they gave themselves, or a group's name."
           },
           "alias": {
-            "type": "string"
+            "type": "string",
+            "description": "The WeChat ID."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of the avatar."
           },
           "messageCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many messages the conversation has."
           },
           "firstMessageTime": {
             "type": [
@@ -5390,13 +5528,15 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of its last message; null when its tables do not say."
           },
           "messageTables": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MessageTable"
-            }
+            },
+            "description": "The tables that hold its messages."
           }
         },
         "required": [
@@ -5417,11 +5557,13 @@
             "description": "The database's file name, such as `message_0.db`."
           },
           "tableName": {
-            "type": "string"
+            "type": "string",
+            "description": "The table's name, `Msg_<MD5 of the username>`."
           },
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages in it."
           }
         },
         "required": [
@@ -5443,20 +5585,25 @@
             "description": "The remark, else the nickname, else the alias, else the username."
           },
           "remark": {
-            "type": "string"
+            "type": "string",
+            "description": "My remark for them."
           },
           "nickName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name they gave themselves, or a group's name."
           },
           "alias": {
-            "type": "string"
+            "type": "string",
+            "description": "The WeChat ID."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of the avatar."
           },
           "messageCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many messages the conversation has."
           }
         },
         "required": [
@@ -5482,13 +5629,15 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of its last message; null when its tables do not say."
           },
           "messageTables": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MessageTable"
-            }
+            },
+            "description": "The tables that hold its messages."
           }
         },
         "required": [
@@ -5554,10 +5703,12 @@
           },
           "memberCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many members it has."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its avatar; left out when it has none."
           }
         },
         "required": [
@@ -5571,12 +5722,14 @@
         "type": "object",
         "properties": {
           "chatroomId": {
-            "type": "string"
+            "type": "string",
+            "description": "The group's id, `…@chatroom`."
           },
           "count": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "How many members there are."
           },
           "updatedAt": {
             "type": "integer",
@@ -5587,7 +5740,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/GroupMember"
-            }
+            },
+            "description": "The members."
           }
         },
         "required": [
@@ -5602,7 +5756,8 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The member's wxid."
           },
           "displayName": {
             "type": "string",
@@ -5610,26 +5765,31 @@
           },
           "nickname": {
             "type": "string",
-            "description": "The fields of their contact; empty when they are not a contact."
+            "description": "The nickname of their contact; empty when they are not a contact."
           },
           "alias": {
-            "type": "string"
+            "type": "string",
+            "description": "The WeChat ID of their contact; empty when they are not a contact or chose none."
           },
           "remark": {
-            "type": "string"
+            "type": "string",
+            "description": "My remark for them; empty when they are not a contact or have none."
           },
           "groupNickname": {
             "type": "string",
             "description": "The name they gave themselves in this group; empty when none."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           },
           "isOwner": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether they own the group."
           },
           "isFriend": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether they are my friend."
           },
           "messageCount": {
             "type": "integer",
@@ -5654,11 +5814,13 @@
         "type": "object",
         "properties": {
           "member": {
-            "$ref": "#/components/schemas/RankedMember"
+            "$ref": "#/components/schemas/RankedMember",
+            "description": "Who."
           },
           "messageCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many messages they sent in the range asked for."
           }
         },
         "required": [
@@ -5671,13 +5833,16 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The member's wxid."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "Their name as WeChat shows it in the group."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           }
         },
         "required": [
@@ -5710,11 +5875,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MediaCount"
-            }
+            },
+            "description": "The kinds of message, the most first."
           },
           "total": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "All the messages counted."
           }
         },
         "required": [
@@ -5737,7 +5904,8 @@
           },
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many messages of it there are."
           }
         },
         "required": [
@@ -5751,7 +5919,8 @@
         "type": "object",
         "properties": {
           "statistics": {
-            "$ref": "#/components/schemas/MemberStatistics"
+            "$ref": "#/components/schemas/MemberStatistics",
+            "description": "The numbers of their messages."
           },
           "timeDistribution": {
             "type": "object",
@@ -5772,7 +5941,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EmojiCount"
-            }
+            },
+            "description": "The WeChat emojis (`[微笑]` and the like) in their text, the most used first, up to 10."
           }
         },
         "required": [
@@ -5788,35 +5958,43 @@
         "properties": {
           "totalMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "All their messages."
           },
           "textMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Text, quotes included."
           },
           "imageMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Images."
           },
           "voiceMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Voice messages."
           },
           "videoMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Videos."
           },
           "emojiMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Stickers."
           },
           "otherMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Every other kind."
           },
           "sentMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "As `totalMessages`."
           },
           "receivedMessages": {
             "type": "integer",
@@ -5836,12 +6014,14 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of their last message; null when they sent none."
           },
           "activeDays": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The days, in the server's time zone, with a message of theirs."
           },
           "messageTypeCounts": {
             "type": "object",
@@ -5874,11 +6054,13 @@
         "additionalProperties": false,
         "properties": {
           "phrase": {
-            "type": "string"
+            "type": "string",
+            "description": "A text message of at most 20 characters, counted whole."
           },
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many times it was sent."
           }
         },
         "required": [
@@ -5891,11 +6073,13 @@
         "type": "object",
         "properties": {
           "emoji": {
-            "type": "string"
+            "type": "string",
+            "description": "The emoji as the text writes it, `[微笑]`."
           },
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many times it was used."
           }
         },
         "required": [
@@ -5911,10 +6095,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ChatMessage"
-            }
+            },
+            "description": "The messages of the page."
           },
           "hasMore": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether there are messages past this page."
           },
           "nextCursor": {
             "type": "integer",
@@ -5949,7 +6135,8 @@
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent."
           },
           "sortSeq": {
             "type": "integer",
@@ -5980,154 +6167,202 @@
             "description": "The message as WeChat keeps it (often XML)."
           },
           "emojiCdnUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's address on WeChat's servers."
           },
           "emojiMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's MD5."
           },
           "quotedContent": {
-            "type": "string"
+            "type": "string",
+            "description": "What a reply quotes, as the chat window shows it; an image, video or voice that answers a message has\n`__SVRID__<server id>__` naming it."
           },
           "quotedSender": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of whom a reply quotes."
           },
           "imageMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "An image's MD5, as its XML gives it."
           },
           "imageDatName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of an image's `.dat` file, from the row's packed info or the XML."
           },
           "videoMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "The MD5 that names a video's file, in lowercase."
           },
           "voiceDurationSeconds": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "A voice's length in seconds, rounded."
           },
           "aesKey": {
-            "type": "string"
+            "type": "string",
+            "description": "An image's AES key on WeChat's servers (`<img aeskey>`)."
           },
           "encrypVer": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "An image's `encrypver`."
           },
           "cdnThumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of an image's or a sticker's thumbnail on WeChat's servers."
           },
           "cardUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "The username a contact card shares."
           },
           "cardNickname": {
-            "type": "string"
+            "type": "string",
+            "description": "The nickname a contact card shows."
           },
           "cardAvatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of a contact card's avatar."
           },
           "locationLat": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's latitude."
           },
           "locationLng": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's longitude."
           },
           "locationPoiname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of a location's place."
           },
           "locationLabel": {
-            "type": "string"
+            "type": "string",
+            "description": "A location's label, its address as WeChat shows it."
           },
           "xmlType": {
-            "type": "string"
+            "type": "string",
+            "description": "The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a\nquote, `2000` a transfer, `2001` a red packet…"
           },
           "linkTitle": {
-            "type": "string"
+            "type": "string",
+            "description": "The title: a link's or a mini program's, a file's name, a transfer's memo."
           },
           "linkUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address it opens."
           },
           "linkThumb": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its thumbnail."
           },
           "appMsgKind": {
-            "type": "string"
+            "type": "string",
+            "description": "What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,\n`red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`."
           },
           "appMsgDesc": {
-            "type": "string"
+            "type": "string",
+            "description": "Its description (`<des>`)."
           },
           "appMsgAppName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of the app that sent it (`<appname>`)."
           },
           "appMsgSourceName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of the account it comes from (`<sourcename>`), such as an official account's."
           },
           "appMsgSourceUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "The username of the account it comes from (`<sourceusername>`)."
           },
           "appMsgThumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its thumbnail or cover."
           },
           "appMsgMusicUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of a song (`<musicurl>`, `<playurl>`)."
           },
           "appMsgDataUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its data (`<dataurl>`, `<lowurl>`)."
           },
           "appMsgLocationLabel": {
-            "type": "string"
+            "type": "string",
+            "description": "The label of a location it names."
           },
           "finderNickname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of a Channels account."
           },
           "finderUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "The username of a Channels account."
           },
           "finderCoverUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A Channels video's cover."
           },
           "finderAvatar": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of a Channels account's avatar."
           },
           "finderDuration": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "A Channels video's length, in seconds."
           },
           "musicAlbumUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A song's album cover."
           },
           "musicUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A song's address to play."
           },
           "giftImageUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A gift's picture."
           },
           "giftWish": {
-            "type": "string"
+            "type": "string",
+            "description": "A gift's wish."
           },
           "giftPrice": {
-            "type": "string"
+            "type": "string",
+            "description": "A gift's price, as the message writes it."
           },
           "fileName": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's name."
           },
           "fileSize": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "A file's size, in bytes."
           },
           "fileExt": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's extension, without its dot."
           },
           "fileMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's MD5, in lowercase."
           },
           "transferPayerUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "Who pays a transfer."
           },
           "transferReceiverUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "Who receives a transfer."
           },
           "chatRecordTitle": {
-            "type": "string"
+            "type": "string",
+            "description": "A chat record's title; 「聊天记录」 when it has none."
           },
           "messageKey": {
             "type": "string",
@@ -6153,39 +6388,48 @@
         "properties": {
           "totalMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "All the messages."
           },
           "textMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Text, quotes included."
           },
           "imageMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Images."
           },
           "voiceMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Voice messages."
           },
           "videoMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Videos."
           },
           "emojiMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Stickers."
           },
           "otherMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Every other kind."
           },
           "sentMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The ones I sent."
           },
           "receivedMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The ones I received."
           },
           "firstMessageTime": {
             "type": [
@@ -6200,7 +6444,8 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of the last message; null without messages."
           },
           "activeDays": {
             "type": "integer",
@@ -6237,13 +6482,16 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The other party's wxid."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The remark, else the nickname, else the WeChat ID, else the username."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           },
           "wechatId": {
             "type": "string",
@@ -6251,15 +6499,18 @@
           },
           "messageCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages of the chat in the range asked for."
           },
           "sentCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The ones I sent."
           },
           "receivedCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The ones I received."
           },
           "lastMessageTime": {
             "type": [
@@ -6320,13 +6571,16 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The other party's wxid."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The remark, else the nickname, else the WeChat ID, else the username."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           },
           "wechatId": {
             "type": "string",
@@ -6347,7 +6601,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SnsPost"
-            }
+            },
+            "description": "The posts of the page."
           }
         },
         "required": [
@@ -6368,7 +6623,8 @@
             "description": "The row's id in WeChat's table, in decimal."
           },
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The poster's wxid."
           },
           "nickname": {
             "type": "string",
@@ -6376,7 +6632,8 @@
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was posted; 0 when the post does not say."
           },
           "contentDesc": {
             "type": "string",
@@ -6395,7 +6652,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SnsMedia"
-            }
+            },
+            "description": "Its pictures or video."
           },
           "likes": {
             "type": "array",
@@ -6408,16 +6666,19 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SnsComment"
-            }
+            },
+            "description": "Its comments, in the order of the post's XML."
           },
           "videoKey": {
             "type": "string",
             "description": "The key of the post's video, which opens its cover too."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of the poster's avatar; left out when there is none."
           },
           "location": {
+            "description": "Where it was posted; left out when the post does not say.",
             "$ref": "#/components/schemas/SnsLocation"
           }
         },
@@ -6441,41 +6702,52 @@
         "additionalProperties": false,
         "properties": {
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "The full picture or the video: WeChat's address, over https and with `token`; with `with-media`, as\n`resolvedUrl`, else WeChat's."
           },
           "thumb": {
-            "type": "string"
+            "type": "string",
+            "description": "The thumbnail, as `url`."
           },
           "md5": {
-            "type": "string"
+            "type": "string",
+            "description": "The file's MD5, as the post gives it."
           },
           "token": {
-            "type": "string"
+            "type": "string",
+            "description": "The access token WeChat's server asks for."
           },
           "key": {
-            "type": "string"
+            "type": "string",
+            "description": "The key that decrypts the file, to pass to `sns media`."
           },
           "encIdx": {
-            "type": "string"
+            "type": "string",
+            "description": "The `enc_idx` attribute the post gives the file."
           },
           "rawUrl": {
             "type": "string",
-            "description": "With `with-media`: the server's addresses, `url` and `thumb` being those of the files it fetched, and where\nit fetched them or a proxy of the server serves them."
+            "description": "With `with-media`: WeChat's address of the full picture or the video."
           },
           "rawThumb": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: WeChat's address of the thumbnail."
           },
           "resolvedUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: the file fetched and decrypted, as a data URL, else `proxyUrl`."
           },
           "resolvedThumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: the thumbnail, as `resolvedUrl`."
           },
           "proxyUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: the route of `weflow serve` that fetches and decrypts the file (`/api/sns/media`)."
           },
           "proxyThumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: the route that fetches and decrypts the thumbnail."
           },
           "livePhoto": {
             "description": "The moving part of a live photo.",
@@ -6493,41 +6765,52 @@
         "additionalProperties": false,
         "properties": {
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "The video, as a picture's `url`."
           },
           "thumb": {
-            "type": "string"
+            "type": "string",
+            "description": "Its thumbnail, as a picture's `thumb`."
           },
           "token": {
-            "type": "string"
+            "type": "string",
+            "description": "The access token WeChat's server asks for."
           },
           "key": {
-            "type": "string"
+            "type": "string",
+            "description": "The key that decrypts the video; the picture's key opens it when it has none."
           },
           "md5": {
-            "type": "string"
+            "type": "string",
+            "description": "The video's MD5, as the post gives it."
           },
           "encIdx": {
-            "type": "string"
+            "type": "string",
+            "description": "The `enc_idx` attribute the post gives the video."
           },
           "rawUrl": {
             "type": "string",
-            "description": "With `with-media`: as for the picture it moves."
+            "description": "With `with-media`: as a picture's `rawUrl`."
           },
           "rawThumb": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: as a picture's `rawThumb`."
           },
           "resolvedUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: as a picture's `resolvedUrl`."
           },
           "resolvedThumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: as a picture's `resolvedThumbUrl`."
           },
           "proxyUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: as a picture's `proxyUrl`."
           },
           "proxyThumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "With `with-media`: as a picture's `proxyThumbUrl`."
           }
         },
         "required": [
@@ -6541,32 +6824,39 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "WeChat's id of the comment; one made up (`cmt_…`) when the post gives none."
           },
           "nickname": {
-            "type": "string"
+            "type": "string",
+            "description": "The commenter's name."
           },
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The commenter's wxid; left out when the post does not say."
           },
           "content": {
-            "type": "string"
+            "type": "string",
+            "description": "Its text; empty for a comment of stickers only."
           },
           "refCommentId": {
             "type": "string",
             "description": "The comment it answers; empty when none."
           },
           "refUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "The wxid of whom it answers; left out when it answers no one or the post does not say."
           },
           "refNickname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of whom it answers; left out as `refUsername`."
           },
           "emojis": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SnsEmoji"
-            }
+            },
+            "description": "The stickers in it; left out when there are none."
           }
         },
         "required": [
@@ -6582,30 +6872,36 @@
         "additionalProperties": false,
         "properties": {
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "Its plain address; empty when it has only `encryptUrl`."
           },
           "md5": {
-            "type": "string"
+            "type": "string",
+            "description": "Its MD5; empty when the comment does not say."
           },
           "width": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "In pixels; null when the comment does not say."
           },
           "height": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "In pixels; null when the comment does not say."
           },
           "encryptUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its encrypted file; left out when it has none."
           },
           "aesKey": {
-            "type": "string"
+            "type": "string",
+            "description": "The AES key of `encryptUrl`; left out when it has none."
           }
         },
         "required": [
@@ -6621,28 +6917,36 @@
         "additionalProperties": false,
         "properties": {
           "latitude": {
-            "type": "number"
+            "type": "number",
+            "description": "In degrees, as the post writes it."
           },
           "longitude": {
-            "type": "number"
+            "type": "number",
+            "description": "In degrees, as the post writes it."
           },
           "city": {
-            "type": "string"
+            "type": "string",
+            "description": "The city."
           },
           "country": {
-            "type": "string"
+            "type": "string",
+            "description": "The country."
           },
           "poiName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of the place."
           },
           "poiAddress": {
-            "type": "string"
+            "type": "string",
+            "description": "The place's address."
           },
           "poiAddressName": {
-            "type": "string"
+            "type": "string",
+            "description": "The place's address as a name."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "The label the post shows for it."
           }
         },
         "description": "Where a post was made, as much as it says."
@@ -6654,7 +6958,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Their wxids."
           }
         },
         "required": [
@@ -6667,7 +6972,8 @@
         "properties": {
           "totalPosts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The posts kept on this computer."
           },
           "totalFriends": {
             "type": "integer",
@@ -6694,11 +7000,13 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "Their wxid."
           },
           "totalPosts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Their posts kept on this computer."
           }
         },
         "required": [
@@ -6715,7 +7023,8 @@
             "items": {
               "type": "integer",
               "format": "int64"
-            }
+            },
+            "description": "The years, in the server's time zone."
           },
           "strategy": {
             "type": "string",
@@ -6738,7 +7047,8 @@
           },
           "totalMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages of the private chats."
           },
           "totalFriends": {
             "type": "integer",
@@ -6768,7 +7078,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Null without messages."
           },
           "longestStreak": {
             "anyOf": [
@@ -6778,10 +7089,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Null without messages."
           },
           "activityHeatmap": {
-            "$ref": "#/components/schemas/ActivityHeatmap"
+            "$ref": "#/components/schemas/ActivityHeatmap",
+            "description": "Messages by weekday and hour."
           },
           "midnightKing": {
             "anyOf": [
@@ -6791,10 +7104,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Null without messages between 0:00 and 6:00."
           },
           "selfAvatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of my avatar; left out when there is none."
           },
           "mutualFriend": {
             "anyOf": [
@@ -6804,7 +7119,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Null when no friend has 50 or more messages each way."
           },
           "socialInitiative": {
             "anyOf": [
@@ -6814,7 +7130,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Null without conversations."
           },
           "responseSpeed": {
             "anyOf": [
@@ -6824,7 +7141,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Null when I answered nothing."
           },
           "topPhrases": {
             "type": "array",
@@ -6834,6 +7152,7 @@
             "description": "My phrases said at least twice, the most said first."
           },
           "snsStats": {
+            "description": "Left out when my Moments cannot be read.",
             "$ref": "#/components/schemas/AnnualSnsStats"
           },
           "lostFriend": {
@@ -6844,7 +7163,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Null when no friend fits."
           }
         },
         "required": [
@@ -6869,25 +7189,31 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The friend's wxid."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The remark, else the nickname, else the WeChat ID, else the username."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           },
           "messageCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The chat's messages."
           },
           "sentCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The ones I sent."
           },
           "receivedCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The ones I received."
           }
         },
         "required": [
@@ -6912,11 +7238,13 @@
             "description": "「暂无」 for a month without messages."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           },
           "messageCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Their messages in the month; 0 for a month without messages."
           }
         },
         "required": [
@@ -6935,14 +7263,17 @@
           },
           "messageCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The day's messages."
           },
           "topFriend": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of the friend most of them are with."
           },
           "topFriendCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The day's messages with that friend."
           }
         },
         "required": [
@@ -6957,11 +7288,13 @@
         "type": "object",
         "properties": {
           "friendName": {
-            "type": "string"
+            "type": "string",
+            "description": "The friend's name."
           },
           "days": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many days in a row."
           },
           "startDate": {
             "type": "string",
@@ -7004,11 +7337,13 @@
         "type": "object",
         "properties": {
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The friend's name."
           },
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Their messages between 0:00 and 6:00."
           },
           "percentage": {
             "type": "number",
@@ -7027,18 +7362,22 @@
         "type": "object",
         "properties": {
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The friend's name."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           },
           "sentCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages I sent them."
           },
           "receivedCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages they sent me."
           },
           "ratio": {
             "type": "number",
@@ -7059,11 +7398,13 @@
         "properties": {
           "initiatedChats": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The conversations I opened."
           },
           "receivedChats": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The conversations they opened."
           },
           "initiativeRate": {
             "type": "number",
@@ -7076,7 +7417,8 @@
           },
           "topInitiatedCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many conversations I opened with them; left out when I opened none."
           }
         },
         "required": [
@@ -7084,21 +7426,24 @@
           "receivedChats",
           "initiativeRate"
         ],
-        "description": "Conversations opened by me or by them."
+        "description": "Conversations opened by me or by them.\n\nA conversation starts with the first message after an hour without any."
       },
       "ResponseSpeed": {
         "type": "object",
         "properties": {
           "avgResponseTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The mean over all my answers."
           },
           "fastestFriend": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of the friend I answer fastest on average."
           },
           "fastestTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "My mean answer to that friend."
           }
         },
         "required": [
@@ -7106,14 +7451,15 @@
           "fastestFriend",
           "fastestTime"
         ],
-        "description": "How fast I answer, in seconds."
+        "description": "How fast I answer, in seconds.\n\nAn answer is my message after theirs in the same conversation, within a day."
       },
       "AnnualSnsStats": {
         "type": "object",
         "properties": {
           "totalPosts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "My posts."
           },
           "typeCounts": {
             "type": "object",
@@ -7149,17 +7495,21 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The friend's wxid."
           },
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The likes counted."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The remark, else the nickname, else the WeChat ID, else the username."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           }
         },
         "required": [
@@ -7173,21 +7523,26 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The friend's wxid."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The remark, else the nickname, else the WeChat ID, else the username."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of their avatar; left out when there is none."
           },
           "earlyCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages of the earlier period."
           },
           "lateCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages of the later period."
           },
           "periodDesc": {
             "type": "string",
@@ -7201,7 +7556,7 @@
           "lateCount",
           "periodDesc"
         ],
-        "description": "A friend talked to much more in an earlier period than later."
+        "description": "A friend talked to much more in an earlier period than later.\n\nThe earlier period has more than 80 messages and more than five times as many as the later one."
       },
       "DualReport": {
         "type": "object",
@@ -7212,19 +7567,24 @@
             "description": "0 for all the years."
           },
           "selfName": {
-            "type": "string"
+            "type": "string",
+            "description": "My name."
           },
           "selfAvatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of my avatar; left out when there is none."
           },
           "friendUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "The friend's wxid."
           },
           "friendName": {
-            "type": "string"
+            "type": "string",
+            "description": "The remark, else the nickname, else the WeChat ID, else the username."
           },
           "friendAvatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of the friend's avatar; left out when there is none."
           },
           "firstChat": {
             "anyOf": [
@@ -7256,7 +7616,8 @@
             "description": "The first message of the year; null for all the years."
           },
           "stats": {
-            "$ref": "#/components/schemas/DualStats"
+            "$ref": "#/components/schemas/DualStats",
+            "description": "The counts."
           },
           "topPhrases": {
             "type": "array",
@@ -7291,9 +7652,11 @@
             "description": "Seven rows, Monday first, of 24 hours each."
           },
           "initiative": {
+            "description": "Who opened the conversations.",
             "$ref": "#/components/schemas/DualInitiative"
           },
           "response": {
+            "description": "How fast I answer; left out when I answered nothing.",
             "$ref": "#/components/schemas/DualResponse"
           },
           "monthly": {
@@ -7305,6 +7668,7 @@
             "description": "Messages by month, `YYYY-MM`."
           },
           "streak": {
+            "description": "The most days in a row the two talked; left out without messages.",
             "$ref": "#/components/schemas/DualStreak"
           }
         },
@@ -7331,7 +7695,8 @@
             "description": "Its text; raw for anything but text."
           },
           "isSentByMe": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether I sent it."
           },
           "senderUsername": {
             "type": "string",
@@ -7348,7 +7713,8 @@
           },
           "localType": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "WeChat's type of the message, as a parsed message's `localType`."
           },
           "emojiMd5": {
             "type": "string",
@@ -7377,16 +7743,20 @@
             "description": "Milliseconds."
           },
           "createTimeStr": {
-            "type": "string"
+            "type": "string",
+            "description": "`YYYY-MM-DD HH:MM:SS`, local time."
           },
           "content": {
-            "type": "string"
+            "type": "string",
+            "description": "Its text; raw for anything but text."
           },
           "isSentByMe": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether I sent it."
           },
           "friendName": {
-            "type": "string"
+            "type": "string",
+            "description": "The friend's name."
           },
           "firstThreeMessages": {
             "type": "array",
@@ -7397,13 +7767,16 @@
           },
           "localType": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "WeChat's type of the message, as a parsed message's `localType`."
           },
           "emojiMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's MD5."
           },
           "emojiCdnUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's address."
           }
         },
         "required": [
@@ -7422,7 +7795,8 @@
         "properties": {
           "totalMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "All the messages between the two."
           },
           "totalWords": {
             "type": "integer",
@@ -7431,35 +7805,44 @@
           },
           "imageCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Images."
           },
           "voiceCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Voice messages."
           },
           "emojiCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Stickers."
           },
           "myTopEmojiMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "The MD5 of the sticker I sent most; left out when I sent none."
           },
           "myTopEmojiUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "Its address; left out when neither its message nor the sticker database has one."
           },
           "friendTopEmojiMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "The MD5 of the sticker the friend sent most; left out when they sent none."
           },
           "friendTopEmojiUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "Its address; left out when neither its message nor the sticker database has one."
           },
           "myTopEmojiCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many times I sent mine."
           },
           "friendTopEmojiCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many times the friend sent theirs."
           }
         },
         "required": [
@@ -7477,18 +7860,20 @@
         "properties": {
           "initiated": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The conversations I opened."
           },
           "received": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The conversations the friend opened."
           }
         },
         "required": [
           "initiated",
           "received"
         ],
-        "description": "Conversations opened by me, or by them."
+        "description": "Conversations opened by me, or by them.\n\nA conversation starts with the first message after an hour without any."
       },
       "DualResponse": {
         "type": "object",
@@ -7496,15 +7881,18 @@
         "properties": {
           "avg": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The mean, rounded."
           },
           "fastest": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The fastest answer."
           },
           "slowest": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The slowest answer."
           },
           "count": {
             "type": "integer",
@@ -7518,7 +7906,7 @@
           "slowest",
           "count"
         ],
-        "description": "How fast I answer the friend, in seconds."
+        "description": "How fast I answer the friend, in seconds.\n\nAn answer is my message after theirs in the same conversation, within a day."
       },
       "DualStreak": {
         "type": "object",
@@ -7526,13 +7914,16 @@
         "properties": {
           "days": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many days in a row."
           },
           "startDate": {
-            "type": "string"
+            "type": "string",
+            "description": "The first day, `YYYY-MM-DD`."
           },
           "endDate": {
-            "type": "string"
+            "type": "string",
+            "description": "The last day, `YYYY-MM-DD`."
           }
         },
         "required": [
@@ -7546,13 +7937,15 @@
         "type": "object",
         "properties": {
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "The official account, `gh_…`."
           },
           "messages": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BizMessage"
-            }
+            },
+            "description": "Its pushes; messages without content are left out."
           }
         },
         "required": [
@@ -7577,19 +7970,24 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent; null when its row does not say."
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "The lead article's title; empty when the push has none."
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "The lead article's summary."
           },
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "The lead article's address."
           },
           "cover": {
-            "type": "string"
+            "type": "string",
+            "description": "The lead article's cover image: its `cover`, else its `thumburl`."
           },
           "contentList": {
             "type": "array",
@@ -7614,16 +8012,20 @@
         "type": "object",
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Never empty: an article without a title is left out."
           },
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "The article's address."
           },
           "cover": {
-            "type": "string"
+            "type": "string",
+            "description": "Its cover image: its `cover`, else its `thumburl`."
           },
           "summary": {
-            "type": "string"
+            "type": "string",
+            "description": "Its `summary`, else its `digest`."
           }
         },
         "required": [
@@ -7641,7 +8043,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PayRecord"
-            }
+            },
+            "description": "The notices of the page."
           },
           "hasMore": {
             "type": "boolean",
@@ -7658,7 +8061,8 @@
         "type": "object",
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "The notice's title, such as 「已支付¥9.99」."
           },
           "description": {
             "type": "string",
@@ -7683,7 +8087,8 @@
             "description": "Who was paid; `WeChat Pay` (in the server's language) when the notice does not say."
           },
           "merchantIcon": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of the payee's icon; empty when the notice has none."
           },
           "timestamp": {
             "type": "integer",
@@ -7695,14 +8100,16 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "The message's id in its table."
           },
           "createTime": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "When the message was received; null when its row does not say."
           }
         },
         "required": [
@@ -7722,7 +8129,8 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "The profile's name, as `config set current_profile` takes it."
           },
           "current": {
             "type": "boolean",
@@ -7732,7 +8140,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The account's wxid; null when it is not set."
           },
           "dbPath": {
             "type": [
@@ -7793,7 +8202,8 @@
           "files": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "How many files `paths` hold."
           }
         },
         "required": [
@@ -7808,21 +8218,48 @@
         "oneOf": [
           {
             "type": "string",
-            "enum": [
-              "images",
-              "voices",
-              "emojis",
-              "sns",
-              "analytics",
-              "api",
-              "keys",
-              "web"
-            ]
+            "const": "images",
+            "description": "The images decrypted (`Images`)."
+          },
+          {
+            "type": "string",
+            "const": "voices",
+            "description": "The voices decoded (`Voices`)."
+          },
+          {
+            "type": "string",
+            "const": "emojis",
+            "description": "The stickers downloaded (`Emojis`)."
+          },
+          {
+            "type": "string",
+            "const": "sns",
+            "description": "The Moments media fetched (`sns_cache`)."
+          },
+          {
+            "type": "string",
+            "const": "analytics",
+            "description": "The analytics' saved results (`analytics_cache.json`)."
+          },
+          {
+            "type": "string",
+            "const": "api",
+            "description": "The files `weflow serve` and the message push wrote for clients (`api-media`, `push-avatar-files` and the\nserved files)."
+          },
+          {
+            "type": "string",
+            "const": "keys",
+            "description": "The fingerprints of the keys that opened the databases (`verified-keys`)."
           },
           {
             "type": "string",
             "const": "runtime",
             "description": "Runtime directories and ffmpeg builds earlier versions left in the home folder."
+          },
+          {
+            "type": "string",
+            "const": "web",
+            "description": "The WebUI versions downloaded; `serve` downloads the one it needs again."
           }
         ],
         "description": "A part of WeFlow's cache that is listed and cleared on its own."
@@ -7838,7 +8275,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PlannedRemoval"
-            }
+            },
+            "description": "The files and folders it would remove."
           },
           "bytes": {
             "type": "integer",
@@ -7866,12 +8304,14 @@
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The file or folder."
           },
           "bytes": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "What it takes on disk; a folder's is that of the files under it."
           }
         },
         "required": [
@@ -7900,7 +8340,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The files and folders removed."
           },
           "freedBytes": {
             "type": "integer",
@@ -7929,7 +8370,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The files and folders removed: WeFlow's caches of the account, and the exports named after it."
           },
           "profileReset": {
             "type": "boolean",
@@ -7974,6 +8416,7 @@
         "properties": {
           "current_profile": {
             "type": "string",
+            "description": "The profile the commands read; `default` in a new file.",
             "default": "default"
           },
           "lang": {
@@ -8004,6 +8447,7 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/ProfileConfig"
             },
+            "description": "The profiles, by name.",
             "default": {
               "default": {
                 "db_path": null,
@@ -8026,6 +8470,7 @@
           "extra": {
             "type": "object",
             "additionalProperties": true,
+            "description": "The file's other top-level keys, kept as they are.",
             "default": {}
           }
         },
@@ -8147,6 +8592,7 @@
               "string",
               "null"
             ],
+            "description": "WeChat's data directory (`db_path`).",
             "default": null
           },
           "decrypt_key": {
@@ -8154,6 +8600,7 @@
               "string",
               "null"
             ],
+            "description": "The database key, in hex (`decrypt_key`).",
             "default": null
           },
           "wxid": {
@@ -8161,6 +8608,7 @@
               "string",
               "null"
             ],
+            "description": "The account's wxid (`wxid`).",
             "default": null
           },
           "image_xor_key": {
@@ -8169,6 +8617,7 @@
               "null"
             ],
             "format": "int64",
+            "description": "The image XOR key, 0 to 255 (`image_xor_key`).",
             "default": null
           },
           "image_aes_key": {
@@ -8176,6 +8625,7 @@
               "string",
               "null"
             ],
+            "description": "The image AES key (`image_aes_key`).",
             "default": null
           },
           "cache_path": {
@@ -8183,6 +8633,7 @@
               "string",
               "null"
             ],
+            "description": "The folder of the cached images, voices, stickers and Moments (`cache_path`); `cache` beside the config file\nwhen unset.",
             "default": null
           },
           "http_api_token": {
@@ -8190,6 +8641,7 @@
               "string",
               "null"
             ],
+            "description": "The access token of `weflow serve`'s HTTP API (`http_api_token`).",
             "default": null
           },
           "ai_model_api_format": {
@@ -8205,6 +8657,7 @@
               "string",
               "null"
             ],
+            "description": "The model API's base URL; the service of the format when unset.",
             "default": null
           },
           "ai_model_api_key": {
@@ -8212,6 +8665,7 @@
               "string",
               "null"
             ],
+            "description": "The model API's key.",
             "default": null
           },
           "ai_model_api_model": {
@@ -8219,6 +8673,7 @@
               "string",
               "null"
             ],
+            "description": "The model asked for.",
             "default": null
           },
           "ai_model_api_max_tokens": {
@@ -8228,6 +8683,7 @@
             ],
             "format": "uint32",
             "minimum": 0,
+            "description": "The most tokens of one answer.",
             "default": null
           },
           "ai_insight_enabled": {
@@ -8235,11 +8691,13 @@
               "boolean",
               "null"
             ],
+            "description": "Whether the AI insights run.",
             "default": null
           },
           "extra": {
             "type": "object",
             "additionalProperties": true,
+            "description": "The profile's other keys (those the WebUI keeps, such as `autoDownloadWhitelist`), kept as they are.",
             "default": {}
           }
         },
@@ -8265,7 +8723,8 @@
         "type": "object",
         "properties": {
           "lang": {
-            "type": "string"
+            "type": "string",
+            "description": "`en` or `zh`."
           }
         },
         "required": [
@@ -8277,7 +8736,8 @@
         "type": "object",
         "properties": {
           "out": {
-            "type": "string"
+            "type": "string",
+            "description": "The file."
           },
           "format": {
             "type": "string",
@@ -8324,7 +8784,8 @@
           "postCount": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The posts written."
           },
           "mediaCount": {
             "type": "integer",
@@ -8355,10 +8816,12 @@
             "description": "The messages written."
           },
           "session": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "format": {
-            "type": "string"
+            "type": "string",
+            "description": "The format written: `json`, `html`, `txt`, …"
           },
           "media": {
             "description": "The media copied beside it, with `media`.",
@@ -8385,7 +8848,8 @@
           "exported": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The ones whose file was copied."
           },
           "missing": {
             "type": "integer",
@@ -8394,7 +8858,8 @@
             "description": "The ones whose file is not on disk, or could not be read or converted."
           },
           "dir": {
-            "type": "string"
+            "type": "string",
+            "description": "The folder they went to, `media/<name of the export>` beside the export."
           }
         },
         "required": [
@@ -8408,10 +8873,12 @@
       "MessagesBundle": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/MessagesFolder"
+            "$ref": "#/components/schemas/MessagesFolder",
+            "description": "Each format written to its file in one folder."
           },
           {
-            "$ref": "#/components/schemas/MessagesZip"
+            "$ref": "#/components/schemas/MessagesZip",
+            "description": "The formats packed into a zip."
           }
         ],
         "description": "One conversation in several formats (`export messages` with several `format`s), or packed (`zip`)."
@@ -8427,13 +8894,15 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The formats written, in the order asked for."
           },
           "files": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MessagesExported"
-            }
+            },
+            "description": "Each format's file, in the same order."
           }
         },
         "required": [
@@ -8454,7 +8923,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The formats packed, in the order asked for."
           },
           "files": {
             "type": "array",
@@ -8489,7 +8959,8 @@
           "exported": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The files written; as many as `files`."
           },
           "found": {
             "type": "integer",
@@ -8500,7 +8971,8 @@
           "missing": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The media messages whose file could not be written: `found` less `exported`."
           },
           "missingByKind": {
             "type": "object",
@@ -8528,13 +9000,15 @@
             "description": "The conversations looked through."
           },
           "out": {
-            "type": "string"
+            "type": "string",
+            "description": "The folder written to; each conversation's files are in a subfolder named after it."
           },
           "files": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MediaFileExported"
-            }
+            },
+            "description": "The files written."
           }
         },
         "required": [
@@ -8554,25 +9028,30 @@
         "type": "object",
         "properties": {
           "session": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "kind": {
             "type": "string",
             "description": "`image`, `voice`, `video` or `emoji`."
           },
           "fileName": {
-            "type": "string"
+            "type": "string",
+            "description": "The file's name."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The file."
           },
           "localId": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The message's `localId`."
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When the message was sent."
           },
           "isThumb": {
             "type": "boolean",
@@ -8593,13 +9072,16 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the image was found and decrypted."
           },
           "localPath": {
-            "type": "string"
+            "type": "string",
+            "description": "The decrypted image: its path, or a data URL of it without `preferFilePath`; left out on failure."
           },
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "What went wrong; left out on success."
           },
           "failureKind": {
             "type": "string",
@@ -8630,7 +9112,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ImageResult"
-            }
+            },
+            "description": "One result for each payload, in their order."
           }
         },
         "required": [
@@ -8684,17 +9167,20 @@
         "type": "object",
         "properties": {
           "videoUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The video file's path."
           },
           "coverUrl": {
             "type": "string",
             "description": "A `data:` URL, or a `file://` one with `no-data-url`."
           },
           "thumbUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The small thumbnail, as `coverUrl`."
           },
           "exists": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the video is on this computer."
           }
         },
         "required": [
@@ -8709,7 +9195,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The video's MD5, as a message's `videoMd5`."
           }
         },
         "required": [
@@ -8731,7 +9218,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The folder of `in_use`; null when there is none."
           },
           "picked": {
             "type": [
@@ -8763,7 +9251,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The versions kept there."
           },
           "note": {
             "type": [
@@ -8790,16 +9279,20 @@
         "type": "object",
         "properties": {
           "version": {
-            "type": "string"
+            "type": "string",
+            "description": "The WebUI's version, as `web use` takes it."
           },
           "apiVersion": {
-            "type": "string"
+            "type": "string",
+            "description": "The API version it was built for (`weflow.apiVersion` of its `package.json`)."
           },
           "minBackendVersion": {
-            "type": "string"
+            "type": "string",
+            "description": "The oldest weflow it works with (`weflow.minBackendVersion`)."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Its folder."
           },
           "inUse": {
             "type": "boolean",
@@ -8829,28 +9322,32 @@
         "type": "object",
         "properties": {
           "version": {
-            "type": "string"
+            "type": "string",
+            "description": "The WebUI's version, as `web install` takes it."
           },
           "size": {
             "type": "integer",
             "format": "uint64",
             "minimum": 0,
-            "description": "Bytes."
+            "description": "The size of its download, in bytes."
           },
           "apiVersion": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The API version it was built for; null when its metadata leaves it out."
           },
           "minBackendVersion": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The oldest weflow it works with; null when its metadata leaves it out."
           },
           "suits": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether it suits this weflow."
           },
           "why": {
             "type": [
@@ -8860,7 +9357,8 @@
             "description": "Why it does not suit; null when it does."
           },
           "downloaded": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether it is kept here already."
           }
         },
         "required": [
@@ -8878,10 +9376,12 @@
         "type": "object",
         "properties": {
           "version": {
-            "type": "string"
+            "type": "string",
+            "description": "The version, downloaded first when it was not kept here."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Its folder."
           }
         },
         "required": [
@@ -8894,7 +9394,8 @@
         "type": "object",
         "properties": {
           "version": {
-            "type": "string"
+            "type": "string",
+            "description": "The newest published release that suits this weflow, else the newest pre-release that does."
           },
           "before": {
             "type": [
@@ -8904,7 +9405,8 @@
             "description": "The version wanted before; null when there was none."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Its folder."
           }
         },
         "required": [
@@ -8921,13 +9423,15 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The versions removed: all but the one chosen and the one this weflow was built for."
           },
           "kept": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The versions kept after it."
           },
           "shown": {
             "type": "array",
@@ -8948,13 +9452,15 @@
         "type": "object",
         "properties": {
           "root": {
-            "type": "string"
+            "type": "string",
+            "description": "The folder scanned, with the home directory expanded."
           },
           "accounts": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ScannedAccount"
-            }
+            },
+            "description": "Its subfolders that are account folders; empty when it cannot be read."
           }
         },
         "required": [
@@ -8971,7 +9477,8 @@
             "description": "The folder's name."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The folder."
           }
         },
         "required": [
@@ -9018,20 +9525,23 @@
             "format": "uint8",
             "minimum": 0,
             "maximum": 255,
-            "description": "Left out with `save`, as `image_aes_key`: they went to the profile instead."
+            "description": "The XOR key; left out with `save`, where it went to the profile instead."
           },
           "image_aes_key": {
-            "type": "string"
+            "type": "string",
+            "description": "The AES key, 16 hex characters; left out with `save`, where it went to the profile instead."
           },
           "verified": {
             "type": "boolean",
             "description": "Both keys were checked: the AES key on an image header and the XOR key on a whole image."
           },
           "aes_verified": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Always true: the AES key decrypted the header of one of the account's thumbnails."
           },
           "xor_verified": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether a thumbnail decoded as a whole JPEG with both keys; as `verified`."
           },
           "verification": {
             "type": "string",
@@ -9073,10 +9583,12 @@
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The file."
           },
           "parsing": {
-            "type": "string"
+            "type": "string",
+            "description": "How its name was read: `loose_decimal_tokens`, each number between underscores taken as a code."
           }
         },
         "required": [
@@ -9106,7 +9618,8 @@
           "pid": {
             "type": "integer",
             "format": "uint32",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The WeChat process whose memory was read."
           },
           "saved": {
             "type": "array",
@@ -9128,7 +9641,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WeChatProcess"
-            }
+            },
+            "description": "The processes; empty when WeChat is not running."
           }
         },
         "required": [
@@ -9142,13 +9656,16 @@
           "pid": {
             "type": "integer",
             "format": "uint32",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The process id."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "The process's name."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The executable."
           },
           "main": {
             "type": "boolean",
@@ -9160,7 +9677,8 @@
           "name",
           "path",
           "main"
-        ]
+        ],
+        "description": "A running WeChat client."
       },
       "ChatImages": {
         "type": "object",
@@ -9169,7 +9687,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ImageRef"
-            }
+            },
+            "description": "The image messages."
           }
         },
         "required": [
@@ -9184,13 +9703,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The image's MD5, as a message's `imageMd5`; null when the message has none."
           },
           "imageDatName": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The name of its `.dat` file, as a message's `imageDatName`; null when the message has none."
           },
           "createTime": {
             "type": [
@@ -9215,7 +9736,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MessageView"
-            }
+            },
+            "description": "The voice messages."
           }
         },
         "required": [
@@ -9230,10 +9752,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MediaStreamItem"
-            }
+            },
+            "description": "The messages of the page."
           },
           "hasMore": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether there are messages past this page."
           },
           "nextOffset": {
             "type": "integer",
@@ -9254,7 +9778,8 @@
         "properties": {
           "localId": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The message's id in its conversation's table; with `createTime`, the key of `chat message`."
           },
           "serverId": {
             "type": "string",
@@ -9262,7 +9787,8 @@
           },
           "createTime": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent."
           },
           "localType": {
             "type": "integer",
@@ -9275,7 +9801,8 @@
             "description": "1 when I sent it, else 0."
           },
           "senderUsername": {
-            "type": "string"
+            "type": "string",
+            "description": "Who sent it; empty when the row does not say."
           },
           "content": {
             "type": "string",
@@ -9289,31 +9816,40 @@
             "description": "Its text as the chat window shows it; null when it has none."
           },
           "imageMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "An image's MD5, as a parsed message's `imageMd5`."
           },
           "imageDatName": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of an image's `.dat` file, as a parsed message's `imageDatName`."
           },
           "videoMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "The MD5 that names a video's file, as a parsed message's `videoMd5`."
           },
           "emojiMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's MD5."
           },
           "emojiCdnUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A sticker's address on WeChat's servers."
           },
           "xmlType": {
-            "type": "string"
+            "type": "string",
+            "description": "An app message's `<type>`, as a parsed message's `xmlType`."
           },
           "fileName": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's name."
           },
           "fileExt": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's extension, without its dot."
           },
           "fileMd5": {
-            "type": "string"
+            "type": "string",
+            "description": "A file's MD5."
           },
           "fileSize": {
             "type": "integer",
@@ -9322,27 +9858,33 @@
           },
           "locationLat": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's latitude."
           },
           "locationLng": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A location's longitude."
           },
           "locationPoiname": {
-            "type": "string"
+            "type": "string",
+            "description": "The name of a location's place."
           },
           "locationLabel": {
-            "type": "string"
+            "type": "string",
+            "description": "A location's label, its address as WeChat shows it."
           },
           "appMsgKind": {
             "type": "string",
             "description": "The kind of an app message (`link`, `file`, `music`…)."
           },
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "sessionDisplayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's name as the conversation list shows it."
           },
           "mediaType": {
             "type": "string",
@@ -9372,7 +9914,8 @@
             "description": "Always true."
           },
           "hasCache": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the voice was decoded already."
           },
           "data": {
             "type": "string",
@@ -9395,7 +9938,8 @@
           "prepared": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The voices decoded or found decoded already."
           }
         },
         "required": [
@@ -9444,14 +9988,16 @@
         "type": "object",
         "properties": {
           "md5": {
-            "type": "string"
+            "type": "string",
+            "description": "The sticker's MD5."
           },
           "cached": {
             "type": "boolean",
             "description": "Already there before."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The file."
           },
           "size": {
             "type": "integer",
@@ -9494,7 +10040,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AntiRevokeResult"
-            }
+            },
+            "description": "One for each conversation, in the order asked for."
           }
         },
         "required": [
@@ -9506,14 +10053,19 @@
         "type": "object",
         "properties": {
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the check ran."
           },
-          "data": true,
+          "data": {
+            "description": "What the database layer answered; left out when it failed."
+          },
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Why it failed; left out when it ran."
           }
         },
         "required": [
@@ -9530,12 +10082,14 @@
             "description": "Always true."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The file written."
           },
           "bytes": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Its size."
           }
         },
         "required": [
@@ -9553,7 +10107,8 @@
             "description": "Always true."
           },
           "data": {
-            "type": "string"
+            "type": "string",
+            "description": "The WAV, in base64."
           }
         },
         "required": [
@@ -9570,12 +10125,14 @@
             "description": "The file it was written to, with `out`."
           },
           "contentType": {
-            "type": "string"
+            "type": "string",
+            "description": "Its MIME type."
           },
           "bytes": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Its size, decrypted when there was a key."
           },
           "cachePath": {
             "type": [
@@ -9607,7 +10164,8 @@
             "description": "The HTTP status."
           },
           "headers": {
-            "$ref": "#/components/schemas/SnsResourceHeaders"
+            "$ref": "#/components/schemas/SnsResourceHeaders",
+            "description": "The headers that matter."
           }
         },
         "required": [
@@ -9624,25 +10182,29 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "`X-Enc`."
           },
           "x-time": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "`X-Time`."
           },
           "content-length": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "`Content-Length`."
           },
           "content-type": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "`Content-Type`."
           }
         },
         "required": [
@@ -9661,7 +10223,8 @@
             "description": "Always true."
           },
           "localPath": {
-            "type": "string"
+            "type": "string",
+            "description": "The file in WeFlow's cache."
           }
         },
         "required": [
@@ -9673,10 +10236,12 @@
       "SnsImageDownload": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/SnsImageSaved"
+            "$ref": "#/components/schemas/SnsImageSaved",
+            "description": "Written to `out`."
           },
           {
-            "$ref": "#/components/schemas/SnsImageInline"
+            "$ref": "#/components/schemas/SnsImageInline",
+            "description": "In the answer, without `out`."
           }
         ],
         "description": "The image `sns download-image` downloaded (and decrypted when it was a .dat payload)."
@@ -9685,10 +10250,12 @@
         "type": "object",
         "properties": {
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "The address it was downloaded from."
           },
           "out": {
-            "type": "string"
+            "type": "string",
+            "description": "The file written."
           },
           "ext": {
             "type": "string",
@@ -9713,7 +10280,8 @@
         "type": "object",
         "properties": {
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "The address it was downloaded from."
           },
           "ext": {
             "type": "string",
@@ -9742,7 +10310,8 @@
         "type": "object",
         "properties": {
           "out": {
-            "type": "string"
+            "type": "string",
+            "description": "The backup file."
           },
           "entries": {
             "type": "integer",
@@ -9751,7 +10320,8 @@
             "description": "The files in it."
           },
           "wxid": {
-            "type": "string"
+            "type": "string",
+            "description": "The account backed up."
           },
           "createdAt": {
             "type": "integer",
@@ -9814,7 +10384,8 @@
             "description": "Unix seconds."
           },
           "wxid": {
-            "type": "string"
+            "type": "string",
+            "description": "The account backed up."
           },
           "weflow_version": {
             "type": "string",
@@ -9824,7 +10395,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BackupEntry"
-            }
+            },
+            "description": "The files in it."
           },
           "skipped": {
             "type": "array",
@@ -9858,7 +10430,8 @@
             "description": "Its path in the backup: `db_storage/…`, `msg/attach/…`, `msg/video/…`, `msg/file/…` or `emojis/…`; a backup\nof an older WeFlow can also hold `FileStorage/…`."
           },
           "sha256": {
-            "type": "string"
+            "type": "string",
+            "description": "The SHA-256 of its content, in lowercase hex."
           },
           "size": {
             "type": "integer",
@@ -9878,7 +10451,8 @@
         "type": "object",
         "properties": {
           "restoredTo": {
-            "type": "string"
+            "type": "string",
+            "description": "The folder the backup was restored into."
           },
           "stickersRestoredTo": {
             "type": "string",
@@ -9897,7 +10471,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DbCandidate"
-            }
+            },
+            "description": "The places WeChat keeps it by default on this system, whether they exist or not."
           }
         },
         "required": [
@@ -9909,10 +10484,12 @@
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The directory, with the home directory expanded."
           },
           "exists": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether it exists."
           }
         },
         "required": [
@@ -9928,7 +10505,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DbAccount"
-            }
+            },
+            "description": "The account folders found in it."
           }
         },
         "required": [
@@ -9958,7 +10536,8 @@
         "type": "object",
         "properties": {
           "accountDir": {
-            "type": "string"
+            "type": "string",
+            "description": "The account's folder whose databases were opened."
           },
           "connected": {
             "type": "boolean",
@@ -9976,7 +10555,8 @@
         "additionalProperties": false,
         "properties": {
           "summary": {
-            "$ref": "#/components/schemas/FootprintSummary"
+            "$ref": "#/components/schemas/FootprintSummary",
+            "description": "The counts over the range."
           },
           "private_sessions": {
             "type": "array",
@@ -10007,7 +10587,8 @@
             "description": "The groups of those, the one with the most first."
           },
           "diagnostics": {
-            "$ref": "#/components/schemas/FootprintDiagnostics"
+            "$ref": "#/components/schemas/FootprintDiagnostics",
+            "description": "How it was read."
           }
         },
         "required": [
@@ -10050,12 +10631,14 @@
           "mention_count": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The mentions listed."
           },
           "mention_group_count": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The groups of those."
           }
         },
         "required": [
@@ -10065,46 +10648,55 @@
           "private_reply_rate",
           "mention_count",
           "mention_group_count"
-        ]
+        ],
+        "description": "The counts of the footprint."
       },
       "FootprintSession": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "session_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The other party's wxid."
           },
           "incoming_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages they sent in the range."
           },
           "outgoing_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages I sent in the range."
           },
           "replied": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether both of us wrote."
           },
           "first_incoming_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of their first message."
           },
           "first_reply_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of my first message after it."
           },
           "latest_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of the last message."
           },
           "anchor_local_id": {
             "type": "integer",
             "format": "int64",
-            "description": "The message to open the chat at, by its local id and time."
+            "description": "The message to open the chat at, the last one, by its local id and time."
           },
           "anchor_create_time": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of that message."
           }
         },
         "required": [
@@ -10125,58 +10717,72 @@
         "additionalProperties": false,
         "properties": {
           "session_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The other party's wxid."
           },
           "segment_index": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Its place among the chat's stretches, from 1."
           },
           "start_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of its first message."
           },
           "end_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of its last message."
           },
           "duration_sec": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "From the first message to the last, in seconds."
           },
           "incoming_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages they sent."
           },
           "outgoing_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The messages I sent."
           },
           "message_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "All its messages."
           },
           "replied": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether both of us wrote."
           },
           "first_incoming_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of their first message."
           },
           "first_reply_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of my first message after it."
           },
           "latest_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "As `end_ts`."
           },
           "anchor_local_id": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The message to open the chat at, the first one, by its local id and time."
           },
           "anchor_create_time": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "As `start_ts`."
           }
         },
         "required": [
@@ -10202,21 +10808,26 @@
         "additionalProperties": false,
         "properties": {
           "session_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The group's id, `…@chatroom`."
           },
           "local_id": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The message's id in its conversation's table."
           },
           "create_time": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When it was sent."
           },
           "sender_username": {
-            "type": "string"
+            "type": "string",
+            "description": "Who sent it; empty when the row does not say."
           },
           "message_content": {
-            "type": "string"
+            "type": "string",
+            "description": "Its text as WeChat keeps it."
           },
           "source": {
             "type": "string",
@@ -10238,15 +10849,18 @@
         "additionalProperties": false,
         "properties": {
           "session_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The group's id, `…@chatroom`."
           },
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The mentions listed in it."
           },
           "latest_ts": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of the last of them."
           }
         },
         "required": [
@@ -10265,33 +10879,40 @@
             "description": "Whether a list was cut at its limit."
           },
           "private_truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the private chats were cut at their limit."
           },
           "mention_truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the mentions were cut at their limit."
           },
           "scanned_dbs": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The message databases of the account."
           },
           "elapsed_ms": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "How long the reading took."
           },
           "private_session_count": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The private chats looked through."
           },
           "group_session_count": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The groups looked through."
           },
           "fallback_used": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Always false."
           }
         },
         "required": [
@@ -10327,44 +10948,53 @@
         "properties": {
           "totalMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "All the messages."
           },
           "voiceMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Voice messages (type 34)."
           },
           "imageMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Images (type 3)."
           },
           "videoMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Videos (type 43)."
           },
           "emojiMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Stickers (type 47)."
           },
           "transferMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Transfers (app messages of sub-type 2000)."
           },
           "redPacketMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Red packets (app messages of sub-type 2001)."
           },
           "callMessages": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Voice and video calls (type 50)."
           },
           "firstTimestamp": {
             "type": "integer",
             "format": "int64",
-            "description": "Left out without messages."
+            "description": "The time of the first message; left out without messages."
           },
           "lastTimestamp": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The time of the last message; left out without messages."
           },
           "groupMyMessages": {
             "type": "integer",
@@ -10378,7 +11008,8 @@
           },
           "groupMemberCount": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "A group's: its members."
           },
           "groupMutualFriends": {
             "type": "integer",
@@ -10407,10 +11038,12 @@
         "type": "object",
         "properties": {
           "payerName": {
-            "type": "string"
+            "type": "string",
+            "description": "Who paid."
           },
           "receiverName": {
-            "type": "string"
+            "type": "string",
+            "description": "Who received it."
           }
         },
         "required": [
@@ -10423,13 +11056,16 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Always true."
           },
           "record": {
+            "description": "The record.",
             "$ref": "#/components/schemas/InsightRecord"
           },
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Always left out."
           }
         },
         "required": [
@@ -10441,35 +11077,45 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "A UUID."
           },
           "accountScope": {
-            "type": "string"
+            "type": "string",
+            "description": "The account it belongs to: `wxid:<wxid>`, else `db:` and a hash of the data directory."
           },
           "createdAt": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Unix milliseconds."
           },
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation it is about."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's name."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of the conversation's avatar; left out when there is none."
           },
           "triggerReason": {
-            "type": "string"
+            "type": "string",
+            "description": "Why it was written: `activity`, `silence`, `test`, …"
           },
           "insight": {
-            "type": "string"
+            "type": "string",
+            "description": "What the model wrote."
           },
           "read": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether it was marked read."
           },
           "log": {
-            "$ref": "#/components/schemas/InsightRecordLog"
+            "$ref": "#/components/schemas/InsightRecordLog",
+            "description": "What was asked of the model, and what it answered."
           }
         },
         "required": [
@@ -10494,7 +11140,8 @@
             "default": "openai"
           },
           "endpoint": {
-            "type": "string"
+            "type": "string",
+            "description": "The address asked."
           },
           "model": {
             "type": "string",
@@ -10503,38 +11150,48 @@
           "maxTokens": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The most tokens the answer could have."
           },
           "triggerReason": {
-            "type": "string"
+            "type": "string",
+            "description": "Why it was asked: `activity`, `silence`, `test`, …"
           },
           "allowContext": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the conversation's latest messages went with the question."
           },
           "contextCount": {
             "type": "integer",
             "format": "uint64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "How many of them, at most."
           },
           "systemPrompt": {
-            "type": "string"
+            "type": "string",
+            "description": "The system prompt sent."
           },
           "userPrompt": {
-            "type": "string"
+            "type": "string",
+            "description": "The user prompt sent."
           },
           "rawOutput": {
-            "type": "string"
+            "type": "string",
+            "description": "The model's answer as it came."
           },
           "finalInsight": {
-            "type": "string"
+            "type": "string",
+            "description": "The insight kept from it."
           },
           "durationMs": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "From the question to the answer."
           },
           "createdAt": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "When the answer came, in Unix milliseconds."
           }
         },
         "required": [
@@ -10580,7 +11237,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InsightSummary"
-            }
+            },
+            "description": "The records of the page."
           },
           "total": {
             "type": "integer",
@@ -10597,7 +11255,8 @@
           "unreadCount": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The account's records not read yet."
           },
           "contacts": {
             "type": "array",
@@ -10621,7 +11280,8 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "The record's id, as `insight get` takes it."
           },
           "createdAt": {
             "type": "integer",
@@ -10629,23 +11289,28 @@
             "description": "Unix milliseconds."
           },
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation it is about."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's name."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of the conversation's avatar; left out when there is none."
           },
           "triggerReason": {
             "type": "string",
             "description": "Why it was written: `activity`, `silence`, `test`, …"
           },
           "insight": {
-            "type": "string"
+            "type": "string",
+            "description": "What the model wrote."
           },
           "read": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether it was marked read."
           }
         },
         "required": [
@@ -10663,10 +11328,12 @@
         "type": "object",
         "properties": {
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's name."
           },
           "count": {
             "type": "integer",
@@ -10675,7 +11342,8 @@
             "description": "Its records."
           },
           "avatarUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The address of its avatar; left out when there is none."
           }
         },
         "required": [
@@ -10689,12 +11357,14 @@
         "type": "object",
         "properties": {
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "The conversation's username."
           },
           "count": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The records written about it today."
           },
           "times": {
             "type": "array",
@@ -10715,10 +11385,12 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Always true."
           },
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Always left out."
           }
         },
         "required": [
@@ -10752,13 +11424,15 @@
           "generated": {
             "type": "integer",
             "format": "uint",
-            "minimum": 0
+            "minimum": 0,
+            "description": "How many it wrote."
           },
           "records": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InsightSummary"
-            }
+            },
+            "description": "The records written."
           }
         },
         "required": [
@@ -10771,7 +11445,8 @@
         "type": "object",
         "properties": {
           "format": {
-            "$ref": "#/components/schemas/ModelApiFormat"
+            "$ref": "#/components/schemas/ModelApiFormat",
+            "description": "The API format asked in."
           },
           "endpoint": {
             "type": "string",
@@ -10781,7 +11456,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ModelInfo"
-            }
+            },
+            "description": "The models, in the service's order."
           }
         },
         "required": [
@@ -10812,7 +11488,8 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Always true."
           },
           "message": {
             "type": "string",
@@ -10840,7 +11517,8 @@
         "type": "object",
         "properties": {
           "format": {
-            "$ref": "#/components/schemas/ModelApiFormat"
+            "$ref": "#/components/schemas/ModelApiFormat",
+            "description": "The API format asked in."
           },
           "endpoint": {
             "type": "string",
@@ -11002,6 +11680,7 @@
         "properties": {
           "code": {
             "type": "string",
+            "description": "The kind of failure, for a program to tell them apart.",
             "examples": [
               "invalid_arguments",
               "unauthorized",
@@ -11017,9 +11696,12 @@
             ]
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "What went wrong, for a person, in the language of the run."
           },
-          "details": true
+          "details": {
+            "description": "What some codes add to the message; left out when there is nothing."
+          }
         },
         "required": [
           "code",

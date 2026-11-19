@@ -35,10 +35,12 @@ export interface ResourceFilter {
   to: string;
 }
 
+/** Every conversation, every day. */
 export const ALL_RESOURCES: ResourceFilter = { session: null, from: '', to: '' };
 
 const narrowed = (filter: ResourceFilter) => Boolean(filter.session || filter.from || filter.to);
 
+/** What the filter narrows to, for a closed card's header: the conversation, by date, or 「全部」. */
 export function resourceFilterSummary(filter: ResourceFilter, sessions: readonly ChatSession[]): string {
   const name = filter.session && (sessions.find(s => s.username === filter.session)?.displayName || filter.session);
   const parts = [name, (filter.from || filter.to) && t('按日期')].filter(Boolean);
@@ -200,6 +202,7 @@ export function ResourceFilterCard({ sessions, filter, onChange }: { sessions: r
   </div>;
 }
 
+/** The images, videos, voices and files the filter narrows to, newest first, a page at a time. */
 export function ResourcesPage({ filter, scroller, onPreview, onOpen }: {
   filter: ResourceFilter;
   /** The page's scroll area (`ScrollPage`), which the grid scrolls in. */

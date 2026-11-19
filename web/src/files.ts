@@ -1,6 +1,7 @@
 // Files the page makes and hands to the browser to save: a spreadsheet of rows, or any bytes.
 import { zip } from './zip';
 
+/** `value` with the five characters XML reserves written as entities. */
 export const xmlEscape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 
 /** Starts the download of `bytes` as `fileName`; returns the object URL, to revoke once it is no longer offered. */
@@ -17,6 +18,7 @@ export function saveFile(bytes: Uint8Array, type: string, fileName: string): str
   return url;
 }
 
+/** The MIME type of an .xlsx file. */
 export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /** An .xlsx of one sheet: `rows` as text, the first as the header, columns `widths` characters wide. */

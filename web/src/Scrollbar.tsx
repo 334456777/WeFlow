@@ -21,6 +21,7 @@ function hovered(element: Element) {
   try { return element.matches(':hover'); } catch { return false; }
 }
 
+/** The scrollbar and the edge fades of the scroll area `target`. */
 export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> }) {
   const track = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLDivElement>(null);

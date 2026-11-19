@@ -8,6 +8,8 @@ use serde_json::{json, Value};
 use crate::error::{AppError, AppResult};
 use crate::keys::{clean_wxid, derive_image_keys, scan_templates, verify_derived_aes_key};
 
+/// How many entries of the account's folder `key image` walks for sample thumbnails when `--scan-budget` gives no
+/// number.
 pub const DEFAULT_SCAN_BUDGET: usize = 10_000;
 const TEMPLATE_LIMIT: usize = 32;
 const MAX_SAMPLE_BYTES: u64 = 16 * 1024 * 1024;
@@ -15,26 +17,38 @@ const MAX_SAMPLE_BYTES: u64 = 16 * 1024 * 1024;
 /// A `kvcomm` file a code was read from, and how its name was read.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, schemars::JsonSchema)]
 pub struct CandidateSource {
+    /// The file.
     pub path: PathBuf,
+    /// How its name was read: `loose_decimal_tokens`, each number between underscores taken as a code.
     pub parsing: &'static str,
 }
 
+/// A code the `kvcomm` file names hold, which may derive the image keys.
 #[derive(Debug, Serialize)]
 pub struct CodeCandidate {
+    /// The code.
     pub code: u32,
+    /// The files whose names hold it.
     pub sources: Vec<CandidateSource>,
 }
 
+/// A directory or file of the `kvcomm` folders that could not be read.
 #[derive(Debug, Serialize)]
 pub struct CollectionError {
+    /// The directory or file.
     pub path: PathBuf,
+    /// The kind of I/O error, as Rust names it (`NotFound`, `PermissionDenied`…).
     pub kind: String,
 }
 
+/// The codes read from the `kvcomm` folders, and what could not be read.
 #[derive(Debug, Default, Serialize)]
 pub struct CodeCollection {
+    /// The codes, in increasing order.
     pub candidates: Vec<CodeCandidate>,
+    /// The folders that could be listed.
     pub readable_directories: usize,
+    /// What could not be read, by path.
     pub errors: Vec<CollectionError>,
 }
 
@@ -164,6 +178,12 @@ fn verify_pair(path: &Path, aes: &str, xor: u8) -> bool {
     decoder.decode().is_ok_and(|pixels| !pixels.is_empty())
 }
 
+/// The image keys of the account at `account` (`key image`): derived from the codes in `directories` and the
+/// account's identities, and checked against the thumbnails found in the first `budget` entries of its folder.
+///
+/// # Errors
+/// A usage error without directories or with a zero budget; a runtime error, with what was read as its details, when
+/// no thumbnail can be sampled, no code derives keys that open one, or two pairs of keys do.
 pub fn acquire_image_keys(
     directories: &[PathBuf],
     account: &Path,

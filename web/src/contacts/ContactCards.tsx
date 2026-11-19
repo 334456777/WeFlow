@@ -7,6 +7,7 @@ import { runJob } from '../jobs/useJobs';
 import { GridSkeleton } from '../Skeleton';
 import { locale, msg, t } from '../i18n';
 
+/** How many contacts of each kind, and how many friends have a remark; a skeleton while they are read. */
 export function ContactsSummary({ contacts }: { contacts: Contact[] | null }) {
   if (!contacts) return <GridSkeleton label={t('正在读取通讯录')} cells={5} />;
   const counts = countKinds(contacts);
@@ -17,8 +18,10 @@ export function ContactsSummary({ contacts }: { contacts: Contact[] | null }) {
   </dl>;
 }
 
+/** A format's name. */
 export const contactFormatLabel = (format: ContactFormat) => CONTACT_FORMATS.find(f => f.value === format)!.label;
 
+/** What the contacts export writes. */
 export interface ContactsExportOptions {
   format: ContactFormat;
   kinds: ContactKind[];
@@ -26,11 +29,13 @@ export interface ContactsExportOptions {
   avatars: boolean;
 }
 
+/** Every kind, in Excel, without avatars. */
 export const DEFAULT_CONTACTS_EXPORT: ContactsExportOptions = { format: 'excel', kinds: [...CONTACT_KINDS], avatars: false };
 
 /** Whether the export carries the avatars: asked for, and on an HTML page. */
 const withAvatars = (options: ContactsExportOptions) => options.avatars && options.format === 'html';
 
+/** What the export writes, for a closed card's header: the kinds, the format, and the avatars. */
 export function contactsExportSummary(options: ContactsExportOptions): string {
   const kinds = options.kinds.length === CONTACT_KINDS.length ? t('全部') : options.kinds.map(k => t(contactKindLabels[k])).join(t('、'));
   return kinds + ' · ' + contactFormatLabel(options.format) + (withAvatars(options) ? ' · ' + t('头像') : '');

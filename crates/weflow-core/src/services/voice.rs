@@ -61,6 +61,7 @@ fn voice_cache_key(session_id: &str, msg_id: &str, create_time: Option<i64>) -> 
 }
 
 impl ServiceHub {
+    /// Where the decoded voices are kept, `Voices` in the cache folder.
     pub fn voice_cache_dir(&self) -> PathBuf {
         self.cache_base().join("Voices")
     }

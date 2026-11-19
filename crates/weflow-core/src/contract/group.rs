@@ -14,7 +14,9 @@ pub struct GroupChat {
     pub username: String,
     /// Its name, else its id.
     pub display_name: String,
+    /// How many members it has.
     pub member_count: i64,
+    /// The address of its avatar; left out when it has none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
 }
@@ -24,10 +26,13 @@ pub struct GroupChat {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupMembers {
+    /// The group's id, `…@chatroom`.
     pub chatroom_id: String,
+    /// How many members there are.
     pub count: usize,
     /// When the panel was built, in Unix milliseconds.
     pub updated_at: i64,
+    /// The members.
     pub members: Vec<GroupMember>,
 }
 
@@ -35,18 +40,24 @@ pub struct GroupMembers {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupMember {
+    /// The member's wxid.
     pub username: String,
     /// Their name as WeChat shows it in the group.
     pub display_name: String,
-    /// The fields of their contact; empty when they are not a contact.
+    /// The nickname of their contact; empty when they are not a contact.
     pub nickname: String,
+    /// The WeChat ID of their contact; empty when they are not a contact or chose none.
     pub alias: String,
+    /// My remark for them; empty when they are not a contact or have none.
     pub remark: String,
     /// The name they gave themselves in this group; empty when none.
     pub group_nickname: String,
+    /// The address of their avatar; left out when there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
+    /// Whether they own the group.
     pub is_owner: bool,
+    /// Whether they are my friend.
     pub is_friend: bool,
     /// How many messages they sent in the group; 0 unless `counts=true`.
     pub message_count: i64,
@@ -56,7 +67,9 @@ pub struct GroupMember {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupRank {
+    /// Who.
     pub member: RankedMember,
+    /// How many messages they sent in the range asked for.
     pub message_count: i64,
 }
 
@@ -64,8 +77,11 @@ pub struct GroupRank {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RankedMember {
+    /// The member's wxid.
     pub username: String,
+    /// Their name as WeChat shows it in the group.
     pub display_name: String,
+    /// The address of their avatar; left out when there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
 }
@@ -82,7 +98,9 @@ pub struct GroupHours {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupMedia {
+    /// The kinds of message, the most first.
     pub type_counts: Vec<MediaCount>,
+    /// All the messages counted.
     pub total: i64,
 }
 
@@ -94,6 +112,7 @@ pub struct MediaCount {
     pub kind: i64,
     /// Its name in Chinese.
     pub name: String,
+    /// How many messages of it there are.
     pub count: i64,
 }
 
@@ -101,11 +120,13 @@ pub struct MediaCount {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberAnalytics {
+    /// The numbers of their messages.
     pub statistics: MemberStatistics,
     /// By the hour, `"0"` to `"23"`, in the server's time zone.
     pub time_distribution: IndexMap<String, i64>,
     /// What they said most, the most first, up to 10.
     pub common_phrases: Vec<PhraseCount>,
+    /// The WeChat emojis (`[微笑]` and the like) in their text, the most used first, up to 10.
     pub common_emojis: Vec<EmojiCount>,
 }
 
@@ -113,19 +134,29 @@ pub struct MemberAnalytics {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberStatistics {
+    /// All their messages.
     pub total_messages: i64,
+    /// Text, quotes included.
     pub text_messages: i64,
+    /// Images.
     pub image_messages: i64,
+    /// Voice messages.
     pub voice_messages: i64,
+    /// Videos.
     pub video_messages: i64,
+    /// Stickers.
     pub emoji_messages: i64,
+    /// Every other kind.
     pub other_messages: i64,
+    /// As `totalMessages`.
     pub sent_messages: i64,
     /// Always 0: a member's messages are all sent by them.
     pub received_messages: i64,
     /// The time of their first message; null when they sent none.
     pub first_message_time: Option<i64>,
+    /// The time of their last message; null when they sent none.
     pub last_message_time: Option<i64>,
+    /// The days, in the server's time zone, with a message of theirs.
     pub active_days: usize,
     /// By WeChat's type of the message, as `localType`.
     pub message_type_counts: IndexMap<String, i64>,
@@ -135,14 +166,18 @@ pub struct MemberStatistics {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PhraseCount {
+    /// A text message of at most 20 characters, counted whole.
     pub phrase: String,
+    /// How many times it was sent.
     pub count: i64,
 }
 
 /// An emoji and how often it was sent.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct EmojiCount {
+    /// The emoji as the text writes it, `[微笑]`.
     pub emoji: String,
+    /// How many times it was used.
     pub count: i64,
 }
 
@@ -150,7 +185,9 @@ pub struct EmojiCount {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberMessages {
+    /// The messages of the page.
     pub messages: Vec<ChatMessage>,
+    /// Whether there are messages past this page.
     pub has_more: bool,
     /// Pass it as `cursor` for the next page.
     pub next_cursor: usize,
@@ -160,17 +197,27 @@ pub struct MemberMessages {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OverallStatistics {
+    /// All the messages.
     pub total_messages: i64,
+    /// Text, quotes included.
     pub text_messages: i64,
+    /// Images.
     pub image_messages: i64,
+    /// Voice messages.
     pub voice_messages: i64,
+    /// Videos.
     pub video_messages: i64,
+    /// Stickers.
     pub emoji_messages: i64,
+    /// Every other kind.
     pub other_messages: i64,
+    /// The ones I sent.
     pub sent_messages: i64,
+    /// The ones I received.
     pub received_messages: i64,
     /// The time of the first message; null without messages.
     pub first_message_time: Option<i64>,
+    /// The time of the last message; null without messages.
     pub last_message_time: Option<i64>,
     /// The days with a message.
     pub active_days: i64,
@@ -182,14 +229,20 @@ pub struct OverallStatistics {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ContactRank {
+    /// The other party's wxid.
     pub username: String,
+    /// The remark, else the nickname, else the WeChat ID, else the username.
     pub display_name: String,
+    /// The address of their avatar; left out when there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
     /// The WeChat ID they chose, else the username when it is not a `wxid_…`; else empty.
     pub wechat_id: String,
+    /// The messages of the chat in the range asked for.
     pub message_count: i64,
+    /// The ones I sent.
     pub sent_count: i64,
+    /// The ones I received.
     pub received_count: i64,
     /// The time of the last message; null without messages.
     pub last_message_time: Option<i64>,
@@ -212,8 +265,11 @@ pub struct TimeDistribution {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExcludeCandidate {
+    /// The other party's wxid.
     pub username: String,
+    /// The remark, else the nickname, else the WeChat ID, else the username.
     pub display_name: String,
+    /// The address of their avatar; left out when there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
     /// As in a ranking.

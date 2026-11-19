@@ -97,6 +97,8 @@ fn parse_pay_xml(xml_str: &str) -> Option<PayRecord> {
     })
 }
 
+/// The official accounts among the contact rows `contacts` (type 3 or 99, or a `gh_` username), each with the
+/// `lastTime` of its conversation in `sessions`, `null` without one.
 pub fn filter_official_contacts(contacts: &Value, sessions: &Value) -> Vec<Value> {
     let session_map = build_session_map(sessions);
     let Some(items) = contacts.as_array() else {
@@ -181,7 +183,8 @@ fn without_section(xml: &str, tag: &str) -> String {
     }
 }
 
-/// The local id and create time of a message, mapped or a native row.
+/// The pushes of an official account's `messages`, each its lead article and the others sent with it; a message
+/// without content is left out.
 pub fn parse_biz_messages(messages: &[MsgRow]) -> Vec<BizMessage> {
     let mut result = Vec::new();
     for msg in messages {
@@ -213,6 +216,8 @@ pub fn parse_biz_messages(messages: &[MsgRow]) -> Vec<BizMessage> {
     result
 }
 
+/// The WeChat Pay notices of the WeChat Pay account's `messages`; a message with neither a title nor a description is
+/// left out.
 pub fn parse_pay_records(messages: &[MsgRow]) -> Vec<PayRecord> {
     messages
         .iter()

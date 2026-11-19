@@ -7,6 +7,7 @@ import { usePresence } from '../motion';
 import { SetupWizard } from './SetupWizard';
 import { t } from '../i18n';
 
+/** The setup wizard in a modal dialog, while `open`. */
 export function SetupDialog({ open, profile, jobs, platform, onChanged, onClose, onDone }: {
   open: boolean; profile: Profile | undefined; jobs: JobsState; platform?: Health['platform'];
   onChanged(): void; onClose(): void; onDone(): void;

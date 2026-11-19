@@ -15,6 +15,7 @@ use crate::model_api::ModelApiFormat;
 const MAX_RECORDS_PER_SCOPE: usize = 1000;
 const RECORDS_FILE: &str = "weflow-insight-records.json";
 
+/// The time now in Unix milliseconds; 0 before 1970.
 pub fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -40,18 +41,29 @@ pub struct InsightRecordLog {
     /// The format of the model API asked; records written before there was a choice asked an OpenAI one.
     #[serde(default)]
     pub format: ModelApiFormat,
+    /// The address asked.
     pub endpoint: String,
     /// The model that answered, as the service names it, else the one asked for.
     pub model: String,
+    /// The most tokens the answer could have.
     pub max_tokens: u64,
+    /// Why it was asked: `activity`, `silence`, `test`, …
     pub trigger_reason: String,
+    /// Whether the conversation's latest messages went with the question.
     pub allow_context: bool,
+    /// How many of them, at most.
     pub context_count: u64,
+    /// The system prompt sent.
     pub system_prompt: String,
+    /// The user prompt sent.
     pub user_prompt: String,
+    /// The model's answer as it came.
     pub raw_output: String,
+    /// The insight kept from it.
     pub final_insight: String,
+    /// From the question to the answer.
     pub duration_ms: i64,
+    /// When the answer came, in Unix milliseconds.
     pub created_at: i64,
 }
 
@@ -59,20 +71,31 @@ pub struct InsightRecordLog {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRecord {
+    /// A UUID.
     pub id: String,
+    /// The account it belongs to: `wxid:<wxid>`, else `db:` and a hash of the data directory.
     pub account_scope: String,
+    /// Unix milliseconds.
     pub created_at: i64,
+    /// The conversation it is about.
     pub session_id: String,
+    /// The conversation's name.
     pub display_name: String,
+    /// The address of the conversation's avatar; left out when there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
+    /// Why it was written: `activity`, `silence`, `test`, …
     pub trigger_reason: String,
+    /// What the model wrote.
     pub insight: String,
+    /// Whether it was marked read.
     pub read: bool,
+    /// What was asked of the model, and what it answered.
     pub log: InsightRecordLog,
 }
 
 impl InsightRecord {
+    /// The record as lists and events name it, without its log.
     pub fn summary(&self) -> crate::contract::InsightSummary {
         crate::contract::InsightSummary {
             id: self.id.clone(),
@@ -87,16 +110,25 @@ impl InsightRecord {
     }
 }
 
+/// Which records `insight records` lists and `insight clear` removes; an empty or zero filter matches all.
 #[derive(Debug, Clone, Default)]
 pub struct RecordFilters {
+    /// Text the conversation's name, its username or the insight holds, in any case; `insight clear` does not read
+    /// it.
     pub keyword: String,
+    /// The conversation.
     pub session_id: String,
+    /// The earliest time, in Unix milliseconds.
     pub start_time: i64,
+    /// The latest time, in Unix milliseconds.
     pub end_time: i64,
+    /// The most records of the page, 1 to 200; 100 when none or 0.
     pub limit: Option<i64>,
+    /// The records skipped before the page.
     pub offset: Option<i64>,
 }
 
+/// The insight records of every account, kept in one JSON file of WeFlow's home directory.
 pub struct RecordStore {
     path: PathBuf,
     records: Vec<InsightRecord>,
@@ -113,15 +145,22 @@ fn start_of_today_ms() -> i64 {
 
 /// What a new insight record says and about whom; [`RecordStore::add`] fills in the id, time and read flag.
 pub struct NewRecord<'a> {
+    /// The account's [`InsightRecord::account_scope`].
     pub scope: &'a str,
+    /// The conversation.
     pub session_id: &'a str,
+    /// The conversation's name.
     pub display_name: &'a str,
+    /// The address of the conversation's avatar.
     pub avatar_url: Option<String>,
+    /// Why it was written.
     pub trigger_reason: &'a str,
+    /// What the model wrote.
     pub insight: &'a str,
 }
 
 impl RecordStore {
+    /// The records kept in `dir`; none when the file is missing or cannot be read.
     pub fn load(dir: &Path) -> Self {
         let path = dir.join(RECORDS_FILE);
         let records = std::fs::read_to_string(&path)
@@ -161,6 +200,7 @@ impl RecordStore {
             .filter(move |r| r.account_scope == scope)
     }
 
+    /// Adds the record and saves the file, keeping the newest 1000 of its account.
     pub fn add(&mut self, new: NewRecord<'_>, log: InsightRecordLog) -> InsightRecord {
         let NewRecord {
             scope,
@@ -199,6 +239,7 @@ impl RecordStore {
         record
     }
 
+    /// A page of the account `scope`'s records that `f` matches, the newest first, with the counts over all of them.
     pub fn list(&self, scope: &str, f: &RecordFilters) -> crate::contract::InsightRecords {
         let all: Vec<&InsightRecord> = self.scoped(scope).collect();
         let today = start_of_today_ms();
@@ -257,6 +298,7 @@ impl RecordStore {
         }
     }
 
+    /// The account `scope`'s record `id`, or `success: false` and why when there is none.
     pub fn get(&self, scope: &str, id: &str) -> crate::contract::InsightLookup {
         let failed = |error: &str| crate::contract::InsightLookup {
             success: false,
@@ -277,6 +319,8 @@ impl RecordStore {
         }
     }
 
+    /// Marks the account `scope`'s record `id` read and saves the file, or answers `success: false` when there is
+    /// none.
     pub fn mark_read(&mut self, scope: &str, id: &str) -> crate::contract::InsightMarked {
         let id = id.trim();
         match self
@@ -301,6 +345,7 @@ impl RecordStore {
         }
     }
 
+    /// Removes the account `scope`'s records that the conversation and the times of `f` match, and saves the file.
     pub fn clear(&mut self, scope: &str, f: &RecordFilters) -> crate::contract::InsightCleared {
         let mut removed = 0;
         self.records.retain(|r| {
@@ -379,6 +424,7 @@ pub async fn send_telegram(token: &str, chat_id: &str, text: &str) -> Result<(),
 
 // ───────────────────────── prompt assembly ─────────────────────────
 
+/// The system prompt of an insight when the settings give none, in the server's language.
 pub fn default_system_prompt() -> &'static str {
     tr(
         "You are the user's personal relationship observer, named \"Insight\". Your job is to proactively offer useful observations and advice.\n\nRequirements:\n1. Always give an insight. Based on the chat history, read the other person's mood, topic trends and relationship dynamics, or suggest a reply or a conversation topic.\n2. Keep it under 50 words: direct, specific and to the point. No filler.\n3. Output plain text, no Markdown.\n4. Reply \"SKIP\" only when there is truly nothing to say (for example the conversation is a single \"ok\"). In almost every case you should give an insight.",
@@ -386,6 +432,7 @@ pub fn default_system_prompt() -> &'static str {
     )
 }
 
+/// The system prompt of the footprint's summary when the settings give none, in the server's language.
 pub fn default_footprint_prompt() -> &'static str {
     tr(
         "You are the user's chat footprint coach. Based on the statistics, give a short review.\nRequirements:\n1. Output 2-3 sentences, no more than 100 words in total.\n2. It must include: an overall observation + one actionable suggestion.\n3. Keep the tone practical, not exaggerated, and do not use Markdown.",
@@ -417,17 +464,20 @@ pub fn append_current_time(prompt: &str) -> String {
     }
 }
 
+/// Whether `text` is a `wxid_…` or a group's `…@chatroom` rather than a name.
 pub fn looks_like_wxid(text: &str) -> bool {
     let t = text.trim();
     !t.is_empty()
         && (rx(r"(?i)^wxid_[a-z0-9]+$").is_match(t) || rx(r"(?i)^[a-z0-9_]+@chatroom$").is_match(t))
 }
 
+/// Whether `text` begins as the XML of a message that is not text, escaped or not.
 pub fn looks_like_xml_payload(text: &str) -> bool {
     let t = text.trim();
     !t.is_empty() && rx(r"(?i)^(<\?xml|<msg\b|<appmsg\b|<img\b|<emoji\b|<voip\b|<sysmsg\b|&lt;\?xml|&lt;msg\b|&lt;appmsg\b)").is_match(t)
 }
 
+/// `text` with `\n` line ends, without NUL characters and runs of blank lines, trimmed.
 pub fn normalize_insight_text(text: &str) -> String {
     let t = text.replace("\r\n", "\n").replace('\0', "");
     rx(r"\n{3,}").replace_all(&t, "\n\n").trim().to_string()
@@ -498,6 +548,8 @@ fn format_message_content(m: &ChatMessage) -> String {
     tr("[Other message]", "[其他消息]").to_string()
 }
 
+/// The part of the user prompt that holds the recent `messages` of the chat with `peer`, one with its time and sender
+/// to a paragraph; empty without messages.
 pub fn build_context_section(messages: &[ChatMessage], peer: &str) -> String {
     if messages.is_empty() {
         return String::new();
@@ -543,6 +595,7 @@ pub fn session_allowed(mode: &str, list: &[String], session_id: &str) -> bool {
     }
 }
 
+/// The conversation ids of a JSON array, trimmed, without empty ones and repeats; empty for anything but an array.
 pub fn normalize_session_id_list(v: &Value) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for s in v.as_array().map(|a| a.as_slice()).unwrap_or(&[]) {

@@ -1,3 +1,4 @@
+//! The conversation list and the contacts of a synthetic account: which are listed, their names and their kinds.
 mod common;
 
 use weflow_core::contract::ContactKind;

@@ -56,19 +56,29 @@ const RENDER_CHUNK: usize = 2000;
 
 // ───────────────────────────────── exporter ─────────────────────────────────
 
+/// The conversation an export writes.
 #[derive(Clone, Debug)]
 pub struct SessionInfo {
+    /// Its username: the other party's wxid, or `…@chatroom` for a group.
     pub id: String,
+    /// Its name: the remark, else the nickname, else the WeChat ID, else the username.
     pub display_name: String,
+    /// The contact's nickname; empty when none.
     pub nickname: String,
+    /// My remark for the contact; empty when none.
     pub remark: String,
+    /// Whether it is a group chat.
     pub is_group: bool,
 }
 
+/// How an export writes the messages.
 #[derive(Clone, Debug)]
 pub struct Settings {
+    /// Which name it shows for a sender.
     pub display_pref: DisplayPref,
+    /// Excel: only the time, sender, type and content columns.
     pub excel_compact: bool,
+    /// When the export was made, in Unix seconds.
     pub exported_at: i64,
     /// The avatars on the HTML page: `{ username: path from the export file }`.
     pub avatars: HashMap<String, String>,
@@ -88,15 +98,24 @@ impl Default for Settings {
     }
 }
 
+/// What writes one conversation's messages in each format: the conversation, the account, and the names it shows.
 pub struct Exporter<'a, 'n> {
+    /// The conversation.
     pub session: SessionInfo,
+    /// The account's wxid, without the suffix of its folder's name.
     pub my_wxid: String,
+    /// The account's wxid as configured, which may carry that suffix.
     pub raw_my_wxid: String,
+    /// The account's own name; empty when it has none but its wxid.
     pub my_display: String,
+    /// `{ wxid: group nickname }`, the nicknames only one identity uses (see
+    /// [`build_trusted_group_nicknames`](names::build_trusted_group_nicknames)).
     pub group_nicks: HashMap<String, String>,
     /// Extra group members that never spoke (ChatLab member list).
     pub group_members: Vec<String>,
+    /// The contacts the export names.
     pub names: &'a mut NameBook<'n>,
+    /// How the messages are written.
     pub settings: Settings,
 }
 

@@ -11,6 +11,7 @@ export const reason = (problem: unknown, fallback: string) => (problem instanceo
 
 /** How an action went; an error is announced. */
 export type Note = { text: string; error?: boolean } | null;
+/** The line that says a note; nothing without one. */
 export const NoteLine = ({ note }: { note: Note }) => note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>;
 
 /** A section of the settings: its heading, a line on what it holds and where that is kept, then its groups. */
@@ -46,6 +47,7 @@ export function SettingRow({ name, text, wide, children }: { name: ReactNode; te
   </div>;
 }
 
+/** A switch: a checkbox drawn as one, named `label`. */
 export function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange(on: boolean): void }) {
   return <label className="toggle"><input type="checkbox" aria-label={label} checked={checked} onChange={event => onChange(event.target.checked)} /><span /></label>;
 }

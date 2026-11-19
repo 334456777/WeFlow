@@ -27,6 +27,7 @@ function answer(messages: Message[]): { firstIn: number; firstReply: number } {
   return { firstIn, firstReply };
 }
 
+/** `insight footprint` of the sample between two days (`YYYY-MM-DD`, either may be empty). */
 export function footprint(start: string, end: string): Footprint {
   const from = start ? dayStart(start) : 0;
   const to = end ? dayEnd(end) : Number.MAX_SAFE_INTEGER;

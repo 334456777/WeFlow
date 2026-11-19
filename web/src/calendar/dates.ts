@@ -15,17 +15,21 @@ export function weekdays(): { narrow: string; short: string; long: string }[] {
   });
 }
 
+/** The local day of `date`. */
 export function toDay(date: Date): string {
   return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
 }
 
+/** The local midnight starting `day`. */
 export function parseDay(day: string): Date {
   const [y, m, d] = day.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
 
+/** Today, local. */
 export const today = () => toDay(new Date());
 
+/** The day `days` after `day` (before it when negative). */
 export function addDays(day: string, days: number): string {
   const date = parseDay(day);
   date.setDate(date.getDate() + days);
@@ -44,7 +48,9 @@ export function addMonths(day: string, months: number): string {
 /** 0 for Monday to 6 for Sunday: the week starts on Monday. */
 export const weekdayOf = (day: string) => (parseDay(day).getDay() + 6) % 7;
 
+/** The Monday of `day`'s week. */
 export const startOfWeek = (day: string) => addDays(day, -weekdayOf(day));
+/** The Sunday of `day`'s week. */
 export const endOfWeek = (day: string) => addDays(day, 6 - weekdayOf(day));
 
 /** The 6 weeks shown for a month, Monday first: the month's days and the ones around it. */
@@ -53,8 +59,10 @@ export function monthGrid(year: number, month: number): string[][] {
   return Array.from({ length: 6 }, (_, week) => Array.from({ length: 7 }, (_, d) => addDays(first, week * 7 + d)));
 }
 
+/** The year of `day`, and its month from 0. */
 export const monthOf = (day: string) => ({ year: Number(day.slice(0, 4)), month: Number(day.slice(5, 7)) - 1 });
 
+/** `day`, or `max` when it is later. */
 export const clampDay = (day: string, max?: string) => (max && day > max ? max : day);
 
 /** What a screen reader says for a day: `2026年10月12日 星期一`, `Monday, October 12, 2026`. */

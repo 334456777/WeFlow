@@ -7,6 +7,7 @@ import { ago, at, daysSince } from './clock';
 import { pictureUrl, type Picture } from './media';
 import { CALLIGRAPHY, DESIGN, DEV, DORM, FAMILY, ME, MINDFUL, PINGPONG, USERS } from './people';
 
+/** A message of the sample, as `chat messages --parsed` answers it. */
 export type Message = ParsedMessage & { _cursor: string };
 
 /** A message as written below: who sent it, how many minutes after the one before, and what it is. */

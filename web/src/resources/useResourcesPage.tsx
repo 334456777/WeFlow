@@ -7,6 +7,7 @@ import { ALL_RESOURCES, ResourceFilterCard, resourceFilterSummary, ResourcesPage
 import { t } from '../i18n';
 import './resources.css';
 
+/** The resources page: its view and its console cards. */
 export function useResourcesPage(shell: Shell, openAt: OpenAt): Page {
   const { scope, sessionList } = shell;
   const [filter, setFilter] = useState(ALL_RESOURCES);

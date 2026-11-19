@@ -24,6 +24,7 @@ use crate::xml::decode_entities;
 
 // ───────────────────────── text helpers ─────────────────────────
 
+/// `input` without the C0 and C1 control characters, but for tab, line feed and carriage return.
 pub fn clean_utf16(input: &str) -> String {
     if input.is_empty() {
         return String::new();
@@ -67,6 +68,8 @@ fn opt(s: String) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// The label the chat window shows for a message of `local_type` without text, such as `[图片]`; `[消息]` for a type
+/// it does not name.
 pub fn message_type_label(local_type: i64) -> &'static str {
     match local_type {
         1 => "[文本]",
@@ -332,6 +335,8 @@ fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> Strin
 #[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Type49Info {
+    /// The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a
+    /// quote, `2000` a transfer, `2001` a red packet…
     #[serde(skip_serializing_if = "Option::is_none")]
     pub xml_type: Option<String>,
     /// The message's own, serialized by [`ChatMessage`].
@@ -340,38 +345,56 @@ pub struct Type49Info {
     /// The message's own, serialized by [`ChatMessage`].
     #[serde(skip)]
     pub quoted_sender: Option<String>,
+    /// The title: a link's or a mini program's, a file's name, a transfer's memo.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_title: Option<String>,
+    /// The address it opens.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_url: Option<String>,
+    /// The address of its thumbnail.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_thumb: Option<String>,
+    /// What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,
+    /// `red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_kind: Option<String>,
+    /// Its description (`<des>`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_desc: Option<String>,
+    /// The name of the app that sent it (`<appname>`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_app_name: Option<String>,
+    /// The name of the account it comes from (`<sourcename>`), such as an official account's.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_source_name: Option<String>,
+    /// The username of the account it comes from (`<sourceusername>`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_source_username: Option<String>,
+    /// The address of its thumbnail or cover.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_thumb_url: Option<String>,
+    /// The address of a song (`<musicurl>`, `<playurl>`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_music_url: Option<String>,
+    /// The address of its data (`<dataurl>`, `<lowurl>`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_data_url: Option<String>,
+    /// The label of a location it names.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_location_label: Option<String>,
+    /// The name of a Channels account.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_nickname: Option<String>,
+    /// The username of a Channels account.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_username: Option<String>,
+    /// A Channels video's cover.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_cover_url: Option<String>,
+    /// The address of a Channels account's avatar.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_avatar: Option<String>,
+    /// A Channels video's length, in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_duration: Option<i64>,
     /// The message's own, serialized by [`ChatMessage`].
@@ -386,28 +409,40 @@ pub struct Type49Info {
     /// The message's own, serialized by [`ChatMessage`].
     #[serde(skip)]
     pub location_label: Option<String>,
+    /// A song's album cover.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub music_album_url: Option<String>,
+    /// A song's address to play.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub music_url: Option<String>,
+    /// A gift's picture.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_image_url: Option<String>,
+    /// A gift's wish.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_wish: Option<String>,
+    /// A gift's price, as the message writes it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_price: Option<String>,
+    /// A file's name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
+    /// A file's size, in bytes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_size: Option<i64>,
+    /// A file's extension, without its dot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_ext: Option<String>,
+    /// A file's MD5, in lowercase.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_md5: Option<String>,
+    /// Who pays a transfer.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_payer_username: Option<String>,
+    /// Who receives a transfer.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_receiver_username: Option<String>,
+    /// A chat record's title; 「聊天记录」 when it has none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_record_title: Option<String>,
 }
@@ -663,6 +698,8 @@ fn parse_media_quote(content: &str) -> Option<String> {
 
 // ───────────────────────── media token helpers ─────────────────────────
 
+/// The token that names a video's file in `value`, a name or path: lowercase hex of 16 to 64 digits, with the `_raw`
+/// of an original kept; `None` when there is none.
 pub fn normalize_video_file_token(value: &str) -> Option<String> {
     let mut text = value.trim().to_lowercase();
     if text.is_empty() {
@@ -788,6 +825,7 @@ fn parse_emoji_info(content: &str) -> EmojiInfo {
 pub struct ChatMessage {
     /// The message's id in its conversation's table; with `createTime`, the key of `chat message`.
     pub local_id: i64,
+    /// WeChat's id of the message as a number; not serialized, `serverId` is its decimal string.
     #[serde(skip)]
     pub server_id: i64,
     /// WeChat's id of the message, in decimal: a string, as it may pass 2^53.
@@ -795,6 +833,7 @@ pub struct ChatMessage {
     pub server_id_raw: String,
     /// WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…).
     pub local_type: i64,
+    /// When it was sent.
     pub create_time: i64,
     /// WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little.
     pub sort_seq: i64,
@@ -806,40 +845,59 @@ pub struct ChatMessage {
     pub parsed_content: String,
     /// The message as WeChat keeps it (often XML).
     pub raw_content: String,
+    /// A sticker's address on WeChat's servers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_cdn_url: Option<String>,
+    /// A sticker's MD5.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_md5: Option<String>,
+    /// What a reply quotes, as the chat window shows it; an image, video or voice that answers a message has
+    /// `__SVRID__<server id>__` naming it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quoted_content: Option<String>,
+    /// The name of whom a reply quotes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quoted_sender: Option<String>,
+    /// An image's MD5, as its XML gives it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_md5: Option<String>,
+    /// The name of an image's `.dat` file, from the row's packed info or the XML.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_dat_name: Option<String>,
+    /// The MD5 that names a video's file, in lowercase.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_md5: Option<String>,
+    /// A voice's length in seconds, rounded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_duration_seconds: Option<i64>,
+    /// An image's AES key on WeChat's servers (`<img aeskey>`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aes_key: Option<String>,
+    /// An image's `encrypver`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encryp_ver: Option<i64>,
+    /// The address of an image's or a sticker's thumbnail on WeChat's servers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cdn_thumb_url: Option<String>,
+    /// The username a contact card shares.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card_username: Option<String>,
+    /// The nickname a contact card shows.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card_nickname: Option<String>,
+    /// The address of a contact card's avatar.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card_avatar_url: Option<String>,
+    /// A location's latitude.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_lat: Option<f64>,
+    /// A location's longitude.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_lng: Option<f64>,
+    /// The name of a location's place.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_poiname: Option<String>,
+    /// A location's label, its address as WeChat shows it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_label: Option<String>,
     /// Only app messages and a few others have these: boxed, the others are smaller (#505).
@@ -854,18 +912,23 @@ pub struct ChatMessage {
 const _: () = assert!(size_of::<ChatMessage>() == 584);
 
 impl ChatMessage {
+    /// [`Type49Info::link_title`], when the message has one.
     pub fn link_title(&self) -> Option<&str> {
         self.t49.as_ref()?.link_title.as_deref()
     }
+    /// [`Type49Info::file_name`], when the message has one.
     pub fn file_name(&self) -> Option<&str> {
         self.t49.as_ref()?.file_name.as_deref()
     }
+    /// [`Type49Info::file_md5`], when the message has one.
     pub fn file_md5(&self) -> Option<&str> {
         self.t49.as_ref()?.file_md5.as_deref()
     }
+    /// [`Type49Info::xml_type`], when the message has one.
     pub fn xml_type(&self) -> Option<&str> {
         self.t49.as_ref()?.xml_type.as_deref()
     }
+    /// [`Type49Info::app_msg_kind`], when the message has one.
     pub fn app_msg_kind(&self) -> Option<&str> {
         self.t49.as_ref()?.app_msg_kind.as_deref()
     }

@@ -1,3 +1,6 @@
+//! Gives the binary its version (from the git tag), its build info (commit and time) and the WebUI version it was
+//! built for (from `web/package.json`), and on Windows its 8 MiB main-thread stack.
+
 use std::process::Command;
 
 fn run(cmd: &str, args: &[&str]) -> Option<String> {

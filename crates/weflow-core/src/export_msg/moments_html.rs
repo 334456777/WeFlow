@@ -29,16 +29,19 @@ pub struct MomentPost {
     pub t: i64,
     /// The poster: an index into [`MomentsPage`]'s users (see [`MomentsPage::user`]).
     pub u: usize,
+    /// The text of the post.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub text: String,
     /// Where it was posted, as one line.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub loc: String,
+    /// Its pictures or video.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub media: Vec<MomentMedia>,
     /// The names of those who liked it.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub likes: Vec<String>,
+    /// Its comments, in order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cmts: Vec<MomentComment>,
 }
@@ -46,8 +49,10 @@ pub struct MomentPost {
 /// What a medium of a post is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum MomentMediaKind {
+    /// A picture, `img` on the page.
     #[serde(rename = "img")]
     Picture,
+    /// A video, `vid` on the page.
     #[serde(rename = "vid")]
     Video,
 }
@@ -81,9 +86,11 @@ impl MomentMedia {
 /// A comment: who wrote it, what, and whom it answers; on the page `[name, text]` or `[name, text, name answered]`.
 #[derive(Debug)]
 pub struct MomentComment {
+    /// The commenter's name.
     pub name: String,
     /// Empty for a comment of only a sticker, which the page shows as `[表情]`.
     pub text: String,
+    /// The name of whom it answers; none, or empty, when it answers no one.
     pub to: Option<String>,
 }
 
@@ -107,6 +114,7 @@ pub struct MomentsPage {
     pub keyword: Option<String>,
     /// When the posts were exported, in unix seconds.
     pub exported_at: i64,
+    /// The posts, in the order the page lists them.
     pub posts: Vec<MomentPost>,
     users: Vec<(String, String)>,
     by_username: HashMap<String, usize>,

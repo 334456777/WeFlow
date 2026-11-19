@@ -49,7 +49,9 @@ fn sort_key(sort_seq: i64, create_time: i64, local_id: i64) -> (i64, i64, i64) {
 /// A message row (see the module).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MsgRow {
+    /// The row's id in its table; unique within its message database, not across them.
     pub local_id: i64,
+    /// WeChat's id of the message; none when the row has none.
     pub server_id: Option<i64>,
     /// The type, with the sub-type of an app message in the high 32 bits (`(sub << 32) | 49`).
     pub local_type: i64,
@@ -57,9 +59,11 @@ pub struct MsgRow {
     pub sort_seq: Option<i64>,
     /// Unix seconds.
     pub create_time: Option<i64>,
+    /// WeChat's `status` column.
     pub status: Option<i64>,
     /// The sender's username; none when `Name2Id` has no row for it.
     pub sender: Option<String>,
+    /// Whether the account's owner sent it.
     pub is_send: bool,
     /// `compress_content` when it holds anything, else `message_content`: inflated (zstd) and decoded as text.
     pub content: String,

@@ -92,6 +92,7 @@ fn shared_cache() -> Arc<Mutex<Cache>> {
         .clone()
 }
 
+/// One WeChat account's databases, opened read-only with its key: every query of the database layer is a method of it.
 pub struct Account {
     db_storage: PathBuf,
     raw_key: [u8; 32],
@@ -145,6 +146,7 @@ pub(crate) fn value_to_json(column: &str, v: ValueRef<'_>) -> Value {
     }
 }
 
+/// `bytes` in lowercase hex.
 pub fn hex(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -221,6 +223,7 @@ impl Account {
             .is_some_and(|me| same_identity(sender, me))
     }
 
+    /// The account's `db_storage` folder.
     pub fn db_storage(&self) -> &Path {
         &self.db_storage
     }
@@ -506,6 +509,7 @@ impl Account {
         })
     }
 
+    /// `session/session.db` of the account's `db_storage`.
     pub fn session_db(&self) -> PathBuf {
         self.db_path("session/session.db")
     }

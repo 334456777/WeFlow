@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError } from './api/client';
 import { t } from './i18n';
 
+/** Where a read stands: loading, its answer, or why it failed, in words. */
 export type Read<T> = { status: 'loading' } | { status: 'ready'; value: T } | { status: 'error'; message: string };
 
 /** What `read` answers, read again when `key` changes or `retry` is called. */

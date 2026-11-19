@@ -11,6 +11,7 @@ import { useRead } from '../useRead';
 import { weekdays } from '../calendar/dates';
 import { t } from '../i18n';
 
+/** A report that could not be made: why, and a button to try again. */
 export const Failed = ({ title, message, onRetry }: { title: string; message: string; onRetry(): void }) =>
   <div className="pane-message" role="alert"><strong>{title}</strong><p>{message}</p>
     <button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={12} />{t('重试')}</button></div>;
@@ -46,6 +47,7 @@ export function Phrases({ phrases, label = t('常用语') }: { phrases: AnnualRe
   </ul>;
 }
 
+/** The annual report, moment by moment. */
 export function AnnualReportView({ report }: { report: AnnualReport }) {
   const r = report;
   const span = r.year ? t('{year} 年', { year: r.year }) : t('这些年');

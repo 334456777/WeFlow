@@ -14,7 +14,10 @@ pub enum PtraceAccess {
     Allowed,
     /// `ptrace_scope` (1 or 2) allows attaching only with `CAP_SYS_PTRACE`, which this process does not have:
     /// running as root, or setting the scope to 0, allows it.
-    NeedsCapability { scope: u8 },
+    NeedsCapability {
+        /// The value of `ptrace_scope`.
+        scope: u8,
+    },
     /// `ptrace_scope` is 3: no process may attach, root included, until the system restarts.
     Disabled,
 }

@@ -11,6 +11,7 @@ import { msg, t } from '../i18n';
 // shown through t()
 const STATUS: Record<Job['status'], string> = { queued: msg('排队中'), running: msg('正在运行'), succeeded: msg('已完成'), failed: msg('未完成'), cancelled: msg('已取消') };
 
+/** A file's size in B, KB or MB. */
 export const formatSize = (bytes: number) =>
   bytes < 1024 ? bytes + ' B' : bytes < 1024 * 1024 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1024 / 1024).toFixed(1) + ' MB';
 
@@ -59,6 +60,7 @@ function JobRow({ job, label }: { job: Job; label: string }) {
   </li>;
 }
 
+/** The jobs, newest first, each with where it stands and what can be done with it; `empty` without any. */
 export function TaskCenter({ jobs, names, empty = t('还没有任务。导出等耗时的命令会在这里排队、显示进度。') }: {
   jobs: JobsState;
   /** The conversations by id, to name the one a job started elsewhere exports. */

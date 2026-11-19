@@ -32,6 +32,7 @@ const backupPath = (job: Job) => {
   return typeof out === 'string' ? out : null;
 };
 
+/** The backup page: making a backup, the ones this tab made, and inspecting or restoring one. */
 export function BackupPage({ jobs }: { jobs: JobsState }) {
   const [parts, setParts] = useState<BackupChoice>({ images: false, videos: false, files: false, emojis: false });
   const [note, setNote] = useState<Note>(null);

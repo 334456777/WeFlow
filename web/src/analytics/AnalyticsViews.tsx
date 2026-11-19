@@ -9,8 +9,11 @@ import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import type { AnalyticsState } from './useAnalytics';
 import { locale, t } from '../i18n';
 
+/** A count with the page's separators. */
 export const n = (value: number) => value.toLocaleString(locale());
+/** The local date of Unix seconds; `—` for none. */
 export const day = (seconds: number | null) => (seconds ? new Date(seconds * 1000).toLocaleDateString(locale()) : '—');
+/** `part` as a percentage of `whole`, to one decimal; `0%` of nothing. */
 export const share = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0) + '%';
 
 /** Bars standing side by side, as tall as their share of the largest; `ticks` names some of them underneath. */
@@ -60,6 +63,7 @@ function RankRow({ rank, person, top, canChat, onChat }: { rank: number; person:
   </li>;
 }
 
+/** The private chats' analytics: the totals, the rankings and when the messages are sent. */
 export function PrivateAnalytics({ state, onReload, canChat, onChat }: {
   state: AnalyticsState; onReload(): void; canChat(username: string): boolean; onChat(username: string): void;
 }) {

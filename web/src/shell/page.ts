@@ -53,6 +53,7 @@ export type ChatWith = (username: string) => void;
 /** Opens the chat page at a message of a conversation. */
 export type OpenAt = (sessionId: string, localId: number, createTime: number) => void;
 
+/** What a page gives the workspace. */
 export interface Page {
   /** What the page shows beside the navigation; none while it has no records to show (the chat page's is shown). */
   view?: ReactNode;

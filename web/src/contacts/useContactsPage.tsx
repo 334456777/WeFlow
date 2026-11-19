@@ -11,6 +11,7 @@ import { useContacts } from './useContacts';
 import { locale, t } from '../i18n';
 import './contacts.css';
 
+/** The contacts page: its view and its console cards. */
 export function useContactsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { backend, records, scope, setMobileDetail } = shell;
   const [state, reload] = useContacts(active && records, scope);

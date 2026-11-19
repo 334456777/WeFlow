@@ -139,6 +139,7 @@ function CommandForm({ cmd }: { cmd: ConsoleCommand }) {
   </form>;
 }
 
+/** The console: the command picked, its form, its command line and its answer. */
 export function CommandConsole({ pick, onPicked }: {
   /** A command to open, chosen from outside (the tools above the console). */
   pick: string | null;

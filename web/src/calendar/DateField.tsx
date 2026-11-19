@@ -7,6 +7,7 @@ import { Calendar, openingDay } from './Calendar';
 import { today } from './dates';
 import { t } from '../i18n';
 
+/** A field of one day, and its calendar. */
 export function DateField({ value, onChange, onOpen, max = today(), marks, label, placeholder = t('选择日期') }: {
   value: string;
   onChange: (day: string) => void;

@@ -26,11 +26,13 @@ use crate::error::{AppError, AppResult};
 /// Where the versions are published.
 pub const REGISTRY: &str = "https://ghcr.io";
 const REPOSITORY: &str = "334456777/weflow-web";
-/// The artifact type of a WebUI version, and the media type of its one layer (the page, zipped).
+/// The artifact type of a WebUI version.
 pub const ARTIFACT_TYPE: &str = "application/vnd.weflow.web.v1";
+/// The media type of a version's one layer: the page, zipped.
 pub const LAYER_TYPE: &str = "application/vnd.weflow.web.layer.v1+zip";
-/// Annotations of the manifest, read before the download: the API it needs and the oldest `weflow` it runs on.
+/// The annotation of the manifest that says the API version the page needs, read before the download.
 pub const ANNOTATION_API: &str = "io.weflow.web.api-version";
+/// The annotation of the manifest that says the oldest `weflow` the page runs on.
 pub const ANNOTATION_MIN_BACKEND: &str = "io.weflow.web.min-backend-version";
 
 /// The most a package may weigh, and the most it may unpack to, in how many files.
@@ -42,16 +44,22 @@ const MAX_FILES: usize = 10_000;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebMeta {
+    /// The package's name, `weflow-web`.
     pub name: String,
+    /// The page's version.
     pub version: String,
+    /// The API version it was built for (`weflow.apiVersion`).
     pub api_version: String,
+    /// The oldest `weflow` it runs on (`weflow.minBackendVersion`).
     pub min_backend_version: String,
 }
 
 /// What a page has to suit: the command API's version, and this `weflow`'s.
 #[derive(Debug, Clone, Copy)]
 pub struct Backend<'a> {
+    /// The command API's version.
     pub api_version: &'a str,
+    /// This `weflow`'s version.
     pub version: &'a str,
 }
 
@@ -149,14 +157,17 @@ pub struct WebStore {
 }
 
 impl WebStore {
+    /// The store in the folder `root`.
     pub fn new(root: PathBuf) -> Self {
         Self { root }
     }
 
+    /// Its folder.
     pub fn root(&self) -> &Path {
         &self.root
     }
 
+    /// The folder a version is kept in, whether it is there or not.
     pub fn dir(&self, version: &str) -> PathBuf {
         self.root.join(version)
     }
@@ -351,10 +362,15 @@ fn read_meta(dir: &Path) -> AppResult<WebMeta> {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Published {
+    /// The version, the manifest's tag.
     pub version: String,
+    /// The digest of its layer.
     pub digest: String,
+    /// The size of its layer, in bytes.
     pub size: u64,
+    /// The API version it needs; none when the manifest leaves it out.
     pub api_version: Option<String>,
+    /// The oldest `weflow` it runs on; none when the manifest leaves it out.
     pub min_backend_version: Option<String>,
 }
 
@@ -388,6 +404,10 @@ pub struct Registry {
 }
 
 impl Registry {
+    /// The repository `repository` of the registry at `base`.
+    ///
+    /// # Errors
+    /// When the HTTP client cannot be built.
     pub fn new(base: &str, repository: &str) -> AppResult<Self> {
         let client = crate::http_client::builder()
             .connect_timeout(Duration::from_secs(20))

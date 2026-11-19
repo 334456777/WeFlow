@@ -74,8 +74,11 @@ fn pick_pids(entries: impl IntoIterator<Item = (String, u32)>, images: &[&str]) 
 /// A running process: its executable file name, id and parent's id.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Process {
+    /// The executable's file name, such as `Weixin.exe`.
     pub image: String,
+    /// The process id.
     pub pid: u32,
+    /// The parent's process id.
     pub parent: u32,
 }
 

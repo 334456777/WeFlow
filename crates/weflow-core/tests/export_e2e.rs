@@ -1,3 +1,5 @@
+//! The message exports on a synthetic account: what each format writes of senders, quotes and group nicknames, and
+//! how a range or a format that does not fit fails.
 mod common;
 
 use serde_json::Value;

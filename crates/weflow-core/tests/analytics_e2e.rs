@@ -1,3 +1,5 @@
+//! The analytics of the private chats on a synthetic account: the rankings, the time distribution and the people
+//! left out.
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"

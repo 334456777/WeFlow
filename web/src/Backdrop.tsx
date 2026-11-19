@@ -15,6 +15,7 @@ export function backdropCount(root: Element = document.documentElement): number 
   return Number.isFinite(count) && count > 0 ? count : 0;
 }
 
+/** The skin's decoration layer; nothing for a skin without decorations. */
 export function Backdrop() {
   // the count is the skin's: read again when another skin is put on
   useSkinOn();

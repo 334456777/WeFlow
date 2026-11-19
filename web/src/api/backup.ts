@@ -4,11 +4,13 @@ import { get } from './client';
 import { msg, t } from '../i18n';
 import type * as Contract from './contract.gen';
 
+/** A file in a backup. */
 export type BackupEntry = Contract.BackupEntry;
 
 /** What `backup inspect` reads from a backup (the contract's, #430). */
 export type BackupManifest = Contract.BackupManifest;
 
+/** `backup inspect`: the manifest of the backup at `path` on the server's computer. */
 export const inspectBackup = (path: string, signal?: AbortSignal) => get<BackupManifest>('backup/inspect', { path }, signal);
 
 /** What `backup create` adds to the databases, which it always holds (with the voice messages in them, #643). */

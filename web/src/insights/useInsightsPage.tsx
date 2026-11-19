@@ -9,6 +9,7 @@ import { useInsights, type InsightFilter } from './useInsights';
 import { t } from '../i18n';
 import './insights.css';
 
+/** The insights page: its view and its console cards. */
 export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { backend, records, scope, setMobileDetail } = shell;
   const [filter, setFilter] = useState<InsightFilter>({ keyword: '', session: null });

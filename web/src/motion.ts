@@ -91,6 +91,7 @@ export function durationMs(token: string, element: Element = document.documentEl
   return value.endsWith('ms') ? amount : value.endsWith('s') ? amount * 1000 : 0;
 }
 
+/** What `usePresence` keeps of a value that comes and goes: the last one shown, and whether it is leaving. */
 export interface Presence<T> {
   value: T;
   /** True while the exit animation plays; the element is removed after `--duration-exit`. */

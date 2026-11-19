@@ -11,6 +11,7 @@ import { SaveReport } from './SaveReport';
 import { t } from '../i18n';
 import './reports.css';
 
+/** The reports page: its view and its console cards. */
 export function useReportsPage(shell: Shell): Page {
   const { scope } = shell;
   const [mode, setMode] = useState<'annual' | 'dual'>('annual');

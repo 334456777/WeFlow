@@ -5,12 +5,14 @@ import { ApiError } from '../api/client';
 import { t } from '../i18n';
 import { contactList, type Contact } from '../api/contacts';
 
+/** The contact list as read: not yet, being read, read, or why it failed. */
 export type ContactsState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'ready'; contacts: Contact[] }
   | { status: 'error'; message: string };
 
+/** The contact list once `enabled`, and what reads it again. */
 export function useContacts(enabled: boolean, scope: number): [ContactsState, () => void] {
   const [state, setState] = useState<ContactsState>({ status: 'idle' });
   const [round, setRound] = useState(0);

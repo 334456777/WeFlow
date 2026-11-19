@@ -61,12 +61,15 @@ impl AppContext {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ConfigStore {
+    /// The profile the commands read; `default` in a new file.
     pub current_profile: String,
     /// Output language chosen with `weflow lang en|zh` (`None` = follow the system).
     pub lang: Option<String>,
     /// Options of `weflow serve` saved here (`serve_*` keys), used where its command line gives none.
     pub serve: ServeSettings,
+    /// The profiles, by name.
     pub profiles: BTreeMap<String, ProfileConfig>,
+    /// The file's other top-level keys, kept as they are.
     pub extra: BTreeMap<String, Value>,
 }
 
@@ -174,21 +177,35 @@ impl ServeSettings {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ProfileConfig {
+    /// WeChat's data directory (`db_path`).
     pub db_path: Option<String>,
+    /// The database key, in hex (`decrypt_key`).
     pub decrypt_key: Option<String>,
+    /// The account's wxid (`wxid`).
     pub wxid: Option<String>,
+    /// The image XOR key, 0 to 255 (`image_xor_key`).
     pub image_xor_key: Option<i64>,
+    /// The image AES key (`image_aes_key`).
     pub image_aes_key: Option<String>,
+    /// The folder of the cached images, voices, stickers and Moments (`cache_path`); `cache` beside the config file
+    /// when unset.
     pub cache_path: Option<String>,
+    /// The access token of `weflow serve`'s HTTP API (`http_api_token`).
     pub http_api_token: Option<String>,
     /// The API format of the model API, `openai` or `anthropic`. Kept as text, so that a file edited by hand still
     /// loads; read as `openai` when it is neither.
     pub ai_model_api_format: Option<String>,
+    /// The model API's base URL; the service of the format when unset.
     pub ai_model_api_base_url: Option<String>,
+    /// The model API's key.
     pub ai_model_api_key: Option<String>,
+    /// The model asked for.
     pub ai_model_api_model: Option<String>,
+    /// The most tokens of one answer.
     pub ai_model_api_max_tokens: Option<u32>,
+    /// Whether the AI insights run.
     pub ai_insight_enabled: Option<bool>,
+    /// The profile's other keys (those the WebUI keeps, such as `autoDownloadWhitelist`), kept as they are.
     pub extra: BTreeMap<String, Value>,
 }
 
@@ -207,6 +224,10 @@ impl Default for ConfigStore {
 }
 
 impl ConfigStore {
+    /// The config file at `path`, as JSON or TOML; the default config when there is none.
+    ///
+    /// # Errors
+    /// When the file cannot be read or parsed.
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
@@ -275,16 +296,20 @@ impl ConfigStore {
         Ok(result)
     }
 
+    /// The profile `name`, else the current one; `None` when there is no such profile.
     pub fn profile(&self, name: Option<&str>) -> Option<&ProfileConfig> {
         let name = name.unwrap_or(&self.current_profile);
         self.profiles.get(name)
     }
 
+    /// The profile `name`, else the current one, made empty when there is no such profile.
     pub fn profile_mut(&mut self, name: Option<&str>) -> &mut ProfileConfig {
         let name = name.unwrap_or(&self.current_profile).to_string();
         self.profiles.entry(name).or_default()
     }
 
+    /// The value of `key` (`config get`): a setting of the file itself, else of the profile `profile`, else of the
+    /// one `key` names (`work.wxid`), else of the current one; `null` when it is not set.
     pub fn get_key(&self, profile: Option<&str>, key: &str) -> Value {
         if key == "current_profile" || key == "currentProfile" {
             return Value::String(self.current_profile.clone());
@@ -335,6 +360,11 @@ impl ConfigStore {
         self.profiles.contains_key(name) || self.current_profile == name
     }
 
+    /// Sets `key` to `value` (`config set`), in the file itself or in a profile as [`Self::get_key`] finds it; a key
+    /// WeFlow does not read goes to the profile's `extra`.
+    ///
+    /// # Errors
+    /// A usage error for a value the key does not take, or a profile named in `key` that does not exist.
     pub fn set_key(&mut self, profile: Option<&str>, key: &str, value: Value) -> AppResult<()> {
         if key == "lang" {
             let lang = as_string(value)?;
@@ -421,6 +451,7 @@ impl ConfigStore {
         Ok(())
     }
 
+    /// Unsets `key` (`config unset`), found as [`Self::get_key`] finds it.
     pub fn unset_key(&mut self, profile: Option<&str>, key: &str) {
         if key == "lang" {
             self.lang = None;
@@ -490,6 +521,7 @@ impl ConfigStore {
 }
 
 impl ProfileConfig {
+    /// The value of `key`, by its `snake_case` or `camelCase` name; `null` when it is not set.
     pub fn get_key(&self, key: &str) -> Value {
         match key {
             "db_path" | "dbPath" => self
