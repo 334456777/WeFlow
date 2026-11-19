@@ -166,7 +166,7 @@ fn human_event(event: &Value) -> String {
             }
         }
         "webui_unavailable" => {
-            let (version, error) = (text("version"), text("error"));
+            let (version, error) = (text("version"), crate::locale::localize(text("error")));
             match (zh(), enabled("kept")) {
                 (true, true) => format!("网页 {version} 下载失败（{error}），继续使用已有的版本\n"),
                 (true, false) => format!("网页 {version} 下载失败（{error}），只提供 API\n"),

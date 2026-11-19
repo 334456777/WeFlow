@@ -8725,7 +8725,7 @@
               "string",
               "null"
             ],
-            "description": "The version `serve` shows; null when none is downloaded."
+            "description": "The version `serve` shows when it starts: one kept here that suits this weflow; null when there is none."
           },
           "path": {
             "type": [
@@ -8749,10 +8749,11 @@
               "string",
               "null"
             ],
-            "description": "The version `serve` would show."
+            "description": "The version `serve` would show: downloaded beside it when it is not kept here."
           },
           "downloaded": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether `wanted` is kept here."
           },
           "store": {
             "type": "string",
@@ -8763,6 +8764,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why `serve` passes over the version picked (it does not suit this weflow) and what to do about it; null when\nit does not."
           }
         },
         "required": [
@@ -8773,7 +8781,8 @@
           "wanted",
           "downloaded",
           "store",
-          "installed"
+          "installed",
+          "note"
         ],
         "description": "What `web info` answers: the WebUI `serve` shows, and the versions downloaded."
       },
@@ -8794,7 +8803,7 @@
           },
           "inUse": {
             "type": "boolean",
-            "description": "The one `serve` shows."
+            "description": "The one `serve` shows when it starts."
           },
           "picked": {
             "type": "boolean",
