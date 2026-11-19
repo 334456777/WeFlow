@@ -75,8 +75,9 @@ pub struct ApiConfig {
     pub check_host: bool,
     /// Print each request on stderr (`--log-requests`): method, path, status and time, never the query.
     pub log_requests: bool,
-    /// The WebUI served at `/ui/` (issue #146), if any; set later when its version is downloaded beside the server.
-    pub ui: Arc<std::sync::RwLock<Option<ui::UiDir>>>,
+    /// The WebUI served at `/ui/` (issue #146), or why there is none; set later when its version is downloaded beside
+    /// the server, or that fails (issue #946).
+    pub ui: Arc<std::sync::RwLock<ui::Ui>>,
     /// The versions kept by `weflow web` that `ui` comes from, unless `--ui-dir`, `--web-version` or `--api-only`
     /// chose otherwise: once `web use` or `web update` answers through the API, the version it chose is shown.
     pub web_store: Option<weflow_core::webui::WebStore>,
@@ -541,16 +542,12 @@ async fn open_route(st: &AppState, parts: &Parts) -> Option<Response> {
         .filter(|r| r.is_empty() || r.starts_with('/'))
     {
         let shown = st.cfg.ui.read_or_panic().clone();
-        return Some(match &shown {
-            Some(dir) => ui::serve(dir, &parts.method, rest, parts.uri.query()).await,
-            None => error_response(
-                StatusCode::NOT_FOUND,
-                "not_found",
-                "no WebUI is served; start serve with --ui-dir <a built WebUI>",
-            ),
-        });
+        return Some(ui::answer(&shown, &parts.method, rest, parts.uri.query()).await);
     }
-    if path == "/" && st.cfg.ui.read_or_panic().is_some() && parts.method == Method::GET {
+    if path == "/"
+        && !matches!(*st.cfg.ui.read_or_panic(), ui::Ui::Absent)
+        && parts.method == Method::GET
+    {
         let to = format!(
             "/ui/{}",
             parts
@@ -979,7 +976,7 @@ fn show_chosen(cfg: &ApiConfig, doc: &Value) {
         return;
     };
     if let Some(dir) = ui::UiDir::open_version(store, version) {
-        *cfg.ui.write_or_panic() = Some(dir);
+        *cfg.ui.write_or_panic() = ui::Ui::Page(dir);
     }
 }
 
