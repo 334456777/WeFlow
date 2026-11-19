@@ -2,13 +2,12 @@ name: Docs check
 
 # Changes to the READMEs or CLAUDE.md only run `make docs-check`: the READMEs' links and anchors resolve, and commas
 # next to Chinese text are full-width. Code changes are covered by ci.yml, which runs this check as well.
+#
+# Every pull request runs this workflow, so `Docs check passed`, the check of it the ruleset of main requires, always
+# reports: the `changes` job reads the files the pull request changes, and `make docs-check` runs only when they include
+# the paths of `on.push`. A pull request that changes none of them skips it, and `Docs check passed` passes.
 on:
   pull_request:
-    paths:
-      - "README.md"
-      - "README.zh-CN.md"
-      - "CLAUDE.md"
-      - ".github/workflows/docs-check.yml"
   push:
     branches: [main]
     paths:
@@ -29,8 +28,39 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Whether a pull request changes the READMEs or CLAUDE.md, by the paths of its files (a renamed file's old path
+  # too), those of `on.push`. A push or a run by hand runs the check.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      docs: ${{ steps.files.outputs.docs }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$PR" ]; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          docs=false
+          while read -r path; do
+            case "$path" in
+              README.md | README.zh-CN.md | CLAUDE.md | .github/workflows/docs-check.yml) docs=true ;;
+            esac
+          done <<< "$files"
+          echo "docs=$docs" | tee -a "$GITHUB_OUTPUT"
+
   docs-check:
     name: make docs-check
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -47,3 +77,18 @@ jobs:
 
       - name: make docs-check
         run: make docs-check
+
+  # The check of this workflow the ruleset of main requires: `make docs-check` passed, or was skipped as the pull
+  # request changes neither the READMEs nor CLAUDE.md. Re-running the failed jobs runs it again.
+  passed:
+    name: Docs check passed
+    needs: [changes, docs-check]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "* | *" cancelled "*) exit 1 ;; esac

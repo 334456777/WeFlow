@@ -8,35 +8,12 @@ name: CI
 # covers the three main platforms. The tests use the
 # dev profile like Linux and macOS: the release profile (thin LTO, one codegen unit) took ~13 minutes to compile
 # the ~20 test binaries and ~1 minute to run them.
+#
+# Every pull request runs this workflow, so `CI passed`, the check of it the ruleset of main requires, always reports:
+# the `changes` job reads the files the pull request changes, and the jobs run only when they include the code (the
+# paths of `on.push`). A pull request that changes none of it skips them, and `CI passed` passes.
 on:
   pull_request:
-    paths:
-      - "crates/**"
-      # the HTML export's templates and their colours, the script that makes them small and the copies
-      # html-template.yml commits from them: a pull request's paths are all it changes, the copies included, so they
-      # are tested on main
-      - "!crates/weflow-core/src/export_msg/template.html"
-      - "!crates/weflow-core/src/export_msg/list.html"
-      - "!crates/weflow-core/src/export_msg/moments.html"
-      - "!crates/weflow-core/src/export_msg/colours.css"
-      - "!crates/weflow-core/src/export_msg/build.mjs"
-      - "!crates/weflow-core/src/export_msg/template.zh.html"
-      - "!crates/weflow-core/src/export_msg/template.en.html"
-      - "!crates/weflow-core/src/export_msg/list.zh.html"
-      - "!crates/weflow-core/src/export_msg/list.en.html"
-      - "!crates/weflow-core/src/export_msg/moments.zh.html"
-      - "!crates/weflow-core/src/export_msg/moments.en.html"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - "clippy.toml"
-      - ".cargo/**"
-      - "Makefile"
-      # the contract the tests keep equal to the answers (#399)
-      - "web/contract/**"
-      # the API version the page asks for, which a test keeps equal to the server's
-      - "web/package.json"
-      - ".github/workflows/ci.yml"
   push:
     branches: [main]
     paths:
@@ -72,8 +49,43 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Whether a pull request changes the code, by the paths of its files (a renamed file's old path too): those of
+  # `on.push`, but not the HTML export's templates, their colours, the script that makes them small or the copies
+  # html-template.yml commits from them, which are tested on main. A push or a run by hand runs every job.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$PR" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          t=crates/weflow-core/src/export_msg
+          code=false
+          while read -r path; do
+            case "$path" in
+              "$t"/template*.html | "$t"/list*.html | "$t"/moments*.html | "$t"/colours.css | "$t"/build.mjs) ;;
+              crates/* | Cargo.toml | Cargo.lock | rust-toolchain.toml | clippy.toml | .cargo/* | Makefile | \
+                web/contract/* | web/package.json | .github/workflows/ci.yml) code=true ;;
+            esac
+          done <<< "$files"
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
   ci:
     name: make ci (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -100,6 +112,8 @@ jobs:
 
   windows:
     name: build and test (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -150,6 +164,8 @@ jobs:
 
   docs-check:
     name: make docs-check
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -168,3 +184,18 @@ jobs:
 
       - name: make docs-check
         run: make docs-check
+
+  # The check of this workflow the ruleset of main requires: every job above passed, or was skipped as the pull
+  # request changes no code. Re-running the failed jobs runs it again.
+  passed:
+    name: CI passed
+    needs: [changes, ci, windows, docs-check]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "* | *" cancelled "*) exit 1 ;; esac

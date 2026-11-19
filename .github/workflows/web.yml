@@ -4,12 +4,12 @@ name: WebUI
 # type-check it, run its tests and build it. The build is uploaded so a run's output can be tried with
 # `weflow serve --ui-dir`; web-release.yml publishes it (#148). Beside that, the smoke test tries the build in headless
 # Chrome over a `weflow serve` of the synthetic account (#789), which a change to that account runs too.
+#
+# Every pull request runs this workflow, so `WebUI passed`, the check of it the ruleset of main requires, always
+# reports: the `changes` job reads the files the pull request changes, and the jobs run only when they include the
+# paths of `on.push`. A pull request that changes none of them skips them, and `WebUI passed` passes.
 on:
   pull_request:
-    paths:
-      - "web/**"
-      - "crates/weflow-cli/examples/dev_account.rs"
-      - ".github/workflows/web.yml"
   push:
     branches: [main]
     paths:
@@ -26,8 +26,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Whether a pull request changes the WebUI, by the paths of its files (a renamed file's old path too), those of
+  # `on.push`. A push or a run by hand runs every job.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      web: ${{ steps.files.outputs.web }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$PR" ]; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          web=false
+          while read -r path; do
+            case "$path" in
+              web/* | crates/weflow-cli/examples/dev_account.rs | .github/workflows/web.yml) web=true ;;
+            esac
+          done <<< "$files"
+          echo "web=$web" | tee -a "$GITHUB_OUTPUT"
+
   check:
     name: typecheck, test and build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -111,6 +142,8 @@ jobs:
   # has, over a `weflow serve --ui-dir web/dist` of the synthetic account (#789): web/smoke/checks.ts
   smoke:
     name: smoke test of the build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -156,3 +189,18 @@ jobs:
           path: target/web-smoke/*.png
           if-no-files-found: ignore
           retention-days: 14
+
+  # The check of this workflow the ruleset of main requires: every job above passed, or was skipped as the pull
+  # request changes nothing of the WebUI. Re-running the failed jobs runs it again.
+  passed:
+    name: WebUI passed
+    needs: [changes, check, smoke]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "* | *" cancelled "*) exit 1 ;; esac
