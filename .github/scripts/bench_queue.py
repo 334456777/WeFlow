@@ -18,6 +18,9 @@ night is over. Nothing in the queue is ever cancelled or replaced, as runs waiti
   - with `night` on, the request goes to the end of the queue, its commits resolved to full SHAs (a branch or HEAD
     stays the commit it was when asked for); when it is night already, the measure job takes the queue at once
     (`mode=drain`), else the run at 23:30 does (`mode=none`)
+  - the run at 23:30 first puts into the queue the PRs labeled `bench` merged since it last looked, each measured
+    before and after it ([`queue_bench_prs`]); the queue's `labeled` holds the PRs it looked at already, so that each
+    is queued once
   - the run at 23:30: `mode=drain` when the queue holds a request; with an empty queue, only on Friday nights
     ([`calibration_night`]), so that the runner looks whether the calibration of #605 changed the profile: a new
     profile is a new environment, and bench-commits.py `--backfill` measures it first on [`backfill_commits`], from
@@ -82,6 +85,12 @@ def is_branch(ref):
                                                              or has(f"refs/remotes/origin/{ref}"))
 
 
+def merged_here(sha):
+    """Whether the commit `sha` is in the history of the checkout's HEAD, which on the schedule is the default
+    branch."""
+    return subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True).returncode == 0
+
+
 def resolve_commits(text):
     """[{ref, sha}] of a comma separated list of `[NAME=]REF`: a commit is named by NAME, else by REF; a branch moves
     on, so its name alone would later stand for another commit, and the commit goes with it (`branch@sha`)."""
@@ -112,6 +121,25 @@ def api(path):
         return json.load(reply)
 
 
+def merged_bench_prs():
+    """The PRs labeled `bench` that were merged, the oldest merged first, as the issues API lists them (`number`,
+    `pull_request.merged_at`; no merge commit): of the hundred updated last, which hold every PR merged or labeled
+    lately."""
+    items = api("/issues?labels=bench&state=closed&sort=updated&direction=desc&per_page=100")
+    merged = [i for i in items if (i.get("pull_request") or {}).get("merged_at")]
+    return sorted(merged, key=lambda i: i["pull_request"]["merged_at"])
+
+
+def merge_commit(number):
+    """The commit a merged PR made on its base branch; the PRs of a stack merged together share one."""
+    return api(f"/pulls/{number}")["merge_commit_sha"]
+
+
+def pr_commits(number, sha):
+    """What a merged PR is measured on: before it (`#N前`, its merge commit's first parent) and after it (`#N后`)."""
+    return f"#{number}前={sha}^,#{number}后={sha}"
+
+
 def backfill_commits():
     """What a new environment is measured on first, so it holds results to compare at once: the three newest releases
     (no release candidate), then the four PRs labeled `bench` merged last, each before and after it (`#N前`, `#N后`),
@@ -119,10 +147,7 @@ def backfill_commits():
     releases = [r for r in api("/releases?per_page=100")
                 if not r["draft"] and not r["prerelease"] and re.fullmatch(r"v\d+\.\d+\.\d+", r["tag_name"])]
     items = [r["tag_name"] for r in sorted(releases, key=lambda r: r["published_at"])[-3:]]
-    prs = [api(f"/pulls/{i['number']}") for i in api("/issues?labels=bench&state=closed&per_page=100")
-           if i.get("pull_request")]
-    for pr in sorted((p for p in prs if p["merged_at"]), key=lambda p: p["merged_at"])[-4:]:
-        items += [f"#{pr['number']}前={pr['merge_commit_sha']}^", f"#{pr['number']}后={pr['merge_commit_sha']}"]
+    items += [pr_commits(pr["number"], merge_commit(pr["number"])) for pr in merged_bench_prs()[-4:]]
     return ",".join(items)
 
 
@@ -144,25 +169,32 @@ def save_queue(pages, queue):
         json.dump(queue, f, ensure_ascii=False, indent=1)
 
 
-def request_from_env():
-    """The request of this run, from what bench.yml passes in the environment."""
+def new_request(request_id, commits, options, force=False, release_tag=""):
+    """A request of the queue, of `commits` as resolve_commits gives them, asked for by this run of the workflow."""
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
     run_id = os.environ.get("GITHUB_RUN_ID", "0")
-    commits = resolve_commits(os.environ.get("COMMITS", ""))
-    if not commits:
-        raise SystemExit("no commits asked for")
     return {
-        "id": f"{run_id}-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}",
+        "id": request_id,
         "asked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "run": f"{server}/{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{run_id}",
         "commits": ",".join(spec(c) for c in commits),
         # two commits asked for are a base and a head: kept apart, since `commits` shrinks to what is left when a
         # forced request is cut short by the end of the night
         "pair": [spec(c) for c in commits] if len(commits) == 2 else None,
-        **{k: (os.environ.get(k.upper()) or default) for k, default in OPTIONS.items()},
-        "force": os.environ.get("FORCE") == "1",
-        "release_tag": os.environ.get("RELEASE_TAG", ""),
+        **options,
+        "force": force,
+        "release_tag": release_tag,
     }
+
+
+def request_from_env():
+    """The request of this run, from what bench.yml passes in the environment."""
+    commits = resolve_commits(os.environ.get("COMMITS", ""))
+    if not commits:
+        raise SystemExit("no commits asked for")
+    run = f"{os.environ.get('GITHUB_RUN_ID', '0')}-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
+    options = {k: (os.environ.get(k.upper()) or default) for k, default in OPTIONS.items()}
+    return new_request(run, commits, options, os.environ.get("FORCE") == "1", os.environ.get("RELEASE_TAG", ""))
 
 
 def names(request):
@@ -170,11 +202,49 @@ def names(request):
     return "，".join(item.rpartition("=")[0] or item[:10] for item in request["commits"].split(","))
 
 
+def queue_bench_prs(queue):
+    """Puts into the queue each PR labeled `bench` merged since the last look, before and after it, the oldest merged
+    first, and says what it did. The queue's `labeled` holds the PRs looked at already, so that each is queued once,
+    also after its request was measured and left the queue; the first look, with no `labeled` yet, records the PRs
+    merged until then without queuing them. The PRs of a stack merged together share a merge commit, queued once, for
+    the first of them. A PR the API did not answer for, or whose merge commit the checkout of the default branch does
+    not hold yet, is not recorded, and the next night looks at it again."""
+    try:
+        merged = merged_bench_prs()
+    except (OSError, ValueError, KeyError) as e:
+        return [f"- 没能列出带 `bench` 标签的 PR（{e}），下一晚再查"]
+    if "labeled" not in queue:
+        queue["labeled"] = sorted(pr["number"] for pr in merged)
+        return [f"- 第一次检查带 `bench` 标签的 PR：已合并的 {len(merged)} 个只记下，不排队"]
+    said, queued = [], {}
+    for number in (pr["number"] for pr in merged if pr["number"] not in queue["labeled"]):
+        try:
+            sha = merge_commit(number)
+        except (OSError, ValueError, KeyError) as e:
+            said.append(f"- 没能取到 #{number} 的合并提交（{e}），下一晚再查")
+            continue
+        if not sha or not merged_here(sha):
+            said.append(f"- #{number} 的合并提交还不在默认分支上，下一晚再查")
+            continue
+        if sha in queued:
+            said.append(f"- #{number} 与 #{queued[sha]} 是同一个合并提交，不另外排队")
+        else:
+            request = new_request(f"pr-{number}", resolve_commits(pr_commits(number, sha)), dict(OPTIONS))
+            queue["requests"].append(request)
+            queued[sha] = number
+            said.append(f"- 新合并的 `bench` 标签 PR 排入夜间队列，第 {len(queue['requests'])} 位：{names(request)}")
+        queue["labeled"].append(number)
+    queue["labeled"].sort()
+    return said
+
+
 def plan(args):
     out, said = {"mode": "none"}, []
     night = at_night()
     queue = load_queue(args.pages)
     if args.event == "schedule":
+        said += queue_bench_prs(queue)
+        save_queue(args.pages, queue)
         if queue["requests"]:
             out["mode"] = "drain"
             said.append(f"- 夜间运行：队列里有 {len(queue['requests'])} 个请求，按顺序测到日本时间 {NIGHT[1]:%H:%M}")

@@ -27,10 +27,12 @@ name: Bench
 # turn, and the pushes to gh-pages try again on a fresh checkout when another push came first. `night` off measures
 # at once, after whatever the runner is doing, and so does a run started on another branch than the default one: the
 # queue is measured and published by the default branch's workflow, so a trial on a branch with its publish job
-# turned off stays a trial. The run at 23:30 asks for the runner only when there is something for it: a request in
-# the queue, or Friday night, after the calibration task of #605 (`.github/bench/calibrate.ps1`) ran: when it changed
-# the profile, the new environment is measured first on the releases and the PRs labeled `bench`, from 23:30, so it
-# has the whole night. A run whose runner is not there leaves the queue as it is for the next night.
+# turned off stays a trial. The run at 23:30 first queues each PR labeled `bench` merged since it last looked, before
+# and after it, once (the queue's `labeled` holds the PRs it looked at). It asks for the runner only when there is
+# something for it: a request in the queue, or Friday night, after the calibration task of #605
+# (`.github/bench/calibrate.ps1`) ran: when it changed the profile, the new environment is measured first on the
+# releases and the PRs labeled `bench`, from 23:30, so it has the whole night. A run whose runner is not there leaves
+# the queue as it is for the next night.
 on:
   workflow_dispatch:
     inputs:
@@ -111,6 +113,9 @@ on:
 
 permissions:
   contents: read
+  # the PRs labeled bench, which a new environment is measured on first (the measure job's backfill)
+  issues: read
+  pull-requests: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -124,6 +129,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # the PRs labeled bench, read on the schedule
+      issues: read
+      pull-requests: read
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       request: ${{ steps.plan.outputs.request }}
@@ -157,6 +165,8 @@ jobs:
           ONLY: ${{ inputs.only }}
           FORCE: ${{ inputs.force && '1' || '' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          # for the PRs labeled bench merged since the last run of the schedule (bench_queue.py's api)
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git -C pages config user.name "github-actions[bot]"
           git -C pages config user.email "41898282+github-actions[bot]@users.noreply.github.com"
