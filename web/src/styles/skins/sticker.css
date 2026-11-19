@@ -309,8 +309,8 @@
 /*
  * Under the pointer, a row other than the chosen one has its tape laid along it from the left, as one pulls tape off
  * the roll: a mask over its shape layer with a sharp edge, all of it shown once the tape is down. It takes no time
- * with reduced motion. A day inside the range being picked looks as one under the pointer (styles/roles.css): its
- * tape is laid as the range reaches it.
+ * with reduced motion. A day inside the range being picked looks as one under the pointer (styles/roles.css); the days
+ * of the calendar have their tape faded in instead (below).
  */
 @property --sticker-unroll { syntax: '<percentage>'; inherits: false; initial-value: 100%; }
 :root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row):where(:hover, .between):where(:not(:disabled, [aria-disabled='true'], .selected, .active, .chosen, [aria-current='page'], [aria-current='step']))::before {
@@ -326,10 +326,10 @@
  * across it: light bands every 11px and, between them, the tape's own colour, `--sticker-band` of it. The stripes give
  * with the press: held down, each band of the colour narrows to half as the row shrinks, both its long edges moving
  * towards its middle; let go, they open out again as the row comes back to its size. A row chosen without a press has
- * its stripes at once.
+ * its stripes at once. A day of the calendar has them in every state (below).
  */
 @property --sticker-band { syntax: '<length>'; inherits: false; initial-value: 6px; }
-:root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row):where(:hover, :active, .between, .selected, .active, .chosen, [aria-current='page'], [aria-current='step']):where(:not(:disabled, [aria-disabled='true']))::before {
+:root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row):where(:hover, :active, .between, .selected, .active, .chosen, [aria-current='page'], [aria-current='step'], .calendar-day):where(:not(:disabled, [aria-disabled='true']))::before {
   background:
     repeating-linear-gradient(-55deg, var(--sticker-stripe) 0 calc(5.5px - var(--sticker-band) / 2),
       transparent calc(5.5px - var(--sticker-band) / 2) calc(5.5px + var(--sticker-band) / 2),
@@ -339,6 +339,19 @@
 :root[data-skin='sticker'] :where(.nav-item, .conversation-row, .as-row):where(:active:not(:disabled, [aria-disabled='true']))::before {
   --sticker-band: 3px;
 }
+/*
+ * The days of the calendar: the pointer crosses many of them on its way, and a range being picked takes in or lets go
+ * of days at every move, so a day's tape fades in and out instead of being laid. The tape is on the day's shape layer
+ * at all times and shown under the pointer, held down, inside the range and chosen: a day that stays under tape as
+ * the range moves on (the end it had reached, now inside it) keeps it as it is. The fade is a transition of the row's
+ * (above) with the opacity added, which its shape layer takes: quick as the day is held down, as the rest are.
+ */
+:root[data-skin='sticker'] .calendar-day {
+  --transition: color var(--duration-hover) ease, scale var(--duration-panel) var(--ease-out),
+    --sticker-band var(--duration-panel) var(--ease-out), opacity var(--duration-hover) ease;
+}
+:root[data-skin='sticker'] .calendar-day::before { opacity: 0; mask-image: none; animation: none; }
+:root[data-skin='sticker'] .calendar-day:where(:hover, :active, .between, .chosen):where(:not([aria-disabled='true']))::before { opacity: 1; }
 
 /*
  * What the page is decorated with, a different one at each turn (Backdrop.tsx's `data-turn`, which the root reads with
