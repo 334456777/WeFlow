@@ -18,6 +18,7 @@ use crate::render::display_width;
 #[derive(Debug)]
 struct Open {
     id: u64,
+    head: String,
     /// columns written after the head (a countdown and the spaces that blanked a longer one)
     after: usize,
 }
@@ -85,8 +86,7 @@ impl Drop for Pending {
             return;
         };
         if open.as_ref().is_some_and(|line| line.id == self.id) {
-            *open = None;
-            let _ = writeln!(std::io::stderr());
+            let _ = std::io::stderr().write_all(break_text(&mut open).as_bytes());
         }
     }
 }
@@ -123,8 +123,10 @@ fn write_with(text: impl FnOnce(&mut Option<Open>, bool) -> String) {
     }
 }
 
+/// Ends the open line: the head alone stays, as a countdown after it would soon be out of date.
 fn break_text(open: &mut Option<Open>) -> String {
     match open.take() {
+        Some(line) if line.after > 0 => format!("\r{}{}\n", line.head, " ".repeat(line.after)),
         Some(_) => "\n".to_string(),
         None => String::new(),
     }
@@ -134,7 +136,11 @@ fn begin_text(open: &mut Option<Open>, id: u64, head: &str, terminal: bool) -> S
     let mut out = break_text(open);
     out.push_str(head);
     if terminal {
-        *open = Some(Open { id, after: 0 });
+        *open = Some(Open {
+            id,
+            head: head.to_string(),
+            after: 0,
+        });
     } else {
         out.push('\n');
     }
@@ -151,6 +157,7 @@ fn tick_text(open: &mut Option<Open>, id: u64, head: &str, tail: &str, width: us
     out.push_str(&format!("{head} {tail}{}", " ".repeat(blank)));
     *open = Some(Open {
         id,
+        head: head.to_string(),
         after: after.max(width + 1),
     });
     out
@@ -241,6 +248,8 @@ mod tests {
         let mut open = None;
         let writes = vec![
             begin_text(&mut open, 1, "Waiting…", true),
+            tick_text(&mut open, 1, "Waiting…", "120 s left", 10),
+            // the countdown is out of date once the line is left: the head alone stays
             break_text(&mut open),
             "a warning\n".to_string(),
             tick_text(&mut open, 1, "Waiting…", "5 s left", 8),
