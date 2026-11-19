@@ -5,6 +5,7 @@ import { ArrowLeft, DotsThreeOutline, type IconProps } from '@phosphor-icons/rea
 import { usePresence } from './motion';
 import { t } from './i18n';
 
+/** A page the navigation offers. */
 export interface NavItem<Id extends string> {
   id: Id;
   label: string;
@@ -13,6 +14,7 @@ export interface NavItem<Id extends string> {
   short?: string;
 }
 
+/** The tab bar and its 「更多」 sheet. */
 export function MobileNav<Id extends string>({ items, tabs, current, onSelect, status, open, onOpen }: {
   items: readonly NavItem<Id>[];
   /** The pages on the bar itself; the others are under 「更多」. */

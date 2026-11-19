@@ -13,6 +13,7 @@ import { locale, t } from '../i18n';
 const ROW_HEIGHT = 58;
 const ALL = '\u0000all';
 
+/** The list of payees, 「全部商户」 first; where the reading stands until it is done. */
 export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry }: {
   state: PaymentsState;
   /** The payees of the days chosen. */

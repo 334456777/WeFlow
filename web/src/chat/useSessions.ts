@@ -4,6 +4,7 @@ import { ApiError } from '../api/client';
 import { LIVE_READ_MS, useGathered, useLive } from '../api/live';
 import { t } from '../i18n';
 
+/** The conversation list as read: not yet, being read, read with each one's status, or why it failed. */
 export type SessionsState =
   | { status: 'idle' }
   | { status: 'loading' }

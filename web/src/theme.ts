@@ -3,11 +3,14 @@
 // sets it before the first paint with the same rules, so a page does not flash the other theme while it loads.
 import { useEffect, useState } from 'react';
 
+/** The theme chosen: light, dark, or the system's. */
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
+/** The key of `localStorage` the theme chosen is kept under. */
 export const THEME_KEY = 'weflow.theme';
 const DARK = '(prefers-color-scheme: dark)';
 
+/** The theme chosen in this browser; the system's when none was, or the storage cannot be read. */
 export function savedTheme(): ThemeChoice {
   try {
     const value = localStorage.getItem(THEME_KEY);

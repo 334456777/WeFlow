@@ -23,6 +23,7 @@ const lastWith = (username: string): number | null => {
 /** The people the statistics leave out (`analytics excluded`), kept in the page while it is open (#896). */
 let excluded: string[] = [];
 
+/** `analytics excluded`: the people left out now. */
 export const excludedList = (): string[] => [...excluded];
 
 /** `analytics excluded --set`: replaces the list; an empty one clears it. Answers the list as saved. */
@@ -34,6 +35,7 @@ export function setExcluded(usernames: readonly string[]): string[] {
 /** The private chats counted: those of the people not left out. */
 const counted = () => PRIVATE.filter(([username]) => !excluded.includes(username));
 
+/** `analytics overall` of the private chats counted. */
 export function overall(): OverallStatistics {
   const sent = counted().reduce((n, [, s]) => n + s, 0);
   const received = counted().reduce((n, [, , r]) => n + r, 0);
@@ -51,6 +53,7 @@ export function overall(): OverallStatistics {
   };
 }
 
+/** `analytics rankings`: the first `limit` private chats counted. */
 export const rankings = (limit: number): ContactRank[] => counted().slice(0, limit).map(([username, sent, received]) => ({
   username, displayName: person(username)?.name ?? username, wechatId: person(username)?.alias ?? username,
   messageCount: sent + received, sentCount: sent, receivedCount: received, lastMessageTime: lastWith(username),
@@ -75,9 +78,11 @@ export function timeSpread(): TimeDistribution {
   return { hourlyDistribution: hourly, weekdayDistribution: weekday, monthlyDistribution: Object.fromEntries(months) };
 }
 
+/** `analytics exclude-candidates`: everyone but the account and the former friends. */
 export const excludeCandidates = (): ExcludeCandidate[] => people.filter(p => p.username !== ME && !p.formerFriend)
   .map(p => ({ username: p.username, displayName: p.name, wechatId: p.alias ?? p.username }));
 
+/** `group list`. */
 export const groupList = (): GroupChat[] => groups.map(g => ({ username: g.username, displayName: g.name, memberCount: g.members.length }));
 
 /** A group's messages between two days (`YYYY-MM-DD`, either may be empty). */
@@ -86,6 +91,7 @@ export function groupMessages(chatroomId: string, start: string, end: string): M
     && (!start || m.createTime >= dayStart(start)) && (!end || m.createTime <= dayEnd(end)));
 }
 
+/** `group ranking`: who sent the most of the group's messages between the two days. */
 export function groupRanking(chatroomId: string, start: string, end: string, limit: number): GroupRank[] {
   const counts = new Map<string, number>();
   for (const m of groupMessages(chatroomId, start, end)) counts.set(m.senderUsername!, (counts.get(m.senderUsername!) ?? 0) + 1);
@@ -93,6 +99,7 @@ export function groupRanking(chatroomId: string, start: string, end: string, lim
     .map(([username, messageCount]) => ({ member: { username, displayName: person(username)?.name ?? username }, messageCount }));
 }
 
+/** `group hours`: the group's messages between the two days by local hour. */
 export function groupHours(chatroomId: string, start: string, end: string) {
   const hourly: Record<string, number> = {};
   for (const m of groupMessages(chatroomId, start, end)) {
@@ -104,6 +111,7 @@ export function groupHours(chatroomId: string, start: string, end: string) {
 
 const TYPE_NAMES: Record<number, string> = { 1: '文本', 3: '图片', 34: '语音', 42: '名片', 43: '视频', 47: '表情', 48: '位置', 49: '链接/文件', 50: '通话', 10000: '系统消息' };
 
+/** `group media`: the group's messages between the two days by type, the most first. */
 export function groupMedia(chatroomId: string, start: string, end: string) {
   const counts = new Map<number, number>();
   const messages = groupMessages(chatroomId, start, end);

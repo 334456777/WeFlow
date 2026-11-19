@@ -6,6 +6,7 @@ import { CaretDown } from '@phosphor-icons/react';
 import { timing } from './motion';
 import { t } from './i18n';
 
+/** A card of the stack: its header and its content. */
 export interface Card {
   id: string;
   title: string;
@@ -15,6 +16,7 @@ export interface Card {
   content: ReactNode | ((open: boolean) => ReactNode);
 }
 
+/** What this browser keeps of a stack: the cards' order and those closed, by id. */
 export interface CardLayout {
   order: string[];
   closed: string[];
@@ -55,6 +57,7 @@ interface Drag {
   active: boolean;
 }
 
+/** The cards in the order kept as `storageKey`, those in `defaultClosed` closed until opened. */
 export function CardStack({ cards, storageKey, defaultClosed, label, hidden = [] }: {
   cards: Card[]; storageKey: string; defaultClosed: string[]; label: string;
   /** Cards left out for now; they keep their place in the saved order and come back there. */

@@ -4,6 +4,7 @@ import type { Job } from '../api/jobs';
 import type { ExportResult } from '../types';
 import { t } from '../i18n';
 
+/** Where an export stands. */
 export type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
 
 /**

@@ -5,7 +5,9 @@
 // (#844). Where the browser has no view transitions, or less motion is asked for, the preview opens and closes as it
 // did, with a fade.
 
+/** The `view-transition-name` of the picture in flight. */
 export const MEDIA_NAME = 'preview-media';
+/** The `view-transition-name` of its frame. */
 export const FRAME_NAME = 'preview-frame';
 
 /** The thumbnail of the control a preview opens from: the one focused (keys, and clicks in most browsers), else the

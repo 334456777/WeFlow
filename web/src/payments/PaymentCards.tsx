@@ -13,11 +13,13 @@ import { locale, t } from '../i18n';
 
 const FORMATS: ExportFormat[] = ['HTML', 'JSON', 'Excel'];
 
+/** What the filter narrows to, for a closed card's header: the payee, by date, or 「全部」. */
 export function payFilterSummary(filter: PayFilter): string {
   const parts = [filter.merchant, (filter.from || filter.to) && t('按日期')].filter(Boolean);
   return parts.length ? parts.join(' · ') : t('全部');
 }
 
+/** The card of the days to look at, and the payee picked. */
 export function PaymentsFilter({ filter, onChange }: { filter: PayFilter; onChange(filter: PayFilter): void }) {
   const narrowed = Boolean(filter.merchant || filter.from || filter.to);
   return <div className="moments-filter">
@@ -29,6 +31,7 @@ export function PaymentsFilter({ filter, onChange }: { filter: PayFilter; onChan
   </div>;
 }
 
+/** The totals of the payments chosen; a skeleton while they are read. */
 export function PaymentsSummary({ payments }: { payments: Payment[] | null }) {
   if (!payments) return <GridSkeleton label={t('正在读取支付记录')} cells={2} />;
   const totals = totalsOf(payments);

@@ -47,6 +47,7 @@ function why(row: Row, health: Health): string | null {
   return t('不适用于这个 weflow');
 }
 
+/** The versions kept and published, and choosing or removing them. */
 export function WebVersions({ health, onReload = () => window.location.reload() }: { health: Health; onReload?(): void }) {
   const [kept, setKept] = useState<KeptVersion[] | null>(null);
   const [published, setPublished] = useState<PublishedVersion[] | null>(null);

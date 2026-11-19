@@ -8,10 +8,12 @@ import { Calendar, openingDay } from './Calendar';
 import { ordered, today } from './dates';
 import { t } from '../i18n';
 
+/** A range of days, `YYYY-MM-DD`, both inclusive; empty for no bound. */
 export interface Range { from: string; to: string }
 
 type Side = 'from' | 'to';
 
+/** The start and end fields of a range, and the calendar they share. */
 export function DateRange({ from, to, onChange, onOpen, max = today(), marks, label = t('时间范围') }: {
   from: string;
   to: string;

@@ -4,6 +4,7 @@ import { ApiError } from '../api/client';
 import { SEARCH_PAGE, searchMessages, type SearchHit, type SearchQuery } from '../api/messages';
 import { t } from '../i18n';
 
+/** A search: the query, its hits so far and where their reading stands. */
 export interface SearchState {
   status: 'idle' | 'loading' | 'ready' | 'error';
   query: SearchQuery | null;
@@ -17,6 +18,7 @@ const IDLE: SearchState = { status: 'idle', query: null, hits: [], hasMore: fals
 
 const messageOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('搜索失败，请重试。');
 
+/** The search and what drives it: a new query, the next page of hits, or nothing. */
 export function useSearch(): { state: SearchState; search(query: SearchQuery): void; more(): void; clear(): void } {
   const [state, setState] = useState<SearchState>(IDLE);
   const latest = useRef(state);

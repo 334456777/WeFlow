@@ -11,6 +11,7 @@ import { Scrollbar } from '../Scrollbar';
 import { TokenPrompt } from '../TokenForm';
 import { SampleNote } from './sample';
 
+/** A page of one side that scrolls: its heading with an icon and tabs, then `children`. */
 export function ScrollPage({ label, icon: Glyph, tabs, scroller, children }: {
   label: string; icon: Icon; tabs?: ReactNode;
   /** For a page that scrolls itself back to the top. */
@@ -42,6 +43,7 @@ export function ConnectedList({ backend, offline, children }: { backend: Backend
       : <div className="session-pane"><p className="session-message">{offline}</p></div>;
 }
 
+/** A page of two sides: a list, and the detail of the item open in it; one side at a time on a narrow screen. */
 export function BrowserPanel({ label, className, detail, onBack, list, back, title, paneLabel, pane, detailKey, children }: {
   label: string;
   /** The page's own class, for the width of its list and the like. */

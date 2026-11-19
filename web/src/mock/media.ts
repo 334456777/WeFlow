@@ -15,13 +15,16 @@ import street from './images/street.svg';
 import webuiDark from './images/webui-dark.svg';
 import webuiLight from './images/webui-light.svg';
 
+/** The sample's pictures, by the names the messages and posts give them. */
 export const pictures = {
   'bench-chart': benchChart, calligraphy, dinner, 'export-html': exportHtml, flowers, logo, meetup, morning, pingpong, release,
   'skin-sketch': skinSketch, sticker, street, 'webui-dark': webuiDark, 'webui-light': webuiLight,
 };
 
+/** A picture's name. */
 export type Picture = keyof typeof pictures;
 
+/** The address of the picture `name`; the logo for a name it does not have. */
 export const pictureUrl = (name: string): string => pictures[name as Picture] ?? logo;
 
 /**

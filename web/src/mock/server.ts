@@ -350,6 +350,7 @@ function answer(method: string, route: string, params: Params, async: boolean, w
   return data instanceof Failure ? { failed: { status: data.status, code: data.code, message: data.message } } : { data };
 }
 
+/** The sample server `api/client.ts` loads while no server answers: its routes, and the addresses of its media. */
 export const server: SampleServer = {
   answer(method, path, params, async) {
     const [route, query = ''] = path.split('?');

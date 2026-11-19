@@ -6,6 +6,7 @@
 // it is wanted: a page in Chinese never downloads it.
 import { useSyncExternalStore } from 'react';
 
+/** The page's languages. */
 export type Lang = 'zh' | 'en';
 
 const KEPT = 'weflow.lang';
@@ -39,6 +40,7 @@ function show(): void {
   document.title = t(TITLE);
 }
 
+/** The page's language now. */
 export const lang = (): Lang => current;
 
 /** The page's language as a locale, for `Intl` and `toLocaleString`. */

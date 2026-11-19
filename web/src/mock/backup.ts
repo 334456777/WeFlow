@@ -5,6 +5,7 @@ import { ME } from './people';
 
 const entry = (path: string, size: number, i: number): BackupEntry => ({ path, size, sha256: (i * 2_654_435_761 >>> 0).toString(16).padStart(8, '0').repeat(8) });
 
+/** `backup inspect` of the sample's backup. */
 export function backupManifest(): BackupManifest {
   const files: [string, number][] = [
     ['db_storage/contact/contact.db', 2_883_584], ['db_storage/session/session.db', 1_048_576],

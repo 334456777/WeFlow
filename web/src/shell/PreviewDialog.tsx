@@ -13,12 +13,14 @@ import { prefersReducedMotion, usePresence } from '../motion';
 import { t } from '../i18n';
 import './PreviewDialog.css';
 
+/** What `usePreview` gives: a way to open a preview, and the dialog to put in the page. */
 export interface PreviewControl {
   open(preview: Preview): void;
   /** The dialog, once in the page. */
   dialog: ReactElement;
 }
 
+/** The preview dialog of the whole page, which opens and closes without animating with `reducedMotion`. */
 export function usePreview(reducedMotion: boolean): PreviewControl {
   const [preview, setPreview] = useState<Preview | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);

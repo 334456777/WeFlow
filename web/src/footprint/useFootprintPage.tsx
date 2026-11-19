@@ -9,6 +9,7 @@ import { FootprintAi, FootprintExport, FootprintPage } from './Footprint';
 import { t } from '../i18n';
 import './footprint.css';
 
+/** The footprint page: its view and its console cards. */
 export function useFootprintPage(shell: Shell, openAt: OpenAt): Page {
   const [choice, setChoice] = useState<FootprintChoice>({ preset: 'today' });
   const range = rangeOf(choice);

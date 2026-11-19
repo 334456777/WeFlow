@@ -5,6 +5,7 @@ import type { CSSProperties, ForwardedRef, HTMLAttributes, ReactNode, Ref } from
 import { HoverTrack } from './HoverTrack';
 import { Scrollbar } from './Scrollbar';
 
+/** What a list's `ref` can do. */
 export interface VirtualListHandle {
   /** Scrolls just enough to bring the row into sight. */
   scrollToIndex(index: number): void;
@@ -91,6 +92,7 @@ function VirtualListInner<T>(
   </div><Scrollbar target={scroller} /></>;
 }
 
+/** The list of `items`, its rows drawn by `renderRow` while in sight. */
 export const VirtualList = forwardRef(VirtualListInner) as <T>(
   props: Props<T> & { ref?: Ref<VirtualListHandle> },
 ) => ReturnType<typeof VirtualListInner>;

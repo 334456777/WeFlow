@@ -2,6 +2,7 @@
 import type { ParsedMessage } from '../api/messages';
 import { formatDate, lang, relativeDay, t } from '../i18n';
 
+/** How the chat window draws a message. */
 export type MessageKind =
   | 'text' | 'quote' | 'image' | 'emoji' | 'voice' | 'video' | 'file' | 'link' | 'finder' | 'record'
   | 'contact' | 'location' | 'call' | 'money' | 'system';
@@ -15,6 +16,7 @@ const APP_KINDS: Record<string, MessageKind> = {
   gift: 'money', location: 'location',
 };
 
+/** A message's kind, by its type and, for an app message, by its `appMsgKind`; text for one it does not know. */
 export function kindOf(message: ParsedMessage): MessageKind {
   switch (baseType(message.localType)) {
     case 1: return 'text';
@@ -31,6 +33,7 @@ export function kindOf(message: ParsedMessage): MessageKind {
   }
 }
 
+/** Whether the account sent it. */
 export const isMine = (message: ParsedMessage) => message.isSend === 1;
 
 /** The text of an app message's kind, for the corner of its card. */
@@ -52,6 +55,7 @@ export function withoutLabel(text: string): string {
   return text.replace(/^\[[^\]]{1,8}\]\s*/, '');
 }
 
+/** A size in B, KB, MB or GB; empty for none. */
 export function formatFileSize(bytes: number | undefined): string {
   if (!bytes || bytes < 0) return '';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -61,6 +65,7 @@ export function formatFileSize(bytes: number | undefined): string {
   return (unit === 0 ? String(value) : value.toFixed(value < 10 ? 1 : 0)) + ' ' + units[unit];
 }
 
+/** A voice's length as WeChat writes it: `12″`, `1′05″`. */
 export function formatDuration(seconds: number | undefined): string {
   const s = Math.max(0, Math.round(seconds ?? 0));
   return s < 60 ? s + '″' : Math.floor(s / 60) + '′' + String(s % 60).padStart(2, '0') + '″';
@@ -68,6 +73,7 @@ export function formatDuration(seconds: number | undefined): string {
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
+/** The local time of Unix seconds, `HH:MM`. */
 export const formatClock = (seconds: number) => {
   const date = new Date(seconds * 1000);
   return pad(date.getHours()) + ':' + pad(date.getMinutes());

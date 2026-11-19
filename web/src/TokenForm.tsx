@@ -6,6 +6,7 @@ import { Key } from '@phosphor-icons/react';
 import { setToken } from './api/client';
 import { t } from './i18n';
 
+/** A field for the token and a button that sets it. */
 export function TokenForm({ label = t('令牌') }: { label?: string }) {
   const [value, setValue] = useState('');
   const submit = (event: FormEvent) => {

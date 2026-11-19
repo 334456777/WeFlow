@@ -21,6 +21,7 @@ export function describe(filter: PayFilter): string {
   return (filter.merchant ?? t('全部商户')) + '_' + days;
 }
 
+/** The payments chosen as a file of `format`, named after the filter; fails when there are none. */
 export async function exportPayments(payments: Payment[], filter: PayFilter, format: ExportFormat): Promise<ExportResult> {
   if (!payments.length) throw new Error(t('筛选范围内没有支付记录。'));
   const name = safeName(t('微信支付') + '_' + describe(filter));

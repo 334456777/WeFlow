@@ -17,6 +17,7 @@ function skinText(skin: Skin): string {
   return t('「{skin}」只有{theme}，选另一种颜色主题时也是{theme}。', { skin: t(skin.label), theme: skin.themes[0] === 'light' ? t('浅色') : t('深色') });
 }
 
+/** The skin, the theme, reduced motion, live messages and the media an export copies. */
 export function AppearanceSettings({ prefs, theme, setTheme, skin, setSkin }: {
   prefs: Preferences;
   /** Held by the settings page, which is there all the time: a theme that follows the system keeps following it. */

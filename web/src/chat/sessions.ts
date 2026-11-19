@@ -2,22 +2,27 @@
 import type { ChatSession, SessionStatus } from '../api/chat';
 import { formatDate, msg, relativeDay, t } from '../i18n';
 
+/** What a conversation is with: a person, a group or an official account. */
 export type SessionKind = 'private' | 'group' | 'official';
+/** What the list is filtered to. */
 export type SessionFilter = 'all' | SessionKind;
 
-// shown through t()
+/** Each filter's name, marked with `msg()` and shown through `t()`. */
 export const filterLabels: Record<SessionFilter, string> = { all: msg('全部'), private: msg('私聊'), group: msg('群聊'), official: msg('公众号') };
+/** Each kind's name, shown through `t()`. */
 export const kindLabels: Record<SessionKind, string> = { private: msg('私聊'), group: msg('群聊'), official: msg('公众号') };
 
 /** The row that stands for the folded groups, as in WeChat. */
 export const FOLDED_ID = '@folded';
 
+/** The kind of a conversation by its username: `…@chatroom` a group, `gh_…` an official account. */
 export function kindOf(username: string): SessionKind {
   if (username.endsWith('@chatroom')) return 'group';
   if (username.startsWith('gh_')) return 'official';
   return 'private';
 }
 
+/** A row of the conversation list. */
 export interface SessionRow {
   id: string;
   name: string;

@@ -58,6 +58,7 @@ function styleOf(place: Place | null): CSSProperties {
   };
 }
 
+/** `children` in a layer anchored to `anchor`, while `open`. */
 export function Popover({ anchor, open, onClose, label, className, children }: {
   anchor: RefObject<HTMLElement | null>;
   open: boolean;

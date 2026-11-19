@@ -18,6 +18,7 @@ export function profileState(p: Profile): string {
   return p.imageKeys ? t('已配置') : t('已配置，没有图片密钥');
 }
 
+/** The profiles, and clearing the current account's data. */
 export function Accounts({ profiles, onChanged, onSetup }: {
   profiles: Profile[];
   /** A profile was switched, added or cleared: read them again. */

@@ -106,6 +106,7 @@ function InsightCard({ record, canChat, onRead, onChat }: { record: InsightRecor
   </article>;
 }
 
+/** The insight records read, newest first, with more on demand. */
 export function InsightList({ state, narrowed, canChat, onRead, onChat, onMore }: {
   state: InsightsState;
   narrowed: boolean;

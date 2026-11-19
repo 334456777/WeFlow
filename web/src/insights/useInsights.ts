@@ -5,8 +5,10 @@ import { ApiError } from '../api/client';
 import { t } from '../i18n';
 import { getInsights, PAGE, type InsightPage } from '../api/insights';
 
+/** What the records are narrowed to: words, and one conversation or all. */
 export interface InsightFilter { keyword: string; session: string | null }
 
+/** The records as read: not yet or being read, a page and whether more are left, or why it failed. */
 export type InsightsState =
   | { status: 'idle' | 'loading' }
   | { status: 'ready'; page: InsightPage; more: boolean; loadingMore: boolean; error?: string }
@@ -14,6 +16,7 @@ export type InsightsState =
 
 const messageOf = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 
+/** The records `filter` narrows to, once `enabled`; read again for another `scope` or filter. */
 export function useInsights(enabled: boolean, scope: number, filter: InsightFilter) {
   const [state, setState] = useState<InsightsState>({ status: 'idle' });
   const [round, setRound] = useState(0);

@@ -7,6 +7,7 @@ import { t } from '../i18n';
 import { keptRead } from '../api/kept';
 import { getPostCounts } from '../api/sns';
 
+/** A poster, and how many posts they have. */
 export interface MomentPerson {
   username: string;
   name: string;
@@ -14,6 +15,7 @@ export interface MomentPerson {
   posts: number;
 }
 
+/** The posters as read: being read, read, or why it failed. */
 export type PeopleState =
   | { status: 'loading' }
   | { status: 'ready'; people: MomentPerson[] }
@@ -41,6 +43,7 @@ export function peopleOf(counts: Record<string, number>, contacts: Record<string
     .sort((a, b) => b.posts - a.posts || a.name.localeCompare(b.name, 'zh-CN'));
 }
 
+/** The posters once `enabled`, named by their contacts, and what reads them again. */
 export function useMomentPeople(enabled: boolean, scope: number, self?: string): [PeopleState, () => void] {
   const [state, setState] = useState<{ scope: number; value: PeopleState } | null>(null);
   const [round, setRound] = useState(0);

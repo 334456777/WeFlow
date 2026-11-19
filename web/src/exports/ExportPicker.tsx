@@ -14,6 +14,7 @@ import { locale, t } from '../i18n';
 const ROW_HEIGHT = 58;
 const FILTERS: SessionFilter[] = ['all', 'private', 'group', 'official'];
 
+/** A conversation's name; its username when it has none. */
 export const nameOf = (session: ChatSession) => session.displayName || session.username;
 
 /** The conversations of `filter` whose name or id holds `query`. */
@@ -38,6 +39,7 @@ export function PickedList({ picked, onRemove }: { picked: ChatSession[]; onRemo
   </div>;
 }
 
+/** The conversation list with a box to tick each, filtered by kind and searched by name. */
 export function ExportPicker({ state, picked, onChange, onRetry }: {
   state: SessionsState;
   picked: ReadonlySet<string>;

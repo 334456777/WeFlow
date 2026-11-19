@@ -39,6 +39,7 @@ import './chat.css';
 // Until /health has answered, no records: neither the sample nor a server's flashes up before the other.
 const CHECKING: SessionsState = { status: 'loading' };
 
+/** The chat page, and what the other pages may ask of it. */
 export interface ChatPage extends Page {
   view: ReactNode;
   /** Its cards, the export first; the console puts the task centre after it. */
@@ -55,6 +56,7 @@ export interface ChatPage extends Page {
   leave(reset: boolean): void;
 }
 
+/** The chat page's state: the open conversation, its messages, the search and the export. */
 export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
   const { backend, records, sample, scope, sessionList, setMobileDetail, openPreview, toast } = shell;
   const { media: mediaKinds, setMedia: setMediaKinds, reducedMotion } = prefs;

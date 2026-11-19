@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getBizAccounts } from '../api/biz';
 import type { ChatSession } from '../api/chat';
 
+/** The official accounts followed, as conversations; none until `enabled`, read again for another `scope`. */
 export function useBizAccounts(enabled: boolean, scope: number): ChatSession[] {
   const [accounts, setAccounts] = useState<{ scope: number; sessions: ChatSession[] } | null>(null);
   const known = accounts?.scope === scope;

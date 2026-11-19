@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getProfiles, type Profile } from '../api/setup';
 
+/** The profiles as read, and what reads them again. */
 export interface ProfilesState {
   /** null until read, and when it could not be. */
   profiles: Profile[] | null;
@@ -11,6 +12,7 @@ export interface ProfilesState {
   reload(): void;
 }
 
+/** `config profiles` while `enabled`, read again for another `scope` and on `reload`. */
 export function useProfiles(enabled: boolean, scope: number): ProfilesState {
   const [profiles, setProfiles] = useState<Profile[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -35,6 +37,7 @@ export function setupDismissed(): boolean {
   try { return sessionStorage.getItem(DISMISSED_KEY) === 'dismissed'; } catch { return false; }
 }
 
+/** Remembers, for this tab, that the setup was closed. */
 export function dismissSetup(): void {
   try { sessionStorage.setItem(DISMISSED_KEY, 'dismissed'); } catch { /* asked again after a reload */ }
 }

@@ -7,6 +7,7 @@ import { ME } from './people';
 
 type Settings = Record<string, string>;
 
+/** The sample's WeChat data directory, made up. */
 export const DATA_DIR = 'C:\\Users\\sample\\Documents\\xwechat_files';
 const ACCOUNT_DIR = DATA_DIR + '\\' + ME + '_5f3a';
 const CONFIG_PATH = 'C:\\Users\\sample\\AppData\\Roaming\\weflow\\config.json';
@@ -31,6 +32,7 @@ let current = 'default';
 
 const settings = () => profiles.get(current) ?? {};
 
+/** `config profiles` of the sample's profiles. */
 export function profileSummaries(): ProfileSummary[] {
   return [...profiles].map(([name, s]) => ({
     name, current: name === current, wxid: s.wxid ?? null, dbPath: s.db_path ?? null, decryptKey: Boolean(s.decrypt_key),
@@ -56,6 +58,7 @@ export function setSetting(key: string, value: string): ConfigWritten {
   return written();
 }
 
+/** `config unset <key>`. */
 export function unsetSetting(key: string): ConfigWritten {
   if (isServeKey(key)) delete serve[key];
   else delete settings()[key];

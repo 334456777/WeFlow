@@ -7,6 +7,7 @@ import { ExportPicker, PickedList } from './ExportPicker';
 import { t } from '../i18n';
 import './exports.css';
 
+/** The export page: its view and its console cards. */
 export function useExportPage(shell: Shell): Page {
   const { records, scope, sessionList, setMobileDetail } = shell;
   const [picked, setPicked] = useState<Set<string>>(() => new Set());

@@ -4,6 +4,7 @@ import { contactKindLabels, type Contact } from '../api/contacts';
 import { Avatar } from '../Avatar';
 import { msg, t } from '../i18n';
 
+/** One contact's card, and a button to their conversation when there is one. */
 export function ContactDetail({ contact, canChat, onChat }: {
   contact: Contact;
   /** Whether the chat list has a conversation with them. */

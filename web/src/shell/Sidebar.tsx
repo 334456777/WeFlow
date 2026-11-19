@@ -45,6 +45,7 @@ function useMediaQuery(query: string): boolean {
   return matches;
 }
 
+/** Whether the sidebar is folded, and its button. */
 export interface SidebarFold {
   /** Folded by its button (remembered) or because the window is narrow. */
   folded: boolean;
@@ -52,6 +53,7 @@ export interface SidebarFold {
   toggle(): void;
 }
 
+/** The sidebar's fold: chosen with its button and kept in this browser, and always folded in a narrow window. */
 export function useSidebarFold(): SidebarFold {
   const narrow = useMediaQuery('(max-width: 1100px)');
   const [chosen, setChosen] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'folded'; } catch { return false; } });
@@ -63,6 +65,7 @@ export function useSidebarFold(): SidebarFold {
   return { folded: narrow || chosen, narrow, toggle };
 }
 
+/** The navigation: the pages and the connection state; the tab bar on a phone. */
 export function Sidebar({ section, onSelect, fold, backend, realtime }: {
   section: Navigation; onSelect(section: Navigation): void; fold: SidebarFold; backend: Backend; realtime: boolean;
 }) {

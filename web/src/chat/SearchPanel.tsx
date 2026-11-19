@@ -55,6 +55,7 @@ export function searchSummary(state: SearchState): string {
   return state.query && !state.query.sessionId ? t('全部会话') : t('当前会话');
 }
 
+/** The search card: the query, its hits, and the calendar of the conversation's days. */
 export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }: {
   session: ChatSession | undefined;
   sessions: ChatSession[];

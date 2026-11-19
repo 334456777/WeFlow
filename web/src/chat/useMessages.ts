@@ -13,6 +13,7 @@ export interface Focus {
   seq: number;
 }
 
+/** A conversation's messages read so far, and where their reading stands. */
 export interface Thread {
   status: 'idle' | 'loading' | 'ready' | 'error';
   /** Oldest first, as they are shown. */
@@ -30,6 +31,7 @@ export interface Thread {
 /** Where to show a conversation from: a time (a day picked in the calendar) or a message (a search hit). */
 export type Target = { at: 'time'; seconds: number } | { at: 'message'; message: ParsedMessage };
 
+/** A conversation to open where its target is, and which jump it is. */
 export interface Jump {
   sessionId: string;
   target: Target;

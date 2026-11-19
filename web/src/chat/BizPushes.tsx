@@ -79,6 +79,7 @@ function withFirstPage(old: Feed, pushes: BizPush[]): Feed {
   return { ...fresh, pushes: [...pushes, ...rest], hasMore: rest.length ? old.hasMore : fresh.hasMore };
 }
 
+/** The pushes of the official account `session`, a page at a time. */
 export function BizPushes({ session }: { session: ChatSession }) {
   const id = session.username;
   const [feed, setFeed] = useState<Feed>(LOADING);

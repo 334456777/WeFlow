@@ -18,6 +18,7 @@ export function contactLine(c: Contact): string {
   return line || (c.type === 'official' ? c.detailDescription ?? '' : '') || t(contactKindLabels[c.type]);
 }
 
+/** The contacts of one kind, or those a search finds; where the reading stands until it is done. */
 export function ContactList({ state, kind, onKind, selected, onSelect, onRetry }: {
   state: ContactsState;
   kind: ContactKind;

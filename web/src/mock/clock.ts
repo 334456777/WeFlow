@@ -29,6 +29,7 @@ export function dayOf(seconds: number): string {
   return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
 }
 
-/** Unix seconds of the start of a local day `YYYY-MM-DD`, and of its end. */
+/** Unix seconds of the start of a local day `YYYY-MM-DD`. */
 export const dayStart = (day: string): number => new Date(day + 'T00:00:00').getTime() / 1000;
+/** Unix seconds of the last second of a local day `YYYY-MM-DD`. */
 export const dayEnd = (day: string): number => dayStart(day) + 86_399;

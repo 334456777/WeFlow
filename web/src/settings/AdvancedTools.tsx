@@ -9,6 +9,7 @@ export const TOOLS = [
   { command: 'image auto-download start', title: msg('原图自动下载'), text: msg('微信下载聊天图片时改为下载原图，只支持 Windows。') },
 ] as const;
 
+/** A row for each tool, whose button opens its command in the console. */
 export function AdvancedTools({ onOpen }: { onOpen(command: string): void }) {
   return <div className="advanced-tools">
     {TOOLS.map(tool => <SettingRow key={tool.command} name={t(tool.title)} text={<>{t(tool.text)}<code>weflow {tool.command}</code></>}>
