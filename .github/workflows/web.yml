@@ -76,6 +76,10 @@ jobs:
       - name: English of the page
         run: bun run i18n --check
 
+      # every export of src/ has a JSDoc comment right above it (#915)
+      - name: Comments of the exports
+        run: bun run jsdoc
+
       - name: Type-check
         run: bun run typecheck
 

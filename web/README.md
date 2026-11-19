@@ -55,4 +55,5 @@ After `bun run build`, `weflow serve --ui-dir web/dist` opens the built page.
 | `bun run smoke` | The smoke test of `dist/` in headless Chrome; `bun run smoke <word>` runs only the checks with that word in their name |
 | `bun run contract` | Write `src/api/contract.gen.ts` from `contract/openapi.json`; `--check` only checks it |
 | `bun run i18n` | List the page's texts without their English, the English entries no text uses, and the Chinese not passed through `t()` yet; `--check` fails on the first two |
-| `bun run check` | Check the types of the contract and the English, type-check, test and build, as CI does (CI also compares the contract with the latest release's and runs `bun run smoke`) |
+| `bun run jsdoc` | List the exports of `src/` without a JSDoc comment right above them, and fail if there is any |
+| `bun run check` | Check the types of the contract, the English and the comments of the exports, type-check, test and build, as CI does (CI also compares the contract with the latest release's and runs `bun run smoke`) |

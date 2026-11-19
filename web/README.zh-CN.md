@@ -55,4 +55,5 @@ bun run dev                               # http://localhost:5173/ui/
 | `bun run smoke` | 在无头 Chrome 里对 `dist/` 做冒烟测试；`bun run smoke <词>` 只跑名字里有这个词的检查 |
 | `bun run contract` | 由 `contract/openapi.json` 生成 `src/api/contract.gen.ts`；带 `--check` 时只检查 |
 | `bun run i18n` | 列出缺少英文的界面文字、没有文字使用的英文，以及尚未经过 `t()` 的中文；带 `--check` 时前两种不为空就失败 |
-| `bun run check` | 检查契约类型和英文，再做类型检查、测试和构建，与 CI 相同（CI 另外把契约与最新发布版对比，并运行 `bun run smoke`） |
+| `bun run jsdoc` | 列出 `src/` 中紧上方没有 JSDoc 注释的导出项，有一个就失败 |
+| `bun run check` | 检查契约类型、英文和导出项的注释，再做类型检查、测试和构建，与 CI 相同（CI 另外把契约与最新发布版对比，并运行 `bun run smoke`） |

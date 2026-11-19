@@ -24,9 +24,10 @@
     "test": "bun test",
     "contract": "bun scripts/contract.ts",
     "i18n": "bun scripts/i18n.ts",
+    "jsdoc": "bun scripts/jsdoc.ts",
     "smoke": "bun smoke/run.ts",
     "shots": "bun smoke/shots.ts",
-    "check": "bun scripts/contract.ts --check && bun scripts/i18n.ts --check && bun run typecheck && bun test && bun --bun vite build"
+    "check": "bun scripts/contract.ts --check && bun scripts/i18n.ts --check && bun scripts/jsdoc.ts && bun run typecheck && bun test && bun --bun vite build"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",
