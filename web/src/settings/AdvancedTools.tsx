@@ -3,7 +3,7 @@ import { ArrowRight } from '@phosphor-icons/react';
 import { SettingRow } from './layout';
 import { msg, t } from '../i18n';
 
-// shown through t()
+/** The tools, each a command with its name and what it does (shown through t()). */
 export const TOOLS = [
   { command: 'db test', title: msg('打开数据库'), text: msg('用当前档案的目录和密钥打开数据库，显示概要。') },
   { command: 'image auto-download start', title: msg('原图自动下载'), text: msg('微信下载聊天图片时改为下载原图，只支持 Windows。') },

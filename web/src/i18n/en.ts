@@ -1,4 +1,5 @@
 // The English of the page's texts (#439), by their Chinese; see index.ts. `bun run i18n` lists what is missing.
+/** The English of each text of the page, keyed by its Chinese. */
 export const en: Record<string, string> = {
   "WeFlow · 记录工作台": "WeFlow · Records",
   "操作控制台": "Console",

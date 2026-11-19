@@ -8,7 +8,7 @@ import type { ThemeChoice } from '../theme';
 import { SettingRow, SettingsGroup, Toggle } from './layout';
 import { msg, t } from '../i18n';
 
-// shown through t()
+/** The colour themes to choose from, with their labels (shown through t()). */
 export const THEMES: { value: ThemeChoice; label: string }[] = [{ value: 'system', label: msg('跟随系统') }, { value: 'light', label: msg('浅色') }, { value: 'dark', label: msg('深色') }];
 
 /** What the row of the skins says: that a skin of one theme keeps it in the other. */
