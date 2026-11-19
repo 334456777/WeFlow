@@ -405,8 +405,8 @@ impl Registry {
 
     /// GHCR, unless `WEFLOW_WEB_REGISTRY` names another.
     pub fn default_registry() -> AppResult<Self> {
-        let base = std::env::var("WEFLOW_WEB_REGISTRY").unwrap_or_else(|_| REGISTRY.into());
-        Self::new(&base, REPOSITORY)
+        let named = std::env::var("WEFLOW_WEB_REGISTRY").ok();
+        Self::new(registry_base(named.as_deref()), REPOSITORY)
     }
 
     fn failed(&self, what: &str, e: impl std::fmt::Display) -> AppError {
@@ -710,6 +710,15 @@ pub async fn install(
     result
 }
 
+/// The registry `WEFLOW_WEB_REGISTRY` names (its value, if set), else GHCR. Blank is unset: `$env:X = ''` in
+/// PowerShell and `X: ${X}` in a compose file without a value leave the variable there, empty (#954).
+fn registry_base(named: Option<&str>) -> &str {
+    named
+        .map(str::trim)
+        .filter(|base| !base.is_empty())
+        .unwrap_or(REGISTRY)
+}
+
 fn incompatible(version: &str, why: &str) -> AppError {
     AppError::new(
         "incompatible",
@@ -721,6 +730,17 @@ fn incompatible(version: &str, why: &str) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_blank_registry_variable_is_no_registry() {
+        for blank in [None, Some(""), Some("  "), Some("\t\n")] {
+            assert_eq!(registry_base(blank), REGISTRY, "{blank:?}");
+        }
+        assert_eq!(
+            registry_base(Some(" http://127.0.0.1:5000 ")),
+            "http://127.0.0.1:5000"
+        );
+    }
 
     #[test]
     fn versions_compare_as_semver_and_git_describe() {
