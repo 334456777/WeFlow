@@ -6,16 +6,22 @@ import { formatDate, t } from '../i18n';
 
 /** `analytics overall`: every private chat but those left out (the contract's types, #430). */
 export type Overall = Contract.OverallStatistics;
+/** A private chat of `analytics rankings`. */
 export type Ranked = Contract.ContactRank;
 /** `analytics time`: the keys are hours 0–23, weekdays 1 (Monday) – 7 (Sunday) and months `YYYY-MM`. */
 export type TimeSpread = Contract.TimeDistribution;
+/** Someone `analytics exclude-candidates` offers to leave out. */
 export type Candidate = Contract.ExcludeCandidate;
 
 /** `analytics overall`, read in the server's process (`/api/`). */
 export const getOverall = (signal?: AbortSignal) => get<Overall>('api/analytics/overall', {}, signal);
+/** `analytics rankings`: the `limit` private chats with the most messages. */
 export const getRankings = (limit: number, signal?: AbortSignal) => get<Ranked[]>('api/analytics/rankings', { limit }, signal);
+/** `analytics time`. */
 export const getTimeSpread = (signal?: AbortSignal) => get<TimeSpread>('api/analytics/time', {}, signal);
+/** `analytics excluded`: the usernames left out of the analytics. */
 export const getExcluded = (signal?: AbortSignal) => get<string[]>('api/analytics/excluded', {}, signal);
+/** `analytics exclude-candidates`. */
 export const getExcludeCandidates = (signal?: AbortSignal) => get<Candidate[]>('api/analytics/exclude-candidates', {}, signal);
 /** Replaces the people left out; an empty `--set` clears them. Answers the list as saved. */
 export const setExcluded = (usernames: string[]) => call<string[]>('PUT', 'analytics/excluded', { set: usernames.length ? usernames : '' });

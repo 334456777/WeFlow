@@ -7,6 +7,7 @@ import { emitLive } from './live';
 import { onPresence, present } from './presence';
 import { setLang, t } from '../i18n';
 
+/** What `/health` answers, and the `hello` of `/health/events`. */
 export interface Health {
   status: string;
   apiVersion: string;
@@ -23,6 +24,7 @@ export interface Health {
   platform?: 'windows' | 'macos' | 'linux';
 }
 
+/** Where the connection to the server stands, and what it knows of the server. */
 export type Backend =
   | { state: 'checking' }
   /** `held`: the server was ready before it went, so the records read from it stay shown until it is back. */
@@ -32,6 +34,7 @@ export type Backend =
   /** The server is there and suits this page, but refuses the token of this tab (#214). */
   | { state: 'unauthorized'; health: Health };
 
+/** This build's name, version and the API it needs, from `package.json`. */
 export const WEB = __WEFLOW_WEB__;
 
 type Identifier = number | string;
@@ -124,6 +127,7 @@ export interface Stream {
   close(): void;
 }
 
+/** What a test may give the connection in place of the browser's. */
 export interface ConnectionOptions {
   open?: (url: string) => Stream;
   /** True when the page and the server are on this machine, where losing the network does not cut them apart. */

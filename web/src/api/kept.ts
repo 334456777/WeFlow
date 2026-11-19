@@ -8,6 +8,7 @@ import { onNewScope } from './scope';
 const kept = new Map<string, Promise<unknown>>();
 onNewScope(() => kept.clear());
 
+/** The answer kept as `key`, else `read()`'s, kept until the scope changes; `fresh` reads again. */
 export function keptRead<T>(key: string, read: () => Promise<T>, fresh = false): Promise<T> {
   const held = kept.get(key) as Promise<T> | undefined;
   if (held && !fresh) return held;

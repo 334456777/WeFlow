@@ -2,6 +2,7 @@
 // `{"success": false, "error": {"code", "message", "details"}}`; `call` returns the data or throws an ApiError.
 import { t } from '../i18n';
 
+/** A failed call: the HTTP status, the answer's `error.code`, its message and its `details`. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -14,6 +15,7 @@ export class ApiError extends Error {
   }
 }
 
+/** A call's parameters: the query of a GET or DELETE, the JSON body of the others. */
 export type Params = Record<string, string | number | boolean | null | undefined | ReadonlyArray<string | number>>;
 
 const TOKEN_KEY = 'weflow.token';
@@ -52,6 +54,7 @@ export function setToken(value: string | null): void {
 export type AuthEvent = 'unauthorized' | 'token';
 const authListeners = new Set<(event: AuthEvent) => void>();
 
+/** Calls `listener` on each auth event; returns what stops it. */
 export function onAuth(listener: (event: AuthEvent) => void): () => void {
   authListeners.add(listener);
   return () => { authListeners.delete(listener); };
@@ -107,6 +110,7 @@ export function apiUrl(path: string, params: Params = {}): string {
   return '/' + path.replace(/^\/+/, '') + (tail ? '?' + tail : '');
 }
 
+/** The HTTP methods of the command API. */
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
@@ -197,4 +201,5 @@ export async function call<T>(method: Method, path: string, params: Params = {},
   throw new ApiError(response.status, error.code ?? 'http_' + response.status, error.message ?? response.statusText, error.details);
 }
 
+/** `call` with GET: a read. */
 export const get = <T>(path: string, params?: Params, signal?: AbortSignal) => call<T>('GET', path, params, signal);

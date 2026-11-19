@@ -10,7 +10,9 @@ export async function getSetting(key: string, signal?: AbortSignal): Promise<str
   return value === null || value === undefined || value === '' ? null : String(value);
 }
 
+/** `config set`: the key in the current profile, or a setting of the file. */
 export const setSetting = (key: string, value: string) => call<Contract.ConfigWritten>('PUT', 'config/set', { key, value });
+/** `config unset`. */
 export const unsetSetting = (key: string) => call<Contract.ConfigWritten>('DELETE', 'config/unset', { key });
 
 /** `insight test`: asks the AI model API something small with the settings saved; says where and what came back. */
@@ -48,10 +50,12 @@ export const CACHE_LABELS: Record<CachePartName, { title: string; text: string }
   web: { title: msg('网页版本'), text: msg('下载过的网页版本；正在用的版本需要时会重新下载。') },
 };
 
+/** `cache list`: each part of the cache and what it takes, read in the server's process. */
 export const listCache = (signal?: AbortSignal) => get<CachePart[]>('api/cache/list', {}, signal);
 
 /** What `cache clear --<part>` would remove, removing nothing. */
 export const planClearCache = (part: CachePartName) =>
   call<Contract.RemovalPlan>('DELETE', 'cache/clear', { [part]: true, 'dry-run': true });
 
+/** `cache clear --<part> --yes`: removes that part of the cache. */
 export const clearCache = (part: CachePartName) => call<Contract.CacheCleared>('DELETE', 'cache/clear', { [part]: true, yes: true });

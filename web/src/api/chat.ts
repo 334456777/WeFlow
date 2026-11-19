@@ -19,6 +19,7 @@ const SESSION_KEYS = [
 export type ChatSession = Pick<Contract.Session, Exclude<(typeof SESSION_KEYS)[number], 'selfWxid'>> &
   Partial<Pick<Contract.Session, 'selfWxid'>>;
 
+/** `chat sessions`, only the keys the list uses. */
 export async function getSessions(signal?: AbortSignal): Promise<ChatSession[]> {
   const data = await get<unknown>('api/chat/sessions', { fields: SESSION_KEYS.join(',') }, signal);
   if (!Array.isArray(data)) throw new ApiError(200, 'bad_response', t('会话列表的格式不对'));

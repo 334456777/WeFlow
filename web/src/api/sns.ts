@@ -6,8 +6,11 @@ import type * as Contract from './contract.gen';
 /** A post, its pictures and videos (addresses on WeChat's servers and the key to them), its comments and where it
  * was made: the contract's types (#430). */
 export type SnsPost = Contract.SnsPost;
+/** A picture or video of a post. */
 export type SnsMedia = Contract.SnsMedia;
+/** A comment on a post. */
 export type SnsComment = Contract.SnsComment;
+/** Where a post was made. */
 export type SnsLocation = Contract.SnsLocation;
 
 /** What the timeline is narrowed to. */
@@ -20,11 +23,13 @@ export interface SnsFilter {
   end: number;
 }
 
+/** The whole timeline. */
 export const NO_FILTER: SnsFilter = { username: null, keyword: '', start: 0, end: 0 };
 
 /** Posts per page. */
 export const SNS_PAGE = 20;
 
+/** A page of `sns timeline` that `filter` narrows, from `offset`, read in the server's process. */
 export async function getTimeline(filter: SnsFilter, offset: number, signal?: AbortSignal): Promise<SnsPost[]> {
   const params: Params = { limit: SNS_PAGE, offset };
   if (filter.username) params.user = filter.username;
@@ -43,6 +48,7 @@ export async function getPostCounts(signal?: AbortSignal): Promise<Record<string
 /** The contract's (#430). */
 export type SnsStats = Contract.SnsStats;
 
+/** `sns stats`, from the counts kept while they are fresh; a count the server leaves out reads as 0. */
 export async function getSnsStats(signal?: AbortSignal): Promise<SnsStats> {
   const data = await get<SnsStats | null>('api/sns/stats', { 'prefer-cache': true }, signal);
   return { totalPosts: data?.totalPosts ?? 0, totalFriends: data?.totalFriends ?? 0, myPosts: data?.myPosts ?? null };
@@ -51,6 +57,7 @@ export async function getSnsStats(signal?: AbortSignal): Promise<SnsStats> {
 /** The servers `/api/sns/media` fetches from (as `is_wechat_media_url` on the server); other addresses are links. */
 const SERVERS = ['.qpic.cn', '.wechat.com', '.video.qq.com', '.tc.qq.com'];
 
+/** Whether `url` is an https address of WeChat's media servers, which `/api/sns/media` fetches. */
 export function isWechatMedia(url: string | undefined): url is string {
   if (!url) return false;
   try {

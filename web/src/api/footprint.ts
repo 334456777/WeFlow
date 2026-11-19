@@ -7,14 +7,17 @@ import { dayOf } from '../chat/messages';
 
 /** The footprint and its parts, the contract's (#430): keys in snake_case, as the native layer writes them. */
 export type Footprint = Contract.Footprint;
+/** The counts of the footprint. */
 export type FootprintSummary = Contract.FootprintSummary;
 /** A stretch of one private chat without an hour's pause; seconds. */
 export type FootprintSegment = Contract.FootprintSegment;
+/** A group message that @-mentions me. */
 export type FootprintMention = Contract.FootprintMention;
 
 /** Days `YYYY-MM-DD`, both inclusive, and what to call them. */
 export interface FootprintRange { from: string; to: string; label: string }
 
+/** `insight footprint` over the range, read in the server's process. */
 export const getFootprint = (range: FootprintRange, signal?: AbortSignal) =>
   get<Footprint>('api/insight/footprint', { start: range.from || undefined, end: range.to || undefined }, signal);
 
@@ -22,13 +25,16 @@ export const getFootprint = (range: FootprintRange, signal?: AbortSignal) =>
 export const FOOTPRINT_FORMATS = [
   { value: 'json', label: 'JSON' }, { value: 'csv', label: 'CSV' }, { value: 'excel', label: 'Excel' },
 ] as const;
+/** A format of `export footprint`. */
 export type FootprintFormat = (typeof FOOTPRINT_FORMATS)[number]['value'];
 
+/** The parameters of `export footprint` over the range. */
 export const footprintExport = (range: FootprintRange, format: FootprintFormat = 'json') =>
   ({ format, start: range.from || undefined, end: range.to || undefined });
 
 /** The ranges offered by name: today, yesterday, this week and last week (weeks start on Monday). */
 export const PRESETS = ['today', 'yesterday', 'thisWeek', 'lastWeek'] as const;
+/** One of the ranges offered by name. */
 export type FootprintPreset = (typeof PRESETS)[number];
 
 /**
@@ -76,6 +82,7 @@ export async function summarizeFootprint(range: FootprintRange, data: Footprint,
   return answer.insight;
 }
 
+/** A row of the footprint's timeline: a stretch of a chat, or an @-mention, and its time in Unix seconds. */
 export type FootprintEvent =
   | { kind: 'chat'; at: number; segment: FootprintSegment }
   | { kind: 'mention'; at: number; mention: FootprintMention };

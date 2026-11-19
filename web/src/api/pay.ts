@@ -9,12 +9,14 @@ import type * as Contract from './contract.gen';
  * lines such as 「付款金额¥28.00」 and 「支付方式零钱」 is read line by line. */
 export type PayRecord = Contract.PayRecord;
 
+/** A line of a notice's description, its label and its value. */
 export interface PayLine {
   /** 「付款金额」, 「支付方式」, …; empty for a line without one. */
   label: string;
   value: string;
 }
 
+/** A WeChat Pay notice as the page lists it: the amount in fen, the payee, how it was paid and its state. */
 export interface Payment {
   id: string;
   /** Unix seconds: of the payment, or of the notice. */
@@ -65,6 +67,7 @@ export function fenOf(text: string): number | null {
   return Number(whole) * 100 + Number((part + '00').slice(0, 2));
 }
 
+/** The payment a notice says, read from its title and the labelled lines of its description. */
 export function paymentOf(record: PayRecord): Payment {
   const lines = record.description.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(lineOf);
   const find = (pattern: RegExp) => lines.find(l => pattern.test(l.label));

@@ -3,8 +3,10 @@
 import { apiUrl, token, type Params } from './client';
 import { t } from '../i18n';
 
+/** The HTTP methods of the command API. */
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
+/** A parameter of a command, as the console's form asks for it. */
 export interface Field {
   name: string;
   type: 'string' | 'integer' | 'number' | 'boolean' | 'list' | 'choice';
@@ -17,6 +19,7 @@ export interface Field {
   defaultValue?: string;
 }
 
+/** A command of `/openapi.json`, as the console lists it. */
 export interface ConsoleCommand {
   /** `chat sessions`. */
   command: string;
@@ -135,6 +138,7 @@ export async function commandLine(cmd: ConsoleCommand, params: Params, signal?: 
 /** A command line to copy into a terminal: words with spaces or quotes are quoted. */
 export const shellLine = (argv: string[]) => argv.map(a => (/^[\w@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'")).join(' ');
 
+/** What a command run from the console answered, and how long it took. */
 export interface RunAnswer {
   status: number;
   exitCode: string | null;

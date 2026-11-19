@@ -3,6 +3,7 @@
 import { get } from './client';
 import type * as Contract from './contract.gen';
 
+/** An official account followed (`biz accounts`). */
 export interface BizAccount {
   username: string;
   name: string;
@@ -28,6 +29,7 @@ const text = (row: Record<string, unknown>, ...keys: string[]) => {
   return '';
 };
 
+/** `biz accounts`: the official accounts followed, each with its name and the time of its last push. */
 export async function getBizAccounts(signal?: AbortSignal): Promise<BizAccount[]> {
   const data = await get<{ accounts?: Record<string, unknown>[] }>('api/biz/accounts', {}, signal);
   return (data?.accounts ?? []).flatMap(row => {
