@@ -990,8 +990,9 @@ impl ServiceHub {
                 max_day = *count;
                 let (mut top_friend, mut top_count) = (String::new(), 0i64);
                 if let Some(m) = daily_contact.get(day) {
+                    // the map keeps the order of the sessions read, so a tie keeps the friend read first
                     for (sid, c) in m {
-                        if *c > top_count || (*c == top_count && false) {
+                        if *c > top_count {
                             top_count = *c;
                             top_friend = info(sid).0;
                         }
