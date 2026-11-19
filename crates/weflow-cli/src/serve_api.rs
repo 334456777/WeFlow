@@ -544,10 +544,7 @@ async fn open_route(st: &AppState, parts: &Parts) -> Option<Response> {
         let shown = st.cfg.ui.read_or_panic().clone();
         return Some(ui::answer(&shown, &parts.method, rest, parts.uri.query()).await);
     }
-    if path == "/"
-        && !matches!(*st.cfg.ui.read_or_panic(), ui::Ui::Absent)
-        && parts.method == Method::GET
-    {
+    if path == "/" && st.cfg.ui.read_or_panic().page().is_some() && parts.method == Method::GET {
         let to = format!(
             "/ui/{}",
             parts

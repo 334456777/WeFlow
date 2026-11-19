@@ -375,10 +375,6 @@ fn while_the_webui_downloads_its_address_asks_again() {
         raw.contains(&format!("WebUI {version} is being downloaded")),
         "{raw}"
     );
-    // the root leads there too
-    assert!(server
-        .exchange("GET", "/?token=x", "")
-        .starts_with("HTTP/1.1 302"));
     assert_eq!(server.send("POST", "/ui/", "").0, 405);
 }
 

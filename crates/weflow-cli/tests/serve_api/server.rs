@@ -372,14 +372,26 @@ fn without_a_webui_the_api_runs_alone() {
     assert_eq!(event["ui"], false);
     assert!(event["uiUrl"].is_null());
 
+    // the version it comes with cannot be downloaded here: `/ui/` says so (#946)
     let server = start(&root, &["--api-token", TOKEN]);
+    let r = server.request("GET", "/ui/", &[], "");
+    assert_eq!(r.status, 503);
+    let code = r.headers["x-weflow-error-code"].as_str();
+    assert!(
+        matches!(code, "webui_downloading" | "webui_unavailable"),
+        "{code}"
+    );
+    // `/` is not taken over
+    assert_eq!(server.request("GET", "/", &[], "").status, 401);
+    drop(server);
+
+    let server = start(&root, &["--api-token", TOKEN, "--api-only"]);
     let r = server.request("GET", "/ui/", &[], "");
     assert_eq!(r.status, 404);
     assert!(r.json()["error"]["message"]
         .as_str()
         .unwrap()
         .contains("--ui-dir"));
-    // `/` is not taken over
     assert_eq!(server.request("GET", "/", &[], "").status, 401);
 
     // a folder without a page is refused at the start
