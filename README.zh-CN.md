@@ -60,13 +60,11 @@ weflow key db --save
 ```
 > stdout: `已获取数据库密钥，已保存到当前档案`
 
-4. 获取并保存图片密钥（详细见 Wiki 的[图片密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥)）
+4. 获取并保存图片密钥
 ```powershell
 weflow key image --save
 ```
 > stdout: `已获取图片密钥，已保存到当前档案`
-
-不加 `--save` 时，命令输出密钥而不保存，可以用 `weflow config set` 手动保存。
 
 5. 确认数据库可以打开
 ```powershell

@@ -60,13 +60,11 @@ weflow key db --save
 ```
 > stdout: `Database key obtained and saved to the active profile`
 
-4. Get and save the image keys (details in the Wiki's [Image keys](https://github.com/334456777/WeFlow/wiki/密钥获取#图片密钥))
+4. Get and save the image keys
 ```powershell
 weflow key image --save
 ```
 > stdout: `Image keys obtained and saved to the active profile`
-
-Without `--save`, the commands only print the keys; you can save them yourself with `weflow config set`.
 
 5. Check that the database opens
 ```powershell
