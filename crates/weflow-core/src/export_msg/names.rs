@@ -5,15 +5,21 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
+/// The names of a contact; a field is empty when the contact has none.
 #[derive(Clone, Debug, Default)]
 pub struct ContactInfo {
+    /// The wxid.
     pub username: String,
+    /// The name they gave themselves.
     pub nickname: String,
+    /// My remark for them.
     pub remark: String,
+    /// The WeChat ID.
     pub alias: String,
 }
 
 impl ContactInfo {
+    /// The names of the contact row `v`, by its `snake_case` or `camelCase` keys; `username` when the row names none.
     pub fn from_value(username: &str, v: &Value) -> Self {
         let s = |keys: &[&str]| {
             keys.iter()
@@ -37,7 +43,7 @@ impl ContactInfo {
         }
     }
 
-    /// What WCDB's display-name lookup yields: remark, else nickname.
+    /// What WCDB's display-name lookup yields: the remark, else the nickname, else the alias, else the username.
     pub fn display_name(&self) -> String {
         if !self.remark.is_empty() {
             self.remark.clone()
@@ -53,12 +59,14 @@ impl ContactInfo {
 
 type Loader<'a> = Box<dyn FnMut(&str) -> Option<ContactInfo> + 'a>;
 
+/// The contacts an export names, each looked up once by its loader and kept.
 pub struct NameBook<'a> {
     cache: HashMap<String, Option<ContactInfo>>,
     loader: Loader<'a>,
 }
 
 impl<'a> NameBook<'a> {
+    /// A book that looks a contact up with `loader` the first time it is asked for.
     pub fn new(loader: impl FnMut(&str) -> Option<ContactInfo> + 'a) -> Self {
         NameBook {
             cache: HashMap::new(),
@@ -71,6 +79,7 @@ impl<'a> NameBook<'a> {
         NameBook::new(move |u| map.get(u).cloned())
     }
 
+    /// The contact `username`; `None` when the loader knows none, which is kept too.
     pub fn get(&mut self, username: &str) -> Option<ContactInfo> {
         if let Some(found) = self.cache.get(username) {
             return found.clone();
@@ -80,6 +89,7 @@ impl<'a> NameBook<'a> {
         loaded
     }
 
+    /// [`ContactInfo::display_name`] of `username`; `username` itself for one the loader does not know.
     pub fn display_name(&mut self, username: &str) -> String {
         match self.get(username) {
             Some(c) => c.display_name(),
@@ -88,14 +98,19 @@ impl<'a> NameBook<'a> {
     }
 }
 
+/// Which name an export shows for a sender (`export messages --display-name`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisplayPref {
+    /// The group nickname, else the remark, else the nickname, else the wxid.
     GroupNickname,
+    /// The remark, else the nickname, else the wxid.
     Remark,
+    /// The nickname, else the wxid.
     Nickname,
 }
 
 impl DisplayPref {
+    /// `group-nickname`, `remark` or `nickname`; `None` for anything else.
     pub fn parse(s: &str) -> Option<Self> {
         match s.trim() {
             "group-nickname" => Some(Self::GroupNickname),
@@ -105,6 +120,7 @@ impl DisplayPref {
         }
     }
 
+    /// The first name that is not empty, in the preference's order.
     pub fn pick(self, wxid: &str, nickname: &str, remark: &str, group_nickname: &str) -> String {
         let first = |vals: &[&str]| {
             vals.iter()
@@ -120,6 +136,7 @@ impl DisplayPref {
     }
 }
 
+/// A group nickname trimmed and without control characters; empty when nothing but quotes and commas is left.
 pub fn normalize_group_nickname(value: &str) -> String {
     let cleaned: String = value
         .trim()
@@ -163,6 +180,8 @@ pub fn build_trusted_group_nicknames(
         .collect()
 }
 
+/// The group nickname of the identities `candidates` in `map`: empty when none has one, or when two have different
+/// ones.
 pub fn resolve_group_nickname(map: &HashMap<String, String>, candidates: &[&str]) -> String {
     let mut resolved = String::new();
     let mut seen: Vec<&str> = Vec::new();
@@ -186,13 +205,20 @@ pub fn resolve_group_nickname(map: &HashMap<String, String>, candidates: &[&str]
     resolved
 }
 
+/// The names of a message's sender, as an export writes them.
 #[derive(Clone, Debug, Default)]
 pub struct Profile {
+    /// The sender's wxid; `unknown` when the message does not say.
     pub wxid: String,
+    /// Their nickname, else the name the message gives, else the wxid.
     pub nickname: String,
+    /// My remark for them; empty when none.
     pub remark: String,
+    /// Their WeChat ID; empty when none.
     pub alias: String,
+    /// Their nickname in the group; empty when none, or in a private chat.
     pub group_nickname: String,
+    /// The name the export shows, by its [`DisplayPref`].
     pub display_name: String,
 }
 

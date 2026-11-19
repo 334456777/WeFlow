@@ -225,6 +225,7 @@ fn session_type(session_id: &str) -> &'static str {
     }
 }
 
+/// What finds the new and revoked messages: the sessions of the last pass, and the messages pushed lately.
 pub struct PushEngine {
     hub: ServiceHub,
     baseline: HashMap<String, Baseline>,
@@ -272,6 +273,7 @@ fn prune(map: &mut HashMap<String, Instant>) {
 }
 
 impl PushEngine {
+    /// An engine of the account `hub` opens, with no sessions seen yet.
     pub fn new(hub: ServiceHub) -> Self {
         Self {
             hub,
@@ -1205,6 +1207,8 @@ impl PushBroker {
         }
     }
 
+    /// Sends `payload` to every subscriber as an SSE event named by its `event` (`message.new` when it names none
+    /// that fits), with the next id, and keeps it for replay.
     pub fn broadcast(&self, payload: &Value) {
         let name = payload
             .get("event")
@@ -1229,6 +1233,7 @@ impl PushBroker {
         let _ = self.tx.send((id, body));
     }
 
+    /// A receiver of the events from now on, each its id and its SSE text.
     pub fn subscribe(&self) -> broadcast::Receiver<(u64, std::sync::Arc<String>)> {
         self.tx.subscribe()
     }

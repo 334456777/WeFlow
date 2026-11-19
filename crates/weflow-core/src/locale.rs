@@ -13,9 +13,12 @@
 
 use std::sync::OnceLock;
 
+/// The language of the output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lang {
+    /// English.
     En,
+    /// Chinese.
     Zh,
 }
 
@@ -59,6 +62,7 @@ impl Lang {
         system().map_or(Lang::En, |s| Lang::from_locale(&s))
     }
 
+    /// The language of this run's environment and system, in the order of the module's list.
     pub fn detect() -> Lang {
         Lang::detect_with(|key| std::env::var(key).ok(), system_locale)
     }
@@ -112,6 +116,7 @@ pub fn set(lang: Lang) {
     let _ = CURRENT.set(lang);
 }
 
+/// The language of this run: the one [`set`] forced, else the one [`Lang::detect`] finds; English in unit tests.
 pub fn current() -> Lang {
     // the unit tests compare English texts: they must not depend on the language of the machine they run on
     *CURRENT.get_or_init(|| if cfg!(test) { Lang::En } else { Lang::detect() })

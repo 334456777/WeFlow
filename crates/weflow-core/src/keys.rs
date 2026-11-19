@@ -54,25 +54,40 @@ pub fn verify_derived_aes_key(aes_key: &str, ciphertext: &[u8]) -> bool {
 /// structurally valid V2 thumbnails in that search, rather than stopping at `limit` files.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct TemplateScan {
+    /// The thumbnails kept, the newest first, at most `limit`.
     #[serde(skip)]
     pub templates: Vec<ImageTemplate>,
+    /// The entries of the folder looked at.
     pub entries_scanned: usize,
+    /// The `_t.dat` files in the V2 format with lengths that fit.
     pub valid_templates: usize,
+    /// The `_t.dat` files of another format.
     pub invalid_format: usize,
+    /// The V2 `_t.dat` files cut short or with lengths that do not fit.
     pub damaged_templates: usize,
+    /// The entries that could not be read.
     pub read_errors: usize,
+    /// Whether the folder has entries past the budget.
     pub truncated: bool,
+    /// Whether more thumbnails were found than kept.
     pub templates_truncated: bool,
 }
 
+/// A V2 thumbnail to check image keys against.
 #[derive(Debug)]
 pub struct ImageTemplate {
+    /// The `_t.dat` file.
     pub path: PathBuf,
+    /// Its first AES block.
     pub cipher: [u8; 16],
+    /// The XOR key its last two bytes give when they are a JPEG's end (`FF D9`); none when the XOR part is shorter.
     pub tail_xor: Option<u8>,
+    /// When the file was last written.
     pub modified: Option<std::time::SystemTime>,
 }
 
+/// The V2 thumbnails (`_t.dat`) among the first `budget` entries of the account's folder `user_dir`, in name order,
+/// the newest `limit` of them kept.
 pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateScan {
     use std::io::{Read, Seek, SeekFrom};
     let mut scan = TemplateScan::default();

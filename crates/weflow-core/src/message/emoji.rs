@@ -58,6 +58,7 @@ fn first_hex32(s: &str) -> Option<&str> {
     None
 }
 
+/// A sticker message's `cdnurl`, its quoted attribute decoded, else the text of its element; `None` when it has none.
 pub fn extract_emoji_url(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
@@ -84,6 +85,7 @@ pub fn extract_emoji_url(content: &str) -> Option<String> {
     })
 }
 
+/// A sticker message's MD5: the first `md5` attribute or `<md5>` element of 32 hex digits; `None` when it has none.
 pub fn extract_emoji_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
@@ -147,6 +149,7 @@ pub fn percent_decode_bytes(s: &str) -> Vec<u8> {
     out
 }
 
+/// A sticker as an export's text: `[表情：caption]`, or `[表情]` without a caption.
 pub fn format_emoji_semantic_text(caption: Option<&str>) -> String {
     match caption.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("[表情：{c}]"),

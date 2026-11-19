@@ -13,10 +13,15 @@ pub fn js_parse_int(s: &str) -> Option<i64> {
 /// The media a message export copies next to the messages.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ApiMediaOptions {
+    /// Whether any media is copied.
     pub enabled: bool,
+    /// The images.
     pub images: bool,
+    /// The voice messages, decoded.
     pub voices: bool,
+    /// The videos.
     pub videos: bool,
+    /// The stickers.
     pub emojis: bool,
     /// The files sent and received (documents, archives …: app messages of type 6).
     pub files: bool,
@@ -60,9 +65,13 @@ pub fn sanitize_file_name(value: &str, fallback: &str) -> String {
 /// A media file a message export copied.
 #[derive(Clone, Debug)]
 pub struct ApiExportedMedia {
+    /// `image`, `voice`, `video`, `emoji` or `file`.
     pub kind: &'static str,
+    /// The file's name.
     pub file_name: String,
+    /// The file.
     pub full_path: String,
+    /// The file from the export's folder: `<conversation>/<kind>s/<name>`.
     pub relative_path: String,
     /// image only: the exported file is the thumbnail (the original is not on disk)
     pub thumbnail: bool,

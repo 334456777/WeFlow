@@ -15,8 +15,11 @@ use crate::services::{Freshness, ImageVariant, ResourceQuery, ServiceHub, SnsTim
 /// A page of a conversation's messages (`chat messages`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessagePage {
+    /// The conversation: the other party's wxid, or `…@chatroom` for a group.
     pub session_id: String,
+    /// The most messages of the page.
     pub limit: i32,
+    /// The messages skipped, newest first, without `before`, `after` or `since`.
     pub offset: i32,
     /// The `_cursor` of the message the page ends above.
     pub before: Option<String>,
@@ -24,165 +27,273 @@ pub struct MessagePage {
     pub after: Option<String>,
     /// Unix seconds: the page from where this time falls in the chat's order.
     pub since: Option<i64>,
+    /// Answer the messages as the chat window shows them rather than as WeChat keeps them.
     pub parsed: bool,
 }
 
 /// A read that answers a JSON value: the reads of the command API's in-process routes.
+///
+/// A `session_id` is a conversation: the other party's wxid, or `…@chatroom` for a group. A `start` or `end` of type
+/// `Option<String>` is a local date (`YYYY-MM-DD`), both included; `parsed` answers messages as the chat window shows
+/// them rather than as WeChat keeps them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Read {
     /// `chat sessions`; a `limit` of 0 is all of them.
     ChatSessions {
+        /// The most conversations.
         limit: usize,
     },
+    /// `chat messages`.
     ChatMessages(MessagePage),
     /// `chat message`: by exactly one of `local_id` and `server_id`.
     ChatMessage {
+        /// The conversation.
         session_id: String,
+        /// The message's id in its table.
         local_id: Option<i64>,
+        /// WeChat's id of the message, in decimal.
         server_id: Option<String>,
+        /// With `local_id`: its time, which tells apart messages of different databases with the same id.
         create_time: Option<i64>,
+        /// As the chat window shows it.
         parsed: bool,
     },
+    /// `chat contact`: one contact's row.
     ChatContact {
+        /// The contact's wxid.
         username: String,
     },
+    /// `chat contacts`.
     ChatContacts {
+        /// Sorted and classified into kinds, with names, labels and avatars, rather than as WeChat keeps them.
         parsed: bool,
     },
+    /// `chat counts`: how many messages each conversation has.
     ChatCounts {
+        /// The conversations.
         sessions: Vec<String>,
     },
     /// `chat search`: in the conversation `session`, or in all of them.
     ChatSearch {
+        /// The text to find.
         keyword: String,
+        /// The conversation; all of them when none.
         session: Option<String>,
+        /// The most hits.
         limit: i32,
+        /// The hits skipped, newest first.
         offset: i32,
+        /// Unix seconds: only messages from then on; 0 for no bound.
         start: i32,
+        /// Unix seconds: only messages up to then; 0 for no bound.
         end: i32,
+        /// Each hit as the chat window shows it.
         parsed: bool,
     },
+    /// `chat dates`: the days the conversation has messages on.
     ChatDates {
+        /// The conversation.
         session_id: String,
     },
+    /// `chat date-counts`: the conversation's messages by day.
     ChatDateCounts {
+        /// The conversation.
         session_id: String,
     },
     /// `chat detail --fast`: the contact and the message count.
     ChatDetailFast {
+        /// The conversation.
         session_id: String,
     },
     /// `chat resources`; `start` and `end` are local dates (`YYYY-MM-DD`), both included.
     ChatResources {
+        /// The conversation; all of them when none.
         session: Option<String>,
+        /// `image`, `video`, `voice` and `file`; all of them when empty.
         types: Vec<String>,
+        /// The first day.
         start: Option<String>,
+        /// The last day.
         end: Option<String>,
+        /// The most messages of the page.
         limit: usize,
+        /// The `nextCursor` of the page before.
         before: Option<String>,
     },
+    /// `chat image-info`: which files of a message's image are on this computer.
     ChatImageInfo {
+        /// The conversation.
         session_id: String,
+        /// The message's id in its table.
         local_id: String,
+        /// Its time, which tells apart messages of different databases with the same id.
         create_time: Option<i64>,
     },
+    /// `group members`.
     GroupMembers {
+        /// The group, `…@chatroom`.
         chatroom_id: String,
+        /// Count each member's messages too.
         counts: bool,
     },
     /// `sns timeline` without its media, which are downloaded.
     SnsTimeline {
+        /// The most posts.
         limit: i32,
+        /// The posts skipped, newest first.
         offset: i32,
+        /// Only the posts of these wxids; all when empty.
         users: Vec<String>,
+        /// Only the posts holding this text.
         keyword: Option<String>,
+        /// Unix seconds: only posts from then on; 0 for no bound.
         start: i64,
+        /// Unix seconds: only posts up to then; 0 for no bound.
         end: i64,
     },
+    /// `sns users`: who has posts.
     SnsUsers,
+    /// `sns stats`.
     SnsStats {
+        /// Answer the counts kept from an earlier read while they are fresh.
         prefer_cache: bool,
     },
+    /// `sns post-counts`.
     SnsPostCounts {
+        /// Only this wxid's posts.
         user: Option<String>,
+        /// Answer the counts kept from an earlier read while they are fresh.
         prefer_cache: bool,
     },
     /// Whether each conversation is folded, muted and pinned.
     ChatStatuses {
+        /// The conversations.
         sessions: Vec<String>,
     },
+    /// `chat tab-counts`.
     ChatTabCounts,
+    /// `group list`.
     GroupList,
     /// `group ranking`; like every `start` and `end` below, local dates (`YYYY-MM-DD`), both included.
     GroupRanking {
+        /// The group, `…@chatroom`.
         chatroom_id: String,
+        /// The most members.
         limit: usize,
+        /// The first day.
         start: Option<String>,
+        /// The last day.
         end: Option<String>,
     },
+    /// `group hours`.
     GroupHours {
+        /// The group, `…@chatroom`.
         chatroom_id: String,
+        /// The first day.
         start: Option<String>,
+        /// The last day.
         end: Option<String>,
     },
+    /// `group media`.
     GroupMedia {
+        /// The group, `…@chatroom`.
         chatroom_id: String,
+        /// The first day.
         start: Option<String>,
+        /// The last day.
         end: Option<String>,
     },
+    /// `group member`: what one member sent.
     GroupMember {
+        /// The group, `…@chatroom`.
         chatroom_id: String,
+        /// The member's wxid.
         username: String,
+        /// The first day.
         start: Option<String>,
+        /// The last day.
         end: Option<String>,
     },
+    /// `group member-messages`: a page of one member's messages.
     GroupMemberMessages {
+        /// The group, `…@chatroom`.
         chatroom_id: String,
+        /// The member's wxid.
         username: String,
+        /// The most messages of the page.
         limit: usize,
+        /// The `nextCursor` of the page before; 0 for the first.
         cursor: usize,
+        /// The first day.
         start: Option<String>,
+        /// The last day.
         end: Option<String>,
     },
     /// `analytics overall`.
     AnalyticsOverall,
+    /// `analytics rankings`.
     AnalyticsRankings {
+        /// The most chats.
         limit: usize,
+        /// The first day.
         start: Option<String>,
+        /// The last day.
         end: Option<String>,
     },
+    /// `analytics time`.
     AnalyticsTime,
     /// `analytics excluded` without `--set`, which saves the list.
     AnalyticsExcluded,
+    /// `analytics exclude-candidates`.
     AnalyticsExcludeCandidates,
+    /// `biz accounts`: the official accounts followed.
     BizAccounts,
+    /// `biz messages`: a page of an official account's pushes.
     BizMessages {
+        /// The official account, `gh_…`.
         username: String,
+        /// The most pushes.
         limit: i32,
+        /// The pushes skipped, newest first.
         offset: i32,
     },
+    /// `biz pay-records`.
     BizPayRecords {
+        /// The most messages read.
         limit: i32,
+        /// The messages skipped, newest first.
         offset: i32,
     },
+    /// `insight footprint`.
     InsightFootprint {
+        /// The first day.
         start: Option<String>,
+        /// The last day.
         end: Option<String>,
     },
+    /// `insight get`.
     InsightGet {
+        /// The record's id.
         id: String,
     },
+    /// `report annual years`.
     ReportAnnualYears,
+    /// `cache list`.
     CacheList,
     /// `config get`: a key of the current profile, or the whole profile; read from the file, as the CLI does.
     ConfigGet {
+        /// The key; the whole profile when none.
         key: Option<String>,
     },
+    /// `config profiles`.
     ConfigProfiles,
+    /// `db detect`.
     DbDetect,
     /// `db test`: opens the configured account with its key.
     DbTest,
+    /// `db wxid`: the accounts of a data directory.
     DbWxid {
+        /// The data directory; the configured one when none.
         root: Option<String>,
     },
 }
@@ -504,25 +615,39 @@ pub fn image_variant(variant: &str) -> ImageVariant {
 /// `chat image-data`, `voice-data` and `video-data` write.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MediaRead {
+    /// An image, decrypted.
     ChatImage {
+        /// The conversation.
         session_id: String,
+        /// The message's id in its table.
         local_id: String,
+        /// Its time, which tells apart messages of different databases with the same id.
         create_time: Option<i64>,
+        /// Which of WeChat's files of the image.
         variant: ImageVariant,
     },
     /// Decoded to WAV.
     ChatVoice {
+        /// The conversation.
         session_id: String,
+        /// The message's id in its table.
         local_id: String,
+        /// Its time, which tells apart messages of different databases with the same id.
         create_time: Option<i64>,
+        /// WeChat's id of the message, in decimal.
         server_id: Option<String>,
+        /// Who sent it, which matters in a group.
         sender: Option<String>,
     },
     /// The video as WeChat keeps it, or with `thumb` its thumbnail, else its cover.
     ChatVideo {
+        /// The conversation.
         session_id: String,
+        /// The message's id in its table.
         local_id: String,
+        /// Its time, which tells apart messages of different databases with the same id.
         create_time: Option<i64>,
+        /// The thumbnail, else the cover, rather than the video.
         thumb: bool,
     },
 }
@@ -530,14 +655,18 @@ pub enum MediaRead {
 /// A media file and its content type.
 #[derive(Debug)]
 pub struct MediaFile {
+    /// What it holds.
     pub body: MediaBody,
+    /// Its content type.
     pub mime: &'static str,
 }
 
 /// What a media file is made of: bytes decoded in memory, or a file on disk, read as it is sent (a video).
 #[derive(Debug)]
 pub enum MediaBody {
+    /// Bytes decoded in memory.
     Bytes(Vec<u8>),
+    /// A file on disk.
     File(PathBuf),
 }
 

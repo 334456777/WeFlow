@@ -192,6 +192,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("please enter a valid Weibo UID: digits only", "请输入有效的微博 UID：只能是数字"),
 ];
 
+/// The Chinese of the English error `message`, with the texts its `{}` matched put in; `None` when it has no entry.
 pub fn translate(message: &str) -> Option<String> {
     translate_with(CATALOG, message)
 }

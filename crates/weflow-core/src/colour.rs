@@ -21,7 +21,9 @@ pub enum Depth {
 /// The stream text goes to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stream {
+    /// Standard output.
     Stdout,
+    /// Standard error.
     Stderr,
 }
 

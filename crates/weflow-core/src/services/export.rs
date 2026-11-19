@@ -362,20 +362,27 @@ impl ServiceHub {
     }
 }
 
+/// The formats `export messages` writes, as its `--format` takes them, for messages that list them.
 pub const MESSAGE_EXPORT_FORMATS: &str =
     "json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql";
 
+/// What `export messages` writes of one conversation.
 #[derive(Clone)]
 pub struct MessageExportRequest {
+    /// The conversation: the other party's wxid, or `…@chatroom` for a group.
     pub session_id: String,
+    /// One of [`MESSAGE_EXPORT_FORMATS`], in any case.
     pub format: String,
     /// The first second (Unix time) of the messages exported: a message sent at it is included.
     pub start: Option<i64>,
     /// The last second (Unix time) of the messages exported: a message sent at it is included, as the message
     /// cursor and [`collect_rows`](crate::message::collect_rows) take it.
     pub end: Option<i64>,
+    /// Only the messages of this sender's bare wxid.
     pub sender: Option<String>,
+    /// Which name the export shows for a sender.
     pub display_pref: crate::export_msg::names::DisplayPref,
+    /// Excel: only the time, sender, type and content columns.
     pub excel_compact: bool,
 }
 

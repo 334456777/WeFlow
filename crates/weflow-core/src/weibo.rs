@@ -18,7 +18,9 @@ const MOBILE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Ma
 /// A post, as the insight's prompt quotes it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WeiboPost {
+    /// When it was posted, as Weibo writes it.
     pub created_at: String,
+    /// Its text, without markup.
     pub text: String,
 }
 

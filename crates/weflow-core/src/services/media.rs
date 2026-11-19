@@ -138,6 +138,11 @@ impl ServiceHub {
 
     // ── Media export ─────────────────────────────────────────────────────────
 
+    /// Downloads the stickers of a conversation's latest 500 messages into the folder `out` (`chat emoji`); the ones
+    /// there already are kept.
+    ///
+    /// # Errors
+    /// When the messages cannot be read or `out` cannot be made.
     pub async fn emoji_download(
         &self,
         session_id: &str,

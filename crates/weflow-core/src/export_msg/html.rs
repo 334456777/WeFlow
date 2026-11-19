@@ -216,6 +216,10 @@ impl Exporter<'_, '_> {
         Ok(count)
     }
 
+    /// Writes `msgs` to `out` as one HTML page, written even without messages.
+    ///
+    /// # Errors
+    /// When the page or its spool file cannot be written.
     pub fn write_html(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
         self.stream_html(msgs, out, true)?;
         Ok(())

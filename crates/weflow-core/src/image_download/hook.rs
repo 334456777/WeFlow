@@ -28,6 +28,7 @@ mod imp {
     /// How far back from the `lea` the function's `push rbp` may be.
     const PROLOGUE_SEARCH: usize = 0x800;
 
+    /// Whether this build can hook WeChat: on Windows x64 only.
     pub fn supported() -> bool {
         true
     }
@@ -475,6 +476,7 @@ mod imp {
 
 #[cfg(not(all(windows, target_arch = "x86_64")))]
 mod imp {
+    /// Whether this build can hook WeChat: on Windows x64 only.
     pub fn supported() -> bool {
         false
     }

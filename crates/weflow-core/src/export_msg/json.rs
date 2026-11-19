@@ -266,6 +266,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         serde_json::to_value(self.json_document(msgs, arkme)).unwrap_or_default()
     }
 
+    /// Writes `msgs` to `out` as WeFlow's JSON, or as Arkme's with `arkme`.
+    ///
+    /// # Errors
+    /// When the file cannot be written.
     pub fn write_json(&mut self, msgs: &[ExportMsg], out: &Path, arkme: bool) -> Result<()> {
         // written message by message in the order given, as a streaming export writes them
         if arkme {

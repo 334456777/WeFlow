@@ -44,15 +44,25 @@ use xml::{
 
 // ───────────────────────────── message struct ─────────────────────────────
 
+/// A message of a forwarded chat record (`<recorditem>`'s `<dataitem>`).
 #[derive(Clone, Debug, Default)]
 pub struct ForwardRecord {
+    /// Its `datatype`: 3 image, 34 voice, 43 video, 47 sticker, 8 or 49 file, 17 a chat record of its own…; 0 when
+    /// it gives none.
     pub datatype: i64,
+    /// The name of who sent it.
     pub sourcename: String,
+    /// When it was sent, as the record writes it.
     pub sourcetime: String,
+    /// Its text (`datadesc`, else `content`).
     pub datadesc: Option<String>,
+    /// Its title, such as a link's or a file's.
     pub datatitle: Option<String>,
+    /// A nested record's title, else the item's own.
     pub chat_record_title: Option<String>,
+    /// A nested record's description, else the item's text.
     pub chat_record_desc: Option<String>,
+    /// A nested record's messages (`datatype` 17).
     pub chat_record_list: Option<Vec<ForwardRecord>>,
 }
 
@@ -65,33 +75,59 @@ pub struct MediaRef {
     pub relative_path: String,
 }
 
+/// A message as the exports read it (WeFlow's `exportService.ts`): the row's fields and what its XML names.
 #[derive(Clone, Debug, Default)]
 pub struct ExportMsg {
+    /// The message's id in its conversation's table.
     pub local_id: i64,
+    /// WeChat's id of the message; 0 when it has none.
     pub server_id: i64,
+    /// WeChat's id as the row gives it, every digit kept; none when the row has none.
     pub server_id_raw: Option<String>,
+    /// When it was sent, in Unix seconds.
     pub create_time: i64,
+    /// WeChat's type of the message, with an app message's sub-type in the high 32 bits.
     pub local_type: i64,
+    /// The text, or the XML of a message that is not text.
     pub content: String,
+    /// Who sent it, as the exports name it: the revoker of a revoke notice, the account for its own messages, else
+    /// the row's sender, else the conversation.
     pub sender_username: String,
+    /// Whether the account's owner sent it.
     pub is_send: bool,
+    /// An image's MD5.
     pub image_md5: Option<String>,
+    /// The name of an image's `.dat` file.
     pub image_dat_name: Option<String>,
+    /// A sticker's address on WeChat's servers.
     pub emoji_cdn_url: Option<String>,
+    /// A sticker's MD5.
     pub emoji_md5: Option<String>,
     /// The md5 of a sticker sent as an app message of type 8 (`appmsg_emoticon_md5_in`).
     pub sticker_md5: Option<String>,
+    /// A sticker's caption, from WeChat's sticker database.
     pub emoji_caption: Option<String>,
+    /// The MD5 that names a video's file.
     pub video_md5: Option<String>,
+    /// An app message's `<type>`.
     pub xml_type: Option<String>,
+    /// A file's name.
     pub file_name: Option<String>,
+    /// A file's size, in bytes.
     pub file_size: Option<i64>,
+    /// A file's extension, without its dot.
     pub file_ext: Option<String>,
+    /// A file's MD5.
     pub file_md5: Option<String>,
+    /// A location's latitude.
     pub location_lat: Option<f64>,
+    /// A location's longitude.
     pub location_lng: Option<f64>,
+    /// The name of a location's place.
     pub location_poiname: Option<String>,
+    /// A location's label, its address as WeChat shows it.
     pub location_label: Option<String>,
+    /// A chat record's messages.
     pub chat_record_list: Option<Vec<ForwardRecord>>,
     /// Set when the export was asked to embed media and the file could be found.
     pub media: Option<MediaRef>,
@@ -107,6 +143,7 @@ impl ExportMsg {
         serde_json::to_value(crate::contract::MessageView::of(self, my_wxid)).unwrap_or_default()
     }
 
+    /// WeChat's id of the message in decimal without leading zeros; `None` when it has none.
     pub fn platform_message_id(&self) -> Option<String> {
         match &self.server_id_raw {
             Some(raw) => unsigned_token(raw),
@@ -548,11 +585,17 @@ fn format_plain_export_content(
 
 // ─────────────────────────── row → ExportMsg ───────────────────────────
 
+/// Which rows [`collect_rows`] takes, and whose they are.
 pub struct CollectOptions<'a> {
+    /// The conversation the rows are of.
     pub session_id: &'a str,
+    /// The account's wxid.
     pub my_wxid: &'a str,
+    /// Unix seconds: only messages from then on; none or 0 for no bound.
     pub start: Option<i64>,
+    /// Unix seconds: only messages up to then; none or 0 for no bound.
     pub end: Option<i64>,
+    /// Only the messages of this sender.
     pub sender_filter: Option<&'a str>,
 }
 

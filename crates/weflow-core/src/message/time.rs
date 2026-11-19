@@ -34,6 +34,8 @@ pub fn format_timestamp(ts: i64) -> String {
     }
 }
 
+/// The Unix seconds `ts` in ISO 8601 UTC with milliseconds, `2026-09-30T07:04:05.000Z`; empty for a time that
+/// cannot be.
 pub fn format_iso_timestamp(ts: i64) -> String {
     match chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0) {
         Some(dt) => dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
@@ -41,6 +43,8 @@ pub fn format_iso_timestamp(ts: i64) -> String {
     }
 }
 
+/// A time in seconds, milliseconds or finer as Unix seconds: divided by 1000 until it is not past 10^10; 0 for one
+/// that is not a positive number.
 pub fn normalize_timestamp_seconds(value: f64) -> i64 {
     if !value.is_finite() || value <= 0.0 {
         return 0;

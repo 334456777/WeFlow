@@ -6,6 +6,11 @@ use super::ServiceHub;
 use crate::error::{AppError, AppResult};
 
 impl ServiceHub {
+    /// Writes a backup of the configured account to `out` (`backup create`): its databases, the media `options`
+    /// asks for, and WeFlow's sticker cache when asked.
+    ///
+    /// # Errors
+    /// A config error when the account is not set up; a runtime error when the backup cannot be written.
     pub fn backup_create(
         &self,
         out: &Path,
@@ -51,6 +56,11 @@ impl ServiceHub {
         })
     }
 
+    /// Restores the backup at `path` into the folder `target_dir` (`backup restore`), and its stickers into
+    /// WeFlow's sticker cache.
+    ///
+    /// # Errors
+    /// A runtime error when the backup cannot be read or a file cannot be written.
     pub fn backup_restore(
         &self,
         path: &Path,

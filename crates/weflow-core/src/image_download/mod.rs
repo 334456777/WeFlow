@@ -75,6 +75,7 @@ fn retry_delay(attempts: u32) -> Duration {
         .min(MAX_RETRY_DELAY)
 }
 
+/// The image auto-download hook and its state, shared by every clone.
 #[derive(Clone, Default)]
 pub struct ImageAutoDownload {
     inner: Arc<Mutex<Inner>>,
@@ -120,6 +121,7 @@ fn whitelist_buffer(whitelist: &[String]) -> Option<Vec<u8>> {
 }
 
 impl ImageAutoDownload {
+    /// No hook yet.
     pub fn new() -> Self {
         Self::default()
     }

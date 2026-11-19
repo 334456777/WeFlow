@@ -8,6 +8,7 @@ use crate::config::{clean_account_dir_name, resolve_account_dir, ProfileConfig};
 use crate::error::{AppError, AppResult};
 
 impl ServiceHub {
+    /// The places WeChat keeps its data directory by default on this system (`db detect`).
     pub fn db_detect(&self) -> crate::contract::DbCandidates {
         let candidates = default_db_candidates()
             .into_iter()
@@ -19,6 +20,7 @@ impl ServiceHub {
         crate::contract::DbCandidates { candidates }
     }
 
+    /// The account folders directly under `root` (`db scan`): those with a `db_storage` folder.
     pub fn db_scan(&self, root: &str) -> crate::contract::DbScan {
         let root = crate::config::expand_home(root);
         let mut wxids = Vec::new();
@@ -73,6 +75,11 @@ impl ServiceHub {
         Ok(crate::contract::DbAccounts { accounts })
     }
 
+    /// Whether the configured account's databases open with its key (`db test`).
+    ///
+    /// # Errors
+    /// A config error when the data directory or the key is not set; a native error when the databases cannot be
+    /// found or the key does not open them.
     pub fn db_test(&self) -> AppResult<crate::contract::DbConnection> {
         let (account_dir, key, _) = self.connection_inputs()?;
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
@@ -145,6 +152,7 @@ impl ServiceHub {
             .ok_or_else(|| AppError::config(format!("profile not found: {}", self.profile_name)))
     }
 
+    /// The name of the profile this hub reads.
     pub fn profile_name(&self) -> &str {
         &self.profile_name
     }

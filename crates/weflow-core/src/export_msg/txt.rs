@@ -36,6 +36,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         String::from_utf8(out).unwrap_or_default()
     }
 
+    /// Writes `msgs` to `out` as plain text.
+    ///
+    /// # Errors
+    /// When the file cannot be written.
     pub fn write_txt(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
         let text = self.render_txt(msgs);
         write_bytes(out, text.as_bytes())
