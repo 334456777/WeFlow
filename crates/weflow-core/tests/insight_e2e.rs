@@ -143,7 +143,12 @@ async fn a_failed_trigger_says_why() {
 
     let (_root2, skip) = hub_with_ai("ins-fail-skip", &fake, "openai", "fake-skip", &["wxid_bob"]);
     let r = skip.insight_trigger_session("wxid_bob").await;
-    assert!(!r.success && r.message.unwrap().contains("SKIP"));
+    let message = r.message.unwrap();
+    assert!(!r.success && message.contains("SKIP"), "{message}");
+    assert!(
+        !message.contains("aiInsightAllowContext"),
+        "the chat was sent: {message}"
+    );
 }
 
 #[tokio::test]

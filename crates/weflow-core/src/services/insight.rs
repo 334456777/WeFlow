@@ -72,15 +72,24 @@ fn millis_since(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
-/// What a test trigger says when the model had nothing to say about `name`.
-fn skipped_message(name: &str) -> String {
-    fill(
+/// What a test trigger says when the model had nothing to say about `name`; without the recent messages
+/// (`aiInsightAllowContext` off) the model sees next to nothing, which is the usual reason.
+fn skipped_message(name: &str, chat_sent: bool) -> String {
+    let skipped = fill(
         tr(
             "The model had nothing to say about \"{name}\" (it answered SKIP); no insight was written",
             "模型认为「{name}」没有可说的（回答了 SKIP），没有生成见解",
         ),
         &[("name", name.to_string())],
-    )
+    );
+    if chat_sent {
+        return skipped;
+    }
+    skipped
+        + tr(
+            ". The recent messages are not sent (aiInsightAllowContext is off), so the model saw no chat; turn it on with `weflow config set aiInsightAllowContext true`",
+            "。没有开启发送聊天内容（aiInsightAllowContext），模型没有收到聊天记录；可以用 `weflow config set aiInsightAllowContext true` 开启",
+        )
 }
 
 /// A failure of the engine, which goes on with the next conversation.
@@ -160,6 +169,13 @@ impl ServiceHub {
     pub fn insight_enabled(&self) -> bool {
         self.insight_cfg()
             .get_key(Some(&self.profile_name), "aiInsightEnabled")
+            == Value::Bool(true)
+    }
+
+    /// Whether the recent messages go to the model with the question (`aiInsightAllowContext`, off by default).
+    fn insight_sends_chat(&self) -> bool {
+        self.insight_cfg()
+            .get_key(Some(&self.profile_name), "aiInsightAllowContext")
             == Value::Bool(true)
     }
 
@@ -715,7 +731,7 @@ impl ServiceHub {
         let api = self.model_api();
         let c = self.insight_cfg();
         let p = &self.profile_name;
-        let allow_context = c.get_key(Some(p), "aiInsightAllowContext") == Value::Bool(true);
+        let allow_context = self.insight_sends_chat();
         let ctx_raw = c
             .get_key(Some(p), "aiInsightContextCount")
             .as_f64()
@@ -895,7 +911,7 @@ impl ServiceHub {
                 record: Some(record.summary()),
                 ..InsightReply::done("")
             },
-            Ok(None) => InsightReply::failed(skipped_message(&name)),
+            Ok(None) => InsightReply::failed(skipped_message(&name, self.insight_sends_chat())),
             Err(why) => InsightReply::failed(why),
         }
     }
@@ -937,7 +953,9 @@ impl ServiceHub {
             .to_string();
         let record = match self.insight_generate(&id, &name, Trigger::Test, None).await {
             Ok(Some(record)) => record,
-            Ok(None) => return InsightReply::failed(skipped_message(&name)),
+            Ok(None) => {
+                return InsightReply::failed(skipped_message(&name, self.insight_sends_chat()))
+            }
             Err(why) => return InsightReply::failed(why),
         };
         let c = self.insight_cfg();
@@ -1142,5 +1160,20 @@ mod tests {
         assert!(model_api_missing(&api("", "k", "m")).is_none());
         // a service of one's own may take no key
         assert!(model_api_missing(&api("http://127.0.0.1:11434/v1", "", "m")).is_none());
+    }
+
+    #[test]
+    fn a_skip_without_the_chat_says_how_to_send_it() {
+        let sent = skipped_message("Bob", true);
+        assert!(
+            sent.contains("SKIP") && !sent.contains("aiInsightAllowContext"),
+            "{sent}"
+        );
+        let unsent = skipped_message("Bob", false);
+        assert!(
+            unsent.starts_with(&sent)
+                && unsent.contains("weflow config set aiInsightAllowContext true"),
+            "{unsent}"
+        );
     }
 }
