@@ -14,7 +14,9 @@ use crate::msg_row::MsgRow;
 /// A message of [`Account::search_messages`] or [`Account::scan_media_stream`], and its conversation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SessionRow {
+    /// The conversation's username.
     pub session_id: String,
+    /// The message.
     pub row: MsgRow,
 }
 

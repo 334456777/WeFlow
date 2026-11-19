@@ -92,6 +92,7 @@ impl FakeModel {
         Ok(Self { addr, shared })
     }
 
+    /// The address it listens on, with the port the system gave when it was asked for port 0.
     pub fn addr(&self) -> SocketAddr {
         self.addr
     }

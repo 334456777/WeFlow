@@ -204,6 +204,7 @@ struct Thread {
     stopped: bool,
 }
 
+/// WeChat's threads attached with `ptrace`, each with a hardware breakpoint where the database key is taken.
 pub struct Hook {
     pid: u32,
     target: usize,
@@ -461,6 +462,10 @@ impl Hook {
         }
     }
 
+    /// Removes the breakpoint from every thread and detaches; a thread that has exited is passed over.
+    ///
+    /// # Errors
+    /// The first failure to stop, clear or detach a thread; the others are still tried.
     pub fn cleanup(&mut self) -> Result<(), String> {
         if !self.attached {
             return Ok(());

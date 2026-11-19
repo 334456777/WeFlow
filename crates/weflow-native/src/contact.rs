@@ -351,6 +351,7 @@ impl Account {
         Ok(Value::Array(members))
     }
 
+    /// `{ "count": n }`: the members `chatroom_member` lists for a group; 0 for a group it does not know.
     pub fn group_member_count(&self, chatroom_id: &str) -> Result<Value> {
         let Some(room) = self.room(chatroom_id)? else {
             return Ok(json!({ "count": 0 }));

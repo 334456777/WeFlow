@@ -30,8 +30,11 @@ pub enum Behaviour {
 /// A model of the fake.
 #[derive(Clone, Copy, Debug)]
 pub struct FakeModelInfo {
+    /// The model's name, which picks its behaviour.
     pub id: &'static str,
+    /// The name `GET /v1/models` shows.
     pub display_name: &'static str,
+    /// How it answers.
     pub behaviour: Behaviour,
 }
 

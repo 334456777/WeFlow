@@ -18,7 +18,9 @@ mod tables;
 /// One message location: which shard database, which table.
 #[derive(Clone, Debug)]
 pub struct MsgTable {
+    /// The message database, `message_<n>.db`.
     pub db: PathBuf,
+    /// The table, `Msg_<md5 of the username>`.
     pub table: String,
 }
 
@@ -80,9 +82,13 @@ fn int(row: &Value, key: &str) -> i64 {
 /// the number of its `message_<n>.db`. Equal keys of different databases are listed by ascending database number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MsgPos {
+    /// `sort_seq`, or `create_time * 1000` for a row without one.
     pub sort_seq: i64,
+    /// Unix seconds.
     pub create_time: i64,
+    /// The row's id in its table.
     pub local_id: i64,
+    /// The number of its `message_<n>.db`.
     pub shard: u32,
 }
 

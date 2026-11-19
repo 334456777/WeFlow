@@ -486,6 +486,7 @@ impl Account {
         Ok((rows, mismatched))
     }
 
+    /// Drops the cursor and the sort keys it holds; closing one that is not open does nothing.
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
         self.cursors
             .lock()

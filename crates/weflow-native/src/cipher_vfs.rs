@@ -335,6 +335,7 @@ impl CipherFile {
         }))
     }
 
+    /// The keys that decrypt the file's pages, to open its next snapshot without deriving them again.
     pub fn cipher(&self) -> Arc<PageCipher> {
         self.cipher.clone()
     }

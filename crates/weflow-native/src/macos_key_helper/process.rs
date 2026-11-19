@@ -2,10 +2,14 @@
 //! them: the main application first, never the AppEx, crashpad or helper
 //! processes.
 
+/// A running WeChat client.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WeChatProcess {
+    /// The process id.
     pub pid: u32,
+    /// The process's name.
     pub name: String,
+    /// The executable.
     pub path: String,
     /// `/Applications/WeChat.app/Contents/MacOS/WeChat`, not a helper.
     pub main: bool,

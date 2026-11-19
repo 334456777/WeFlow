@@ -19,6 +19,7 @@ use cbc::cipher::{block_padding::NoPadding, BlockModeDecrypt, InnerIvInit};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
+/// The page size of WeChat's databases, in bytes, reserved tail included.
 pub const PAGE_SIZE: usize = 4096;
 const SALT_LEN: usize = 16;
 const IV_LEN: usize = 16;
@@ -65,6 +66,8 @@ pub struct PageCipher {
 }
 
 impl PageCipher {
+    /// The keys of a file with `salt`, derived from the database key `raw_key` (PBKDF2-HMAC-SHA512, 256 000
+    /// rounds: slow on purpose).
     pub fn derive(raw_key: &[u8; 32], salt: &[u8]) -> Self {
         let mut enc_key = [0u8; 32];
         pbkdf2::pbkdf2_hmac::<Sha512>(raw_key, salt, KDF_ITER, &mut enc_key);

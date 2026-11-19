@@ -121,13 +121,19 @@ fn attr(attrs: &str, name: &str) -> Option<String> {
 /// A picture or video of a post (`<media>`), or the moving part of a live photo (`<livePhoto>`), as its XML names it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SnsMedia {
+    /// The text of `<url>`: the address of the picture or video.
     pub url: String,
+    /// The text of `<thumb>`: the address of its thumbnail.
     pub thumb: String,
     /// The attributes of `<url>`, else of `<thumb>`; `md5` is `<url>`'s only.
     pub token: Option<String>,
+    /// The `key` attribute: what decrypts the file.
     pub key: Option<String>,
+    /// The `md5` attribute of `<url>`.
     pub md5: Option<String>,
+    /// The `enc_idx` attribute.
     pub enc_idx: Option<String>,
+    /// The `<livePhoto>` of a picture that moves.
     pub live_photo: Option<Box<SnsMedia>>,
 }
 
@@ -162,10 +168,13 @@ pub struct SnsPost {
     pub username: String,
     /// `<createTime>`, 0 when there is none.
     pub create_time: i64,
+    /// `<contentDesc>`: the text of the post.
     pub content_desc: String,
     /// `<ContentObject><type>`, 1 when there is none.
     pub kind: i64,
+    /// The post's XML as the row keeps it.
     pub raw_xml: String,
+    /// The `<media>` of its `<mediaList>`, in order.
     pub media: Vec<SnsMedia>,
     /// The nicknames of those who liked it.
     pub likes: Vec<String>,

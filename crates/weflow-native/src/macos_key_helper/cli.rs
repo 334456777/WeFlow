@@ -114,6 +114,7 @@ pub(super) fn parse(args: &[String]) -> Result<(u32, u64), Outcome> {
     Ok((u32::try_from(pid).unwrap_or(0), timeout))
 }
 
+/// Runs the helper on its command line `args` (`<pid> [timeout_ms]`): its JSON answer and its exit code.
 pub fn run_helper(args: &[String]) -> (String, i32) {
     run_helper_at(args)
 }

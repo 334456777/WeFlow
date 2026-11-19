@@ -13,10 +13,12 @@ use crate::db::Account;
 const QUARTER: i64 = 900;
 
 impl Account {
+    /// The rows of a conversation's message tables together, at most `i32::MAX`.
     pub fn message_count(&self, session_id: &str) -> Result<i32> {
         self.count_rows(&self.message_tables(session_id)?)
     }
 
+    /// `{ username: count }`: [`Self::message_count`] of each of `session_ids`.
     pub fn session_message_counts(&self, session_ids: &[String]) -> Result<Value> {
         let mut out = Map::new();
         for (id, tables) in session_ids.iter().zip(self.message_tables_of(session_ids)?) {
