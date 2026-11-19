@@ -25,13 +25,14 @@
 ## 修复流程
 
 - 在自己的 worktree 和分支（`fix/<scope>-<描述>`）上修，不在共用的工作副本里切换分支。
+- 每个 worktree 编译时用自己的 target 目录：`CARGO_TARGET_DIR=<主工作副本>/target/wt-<worktree 名>`。不用 `target/debug`，也不让几个 worktree 共用一个目录，先后修的几个 bug 也不共用。
 - 提交：
   - 提交信息和 PR 标题用 `type(scope):` 加中文描述；
   - PR 描述用中文，用 `fixed`、`closed` 关联 issue；
   - 加标签，加入看板并设为 In Review。
 - 用户能看到的行为变了，先推送 Wiki，再合并 PR。
 - 等 CI 跑完再汇报，不在 CI 还没出结果时结束回合。
-- 合并后，主工作副本要 `git pull`。
+- 合并后，主工作副本要 `git pull`，删掉 worktree 和它的 target 目录。
 
 ## 同时有多个 bug
 
@@ -45,7 +46,7 @@
 - 子代理不合并 PR，也不改 Wiki。下面这些由本会话做：
   - 等 CI；
   - 需要时推送 Wiki；
-  - 合并 PR，删掉分支和 worktree；
+  - 合并 PR，删掉分支、worktree 和它的 target 目录；
   - 把看板设为 Done；
   - 通知请求方。
 - 两个 bug 要改同一批文件时不并行：先修一个，合并以后再开下一个子代理，避免冲突。

@@ -1,7 +1,8 @@
 // The synthetic accounts `bun run dev` with WEFLOW_DEV_ACCOUNT (#333) and `bun run smoke` (#789) serve: made by an
 // example of weflow-cli into target/, and a `weflow serve` of one on a free port of 127.0.0.1 with a token of its own.
 // Nothing of a real WeChat account is read.
-import { join, resolve } from 'node:path';
+import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 
 const web = join(import.meta.dir, '..');
 const root = join(web, '..');
@@ -25,11 +26,55 @@ function cargo(args: string[]): boolean {
   }
 }
 
+/** Where the binaries these scripts run are copied to, a folder for each process: a running program keeps its file
+ * open, and on Windows a build cannot replace that file then, so a server started from target/debug would make every
+ * other `cargo build` into this target fail at the link until it stops. */
+const runs = join(target, 'web-run');
+let copies: string | undefined;
+
+/** A copy of the built binary `built` for this process to run. */
+function runnable(built: string): string {
+  if (!copies) {
+    sweep();
+    copies = join(runs, String(process.pid));
+    mkdirSync(copies, { recursive: true });
+    const made = copies;
+    // a server still stopping keeps its copy: a later run's sweep removes it
+    process.on('exit', () => {
+      try { rmSync(made, { recursive: true, force: true }); } catch {}
+    });
+  }
+  const path = join(copies, basename(built));
+  copyFileSync(built, path);
+  return path;
+}
+
+/** Removes the copies of the processes that have ended. */
+function sweep() {
+  let names: string[];
+  try { names = readdirSync(runs); } catch { return; }
+  for (const name of names) {
+    if (alive(Number(name))) continue;
+    try { rmSync(join(runs, name), { recursive: true, force: true }); } catch {}
+  }
+}
+
+function alive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: there is such a process, of another user
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
 /** `weflow` and the fake model API (crates/weflow-fake-model), in a debug build. */
 const binaries = ['-p', 'weflow-cli', '-p', 'weflow-fake-model', '--bin', 'weflow', '--bin', 'weflow-fake-model'];
 
 /** Builds `weflow`, the fake model API and the account's generator, which makes the account when it is not there yet:
- * the binary and the WeFlow home that points at the account. Exits when a step fails. */
+ * the binary (a copy to run, see `runs`) and the WeFlow home that points at the account. Exits when a step fails. */
 export function buildAccount(chosen: Account): { weflow: string; home: string } {
   // debug build: what `cargo build` has made already, and quick to make again after a change
   // one cargo run for the debug account; the benchmark account's generator is built in release, so it is a run of its own
@@ -40,7 +85,7 @@ export function buildAccount(chosen: Account): { weflow: string; home: string } 
     console.error('cargo build failed');
     process.exit(1);
   }
-  const weflow = join(target, 'debug/weflow' + exe);
+  const weflow = runnable(join(target, 'debug/weflow' + exe));
   const generator = join(target, `${chosen.profile}/examples/${chosen.example}${exe}`);
   const account = Bun.spawnSync([generator, join(target, chosen.dir), '--weflow', weflow], {
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -85,7 +130,7 @@ export async function startServe(weflow: string, home: string, args: string[], e
 
 /** The fake model API on a free port of 127.0.0.1, once it has started: its process and its addresses. */
 export async function startFakeModel() {
-  const fake = Bun.spawn([join(target, 'debug/weflow-fake-model' + exe)], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const fake = Bun.spawn([runnable(join(target, 'debug/weflow-fake-model' + exe))], { stdio: ['ignore', 'pipe', 'inherit'] });
   // it prints one line with its addresses, and nothing after
   const reader = fake.stdout.pipeThrough(new TextDecoderStream()).getReader();
   let line = '';
