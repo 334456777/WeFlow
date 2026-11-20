@@ -3,13 +3,15 @@
 ## 启动命令
 
 ```
-/loop 监控issues出现Bug标签由你来修，收到其他Claude的Bug修复请求也由你来修然后通知对方
+/loop 监控issues出现Bug标签由你来修，收到其他智能体的Bug修复请求也由你来修然后通知对方
 ```
+
+启动命令和下文的工具（`/loop`、ScheduleWakeup、Agent、SendMessage、TaskStop）是 Claude Code 的；其他智能体用自己对应的功能，按同样的节奏和流程做。
 
 ## 要求
 
 - 监视 `334456777/WeFlow` 上带 `bug` 标签的未关闭 issue，出现就修。
-- 其他 Claude 会话发来的 bug 修复请求，也由这个会话修，修完用 SendMessage 通知对方。
+- 其他智能体发来的 bug 修复请求，也由这个会话修，修完通知对方（Claude Code 用 SendMessage）。
 - CI 全部通过就自己合并（merge commit），删掉本地和远程分支，看板上的 PR 和 issue 都设为 Done。
 - 节奏：
   - 内部每 5 分钟查一次：用后台 Bash 循环，不用 Monitor，因为 Monitor 最长 30 分钟就过期；
