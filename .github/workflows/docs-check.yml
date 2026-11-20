@@ -1,8 +1,9 @@
 name: Docs check
 
-# Changes to the READMEs, CLAUDE.md or the skills (.agents/skills) only run `make docs-check`: the links and anchors of
-# the READMEs and the skills resolve, commas next to Chinese text are full-width, and every skill has the front matter
-# of the Agent Skills format. Code changes are covered by ci.yml, which runs this check as well.
+# Changes to the READMEs, CLAUDE.md, the skills (.agents/skills) or the symlinks to them (AGENTS.md, .claude/skills)
+# only run `make docs-check`: the links and anchors of the READMEs and the skills resolve, commas next to Chinese text
+# are full-width, every skill has the front matter of the Agent Skills format and a row in CLAUDE.md, and the symlinks
+# are checked out as links. Code changes are covered by ci.yml, which runs this check as well.
 #
 # Every pull request runs this workflow, so `Docs check passed`, the check of it the ruleset of main requires, always
 # reports: the `changes` job reads the files the pull request changes, and `make docs-check` runs only when they include
@@ -15,7 +16,9 @@ on:
       - "README.md"
       - "README.zh-CN.md"
       - "CLAUDE.md"
+      - "AGENTS.md"
       - ".agents/skills/**"
+      - ".claude/skills"
       - ".github/workflows/docs-check.yml"
   workflow_dispatch:
 
@@ -54,7 +57,8 @@ jobs:
           docs=false
           while read -r path; do
             case "$path" in
-              README.md | README.zh-CN.md | CLAUDE.md | .agents/skills/* | .github/workflows/docs-check.yml) docs=true ;;
+              README.md | README.zh-CN.md | CLAUDE.md | AGENTS.md | .agents/skills/* | .claude/skills | \
+                .github/workflows/docs-check.yml) docs=true ;;
             esac
           done <<< "$files"
           echo "docs=$docs" | tee -a "$GITHUB_OUTPUT"
