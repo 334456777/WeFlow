@@ -1,13 +1,12 @@
 name: CI
 
 # Code changes run `make ci` (rustfmt, clippy and rustdoc with warnings as errors, the whole test suite) on Linux and
-# macOS, plus `make docs-check`. Changes to the READMEs or CLAUDE.md alone run docs-check.yml instead, and changes to
-# the HTML export's templates alone run html-template.yml (on main, the copies it commits run CI). Windows x64 (MSVC, a
-# release target) builds the CLI, checks the API documentation, runs the test suite and runs the CLI once, since some
-# code (the allocator setup, the platform helpers) only compiles there; Windows arm64 is left to release.yml, so CI
-# covers the three main platforms. The tests use the
-# dev profile like Linux and macOS: the release profile (thin LTO, one codegen unit) took ~13 minutes to compile
-# the ~20 test binaries and ~1 minute to run them.
+# macOS, plus `make docs-check`. Changes to the READMEs, CLAUDE.md or the skills alone run docs-check.yml instead, and
+# changes to the HTML export's templates alone run html-template.yml (on main, the copies it commits run CI). Windows
+# x64 (MSVC, a release target) builds the CLI, checks the API documentation, runs the test suite and runs the CLI once,
+# since some code (the allocator setup, the platform helpers) only compiles there; Windows arm64 is left to
+# release.yml, so CI covers the three main platforms. The tests use the dev profile like Linux and macOS: the release
+# profile (thin LTO, one codegen unit) took ~13 minutes to compile the ~20 test binaries and ~1 minute to run them.
 #
 # Every pull request runs this workflow, so `CI passed`, the check of it the ruleset of main requires, always reports:
 # the `changes` job reads the files the pull request changes, and the jobs run only when they include the code (the
