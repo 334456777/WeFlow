@@ -266,16 +266,27 @@ pub struct CaptureDiagnostics {
     pub unreadable_keys: u64,
 }
 
+/// The cancel flag of every hook. Only the hook's debugger thread holds the flag strongly, so an entry stops upgrading
+/// once that thread has restored the debug registers and detached.
 fn interrupts() -> &'static Mutex<Vec<Weak<AtomicBool>>> {
     static ACTIVE: OnceLock<Mutex<Vec<Weak<AtomicBool>>>> = OnceLock::new();
     ACTIVE.get_or_init(Default::default)
 }
 
 unsafe extern "system" fn console_interrupt(event: u32) -> i32 {
-    if event != CTRL_C_EVENT && event != CTRL_BREAK_EVENT {
-        return 0;
+    match event {
+        CTRL_C_EVENT | CTRL_BREAK_EVENT => i32::from(interrupt()),
+        // Windows ends the process as soon as the handler returns, and waits for it at most about 5 seconds: return
+        // only once no breakpoint is left in WeChat (#985).
+        CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT => {
+            let hooks: Vec<_> = interrupts()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            i32::from(interrupt_and_wait(&hooks))
+        }
+        _ => 0,
     }
-    i32::from(interrupt())
 }
 
 /// Stops every hook running, as Ctrl+C does; returns whether there was a hook to stop.
@@ -283,40 +294,68 @@ unsafe extern "system" fn console_interrupt(event: u32) -> i32 {
 /// Each hook restores the debug registers it set and detaches before it fails with `interrupted by user`. This is for
 /// a process that cannot get Ctrl+C, such as a job of `weflow serve` (#287).
 pub fn interrupt() -> bool {
-    let active = interrupts().lock().unwrap_or_else(|e| e.into_inner());
+    cancel(&interrupts().lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+/// Asks each of `hooks` still running to stop; returns whether there was one.
+fn cancel(hooks: &[Weak<AtomicBool>]) -> bool {
     let mut handled = false;
-    for cancel in active.iter().filter_map(Weak::upgrade) {
+    for cancel in hooks.iter().filter_map(Weak::upgrade) {
         cancel.store(true, Ordering::Release);
         handled = true;
     }
     handled
 }
 
-struct InterruptGuard(Arc<AtomicBool>);
-impl InterruptGuard {
-    fn new() -> Result<Self> {
-        let cancel = Arc::new(AtomicBool::new(false));
-        let mut active = interrupts().lock().unwrap_or_else(|e| e.into_inner());
-        // SAFETY: `console_interrupt` stays valid for the life of the process; it is added once, while the lock is
-        // held, when no hook had it.
-        if active.is_empty() && unsafe { SetConsoleCtrlHandler(Some(console_interrupt), 1) } == 0 {
+/// Stops `hooks` and returns once each one's debugger thread has finished, so WeChat keeps none of their breakpoints;
+/// returns whether any of them was still running.
+fn interrupt_and_wait(hooks: &[Weak<AtomicBool>]) -> bool {
+    let handled = cancel(hooks);
+    for hook in hooks {
+        while hook.strong_count() > 0 {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    handled
+}
+
+/// Adds `console_interrupt` the first time a hook starts. It stays for the life of the process and passes every
+/// signal on while no hook is running, so it is never removed: Windows may hold its handler list while a handler
+/// runs, and removing it from a thread that holds [`interrupts`] could wait on a handler that waits for that lock.
+fn install_console_handler() -> Result<()> {
+    static INSTALLED: Mutex<bool> = Mutex::new(false);
+    let mut installed = INSTALLED.lock().unwrap_or_else(|e| e.into_inner());
+    if !*installed {
+        // SAFETY: `console_interrupt` stays valid for the life of the process, and is added once, under this lock.
+        if unsafe { SetConsoleCtrlHandler(Some(console_interrupt), 1) } == 0 {
             return Err(win_error("SetConsoleCtrlHandler"));
         }
-        active.push(Arc::downgrade(&cancel));
-        Ok(Self(cancel))
+        *installed = true;
+    }
+    Ok(())
+}
+
+/// Keeps a hook's cancel flag in [`interrupts`] while the hook lives.
+struct InterruptGuard(Weak<AtomicBool>);
+impl InterruptGuard {
+    /// Registers a new cancel flag and returns it for the debugger thread, which must be its only owner.
+    fn new() -> Result<(Self, Arc<AtomicBool>)> {
+        install_console_handler()?;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let entry = Arc::downgrade(&cancel);
+        interrupts()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(entry.clone());
+        Ok((Self(entry), cancel))
     }
 }
 impl Drop for InterruptGuard {
     fn drop(&mut self) {
-        let mut active = interrupts().lock().unwrap_or_else(|e| e.into_inner());
-        active.retain(|entry| !Weak::ptr_eq(entry, &Arc::downgrade(&self.0)));
-        if active.is_empty() {
-            // SAFETY: removes the handler `InterruptGuard::new` added, under the same lock, once the last hook is
-            // gone.
-            unsafe {
-                SetConsoleCtrlHandler(Some(console_interrupt), 0);
-            }
-        }
+        interrupts()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|entry| !Weak::ptr_eq(entry, &self.0));
     }
 }
 
@@ -360,9 +399,10 @@ impl Hook {
         let (stop, stop_rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let output = Arc::new(Mutex::new(Output::default()));
-        let interrupt = InterruptGuard::new()?;
-        let cancel = interrupt.0.clone();
+        let (interrupt, cancel) = InterruptGuard::new()?;
         let worker_output = output.clone();
+        // The closure owns `cancel` and drops it only when the thread ends, after the debugger detached; the console
+        // handler waits for that.
         let worker = std::thread::Builder::new()
             .name("weflow-key-debugger".into())
             .spawn(move || {
@@ -1141,13 +1181,30 @@ mod tests {
         let mut target = Target::spawn();
         let mut hook =
             Hook::start_at(target.child.id(), target.address, "synthetic".into()).unwrap();
-        hook._interrupt.0.store(true, Ordering::Release);
+        assert!(cancel(&[hook._interrupt.0.clone()]));
         assert!(hook
             .cleanup()
             .unwrap_err()
             .to_string()
             .contains("interrupted"));
         target.assert_detached();
+    }
+
+    #[test]
+    fn console_close_returns_after_detaching() {
+        let mut target = Target::spawn();
+        let mut hook =
+            Hook::start_at(target.child.id(), target.address, "synthetic".into()).unwrap();
+        let hooks = [hook._interrupt.0.clone()];
+        assert!(interrupt_and_wait(&hooks));
+        // Restored and detached by the debugger thread alone, before the hook is joined or dropped.
+        target.assert_detached();
+        assert!(!interrupt_and_wait(&hooks), "nothing is left to stop");
+        assert!(hook
+            .cleanup()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted"));
     }
 
     #[test]
