@@ -66,24 +66,38 @@ pub(super) fn select(modules: &[Module]) -> Choice {
     }
 }
 
-/// `KNOWN_RVA` for the version in `Info.plist`, as the original decided it:
-/// 4.1.8, 4.1.9, 4.2 and later move the code, so `0` asks for the semantic
-/// scan; everything else uses the 4.1.7 offset.
-pub(super) fn known_rva(version: Option<&str>) -> u64 {
-    let Some(version) = version else {
-        return LEGACY_KNOWN_RVA;
-    };
-    let new_mode = version.starts_with("4.1.8")
-        || version.starts_with("4.1.9")
-        || version.starts_with("4.2")
-        || version
+/// The newest version whose code stays at [`LEGACY_KNOWN_RVA`].
+const LEGACY_LAST_VERSION: [u64; 3] = [4, 1, 7];
+
+/// The first three numeric components of a version string, with missing
+/// components treated as zero and later components ignored.
+fn version_key(version: &str) -> Option<[u64; 3]> {
+    let mut key = [0_u64; 3];
+    let mut parts = version.trim().split('.');
+    for slot in &mut key {
+        let Some(part) = parts.next() else {
+            return Some(key);
+        };
+        let digits = part
             .as_bytes()
-            .first()
-            .is_some_and(|first| *first > b'4');
-    if new_mode {
-        0
-    } else {
-        LEGACY_KNOWN_RVA
+            .iter()
+            .take_while(|byte| byte.is_ascii_digit())
+            .count();
+        if digits == 0 {
+            return None;
+        }
+        *slot = part[..digits].parse().ok()?;
+    }
+    Some(key)
+}
+
+/// `KNOWN_RVA` for the version in `Info.plist`: 4.1.8 and later move the code,
+/// so `0` asks for the semantic scan; 4.1.7 and earlier use the 4.1.7 offset.
+/// A build number such as `4.1.7.31` still counts as 4.1.7.
+pub(super) fn known_rva(version: Option<&str>) -> u64 {
+    match version.and_then(version_key) {
+        Some(key) if key > LEGACY_LAST_VERSION => 0,
+        _ => LEGACY_KNOWN_RVA,
     }
 }
 
@@ -131,11 +145,16 @@ mod tests {
     }
 
     #[test]
-    fn switches_on_the_versions_the_original_switched_on() {
-        for version in ["4.1.8", "4.1.9.1", "4.2", "4.2.0.1", "5.0.1"] {
+    fn uses_the_semantic_scan_from_4_1_8() {
+        for version in [
+            "4.1.8", "4.1.8.53", "4.1.9.1", "4.1.10", "4.2", "4.2.0.1", "4.3", "4.3.0.1", "4.10",
+            "5.0.1",
+        ] {
             assert_eq!(known_rva(Some(version)), 0, "{version}");
         }
-        for version in ["4.1.7", "4.1.10", "4.3", "3.9.2", ""] {
+        for version in [
+            "4.1.7", "4.1.7.31", "4.1.6", "4.0.5", "4.1", "3.9.2", "", "unknown",
+        ] {
             assert_eq!(known_rva(Some(version)), LEGACY_KNOWN_RVA, "{version}");
         }
         assert_eq!(known_rva(None), LEGACY_KNOWN_RVA);
