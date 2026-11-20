@@ -70,6 +70,7 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 
 - 一次合并整个 stack：`gh stack merge <顶层 PR> --yes --merge`。`main` 上只多一个合并提交，标题取顶层 PR，各层的关闭关键词照样生效。
 - 只有一层时不算 stack：`gh stack merge` 报「is not a stack number or a stacked pull request」，改用 `gh pr merge <PR> --merge`。
+- `gh stack push` 会把预留的空层也推送到远程，合并后连同它们一起删除。
 - 合并后本地的 stack 记录不会删除：删完分支后运行 `gh stack unstack <stack 编号> --local`，编号是 `submit` 时打印的「stack #N」，不是 PR 号。旧记录攒到两个以上时，在 `main` 上运行 `gh stack view` 会报「main belongs to multiple stacks」。不要手改 `.git/gh-stack`。
 - 未跟踪的文件也算未提交的改动，`gh stack rebase`、`add`、`submit` 会中止：先 `git stash push -u -m <标签> -- <路径>`，跑完再取回。
 - 已有的分支和 PR 可以用 `gh stack init <底层分支> <新分支>` 接管成 stack。

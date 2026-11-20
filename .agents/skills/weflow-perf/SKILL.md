@@ -43,6 +43,8 @@ serve_bench 每次都同时测合成账号和真实账号：合成账号检查�
 
 内存优化要同时测磁盘读写的次数和字节数（`bench.py` 的结果里有 `read_bytes`、`write_bytes`）。不靠把数据暂存到磁盘来降低内存：把大会话的正文暂存到临时 SQLite 能省约 30% 的峰值内存，但读写次数多约 9 倍（[#135](https://github.com/334456777/WeFlow/issues/135)），导出到机械硬盘或 U 盘时更慢。读写明显增加时，先把取舍摆给维护者。
 
+导出的内存或线程数变了，同步更新 Wiki [消息导出#线程数的自适应](https://github.com/334456777/WeFlow/wiki/消息导出#线程数的自适应)和[消息导出#内存](https://github.com/334456777/WeFlow/wiki/消息导出#内存)里的数字。
+
 ## bench.yml（维护者）
 
 - 会明显影响性能的 PR 开出时就加 `bench` 标签，见 [weflow-pr](../weflow-pr/SKILL.md#开-pr)。汇报时主动建议跑 bench，`commits` 填 `#N前=<合并提交>^,#N后=<合并提交>`。小改动、文档和只改 WebUI 的 PR 不建议。
