@@ -32,7 +32,7 @@ weflow lang zh
 
 ## 首次设置与导出（必要步骤）
 
-支持微信 4.0 及以上版本，需要至少登录过一次账号、发送过消息并打开过图片。下面的步骤以 Windows 为例，请**以管理员身份运行 PowerShell**。macOS 步骤见 Wiki 的 [macOS 首次设置](https://github.com/334456777/WeFlow/wiki/macOS-首次设置)，Linux 步骤见 Wiki 的 [Linux 首次设置](https://github.com/334456777/WeFlow/wiki/Linux-首次设置)。
+支持微信 4.0 及以上版本，需要至少登录过一次账号、发送过消息并打开过图片。下面的步骤以 Windows 为例，请**以管理员身份运行 PowerShell**。详细转到 [Windows 首次设置](https://github.com/334456777/WeFlow/wiki/Windows-首次设置) [macOS 首次设置](https://github.com/334456777/WeFlow/wiki/macOS-首次设置) [Linux 首次设置](https://github.com/334456777/WeFlow/wiki/Linux-首次设置)。
 
 1. 设置微信数据目录
 ```powershell
@@ -72,15 +72,20 @@ weflow db test
 ```
 > stdout: `accountDir: C:\Users\<你>\Documents\xwechat_files\wxid_xxxxxxxx_xxxx`<br>stdout: `connected: true`
 
-6. 尝试列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
+6. 查看配置文件位置
+```powershell
+weflow config path
+```
+
+> stdout: `C:\Users\<你>\AppData\Roaming\weflow\config.json`
+
+7. 尝试列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
 ```powershell
 weflow chat sessions
 weflow export messages <会话 ID> --format html --out chat.html
 ```
 
 需要导出为其他格式（`txt`、`json`、`excel`、`sql` 等）、按日期或发送者筛选、连同图片等媒体一起导出，见 Wiki 的[消息导出-格式](https://github.com/334456777/WeFlow/wiki/消息导出#格式)。
-
-`weflow config` 用于管理配置文件。
 
 ---
 <a id="key-db"></a>**`weflow key db` 做了什么？** <br>数据库密钥在微信打开数据库时在内存中生成，命令从对应的内存位置提取 `decrypt_key`：
@@ -98,8 +103,6 @@ weflow export messages <会话 ID> --format html --out chat.html
 180 秒的自动退出时间可以用 `weflow key db --timeout <秒>` 调整。
 
 完整的流程和各平台的实现见 Wiki 的[密钥获取-数据库密钥](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥)。
-
-Windows 上的完整步骤（下载与校验、管理员终端、数据目录不在默认位置时的处理、网页界面）见 Wiki 的 [Windows 首次设置](https://github.com/334456777/WeFlow/wiki/Windows-首次设置)。
 
 ## CLI 不支持的功能
 
