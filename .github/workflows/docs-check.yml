@@ -1,7 +1,8 @@
 name: Docs check
 
-# Changes to the READMEs or CLAUDE.md only run `make docs-check`: the READMEs' links and anchors resolve, and commas
-# next to Chinese text are full-width. Code changes are covered by ci.yml, which runs this check as well.
+# Changes to the READMEs, CLAUDE.md or the skills (.agents/skills) only run `make docs-check`: the links and anchors of
+# the READMEs and the skills resolve, commas next to Chinese text are full-width, and every skill has the front matter
+# of the Agent Skills format. Code changes are covered by ci.yml, which runs this check as well.
 #
 # Every pull request runs this workflow, so `Docs check passed`, the check of it the ruleset of main requires, always
 # reports: the `changes` job reads the files the pull request changes, and `make docs-check` runs only when they include
@@ -14,6 +15,7 @@ on:
       - "README.md"
       - "README.zh-CN.md"
       - "CLAUDE.md"
+      - ".agents/skills/**"
       - ".github/workflows/docs-check.yml"
   workflow_dispatch:
 
@@ -28,8 +30,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Whether a pull request changes the READMEs or CLAUDE.md, by the paths of its files (a renamed file's old path
-  # too), those of `on.push`. A push or a run by hand runs the check.
+  # Whether a pull request changes the READMEs, CLAUDE.md or the skills, by the paths of its files (a renamed file's
+  # old path too), those of `on.push`. A push or a run by hand runs the check.
   changes:
     name: changes
     runs-on: ubuntu-latest
@@ -52,7 +54,7 @@ jobs:
           docs=false
           while read -r path; do
             case "$path" in
-              README.md | README.zh-CN.md | CLAUDE.md | .github/workflows/docs-check.yml) docs=true ;;
+              README.md | README.zh-CN.md | CLAUDE.md | .agents/skills/* | .github/workflows/docs-check.yml) docs=true ;;
             esac
           done <<< "$files"
           echo "docs=$docs" | tee -a "$GITHUB_OUTPUT"
@@ -79,7 +81,7 @@ jobs:
         run: make docs-check
 
   # The check of this workflow the ruleset of main requires: `make docs-check` passed, or was skipped as the pull
-  # request changes neither the READMEs nor CLAUDE.md. Re-running the failed jobs runs it again.
+  # request changes none of the READMEs, CLAUDE.md and the skills. Re-running the failed jobs runs it again.
   passed:
     name: Docs check passed
     needs: [changes, docs-check]
