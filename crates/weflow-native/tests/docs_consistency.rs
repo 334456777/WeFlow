@@ -1,5 +1,5 @@
-//! Keeps the Markdown in the repository self-consistent: the relative links and `#anchors` of the READMEs and the skills
-//! resolve, commas next to Chinese characters are full-width (`，`), every skill has the front matter of the Agent
+//! Keeps the Markdown in the repository self-consistent: the relative links and `#anchors` of the READMEs, CLAUDE.md
+//! and the skills resolve, commas next to Chinese characters are full-width (`，`), every skill has the front matter of the Agent
 //! Skills format, and the symlinks agents read were checked out as links. The commas are only reported, never
 //! rewritten.
 #![expect(
@@ -39,10 +39,14 @@ fn markdown_under(dir: &Path) -> Vec<PathBuf> {
     found
 }
 
-/// Docs covered by the checks: the READMEs and the skills. The documentation itself is in the GitHub Wiki, outside
-/// this repository.
+/// Docs covered by the checks: the READMEs, the agents' instructions (CLAUDE.md) and the skills. The documentation
+/// itself is in the GitHub Wiki, outside this repository.
 fn doc_files() -> Vec<PathBuf> {
-    let mut files = vec![root().join("README.md"), root().join("README.zh-CN.md")];
+    let mut files = vec![
+        root().join("README.md"),
+        root().join("README.zh-CN.md"),
+        root().join("CLAUDE.md"),
+    ];
     files.extend(markdown_under(&skills_dir()));
     files
 }
@@ -175,10 +179,8 @@ fn commas_next_to_chinese_are_full_width() {
     let after_han = Regex::new(&format!(r"{han}[)\]」”’*_ ]*,")).unwrap();
     let before_han = Regex::new(&format!(r",[(\[「“‘*_ ]*{han}")).unwrap();
     let link_target = Regex::new(r"\]\([^)\s]*\)").unwrap();
-    let mut files = doc_files();
-    files.push(root().join("CLAUDE.md"));
     let mut problems = Vec::new();
-    for file in files {
+    for file in doc_files() {
         let text = std::fs::read_to_string(&file).unwrap();
         for (i, line) in strip_code(&text).lines().enumerate() {
             let line = link_target.replace_all(line, "]");
