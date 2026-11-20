@@ -55,3 +55,7 @@ weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
 # stop.rs reads whether SIGHUP is ignored (`nohup`) before listening for it
 [target."cfg(unix)".dependencies]
 libc = "0.2"
+
+# launch.rs asks whether the console is this process's own, as a double-click in Explorer gives it
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }

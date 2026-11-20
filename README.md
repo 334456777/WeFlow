@@ -7,7 +7,7 @@
 - Prints human-readable text by default; add `--json` to get JSON for scripts.
 - Supports [sessions and messages](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#会话与消息), [contacts](https://github.com/334456777/WeFlow/wiki/聊天与媒体命令#联系人与群), [Moments](https://github.com/334456777/WeFlow/wiki/朋友圈), [private and group chat analytics](https://github.com/334456777/WeFlow/wiki/统计与报告), [annual reports](https://github.com/334456777/WeFlow/wiki/统计与报告#年度报告), and [dual reports](https://github.com/334456777/WeFlow/wiki/统计与报告#双人报告).
 - Exports messages in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, and `sql`. Images, voice messages, videos, and stickers can be exported too.
-- `weflow serve` provides an HTTP API for every command and a web interface ([WebUI](https://github.com/334456777/WeFlow/wiki/WebUI)).
+- `weflow serve` provides an HTTP API for every command and a web interface ([WebUI](https://github.com/334456777/WeFlow/wiki/WebUI)). On Windows, double-clicking `weflow.exe` runs `weflow serve` and opens the web interface in the browser; closing the window stops it.
 
 ## Install
 

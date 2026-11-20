@@ -256,11 +256,12 @@ fn inline_notes(line: &str) -> String {
     line
 }
 
-/// Parse the command line; help and parse errors are printed in the active language.
-pub fn parse<T: CommandFactory + FromArgMatches>() -> T {
+/// Parse `args`, the command line from the program's name on; help and parse errors are printed in the active
+/// language.
+pub fn parse<T: CommandFactory + FromArgMatches>(args: Vec<std::ffi::OsString>) -> T {
     prescan_lang();
     let parsed = command_of::<T>()
-        .try_get_matches()
+        .try_get_matches_from(args)
         .and_then(|m| T::from_arg_matches(&m));
     match parsed {
         Ok(value) => value,
