@@ -18,9 +18,12 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - 每个公开项都要有 `///`，每个 crate 根都要有 `//!`（`missing_docs`，[#915](https://github.com/334456777/WeFlow/issues/915)）；集成测试、示例和构建脚本各自也是一个 crate
   - `unwrap`、`expect` 只在测试里允许（[`clippy.toml`](clippy.toml)）
   - 每个 `unsafe` 块前写 `// SAFETY:`
-- 只在部分平台编译的代码：开头写了 `#![cfg(...)]` 的文件在别的平台上不编译，如 [`insight_e2e.rs`](crates/weflow-core/tests/insight_e2e.rs) 只在 Linux 编译。改了这类文件用到的公开接口，或者测试依赖 `cfg!(windows)`、反斜杠路径、符号链接时，在对应的平台上（Windows 上用 WSL）跑一次相关的 clippy 和测试
-- `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README 和 skill 的相对链接和锚点是否有效、这些文件和本文件里汉字旁的逗号是否为中文逗号（只报告，不自动修改），以及每个 skill 的 front matter 是否符合 Agent Skills 格式
-- [`rust-toolchain.toml`](rust-toolchain.toml) 固定了 Rust 版本（本地与 CI 共用）；升级时改 channel，跑 `make ci` 修掉新增的 clippy 警告，一起提交
+- 只在部分平台编译的代码：开头写了 `#![cfg(...)]` 的文件在别的平台上不编译，如 [`insight_e2e.rs`](crates/weflow-core/tests/insight_e2e.rs) 只在 Linux 编译。改了这类文件用到的公开接口，或者测试依赖 `cfg!(windows)`、反斜杠路径、符号链接时，在对应的平台上（Windows 上用 WSL）跑一次相关的 clippy 和测试，步骤见 skill `weflow-cross-platform`
+- `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查：
+  - 两份 README 和 skill 的相对链接和锚点是否有效，这些文件和本文件里汉字旁的逗号是否为中文逗号（只报告，不自动修改）
+  - 每个 skill 的 front matter 是否符合 Agent Skills 格式、是否登记在下面 [Skills](#skillsagentsskills) 一节的表里
+  - `AGENTS.md`、`.claude/skills` 是否检出为符号链接
+- [`rust-toolchain.toml`](rust-toolchain.toml) 固定了 Rust 版本（本地与 CI 共用）；升级时改 channel，跑 `make ci` 修掉新增的 clippy 警告，一起提交；其他工具和依赖的升级见 skill `weflow-upgrade`
 - `target/` 不会自动清理，用 `cargo sweep` 清理过期编译缓存：
   - 精确清理：`cargo sweep --stamp` → 正常编译一次（实际会用到的 profile 都要编译，如 `cargo build`、`cargo build --release`、`cargo test --no-run`）→ `cargo sweep --file`，删除时间戳之后没被用到的产物
   - 日常清理：`cargo sweep --time 30` 删除 30 天没用过的产物；`cargo sweep --installed` 删除已卸载工具链编译的产物
@@ -31,7 +34,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - `bun install --frozen-lockfile` 按 `bun.lock` 安装依赖：只需要 Bun（版本见 `package.json` 的 `packageManager`），不需要 Node.js；[`bunfig.toml`](web/bunfig.toml) 只接受发布满 3 天的版本
 - `bun run check` 依次检查契约类型、英文、导出项的 JSDoc（`src/` 的每个导出项都要有，[#915](https://github.com/334456777/WeFlow/issues/915)），再做类型检查、测试和构建；CI 另外把契约与最新发布版对比，并跑 `bun run smoke`
 - 单个测试：`bun test <文件>`（happy-dom 由 `bunfig.toml` 的 preload 加载，`test/` 下是测试 API）
-- 开发服务器（`bun run dev`）和用生产构建做的检查（`bun run smoke`、`bun run shots`）见下面的 [WebUI](#webuiweb) 一节
+- 开发服务器（`bun run dev`）和用生产构建做的检查（`bun run smoke`、`bun run shots`）见下面的 [WebUI](#webuiweb) 一节，自己检查网页改动的步骤见 skill `weflow-web-check`
 
 ## 结构
 仓库由两部分组成：Rust workspace（CLI `weflow`、`weflow serve` 的命令 API 和纯 Rust 只读数据库层）和 WebUI（`web/`）；模块之间的关系见 Wiki 的[架构](https://github.com/334456777/WeFlow/wiki/架构)。
@@ -48,7 +51,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - `contract/`：命令 API 的契约类型，按领域划分（[#399](https://github.com/334456777/WeFlow/issues/399)），见下面的[命令 API 的契约](#命令-api-的契约)
   - 导出（`export*`）：`message/` 按消息种类解析，`export_msg/` 每种格式一个模块
     - HTML 导出的页面模板是 [`export_msg/`](crates/weflow-core/src/export_msg) 下的 `template.html`（聊天记录）、`list.html`（会话列表、联系人）和 `moments.html`（朋友圈），三者共用的配色在 `colours.css`
-    - 嵌入程序的 `<模板>.{zh,en}.html` 由 `build.mjs` 生成，CI（[`html-template.yml`](.github/workflows/html-template.yml)）在推送后生成并提交到该分支
+    - 嵌入程序的 `<模板>.{zh,en}.html` 由 `build.mjs` 生成，CI（[`html-template.yml`](.github/workflows/html-template.yml)）在推送后生成并提交到该分支；本地生成副本见 skill `weflow-html-template`
   - 另有消息推送（`push`）、见解的模型接口（`model_api`，OpenAI 与 Anthropic 两种格式）、配置（`config`）、图片/视频/语音解密等
 - [`weflow-cli`](crates/weflow-cli)：命令行入口（clap），生成二进制 `weflow`
   - [`main.rs`](crates/weflow-cli/src/main.rs) 只是入口（分配器、`run` 的分派、结果汇总和退出码），`cli.rs` 是顶层的 `Cli`、`Commands`，`commands/` 每个子命令一个文件（命令定义和执行它的函数放在一起）
@@ -68,10 +71,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - `weflow-core` 的 `contract/` 类型由 schemars 生成 JSON Schema，类型的文档注释就是其中的 `description`
 - `weflow-cli` 的测试把整份契约和每种回答的示例写在 [`web/contract/`](web/contract) 的 `openapi.json` 和 `samples.json` 里，并检查它们是否最新
 - `bun run contract` 由 `openapi.json` 生成 WebUI 的类型 [`src/api/contract.gen.ts`](web/src/api/contract.gen.ts)，加 `--check` 时只检查
-- 改了契约类型（包括文档注释）或路由之后：
-  1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_` 重写两个 JSON 文件
-  2. 在 `web/` 下运行 `bun run contract`
-  3. 跑整个 `cargo test -p weflow-cli --bin weflow`：`every_answer_is_described` 等检查不以 `contract_` 开头
+- 改了契约类型（包括文档注释）或路由之后，按 skill `weflow-contract` 重写两个 JSON 文件、生成网页的类型，并跑整个 `cargo test -p weflow-cli --bin weflow`（`every_answer_is_described` 等检查不以 `contract_` 开头）
 - web CI 用 [`contract-compat.ts`](web/scripts/contract-compat.ts) 和最新发布版的 `openapi.json` 比较：会让已发布的客户端读错的改动要提升 API 版本（见[约定](#约定)）
 
 ### 测试
@@ -88,6 +88,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 基准账号：`fixture::bench`（[`bench_account.rs`](crates/weflow-cli/examples/bench_account.rs)）按种子生成与真实账号同规模、同分布的基准账号（[#488](https://github.com/334456777/WeFlow/issues/488)，见[基准账号](https://github.com/334456777/WeFlow/wiki/测试与基准#基准账号)）
   - 分布是 `fixture::bench::Profile`：默认值照 [`account_profile_probe.rs`](crates/weflow-core/examples/account_profile_probe.rs) 在真实账号上测得的汇总比例写在代码里
   - `bench_account --profile` 改用本机校准的 profile（`account_profile_probe --calibrate`，[#605](https://github.com/334456777/WeFlow/issues/605)）
+- 碰后端的功能 PR 合并前在真实账号上验证一次，禁忌和对比方法见 skill `weflow-real-account`；性能测量和基准见 skill `weflow-perf`
 - WebUI 的测试见下一节
 
 ### WebUI（`web/`）
@@ -113,6 +114,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - 加 `--skin <id>` 用另一个皮肤截
   - `bun run shots --compare <a> <b>` 逐像素比较两次截图，改样式而不该改变外观时用它确认
   - 只在同一台机器上前后对比，不进 CI
+- 自己检查改动（开发页、无头 Chrome、截图和样式对比）的步骤见 skill `weflow-web-check`
 - 样式（见 Wiki 的[设计语言](https://github.com/334456777/WeFlow/wiki/WebUI-实现#设计语言)）：
   - 文件：各页面共用的在 [`src/app.css`](web/src/app.css)，只属于一个页面的放在页面目录下的 CSS 文件里，由页面的模块导入
   - 层叠层（[#827](https://github.com/334456777/WeFlow/issues/827)）：从低到高是 `tokens`、`app`（`app.css`）、`pages`（页面的样式表）、`roles`（[`styles/roles.css`](web/src/styles/roles.css)）、`skin`
@@ -133,15 +135,31 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - 读取的数据里的中文（如微信支付消息的标签）在那一行写 `// i18n-ignore: <原因>`
 
 ### Skills（`.agents/skills/`）
-智能体按顺序执行的流程写成 skill（[Agent Skills](https://agentskills.io) 格式），每个流程一个目录，内有 `SKILL.md`，脚本放在它的 `scripts/` 下。
-- 位置：Codex、Gemini CLI、Cursor、Copilot 等读 `.agents/skills/`；Claude Code 读 `.claude/skills`，它是指向 `../.agents/skills` 的符号链接。两者是同一份文件，只改 `.agents/skills/` 下的
-- 加载：会话开始时智能体只读到每个 skill 的 `name` 和 `description`，任务符合描述时才读正文，所以 `description` 写清做什么、什么时候用
+智能体按顺序执行的流程写成 skill（[Agent Skills](https://agentskills.io) 格式），每个流程一个目录，内有 `SKILL.md`，脚本放在它的 `scripts/` 下。本文件写规则，skill 写照着做的步骤和容易出错的地方，Wiki 写设计和原因（见 Wiki 的[智能体的流程](https://github.com/334456777/WeFlow/wiki/开发指南#智能体的流程)）。
+- 位置：正本在 `.agents/skills/`，Codex、Gemini CLI、Cursor、Copilot 等读这里；Claude Code 读 `.claude/skills`，它是指向 `../.agents/skills` 的符号链接。只改 `.agents/skills/` 下的文件：Claude Code 不允许写 `.claude/` 下的文件，正本放在那里时无人值守的智能体改不了 skill
+- Windows 上要开启开发者模式并设 `core.symlinks`，git 才会把 `.claude/skills` 和 `AGENTS.md` 检出为符号链接，否则检出成内容是路径的普通文件、智能体读不到也不报错；设置方法见 Wiki 的 [Windows 上的符号链接](https://github.com/334456777/WeFlow/wiki/开发指南#windows-上的符号链接)，`make docs-check` 在链接没有生效时失败
+- 加载：会话开始时智能体只读到每个 skill 的 `name` 和 `description`，任务符合描述时才读正文，所以 `description` 写清做什么、什么时候用；不支持 skill 的智能体按下表直接读对应的 `SKILL.md`
+
+  | skill | 什么时候用 |
+  |---|---|
+  | `weflow-pr` | 开分支、推送前检查、开 PR、自动合并、合并后清理、gh stack、并行开发 |
+  | `weflow-issues` | 建或关 issue、写正文和评论、标签、依赖与关联、看板 |
+  | `weflow-release` | 发版、打 tag、补发旧版本、删改 CLI 参数或 API 必填参数（PGO 训练清单） |
+  | `weflow-real-account` | 碰真实微信数据、在真实账号上验证或对比 |
+  | `weflow-perf` | 性能优化、改动前后的速度和内存对比、bench 标签和 bench.yml |
+  | `weflow-web-check` | 改了网页后自己检查、截图、排查网页问题 |
+  | `weflow-contract` | 改 `contract/` 类型或文档注释、加响应字段或路由 |
+  | `weflow-wiki` | 改 Wiki、写完注释或文档后自查措辞 |
+  | `weflow-upgrade` | 升级或新增工具和依赖、fork 依赖换回 crates.io |
+  | `weflow-cross-platform` | 平台相关的代码和测试、WSL、接手只在一个平台编译过的分支 |
+  | `weflow-ci` | 改 `.github/workflows/` 和 `.github/scripts/`、排查工作流 |
+  | `weflow-html-template` | 改 HTML 导出模板、配色或 `build.mjs` |
 - 写法：
-  - `name` 与目录名相同，用 `weflow-` 开头的小写连字符名字；`description` 写成一行
-  - 只写步骤和容易出错的地方；规则写在本文件，设计和原因写在 Wiki，skill 链接过去，不重复
+  - `name` 与目录名相同，用 `weflow-` 开头的小写连字符名字；`description` 写成一行；新增的 skill 登记到上表
+  - 只写步骤和容易出错的地方，规则和原因链接到本文件和 Wiki，不重复
   - 写给所有贡献者和各种智能体：不写本地路径、个人情况和只适用于某个智能体平台的做法（如某个工具的名字）；需要维护者权限的步骤标「维护者」
   - 与 Wiki 一样只写现状，用中文书写，脚本里的注释用英文
-- `make docs-check` 检查格式、相对链接和逗号；改了流程（命令、工作流、规则）时同步改对应的 skill
+- 改了流程（命令、参数、工作流、规则）时同步改对应的 skill；用到 skill 时发现步骤过时或缺了坑，直接改 skill
 
 ### Wiki（`wiki/`）
 文档写在 GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ），仓库里不新增文档文件。
@@ -159,11 +177,12 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - 报错的文字或处理办法变了，同步改[故障排查](https://github.com/334456777/WeFlow/wiki/故障排查)（按现象列原因和去处，细节留在主题页）
   - 新增在多个页面出现的术语时，登记到[术语表](https://github.com/334456777/WeFlow/wiki/术语表)
 - Wiki 不跟代码走同一个 PR：先推送 Wiki，再合并引用新页面或新锚点的 PR
+- 改 Wiki 的步骤（只提交自己的改动、提交信息、写完后的扫描）见 skill `weflow-wiki`
 
 ### 其他
 - [`README.md`](README.md)、[`README.zh-CN.md`](README.zh-CN.md)：英文和中文 README，内容保持同步
 - [`docs/images/`](docs/images)：README 用的图片；`docs/` 下其他目录是不进仓库的本地参考资料
-- [`.github/workflows/`](.github/workflows)：CI 与发布的工作流，见 Wiki 的[发布与 CI](https://github.com/334456777/WeFlow/wiki/发布与-CI)；基准测试（`bench.yml`）见[测试与基准](https://github.com/334456777/WeFlow/wiki/测试与基准#持续基准benchyml)
+- [`.github/workflows/`](.github/workflows)：CI 与发布的工作流，见 Wiki 的[发布与 CI](https://github.com/334456777/WeFlow/wiki/发布与-CI)；基准测试（`bench.yml`）见[测试与基准](https://github.com/334456777/WeFlow/wiki/测试与基准#持续基准benchyml)；改工作流的做法见 skill `weflow-ci`
 
 
 ## 约定
@@ -178,11 +197,12 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 合并提交的标题由 GitHub 取 PR 的标题加 `(#N)`，所以 PR 标题也以 `type(scope):` 前缀开头（前缀用英文，描述用中文）；PR 描述同样用中文，用户明确要求英文时才用英文
 - 创建 PR 时及时添加 Labels（如果有对应 Development 则添加对应 Development）；PR 关闭关联 Issues 时，在 PR 描述或 commit message 里用 `closed` `fixed` `resolved` 关键词（这几个关键词用英文）
 - 对于需要多个依赖 PR 的开发任务，请使用 `gh stack`
+- 从开分支到合并清理的步骤、推送前的检查、等待 CI 和 gh stack 的坑见 skill `weflow-pr`
 
 ### 版本与 tag
 - 版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀
 - tag 一律用附注 tag，不用轻量 tag（`git tag -a vX.Y.Z -m "WeFlow vX.Y.Z" <commit>`，用 `git cat-file -t vX.Y.Z` 检查，应输出 `tag`）
-- 发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag
+- 发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag；发版的步骤见 skill `weflow-release`
 - 只想验证发版流程（改了 `release.yml`、`pgo-build.sh`、`release-check.sh` 等）而不发布时，用 `test.<名称>` tag 试跑：`gh workflow run release.yml --ref <分支> -f tag=test.<名称>`（见 Wiki「发布与 CI」[#试跑](https://github.com/334456777/WeFlow/wiki/发布与-CI#试跑)）
 - API 版本（[`crates/weflow-core/src/contract.rs`](crates/weflow-core/src/contract.rs) 的 `API_VERSION`，与 `web/package.json` 的 `weflow.apiVersion` 一致）只在会让现有客户端出错的改动时提升（路由、参数、响应、配置键）
   - 提出升版本之前先核对：最新 `web-v*` tag 中 `web/package.json` 的 `weflow.apiVersion`，和 `origin/main` 上的 `API_VERSION`
@@ -218,7 +238,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 代码按职责划分模块：一个文件只承担一类职责，新代码放进所属的模块（没有就新建），不往入口文件或已经很长的文件里追加；拆分只移动代码、调整可见性和引用路径，与功能改动分开提交，可见性用最小的范围（见 Wiki「开发指南」的[代码组织](https://github.com/334456777/WeFlow/wiki/开发指南#代码组织)）
 - 本仓库的工作副本可能同时有多个会话在用，一个会话切换分支，另一个会话接下来的提交就会落到那个分支上：每个会话用 `git worktree` 在 `.claude/worktrees/` 创建自己的 worktree ，在此 worktree 创建自己的分支工作，不在共用的工作副本里切换分支
   - worktree 里编译 Rust 时设 `CARGO_TARGET_DIR` 用它自己的 target 目录（主工作副本 `target/` 下的 `wt-<worktree 名>`），不与主工作副本或其他 worktree 共用 `target/debug`（原因见 Wiki「开发指南」的[提交与 Pull Request](https://github.com/334456777/WeFlow/wiki/开发指南#提交与-pull-request)）
-  - worktree 里的工作合并到远程后，在主工作副本里 `git pull` 拉取远程，再清理 worktree、它的 target 目录和本地分支（远程分支已由 GitHub 在合并后删除）
+  - worktree 里的工作合并到远程后，在主工作副本里 `git pull` 拉取远程，再清理 worktree、它的 target 目录和本地分支（远程分支已由 GitHub 在合并后删除），步骤见 skill `weflow-pr`
 
 ### 修 bug 的智能体
 - 有一个专门修 bug 的智能体，按 [`.claude/loop.md`](.claude/loop.md) 循环监视标为 `bug` 的未关闭 Issue 并修复
