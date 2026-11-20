@@ -19,12 +19,9 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - `unwrap`、`expect` 只在测试里允许（[`clippy.toml`](clippy.toml)）
   - 每个 `unsafe` 块前写 `// SAFETY:`
 - 只在部分平台编译的代码：开头写了 `#![cfg(...)]` 的文件在别的平台上不编译，如 [`insight_e2e.rs`](crates/weflow-core/tests/insight_e2e.rs) 只在 Linux 编译。改了这类文件用到的公开接口，或者测试依赖 `cfg!(windows)`、反斜杠路径、符号链接时，在对应的平台上（Windows 上用 WSL）跑一次相关的 clippy 和测试
-- `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README 和 skill 的相对链接和锚点、这些文件和本文件里汉字旁的逗号是否为中文逗号（只报告，不自动修改）、skill 的格式，以及 `AGENTS.md`、`.claude/skills` 是否检出为符号链接
-- [`rust-toolchain.toml`](rust-toolchain.toml) 固定了 Rust 版本（本地与 CI 共用）；升级时改 channel，跑 `make ci` 修掉新增的 clippy 警告，一起提交
-- `target/` 不会自动清理，用 `cargo sweep` 清理过期编译缓存：
-  - 精确清理：`cargo sweep --stamp` → 正常编译一次（实际会用到的 profile 都要编译，如 `cargo build`、`cargo build --release`、`cargo test --no-run`）→ `cargo sweep --file`，删除时间戳之后没被用到的产物
-  - 日常清理：`cargo sweep --time 30` 删除 30 天没用过的产物；`cargo sweep --installed` 删除已卸载工具链编译的产物
-  - 首次执行任何删除命令前先加 `--dry-run` 预览；不要用 `find -delete` 自制清理，也不要为了腾空间直接 `cargo clean`
+- `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README、skill 和本文件的相对链接和锚点、汉字旁的逗号是否为中文逗号（只报告，不自动修改）、skill 的格式，以及 `AGENTS.md`、`.claude/skills` 是否检出为符号链接
+- [`rust-toolchain.toml`](rust-toolchain.toml) 固定了 Rust 版本（本地与 CI 共用）
+- `target/` 不会自动清理：用 `cargo sweep` 清理过期的编译缓存，不用 `find -delete` 自制清理，也不为了腾空间直接 `cargo clean`
 
 ### WebUI
 在 `web/` 下运行，脚本的完整列表见 [`web/README.zh-CN.md`](web/README.zh-CN.md#脚本)。
@@ -68,7 +65,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - `weflow-core` 的 `contract/` 类型由 schemars 生成 JSON Schema，类型的文档注释就是其中的 `description`
 - `weflow-cli` 的测试把整份契约和每种回答的示例写在 [`web/contract/`](web/contract) 的 `openapi.json` 和 `samples.json` 里，并检查它们是否最新
 - `bun run contract` 由 `openapi.json` 生成 WebUI 的类型 [`src/api/contract.gen.ts`](web/src/api/contract.gen.ts)，加 `--check` 时只检查
-- 改了契约类型（包括文档注释）或路由之后，按 skill `weflow-contract` 重写两个 JSON 文件、生成网页的类型，并跑整个 `cargo test -p weflow-cli --bin weflow`（`every_answer_is_described` 等检查不以 `contract_` 开头）
+- 改了契约类型（包括文档注释）或路由之后，重写这两个 JSON 文件、重新生成网页的类型，并跑整个 `cargo test -p weflow-cli --bin weflow`
 - web CI 用 [`contract-compat.ts`](web/scripts/contract-compat.ts) 和最新发布版的 `openapi.json` 比较：会让已发布的客户端读错的改动要提升 API 版本（见[约定](#约定)）
 
 ### 测试
@@ -147,6 +144,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 
 ### 隐私
 - 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public），GitHub Project「WeFlow」是公开 Project；严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等隐私信息上传到公开的 GitHub 仓库或写入 CLAUDE.md 和 skill
+- 公开的内容（issue、PR、Wiki、注释、skill）也不写维护者的个人情况（作息、设备的使用状况），只写系统做什么
 
 ### 提交与 Pull Request
 - 提交信息使用中文和 Conventional Commits 规范：前缀（`type(scope):`）用英文，描述用中文；信息末尾另起一行按此格式署名：`Co-Authored-By: <你的AI名称与模型版本> <noreply@厂商域名>`（例如 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`、`Co-Authored-By: GPT-5 <noreply@openai.com>`），已有署名行时不要重复添加
@@ -159,7 +157,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 ### 版本与 tag
 - 版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀
 - tag 一律用附注 tag，不用轻量 tag（`git cat-file -t <tag>` 应输出 `tag`）
-- 发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag
+- 发版前把要升的版本位和理由告诉维护者，确认后再打 tag
 - API 版本（[`crates/weflow-core/src/contract.rs`](crates/weflow-core/src/contract.rs) 的 `API_VERSION`，与 `web/package.json` 的 `weflow.apiVersion` 一致）只在会让现有客户端出错的改动时提升（路由、参数、响应、配置键）
   - 提出升版本之前先核对：最新 `web-v*` tag 中 `web/package.json` 的 `weflow.apiVersion`，和 `origin/main` 上的 `API_VERSION`
   - main 已经比发布版高一个版本（升过、还没发布）时，改动并入这个版本，不再提醒升版本，只把改动记进 Wiki「命令-API」[#版本](https://github.com/334456777/WeFlow/wiki/命令-API#版本) 中当前版本的条目；两者相同时才提出要升
@@ -193,7 +191,6 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 代码按职责划分模块：一个文件只承担一类职责，新代码放进所属的模块（没有就新建），不往入口文件或已经很长的文件里追加；拆分只移动代码、调整可见性和引用路径，与功能改动分开提交，可见性用最小的范围（见 Wiki「开发指南」的[代码组织](https://github.com/334456777/WeFlow/wiki/开发指南#代码组织)）
 - 本仓库的工作副本可能同时有多个会话在用，一个会话切换分支，另一个会话接下来的提交就会落到那个分支上：每个会话用 `git worktree` 在 `.claude/worktrees/` 创建自己的 worktree ，在此 worktree 创建自己的分支工作，不在共用的工作副本里切换分支
   - worktree 里编译 Rust 时设 `CARGO_TARGET_DIR` 用它自己的 target 目录（主工作副本 `target/` 下的 `wt-<worktree 名>`），不与主工作副本或其他 worktree 共用 `target/debug`（原因见 Wiki「开发指南」的[提交与 Pull Request](https://github.com/334456777/WeFlow/wiki/开发指南#提交与-pull-request)）
-  - worktree 里的工作合并到远程后，在主工作副本里 `git pull` 拉取远程，再清理 worktree、它的 target 目录和本地分支（远程分支已由 GitHub 在合并后删除）
 
 ### 修 bug 的智能体
 - 有一个专门修 bug 的智能体，按 [`.claude/loop.md`](.claude/loop.md) 循环监视标为 `bug` 的未关闭 Issue 并修复
