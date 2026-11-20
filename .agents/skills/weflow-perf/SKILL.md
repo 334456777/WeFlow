@@ -1,6 +1,6 @@
 ---
 name: weflow-perf
-description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两种账号、新旧二进制的对比（单独的 target 目录、旧新旧三轮、--compare 的假阳性、hyperfine 的坑）、Linux perf 交替测量与热点定位、内存优化要同时报告磁盘读写，以及 bench 标签和在 runner 上试跑 bench.yml。做性能优化、比较改动前后的速度或内存、改基准脚本或 bench.yml 时使用。
+description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两种账号、新旧二进制的对比（单独的 target 目录、旧新旧三轮、--compare 的假阳性、hyperfine 的坑）、Linux perf 交替测量与热点定位、内存优化要同时报告磁盘读写，以及 bench 标签、在 runner 上试跑 bench.yml、装 runner 和校准基准账号。做性能优化、比较改动前后的速度或内存、改基准脚本或 bench.yml、维护基准的 runner 时使用。
 ---
 
 # 性能测量
@@ -55,4 +55,6 @@ serve_bench 每次都同时测合成账号和真实账号：合成账号检查�
 - 改 bench.yml、测量脚本或校准时：
   - 环境键只放真正改变测法的东西；能靠锚点发现的漂移（如操作系统的小版本）记录下来，不进键。测量脚本的改动攒在一起改，用显式的版本号而不是文件的哈希。换环境后补测各个 release，让趋势接得上。
   - 只有真正需要那台机器的步骤才放到 runner 上，判断、排队和发布在 GitHub 托管的机器上做；状态存在 `gh-pages` 和 runner 的 `pending/` 里，运行中断不丢数据，下次接着测。
+- 装 runner 或换机器：在管理员终端里运行 `.github/bench/setup-runner.ps1 -Token <令牌> -BenchDir <目录> -Protect <目录>`。令牌用 `gh api -X POST repos/334456777/WeFlow/actions/runners/registration-token -q .token` 取，一小时内有效。runner 的账户不是管理员，读不到用户目录和 `-Protect` 给出的目录；重新运行脚本会更新目录并重新注册。
+- 校准基准账号的 profile：以配置了真实账号的用户（不是 runner 的账户）运行 `.github/bench/calibrate.ps1`，`-Register` 把它设成每六周一次的计划任务，改时间也要重新 `-Register`。它只输出是否更换、变化的项数和 profile 的哈希；profile 只存在本机，不提交。profile 换了以后不用手动补测：夜间运行会先在新环境里测最近的三个发布和带 `bench` 标签的 PR，见 Wiki [测试与基准#更换 profile 后的补测](https://github.com/334456777/WeFlow/wiki/测试与基准#更换-profile-后的补测)。
 - 优化合并后，把试过但没采用的做法评论到对应的 issue，见 [weflow-issues](../weflow-issues/SKILL.md#写正文和评论)。
