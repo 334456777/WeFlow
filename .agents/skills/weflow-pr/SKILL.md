@@ -1,6 +1,6 @@
 ---
 name: weflow-pr
-description: WeFlow 一次改动从开分支到合并、清理的步骤：建 worktree 和分支、推送前的检查、开 PR（标题、正文、标签、看板）、自动合并与等待 CI、合并后的清理，以及叠层 PR（gh stack）和多人并行开发的注意事项。开始改 WeFlow 的代码或文档、准备提交或推送、开 PR、合并 PR、清理分支和 worktree 时使用。
+description: WeFlow 一次改动从开分支到合并、清理的步骤：建 worktree 和分支、推送前的检查、开 PR（标题、正文、标签、看板）、等待 CI、合并（维护者逐个 PR 同意后才合并或开自动合并）、合并后的清理，以及叠层 PR（gh stack）和多人并行开发的注意事项。开始改 WeFlow 的代码或文档、准备提交或推送、开 PR、合并 PR 或开自动合并、清理分支和 worktree 时使用。
 ---
 
 # 从开分支到合并
@@ -38,14 +38,18 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 4. 维护者：加标签、加入看板并设置 `In Review` 和 `Priority`，做法见 [weflow-issues](../weflow-issues/SKILL.md)。改动会明显影响性能（基准所测的命令、读取层、导出、统计、serve 路由、体积或启动、依赖与编译参数）时，开 PR 时就加 `bench` 标签：合并后夜间的定时运行会自动测合并前后（Wiki [测试与基准#夜间队列](https://github.com/334456777/WeFlow/wiki/测试与基准#夜间队列)），漏标就不会测。
 5. 看一眼 `gh run list --branch <分支>`。PR 开出后偶尔没有触发任何运行，`mergeable` 一直是 `UNKNOWN`，关闭再重开也没用；手动运行一次（`gh workflow run <工作流>.yml --ref <分支>`）后，PR 自己的运行也会出现。
 
-## 合并（维护者）
+## 等 CI
 
-- 合并的条件和自动合并见 Wiki [发布与 CI#合并的条件](https://github.com/334456777/WeFlow/wiki/发布与-CI#合并的条件)。开启自动合并：`gh pr merge <n> --auto --merge`。PR 已经是 `CLEAN` 状态时，`--auto` 会立即合并。
-- 不绕过 ruleset：不用 `--admin`，不直接推送 `main`。
-- 以下情况先不开自动合并：改动需要维护者先看（方案有未定的取舍、用户可见的大改动、要在真实环境里确认）、PR 引用的 Wiki 还没推送、叠层 PR 的上层、发版相关的 PR。
-- CI 跑完再汇报结果，不在检查进行中下结论。能在后台运行命令时，用 [`scripts/wait-pr.sh`](scripts/wait-pr.sh) 等待：PR 合并或关闭、或某项必需检查失败时退出。不要用 `gh pr checks --watch --required` 判断检查是否跑完：汇总检查要等它的任务开始才出现，`--watch` 只看已经出现的检查，会提前以 0 退出。
-- 检查失败先修，修好后推送；推送不会取消自动合并。
+- CI 跑完再汇报结果，不在检查进行中下结论。能在后台运行命令时，用 [`scripts/wait-pr.sh`](scripts/wait-pr.sh) 等待：必需检查全部通过或某项失败、PR 合并或关闭时退出。不要用 `gh pr checks --watch --required` 判断检查是否跑完：汇总检查要等它的任务开始才出现，`--watch` 只看已经出现的检查，会提前以 0 退出。
+- 检查失败先修，修好后推送。
 - 分支开出后 `main` 新增了 ruleset 要求的检查时，合并会报「base branch policy prohibits the merge」：rebase 到最新的 `main` 再推送。
+
+## 合并（维护者同意后）
+
+- 默认不合并，也不开自动合并：检查跑完后把结果报给维护者，由维护者决定。
+- 维护者同意合并某个 PR 后才合并：检查已经通过就 `gh pr merge <n> --merge`；还在进行就开启自动合并 `gh pr merge <n> --auto --merge`，检查通过后由 GitHub 合并（PR 已经是 `CLEAN` 状态时 `--auto` 会立即合并）。开了自动合并后推送修复不会取消它。
+- 同意以一个 PR 为单位：只对维护者点名的那个 PR 有效，不延伸到之后的 PR、同一批的其他 PR 或叠层 PR 的其他层。
+- 合并的条件见 Wiki [发布与 CI#合并的条件](https://github.com/334456777/WeFlow/wiki/发布与-CI#合并的条件)。不绕过 ruleset：不用 `--admin`，不直接推送 `main`。
 
 ## 合并后清理
 
@@ -68,7 +72,7 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 
 ## 叠层 PR（gh stack）
 
-- 一次合并整个 stack：`gh stack merge <顶层 PR> --yes --merge`。`main` 上只多一个合并提交，标题取顶层 PR，各层的关闭关键词照样生效。
+- 维护者同意合并整个 stack 时，一次合并：`gh stack merge <顶层 PR> --yes --merge`。`main` 上只多一个合并提交，标题取顶层 PR，各层的关闭关键词照样生效。
 - 只有一层时不算 stack：`gh stack merge` 报「is not a stack number or a stacked pull request」，改用 `gh pr merge <PR> --merge`。
 - `gh stack push` 会把预留的空层也推送到远程，合并后连同它们一起删除。
 - 合并后本地的 stack 记录不会删除：删完分支后运行 `gh stack unstack <stack 编号> --local`，编号是 `submit` 时打印的「stack #N」，不是 PR 号。旧记录攒到两个以上时，在 `main` 上运行 `gh stack view` 会报「main belongs to multiple stacks」。不要手改 `.git/gh-stack`。

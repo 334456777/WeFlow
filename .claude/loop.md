@@ -14,7 +14,7 @@
 
 - 监视 `334456777/WeFlow` 上带 `bug` 标签的未关闭 issue（`gh issue list -R 334456777/WeFlow --label bug --state open`），出现就修。
 - 其他智能体发来的 bug 修复请求，也由你修，修完通知对方。
-- PR 用自动合并（merge commit），CI 全部通过后由 GitHub 合并并删除远程分支；合并后删掉本地分支，看板上的 PR 和 issue 都设为 Done。
+- PR 跑完 CI 后把结果报给用户；用户同意合并这个 PR 后才合并或开自动合并，同意以一个 PR 为单位，规则见 skill `weflow-pr` 的[合并](../.agents/skills/weflow-pr/SKILL.md#合并维护者同意后)。合并后删掉本地分支，看板上的 PR 和 issue 都设为 Done。
 
 ## 节奏
 
@@ -52,12 +52,12 @@
 - 子智能体不合并 PR，也不改 Wiki。下面这些由你做：
   - 等 CI；
   - 需要时推送 Wiki；
-  - 合并 PR，删掉分支、worktree 和它的 target 目录；
+  - 用户同意后合并 PR，删掉分支、worktree 和它的 target 目录；
   - 把看板设为 Done；
   - 通知请求方。
 - 两个 bug 要改同一批文件时不并行：先修一个，合并以后再交下一个，避免冲突。
 - 一次合并一个 PR：每合并一个就在主工作副本里 `git pull`。后面的 PR 和 main 冲突时，让对应的子智能体 rebase 后重新推送。
-- 所有子智能体的 PR 都合并之后，再重新开始检查。
+- 所有子智能体的 PR 都跑完 CI、报给用户之后，再重新开始检查；用户同意合并的 PR 随后再合并。
 
 ## 约束
 

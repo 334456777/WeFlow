@@ -151,7 +151,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 ### 提交与 Pull Request
 - 提交信息使用中文和 Conventional Commits 规范：前缀（`type(scope):`）用英文，描述用中文；信息末尾另起一行按此格式署名：`Co-Authored-By: <你的AI名称与模型版本> <noreply@厂商域名>`（例如 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`、`Co-Authored-By: GPT-5 <noreply@openai.com>`），已有署名行时不要重复添加
 - Pull Request 分支名称使用 Conventional Commits 风格的 `<type>/<scope>-<description>` 格式
-- 合并用 merge commit：用 `gh pr merge --auto --merge` 开启自动合并，main 的 ruleset 要求的检查通过后由 GitHub 合并并删除远程的 head 分支（见 Wiki「发布与 CI」[#合并的条件](https://github.com/334456777/WeFlow/wiki/发布与-CI#合并的条件)）
+- 合并用 merge commit（见 Wiki「发布与 CI」[#合并的条件](https://github.com/334456777/WeFlow/wiki/发布与-CI#合并的条件)）
 - 合并提交的标题由 GitHub 取 PR 的标题加 `(#N)`，所以 PR 标题也以 `type(scope):` 前缀开头（前缀用英文，描述用中文）；PR 描述同样用中文，用户明确要求英文时才用英文
 - 创建 PR 时及时添加 Labels（如果有对应 Development 则添加对应 Development）；PR 关闭关联 Issues 时，在 PR 描述或 commit message 里用 `closed` `fixed` `resolved` 关键词（这几个关键词用英文）
 - 对于需要多个依赖 PR 的开发任务，请使用 `gh stack`
