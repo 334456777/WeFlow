@@ -32,7 +32,7 @@ For language settings and precedence, see [Command reference - Language](https:/
 
 ## First-time setup and export (required steps)
 
-WeChat 4.0 and later are supported. You need to have logged in to an account at least once, sent messages, and opened images. The steps below use Windows as the example: **run PowerShell as administrator.** For macOS, see [macOS first-time setup](https://github.com/334456777/WeFlow/wiki/macOS-首次设置) in the Wiki; for Linux, see [Linux first-time setup](https://github.com/334456777/WeFlow/wiki/Linux-首次设置).
+WeChat 4.0 and later are supported. You need to have logged in to an account at least once, sent messages, and opened images. The steps below use Windows as the example: **run PowerShell as administrator.** For details, see [Windows first-time setup](https://github.com/334456777/WeFlow/wiki/Windows-首次设置), [macOS first-time setup](https://github.com/334456777/WeFlow/wiki/macOS-首次设置), and [Linux first-time setup](https://github.com/334456777/WeFlow/wiki/Linux-首次设置) on the Wiki.
 
 1. Set the WeChat data directory
 ```powershell
@@ -72,15 +72,20 @@ weflow db test
 ```
 > stdout: `accountDir: C:\Users\<you>\Documents\xwechat_files\wxid_xxxxxxxx_xxxx`<br>stdout: `connected: true`
 
-6. Try listing the conversations and exporting the chat history (a private chat's conversation ID is the other person's wxid; a group's is `xxx@chatroom`)
+6. Find the configuration file
+```powershell
+weflow config path
+```
+
+> stdout: `C:\Users\<you>\AppData\Roaming\weflow\config.json`
+
+7. Try listing the conversations and exporting the chat history (a private chat's conversation ID is the other person's wxid; a group's is `xxx@chatroom`)
 ```powershell
 weflow chat sessions
 weflow export messages <conversation-id> --format html --out chat.html
 ```
 
 To export to other formats (`txt`, `json`, `excel`, `sql`, and more), filter by date or sender, or export images and other media along with the messages, see [Message export - Formats](https://github.com/334456777/WeFlow/wiki/消息导出#格式) on the Wiki.
-
-`weflow config` manages the configuration file.
 
 ---
 <a id="key-db"></a>**What does `weflow key db` do?** <br>The database key is generated in memory when WeChat opens its databases, and the command extracts `decrypt_key` from that memory location:
@@ -98,8 +103,6 @@ Database key obtained and saved to the active profile
 The 180-second automatic exit can be adjusted with `weflow key db --timeout <seconds>`.
 
 For the full flow and how it works on each platform, see [Key acquisition - Database key](https://github.com/334456777/WeFlow/wiki/密钥获取#数据库密钥) on the Wiki.
-
-For the complete Windows steps (downloading and verifying the release, the administrator terminal, data directories outside the default location, and the WebUI), see [Windows first-time setup](https://github.com/334456777/WeFlow/wiki/Windows-首次设置) on the Wiki.
 
 ## What the CLI does not support
 
