@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-本文件写给在这个仓库里工作的编码智能体；[`AGENTS.md`](AGENTS.md) 是指向它的符号链接，改动只写在本文件里。设计和用法的细节在 [Wiki](https://github.com/334456777/WeFlow/wiki)（见下面的 [Wiki](#wikiwiki) 一节），改代码前先对照[开发指南-常见改动的检查清单](https://github.com/334456777/WeFlow/wiki/开发指南#常见改动的检查清单)。
+本文件写给在这个仓库里工作的编码智能体；[`AGENTS.md`](AGENTS.md) 是指向它的符号链接，改动只写在本文件里。设计和用法的细节在 [Wiki](https://github.com/334456777/WeFlow/wiki)（见下面的 [Wiki](#wikiwiki) 一节），改代码前先对照[开发指南-常见改动的检查清单](https://github.com/334456777/WeFlow/wiki/开发指南#常见改动的检查清单)。开 PR、发版、真实账号验证等常见流程的步骤写成 skill，见下面的 [Skills](#skillsagentsskills) 一节。
 
 ## 命令
 Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX shell 的写法，PowerShell 里写 `$env:VAR=1; 命令`；[`Makefile`](Makefile) 在 Windows 上要在 Git Bash 或 WSL 里运行。
@@ -19,7 +19,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - `unwrap`、`expect` 只在测试里允许（[`clippy.toml`](clippy.toml)）
   - 每个 `unsafe` 块前写 `// SAFETY:`
 - 只在部分平台编译的代码：开头写了 `#![cfg(...)]` 的文件在别的平台上不编译，如 [`insight_e2e.rs`](crates/weflow-core/tests/insight_e2e.rs) 只在 Linux 编译。改了这类文件用到的公开接口，或者测试依赖 `cfg!(windows)`、反斜杠路径、符号链接时，在对应的平台上（Windows 上用 WSL）跑一次相关的 clippy 和测试
-- `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README 的相对链接和锚点是否有效、两份 README 和本文件里汉字旁的逗号是否为中文逗号（只报告，不自动修改）
+- `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README 和 skill 的相对链接和锚点是否有效、这些文件和本文件里汉字旁的逗号是否为中文逗号（只报告，不自动修改），以及每个 skill 的 front matter 是否符合 Agent Skills 格式
 - [`rust-toolchain.toml`](rust-toolchain.toml) 固定了 Rust 版本（本地与 CI 共用）；升级时改 channel，跑 `make ci` 修掉新增的 clippy 警告，一起提交
 - `target/` 不会自动清理，用 `cargo sweep` 清理过期编译缓存：
   - 精确清理：`cargo sweep --stamp` → 正常编译一次（实际会用到的 profile 都要编译，如 `cargo build`、`cargo build --release`、`cargo test --no-run`）→ `cargo sweep --file`，删除时间戳之后没被用到的产物
@@ -132,6 +132,17 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - `bun run i18n` 列出缺英文、多余的英文和还没进 `t()` 的中文，`--check` 在 CI 里拦前两种
   - 读取的数据里的中文（如微信支付消息的标签）在那一行写 `// i18n-ignore: <原因>`
 
+### Skills（`.agents/skills/`）
+智能体按顺序执行的流程写成 skill（[Agent Skills](https://agentskills.io) 格式），每个流程一个目录，内有 `SKILL.md`，脚本放在它的 `scripts/` 下。
+- 位置：Codex、Gemini CLI、Cursor、Copilot 等读 `.agents/skills/`；Claude Code 读 `.claude/skills`，它是指向 `../.agents/skills` 的符号链接。两者是同一份文件，只改 `.agents/skills/` 下的
+- 加载：会话开始时智能体只读到每个 skill 的 `name` 和 `description`，任务符合描述时才读正文，所以 `description` 写清做什么、什么时候用
+- 写法：
+  - `name` 与目录名相同，用 `weflow-` 开头的小写连字符名字；`description` 写成一行
+  - 只写步骤和容易出错的地方；规则写在本文件，设计和原因写在 Wiki，skill 链接过去，不重复
+  - 写给所有贡献者和各种智能体：不写本地路径、个人情况和只适用于某个智能体平台的做法（如某个工具的名字）；需要维护者权限的步骤标「维护者」
+  - 与 Wiki 一样只写现状，用中文书写，脚本里的注释用英文
+- `make docs-check` 检查格式、相对链接和逗号；改了流程（命令、工作流、规则）时同步改对应的 skill
+
 ### Wiki（`wiki/`）
 文档写在 GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ），仓库里不新增文档文件。
 - 只写中文，以技术文档为主，用正式语气书写
@@ -158,7 +169,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 ## 约定
 
 ### 隐私
-- 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public），GitHub Project「WeFlow」是公开 Project；严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等隐私信息上传到公开的 GitHub 仓库或写入 CLAUDE.md
+- 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public），GitHub Project「WeFlow」是公开 Project；严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等隐私信息上传到公开的 GitHub 仓库或写入 CLAUDE.md 和 skill
 
 ### 提交与 Pull Request
 - 提交信息使用中文和 Conventional Commits 规范：前缀（`type(scope):`）用英文，描述用中文；信息末尾另起一行按此格式署名：`Co-Authored-By: <你的AI名称与模型版本> <noreply@厂商域名>`（例如 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`、`Co-Authored-By: GPT-5 <noreply@openai.com>`），已有署名行时不要重复添加
@@ -192,7 +203,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - 一些在修改代码后会经常出现的问题和需要更多信息的问题
   - 以及其他需要在本次会话之外继续跟踪的事
 - 同时在遇到上述情况时也可以查询Issues寻找解决方法或继续跟踪评论issues
-- GitHub Project「WeFlow」（`gh project` 编号 3，owner 为仓库所有者，需要 token 带 `project` 权限，仓库内相对路径与公开的 owner 名可以出现）是看板，所有 Issue 和 PR（开着的和关着的）都要放进去，并随工作进展及时更新 Status：
+- GitHub Project「WeFlow」（`gh project` 编号 3，owner 为仓库所有者，需要 token 带 `project` 权限，仓库内相对路径与公开的 owner 名可以出现）是看板，所有 Issue 和 PR（开着的和关着的，CI 配置类的除外）都要放进去，并随工作进展及时更新 Status（命令和字段 id 见 skill `weflow-issues`）：
   - `Backlog` 已记录但尚未排期
   - `Todo` 已排期待开始
   - `In Progress` 正在进行

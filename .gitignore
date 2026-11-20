@@ -67,7 +67,10 @@ weflow.exe
 .claude/*
 # loop.md for Bug fix Claude
 !.claude/loop.md
-.agents/
+# the skills (Agent Skills): .agents/skills for most agents, .claude/skills a symlink to it for Claude Code
+!.claude/skills
+.agents/*
+!.agents/skills/
 .codex
 /temp/*
 
