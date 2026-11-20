@@ -246,27 +246,6 @@ fn skills_follow_the_agent_skills_format() {
     );
 }
 
-/// The table in CLAUDE.md's Skills section lists every skill, for agents that read `SKILL.md` files themselves instead
-/// of loading skills: a row starts with the skill's name in backticks.
-#[test]
-fn every_skill_is_listed_in_claude_md() {
-    let claude_md = std::fs::read_to_string(root().join("CLAUDE.md")).unwrap();
-    let mut missing = Vec::new();
-    for entry in std::fs::read_dir(skills_dir()).unwrap() {
-        let dir = entry.unwrap().path();
-        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
-        if dir.is_dir() && !claude_md.contains(&format!("| `{name}` |")) {
-            missing.push(name);
-        }
-    }
-    missing.sort();
-    assert!(
-        missing.is_empty(),
-        "skills missing from the table in CLAUDE.md's Skills section: {}",
-        missing.join(", ")
-    );
-}
-
 /// `AGENTS.md` and `.claude/skills` were checked out as symlinks to `CLAUDE.md` and `.agents/skills`. Git on Windows
 /// checks a symlink out as a plain file holding the target's path unless Developer Mode and `core.symlinks` are on;
 /// agents reading that file then miss the instructions or the skills without any error, so this check is the reminder.

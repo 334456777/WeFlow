@@ -52,3 +52,4 @@ description: 在 WeFlow 仓库建 issue、写 issue 与 PR 的正文和评论、
 
 - `gh project item-list` 的开销很大，需要时只调用一次，结果重复使用。阶段性收尾时用一次 `gh project item-list 3 --owner 334456777 --limit 600 --format json` 对照 issue 和 PR 的开关状态，以 GitHub 上的状态为准修正看板。
 - 开始做某个 issue 时，把它和它的父 issue 一起设为 `In Progress`。
+- 重写 Status 字段的选项会清空所有条目的 Status，选项的 id 也会变：改选项后重新查 id，并给每个条目重新设置。
