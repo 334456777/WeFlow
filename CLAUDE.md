@@ -172,7 +172,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀
 - tag 一律用附注 tag，不用轻量 tag（`git tag -a vX.Y.Z -m "WeFlow vX.Y.Z" <commit>`，用 `git cat-file -t vX.Y.Z` 检查，应输出 `tag`）
 - 发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag
-- 只想验证发版流程（改了 `release.yml`、`pgo-build.sh`、`release-check.sh` 等）而不发布时，用 `test.<名称>` tag 试跑：`gh workflow run release.yml --ref <分支> -f tag=test.<名称>`，照常构建和测试，不发布 Release、不建 tag、不跑基准，压缩包留在运行的 artifact 里（见 Wiki「发布与 CI」[#试跑](https://github.com/334456777/WeFlow/wiki/发布与-CI#试跑)）
+- 只想验证发版流程（改了 `release.yml`、`pgo-build.sh`、`release-check.sh` 等）而不发布时，用 `test.<名称>` tag 试跑：`gh workflow run release.yml --ref <分支> -f tag=test.<名称>`（见 Wiki「发布与 CI」[#试跑](https://github.com/334456777/WeFlow/wiki/发布与-CI#试跑)）
 - API 版本（[`crates/weflow-core/src/contract.rs`](crates/weflow-core/src/contract.rs) 的 `API_VERSION`，与 `web/package.json` 的 `weflow.apiVersion` 一致）只在会让现有客户端出错的改动时提升（路由、参数、响应、配置键）
   - 提出升版本之前先核对：最新 `web-v*` tag 中 `web/package.json` 的 `weflow.apiVersion`，和 `origin/main` 上的 `API_VERSION`
   - main 已经比发布版高一个版本（升过、还没发布）时，改动并入这个版本，不再提醒升版本，只把改动记进 Wiki「命令-API」[#版本](https://github.com/334456777/WeFlow/wiki/命令-API#版本) 中当前版本的条目；两者相同时才提出要升
@@ -206,15 +206,14 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 ### 代码与工作副本
 - 代码按职责划分模块：一个文件只承担一类职责，新代码放进所属的模块（没有就新建），不往入口文件或已经很长的文件里追加；拆分只移动代码、调整可见性和引用路径，与功能改动分开提交，可见性用最小的范围（见 Wiki「开发指南」的[代码组织](https://github.com/334456777/WeFlow/wiki/开发指南#代码组织)）
 - 本仓库的工作副本可能同时有多个会话在用，一个会话切换分支，另一个会话接下来的提交就会落到那个分支上：每个会话用 `git worktree` 在 `.claude/worktrees/` 创建自己的 worktree ，在此 worktree 创建自己的分支工作，不在共用的工作副本里切换分支
-  - worktree 里编译 Rust 时设 `CARGO_TARGET_DIR` 用它自己的 target 目录（主工作副本 `target/` 下的 `wt-<worktree 名>`），不与主工作副本或其他 worktree 共用 `target/debug`：cargo 按相对路径给工作区 crate 的产物命名，共用时会把另一份源码编出的旧产物当作最新的链接进来
+  - worktree 里编译 Rust 时设 `CARGO_TARGET_DIR` 用它自己的 target 目录（主工作副本 `target/` 下的 `wt-<worktree 名>`），不与主工作副本或其他 worktree 共用 `target/debug`（原因见 Wiki「开发指南」的[提交与 Pull Request](https://github.com/334456777/WeFlow/wiki/开发指南#提交与-pull-request)）
   - worktree 里的工作合并到远程后，在主工作副本里 `git pull` 拉取远程，再清理 worktree、它的 target 目录和本地分支（远程分支已由 GitHub 在合并后删除）
-  - push 显示 up-to-date 但远程没有变化时，先查 `git reflog`
 
 ### 修 bug 的智能体
 - 有一个专门修 bug 的智能体，按 [`.claude/loop.md`](.claude/loop.md) 循环监视标为 `bug` 的未关闭 Issue 并修复
-- 其他智能体在工作中发现 bug 时（为保持会话连贯性）可以建 Issue、加 `bug` 标签并加入看板，那块代码交给它改；能给其他会话发消息的智能体还可以直接交给它（Claude Code 用 SendMessage，会话名可能会变，先用 ListAgents 查），写明原因、建议的修法和自己这边会改的文件
+- 其他智能体在工作中发现 bug 时（为保持会话连贯性）可以建 Issue、加 `bug` 标签并加入看板，那块代码交给它改；能给其他会话发消息的智能体还可以直接交给它，写明原因、建议的修法和自己这边会改的文件
 - 它合并后会通知发来请求的一方，收到后把自己的分支 rebase 到最新的 main 上
-- 查不到正在运行的修 bug 智能体时，新建一个（Claude Code 里新开一个会话），让它读 `.claude/loop.md`、按其中的[「启动」](.claude/loop.md#启动)开始循环修 bug，再把手上的 bug 交给它；新建后告诉用户并附上会话链接，不自己关掉，关不关由用户决定（停止的步骤见 `.claude/loop.md` 的[「停止」](.claude/loop.md#停止)）
+- 查不到正在运行的修 bug 智能体时，新建一个，让它读 `.claude/loop.md`、按其中的[「启动」](.claude/loop.md#启动)开始循环修 bug，再把手上的 bug 交给它；新建后告诉用户并附上会话链接，不自己关掉，关不关由用户决定（停止的步骤见 `.claude/loop.md` 的[「停止」](.claude/loop.md#停止)）
 
 ## 注意事项
 - 默认用中文回复，代码注释用英文；用户可能会出错，当用户出现明显错误或决策冲突时，请指出
