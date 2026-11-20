@@ -57,7 +57,9 @@ pub fn json_output() -> bool {
     JSON_OUTPUT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// Writes `text` to stdout and flushes it, dropping it when nothing reads stdout any more (see [`write_to`]).
+/// Writes `text` to stdout and flushes it. Output that nothing reads any more is dropped without an error, where
+/// `print!` would panic: the reader of a pipe has exited (`weflow chat sessions | head -1`), or the terminal hung up,
+/// as when it is closed while `weflow serve` runs in it (#989).
 ///
 /// # Errors
 /// When stdout cannot take the text for another reason, such as a full disk under `> file`.
@@ -65,17 +67,15 @@ pub fn print(text: &str) -> std::io::Result<()> {
     write_to(&mut std::io::stdout().lock(), text)
 }
 
-/// [`print`] on stderr.
+/// [`print()`] on stderr.
 ///
 /// # Errors
-/// As for [`print`].
+/// As for [`print()`].
 pub fn eprint(text: &str) -> std::io::Result<()> {
     write_to(&mut std::io::stderr().lock(), text)
 }
 
-/// Writes `text` to `out` and flushes it. Output that nothing reads any more is dropped without an error, where
-/// `print!` would panic: the reader of a pipe has exited (`weflow chat sessions | head -1`), or the terminal hung up,
-/// as when it is closed while `weflow serve` runs in it (#989).
+/// Writes `text` to `out` and flushes it, dropping it when nothing reads `out` any more; see [`print()`].
 fn write_to(out: &mut impl std::io::Write, text: &str) -> std::io::Result<()> {
     match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
         Err(err) if reader_gone(&err) => Ok(()),
