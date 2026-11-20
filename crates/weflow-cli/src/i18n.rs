@@ -355,28 +355,23 @@ fn options_last(text: &str) -> String {
 
 fn exit_with(err: Error) -> ! {
     use clap::error::ErrorKind;
+    use weflow_core::output::{eprint, print};
+    // help or a usage error that cannot be written has nowhere else to go; the exit code still says what happened
     if json_requested() {
         if let Some((doc, exit)) = json_failure(&err) {
-            println!("{doc}");
+            let _ = print(&format!("{doc}\n"));
             std::process::exit(exit);
         }
     }
     use crate::help_style::painted;
     use weflow_core::colour::{Paint, Stream};
     let text = rendered(&err);
-    match err.kind() {
-        ErrorKind::DisplayHelp
-        | ErrorKind::DisplayVersion
-        | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-            let to_stderr = err.kind() == ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand;
-            if to_stderr {
-                eprint!("{}", painted(&text, Paint::of(Stream::Stderr)));
-            } else {
-                print!("{}", painted(&text, Paint::of(Stream::Stdout)));
-            }
+    let _ = match err.kind() {
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
+            print(&painted(&text, Paint::of(Stream::Stdout)))
         }
-        _ => eprint!("{}", painted(&text, Paint::of(Stream::Stderr))),
-    }
+        _ => eprint(&painted(&text, Paint::of(Stream::Stderr))),
+    };
     std::process::exit(err.exit_code());
 }
 

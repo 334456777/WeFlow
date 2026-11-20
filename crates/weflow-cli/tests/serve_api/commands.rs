@@ -9,6 +9,30 @@ use serde_json::{json, Value};
 
 use super::common::{account_home, account_home_with, run_cli, start, temp_root, weflow, TOKEN};
 
+/// An answer that nothing reads any more is dropped, and the command exits with its own code (#989).
+#[test]
+fn answers_nobody_reads_are_dropped() {
+    let root = temp_root("no-reader");
+    for args in [
+        &["config", "path"][..],
+        &["--json", "config", "path"],
+        &["--help"],
+    ] {
+        let mut child = weflow(&root)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        // the reader is gone before the command gets to its answer
+        drop(child.stdout.take());
+        let out = child.wait_with_output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(0), "{args:?}: {stderr}");
+        assert!(!stderr.contains("panicked"), "{args:?}: {stderr}");
+    }
+}
+
 #[test]
 fn commands_answer_like_the_terminal() {
     let root = temp_root("config");

@@ -57,11 +57,48 @@ pub fn json_output() -> bool {
     JSON_OUTPUT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Writes `text` to stdout and flushes it, dropping it when nothing reads stdout any more (see [`write_to`]).
+///
+/// # Errors
+/// When stdout cannot take the text for another reason, such as a full disk under `> file`.
+pub fn print(text: &str) -> std::io::Result<()> {
+    write_to(&mut std::io::stdout().lock(), text)
+}
+
+/// [`print`] on stderr.
+///
+/// # Errors
+/// As for [`print`].
+pub fn eprint(text: &str) -> std::io::Result<()> {
+    write_to(&mut std::io::stderr().lock(), text)
+}
+
+/// Writes `text` to `out` and flushes it. Output that nothing reads any more is dropped without an error, where
+/// `print!` would panic: the reader of a pipe has exited (`weflow chat sessions | head -1`), or the terminal hung up,
+/// as when it is closed while `weflow serve` runs in it (#989).
+fn write_to(out: &mut impl std::io::Write, text: &str) -> std::io::Result<()> {
+    match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
+        Err(err) if reader_gone(&err) => Ok(()),
+        written => written,
+    }
+}
+
+/// Whether a write failed because nothing reads the stream: a pipe without a reader, or on Unix a terminal that hung
+/// up, which fails writes with EIO.
+fn reader_gone(err: &std::io::Error) -> bool {
+    #[cfg(unix)]
+    let hung_up = err.raw_os_error() == Some(libc::EIO);
+    #[cfg(not(unix))]
+    let hung_up = false;
+    hung_up || err.kind() == std::io::ErrorKind::BrokenPipe
+}
+
 /// A status event on stderr: one JSON line with `--json`, lines for people otherwise.
 pub fn event(event: Value) {
     if json_output() {
         crate::status::break_line();
-        eprintln!("{event}");
+        // an event that cannot be written has nowhere else to go
+        let _ = eprint(&format!("{event}\n"));
     } else {
         let text = human_event(&event, Paint::of(Stream::Stderr));
         if !text.is_empty() {
@@ -343,13 +380,11 @@ pub fn progress_formats(formats: &[(String, bool)]) {
         .iter()
         .map(|(name, written)| serde_json::json!({ "name": name, "done": written }))
         .collect();
-    eprintln!(
-        "{}",
-        serde_json::json!({
-            "type": "progress", "stage": "formats", "message": crate::locale::localize(MESSAGE.to_string()),
-            "current": done, "total": total, "percent": done * 100 / total.max(1), "formats": lanes,
-        })
-    );
+    let event = serde_json::json!({
+        "type": "progress", "stage": "formats", "message": crate::locale::localize(MESSAGE.to_string()),
+        "current": done, "total": total, "percent": done * 100 / total.max(1), "formats": lanes,
+    });
+    let _ = eprint(&format!("{event}\n"));
 }
 
 /// Reports that `current` of `total` steps of `stage` are done, as the [`ProgressMode`] says: an NDJSON `progress`
@@ -370,10 +405,8 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
             } else {
                 0
             };
-            eprintln!(
-                "{}",
-                serde_json::json!({ "type": "progress", "stage": stage, "message": message, "current": current, "total": total, "percent": percent })
-            );
+            let event = serde_json::json!({ "type": "progress", "stage": stage, "message": message, "current": current, "total": total, "percent": percent });
+            let _ = eprint(&format!("{event}\n"));
         }
         ProgressMode::Auto => {
             use std::io::Write;
@@ -510,6 +543,37 @@ mod tests {
         assert_eq!(format_duration(9), "9s");
         assert_eq!(format_duration(125), "2m05s");
         assert_eq!(format_duration(3725), "1h02m05s");
+    }
+
+    /// A writer that fails every write with `error`.
+    struct Failing(fn() -> std::io::Error);
+    impl std::io::Write for Failing {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err((self.0)())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn output_nobody_reads_is_dropped() {
+        let mut written = Vec::new();
+        write_to(&mut written, "answer\n").unwrap();
+        assert_eq!(written, b"answer\n");
+        let broken_pipe = || std::io::Error::from(std::io::ErrorKind::BrokenPipe);
+        assert!(write_to(&mut Failing(broken_pipe), "answer\n").is_ok());
+        #[cfg(unix)]
+        assert!(write_to(
+            &mut Failing(|| std::io::Error::from_raw_os_error(libc::EIO)),
+            "answer\n"
+        )
+        .is_ok());
+        let full = || std::io::Error::from(std::io::ErrorKind::StorageFull);
+        assert_eq!(
+            write_to(&mut Failing(full), "answer\n").unwrap_err().kind(),
+            std::io::ErrorKind::StorageFull
+        );
     }
 
     #[test]

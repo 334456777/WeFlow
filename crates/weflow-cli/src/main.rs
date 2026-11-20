@@ -127,14 +127,10 @@ async fn main() -> ExitCode {
     weflow_core::output::finish_progress();
     if json {
         let (doc, exit) = json_document(outcome);
-        println!("{doc}");
-        return ExitCode::from(exit);
+        return answered(weflow_core::output::print(&format!("{doc}\n")), exit);
     }
     match checked(outcome) {
-        Ok(value) => {
-            print_response(&success(value), summary);
-            ExitCode::SUCCESS
-        }
+        Ok(value) => answered(print_response(&success(value), summary), 0),
         Err(err) => {
             print_failure(&err);
             ExitCode::from(exit_status(err.exit_code))
@@ -289,8 +285,25 @@ fn checked(outcome: AppResult<Value>) -> AppResult<Value> {
     })
 }
 
+/// The exit status of a run whose answer, with exit code `code`, was written to stdout as `written` says. An answer
+/// that could not be written is a failure of its own, said on stderr; output that nothing reads any more is not one
+/// (see `weflow_core::output::print`).
+fn answered(written: std::io::Result<()>, code: u8) -> ExitCode {
+    if let Err(err) = written {
+        print_failure(&AppError::runtime(format!(
+            "{}{err}",
+            weflow_core::locale::tr("cannot write the output: ", "无法写出结果：")
+        )));
+        return ExitCode::from(code.max(1));
+    }
+    ExitCode::from(code)
+}
+
 /// The human-readable output: the payload itself, without the {success, data} envelope.
-fn print_response(response: &weflow_core::output::CliResponse<Value>, summary: Option<Summary>) {
+fn print_response(
+    response: &weflow_core::output::CliResponse<Value>,
+    summary: Option<Summary>,
+) -> std::io::Result<()> {
     #[expect(
         clippy::expect_used,
         reason = "a document of JSON values and strings always serializes"
@@ -299,10 +312,10 @@ fn print_response(response: &weflow_core::output::CliResponse<Value>, summary: O
     weflow_core::locale::localize_json(&mut value);
     let data = value.get("data").cloned().unwrap_or(Value::Null);
     let paint = Paint::of(Stream::Stdout);
-    match summary.and_then(|summary| key_summary(summary, &data, paint)) {
-        Some(text) => print!("{text}"),
-        None => print!("{}", weflow_core::render::render(&data, paint)),
-    }
+    let text = summary
+        .and_then(|summary| key_summary(summary, &data, paint))
+        .unwrap_or_else(|| weflow_core::render::render(&data, paint));
+    weflow_core::output::print(&text)
 }
 
 /// The commands whose answer the terminal shows in words of its own, and which words: chosen before the command
@@ -404,10 +417,12 @@ fn exit_status(code: i32) -> u8 {
 
 fn print_failure(err: &AppError) {
     let details = err.details.as_ref();
-    eprint!(
-        "{}",
-        weflow_core::render::render_error(&err.message, details, Paint::of(Stream::Stderr))
-    );
+    // a failure that cannot be written on stderr has nowhere else to go
+    let _ = weflow_core::output::eprint(&weflow_core::render::render_error(
+        &err.message,
+        details,
+        Paint::of(Stream::Stderr),
+    ));
 }
 
 #[cfg(test)]
