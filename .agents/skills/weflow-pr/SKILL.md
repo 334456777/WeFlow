@@ -1,6 +1,6 @@
 ---
 name: weflow-pr
-description: WeFlow 一次改动从开分支到合并、清理的步骤：建 worktree 和分支、推送前的检查、开 PR（标题、正文、标签、看板）、等待 CI、合并（维护者逐个 PR 同意后才合并或开自动合并）、合并后的清理，以及叠层 PR（gh stack）和多人并行开发的注意事项。开始改 WeFlow 的代码或文档、准备提交或推送、开 PR、合并 PR 或开自动合并、清理分支和 worktree 时使用。
+description: WeFlow 一次改动从开分支到合并、清理的步骤：建 worktree 和分支、推送前的检查、开 PR（标题、正文、标签、看板）、等待 CI、合并（维护者逐个 PR 同意后才合并或开自动合并）、合并后的清理、用 cargo sweep 清理 target/ 的编译缓存，以及叠层 PR（gh stack）和多人并行开发的注意事项。开始改 WeFlow 的代码或文档、准备提交或推送、开 PR、合并 PR 或开自动合并、清理分支、worktree 和编译缓存时使用。
 ---
 
 # 从开分支到合并
@@ -33,10 +33,9 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 ## 开 PR
 
 1. `git push -u origin <分支>`。
-2. `gh pr create`：标题写成 `type(scope): 中文描述`；正文用中文，说明做了什么、怎么验证的，关闭 issue 用 `closed #N`、`fixed #N` 或 `resolved #N`。长期任务 issue 只写 `Refs #N`，不写关闭关键词，否则合并时会关掉它。
-3. 正文里的裸链接两侧留空格，或写成 `[文字](url)`：GitHub 会把紧挨着的中文算进链接。
-4. 维护者：加标签、加入看板并设置 `In Review` 和 `Priority`，做法见 [weflow-issues](../weflow-issues/SKILL.md)。改动会明显影响性能（基准所测的命令、读取层、导出、统计、serve 路由、体积或启动、依赖与编译参数）时，开 PR 时就加 `bench` 标签：合并后夜间的定时运行会自动测合并前后（Wiki [测试与基准#夜间队列](https://github.com/334456777/WeFlow/wiki/测试与基准#夜间队列)），漏标就不会测。
-5. 看一眼 `gh run list --branch <分支>`。PR 开出后偶尔没有触发任何运行，`mergeable` 一直是 `UNKNOWN`，关闭再重开也没用；手动运行一次（`gh workflow run <工作流>.yml --ref <分支>`）后，PR 自己的运行也会出现。
+2. `gh pr create`：标题、正文的语言和关闭 issue 的关键词按 CLAUDE.md 的「提交与 Pull Request」，正文说明做了什么、怎么验证的，链接的写法见 [weflow-issues](../weflow-issues/SKILL.md#写正文和评论)。长期任务 issue 只写 `Refs #N`，不写关闭关键词，否则合并时会关掉它。
+3. 维护者：加标签、加入看板并设置 `In Review` 和 `Priority`，做法见 [weflow-issues](../weflow-issues/SKILL.md)。改动会明显影响性能（基准所测的命令、读取层、导出、统计、serve 路由、体积或启动、依赖与编译参数）时，开 PR 时就加 `bench` 标签：合并后夜间的定时运行会自动测合并前后（Wiki [测试与基准#夜间队列](https://github.com/334456777/WeFlow/wiki/测试与基准#夜间队列)），漏标就不会测。
+4. 看一眼 `gh run list --branch <分支>`。PR 开出后偶尔没有触发任何运行，`mergeable` 一直是 `UNKNOWN`，关闭再重开也没用；手动运行一次（`gh workflow run <工作流>.yml --ref <分支>`）后，PR 自己的运行也会出现。
 
 ## 等 CI
 
@@ -65,6 +64,13 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 
    远程的 head 分支由 GitHub 在合并后自动删除。没合并就关闭的 PR，远程分支要手动删除，分支名逐个写出。
 3. 维护者：PR 和它关闭的 issue 在看板上设为 `Done`。
+
+## 清理编译缓存
+
+`target/` 下的产物不会自动删除，用 `cargo sweep` 清理。每种删除命令第一次运行时先加 `--dry-run` 预览。
+
+- 精确清理：`cargo sweep --stamp` → 把实际会用到的 profile 都正常编译一次（如 `cargo build`、`cargo build --release`、`cargo test --no-run`）→ `cargo sweep --file`，删除时间戳之后没被用到的产物。
+- 日常清理：`cargo sweep --time 30` 删除 30 天没用过的产物；`cargo sweep --installed` 删除已卸载的工具链编译的产物。
 
 ## 会关掉 PR 的操作
 

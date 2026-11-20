@@ -7,10 +7,12 @@ description: 检查 WeFlow 在 Windows、Linux、macOS 之间的差异：只在�
 
 CI 在三个平台上的分工见 Wiki [发布与 CI#工作流](https://github.com/334456777/WeFlow/wiki/发布与-CI#工作流)，Windows 上在 WSL 里编译 Linux 版见 [开发指南#构建命令](https://github.com/334456777/WeFlow/wiki/开发指南#构建命令)。
 
-## 哪些改动要在别的平台上检查
+## 在别的平台上检查
 
-- 开头写了 `#![cfg(...)]` 的文件在别的平台上不编译，例如 `crates/weflow-core/tests/insight_e2e.rs` 只在 Linux 上编译。改了公开函数的签名或返回类型时，先 `grep -rln '#!\[cfg(' crates` 找出这些文件，再在对应的平台上运行 `cargo clippy -p weflow-core -p weflow-cli --all-targets -- -D warnings`。
-- 依赖 `cfg!(windows)`、反斜杠是否为路径分隔符、`#[cfg(unix)]` 的符号链接的测试：`\` 在 Unix 上是普通的文件名字符，在 Windows 上通过的测试在 Linux 和 macOS 上可能失败。推送前在另一个平台上运行受影响的测试（如 `cargo test -p weflow-core --lib backup`）。
+哪些改动要在对应的平台上检查，见 [CLAUDE.md](../../../CLAUDE.md) 的「Rust」一节。
+
+- 改了公开函数的签名或返回类型时，先 `grep -rln '#!\[cfg(' crates` 找出只在部分平台编译的文件，再在对应的平台上运行 `cargo clippy -p weflow-core -p weflow-cli --all-targets -- -D warnings`。
+- 依赖 `cfg!(windows)`、路径分隔符或符号链接的测试：`\` 在 Unix 上是普通的文件名字符，在 Windows 上通过的测试在 Linux 和 macOS 上可能失败。推送前在另一个平台上运行受影响的测试（如 `cargo test -p weflow-core --lib backup`）。
 - 只给某个平台的测试用的 `use` 写进那个测试函数里，不放在文件顶部，否则另一个平台会报未使用的 import。
 - macOS 专属的代码在别的平台上编译不了，以 CI 的结果为准。
 

@@ -17,7 +17,7 @@ description: 升级 WeFlow 用到的工具和依赖（Rust 工具链、crate、B
 
 ## Rust 工具链
 
-改 `rust-toolchain.toml` 的 `channel`，运行 `make ci`，把新增的 clippy 警告一起修掉再提交，见 [CLAUDE.md](../../../CLAUDE.md) 的「Rust」一节。
+改 `rust-toolchain.toml` 的 `channel`，运行 `make ci`，把新增的 clippy 警告修掉，和工具链的改动一起提交。
 
 ## 固定在 fork 上的依赖
 
