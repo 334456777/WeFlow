@@ -40,7 +40,6 @@
   - PR 描述用中文，用 `fixed`、`closed` 关联 issue；
   - 加标签，加入看板并设为 In Review。
 - 用户能看到的行为变了，先推送 Wiki，再合并 PR。
-- 等 CI 跑完再汇报，不在 CI 还没出结果时结束回合。
 - 合并后，主工作副本要 `git pull`，删掉 worktree 和它的 target 目录。
 
 ## 同时有多个 bug

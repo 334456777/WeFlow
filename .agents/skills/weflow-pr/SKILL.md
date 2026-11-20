@@ -39,7 +39,7 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 
 ## 等 CI
 
-- CI 跑完再汇报结果，不在检查进行中下结论。能在后台运行命令时，用 [`scripts/wait-pr.sh`](scripts/wait-pr.sh) 等待：必需检查全部通过或某项失败、PR 合并或关闭时退出。不要用 `gh pr checks --watch --required` 判断检查是否跑完：汇总检查要等它的任务开始才出现，`--watch` 只看已经出现的检查，会提前以 0 退出。
+- 需要等检查跑完时，能在后台运行命令就用 [`scripts/wait-pr.sh`](scripts/wait-pr.sh) 等待：必需检查全部通过或某项失败、PR 合并或关闭时退出。不要用 `gh pr checks --watch --required` 判断检查是否跑完：汇总检查要等它的任务开始才出现，`--watch` 只看已经出现的检查，会提前以 0 退出。
 - 检查失败先修，修好后推送。
 - 分支开出后 `main` 新增了 ruleset 要求的检查时，合并会报「base branch policy prohibits the merge」：rebase 到最新的 `main` 再推送。
 
