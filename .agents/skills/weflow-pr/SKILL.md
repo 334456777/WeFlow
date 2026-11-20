@@ -87,5 +87,6 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 - 每个 worktree 用自己的 `target/wt-<名>`。
 - 按文件分批，写明每批可以改的文件和别人在改的文件；有依赖的改动先建 issue 设为 `Blocked`，前一个合并后再开始。
 - 共用临时目录时，文件名带分支名（如 `temp/pr-body-<分支>.md`），避免互相覆盖。
+- 被别人还没合并的修复阻塞时，可以把它分支上的文件临时放进自己的工作区验证，不提交。
 - 先合并的 PR 改了后面的 PR 用到的接口时，后面的 PR rebase 到最新的 `main`、本地 clippy 通过后再推送：GitHub 显示能合并不代表能编译。
 - 已结束的智能体锁住的 worktree，先 `git worktree unlock` 再删除。
