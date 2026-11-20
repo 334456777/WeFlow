@@ -16,6 +16,7 @@ CI 在三个平台上的分工见 Wiki [发布与 CI#工作流](https://github.c
 
 ## Windows 上用 WSL
 
+- 仓库里的符号链接（`AGENTS.md`、`.claude/skills`）要开启开发者模式并设 `core.symlinks` 才会检出为链接，见 Wiki [开发指南#Windows 上的符号链接](https://github.com/334456777/WeFlow/wiki/开发指南#windows-上的符号链接)；没有生效时 `make docs-check` 的 `symlinks_are_checked_out_as_links` 失败。
 - Linux 的编译和测试在 WSL 里做，target 目录放在 WSL 自己的磁盘上（如 `$HOME/wf-target`），比放在 `/mnt/c` 下快得多；worktree 用单独的 WSL target 目录，用完删除。需要的 Linux 二进制复制到 Windows 侧，用完删除，增量缓存保留。
 - Windows 侧的 cargo 配置了 `rustc-wrapper`（如 sccache）时，WSL 里的 cargo 会沿目录向上读到 `/mnt/c/Users/<用户>/.cargo/config.toml`，报找不到那个 `.exe`：在 WSL 的命令前加 `RUSTC_WRAPPER=`。
 - 经 `wsl.exe` 传含 `|`、多层引号或 `$()` 的命令会被截断或提前展开：写成脚本文件，再 `wsl.exe bash <脚本>`。从 Git Bash 调用时加 `MSYS_NO_PATHCONV=1`，否则 `/tmp/...` 这类参数会被改写成 Windows 路径。写在 `bash -lc '…'` 里的 `pkill -f` 会匹配并杀掉这个 bash 自己。

@@ -1,6 +1,7 @@
 //! Keeps the Markdown in the repository self-consistent: the relative links and `#anchors` of the READMEs and the skills
-//! resolve, commas next to Chinese characters are full-width (`，`), and every skill has the front matter of the Agent
-//! Skills format. The commas are only reported, never rewritten.
+//! resolve, commas next to Chinese characters are full-width (`，`), every skill has the front matter of the Agent
+//! Skills format, and the symlinks agents read were checked out as links. The commas are only reported, never
+//! rewritten.
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"
@@ -241,6 +242,31 @@ fn skills_follow_the_agent_skills_format() {
     assert!(
         problems.is_empty(),
         "skills not in the Agent Skills format:\n{}",
+        problems.join("\n")
+    );
+}
+
+/// `AGENTS.md` and `.claude/skills` were checked out as symlinks to `CLAUDE.md` and `.agents/skills`. Git on Windows
+/// checks a symlink out as a plain file holding the target's path unless Developer Mode and `core.symlinks` are on;
+/// agents reading that file then miss the instructions or the skills without any error, so this check is the reminder.
+#[test]
+fn symlinks_are_checked_out_as_links() {
+    let mut problems = Vec::new();
+    for (link, target) in [
+        ("AGENTS.md", "CLAUDE.md"),
+        (".claude/skills", ".agents/skills"),
+    ] {
+        let resolved = std::fs::canonicalize(root().join(link)).ok();
+        let expected = std::fs::canonicalize(root().join(target)).ok();
+        if resolved.is_none() || resolved != expected {
+            problems.push(format!("{link} is not a link to {target}"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "{}\ngit checked them out as plain files: on Windows turn on Developer Mode, run \
+         `git config --global core.symlinks true` and check them out again, see \
+         https://github.com/334456777/WeFlow/wiki/开发指南#windows-上的符号链接",
         problems.join("\n")
     );
 }
