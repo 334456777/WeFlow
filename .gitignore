@@ -69,6 +69,9 @@ weflow.exe
 !.claude/loop.md
 # the skills (Agent Skills): .agents/skills for most agents, .claude/skills a symlink to it for Claude Code
 !.claude/skills
+# Claude Code's project settings and the hooks they run (settings.local.json stays ignored)
+!.claude/settings.json
+!.claude/hooks/
 .agents/*
 !.agents/skills/
 .codex
