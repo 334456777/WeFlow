@@ -1,6 +1,6 @@
 ---
 name: weflow-real-account
-description: 在本机的真实微信账号上验证或测量 WeFlow：真实数据的禁忌（只读、不联网下载）、隔离的 WEFLOW_HOME、新旧二进制 --json 的逐项对比、只公开汇总、开发时的密钥文件、加固前先实测失败率，以及用完的清理。碰真实微信数据、在真实账号上运行 weflow、做改动前后的对比、碰后端的 PR 合并前验证时使用。
+description: 在本机的真实微信账号上验证、测量或调研 WeFlow：真实数据的禁忌（只读、不联网下载）、隔离的 WEFLOW_HOME、新旧二进制 --json 的逐项对比、用探针调研表结构和字段含义、只公开汇总、开发时的密钥文件、加固前先实测失败率，以及用完的清理。碰真实微信数据、在真实账号上运行 weflow、做改动前后的对比、调研微信的表结构或某个字段和位的含义、碰后端的 PR 合并前验证时使用。
 ---
 
 # 在真实账号上验证
@@ -43,6 +43,19 @@ WEFLOW_HOME=target/real-verify/home weflow --json chat sessions
 3. 预期的差异：导出文件名里的时间戳、用法提示里的程序名。
 4. 导出逐字节比较时，xlsx 先抹掉 sharedStrings 和流式 inlineStr 两处的导出时间。
 5. 消息读取的游标另有探针 `real_account_probe`，用法见上面的 Wiki 一节。
+
+## 调研表结构
+
+查微信把某样东西存在哪张表、哪一列、哪一位时（如会话置顶，[#885](https://github.com/334456777/WeFlow/issues/885)），用各 crate `examples/` 下的探针，列表见 Wiki [测试与基准#探针](https://github.com/334456777/WeFlow/wiki/测试与基准#探针)。
+
+- 先看结构：`cargo run -p weflow-native --example schema_probe -- <账号目录> <密钥文件> <db_storage 下的相对路径>` 只输出表、列和行数，不输出内容。
+- `sql_probe` 原样逐行输出查询结果：只查聚合（`count`、`group by`、位运算的分布）和结构，不 `select` 名字、wxid、消息内容这类列。
+- 找某个状态对应的字段：在微信里改一次这个状态（如置顶一个会话），前后各运行一次探针，比较两次输出的差别。
+- 现有的探针不够用时写一个新的，放在 `weflow-core` 或 `weflow-native` 的 `examples/<名>_probe.rs`：
+  - 只读，`//!` 写明用途、用法和它输出什么、不输出什么；
+  - 只输出汇总和诊断，会话用它在列表中的位置、类型和用户名的短哈希表示（参照 `pinned_probe`）；
+  - 登记到上面的 Wiki 表里。
+- 结论按「结论、依据、原因」评论到对应的 issue（[weflow-issues](../weflow-issues/SKILL.md#写正文和评论)），只写汇总。能在合成账号上复现的，把表结构加进 `fixture` 再写测试，见 [weflow-tests](../weflow-tests/SKILL.md#端到端测试和合成账号)。
 
 ## 密钥
 
