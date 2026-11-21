@@ -30,7 +30,9 @@ commit may not build with today's tools), and the others go on; only an anchor's
 With `--backfill` (the run at 23:30), a new environment of the default options, which holds no result yet (a new
 profile from the calibration of #605, a new machine, measuring method or generator layout), is measured first on the
 releases and the PRs labeled `bench` (bench_queue.py's `backfill_commits`, through the API with GITHUB_TOKEN), so it
-holds results to compare at once.
+holds results to compare at once. The list is made once and kept in `<bench dir>/backfill/` until it was measured
+through, ahead of the queue every night until then: the releases and PRs that came after are measured by the queue,
+and a run that stopped before its publishing (the machine went off) loses none of the list.
 
 With `--night` (the queue taken at night), a commit is built and measured only during bench_queue.py's NIGHT: once it
 is over, no further commit starts (the one under way runs to its end). The commits a request has left are postponed:
@@ -175,7 +177,8 @@ def request_summary(run, out, elapsed):
     tally = "，".join(f"{short[k]} {counts[k]}" for k in short)
     postponed = counts["postponed"]
     lines = [
-        f"### 补测：新环境 `{env['key']}` 的第一批结果" if request.get("backfill")
+        (f"### 补测：新环境 `{env['key']}`，接着测之前没测完的提交" if run.get("continued")
+         else f"### 补测：新环境 `{env['key']}` 的第一批结果") if request.get("backfill")
         else f"### 请求：{request['run']}" if request.get("run") else "### 请求",
         "",
         f"- 环境 `{env['key']}`：{m['cpu']}，{m['cpus']} 个逻辑 CPU，{m['memory_gib']} GiB 内存；测法版本 {env['method']}",
@@ -270,11 +273,24 @@ class Run:
         return account, bench.environment_of(account, int(req["load_seconds"]), self.args.load_workers)
 
     def backfill(self):
-        """The request a new environment of the default options starts with (bench_queue.backfill_commits), or None
-        when the environment holds results already, here or in pending/. A new profile from the calibration of #605
-        makes one; so do a new machine, measuring method or generator layout."""
+        """The request a new environment of the default options is measured on first (bench_queue.backfill_commits), or
+        None when it needs none. A new profile from the calibration of #605 makes a new environment; so do a new
+        machine, measuring method or generator layout. Its commits are listed once, while the environment holds no
+        result yet here or in pending/, and kept in `backfill/<id>.json` until a run measured them through
+        (`request`): every night until then goes on with that list, also after a run that stopped before its
+        publishing put the rest into the queue, while the releases and PRs labeled `bench` that came since are the
+        queue's."""
         req = {**OPTIONS, "force": False, "release_tag": ""}
         key = self.account(req)[1]["key"]
+        notes = os.path.join(self.bench_dir, "backfill")
+        note = os.path.join(notes, f"backfill-{key}.json")
+        # the list of an environment measured no more, which another one took the place of
+        for name in os.listdir(notes) if os.path.isdir(notes) else []:
+            if name != os.path.basename(note):
+                os.remove(os.path.join(notes, name))
+        if os.path.exists(note):
+            with open(note, encoding="utf-8") as f:
+                return json.load(f)
         if self.index.get("envs", {}).get(key, {}).get("results") or self.pending.get(key):
             return None
         # the API out of reach costs the backfill, not the night: the queue is measured, and the backfill is looked for
@@ -290,10 +306,14 @@ class Run:
         print(f"environment {key} holds no result yet: measured first on {commits}", flush=True)
         server, repo = os.environ.get("GITHUB_SERVER_URL", "https://github.com"), os.environ.get("GITHUB_REPOSITORY")
         run_id = os.environ.get("GITHUB_RUN_ID", "0")
-        return {**req, "id": f"backfill-{key}", "backfill": True,
-                "asked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-                "run": f"{server}/{repo}/actions/runs/{run_id}" if repo else "",
-                "commits": ",".join(spec(c) for c in resolve_commits(commits))}
+        first = {**req, "id": f"backfill-{key}", "backfill": True,
+                 "asked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+                 "run": f"{server}/{repo}/actions/runs/{run_id}" if repo else "",
+                 "commits": ",".join(spec(c) for c in resolve_commits(commits))}
+        os.makedirs(notes, exist_ok=True)
+        with open(note, "w", encoding="utf-8") as f:
+            json.dump(first, f, ensure_ascii=False, indent=1)
+        return first
 
     def night_over(self):
         if self.args.night and not self.late and not at_night():
@@ -314,6 +334,8 @@ class Run:
         anchor = held.get("anchor")
         results = held.get("results", {})
         waiting = self.pending.setdefault(key, {})
+        # what the environment held before, which a backfill over several nights goes on from
+        continued = bool(results or waiting)
         if waiting:
             anchor = anchor or next(iter(waiting.values()))[1]["anchor"]["commit"]
 
@@ -406,14 +428,19 @@ class Run:
             anchor, new_anchor = None, False
         if anchor:
             self.anchors.add(anchor)
+        # a backfill measured through is let go of (backfill); its results wait in pending/ until they are published
+        if req.get("backfill") and not postponed:
+            note = os.path.join(bench_dir, "backfill", f"{req['id']}.json")
+            if os.path.exists(note):
+                os.remove(note)
         # What the queue asks next: every commit asked for (those measured now are held by then, and two commits stay a
         # base and a head); with `force`, the postponed ones alone, which are measured again whatever is held.
         following = None
         if postponed:
             following = {"commits": ",".join(spec(c) for c in postponed) if force else ",".join(asked_specs),
                          "force": force}
-        run = {"request": req, "env": env, "anchor": anchor, "new_anchor": new_anchor, "commits": commits,
-               "next": following}
+        run = {"request": req, "env": env, "anchor": anchor, "new_anchor": new_anchor, "continued": continued,
+               "commits": commits, "next": following}
         with open(os.path.join(out, "run.json"), "w", encoding="utf-8") as f:
             json.dump(run, f, ensure_ascii=False, indent=1)
         request_summary(run, out, time.time() - started)
@@ -448,10 +475,13 @@ def main():
             index = json.load(f)
 
     run = Run(args, index)
+    # a backfill the queue holds no copy of goes ahead of all its requests, which the queue job did not count
+    ahead = False
     if args.backfill and not run.night_over():
         first = run.backfill()
         if first:
-            requests.insert(0, first)
+            ahead = bool(requests) and all(r.get("id") != first["id"] for r in requests)
+            requests = [first] + [r for r in requests if r.get("id") != first["id"]]
     begun = 0
     for i, req in enumerate(requests):
         # a request is begun only during the night; one cut short by its end leaves those after it as they are
@@ -461,7 +491,9 @@ def main():
         begun += 1
     run.anchors |= {e.get("anchor") for e in index.get("envs", {}).values()}
     clean_up(run.bench_dir, run.anchors, run.accounts)
-    text = (f"## 运行情况\n\n- {len(requests)} 个请求，开始了 {begun} 个"
+    text = ("## 运行情况\n\n"
+            + ("- 新环境的补测不在队列里，排在所有请求之前：队列里各请求的实际位次比排队时说的晚一位\n" if ahead else "")
+            + f"- {len(requests)} 个请求，开始了 {begun} 个"
             + (f"；夜间时段已过，其余 {len(requests) - begun} 个留在队列里" if begun < len(requests) else "")
             + "\n- 「还没有」是这个版本还没有的命令（命令行不认识它的子命令、选项或取值）；「失败的运行」是各命令运行失败的次数之和；"
             "持续负载「还没有」是这个版本的 `weflow serve` 还不认识测量用的参数，「没跑成」是服务没有启动或中途出错。\n\n")

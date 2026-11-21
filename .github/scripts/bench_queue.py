@@ -153,14 +153,32 @@ def pr_commits(number, sha):
     return f"#{number}前={sha}^,#{number}后={sha}"
 
 
+def last_merges(count):
+    """[(PR number, merge commit)] of the `count` merge commits of PRs labeled `bench` that came into the checkout's
+    HEAD last, the oldest first. The PRs of a stack merged together share a merge commit, which counts once, named by
+    the first of them as in [`queue_bench_prs`]; a PR merged into another branch counts once its merge commit is in
+    the default branch."""
+    picked = {}
+    for pr in reversed(merged_bench_prs()):
+        sha = merge_commit(pr["number"])
+        if not sha or not merged_here(sha):
+            continue
+        if sha not in picked and len(picked) == count:
+            break
+        # newest first, so an older PR of the same merge commit, the first of its stack, names it
+        picked[sha] = pr["number"]
+    return [(number, sha) for sha, number in reversed(picked.items())]
+
+
 def backfill_commits():
     """What a new environment is measured on first, so it holds results to compare at once: the three newest releases
-    (no release candidate), then the four PRs labeled `bench` merged last, each before and after it (`#N前`, `#N后`),
-    the oldest first, so the oldest release becomes the environment's anchor."""
+    (no release candidate), then the four merge commits of PRs labeled `bench` that came into the default branch last
+    ([`last_merges`]), each before and after it (`#N前`, `#N后`), the oldest first, so the oldest release becomes the
+    environment's anchor. Run from a checkout of the default branch."""
     releases = [r for r in api("/releases?per_page=100")
                 if not r["draft"] and not r["prerelease"] and re.fullmatch(r"v\d+\.\d+\.\d+", r["tag_name"])]
     items = [r["tag_name"] for r in sorted(releases, key=lambda r: r["published_at"])[-3:]]
-    items += [pr_commits(pr["number"], merge_commit(pr["number"])) for pr in merged_bench_prs()[-4:]]
+    items += [pr_commits(number, sha) for number, sha in last_merges(4)]
     return ",".join(items)
 
 
