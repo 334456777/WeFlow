@@ -235,8 +235,11 @@ impl ServiceHub {
     }
 
     /// What [`Self::clear_current_account_data`] removes (only what exists): WeFlow's caches of the current account
-    /// (images, voices, stickers, Moments, analytics, key fingerprints), and the entries of `export_dirs` named
-    /// after the account.
+    /// (images, voices, stickers, Moments, analytics, group hints, key fingerprints), its insight records, and the
+    /// entries of `export_dirs` named after the account.
+    ///
+    /// The file of every account's insight records that WeFlow 7.0.0 and earlier wrote is split into the accounts'
+    /// files first, which changes no record, so that the account's own file is the one listed.
     pub fn account_data_paths(&self, export_dirs: &[PathBuf]) -> AppResult<Vec<PathBuf>> {
         let id = self.my_wxid_cleaned();
         if id.is_empty() {
@@ -265,8 +268,15 @@ impl ServiceHub {
             matched_entries(root, &ids).into_iter().for_each(&mut add);
         }
         add(base.join("analytics_cache.json"));
+        // the group hints of the home folder's cache, there when `cache_path` names another folder (#1013)
+        if let Some(path) = self.legacy_hint_path() {
+            add(path);
+        }
         // fingerprints of keys that worked (the profile's key goes with the account settings)
         add(self.ctx.cache_dir().join("verified-keys"));
+        let home = &self.ctx.home_dir;
+        crate::insight::split_legacy_records(home);
+        add(crate::insight::records_file(home, &self.insight_scope()));
         for dir in export_dirs {
             matched_entries(dir, &ids).into_iter().for_each(&mut add);
         }

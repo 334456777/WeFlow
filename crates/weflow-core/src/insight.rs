@@ -12,6 +12,7 @@ use crate::message::xml::rx;
 
 mod records;
 
+pub(crate) use records::{records_file, split_legacy_records};
 pub use records::{InsightRecord, InsightRecordLog, NewRecord, RecordFilters, RecordStore};
 
 /// The time now in Unix milliseconds; 0 before 1970.

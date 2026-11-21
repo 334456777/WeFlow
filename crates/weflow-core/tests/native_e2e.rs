@@ -924,6 +924,51 @@ fn clearing_account_data_removes_only_that_account() {
 }
 
 #[test]
+fn clearing_account_data_takes_its_insights_and_hints_wherever_the_cache_is() {
+    let root = common::temp_dir("n-clear-cache-path");
+    let cache = root.join("elsewhere");
+    let (_root, hub) = common::mock_hub_with("n-clear-moved", |p| {
+        p.cache_path = Some(cache.to_string_lossy().into_owned());
+    });
+    let home = hub.context().home_dir.clone();
+    let put = |p: std::path::PathBuf, text: String| {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, text).unwrap();
+        p
+    };
+    // the file of every account's insight records, and a hint file in each of the two caches
+    let record = |id: &str, scope: &str| weflow_core::insight::InsightRecord {
+        id: id.into(),
+        account_scope: scope.into(),
+        ..Default::default()
+    };
+    let records = json!({ "version": 1, "records": [record("a", "wxid:wxid_me"), record("b", "wxid:wxid_other")] });
+    let legacy_records = put(
+        home.join("weflow-insight-records.json"),
+        records.to_string(),
+    );
+    let hint = "group_my_message_counts_wxid_me.json";
+    let old_hint = put(hub.context().cache_dir().join(hint), "{}".into());
+    let new_hint = put(cache.join(hint), "{}".into());
+
+    let shown = hub.account_data_paths(&[]).unwrap();
+    let mine = home.join("insights/wxid_me.json");
+    for path in [&mine, &old_hint, &new_hint] {
+        assert!(shown.contains(path), "{} in {shown:?}", path.display());
+    }
+    assert!(!legacy_records.exists(), "split into the accounts' files");
+    hub.clear_current_account_data(&[]).unwrap();
+    assert!(!mine.exists() && !old_hint.exists() && !new_hint.exists());
+    let others = home.join("insights/wxid_other.json");
+    assert!(
+        std::fs::read_to_string(&others)
+            .unwrap()
+            .contains("wxid:wxid_other"),
+        "another account's records stay"
+    );
+}
+
+#[test]
 fn cache_parts_clear_on_their_own_and_all_together() {
     use weflow_core::services::CachePart;
     let (_root, hub) = common::mock_hub("n-cache-parts");
