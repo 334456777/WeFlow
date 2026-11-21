@@ -29,10 +29,3 @@ description: 升级 WeFlow 用到的工具和依赖（Rust 工具链、crate、B
 2. 确认补丁带来的东西仍然在：
    - `heic-rs`：`crates/weflow-core/src/hevc.rs` 的 `every_layout_and_bit_depth_decodes_to_ffmpegs_samples` 仍然通过；再在真实账号上用 `wxgf_coverage_probe` 输出的 `decoded_jpegs_sha256` 比对前后，见 [weflow-real-account](../weflow-real-account/SKILL.md)。
    - `sha2`：weflow-native 的测试通过；再用 Linux perf 交替测量 analytics，确认收益仍在，见 [weflow-perf](../weflow-perf/SKILL.md#linux-perf-交替测量)。
-3. 推送 fork 的分支之前用 `git log` 核对：`git cherry-pick` 不认 `-q`，加了只打印用法、什么也不做。
-
-验证视频和图片解码器时：
-
-- x265 的 `deblock=0` 只把强度偏移设为 0，去块滤波仍然开着；要关掉用 `no-deblock=1:no-sao=1`，这时 ffmpeg 的输出才等于重建值。
-- 定位帧内预测的错误可以穷举 35 种帧内模式，用「ffmpeg 的输出 − 残差」去对。
-- 凭记忆写的规范表可能有错，要用数据验证。

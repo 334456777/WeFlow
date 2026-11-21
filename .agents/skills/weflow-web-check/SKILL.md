@@ -17,7 +17,7 @@ description: 自己检查 WebUI（web/）的改动：启动开发页（示例数
 ## 无头 Chrome
 
 - 临时的探查脚本直接 import `web/smoke/cdp.ts`（`Browser.launch`、`newPage`、`click`、`wheel`、`until`、`screenshot`），不手写 CDP 客户端；`web/scripts/account.ts` 启动合成账号的服务端。脚本用完删除。`bun run smoke <词>` 只运行名字含这个词的冒烟检查。Chrome 不在常见位置时用环境变量 `CHROME` 指定。
-- 每次加载页面都开新标签页，用完关掉：页面占一条 `/api/push/messages` 长连接，同一浏览器的连接数有上限（[#799](https://github.com/334456777/WeFlow/issues/799)）。用 [#805](https://github.com/334456777/WeFlow/pull/805) 之前的构建探查时，请求会排队约 50 秒；遇到「请求全卡住而连接状态正常」先想到这个。
+- 每次加载页面都开新标签页，用完关掉：页面占一条 `/api/push/messages` 长连接，同一浏览器的连接数有上限（[#799](https://github.com/334456777/WeFlow/issues/799)）。
 - `--headless=new` 中同一窗口只有最前面的标签页是 `visible`，其余是 `hidden`（`Page.bringToFront` 切换），可以借此测试与页面可见性有关的行为。
 - 视口用 `Emulation.setDeviceMetricsOverride`，手机再加 `mobile: true` 和 `Emulation.setTouchEmulationEnabled`；默认视口是窄屏布局，测桌面布局先设成 1440×900。深色用 `Emulation.setEmulatedMedia`。真实的点击和拖动用 `Input.dispatchMouseEvent`，触屏用 `Input.dispatchTouchEvent`，测量用 `Runtime.evaluate`。
 - 聊天窗口用 `mouseWheel` 事件滚动：`scrollIntoView` 会被贴底的逻辑拉回去。
@@ -25,7 +25,7 @@ description: 自己检查 WebUI（web/）的改动：启动开发页（示例数
 - 覆盖桌面宽度、手机宽度（390）和深色模式。
 - 截图用示例数据或合成账号，不会带出真实数据；必须连真实账号时只截需要的区域。
 - Linux 上（包括 WSL）给 Chrome 加 `--password-store=basic`，否则 keyring 锁着时页面一直加载不完；在同一个脚本里启动服务、截图和清理。
-- 收尾只结束自己启动的 Chrome（命令行里带自己的临时 profile 目录的进程），不要结束所有 Chrome 进程，然后删掉临时 profile。
+- 收尾只结束自己启动的 Chrome（命令行里带自己的临时 profile 目录的进程），然后删掉临时 profile。
 
 ## 改样式而不该改变外观
 

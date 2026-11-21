@@ -28,7 +28,6 @@ serve_bench 每次都同时测合成账号和真实账号：合成账号检查�
 - 用同一个（新版的）`serve_bench` 加 `--weflow` 分别测两个二进制，按「旧、新、旧」跑三轮，以两轮旧版之间的差距作为噪声。
 - 跨版本对比时不带 `--compare`：旧版没有的 `/api/` 路由返回 404（约 0.4 ms），新版真正计算后被判为变慢并以 1 退出，退出前也不写表格和 `--save` 文件。两边都 `--save` 后自己比较；这类路由拿旧版的子进程路由和新版的 `/api/` 比较。
 - hyperfine 的 `-N` 按 POSIX 规则拆分命令行，Windows 的反斜杠路径会被吃掉：传正斜杠路径（Python 里 `as_posix()` 加 `shlex.join`）。用 `-n` 命名后，JSON 的结构是 `name`、`summary.time_wall_clock.median` 和 `measurements`。
-- 在 [#669](https://github.com/334456777/WeFlow/issues/669) 之前的提交上测时，`CARGO_TARGET_DIR` 写成正斜杠会让 `serve_api` 的 `reads_follow_the_profile_right_after_it_changes` 失败，在这些提交上写反斜杠。
 
 ## Linux perf 交替测量
 
@@ -49,13 +48,13 @@ serve_bench 每次都同时测合成账号和真实账号：合成账号检查�
 
 - 会明显影响性能的 PR 开出时就加 `bench` 标签，见 [weflow-pr](../weflow-pr/SKILL.md#开-pr)。汇报时主动建议跑 bench，`commits` 填 `#N前=<合并提交>^,#N后=<合并提交>`。小改动、文档和只改 WebUI 的 PR 不建议。
 - 按阶段推进的优化，每做完一阶段跑一次再决定下一阶段；中途只想确认几项时用 `only` 和较少的 `runs`。
-- 在 runner 上试跑而不发布结果：在临时分支上给 `bench.yml` 的 `publish` job 加 `if: false`，然后 `gh workflow run bench.yml --ref <分支> -f commits=<提交> -f force=true`，结果从 `bench-results` artifact 取，用完删除分支。从默认分支以外的分支发起的请求不进夜间队列，立即测量。不要在 `main` 上触发后再靠取消运行来阻止发布。
+- 在 runner 上试跑而不发布结果：在临时分支上给 `bench.yml` 的 `publish` job 加 `if: false`，然后 `gh workflow run bench.yml --ref <分支> -f commits=<提交> -f force=true`，结果从 `bench-results` artifact 取，用完删除分支。从默认分支以外的分支发起的请求不进夜间队列，立即测量。
 - `force` 会覆盖 `gh-pages` 上已有的结果，触发前说明；已有结果的提交不加 `force` 会被跳过。
 - 看对比结果时先看 `quiet`（其他进程占用的 CPU）是否接近：机器忙时的差距不能归因于代码。
 - 改 bench.yml、测量脚本或校准时：
   - 环境键只放真正改变测法的东西；能靠锚点发现的漂移（如操作系统的小版本）记录下来，不进键。测量脚本的改动攒在一起改，用显式的版本号而不是文件的哈希。换环境后补测各个 release，让趋势接得上。
   - 只有真正需要那台机器的步骤才放到 runner 上，判断、排队和发布在 GitHub 托管的机器上做；状态存在 `gh-pages` 和 runner 的 `pending/` 里，运行中断不丢数据，下次接着测。
 - 装 runner 或换机器：在管理员终端里运行 `.github/bench/setup-runner.ps1 -Token <令牌> -BenchDir <目录> -Protect <目录>`。令牌用 `gh api -X POST repos/334456777/WeFlow/actions/runners/registration-token -q .token` 取，一小时内有效。runner 的账户不是管理员，读不到用户目录和 `-Protect` 给出的目录；重新运行脚本会更新目录并重新注册。
-- 校准基准账号的 profile：以配置了真实账号的用户（不是 runner 的账户）运行 `.github/bench/calibrate.ps1`，`-Register` 把它设成每六周一次的计划任务，改时间也要重新 `-Register`。它只输出是否更换、变化的项数和 profile 的哈希；profile 只存在本机，不提交。profile 换了以后不用手动补测：夜间运行会先在新环境里测最近的三个发布和带 `bench` 标签的 PR，见 Wiki [测试与基准#更换 profile 后的补测](https://github.com/334456777/WeFlow/wiki/测试与基准#更换-profile-后的补测)。
+- 校准基准账号的 profile：以配置了真实账号的用户（不是 runner 的账户）运行 `.github/bench/calibrate.ps1`，`-Register` 把它设成每六周一次的计划任务，改时间也要重新 `-Register`。它只输出是否更换、变化的项数和 profile 的哈希；profile 只存在本机，不提交。profile 换了以后，夜间运行会先在新环境里测最近的三个发布和带 `bench` 标签的 PR，见 Wiki [测试与基准#更换 profile 后的补测](https://github.com/334456777/WeFlow/wiki/测试与基准#更换-profile-后的补测)。
 - 夜间运行的计划任务：在 runner 所在的电脑上，以 `gh` 已登录的用户（不是 runner 的账户，不用管理员终端）运行 `.github/bench/night.ps1 -Register`，每天日本时间 23:25 发起夜间运行，只在该用户已登录时运行，错过的夜晚不补发。`bench.yml` 没有定时运行，这个计划任务是夜间队列唯一的入口。每次的结果（包括中断它的错误）追加到 `%LOCALAPPDATA%\weflow-bench\night.log`；没有发起时先看这里。任务计划程序里的「上次运行结果」只说明 `pwsh` 有没有启动：`conhost --headless` 不论脚本怎样退出都交回 0。换机器或者 `gh` 换了位置要重新 `-Register`。从分支试跑时，手动运行 `gh workflow run bench.yml --ref <分支> -f commits=`：分支上的夜间运行不碰队列，可以看 `queue` job 是否把它当成夜间运行。见 Wiki [测试与基准#夜间队列](https://github.com/334456777/WeFlow/wiki/测试与基准#夜间队列)。
 - 优化合并后，把试过但没采用的做法评论到对应的 issue，见 [weflow-issues](../weflow-issues/SKILL.md#写正文和评论)。
