@@ -13,35 +13,38 @@ name: Bench
 # from the commit this workflow runs on, so every commit of a run is measured the same way.
 #
 # The runner is a machine of the repository's owner, so this workflow runs only when the owner starts it (or a release
-# they started calls it) or on its schedule, never for a pull request; no other workflow uses the `weflow-bench`
-# label. The runner needs `WEFLOW_BENCH_DIR` in its `.env`: its own folder, kept between runs so that nothing a run
-# before set up is installed, downloaded or written again (Rust, the build cache, the account, the anchor's binary),
-# and cleaned after each run of what the next one will not use (`.github/scripts/bench-runner.sh`).
+# they started calls it), never for a pull request; no other workflow uses the `weflow-bench` label. The runner needs
+# `WEFLOW_BENCH_DIR` in its `.env`: its own folder, kept between runs so that nothing a run before set up is installed,
+# downloaded or written again (Rust, the build cache, the account, the anchor's binary), and cleaned after each run of
+# what the next one will not use (`.github/scripts/bench-runner.sh`).
 #
 # With `night` (the default), commits are measured at night in Japan, 23:30 to 05:00
 # (#688): the queue job puts the request at the end of the queue on the gh-pages branch (bench/queue.json,
-# `.github/scripts/bench_queue.py`) and the run ends; a run of this workflow's schedule measures the requests there in
-# order from 23:30, and one asked for during the night is measured at once. Once the night is over no further commit
-# starts, and what is left stays in the queue for the next night. GitHub starts a run of the schedule hours late at
-# times, and drops some (#957): the schedule fires three times before the night, a run that comes before 23:30 waits
-# for it in the queue job, on GitHub's machine, and the first run of the night takes the queue, while a later one that
-# night or one after the night leaves the runner alone (the queue's `taken`). Nothing waits in a concurrency group,
-# where a run queued behind another is cancelled by the next: the runner takes one job at a time, the others wait for
-# it in turn, and the pushes to gh-pages try again on a fresh checkout when another push came first. `night` off
-# measures at once, after whatever the runner is doing, and so does a run started on another branch than the default
-# one: the queue is measured and published by the default branch's workflow, so a trial on a branch with its publish
-# job turned off stays a trial. A run of the schedule first queues each PR labeled `bench` merged since it last looked,
-# before and after it, once (the queue's `labeled` holds the PRs it looked at). It asks for the runner only when there
-# is something for it: a request in the queue, or Friday night, after the calibration task of #605
-# (`.github/bench/calibrate.ps1`) ran: when it changed the profile, the new environment is measured first on the
-# releases and the PRs labeled `bench`, from 23:30, so it has the whole night. A run whose runner is not there leaves
-# the queue as it is for the next night.
+# `.github/scripts/bench_queue.py`) and the run ends; a night's run measures the requests there in order from 23:30,
+# and one asked for during the night is measured at once. Once the night is over no further commit starts, and what is
+# left stays in the queue for the next night. A night's run is one started by hand on the default branch with no
+# commits: `.github/bench/night.ps1`, a task of Windows on the runner's computer, starts one every night at 23:25
+# (#1001), so that it starts on time and only while that computer is on; a night the task does not run is measured
+# the night after (GitHub's schedule starts its runs hours late at times, and drops some, #957). The run waits for
+# 23:30 in the queue job, on GitHub's machine, and takes the queue, while a later night's run that night (a run of it
+# started again, or another one started by hand) or one after the night leaves the runner alone (the queue's `taken`).
+# Nothing waits in a concurrency group, where a run queued behind another is cancelled by the next: the runner takes
+# one job at a time, the others wait for it in turn, and the pushes to gh-pages try again on a fresh checkout when
+# another push came first. `night` off measures at once, after whatever the runner is doing, and so does a run started
+# on another branch than the default one: the queue is measured and published by the default branch's workflow, so a
+# trial on a branch with its publish job turned off stays a trial. A night's run first queues each PR labeled `bench`
+# merged since it last looked, before and after it, once (the queue's `labeled` holds the PRs it looked at). It asks
+# for the runner only when there is something for it: a request in the queue, or Friday night, after the calibration
+# task of #605 (`.github/bench/calibrate.ps1`) ran: when it changed the profile, the new environment is measured first
+# on the releases and the PRs labeled `bench`, from 23:30, so it has the whole night. A run whose runner is not there
+# leaves the queue as it is for the next night.
 on:
   workflow_dispatch:
     inputs:
       commits:
-        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交；分支记成 分支@提交，如 main@74185784f6；写成 名字=提交 时查看页显示这个名字，如 #424前=c054035f^）；正好两个时，第一个当 base、第二个当 head，运行页面的「发布」一节给出它们的对比链接"
-        required: true
+        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交；分支记成 分支@提交，如 main@74185784f6；写成 名字=提交 时查看页显示这个名字，如 #424前=c054035f^）；正好两个时，第一个当 base、第二个当 head，运行页面的「发布」一节给出它们的对比链接；留空时作为夜间运行，与定时运行相同：等到 23:30，排入带 bench 标签的 PR 并测量队列"
+        required: false
+        default: ""
         type: string
       runs:
         description: "每条命令计时运行的次数"
@@ -110,15 +113,6 @@ on:
         required: false
         default: true
         type: boolean
-  # the queue, every night from 23:30 in Japan: fired at 12:47, 15:17 and 18:17 there, off the hour, as GitHub may start
-  # a run of the schedule hours late or drop it (#957; 5 to 9 hours late in its runs). A run that comes before the night
-  # waits for it in the queue job, 5h30m at most, so each time reaches 23:30 for its own span of delays: 18:17 up to
-  # 5h13m late, 15:17 from 2h43m to 8h13m, 12:47 from 5h13m to 10h43m; one that comes earlier than its wait allows only
-  # looks for PRs labeled bench
-  schedule:
-    - cron: "47 3 * * *"
-    - cron: "17 6 * * *"
-    - cron: "17 9 * * *"
 
 permissions:
   contents: read
@@ -134,31 +128,36 @@ jobs:
   # The request into the queue, or straight to the measure job with `night` off; whether to measure now, and what.
   queue:
     name: queue
-    if: github.actor == github.repository_owner || github.event_name == 'schedule'
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      # the PRs labeled bench, read on the schedule
+      # the PRs labeled bench, read by a night's run
       issues: read
       pull-requests: read
-    # a hosted job's limit, which the wait for the night stays within
-    timeout-minutes: 360
+    # the wait for the night is 30 minutes at most
+    timeout-minutes: 60
+    env:
+      # a night's run: one started by hand with no commits (.github/bench/night.ps1); a call from release.yml always
+      # passes commits, and its event is the one release.yml was started by
+      NIGHT_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.commits == '') && '1' || '' }}
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       request: ${{ steps.plan.outputs.request }}
     steps:
-      # A run of the schedule that comes before 23:30 in Japan waits here for the night, so that it checks out what the
-      # repository and the queue hold by then; one that comes during the night goes on at once, and one that comes
-      # after the night, or earlier than this wait allows, only looks for PRs labeled bench (bench_queue.py).
+      # A night's run started up to 30 minutes before 23:30 in Japan (night.ps1 starts it at 23:25) waits here for the
+      # night, so that it checks out what the repository and the queue hold by then; one that comes during the night
+      # goes on at once, and one that comes after the night, or earlier, only looks for PRs labeled bench
+      # (bench_queue.py).
       - name: Wait for the night
-        if: github.event_name == 'schedule'
+        if: env.NIGHT_RUN == '1'
         shell: bash
         run: |
           # seconds into the day in Japan, which keeps no summer time, and from there to 23:30 (bench_queue.py's NIGHT)
           now=$(( ($(date -u +%s) + 9 * 3600) % 86400 ))
           left=$(( 23 * 3600 + 30 * 60 - now ))
-          if [ "$left" -gt 0 ] && [ "$left" -le $(( 5 * 3600 + 30 * 60 )) ]; then
-            echo "waiting $((left / 60)) minutes for 23:30 in Japan"
+          if [ "$left" -gt 0 ] && [ "$left" -le $(( 30 * 60 )) ]; then
+            echo "waiting $(( (left + 59) / 60 )) minutes for 23:30 in Japan"
             sleep "$left"
           fi
 
@@ -177,8 +176,9 @@ jobs:
         name: Plan
         shell: bash
         env:
-          EVENT: ${{ github.event_name }}
-          NIGHT: ${{ (github.event_name == 'schedule' || inputs.night) && '1' || '' }}
+          # `night` for a night's run
+          EVENT: ${{ env.NIGHT_RUN == '1' && 'night' || github.event_name }}
+          NIGHT: ${{ inputs.night && '1' || '' }}
           # the queue is measured by the default branch's workflow, whose publish job is on: a run started on another
           # branch (a trial with its publish turned off) is measured in its own run instead
           OTHER_BRANCH: ${{ github.ref_name != github.event.repository.default_branch && github.ref_name || '' }}
@@ -191,7 +191,7 @@ jobs:
           ONLY: ${{ inputs.only }}
           FORCE: ${{ inputs.force && '1' || '' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
-          # for the PRs labeled bench merged since the last run of the schedule (bench_queue.py's api)
+          # for the PRs labeled bench merged since the last night's run (bench_queue.py's api)
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git -C pages config user.name "github-actions[bot]"

@@ -6,11 +6,11 @@ usage: python bench_queue.py plan --pages DIR --event EVENT [--night] --outputs 
        python bench_queue.py done --pages DIR --results DIR
 
 Commits are measured at night in Japan ([`NIGHT`]). A run asked for
-during the day does not hold a job open until then: its request waits in `<pages>/bench/queue.json`, and a run of
-bench.yml's schedule measures the requests there in order (bench-commits.py), from 23:30 until the night is over.
-GitHub starts a run of the schedule hours late at times, and drops some (#957): the schedule fires three times before
-the night, and a run that comes before 23:30 waits for it in the queue job, on GitHub's machine. Nothing in the queue is
-ever cancelled or replaced, as runs waiting in a concurrency group would be.
+during the day does not hold a job open until then: its request waits in `<pages>/bench/queue.json`, and a night's run
+of bench.yml measures the requests there in order (bench-commits.py), from 23:30 until the night is over. A night's run
+(`--event night`) is one started by hand on the default branch with no commits, which the runner's computer starts at
+23:25 (`.github/bench/night.ps1`, #1001) and which waits for 23:30 in the queue job, on GitHub's machine. Nothing in
+the queue is ever cancelled or replaced, as runs waiting in a concurrency group would be.
 
 `plan`, in the queue job, run from a checkout of the repository with its history and tags (to resolve the commits):
   - a run asked for by hand or by release.yml with `night` off goes to the measure job at once (`mode=now`,
@@ -19,17 +19,18 @@ ever cancelled or replaced, as runs waiting in a concurrency group would be.
     a branch may have turned its own publishing off
   - with `night` on, the request goes to the end of the queue, its commits resolved to full SHAs (a branch or HEAD
     stays the commit it was when asked for); when it is night already, the measure job takes the queue at once
-    (`mode=drain`), else a run of the schedule does (`mode=none`)
-  - a run of the schedule first puts into the queue the PRs labeled `bench` merged since it last looked, each
-    measured before and after it ([`queue_bench_prs`]); the queue's `labeled` holds the PRs it looked at already, so
-    that each is queued once
-  - a run of the schedule during the night: `mode=drain` when the queue holds a request; with an empty queue, only on
+    (`mode=drain`), else a night's run does (`mode=none`)
+  - a night's run first puts into the queue the PRs labeled `bench` merged since it last looked, each measured before
+    and after it ([`queue_bench_prs`]); the queue's `labeled` holds the PRs it looked at already, so that each is
+    queued once. One started on another branch than the default one leaves the queue alone (`mode=none`): the queue is
+    the default branch's
+  - a night's run during the night: `mode=drain` when the queue holds a request; with an empty queue, only on
     Friday nights ([`calibration_night`]), so that the runner looks whether the calibration of #605 changed the
     profile: a new profile is a new environment, and bench-commits.py `--backfill` measures it first on
     [`backfill_commits`], from 23:30, the night's whole time. Other nights with an empty queue do not use the runner
     (`mode=none`)
   - one measure job a night takes the queue: the queue's `taken` notes the night ([`night_began`]) a run sent one for
-    it, and a later run of the schedule that night does not use the runner, as one that comes after the night does
+    it, and a later night's run that night does not use the runner, as one that comes after the night does
     not; a request asked for during the night still goes to the runner at once, since the job that took the queue
     before does not see it
 It writes the outputs to `--outputs` and what it did, in Chinese, to `--summary`, both replaced on every call: the
@@ -98,7 +99,7 @@ def is_branch(ref):
 
 
 def merged_here(sha):
-    """Whether the commit `sha` is in the history of the checkout's HEAD, which on the schedule is the default
+    """Whether the commit `sha` is in the history of the checkout's HEAD, which for a night's run is the default
     branch."""
     return subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True).returncode == 0
 
@@ -254,26 +255,30 @@ def plan(args):
     out, said = {"mode": "none"}, []
     night, tonight = at_night(), night_began().isoformat()
     queue = load_queue(args.pages)
-    if args.event == "schedule":
-        said += queue_bench_prs(queue)
-        if not night:
-            # GitHub started it after the night, or more than the queue job waits before it (bench.yml)
-            said.append("- 定时运行：开始时不在夜间时段，只检查带 `bench` 标签的 PR，不用基准机器")
-        elif queue.get("taken") == tonight:
-            said.append("- 夜间运行：今晚已有一次运行在测量队列，这次不用基准机器")
-        elif queue["requests"]:
-            out["mode"], queue["taken"] = "drain", tonight
-            said.append(f"- 夜间运行：队列里有 {len(queue['requests'])} 个请求，按顺序测到日本时间 {NIGHT[1]:%H:%M}")
-        elif calibration_night():
-            # the runner looks whether the calibration changed the profile (bench-runner.sh)
-            out["mode"], queue["taken"] = "drain", tonight
-            said.append("- 夜间运行：队列为空；今天是校准日（周五），在 runner 上检查 profile 是否更换")
+    branch = os.environ.get("OTHER_BRANCH", "")
+    if args.event == "night":
+        if branch:
+            # the queue and its PRs are the default branch's
+            said.append(f"- 夜间运行：从分支 {branch} 发起，不检查 PR，也不测量队列")
         else:
-            said.append("- 夜间运行：队列为空，不用基准机器")
-        save_queue(args.pages, queue)
+            said += queue_bench_prs(queue)
+            if not night:
+                # started by hand after the night, or earlier than the queue job waits (bench.yml)
+                said.append("- 夜间运行：开始时不在夜间时段，只检查带 `bench` 标签的 PR，不用基准机器")
+            elif queue.get("taken") == tonight:
+                said.append("- 夜间运行：今晚已有一次运行在测量队列，这次不用基准机器")
+            elif queue["requests"]:
+                out["mode"], queue["taken"] = "drain", tonight
+                said.append(f"- 夜间运行：队列里有 {len(queue['requests'])} 个请求，按顺序测到日本时间 {NIGHT[1]:%H:%M}")
+            elif calibration_night():
+                # the runner looks whether the calibration changed the profile (bench-runner.sh)
+                out["mode"], queue["taken"] = "drain", tonight
+                said.append("- 夜间运行：队列为空；今天是校准日（周五），在 runner 上检查 profile 是否更换")
+            else:
+                said.append("- 夜间运行：队列为空，不用基准机器")
+            save_queue(args.pages, queue)
     else:
         request = request_from_env()
-        branch = os.environ.get("OTHER_BRANCH", "")
         if not args.night or branch:
             out.update(mode="now", request=json.dumps(request, ensure_ascii=False))
             why = f"从分支 {branch} 发起，不进夜间队列" if branch else "关闭了 night"
@@ -324,7 +329,7 @@ def main():
     modes = p.add_subparsers(dest="mode", required=True)
     pl = modes.add_parser("plan", help="queue the request of this run, or say to measure it now")
     pl.add_argument("--pages", required=True)
-    pl.add_argument("--event", required=True)
+    pl.add_argument("--event", required=True, help="what started the run: `night` for a night's run, else its event")
     pl.add_argument("--night", action="store_true")
     pl.add_argument("--outputs", required=True)
     pl.add_argument("--summary", required=True)
