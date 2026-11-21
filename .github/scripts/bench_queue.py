@@ -8,8 +8,8 @@ usage: python bench_queue.py plan --pages DIR --event EVENT [--night] --outputs 
 Commits are measured at night in Japan ([`NIGHT`]). A run asked for
 during the day does not hold a job open until then: its request waits in `<pages>/bench/queue.json`, and a run of
 bench.yml's schedule measures the requests there in order (bench-commits.py), from 23:30 until the night is over.
-GitHub starts a run of the schedule hours late at times, and drops some (#957): the schedule fires twice before the
-night, and a run that comes before 23:30 waits for it in the queue job, on GitHub's machine. Nothing in the queue is
+GitHub starts a run of the schedule hours late at times, and drops some (#957): the schedule fires three times before
+the night, and a run that comes before 23:30 waits for it in the queue job, on GitHub's machine. Nothing in the queue is
 ever cancelled or replaced, as runs waiting in a concurrency group would be.
 
 `plan`, in the queue job, run from a checkout of the repository with its history and tags (to resolve the commits):
