@@ -1,5 +1,5 @@
 //! The helper's command line and JSON, including exit codes, for comparison
-//! with the original executable and for a future standalone binary.
+//! with the original executable.
 
 use super::{image_mem, platform, Hook};
 use crate::image_key_scan::{self, MemoryScanError};

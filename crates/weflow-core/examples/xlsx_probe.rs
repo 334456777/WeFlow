@@ -1,5 +1,6 @@
-//! Synthetic workbook probe; no WeChat data is opened.
-//! Run with an explicitly writable TEMP/TMP to separate environment from content.
+//! Writes a synthetic workbook of `rows` rows (20001 by default) on a constant-memory sheet, after saying whether the
+//! temp directory, where such a sheet keeps its rows, exists and takes a file. No WeChat data is opened.
+//! Usage: `xlsx_probe <output.xlsx> [rows]`
 #![expect(
     clippy::expect_used,
     reason = "probe code reports failure by panicking"

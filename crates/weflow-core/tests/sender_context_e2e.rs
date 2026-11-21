@@ -1,4 +1,5 @@
-//! Adversarial sender cases use only synthetic encrypted accounts.
+//! `export messages --sender`: one sender's messages, revoke notices by their revoker, across the message databases
+//! and with or without media; the account folder name, and a sender without messages, refused (#46).
 mod common;
 
 use serde_json::Value;

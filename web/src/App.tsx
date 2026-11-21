@@ -1,5 +1,5 @@
-// The workspace (#130): navigation on the left, a page in the middle, the operations console on the right as in
-// Claude.ai. It holds what the pages share (the server, the account, the conversation list, the jobs), opens one page
+// The workspace (#130): navigation on the left, a page in the middle, the operations console on the right. It holds
+// what the pages share (the server, the account, the conversation list, the jobs), opens one page
 // from another and gathers the pages' cards into the one console; each page keeps its own state (#401).
 // Records come from `weflow serve` once connected; until then the sample server of src/mock answers the pages in its
 // place (#879), jobs and settings too (#896). When the server goes after it was connected, what was read from it stays
