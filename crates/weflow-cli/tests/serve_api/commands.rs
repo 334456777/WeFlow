@@ -33,6 +33,54 @@ fn answers_nobody_reads_are_dropped() {
     }
 }
 
+/// Help and parse errors are in the language of the run, the help texts of the command tree included, and a command
+/// line that parses runs in either language: the tree is translated only for help and errors (`i18n::parse`).
+#[test]
+fn help_and_parse_errors_follow_the_language() {
+    let root = temp_root("help-language");
+    let run = |lang: &str, args: &[&str]| {
+        let out = weflow(&root)
+            .env("WEFLOW_LANG", lang)
+            .env("NO_COLOR", "1")
+            .args(args)
+            .output()
+            .unwrap();
+        (
+            out.status.code(),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        )
+    };
+    for (lang, path_help, set_about, error) in [
+        (
+            "en",
+            "Show the path of the config file",
+            "Set a key",
+            "error: unexpected argument '--bogus' found",
+        ),
+        (
+            "zh",
+            "显示配置文件路径",
+            "设置一个键",
+            "错误：发现意外的参数 '--bogus'",
+        ),
+    ] {
+        let (code, stdout, _) = run(lang, &["config", "--help"]);
+        assert_eq!(code, Some(0), "{lang}");
+        assert!(stdout.contains(path_help), "{lang}: {stdout}");
+        // a command given none of its required arguments shows its help as an error
+        let (code, _, stderr) = run(lang, &["config", "set"]);
+        assert_eq!(code, Some(2), "{lang}");
+        assert!(stderr.contains(set_about), "{lang}: {stderr}");
+        let (code, _, stderr) = run(lang, &["config", "path", "--bogus"]);
+        assert_eq!(code, Some(2), "{lang}");
+        assert!(stderr.contains(error), "{lang}: {stderr}");
+        let (code, stdout, stderr) = run(lang, &["config", "path"]);
+        assert_eq!(code, Some(0), "{lang}: {stderr}");
+        assert!(stdout.contains("config.json"), "{lang}: {stdout}");
+    }
+}
+
 #[test]
 fn commands_answer_like_the_terminal() {
     let root = temp_root("config");

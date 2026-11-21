@@ -260,31 +260,38 @@ fn inline_notes(line: &str) -> String {
 /// language.
 pub fn parse<T: CommandFactory + FromArgMatches>(args: Vec<std::ffi::OsString>) -> T {
     prescan_lang();
-    let parsed = command_of::<T>()
-        .try_get_matches_from(args)
-        .and_then(|m| T::from_arg_matches(&m));
-    match parsed {
+    match parse_in_language::<T, _>(&args) {
         Ok(value) => value,
         Err(err) => exit_with(err),
-    }
-}
-
-/// The command tree in the active language.
-fn command_of<T: CommandFactory>() -> Command {
-    let cmd = build_command::<T>();
-    if locale::current() == Lang::Zh {
-        localize_command(cmd)
-    } else {
-        cmd
     }
 }
 
 /// Parses `args` (from the program's name on) as [`parse`] does, in the active language, without printing or
 /// exiting: the command API reads a request's command line in its own process with it (#432).
 pub fn try_parse_from<T: CommandFactory + FromArgMatches>(args: &[String]) -> Result<T, Error> {
-    command_of::<T>()
-        .try_get_matches_from(args)
-        .and_then(|m| T::from_arg_matches(&m))
+    parse_in_language::<T, _>(args)
+}
+
+/// Parses `args` with the English command tree. A command line that parses shows none of the tree's help texts,
+/// and translating all of them takes a few milliseconds of every run, so the tree is translated only when clap
+/// answers with help or an error and the language is Chinese; `args` are then parsed again with it, which gives
+/// the same answer in Chinese. The version shows no help text and is not parsed again.
+fn parse_in_language<T, A>(args: &[A]) -> Result<T, Error>
+where
+    T: CommandFactory + FromArgMatches,
+    A: Clone + Into<std::ffi::OsString>,
+{
+    use clap::error::ErrorKind;
+    let parse = |cmd: Command| {
+        cmd.try_get_matches_from(args.iter().cloned())
+            .and_then(|m| T::from_arg_matches(&m))
+    };
+    match parse(build_command::<T>()) {
+        Err(err) if err.kind() != ErrorKind::DisplayVersion && locale::current() == Lang::Zh => {
+            parse(localize_command(build_command::<T>()))
+        }
+        parsed => parsed,
+    }
 }
 
 /// What clap says of `err`, in the active language, the options last in a usage line and its bracketed notes in
