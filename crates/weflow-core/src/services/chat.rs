@@ -1198,25 +1198,10 @@ impl ServiceHub {
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// A newest-first page of a conversation for `chat messages`, as [`MessageRow`](crate::contract::MessageRow)s: from the
-    /// newest message, after `offset` of them, or next to the message of a `_cursor` (`before`: the older ones;
-    /// `after`: the newer ones closest to it). Every row has its own `_cursor`, to ask for the page next to it.
-    pub fn message_page(
-        &self,
-        session_id: &str,
-        limit: i32,
-        offset: i32,
-        before: Option<&str>,
-        after: Option<&str>,
-    ) -> AppResult<Value> {
-        let rows = self.message_page_rows(session_id, limit, offset, before, after)?;
-        Ok(json!(rows
-            .into_iter()
-            .map(crate::contract::MessageRow::from)
-            .collect::<Vec<_>>()))
-    }
-
-    /// [`message_page`](Self::message_page) as typed rows (#492).
+    /// A newest-first page of a conversation for `chat messages`, as typed rows (#492): from the newest message, after
+    /// `offset` of them, or next to the message of a `_cursor` (`before`: the older ones; `after`: the newer ones
+    /// closest to it). Each row, as a [`MessageRow`](crate::contract::MessageRow), has its own `_cursor`, to ask for the
+    /// page next to it.
     pub fn message_page_rows(
         &self,
         session_id: &str,

@@ -381,7 +381,10 @@ fn parsed_pages_keep_the_cursors_and_parse_each_kind() {
             )],
         );
     });
-    let raw = hub.message_page("wxid_bob", 10, 0, None, None).unwrap();
+    let raw = rows_json(
+        hub.message_page_rows("wxid_bob", 10, 0, None, None)
+            .unwrap(),
+    );
     let parsed = parsed_page(&hub, "wxid_bob", 10);
     let rows = parsed.as_array().unwrap();
     assert_eq!(rows.len(), 3);
@@ -398,9 +401,10 @@ fn parsed_pages_keep_the_cursors_and_parse_each_kind() {
     assert_eq!(rows[2]["parsedContent"], "hello");
     assert_eq!(rows[2]["senderUsername"], "wxid_bob");
     // the next page from a parsed row's cursor
-    let older = hub
-        .message_page("wxid_bob", 10, 0, rows[1]["_cursor"].as_str(), None)
-        .unwrap();
+    let older = rows_json(
+        hub.message_page_rows("wxid_bob", 10, 0, rows[1]["_cursor"].as_str(), None)
+            .unwrap(),
+    );
     assert_eq!(older.as_array().unwrap().len(), 1);
 }
 
@@ -469,8 +473,10 @@ fn pages_from_a_cursor_follow_the_offset_order() {
         );
     });
     let page = |limit: i32, offset: i32, before: Option<&str>, after: Option<&str>| {
-        hub.message_page("wxid_bob", limit, offset, before, after)
-            .unwrap()
+        rows_json(
+            hub.message_page_rows("wxid_bob", limit, offset, before, after)
+                .unwrap(),
+        )
     };
     let all = page(0, 0, None, None);
     let order = places(&all);
@@ -524,9 +530,9 @@ fn pages_from_a_cursor_follow_the_offset_order() {
         );
     }
     // every row has a cursor, also those of the newest page (`chat messages` without a cursor or offset)
-    assert!(hub.message_page("wxid_bob", 2, 0, None, None).unwrap()[1]["_cursor"].is_string());
+    assert!(page(2, 0, None, None)[1]["_cursor"].is_string());
     let err = hub
-        .message_page("wxid_bob", 2, 0, Some("1.2.3"), None)
+        .message_page_rows("wxid_bob", 2, 0, Some("1.2.3"), None)
         .unwrap_err();
     assert_eq!(err.code, "invalid_arguments");
 }
@@ -594,7 +600,10 @@ fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
             .map(|r| r["localId"].as_i64().unwrap())
             .collect()
     };
-    let newest_first = ids(&hub.message_page("wxid_bob", 10, 0, None, None).unwrap());
+    let newest_first = ids(&rows_json(
+        hub.message_page_rows("wxid_bob", 10, 0, None, None)
+            .unwrap(),
+    ));
     assert_eq!(newest_first, vec![5, 4, 2, 3, 1, 6], "the chat order");
     // the page starts where t falls in that order: 2 opens it, 3 sits right above it
     let since = rows_json(hub.message_page_since("wxid_bob", 10, t).unwrap());
@@ -603,9 +612,10 @@ fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
     let mut seen = ids(&since);
     let mut cursor = since[2]["_cursor"].as_str().unwrap().to_string();
     loop {
-        let older = hub
-            .message_page("wxid_bob", 1, 0, Some(&cursor), None)
-            .unwrap();
+        let older = rows_json(
+            hub.message_page_rows("wxid_bob", 1, 0, Some(&cursor), None)
+                .unwrap(),
+        );
         let Some(last) = older.as_array().unwrap().last() else {
             break;
         };
@@ -615,9 +625,10 @@ fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
     assert_eq!(seen, newest_first);
     let small = rows_json(hub.message_page_since("wxid_bob", 1, t).unwrap());
     assert_eq!(ids(&small), vec![2]);
-    let newer = hub
-        .message_page("wxid_bob", 10, 0, None, small[0]["_cursor"].as_str())
-        .unwrap();
+    let newer = rows_json(
+        hub.message_page_rows("wxid_bob", 10, 0, None, small[0]["_cursor"].as_str())
+            .unwrap(),
+    );
     assert_eq!(ids(&newer), vec![5, 4]);
     // a moment exactly at an order position: that message opens the page
     assert_eq!(
@@ -683,13 +694,15 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
         vec![1]
     );
     // the page pages on both ways from its own cursors
-    let older = hub
-        .message_page("wxid_bob", 10, 0, since[3]["_cursor"].as_str(), None)
-        .unwrap();
+    let older = rows_json(
+        hub.message_page_rows("wxid_bob", 10, 0, since[3]["_cursor"].as_str(), None)
+            .unwrap(),
+    );
     assert_eq!(ids(&older), vec![3, 2, 1]);
-    let newer = hub
-        .message_page("wxid_bob", 10, 0, None, since[0]["_cursor"].as_str())
-        .unwrap();
+    let newer = rows_json(
+        hub.message_page_rows("wxid_bob", 10, 0, None, since[0]["_cursor"].as_str())
+            .unwrap(),
+    );
     assert_eq!(ids(&newer), vec![8, 7, 6]);
 
     // a hit carries its message's cursor and conversation, parsed or not
@@ -714,8 +727,9 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
     }
     assert_eq!(parsed[1]["parsedContent"], "m9 trip");
     // the messages around a hit: older from its cursor, newer from it too
-    let around = hub
-        .message_page("wxid_bob", 2, 0, None, hits[1]["_cursor"].as_str())
-        .unwrap();
+    let around = rows_json(
+        hub.message_page_rows("wxid_bob", 2, 0, None, hits[1]["_cursor"].as_str())
+            .unwrap(),
+    );
     assert_eq!(ids(&around), vec![10, 5]);
 }
