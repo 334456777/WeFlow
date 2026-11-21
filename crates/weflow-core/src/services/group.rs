@@ -288,7 +288,6 @@ impl ServiceHub {
         wcdb: &weflow_native::wcdb::Wcdb,
         usernames: &[String],
     ) -> (HashMap<String, String>, HashMap<String, String>) {
-        let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
         let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
             v.ok()
                 .and_then(|v| v.as_object().cloned())
@@ -300,8 +299,8 @@ impl ServiceHub {
                 .unwrap_or_default()
         };
         (
-            to_map(wcdb.display_names(&payload)),
-            to_map(wcdb.avatar_urls(&payload)),
+            to_map(wcdb.display_names(usernames)),
+            to_map(wcdb.avatar_urls(usernames)),
         )
     }
 
@@ -369,13 +368,7 @@ impl ServiceHub {
         let refs: Vec<&str> = usernames.iter().map(String::as_str).collect();
         let candidates = build_id_candidates(&refs);
         for batch in candidates.chunks(200) {
-            let Ok(payload) = serde_json::to_string(batch) else {
-                continue;
-            };
-            let Ok(Value::Array(rows)) = wcdb.invoke_json(
-                "wcdb_get_contacts_compact",
-                &[weflow_native::wcdb::Arg::S(&payload)],
-            ) else {
+            let Ok(Value::Array(rows)) = wcdb.contacts_compact(batch) else {
                 continue;
             };
             for row in rows {
@@ -638,9 +631,9 @@ impl ServiceHub {
             .map(|r| pick_str(r, &["username", "user_name", "userName"]))
             .filter(|u| u.contains("@chatroom"))
             .collect();
-        let counts = serde_json::to_string(&ids)
+        let counts = wcdb
+            .group_member_counts(&ids)
             .ok()
-            .and_then(|payload| wcdb.group_member_counts(&payload).ok())
             .and_then(|v| v.as_object().cloned())
             .unwrap_or_default();
         let book = self.contact_book(&wcdb, &ids);

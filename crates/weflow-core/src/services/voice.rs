@@ -107,8 +107,7 @@ impl ServiceHub {
             plans.push(candidates.to_vec());
         }
         for plan in plans {
-            let list = serde_json::to_string(&plan).unwrap_or_else(|_| "[]".into());
-            if let Ok(hex) = wcdb.voice_data(ct, lid, svr, &list) {
+            if let Ok(hex) = wcdb.voice_data(ct, lid, svr, &plan) {
                 if let Some(bytes) = decode_voice_blob(&hex).filter(|b| !b.is_empty()) {
                     return Some(bytes);
                 }
@@ -122,7 +121,7 @@ impl ServiceHub {
                 json!(svr_id)
             };
             let request = json!([{ "session_id": session_id, "create_time": ct, "local_id": lid, "svr_id": svr_value, "candidates": plan }]);
-            if let Ok(rows) = wcdb.voice_data_batch(&request.to_string()) {
+            if let Ok(rows) = wcdb.voice_data_batch(&request) {
                 if let Some(hex) = rows
                     .as_array()
                     .and_then(|a| a.first())
@@ -300,7 +299,7 @@ impl ServiceHub {
         let mut prepared = seen.len() - pending.len();
         for chunk in pending.chunks(48) {
             let payload = Value::Array(chunk.iter().map(|(_, r)| r.clone()).collect());
-            let Ok(rows) = wcdb.voice_data_batch(&payload.to_string()) else {
+            let Ok(rows) = wcdb.voice_data_batch(&payload) else {
                 continue;
             };
             for row in rows.as_array().map(|a| a.as_slice()).unwrap_or(&[]) {

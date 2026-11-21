@@ -262,7 +262,7 @@ impl ServiceHub {
             .collect())
     }
 
-    /// `getAggregateStats` with the numeric-id retry of the WCDB wrapper.
+    /// `getAggregateStats`: the messages of `session_ids` between `begin` and `end`, by direction, type and time.
     fn aggregate_raw(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -271,54 +271,8 @@ impl ServiceHub {
         end: i64,
     ) -> AppResult<Value> {
         let (b, e) = normalize_range(begin, end);
-        let call = |ids: &[String]| -> AppResult<Value> {
-            let numeric = !ids.is_empty()
-                && ids
-                    .iter()
-                    .all(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit()));
-            let payload = if numeric {
-                json!(ids
-                    .iter()
-                    .filter_map(|i| i.parse::<u64>().ok())
-                    .collect::<Vec<_>>())
-            } else {
-                json!(ids)
-            };
-            wcdb.invoke_json(
-                "wcdb_get_aggregate_stats",
-                &[
-                    weflow_native::wcdb::Arg::S(&payload.to_string()),
-                    weflow_native::wcdb::Arg::I32(b),
-                    weflow_native::wcdb::Arg::I32(e),
-                ],
-            )
+        wcdb.aggregate_stats(session_ids, b, e)
             .map_err(|err| AppError::native(format!("{err:#}")))
-        };
-        let mut result = call(session_ids)?;
-        if num(&result["total"]) == 0 {
-            if let Some(id_map) = result.get("idMap").and_then(Value::as_object) {
-                let reverse: HashMap<&str, &str> = id_map
-                    .iter()
-                    .filter_map(|(id, name)| {
-                        name.as_str()
-                            .filter(|n| !n.is_empty())
-                            .map(|n| (n, id.as_str()))
-                    })
-                    .collect();
-                let numeric_ids: Vec<String> = session_ids
-                    .iter()
-                    .filter_map(|s| reverse.get(s.as_str()))
-                    .filter(|id| id.chars().all(|c| c.is_ascii_digit()) && !id.is_empty())
-                    .map(|s| s.to_string())
-                    .collect();
-                if !numeric_ids.is_empty() {
-                    if let Ok(retry) = call(&numeric_ids) {
-                        result = retry;
-                    }
-                }
-            }
-        }
-        Ok(result)
     }
 
     /// `computeAggregateByCursor`: cursor-based fallback when the native aggregate is empty.
@@ -411,7 +365,7 @@ impl ServiceHub {
             "hourly": obj(&hourly), "weekday": obj(&weekday),
             "daily": daily.iter().map(|(k, v)| (k.clone(), json!(v))).collect::<Map<_, _>>(),
             "monthly": monthly.iter().map(|(k, v)| (k.clone(), json!(v))).collect::<Map<_, _>>(),
-            "sessions": sessions, "idMap": {}
+            "sessions": sessions
         }))
     }
 
@@ -468,9 +422,8 @@ impl ServiceHub {
         if usernames.is_empty() {
             return HashMap::new();
         }
-        serde_json::to_string(usernames)
+        wcdb.contact_alias_map(usernames)
             .ok()
-            .and_then(|payload| wcdb.contact_alias_map(&payload).ok())
             .and_then(|v| v.as_object().cloned())
             .map(|m| {
                 m.into_iter()
@@ -578,32 +531,11 @@ impl ServiceHub {
             return Err(AppError::runtime("no message sessions found"));
         }
         let d = self.session_totals(&wcdb, &usernames, begin, end)?;
-        let mut sessions = d
+        let sessions = d
             .get("sessions")
             .and_then(Value::as_object)
             .cloned()
             .unwrap_or_default();
-        if let Some(id_map) = d.get("idMap").and_then(Value::as_object) {
-            if !sessions.is_empty()
-                && sessions
-                    .keys()
-                    .all(|k| !k.is_empty() && k.chars().all(|c| c.is_ascii_digit()))
-            {
-                sessions = sessions
-                    .into_iter()
-                    .map(|(id, stat)| {
-                        (
-                            id_map
-                                .get(&id)
-                                .and_then(Value::as_str)
-                                .unwrap_or(&id)
-                                .to_string(),
-                            stat,
-                        )
-                    })
-                    .collect();
-            }
-        }
         let names: Vec<String> = sessions.keys().cloned().collect();
         let (display, avatars) = self.names_and_avatars_pub(&wcdb, &names);
         let aliases = self.alias_map(&wcdb, &names);

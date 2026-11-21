@@ -297,13 +297,13 @@ impl Account {
         Ok(mine)
     }
 
-    /// `{ total, sent, received, firstTime, lastTime, typeCounts, hourly, weekday, daily, monthly, sessions, idMap }`.
+    /// `{ total, sent, received, firstTime, lastTime, typeCounts, hourly, weekday, daily, monthly, sessions }`.
     pub fn aggregate_stats(&self, session_ids: &[String], begin: i64, end: i64) -> Result<Value> {
         self.aggregate_inner(session_ids, begin, end, false)
     }
 
     /// Only the `sessions` and `total` of [`aggregate_stats`](Self::aggregate_stats), the same numbers: one count per
-    /// table, without the grouping by type and time the rest needs. `{ total, sessions, idMap }`.
+    /// table, without the grouping by type and time the rest needs. `{ total, sessions }`.
     pub fn session_totals(&self, session_ids: &[String], begin: i64, end: i64) -> Result<Value> {
         let range = range_sql(begin, end);
         let mut total = 0i64;
@@ -363,7 +363,7 @@ impl Account {
                 );
             }
         }
-        Ok(json!({ "total": total, "sessions": sessions, "idMap": {} }))
+        Ok(json!({ "total": total, "sessions": sessions }))
     }
 
     /// [`aggregate_stats`](Self::aggregate_stats) plus, for every session, `monthly`: messages per month of the
@@ -449,7 +449,7 @@ impl Account {
         Ok(json!({
             "total": total, "sent": sent, "received": total - sent, "firstTime": first, "lastTime": last,
             "typeCounts": keyed(&types), "hourly": keyed(&hourly), "weekday": keyed(&weekday),
-            "daily": named(&daily), "monthly": named(&monthly), "sessions": sessions, "idMap": {}
+            "daily": named(&daily), "monthly": named(&monthly), "sessions": sessions
         }))
     }
 
@@ -981,7 +981,7 @@ mod tests {
             json!({"total": 5, "sent": 2, "received": 3, "lastTime": T0 + 4 * DAY})
         );
         assert_eq!(v["sessions"]["room1@chatroom"]["total"], 3);
-        assert_eq!(v["idMap"], json!({}));
+        assert!(v.get("idMap").is_none());
     }
 
     #[test]

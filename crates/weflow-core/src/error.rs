@@ -12,7 +12,7 @@ pub struct ErrorPayload {
     /// The kind of failure, for a program to tell them apart.
     #[schemars(extend("examples" = [
         "invalid_arguments", "unauthorized", "invalid_host", "not_found", "method_not_allowed",
-        "config_error", "busy", "user_interrupt", "runtime_error", "native_error", "unsupported"
+        "config_error", "busy", "user_interrupt", "runtime_error", "native_error"
     ]))]
     pub code: String,
     /// What went wrong, for a person, in the language of the run.
@@ -99,23 +99,9 @@ impl AppError {
         Self::new("native_error", message, 4)
     }
 
-    /// Refused by design (the database is opened read-only) or not ported yet; same exit code as
-    /// [`native`](Self::native), but the HTTP API answers it with 501.
-    pub fn unsupported(message: impl Into<String>) -> Self {
-        Self::new("unsupported", message, 4)
-    }
-
-    /// A database-layer error: [`unsupported`](Self::unsupported) for the calls the native backend refuses,
-    /// [`native`](Self::native) for everything else. Its message has every context and the error under them.
+    /// A database-layer error ([`native`](Self::native)) whose message has every context and the error under them.
     pub fn from_native(err: anyhow::Error) -> Self {
-        if err
-            .downcast_ref::<weflow_native::wcdb::Unsupported>()
-            .is_some()
-        {
-            Self::unsupported(format!("{err:#}"))
-        } else {
-            Self::native(format!("{err:#}"))
-        }
+        Self::native(format!("{err:#}"))
     }
 
     /// This error with `details` (see [`AppErrorInner::details`]).
@@ -162,7 +148,6 @@ mod tests {
             (AppError::usage("boom 2"), "invalid_arguments", 2),
             (AppError::config("boom 3"), "config_error", 3),
             (AppError::native("boom 4"), "native_error", 4),
-            (AppError::unsupported("boom 4b"), "unsupported", 4),
             (AppError::new("custom", "boom 5", 9), "custom", 9),
         ] {
             assert_eq!(err.code, code);
@@ -213,13 +198,10 @@ mod tests {
     }
 
     #[test]
-    fn native_errors_keep_refusals_apart() {
-        let refused: anyhow::Error =
-            weflow_native::wcdb::Unsupported("delete_message is not supported".into()).into();
-        let err = AppError::from_native(refused.context("while deleting"));
-        assert_eq!((err.code.as_str(), err.exit_code), ("unsupported", 4));
-        let err = AppError::from_native(anyhow::anyhow!("disk I/O error"));
+    fn native_errors_keep_their_context() {
+        let err = AppError::from_native(anyhow::anyhow!("disk I/O error").context("while reading"));
         assert_eq!((err.code.as_str(), err.exit_code), ("native_error", 4));
+        assert_eq!(err.message, "while reading: disk I/O error");
     }
 
     #[test]

@@ -39,9 +39,8 @@ pub(super) enum Rule {
 }
 
 /// The HTTP method of every command: `GET` reads (it may fill caches that can be rebuilt), `POST` runs a task or
-/// writes files, `PUT` changes a setting, `DELETE` removes one. Commands that would write WeChat's databases keep
-/// the method their action implies and are refused by the command itself (`unsupported`, HTTP 501).
-/// `tests::every_command_has_a_method` keeps this table in step with the command tree.
+/// writes files, `PUT` changes a setting, `DELETE` removes one. `tests::every_command_has_a_method` keeps this table
+/// in step with the command tree.
 pub(super) const METHODS: &[(&str, Rule)] = &[
     ("config path", Rule::Fixed(Get)),
     ("config list", Rule::Fixed(Get)),

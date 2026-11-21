@@ -295,9 +295,7 @@ impl ServiceHub {
             return Ok(IndexMap::new());
         }
         let wcdb = self.open_wcdb()?;
-        let payload =
-            serde_json::to_string(&ids).map_err(|e| AppError::runtime(format!("{e:#}")))?;
-        let raw = wcdb.contact_status(&payload).map_err(native)?;
+        let raw = wcdb.contact_status(&ids).map_err(native)?;
         Ok(ids
             .into_iter()
             .map(|id| {
@@ -350,9 +348,9 @@ impl ServiceHub {
             .or(nick.clone())
             .or(alias.clone())
             .unwrap_or_else(|| id.to_string());
-        let avatar = serde_json::to_string(&[id])
+        let avatar = wcdb
+            .avatar_urls(&[id])
             .ok()
-            .and_then(|payload| wcdb.avatar_urls(&payload).ok())
             .and_then(|m| m.get(id).and_then(Value::as_str).map(str::to_string))
             .filter(|u| u.starts_with("http") || u.starts_with("data:"));
         let count = wcdb.message_count(id).map(|c| c.max(0)).unwrap_or(0);
@@ -521,10 +519,8 @@ impl ServiceHub {
             "quick_mode": !include_relations && ids.len() > 1,
             "include_group_sender_count": true
         });
-        let ids_json =
-            serde_json::to_string(&ids).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let native_rows = wcdb
-            .session_message_type_stats_batch(&ids_json, &options.to_string())
+            .session_message_type_stats_batch(&ids, &options)
             .unwrap_or(Value::Null);
         let groups: Vec<String> = ids
             .iter()
@@ -539,10 +535,7 @@ impl ServiceHub {
         let member_counts = if groups.is_empty() {
             Value::Null
         } else {
-            let groups_json =
-                serde_json::to_string(&groups).map_err(|e| AppError::runtime(format!("{e:#}")))?;
-            wcdb.group_member_counts(&groups_json)
-                .unwrap_or(Value::Null)
+            wcdb.group_member_counts(&groups).unwrap_or(Value::Null)
         };
 
         let mut private_mutual: HashMap<String, i64> = HashMap::new();
@@ -754,9 +747,7 @@ impl ServiceHub {
         if ids.is_empty() {
             return out;
         }
-        let map = serde_json::to_string(ids)
-            .ok()
-            .and_then(|payload| wcdb.display_names(&payload).ok());
+        let map = wcdb.display_names(ids).ok();
         if let Some(map) = map {
             for (k, v) in map.as_object().into_iter().flatten() {
                 if let Some(name) = v.as_str().filter(|s| !s.is_empty()) {
@@ -1152,10 +1143,7 @@ impl ServiceHub {
             .iter()
             .filter_map(|row| row["username"].as_str().map(str::to_string))
             .collect();
-        let names = serde_json::to_string(&users)
-            .ok()
-            .and_then(|list| wcdb.display_names(&list).ok())
-            .unwrap_or(Value::Null);
+        let names = wcdb.display_names(&users).ok().unwrap_or(Value::Null);
         let rows = rows
             .into_iter()
             .map(|row| {

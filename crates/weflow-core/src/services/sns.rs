@@ -180,15 +180,14 @@ impl ServiceHub {
         if usernames.is_empty() {
             return book;
         }
-        let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
-        if let Ok(Value::Object(names)) = wcdb.display_names(&payload) {
+        if let Ok(Value::Object(names)) = wcdb.display_names(usernames) {
             for (k, v) in names {
                 if let Some(n) = v.as_str().filter(|n| !n.is_empty()) {
                     book.entry(k).or_default().display_name = Some(n.to_string());
                 }
             }
         }
-        if let Ok(Value::Object(urls)) = wcdb.avatar_urls(&payload) {
+        if let Ok(Value::Object(urls)) = wcdb.avatar_urls(usernames) {
             for (k, v) in urls {
                 if let Some(u) = v.as_str().filter(|u| !u.is_empty()) {
                     book.entry(k).or_default().avatar_url = Some(u.to_string());

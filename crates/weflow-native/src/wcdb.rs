@@ -1,8 +1,7 @@
 //! Database facade used by the service layer.
 //!
 //! Everything is served by the pure-Rust backend in [`crate::db`]/[`crate::msg`]; there is
-//! no dependency on the closed-source `wcdb_api` library. Calls that have not been ported yet return a
-//! clear "not implemented" error instead of touching anything native.
+//! no dependency on the closed-source `wcdb_api` library.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,25 +9,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 use serde_json::Value;
 
+use crate::contact::distinct_usernames;
 use crate::db::Account;
 use crate::msg_row::MsgRow;
-
-/// A call the backend refuses by design (it opens WeChat's databases read-only) or has not ported yet.
-/// Callers can find it with `anyhow::Error::downcast_ref` to tell it apart from a failure.
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct Unsupported(pub String);
-
-/// One argument of a generic by-name call (after the implicit account).
-#[derive(Clone, Copy, Debug)]
-pub enum Arg<'a> {
-    /// A text argument, often JSON.
-    S(&'a str),
-    /// A 32-bit integer, such as a time in seconds.
-    I32(i32),
-    /// A 64-bit integer, such as a message id.
-    I64(i64),
-}
 
 /// The handle of one account's databases that the service layer calls; closed until [`Wcdb::open`].
 #[derive(Default)]
@@ -40,35 +23,6 @@ impl Wcdb {
     /// A closed handle.
     pub fn new() -> Self {
         Self::default()
-    }
-
-    fn pending<T>(&self, name: &str) -> Result<T> {
-        if self.native.is_none() {
-            return Err(anyhow!("WCDB is not connected"));
-        }
-        // by-name calls (install/uninstall triggers, deletes, ...) that would write to WeChat's databases
-        if [
-            "install",
-            "uninstall",
-            "delete",
-            "update_message",
-            "mark_all",
-            "trigger",
-        ]
-        .iter()
-        .any(|w| name.contains(w))
-        {
-            return self.read_only(name);
-        }
-        Err(Unsupported(format!(
-            "{name} is not implemented in the native database backend yet"
-        ))
-        .into())
-    }
-
-    /// Operations that would modify WeChat's own database files (triggers, edits, deletes, read marks).
-    fn read_only<T>(&self, name: &str) -> Result<T> {
-        Err(Unsupported(format!("{name} is not supported: the native database backend opens WeChat's databases read-only")).into())
     }
 
     fn account(&self) -> Result<&Account> {
@@ -333,33 +287,45 @@ impl Wcdb {
         self.native.as_ref().map_or(0, Account::stale_reruns)
     }
 
-    // ── generic by-name calls (kept for callers that build their own argument lists) ──
+    // ── statistics of conversations ──
 
-    /// Call a database function by its historical `wcdb_*` name and get JSON back.
-    pub fn invoke_json(&self, name: &str, args: &[Arg<'_>]) -> Result<Value> {
-        match (name, args) {
-            ("wcdb_get_contacts_compact", [Arg::S(payload)]) => self
-                .account()?
-                .contacts_compact(&crate::contact::usernames_from_json(payload)),
-            ("wcdb_get_aggregate_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
-                self.account()?.aggregate_stats(
-                    &crate::contact::usernames_from_json(ids),
-                    *b as i64,
-                    *e as i64,
-                )
-            }
-            ("wcdb_get_annual_report_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
-                self.account()?.annual_report_stats(
-                    &crate::contact::usernames_from_json(ids),
-                    *b as i64,
-                    *e as i64,
-                )
-            }
-            ("wcdb_get_message_table_time_range", [Arg::S(db), Arg::S(table)]) => {
-                self.account()?.message_table_time_range(db, table)
-            }
-            _ => self.pending(name),
-        }
+    /// The compact contact rows of `usernames`: names, alias, avatar and type (see [`Account::contacts_compact`]).
+    pub fn contacts_compact(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
+        self.account()?
+            .contacts_compact(&distinct_usernames(usernames))
+    }
+
+    /// The messages of `session_ids` between `begin` and `end`, by direction, type and time (see
+    /// [`Account::aggregate_stats`]).
+    pub fn aggregate_stats(
+        &self,
+        session_ids: &[impl AsRef<str>],
+        begin: i32,
+        end: i32,
+    ) -> Result<Value> {
+        self.account()?
+            .aggregate_stats(&distinct_usernames(session_ids), begin as i64, end as i64)
+    }
+
+    /// The totals the annual report starts from, of `session_ids` between `begin` and `end` (see
+    /// [`Account::annual_report_stats`]).
+    pub fn annual_report_stats(
+        &self,
+        session_ids: &[impl AsRef<str>],
+        begin: i32,
+        end: i32,
+    ) -> Result<Value> {
+        self.account()?.annual_report_stats(
+            &distinct_usernames(session_ids),
+            begin as i64,
+            end as i64,
+        )
+    }
+
+    /// The first and last message time of the table `table` of the database `db` (see
+    /// [`Account::message_table_time_range`]).
+    pub fn message_table_time_range(&self, db: &str, table: &str) -> Result<Value> {
+        self.account()?.message_table_time_range(db, table)
     }
 
     // ── search, contacts, groups, statistics, Moments and media ──
@@ -514,11 +480,11 @@ impl Wcdb {
         )
     }
 
-    /// `{ username: name }` of the usernames in the JSON array `usernames_json`: the remark, else the nickname, else
-    /// the alias, else the username (see [`Account::display_names`]).
-    pub fn display_names(&self, usernames_json: &str) -> Result<Value> {
+    /// `{ username: name }` of `usernames`: the remark, else the nickname, else the alias, else the username (see
+    /// [`Account::display_names`]).
+    pub fn display_names(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
-            .display_names(&crate::contact::usernames_from_json(usernames_json))
+            .display_names(&distinct_usernames(usernames))
     }
 
     /// The avatar kept on this computer for `username` (see `Account::head_image`).
@@ -526,30 +492,27 @@ impl Wcdb {
         self.account()?.head_image(username)
     }
 
-    /// `{ username: url }` of the contacts in `usernames_json` that have an avatar (see [`Account::avatar_urls`]).
-    pub fn avatar_urls(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?
-            .avatar_urls(&crate::contact::usernames_from_json(usernames_json))
+    /// `{ username: url }` of the contacts of `usernames` that have an avatar (see [`Account::avatar_urls`]).
+    pub fn avatar_urls(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
+        self.account()?.avatar_urls(&distinct_usernames(usernames))
     }
 
-    /// `{ chatroom: count }` of the groups in `chatroom_ids_json` (see [`Account::group_member_counts`]).
-    pub fn group_member_counts(&self, chatroom_ids_json: &str) -> Result<Value> {
+    /// `{ chatroom: count }` of the groups `chatroom_ids` (see [`Account::group_member_counts`]).
+    pub fn group_member_counts(&self, chatroom_ids: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
-            .group_member_counts(&crate::contact::usernames_from_json(chatroom_ids_json))
+            .group_member_counts(&distinct_usernames(chatroom_ids))
     }
 
-    /// Whether each conversation of `usernames_json` is folded, muted and pinned (see
-    /// [`Account::contact_status`]).
-    pub fn contact_status(&self, usernames_json: &str) -> Result<Value> {
+    /// Whether each conversation of `usernames` is folded, muted and pinned (see [`Account::contact_status`]).
+    pub fn contact_status(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
-            .contact_status(&crate::contact::usernames_from_json(usernames_json))
+            .contact_status(&distinct_usernames(usernames))
     }
 
-    /// `{ username: alias }` of the contacts in `usernames_json` with a WeChat ID (see
-    /// [`Account::contact_alias_map`]).
-    pub fn contact_alias_map(&self, usernames_json: &str) -> Result<Value> {
+    /// `{ username: alias }` of the contacts of `usernames` with a WeChat ID (see [`Account::contact_alias_map`]).
+    pub fn contact_alias_map(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
-            .contact_alias_map(&crate::contact::usernames_from_json(usernames_json))
+            .contact_alias_map(&distinct_usernames(usernames))
     }
 
     /// `{ "ext_buffer": "<hex>" }` of a group, `{}` when it is unknown (see [`Account::chat_room_ext_buffer`]).
@@ -568,14 +531,14 @@ impl Wcdb {
     /// [`Account::annual_report_extras`]).
     pub fn annual_report_extras(
         &self,
-        session_ids_json: &str,
+        session_ids: &[impl AsRef<str>],
         begin: i32,
         end: i32,
         peak_begin: i32,
         peak_end: i32,
     ) -> Result<Value> {
         self.account()?.annual_report_extras(
-            &crate::contact::usernames_from_json(session_ids_json),
+            &distinct_usernames(session_ids),
             begin as i64,
             end as i64,
             peak_begin as i64,
@@ -616,34 +579,31 @@ impl Wcdb {
         create_time: i32,
         local_id: i32,
         svr_id: i64,
-        candidates_json: &str,
+        candidates: &[impl AsRef<str>],
     ) -> Result<String> {
         self.account()?.voice_data(
             create_time as i64,
             local_id as i64,
             svr_id,
-            &crate::contact::usernames_from_json(candidates_json),
+            &distinct_usernames(candidates),
         )
     }
 
-    /// The audio of each voice message the JSON array `requests_json` asks for, `[{ "hex": … }]` in its order (see
+    /// The audio of each voice message the array `requests` asks for, `[{ "hex": … }]` in its order (see
     /// [`Account::voice_data_batch`]).
-    pub fn voice_data_batch(&self, requests_json: &str) -> Result<Value> {
-        self.account()?
-            .voice_data_batch(&serde_json::from_str(requests_json).unwrap_or_default())
+    pub fn voice_data_batch(&self, requests: &Value) -> Result<Value> {
+        self.account()?.voice_data_batch(requests)
     }
 
-    /// Each conversation's messages by type, and their first and last time, within the range of `options_json` (see
+    /// Each conversation's messages by type, and their first and last time, within the range of `options` (see
     /// [`Account::session_message_type_stats_batch`]).
     pub fn session_message_type_stats_batch(
         &self,
-        session_ids_json: &str,
-        options_json: &str,
+        session_ids: &[impl AsRef<str>],
+        options: &Value,
     ) -> Result<Value> {
-        self.account()?.session_message_type_stats_batch(
-            &crate::contact::usernames_from_json(session_ids_json),
-            &serde_json::from_str(options_json).unwrap_or_default(),
-        )
+        self.account()?
+            .session_message_type_stats_batch(&distinct_usernames(session_ids), options)
     }
 }
 

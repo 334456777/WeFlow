@@ -168,9 +168,9 @@ impl ServiceHub {
         }
         let wcdb = self.open_wcdb().ok()?;
         let contact = wcdb.contact(username).ok().filter(Value::is_object);
-        let avatar = serde_json::to_string(&[username])
+        let avatar = wcdb
+            .avatar_urls(&[username])
             .ok()
-            .and_then(|payload| wcdb.avatar_urls(&payload).ok())
             .and_then(|m| m.get(username).and_then(Value::as_str).map(str::to_string))
             .filter(|a| !a.is_empty() && !a.contains("base64,ffd8"));
         let pick = |keys: &[&str]| {
@@ -195,11 +195,7 @@ impl ServiceHub {
         wcdb: &weflow_native::wcdb::Wcdb,
         usernames: &[String],
     ) -> Vec<Value> {
-        let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
-        match wcdb.invoke_json(
-            "wcdb_get_contacts_compact",
-            &[weflow_native::wcdb::Arg::S(&payload)],
-        ) {
+        match wcdb.contacts_compact(usernames) {
             Ok(Value::Array(rows)) => rows,
             _ => Vec::new(),
         }
@@ -644,7 +640,6 @@ impl ServiceHub {
         wcdb: &weflow_native::wcdb::Wcdb,
         usernames: &[String],
     ) -> (HashMap<String, String>, HashMap<String, String>) {
-        let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
         let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
             v.ok()
                 .and_then(|v| v.as_object().cloned())
@@ -659,8 +654,8 @@ impl ServiceHub {
             return (HashMap::new(), HashMap::new());
         }
         (
-            to_map(wcdb.display_names(&payload)),
-            to_map(wcdb.avatar_urls(&payload)),
+            to_map(wcdb.display_names(usernames)),
+            to_map(wcdb.avatar_urls(usernames)),
         )
     }
 }
