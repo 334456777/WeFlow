@@ -209,7 +209,7 @@ pub struct RecordFilters {
     pub offset: Option<i64>,
 }
 
-/// The insight records of one account, kept in its file of WeFlow's home folder ([`records_file`]).
+/// The insight records of one account, kept in its file in `insights/` of WeFlow's home folder.
 pub struct RecordStore {
     path: PathBuf,
     /// The account, as [`InsightRecord::account_scope`] names it.
@@ -242,8 +242,9 @@ pub struct NewRecord<'a> {
 }
 
 impl RecordStore {
-    /// The records of the account `scope` in the home folder `home`, once the file of every account's records is
-    /// split ([`split_legacy_records`]); none when the account's file is missing or cannot be read.
+    /// The records of the account `scope` in the home folder `home`, once the file holding every account's records
+    /// that WeFlow 7.0.0 and earlier wrote is split into the accounts' files; none when the account's file is missing
+    /// or cannot be read.
     pub fn load(home: &Path, scope: &str) -> Self {
         split_legacy_records(home);
         let path = records_file(home, scope);
