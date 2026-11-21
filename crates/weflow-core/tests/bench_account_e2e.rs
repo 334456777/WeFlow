@@ -161,9 +161,13 @@ fn every_message_is_read_back_with_the_ones_in_the_wal() {
     let session = big["username"].as_str().unwrap();
     let (mut seen, mut before) = (HashSet::new(), None::<String>);
     loop {
-        let page = hub
-            .message_page(session, 500, 0, before.as_deref(), None)
-            .unwrap();
+        // as `chat messages` answers it without `--parsed`
+        let page = serde_json::json!(hub
+            .message_page_rows(session, 500, 0, before.as_deref(), None)
+            .unwrap()
+            .into_iter()
+            .map(weflow_core::contract::MessageRow::from)
+            .collect::<Vec<_>>());
         let rows = page.as_array().unwrap();
         let Some(tail) = rows.last() else { break };
         for r in rows {
