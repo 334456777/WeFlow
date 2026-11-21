@@ -1,6 +1,6 @@
 /*
  * Design tokens of the WeFlow WebUI (#192, #193, #828). Pages use these variables only; no stray sizes, colours,
- * shadows, durations or curves. Sizes and motion follow the parameters studied in open-claude-ui (#191).
+ * shadows, durations or curves. Sizes and motion follow the parameters studied in #191.
  *
  * This sheet holds what every skin shares: type, sizes, spacing, layout and motion. A skin (#784) gives the rest:
  *   - the colours: text (`--fg`, `--fg-muted`, `--fg-subtle`), the focus ring, the overlay under a dialog, the states
