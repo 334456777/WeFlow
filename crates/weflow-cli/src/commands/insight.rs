@@ -111,10 +111,10 @@ pub(crate) fn print_insight(r: &weflow_core::insight::InsightRecord) {
 pub(crate) async fn handle_insight(command: InsightCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::contract::InsightScan;
     match command.command {
-        InsightSubcommand::Test => Ok(json!(hub.insight_test_connection().await)),
+        InsightSubcommand::Test => Ok(json!(hub.insight_test_connection().await?)),
         InsightSubcommand::Trigger { session_id } => match session_id {
-            None => Ok(json!(hub.insight_trigger_test().await)),
-            Some(id) => Ok(json!(hub.insight_trigger_session(&id).await)),
+            None => Ok(json!(hub.insight_trigger_test().await?)),
+            Some(id) => Ok(json!(hub.insight_trigger_session(&id).await?)),
         },
         InsightSubcommand::Models => Ok(json!(hub.insight_models().await?)),
         InsightSubcommand::Records {
@@ -127,15 +127,7 @@ pub(crate) async fn handle_insight(command: InsightCommand, hub: &ServiceHub) ->
         } => Ok(json!(hub.insight_list_records(&insight_filters(
             session, keyword, start, end, limit, offset,
         )))),
-        InsightSubcommand::MarkRead { id } => {
-            let marked = hub.insight_mark_record_read(&id);
-            if marked.success {
-                Ok(json!(marked))
-            } else {
-                // the record is not there: a 404 of the command API, as `insight get` (#822)
-                Err(AppError::not_found(marked.error.unwrap_or_default()))
-            }
-        }
+        InsightSubcommand::MarkRead { id } => Ok(json!(hub.insight_mark_record_read(&id)?)),
         InsightSubcommand::Clear {
             session,
             start,
@@ -160,7 +152,7 @@ pub(crate) async fn handle_insight(command: InsightCommand, hub: &ServiceHub) ->
         InsightSubcommand::FootprintSummary { payload_json } => {
             let payload: Value = serde_json::from_str(&payload_json)
                 .map_err(|e| AppError::usage(format!("payload_json must be JSON: {e}")))?;
-            Ok(json!(hub.insight_footprint_summary(&payload).await))
+            Ok(json!(hub.insight_footprint_summary(&payload).await?))
         }
     }
 }

@@ -81,7 +81,7 @@ export function testDatabase(): { data: DbConnection } | { problem: string } {
   const s = settings();
   if (!s.db_path || !s.wxid) return { problem: '当前档案没有设置 db_path 或 wxid' };
   if (!s.decrypt_key) return { problem: '当前档案没有设置 decrypt_key' };
-  return { data: { accountDir: ACCOUNT_DIR, connected: true } };
+  return { data: { accountDir: ACCOUNT_DIR } };
 }
 
 /** What `key db --save` does once it has the key: saves it in the profile. */
@@ -96,7 +96,7 @@ export function saveImageKeys(): ImageKeys {
   s.image_xor_key = '90';
   s.image_aes_key = '6c3f9d1e2b8a4f70';
   return {
-    verified: true, aes_verified: true, xor_verified: true, verification: 'jpeg_decode_and_xor_tail',
+    verified: true, xor_verified: true, verification: 'jpeg_decode_and_xor_tail',
     sources: [{ path: 'C:\\Users\\sample\\AppData\\Roaming\\Tencent\\xwechat\\all_users\\kvcomm\\key_0.statistic', parsing: 'kvcomm' }],
     collection: { folders: 1, files: 4 }, scan: { images: 24, checked: 6 }, saved: IMAGE_KEYS,
   };

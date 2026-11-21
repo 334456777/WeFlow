@@ -46,13 +46,12 @@ export function insightRecords(keyword: string, session: string, offset: number,
   };
 }
 
-/** One record with how it was written (`insight get`). */
-export function insightRecord(id: string): { success: boolean; record?: InsightRecord; error?: string } {
+/** One record with how it was written (`insight get`); null when there is no such record. */
+export function insightRecord(id: string): { record: InsightRecord } | null {
   const w = written.find(r => r.id === id);
-  if (!w) return { success: false, error: 'not found' };
+  if (!w) return null;
   const name = nameOf(w.session);
   return {
-    success: true,
     record: {
       ...summaryOf(w), accountScope: ME,
       log: {
@@ -66,19 +65,19 @@ export function insightRecord(id: string): { success: boolean; record?: InsightR
   };
 }
 
-/** `insight mark-read <id>`. */
-export function markRead(id: string): InsightMarked {
+/** `insight mark-read <id>`; null when there is no such record. */
+export function markRead(id: string): InsightMarked | null {
   const w = written.find(r => r.id === id);
-  if (!w) return { success: false, error: 'not found' };
+  if (!w) return null;
   w.read = true;
-  return { success: true };
+  return { id };
 }
 
 /** `insight clear [session]`: every record, or one conversation's. */
 export function clearInsights(session: string): InsightCleared {
   const before = written.length;
   for (let i = written.length - 1; i >= 0; i--) if (!session || written[i].session === session) written.splice(i, 1);
-  return { success: true, removed: before - written.length };
+  return { removed: before - written.length };
 }
 
 let made = 0;
@@ -89,13 +88,14 @@ const privateChats = () => [...threads].filter(([id]) => id.startsWith('wxid_') 
 
 /**
  * `insight trigger [session]`: one insight now, of that conversation or of the private chat talked in last, from the
- * last thing said in it with something to it: the other side's first, a reply of a word or two passed over.
+ * last thing said in it with something to it: the other side's first, a reply of a word or two passed over; the
+ * problem when there is nothing to write about.
  */
-export function triggerInsight(session: string): InsightReply {
+export function triggerInsight(session: string): InsightReply | { problem: string } {
   const id = session || privateChats()[0]?.[0];
   const texts = [...(id ? threads.get(id) ?? [] : [])].reverse().filter(m => m.localType === 1);
   const said = texts.find(m => m.senderUsername !== ME && m.parsedContent.length >= 8) ?? texts.find(m => m.parsedContent.length >= 8) ?? texts[0];
-  if (!id || !said) return { success: false, message: '这个会话最近没有可以总结的文字消息。' };
+  if (!id || !said) return { problem: '这个会话最近没有可以总结的文字消息。' };
   const name = nameOf(id);
   const line = said.parsedContent.length > 24 ? said.parsedContent.slice(0, 24) + '…' : said.parsedContent;
   made += 1;
@@ -104,7 +104,7 @@ export function triggerInsight(session: string): InsightReply {
     text: `和${name}最近聊到「${line}」。可以接着这件事回一句，问问后来怎么样了。`,
   };
   written.push(w);
-  return { success: true, message: '已生成一条见解。', record: summaryOf(w) };
+  return { message: '已生成一条见解。', record: summaryOf(w) };
 }
 
 /** The sample's model API: an address of no one's, by the format the settings name. */
@@ -114,7 +114,7 @@ const sampleEndpoint = (format: string | null) =>
 /** `insight test`: the sample model answers as asked; no service is reached. */
 export function testModel(format: string | null, model: string | null): InsightReply {
   return {
-    success: true, message: '连接成功，模型回复：连接成功',
+    message: '连接成功，模型回复：连接成功',
     probe: {
       format: format === 'anthropic' ? 'anthropic' : 'openai', endpoint: sampleEndpoint(format),
       model: model || 'sample-model', reply: '连接成功', durationMs: 840, retries: 0,

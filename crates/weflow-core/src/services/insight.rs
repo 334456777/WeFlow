@@ -235,12 +235,18 @@ impl ServiceHub {
     }
 
     /// One of the account's insight records (`insight get`; see [`RecordStore::get`]).
-    pub fn insight_get_record(&self, id: &str) -> crate::contract::InsightLookup {
+    ///
+    /// # Errors
+    /// As [`RecordStore::get`].
+    pub fn insight_get_record(&self, id: &str) -> AppResult<crate::contract::InsightLookup> {
         self.record_store().get(id)
     }
 
     /// Marks one of the account's insight records read (`insight mark-read`; see [`RecordStore::mark_read`]).
-    pub fn insight_mark_record_read(&self, id: &str) -> InsightMarked {
+    ///
+    /// # Errors
+    /// As [`RecordStore::mark_read`].
+    pub fn insight_mark_record_read(&self, id: &str) -> AppResult<InsightMarked> {
         self.record_store().mark_read(id)
     }
 
@@ -283,10 +289,13 @@ impl ServiceHub {
     // ── connection test / footprint ──
 
     /// `testConnection`: asks the model API for a short answer, and says where it asked and what came back.
-    pub async fn insight_test_connection(&self) -> InsightReply {
+    ///
+    /// # Errors
+    /// When the settings lack the model API, or it answered with an error.
+    pub async fn insight_test_connection(&self) -> AppResult<InsightReply> {
         let api = self.model_api();
         if let Some(missing) = model_api_missing(&api) {
-            return InsightReply::failed(missing);
+            return Err(AppError::runtime(missing));
         }
         let prompt = Prompt {
             system: None,
@@ -297,7 +306,7 @@ impl ServiceHub {
         };
         let started = Instant::now();
         match api.complete(&prompt, PROBE_TIMEOUT).await {
-            Ok(reply) => InsightReply {
+            Ok(reply) => Ok(InsightReply {
                 probe: Some(ModelProbe {
                     format: api.format,
                     endpoint: api.endpoint(),
@@ -313,11 +322,11 @@ impl ServiceHub {
                     ),
                     &[("v0", reply.text.chars().take(50).collect())],
                 ))
-            },
-            Err(e) => InsightReply::failed(fill(
+            }),
+            Err(e) => Err(AppError::runtime(fill(
                 tr("Connection failed: {message}", "连接失败：{message}"),
                 &[("message", e.to_string())],
-            )),
+            ))),
         }
     }
 
@@ -346,18 +355,21 @@ impl ServiceHub {
     }
 
     /// `generateFootprintInsight`
-    pub async fn insight_footprint_summary(&self, params: &Value) -> InsightReply {
+    ///
+    /// # Errors
+    /// When the footprint summary is off, the settings lack the model API, or it answered with an error.
+    pub async fn insight_footprint_summary(&self, params: &Value) -> AppResult<InsightReply> {
         let c = self.insight_cfg();
         let p = &self.profile_name;
         if c.get_key(Some(p), "aiFootprintEnabled") != Value::Bool(true) {
-            return InsightReply::failed(tr(
+            return Err(AppError::runtime(tr(
                 "Please turn on \"AI Footprint summary\" in Settings first",
                 "请先在设置中开启「AI 足迹总结」",
-            ));
+            )));
         }
         let api = self.model_api();
         if let Some(missing) = model_api_missing(&api) {
-            return InsightReply::failed(missing);
+            return Err(AppError::runtime(missing));
         }
         let num = |v: Option<&Value>| {
             v.and_then(|v| {
@@ -500,14 +512,14 @@ impl ServiceHub {
             user: &user,
         };
         match api.complete(&prompt, GENERATE_TIMEOUT).await {
-            Ok(reply) => InsightReply {
+            Ok(reply) => Ok(InsightReply {
                 insight: Some(reply.text),
                 ..InsightReply::done(tr("Generated successfully", "生成成功"))
-            },
-            Err(e) => InsightReply::failed(fill(
+            }),
+            Err(e) => Err(AppError::runtime(fill(
                 tr("Generation failed: {message}", "生成失败：{message}"),
                 &[("message", e.to_string())],
-            )),
+            ))),
         }
     }
 
@@ -900,7 +912,10 @@ impl ServiceHub {
     }
 
     /// `insight trigger <session>`: a test insight for that conversation, whatever the filters say.
-    pub async fn insight_trigger_session(&self, session_id: &str) -> InsightReply {
+    ///
+    /// # Errors
+    /// When no insight could be written: the model API failed, or the model had nothing to say.
+    pub async fn insight_trigger_session(&self, session_id: &str) -> AppResult<InsightReply> {
         let name = self
             .chat_contact_avatar(session_id)
             .map(|(_, n)| n)
@@ -909,34 +924,40 @@ impl ServiceHub {
             .insight_generate(session_id, &name, Trigger::Test, None)
             .await
         {
-            Ok(Some(record)) => InsightReply {
+            Ok(Some(record)) => Ok(InsightReply {
                 message: None,
                 record: Some(record.summary()),
                 ..InsightReply::done("")
-            },
-            Ok(None) => InsightReply::failed(skipped_message(&name, self.insight_sends_chat())),
-            Err(why) => InsightReply::failed(why),
+            }),
+            Ok(None) => Err(AppError::runtime(skipped_message(
+                &name,
+                self.insight_sends_chat(),
+            ))),
+            Err(why) => Err(AppError::runtime(why)),
         }
     }
 
     /// `triggerTest`: forces an insight for the first eligible private chat.
-    pub async fn insight_trigger_test(&self) -> InsightReply {
+    ///
+    /// # Errors
+    /// When the settings lack the model API, there is no conversation to write about, or no insight could be written.
+    pub async fn insight_trigger_test(&self) -> AppResult<InsightReply> {
         if let Some(missing) = model_api_missing(&self.model_api()) {
-            return InsightReply::failed(missing);
+            return Err(AppError::runtime(missing));
         }
         let sessions = match self.chat_sessions_list() {
             Ok(s) => s,
             Err(_) => {
-                return InsightReply::failed(
+                return Err(AppError::runtime(
                     tr("Database connection failed. Please finish the setup on the \"Database connection\" page first", "数据库连接失败，请先在\"数据库连接\"页完成配置"),
-                )
+                ))
             }
         };
         if sessions.is_empty() {
-            return InsightReply::failed(tr(
+            return Err(AppError::runtime(tr(
                 "No conversations found. Please make sure the database is connected correctly",
                 "未找到任何会话，请确认数据库已正确连接",
-            ));
+            )));
         }
         let Some(session) = sessions.iter().find(|s| {
             let id = s.username.trim();
@@ -945,9 +966,9 @@ impl ServiceHub {
                 && !id.to_lowercase().contains("placeholder")
                 && self.insight_allowed(id)
         }) else {
-            return InsightReply::failed(
+            return Err(AppError::runtime(
                 tr("No private chat that can be triggered was found\nCheck the allowlist or blocklist mode and the selection list.", "未找到任何可触发的私聊会话\n请检查黑白名单模式与选择列表。"),
-            );
+            ));
         };
         let id = session.username.trim().to_string();
         let name = Some(session.display_name.as_str())
@@ -957,28 +978,24 @@ impl ServiceHub {
         let record = match self.insight_generate(&id, &name, Trigger::Test, None).await {
             Ok(Some(record)) => record,
             Ok(None) => {
-                return InsightReply::failed(skipped_message(&name, self.insight_sends_chat()))
+                return Err(AppError::runtime(skipped_message(
+                    &name,
+                    self.insight_sends_chat(),
+                )))
             }
-            Err(why) => return InsightReply::failed(why),
+            Err(why) => return Err(AppError::runtime(why)),
         };
-        let c = self.insight_cfg();
-        let notify = c.get_key(Some(&self.profile_name), "aiInsightNotificationEnabled")
-            != Value::Bool(false);
-        let message = if notify {
-            fill(
-                tr(
-                    "A test insight was sent for \"{displayName}\". Check the notification popup",
-                    "已向「{displayName}」发送测试见解，请查看通知弹窗",
-                ),
-                &[("displayName", name)],
-            )
-        } else {
-            fill(tr("A test insight was generated for \"{displayName}\", but AI insight notifications are currently off", "已生成「{displayName}」的测试见解，AI 见解消息通知当前已关闭"), &[("displayName", name)])
-        };
-        InsightReply {
+        let message = fill(
+            tr(
+                "A test insight was generated for \"{displayName}\"",
+                "已生成「{displayName}」的测试见解",
+            ),
+            &[("displayName", name)],
+        );
+        Ok(InsightReply {
             record: Some(record.summary()),
             ..InsightReply::done(message)
-        }
+        })
     }
 
     /// `runSilenceScan`

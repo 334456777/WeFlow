@@ -2,7 +2,7 @@
 // again once weflow-cli has rewritten the contract.
 
 /** The API version of the contract, `apiVersion` of `/health`. */
-export const CONTRACT_API_VERSION = "3";
+export const CONTRACT_API_VERSION = "4";
 
 /** A conversation of `chat sessions`, newest first. */
 export interface Session {
@@ -644,10 +644,6 @@ export interface MemberStatistics {
   emojiMessages: number;
   /** Every other kind. */
   otherMessages: number;
-  /** As `totalMessages`. */
-  sentMessages: number;
-  /** Always 0: a member's messages are all sent by them. */
-  receivedMessages: number;
   /** The time of their first message; null when they sent none. */
   firstMessageTime: number | null;
   /** The time of their last message; null when they sent none. */
@@ -1682,16 +1678,12 @@ export interface ExportWritten {
 
 /** What `group export-members` or `export-member-messages` wrote. */
 export interface GroupExported {
-  /** Always true. */
-  success: boolean;
   /** The members, or the messages, written. */
   count: number;
 }
 
 /** What `sns export` wrote. */
 export interface SnsExported {
-  /** Always true. */
-  success: boolean;
   /** Empty when no post matched, and nothing was written. */
   filePath: string;
   /** The posts written. */
@@ -1791,10 +1783,11 @@ export interface MediaFileExported {
   isThumb?: boolean;
 }
 
-/** Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead. */
+/**
+ * Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead: the
+ * command's error, or the row of `image resolve-batch`.
+ */
 export interface ImageResult {
-  /** Whether the image was found and decrypted. */
-  success: boolean;
   /** The decrypted image: its path, or a data URL of it without `preferFilePath`; left out on failure. */
   localPath?: string;
   /** What went wrong; left out on success. */
@@ -1803,15 +1796,11 @@ export interface ImageResult {
   failureKind?: string;
   /** The file is only the thumbnail: the original is not on disk. */
   isThumb?: boolean;
-  /** A thumbnail whose original has since been downloaded. */
-  hasUpdate?: boolean;
 }
 
 /** What `image resolve-batch` answers: one result per payload, in their order. */
 export interface ImageBatch {
-  /** Always true; each row says how it went. */
-  success: boolean;
-  /** One result for each payload, in their order. */
+  /** One result for each payload, in their order: `localPath` when it was found, `error` when not. */
   rows: ImageResult[];
 }
 
@@ -1982,8 +1971,6 @@ export interface ImageKeys {
   image_aes_key?: string;
   /** Both keys were checked: the AES key on an image header and the XOR key on a whole image. */
   verified: boolean;
-  /** Always true: the AES key decrypted the header of one of the account's thumbnails. */
-  aes_verified: boolean;
   /** Whether a thumbnail decoded as a whole JPEG with both keys; as `verified`. */
   xor_verified: boolean;
   /** How: `jpeg_decode_and_xor_tail` or `aes_header_only`. */
@@ -2139,8 +2126,6 @@ export interface MediaStreamItem {
 
 /** A voice already decoded (`chat voice-cache`). */
 export interface VoiceCache {
-  /** Always true. */
-  success: boolean;
   /** Whether the voice was decoded already. */
   hasCache: boolean;
   /** The WAV, in base64; left out without one. */
@@ -2149,8 +2134,6 @@ export interface VoiceCache {
 
 /** The voices `chat voice-preload` decoded ahead. */
 export interface VoicesPrepared {
-  /** Always true. */
-  success: boolean;
   /** The voices decoded or found decoded already. */
   prepared: number;
 }
@@ -2212,8 +2195,6 @@ export interface AntiRevokeResult {
 
 /** A media file a command wrote (`chat image-data`, `video-data`, `voice-data` with `out`). */
 export interface MediaWritten {
-  /** Always true. */
-  success: boolean;
   /** The file written. */
   path: string;
   /** Its size. */
@@ -2222,8 +2203,6 @@ export interface MediaWritten {
 
 /** A voice as WAV in base64 (`chat voice-data` without `out`). */
 export interface VoiceData {
-  /** Always true. */
-  success: boolean;
   /** The WAV, in base64. */
   data: string;
 }
@@ -2242,8 +2221,6 @@ export interface SnsMediaFetched {
 
 /** What WeChat's media server answered `sns debug-resource` for the first bytes of a resource. */
 export interface SnsResourceProbe {
-  /** Always true. */
-  success: boolean;
   /** The HTTP status. */
   status: number;
   /** The headers that matter. */
@@ -2264,8 +2241,6 @@ export interface SnsResourceHeaders {
 
 /** The Moments sticker `sns download-emoji` saved (or found already saved). */
 export interface SnsEmojiSaved {
-  /** Always true. */
-  success: boolean;
   /** The file in WeFlow's cache. */
   localPath: string;
 }
@@ -2401,8 +2376,6 @@ export interface DbAccount {
 export interface DbConnection {
   /** The account's folder whose databases were opened. */
   accountDir: string;
-  /** Always true. */
-  connected: boolean;
 }
 
 /**
@@ -2538,8 +2511,6 @@ export interface FootprintDiagnostics {
   private_session_count: number;
   /** The groups looked through. */
   group_session_count: number;
-  /** Always false. */
-  fallback_used: boolean;
 }
 
 /** What the export window shows of each conversation asked for (`chat export-stats`). */
@@ -2590,17 +2561,10 @@ export interface TransferNames {
   receiverName: string;
 }
 
-/**
- * One insight record (`insight get`), with `success` inside. A record not found is a
- * failure of the command instead, so an answer that succeeds holds `success: true` and the record.
- */
+/** One insight record (`insight get`); a record not found is a failure of the command. */
 export interface InsightLookup {
-  /** Always true. */
-  success: boolean;
   /** The record. */
-  record?: InsightRecord;
-  /** Always left out. */
-  error?: string;
+  record: InsightRecord;
 }
 
 /** An insight the engine wrote about a conversation. */
@@ -2662,8 +2626,6 @@ export type ModelApiFormat = "openai" | "anthropic";
 
 /** A page of the account's insight records (`insight records`), the newest first, with counts over all of them. */
 export interface InsightRecords {
-  /** Always true. */
-  success: boolean;
   /** The records of the page. */
   records: InsightSummary[];
   /** The records the filters match. */
@@ -2720,16 +2682,12 @@ export interface InsightTodayStat {
 
 /** What `insight mark-read` answers; a record not found is a failure of the command. */
 export interface InsightMarked {
-  /** Always true. */
-  success: boolean;
-  /** Always left out. */
-  error?: string;
+  /** The record marked read. */
+  id: string;
 }
 
 /** What `insight clear` answers. */
 export interface InsightCleared {
-  /** Always true. */
-  success: boolean;
   /** The records removed. */
   removed: number;
 }
@@ -2762,11 +2720,9 @@ export interface ModelInfo {
 
 /**
  * What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the
- * command fails with `message` instead.
+ * command fails with what happened instead.
  */
 export interface InsightReply {
-  /** Always true. */
-  success: boolean;
   /** What happened, in the server's language. */
   message?: string;
   /** The record written (`trigger`). */

@@ -78,8 +78,6 @@ pub struct MediaStreamItem {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceCache {
-    /// Always true.
-    pub success: bool,
     /// Whether the voice was decoded already.
     pub has_cache: bool,
     /// The WAV, in base64; left out without one.
@@ -90,8 +88,6 @@ pub struct VoiceCache {
 /// The voices `chat voice-preload` decoded ahead.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct VoicesPrepared {
-    /// Always true.
-    pub success: bool,
     /// The voices decoded or found decoded already.
     pub prepared: usize,
 }
@@ -127,8 +123,6 @@ pub struct EmojiFile {
 /// A media file a command wrote (`chat image-data`, `video-data`, `voice-data` with `out`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct MediaWritten {
-    /// Always true.
-    pub success: bool,
     /// The file written.
     pub path: String,
     /// Its size.
@@ -138,8 +132,6 @@ pub struct MediaWritten {
 /// A voice as WAV in base64 (`chat voice-data` without `out`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct VoiceData {
-    /// Always true.
-    pub success: bool,
     /// The WAV, in base64.
     pub data: String,
 }

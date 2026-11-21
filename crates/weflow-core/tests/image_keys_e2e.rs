@@ -219,7 +219,6 @@ fn service_acquires_and_decodes_without_native_helpers_or_saved_image_keys() {
     assert_eq!(result["image_aes_key"], aes);
     assert_eq!(result["image_xor_key"], xor);
     assert_eq!(result["sources"].as_array().unwrap().len(), 2);
-    assert_eq!(result["aes_verified"], true);
     assert_eq!(result["xor_verified"], true);
     assert_eq!(result["verified"], true);
     let encoded = fs::read(account.join("msg/attach/current_t.dat")).unwrap();
@@ -242,7 +241,6 @@ fn aes_header_alone_does_not_verify_xor_or_the_pair() {
     let result =
         serde_json::to_value(acquire_image_keys(&[dir], &account, Some("wxid_me"), 100).unwrap())
             .unwrap();
-    assert_eq!(result["aes_verified"], true);
     assert_eq!(result["xor_verified"], false);
     assert_eq!(result["verified"], false);
 }
@@ -267,7 +265,6 @@ fn corrupt_jpeg_or_wrong_xor_never_verifies_the_pair() {
         acquire_image_keys(std::slice::from_ref(&dir), &account, Some("wxid_me"), 100).unwrap(),
     )
     .unwrap();
-    assert_eq!(result["aes_verified"], true);
     assert_eq!(result["verified"], false);
     let mut wrong = encrypt(&jpeg(), 123, "wxid_me", 64);
     let n = wrong.len();

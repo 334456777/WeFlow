@@ -41,4 +41,4 @@ pub use web::*;
 ///
 /// `web/package.json` and `web/contract/openapi.json` say it too:
 /// `the_webui_and_the_contract_have_the_server_s_api_version` fails until they agree with this.
-pub const API_VERSION: &str = "3";
+pub const API_VERSION: &str = "4";

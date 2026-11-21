@@ -200,17 +200,11 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         && hub.serve_settings().image_auto_download.unwrap_or(true);
     let auto_download = if auto_download_enabled {
         let svc = weflow_core::image_download::ImageAutoDownload::new();
-        let started = svc.start(config_whitelist(hub));
-        if started["success"] != true {
+        if let Err(error) = svc.start(config_whitelist(hub)) {
             weflow_core::output::warn(&format!(
                 "{}\n{}",
                 weflow_core::locale::tr("image auto download not started", "原图自动下载未启动"),
-                weflow_core::render::reason_line(&weflow_core::locale::localize(
-                    started["error"]
-                        .as_str()
-                        .unwrap_or("unknown error")
-                        .to_string()
-                ))
+                weflow_core::render::reason_line(&weflow_core::locale::localize(error))
             ));
         }
         Some(svc)

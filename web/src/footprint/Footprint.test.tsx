@@ -23,7 +23,7 @@ const DATA: Footprint = {
   mention_groups: [{ session_id: 'room@chatroom', count: 2, latest_ts: t(20, 8) }],
   diagnostics: {
     truncated: false, private_truncated: false, mention_truncated: false, scanned_dbs: 2, elapsed_ms: 5, private_session_count: 2,
-    group_session_count: 1, fallback_used: false,
+    group_session_count: 1,
   },
 };
 const CONTACTS: Record<string, Contact> = {

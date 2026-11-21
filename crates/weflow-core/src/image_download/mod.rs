@@ -126,7 +126,8 @@ impl ImageAutoDownload {
         Self::default()
     }
 
-    fn check_and_hook(&self, manual_start: bool) -> Value {
+    /// Hooks WeChat when it runs and is not hooked yet; nothing to do while it is not running.
+    fn check_and_hook(&self, manual_start: bool) -> Result<(), String> {
         let pid = find_main_wechat_pid();
         let mut inner = self.inner.lock_or_panic();
         let Some(pid) = pid else {
@@ -135,10 +136,10 @@ impl ImageAutoDownload {
             }
             inner.pid = None;
             inner.failure = None;
-            return json!({ "success": true, "error": "waiting for WeChat to start" });
+            return Ok(());
         };
         if inner.hook.is_some() && inner.pid == Some(pid) {
-            return json!({ "success": true });
+            return Ok(());
         }
         if !manual_start {
             if let Some(failure) = inner
@@ -146,7 +147,7 @@ impl ImageAutoDownload {
                 .as_ref()
                 .filter(|f| f.holds(pid, Instant::now()))
             {
-                return json!({ "success": false, "error": failure.error });
+                return Err(failure.error.clone());
             }
         }
         if let Some(hook) = inner.hook.take() {
@@ -159,7 +160,7 @@ impl ImageAutoDownload {
                 inner.hook = Some(hook);
                 inner.pid = Some(pid);
                 inner.failure = None;
-                json!({ "success": true })
+                Ok(())
             }
             Err(err) => {
                 let error = if err.is_empty() {
@@ -175,7 +176,7 @@ impl ImageAutoDownload {
                     retry_in = ?retry_delay(failure.attempts),
                     "could not hook WeChat for image auto-download"
                 );
-                let answer = json!({ "success": false, "error": failure.error });
+                let answer = Err(failure.error.clone());
                 inner.failure = Some(failure);
                 if manual_start {
                     if let Some(stop) = inner.poll_stop.take() {
@@ -187,10 +188,13 @@ impl ImageAutoDownload {
         }
     }
 
-    /// `image:startAutoDownload`
-    pub fn start(&self, whitelist: Vec<String>) -> Value {
+    /// `image:startAutoDownload`: hooks WeChat now when it runs, and from then on whenever it starts.
+    ///
+    /// # Errors
+    /// Why WeChat could not be hooked, or that this computer cannot download its images.
+    pub fn start(&self, whitelist: Vec<String>) -> Result<(), String> {
         if !supported() {
-            return json!({ "success": false, "error": "image auto download is only supported on Windows x64" });
+            return Err("image auto download is only supported on Windows x64".into());
         }
         {
             let mut inner = self.inner.lock_or_panic();
@@ -214,7 +218,8 @@ impl ImageAutoDownload {
                     if stop.load(Ordering::Relaxed) {
                         return;
                     }
-                    me.check_and_hook(false);
+                    // a failure is logged and kept, and tried again after its delay
+                    let _ = me.check_and_hook(false);
                 });
             }
         }
@@ -222,7 +227,7 @@ impl ImageAutoDownload {
     }
 
     /// `image:stopAutoDownload`
-    pub fn stop(&self) -> Value {
+    pub fn stop(&self) {
         let mut inner = self.inner.lock_or_panic();
         if let Some(stop) = inner.poll_stop.take() {
             stop.store(true, Ordering::Relaxed);
@@ -232,7 +237,6 @@ impl ImageAutoDownload {
         }
         inner.pid = None;
         inner.failure = None;
-        json!({ "success": true })
     }
 
     /// `image:getAutoDownloadStatus`
@@ -311,9 +315,10 @@ mod tests {
     fn unsupported_platforms_report_so() {
         let svc = ImageAutoDownload::new();
         if !supported() {
-            assert_eq!(svc.start(vec![])["success"], false);
+            assert!(svc.start(vec![]).is_err());
         }
         assert_eq!(svc.status()["isHooked"], false);
-        assert_eq!(svc.stop()["success"], true);
+        svc.stop();
+        assert_eq!(svc.status()["isHooked"], false);
     }
 }

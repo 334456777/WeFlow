@@ -594,7 +594,6 @@ impl ServiceHub {
                 .map(str::to_string)
         };
         Ok(SnsResourceProbe {
-            success: true,
             status: res.status().as_u16(),
             headers: SnsResourceHeaders {
                 x_enc: header("x-enc"),
@@ -988,7 +987,6 @@ impl ServiceHub {
         }
         if posts.is_empty() {
             return Ok(SnsExported {
-                success: true,
                 file_path: PathBuf::new(),
                 post_count: 0,
                 media_count: 0,
@@ -1249,7 +1247,6 @@ impl ServiceHub {
         }
         self.emit_progress("sns", "export finished", posts.len(), posts.len());
         Ok(SnsExported {
-            success: true,
             file_path: out_path,
             post_count: posts.len(),
             media_count,

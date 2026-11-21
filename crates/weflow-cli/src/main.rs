@@ -200,15 +200,7 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
                 } else {
                     whitelist
                 };
-                let started = svc.start(list);
-                if started["success"] != true {
-                    return Err(AppError::runtime(
-                        started["error"]
-                            .as_str()
-                            .unwrap_or("auto download failed to start")
-                            .to_string(),
-                    ));
-                }
+                svc.start(list).map_err(AppError::runtime)?;
                 weflow_core::output::event(
                     json!({ "type": "auto_download_started", "status": svc.status() }),
                 );
@@ -235,10 +227,12 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
         Commands::Image(command) => Ok(match &command.command {
             ImageSubcommand::AutoDownload { .. } => unreachable!("handled above"),
             ImageSubcommand::Decrypt { target, force } => {
-                json!(hub.image_decrypt(&target.payload(*force)))
+                json!(hub.image_decrypt(&target.payload(*force)).into_answer()?)
             }
             ImageSubcommand::ResolveCache { target } => {
-                json!(hub.image_resolve_cache(&target.payload(false)))
+                json!(hub
+                    .image_resolve_cache(&target.payload(false))
+                    .into_answer()?)
             }
             ImageSubcommand::ResolveBatch { payloads_json } => {
                 let list: Vec<Value> = serde_json::from_str(payloads_json).map_err(|e| {

@@ -367,13 +367,11 @@ pub(crate) async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppRe
                     unreachable!("a voice is decoded in memory")
                 };
                 return Ok(json!(weflow_core::contract::VoiceData {
-                    success: true,
                     data: base64::engine::general_purpose::STANDARD.encode(&wav),
                 }));
             };
             let bytes = write_media(file, &path)?;
             return Ok(json!(MediaWritten {
-                success: true,
                 path: path.to_string_lossy().into_owned(),
                 bytes,
             }));

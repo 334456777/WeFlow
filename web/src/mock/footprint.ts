@@ -1,6 +1,6 @@
 // The sample's footprint, counted from its own conversations as `insight footprint` counts a range of days: who wrote
 // to me and whom I answered, each stretch of a private chat, and where I was @-mentioned.
-import type { Footprint, FootprintMention, FootprintSegment, FootprintSession, MentionGroup } from '../api/contract.gen';
+import type { Footprint, FootprintMention, FootprintSegment, FootprintSession, InsightReply, MentionGroup } from '../api/contract.gen';
 import { dayEnd, dayStart } from './clock';
 import { threads, type Message } from './chats';
 import { ME, nameOf } from './people';
@@ -87,17 +87,17 @@ export function footprint(start: string, end: string): Footprint {
     mention_groups: [...groups.values()].sort((a, b) => b.count - a.count),
     diagnostics: {
       truncated: false, private_truncated: false, mention_truncated: false, scanned_dbs: 4, elapsed_ms: 38,
-      private_session_count: sessions.length, group_session_count: groups.size, fallback_used: false,
+      private_session_count: sessions.length, group_session_count: groups.size,
     },
   };
 }
 
 /** What `insight footprint-summary` answers: the AI's few sentences, written for the sample. */
-export function footprintSummary(payload: string): { success: true; insight: string } {
+export function footprintSummary(payload: string): InsightReply {
   let label = '这段时间';
   try { label = (JSON.parse(payload) as { rangeLabel?: string }).rangeLabel || label; } catch { /* the sample's own sentence */ }
   return {
-    success: true,
+    message: '生成成功',
     insight: label + '里，大部分对话都围绕 WeFlow：和林沐聊新皮肤和深色模式，和陈屿聊按页解密的性能，'
       + '还帮顾南把十年的聊天记录导了出来。开发群里有人 @ 你，问发版和示例数据的进展。'
       + '找你的人你基本都回复了，可以抽空看看用户交流群里还没解决的图片密钥问题。（示例数据）',

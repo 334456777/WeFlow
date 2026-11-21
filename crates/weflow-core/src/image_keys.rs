@@ -273,7 +273,6 @@ pub fn acquire_image_keys(
         image_xor_key: Some(xor),
         image_aes_key: Some(aes),
         verified,
-        aes_verified: true,
         xor_verified: verified,
         verification: if verified {
             "jpeg_decode_and_xor_tail"

@@ -77,8 +77,8 @@ export async function summarizeFootprint(range: FootprintRange, data: Footprint,
     })),
     mentionGroups: data.mention_groups.slice(0, 12).map(g => ({ session_id: g.session_id, displayName: name(g.session_id), count: g.count })),
   };
-  const answer = await call<{ success?: boolean; message?: string; insight?: string }>('POST', 'insight/footprint-summary', { 'payload-json': JSON.stringify(payload) });
-  if (!answer.success || !answer.insight) throw new Error(answer.message || t('AI 没有给出总结。'));
+  const answer = await call<Contract.InsightReply>('POST', 'insight/footprint-summary', { 'payload-json': JSON.stringify(payload) });
+  if (!answer.insight) throw new Error(answer.message || t('AI 没有给出总结。'));
   return answer.insight;
 }
 

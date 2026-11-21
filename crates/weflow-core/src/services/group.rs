@@ -1002,7 +1002,6 @@ impl ServiceHub {
         let mut total = 0i64;
         let (mut text, mut image, mut voice, mut video, mut emoji, mut other) =
             (0i64, 0i64, 0i64, 0i64, 0i64, 0i64);
-        let mut sent = 0i64;
         let (mut first, mut last): (Option<i64>, Option<i64>) = (None, None);
         let mut type_counts: BTreeMap<i64, i64> = BTreeMap::new();
         let mut hourly = [0i64; 24];
@@ -1076,7 +1075,6 @@ impl ServiceHub {
                     } else {
                         other += 1;
                     }
-                    sent += 1;
                     *type_counts.entry(msg_type).or_insert(0) += 1;
                     if create_time > 0 {
                         first = Some(first.map_or(create_time, |f| f.min(create_time)));
@@ -1113,8 +1111,6 @@ impl ServiceHub {
                 video_messages: video,
                 emoji_messages: emoji,
                 other_messages: other,
-                sent_messages: sent,
-                received_messages: 0,
                 first_message_time: first,
                 last_message_time: last,
                 active_days: days.len(),
@@ -1475,7 +1471,6 @@ impl ServiceHub {
             })?;
         }
         Ok(GroupExported {
-            success: true,
             count: records.len(),
         })
     }
@@ -1666,7 +1661,6 @@ impl ServiceHub {
             })?;
         }
         Ok(GroupExported {
-            success: true,
             count: members.len(),
         })
     }

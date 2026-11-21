@@ -66,8 +66,6 @@ pub struct DbAccount {
 pub struct DbConnection {
     /// The account's folder whose databases were opened.
     pub account_dir: std::path::PathBuf,
-    /// Always true.
-    pub connected: bool,
 }
 
 /// The accounts `db scan` found under a folder: those with a `db_storage` folder.
@@ -115,8 +113,6 @@ pub struct ImageKeys {
     pub image_aes_key: Option<String>,
     /// Both keys were checked: the AES key on an image header and the XOR key on a whole image.
     pub verified: bool,
-    /// Always true: the AES key decrypted the header of one of the account's thumbnails.
-    pub aes_verified: bool,
     /// Whether a thumbnail decoded as a whole JPEG with both keys; as `verified`.
     pub xor_verified: bool,
     /// How: `jpeg_decode_and_xor_tail` or `aes_header_only`.

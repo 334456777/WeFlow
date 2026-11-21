@@ -30,7 +30,7 @@ fn request(session: &str, format: &str) -> MessageExportRequest {
 #[test]
 fn connection_opens_the_encrypted_account() {
     let (_root, hub) = common::mock_hub("n-conn");
-    assert!(hub.db_test().unwrap().connected);
+    assert!(hub.db_test().unwrap().account_dir.is_dir());
 }
 
 #[test]

@@ -229,13 +229,11 @@ impl ServiceHub {
             Ok(bytes) if !bytes.is_empty() => {
                 use base64::Engine;
                 crate::contract::VoiceCache {
-                    success: true,
                     has_cache: true,
                     data: Some(base64::engine::general_purpose::STANDARD.encode(bytes)),
                 }
             }
             _ => crate::contract::VoiceCache {
-                success: true,
                 has_cache: false,
                 data: None,
             },
@@ -250,10 +248,7 @@ impl ServiceHub {
     ) -> AppResult<crate::contract::VoicesPrepared> {
         let session_id = session_id.trim();
         if session_id.is_empty() || messages.is_empty() {
-            return Ok(crate::contract::VoicesPrepared {
-                success: true,
-                prepared: 0,
-            });
+            return Ok(crate::contract::VoicesPrepared { prepared: 0 });
         }
         let wcdb = self.open_wcdb()?;
         let dir = self.voice_cache_dir();
@@ -330,10 +325,7 @@ impl ServiceHub {
                 }
             }
         }
-        Ok(crate::contract::VoicesPrepared {
-            success: true,
-            prepared,
-        })
+        Ok(crate::contract::VoicesPrepared { prepared })
     }
 }
 

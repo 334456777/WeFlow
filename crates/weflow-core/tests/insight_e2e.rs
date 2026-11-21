@@ -43,8 +43,7 @@ fn hub_with_ai(
 async fn connection_test_says_where_it_asked_and_what_came_back() {
     let fake = FakeModel::start().unwrap();
     let (_root, hub) = hub_with_ai("ins-test", &fake, "openai", "fake-chat", &[]);
-    let r = hub.insight_test_connection().await;
-    assert!(r.success, "{r:?}");
+    let r = hub.insight_test_connection().await.unwrap();
     assert!(r.message.unwrap().contains("connection successful"));
     let probe = r.probe.unwrap();
     assert!(
@@ -64,8 +63,7 @@ async fn connection_test_says_where_it_asked_and_what_came_back() {
 async fn trigger_test_builds_context_and_stores_a_record() {
     let fake = FakeModel::start().unwrap();
     let (_root, hub) = hub_with_ai("ins-trigger", &fake, "openai", "fake-chat", &["wxid_bob"]);
-    let r = hub.insight_trigger_test().await;
-    assert!(r.success, "{r:?}");
+    hub.insight_trigger_test().await.unwrap();
     let body = fake.requests()[0].json().unwrap();
     let user = body["messages"][1]["content"].as_str().unwrap();
     assert!(
@@ -82,7 +80,7 @@ async fn trigger_test_builds_context_and_stores_a_record() {
     assert_eq!(rec.trigger_reason, "test");
     assert!(!rec.insight.is_empty());
     let id = rec.id.clone();
-    let full = serde_json::to_value(hub.insight_get_record(&id)).unwrap();
+    let full = serde_json::to_value(hub.insight_get_record(&id).unwrap()).unwrap();
     let log = &full["record"]["log"];
     assert_eq!(
         (log["format"].as_str(), log["model"].as_str()),
@@ -93,7 +91,7 @@ async fn trigger_test_builds_context_and_stores_a_record() {
         .unwrap()
         .ends_with("/v1/chat/completions"));
     assert_eq!(log["finalInsight"], rec.insight.as_str());
-    assert!(hub.insight_mark_record_read(&id).success);
+    assert_eq!(hub.insight_mark_record_read(&id).unwrap().id, id);
     assert_eq!(
         hub.insight_list_records(&RecordFilters::default())
             .unread_count,
@@ -116,8 +114,7 @@ async fn an_anthropic_model_writes_insights_too() {
         "fake-claude",
         &["wxid_bob"],
     );
-    let r = hub.insight_trigger_session("wxid_bob").await;
-    assert!(r.success, "{r:?}");
+    let r = hub.insight_trigger_session("wxid_bob").await.unwrap();
     let request = &fake.requests()[0];
     assert_eq!(request.path, "/v1/messages");
     let body = request.json().unwrap();
@@ -126,7 +123,7 @@ async fn an_anthropic_model_writes_insights_too() {
         "{body}"
     );
     let id = r.record.unwrap().id;
-    let full = serde_json::to_value(hub.insight_get_record(&id)).unwrap();
+    let full = serde_json::to_value(hub.insight_get_record(&id).unwrap()).unwrap();
     assert_eq!(full["record"]["log"]["format"], "anthropic");
 }
 
@@ -134,9 +131,12 @@ async fn an_anthropic_model_writes_insights_too() {
 async fn a_failed_trigger_says_why() {
     let fake = FakeModel::start().unwrap();
     let (_root, hub) = hub_with_ai("ins-fail", &fake, "openai", "fake-quota", &["wxid_bob"]);
-    let r = hub.insight_trigger_test().await;
-    assert!(!r.success, "{r:?}");
-    let message = r.message.unwrap();
+    let message = hub
+        .insight_trigger_test()
+        .await
+        .unwrap_err()
+        .message
+        .clone();
     assert!(
         message.contains("HTTP 429") && message.contains("insufficient_quota"),
         "{message}"
@@ -144,9 +144,13 @@ async fn a_failed_trigger_says_why() {
     assert_eq!(hub.insight_list_records(&RecordFilters::default()).total, 0);
 
     let (_root2, skip) = hub_with_ai("ins-fail-skip", &fake, "openai", "fake-skip", &["wxid_bob"]);
-    let r = skip.insight_trigger_session("wxid_bob").await;
-    let message = r.message.unwrap();
-    assert!(!r.success && message.contains("SKIP"), "{message}");
+    let message = skip
+        .insight_trigger_session("wxid_bob")
+        .await
+        .unwrap_err()
+        .message
+        .clone();
+    assert!(message.contains("SKIP"), "{message}");
     assert!(
         !message.contains("aiInsightAllowContext"),
         "the chat was sent: {message}"
@@ -182,8 +186,7 @@ async fn footprint_summary_formats_the_prompt() {
         "privateSegments": [{ "displayName": "Bob", "incoming_count": 3, "outgoing_count": 2, "message_count": 5, "replied": true }],
         "mentionGroups": [{ "displayName": "Team", "count": 2 }]
     });
-    let r = hub.insight_footprint_summary(&payload).await;
-    assert!(r.success, "{r:?}");
+    let r = hub.insight_footprint_summary(&payload).await.unwrap();
     assert!(r.insight.unwrap().contains("steady pace"));
     let body = fake.requests()[0].json().unwrap();
     let user = body["messages"][0]["content"].as_str().unwrap();

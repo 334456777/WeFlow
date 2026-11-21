@@ -257,8 +257,6 @@ pub struct SnsMediaFetched {
 /// What WeChat's media server answered `sns debug-resource` for the first bytes of a resource.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct SnsResourceProbe {
-    /// Always true.
-    pub success: bool,
     /// The HTTP status.
     pub status: u16,
     /// The headers that matter.
@@ -283,8 +281,6 @@ pub struct SnsResourceHeaders {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SnsEmojiSaved {
-    /// Always true.
-    pub success: bool,
     /// The file in WeFlow's cache.
     pub local_path: PathBuf,
 }
@@ -292,10 +288,7 @@ pub struct SnsEmojiSaved {
 impl SnsEmojiSaved {
     /// The answer for the sticker saved at `local_path`.
     pub fn at(local_path: PathBuf) -> Self {
-        Self {
-            success: true,
-            local_path,
-        }
+        Self { local_path }
     }
 }
 
