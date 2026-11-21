@@ -170,55 +170,28 @@ impl ServiceHub {
 
     // ── contacts ──
 
-    /// Desktop `contacts.json` cache (if present) topped up from WCDB for the given users.
+    /// The names and avatars of `usernames`, as the account's databases give them (#1017).
     pub(super) fn contact_book(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         usernames: &[String],
     ) -> HashMap<String, CachedContact> {
         let mut book: HashMap<String, CachedContact> = HashMap::new();
-        if let Ok(raw) = std::fs::read_to_string(self.cache_base().join("contacts.json")) {
-            if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) {
-                for (k, v) in map {
-                    let avatar = v
-                        .get("avatarUrl")
-                        .and_then(Value::as_str)
-                        .filter(|a| !a.contains("base64,ffd8"))
-                        .map(str::to_string);
-                    book.insert(
-                        k,
-                        CachedContact {
-                            display_name: v
-                                .get("displayName")
-                                .and_then(Value::as_str)
-                                .map(str::to_string),
-                            avatar_url: avatar,
-                        },
-                    );
+        if usernames.is_empty() {
+            return book;
+        }
+        let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
+        if let Ok(Value::Object(names)) = wcdb.display_names(&payload) {
+            for (k, v) in names {
+                if let Some(n) = v.as_str().filter(|n| !n.is_empty()) {
+                    book.entry(k).or_default().display_name = Some(n.to_string());
                 }
             }
         }
-        let missing: Vec<&String> = usernames
-            .iter()
-            .filter(|u| {
-                book.get(*u)
-                    .is_none_or(|c| c.display_name.is_none() && c.avatar_url.is_none())
-            })
-            .collect();
-        if !missing.is_empty() {
-            let payload = serde_json::to_string(&missing).unwrap_or_else(|_| "[]".into());
-            if let Ok(Value::Object(names)) = wcdb.display_names(&payload) {
-                for (k, v) in names {
-                    if let Some(n) = v.as_str().filter(|n| !n.is_empty()) {
-                        book.entry(k).or_default().display_name = Some(n.to_string());
-                    }
-                }
-            }
-            if let Ok(Value::Object(urls)) = wcdb.avatar_urls(&payload) {
-                for (k, v) in urls {
-                    if let Some(u) = v.as_str().filter(|u| !u.is_empty()) {
-                        book.entry(k).or_default().avatar_url = Some(u.to_string());
-                    }
+        if let Ok(Value::Object(urls)) = wcdb.avatar_urls(&payload) {
+            for (k, v) in urls {
+                if let Some(u) = v.as_str().filter(|u| !u.is_empty()) {
+                    book.entry(k).or_default().avatar_url = Some(u.to_string());
                 }
             }
         }

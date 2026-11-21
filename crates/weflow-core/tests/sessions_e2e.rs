@@ -16,6 +16,37 @@ fn sessions_are_filtered_and_named() {
 }
 
 #[test]
+fn names_and_avatars_come_from_the_database_whatever_the_cache_holds() {
+    let (_root, hub) = common::mock_hub("sessions-desktop-contacts");
+    // the contact cache the desktop app wrote, with names and avatars that are out of date (#1017)
+    let cache = hub.image_cache_root().parent().unwrap().to_path_buf();
+    let stale = serde_json::json!({
+        "wxid_bob": { "displayName": "Stale Bob", "avatarUrl": "https://stale.invalid/bob.jpg" },
+        "room1@chatroom": { "displayName": "Stale Room", "avatarUrl": "https://stale.invalid/room.jpg" },
+    });
+    std::fs::write(cache.join("contacts.json"), stale.to_string()).unwrap();
+    let is_stale = |name: &str, avatar: Option<&str>| {
+        name.starts_with("Stale") || avatar.is_some_and(|a| a.contains("stale.invalid"))
+    };
+
+    let sessions = hub.chat_sessions_list().unwrap();
+    assert!(!sessions.is_empty());
+    for s in &sessions {
+        assert!(!is_stale(&s.display_name, s.avatar_url.as_deref()), "{s:?}");
+    }
+    let groups = hub.group_chats().unwrap();
+    let room = groups
+        .iter()
+        .find(|g| g.username == "room1@chatroom")
+        .unwrap();
+    assert_eq!(room.display_name, "Project Room");
+    assert!(
+        !is_stale(&room.display_name, room.avatar_url.as_deref()),
+        "{room:?}"
+    );
+}
+
+#[test]
 fn contacts_are_classified() {
     let (_root, hub) = common::mock_hub("contacts-list");
     let contacts = hub.chat_contacts_parsed().unwrap();

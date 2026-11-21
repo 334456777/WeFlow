@@ -205,8 +205,7 @@ impl ServiceHub {
         }
     }
 
-    /// `getSessions`: filtered, typed session list. Display names come from WCDB when the
-    /// desktop contact cache has none.
+    /// `getSessions`: filtered, typed session list, with display names and avatars from WCDB.
     pub fn chat_sessions_list(&self) -> AppResult<Vec<Session>> {
         let wcdb = self.open_wcdb()?;
         self.sessions_with(&wcdb)
@@ -468,7 +467,7 @@ impl ServiceHub {
             key(b).cmp(&key(a))
         });
 
-        // resolve names / avatars (WeFlow's desktop app fills these from its contact cache)
+        // resolve names / avatars from the contact tables
         let names: Vec<String> = sessions.iter().map(|s| s.username.clone()).collect();
         let book = self.contact_book(wcdb, &names);
         for s in sessions.iter_mut() {
