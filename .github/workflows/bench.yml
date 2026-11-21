@@ -23,14 +23,14 @@ name: Bench
 # `.github/scripts/bench_queue.py`) and the run ends; a run of this workflow's schedule measures the requests there in
 # order from 23:30, and one asked for during the night is measured at once. Once the night is over no further commit
 # starts, and what is left stays in the queue for the next night. GitHub starts a run of the schedule hours late at
-# times, and drops some (#957): the schedule fires twice before the night, a run that comes before 23:30 waits for it
-# in the queue job, on GitHub's machine, and the first run of the night takes the queue, while a later one that night
-# or one after the night leaves the runner alone (the queue's `taken`). Nothing waits in a concurrency group, where a
-# run queued behind another is cancelled by the next: the runner takes one job at a time, the others wait for it in
-# turn, and the pushes to gh-pages try again on a fresh checkout when another push came first. `night` off measures
-# at once, after whatever the runner is doing, and so does a run started on another branch than the default one: the
-# queue is measured and published by the default branch's workflow, so a trial on a branch with its publish job
-# turned off stays a trial. A run of the schedule first queues each PR labeled `bench` merged since it last looked,
+# times, and drops some (#957): the schedule fires three times before the night, a run that comes before 23:30 waits
+# for it in the queue job, on GitHub's machine, and the first run of the night takes the queue, while a later one that
+# night or one after the night leaves the runner alone (the queue's `taken`). Nothing waits in a concurrency group,
+# where a run queued behind another is cancelled by the next: the runner takes one job at a time, the others wait for
+# it in turn, and the pushes to gh-pages try again on a fresh checkout when another push came first. `night` off
+# measures at once, after whatever the runner is doing, and so does a run started on another branch than the default
+# one: the queue is measured and published by the default branch's workflow, so a trial on a branch with its publish
+# job turned off stays a trial. A run of the schedule first queues each PR labeled `bench` merged since it last looked,
 # before and after it, once (the queue's `labeled` holds the PRs it looked at). It asks for the runner only when there
 # is something for it: a request in the queue, or Friday night, after the calibration task of #605
 # (`.github/bench/calibrate.ps1`) ran: when it changed the profile, the new environment is measured first on the
@@ -110,11 +110,15 @@ on:
         required: false
         default: true
         type: boolean
-  # the queue, every night from 23:30 in Japan: fired at 18:17 and 21:17 there, off the hour, as GitHub may start a run
-  # of the schedule hours late or drop it (#957); a run that comes before the night waits for it in the queue job
+  # the queue, every night from 23:30 in Japan: fired at 12:47, 15:17 and 18:17 there, off the hour, as GitHub may start
+  # a run of the schedule hours late or drop it (#957; 5 to 9 hours late in its runs). A run that comes before the night
+  # waits for it in the queue job, 5h30m at most, so each time reaches 23:30 for its own span of delays: 18:17 up to
+  # 5h13m late, 15:17 from 2h43m to 8h13m, 12:47 from 5h13m to 10h43m; one that comes earlier than its wait allows only
+  # looks for PRs labeled bench
   schedule:
+    - cron: "47 3 * * *"
+    - cron: "17 6 * * *"
     - cron: "17 9 * * *"
-    - cron: "17 12 * * *"
 
 permissions:
   contents: read
@@ -145,7 +149,7 @@ jobs:
     steps:
       # A run of the schedule that comes before 23:30 in Japan waits here for the night, so that it checks out what the
       # repository and the queue hold by then; one that comes during the night goes on at once, and one that comes
-      # later than this wait allows only looks for PRs labeled bench (bench_queue.py).
+      # after the night, or earlier than this wait allows, only looks for PRs labeled bench (bench_queue.py).
       - name: Wait for the night
         if: github.event_name == 'schedule'
         shell: bash
