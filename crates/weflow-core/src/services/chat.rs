@@ -2,6 +2,8 @@
 //! export statistics, resource listings and cached hints.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
@@ -657,26 +659,38 @@ impl ServiceHub {
 
     // ── group "my message count" hint (persisted) ──
 
-    fn hint_path(&self) -> std::path::PathBuf {
-        let who = {
-            let w = self.my_wxid_cleaned();
-            if w.is_empty() {
-                "default".to_string()
-            } else {
-                w
-            }
-        };
-        self.ctx
-            .cache_dir()
-            .join(format!("group_my_message_counts_{who}.json"))
+    /// The name of the account's file of group hints.
+    fn hint_file_name(&self) -> String {
+        let who = self.my_wxid_cleaned();
+        let who = if who.is_empty() { "default" } else { &who };
+        format!("group_my_message_counts_{who}.json")
     }
 
+    /// The account's file of group hints, in the cache folder: `cache_path` when it is set (#1013).
+    fn hint_path(&self) -> PathBuf {
+        self.cache_base().join(self.hint_file_name())
+    }
+
+    /// The account's file of group hints in the home folder's `cache/`, where WeFlow 7.0.0 and earlier kept it
+    /// whatever `cache_path` said; `None` when that folder is the cache folder.
+    pub(super) fn legacy_hint_path(&self) -> Option<PathBuf> {
+        let home_cache = self.ctx.cache_dir();
+        // compared as the system resolves them, so that another spelling of the same folder is not taken for it
+        let moved = fs::canonicalize(&home_cache).ok() != fs::canonicalize(self.cache_base()).ok();
+        moved.then(|| home_cache.join(self.hint_file_name()))
+    }
+
+    /// The account's saved hints: those of [`Self::legacy_hint_path`], and over them those of the cache folder.
     fn read_hints(&self) -> Map<String, Value> {
-        std::fs::read_to_string(self.hint_path())
-            .ok()
-            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-            .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default()
+        let read = |path: &Path| -> Option<Map<String, Value>> {
+            serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+        };
+        let mut hints = self
+            .legacy_hint_path()
+            .and_then(|path| read(&path))
+            .unwrap_or_default();
+        hints.extend(read(&self.hint_path()).unwrap_or_default());
+        hints
     }
 
     /// Saves `count` as the group's own message count (`chat group-hint --set`), kept per account in the cache.
@@ -698,14 +712,18 @@ impl ServiceHub {
         );
         let path = self.hint_path();
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
+            fs::create_dir_all(parent).map_err(|e| {
                 AppError::runtime(format!("failed to create {}: {e}", parent.display()))
             })?;
         }
         let bytes = serde_json::to_vec_pretty(&Value::Object(hints))
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;
-        std::fs::write(&path, bytes)
+        fs::write(&path, bytes)
             .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
+        // the hints read from the home folder's cache are in the cache folder's file now
+        if let Some(legacy) = self.legacy_hint_path() {
+            let _ = fs::remove_file(legacy);
+        }
         Ok(GroupHint {
             count: None,
             updated_at: Some(now),

@@ -28,9 +28,9 @@ pub(crate) enum CacheSubcommand {
     Clear(CacheClearArgs),
     /// Remove WeFlow's data of the current account and take the account out of this profile
     ///
-    /// The account's cached images, voices, stickers, Moments, analytics and key fingerprints are removed, then
-    /// db_path, wxid, decrypt_key and the image keys of the profile. Shows what goes and asks for y first. WeChat's own
-    /// files are never touched.
+    /// The account's cached images, voices, stickers, Moments, analytics, group hints and key fingerprints are
+    /// removed, with its AI insight records, then db_path, wxid, decrypt_key and the image keys of the profile. Shows
+    /// what goes and asks for y first. WeChat's own files are never touched.
     ClearAccount {
         /// Folder of exports; files and folders named after the account are removed too. Repeat for several
         #[arg(long = "exports-dir")]

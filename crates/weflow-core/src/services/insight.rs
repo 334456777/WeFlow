@@ -205,7 +205,7 @@ impl ServiceHub {
     }
 
     /// `getCurrentAccountScope`
-    fn insight_scope(&self) -> String {
+    pub(super) fn insight_scope(&self) -> String {
         let my = self.my_wxid_cleaned();
         if !my.trim().is_empty() {
             return format!("wxid:{}", my.trim());
@@ -222,30 +222,31 @@ impl ServiceHub {
         "default".into()
     }
 
+    /// The current account's insight records.
     fn record_store(&self) -> RecordStore {
-        RecordStore::load(&self.ctx.home_dir)
+        RecordStore::load(&self.ctx.home_dir, &self.insight_scope())
     }
 
     // ── records ──
 
     /// A page of the account's insight records (`insight records`; see [`RecordStore::list`]).
     pub fn insight_list_records(&self, f: &RecordFilters) -> InsightRecords {
-        self.record_store().list(&self.insight_scope(), f)
+        self.record_store().list(f)
     }
 
     /// One of the account's insight records (`insight get`; see [`RecordStore::get`]).
     pub fn insight_get_record(&self, id: &str) -> crate::contract::InsightLookup {
-        self.record_store().get(&self.insight_scope(), id)
+        self.record_store().get(id)
     }
 
     /// Marks one of the account's insight records read (`insight mark-read`; see [`RecordStore::mark_read`]).
     pub fn insight_mark_record_read(&self, id: &str) -> InsightMarked {
-        self.record_store().mark_read(&self.insight_scope(), id)
+        self.record_store().mark_read(id)
     }
 
     /// Removes the account's insight records that `f` matches (`insight clear`; see [`RecordStore::clear`]).
     pub fn insight_clear_records(&self, f: &RecordFilters) -> InsightCleared {
-        self.record_store().clear(&self.insight_scope(), f)
+        self.record_store().clear(f)
     }
 
     /// `getTodayStats`
@@ -888,7 +889,6 @@ impl ServiceHub {
         let mut store = self.record_store();
         store.add(
             ins::NewRecord {
-                scope: &self.insight_scope(),
                 session_id,
                 display_name: name,
                 avatar_url: avatar,

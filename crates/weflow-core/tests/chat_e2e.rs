@@ -272,6 +272,33 @@ fn group_hint_roundtrip_and_transfer_names() {
 }
 
 #[test]
+fn group_hints_follow_the_cache_path_and_take_the_old_ones_along() {
+    let root = common::temp_dir("chat-hint-cache-path");
+    let cache = root.join("elsewhere");
+    let (_root, hub) = common::mock_hub_with("chat-hint-moved", |p| {
+        p.cache_path = Some(cache.to_string_lossy().into_owned());
+    });
+    let file = "group_my_message_counts_wxid_me.json";
+    let old = hub.context().cache_dir().join(file);
+    std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+    std::fs::write(
+        &old,
+        json!({ "room1@chatroom": { "messageCount": 4, "updatedAt": 1 } }).to_string(),
+    )
+    .unwrap();
+    let h = hub.group_hint("room1@chatroom").unwrap();
+    assert_eq!(h.count, Some(4), "read from the home folder's cache");
+
+    hub.set_group_hint("room2@chatroom", 7).unwrap();
+    assert!(!old.exists(), "moved into the cache folder");
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(cache.join(file)).unwrap()).unwrap();
+    assert_eq!(saved["room1@chatroom"]["messageCount"], 4, "{saved}");
+    assert_eq!(saved["room2@chatroom"]["messageCount"], 7, "{saved}");
+    assert_eq!(hub.group_hint("room1@chatroom").unwrap().count, Some(4));
+}
+
+#[test]
 fn voice_messages_decode_from_silk_to_a_cached_wav() {
     let (created, server) = (1_700_000_100_i64, 9_007_199_254_740_993_i64);
     let (_root, hub, _f) = common::custom_hub("voice", |f| {

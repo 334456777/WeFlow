@@ -300,9 +300,9 @@ const HELP: &[(&str, &str)] = &[
     ("Remove WeFlow's data of the current account and take the account out of this profile", "删除 WeFlow 中当前账号的数据，并把该账号移出当前配置档案"),
     ("Remove WeFlow's data of the current account and take the account out of this profile
 
-The account's cached images, voices, stickers, Moments, analytics and key fingerprints are removed, then db_path, wxid, decrypt_key and the image keys of the profile. Shows what goes and asks for y first. WeChat's own files are never touched.", "删除 WeFlow 中当前账号的数据，并把该账号移出当前配置档案
+The account's cached images, voices, stickers, Moments, analytics, group hints and key fingerprints are removed, with its AI insight records, then db_path, wxid, decrypt_key and the image keys of the profile. Shows what goes and asks for y first. WeChat's own files are never touched.", "删除 WeFlow 中当前账号的数据，并把该账号移出当前配置档案
 
-删除该账号缓存的图片、语音、表情、朋友圈、统计和密钥指纹，以及档案中的 db_path、wxid、decrypt_key 和图片密钥。先列出将要删除的内容并要求输入 y 确认。不会触碰微信自身的文件。"),
+删除该账号缓存的图片、语音、表情、朋友圈、统计、群消息数提示和密钥指纹，以及它的 AI 见解记录，再删除档案中的 db_path、wxid、decrypt_key 和图片密钥。先列出将要删除的内容并要求输入 y 确认。不会触碰微信自身的文件。"),
     ("Folder of exports; files and folders named after the account are removed too. Repeat for several", "导出文件夹；其中以账号命名的文件和文件夹也会被删除。可重复传入"),
     ("Only list what would be removed, with its size; remove nothing", "只列出将会删除的内容和大小，不删除任何东西"),
     ("Do not ask before removing", "删除前不再询问"),
