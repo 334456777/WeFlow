@@ -1,36 +1,20 @@
 # Logs
 logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 claude-conversation-log/
 
 # Dependencies
 node_modules
 dist
-dist-ssr
 *.local
-test/
-# the WebUI's test setup (#361)
-!/web/test/
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode/
 .idea
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
 *.sw?
 
 # Build output
-out
-release
 target
 
 # Database
@@ -54,12 +38,6 @@ weflow.exe
 /weflow-macos-arm64
 /weflow-linux-x64
 /weflow-windows-x64.exe
-
-# 忽略 Visual Studio 临时文件夹
-.vs/
-# 忽略 IntelliSense 缓存文件
-*.ipch
-*.aps
 
 # tsc's incremental build state (web/)
 *.tsbuildinfo
