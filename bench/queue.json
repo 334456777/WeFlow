@@ -33,6 +33,24 @@
    "only": "",
    "force": false,
    "release_tag": "v7.0.0"
+  },
+  {
+   "id": "pr-1006",
+   "asked_at": "2026-11-21T14:30:08+00:00",
+   "run": "https://github.com/334456777/WeFlow/actions/runs/44913806585",
+   "commits": "#1006前=8914363c347487f25781fab632b414014ed2ee34,#1006后=c931f5c83424dd599a94674fc8efdf6ba0b6ee09",
+   "pair": [
+    "#1006前=8914363c347487f25781fab632b414014ed2ee34",
+    "#1006后=c931f5c83424dd599a94674fc8efdf6ba0b6ee09"
+   ],
+   "runs": "5",
+   "seed": "1",
+   "group_messages": "200000",
+   "conversations": "300",
+   "load_seconds": "90",
+   "only": "",
+   "force": false,
+   "release_tag": ""
   }
  ],
  "labeled": [
@@ -62,7 +80,8 @@
   672,
   675,
   925,
-  939
+  939,
+  1006
  ],
- "taken": "2026-11-20"
+ "taken": "2026-11-21"
 }
