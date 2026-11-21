@@ -53,7 +53,7 @@ async function renderWith(health: object | null) {
 const settle = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
-const HEALTH = { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: '5.0.0', data: 'a' };
+const HEALTH = { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: __WEFLOW_WEB__.minBackendVersion, data: 'a' };
 
 /** Opens the settings at one of their sections, by its name in the list (#776), whatever its state beside it says. */
 function openSettings(section: string) {
@@ -597,7 +597,7 @@ describe('App', () => {
     await renderWith({ ...HEALTH, limits: { maxTasks: 1, maxReads: 4, maxMedia: 4 }, insight: true });
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     const text = () => screen.getByRole('region', { name: '设置' }).textContent ?? '';
-    expect(text()).toContain(`weflow 5.0.0 · API ${__WEFLOW_WEB__.apiVersion}`);
+    expect(text()).toContain(`weflow ${__WEFLOW_WEB__.minBackendVersion} · API ${__WEFLOW_WEB__.apiVersion}`);
     expect(text()).toContain('适用于这个网页');
     expect(text()).toContain('同时运行任务 1 个 · 读取 4 个 · 媒体解码 4 个 · 灵感引擎已开启');
     expect(text()).toContain('没有保存令牌');
@@ -691,7 +691,7 @@ describe('App', () => {
     // the settings say how far the account is set up, in their list too, and open the setup again
     openSettings('账号');
     expect(screen.getByRole('button', { name: /^账号/ }).textContent).toBe('账号default · 还没有配置');
-    expect(screen.getByRole('button', { name: /^连接状态/ }).textContent).toBe('连接状态已连接 · 5.0.0');
+    expect(screen.getByRole('button', { name: /^连接状态/ }).textContent).toBe(`连接状态已连接 · ${__WEFLOW_WEB__.minBackendVersion}`);
     expect(screen.getByRole('region', { name: '账号' }).textContent).toContain('default当前未选择账号还没有配置');
     fireEvent.click(screen.getByRole('button', { name: '配置向导' }));
     await act(async () => {});
