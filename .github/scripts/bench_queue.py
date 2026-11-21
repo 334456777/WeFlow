@@ -77,8 +77,8 @@ def calibration_night(now=None):
     return night_began(now).weekday() == 4
 
 
-def git(*args, cwd=None):
-    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
+def git(*args):
+    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
 def resolve(ref):

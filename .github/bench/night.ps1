@@ -11,8 +11,10 @@
   It uses the GitHub CLI as you are logged in to it (gh auth login), whose token is in your Windows credentials, so the
   task runs only while you are logged on to Windows: Task Scheduler does not start it otherwise. A night it does not
   run (you are not logged on, or the computer is off) is not made up for when you log on or the computer comes back;
-  the queue waits for the next night. It starts nothing when gh holds no login, or when GitHub refuses gh's login. What
-  each run did is appended to -Log.
+  the queue waits for the next night. It starts nothing when gh is not there, holds no login, or when GitHub refuses
+  gh's login. What each run did, an error that stopped it included, is appended to -Log, the only record of a run of
+  the task: conhost --headless hands Task Scheduler 0 whatever the script exits with, so the task's last result tells
+  only whether pwsh started at all.
 
 .EXAMPLE
   .\night.ps1             # once, now
@@ -53,32 +55,38 @@ function Say([string] $line) {
   Add-Content -Path $Log -Value $stamped
 }
 
-if (-not $Gh) {
-  Say 'nothing started: no gh'
-  exit 1
-}
-# whether gh holds a login, without the network, which may not be up yet; the token itself goes nowhere
-& $Gh auth token --hostname github.com *> $null
-if ($LASTEXITCODE -ne 0) {
-  Say 'nothing started: gh holds no login to github.com'
-  exit 1
-}
-
-# no commits: the night's run; no prompt for the inputs
-$env:GH_PROMPT_DISABLED = '1'
-# the network may take a while to come back after the computer wakes
-foreach ($attempt in 1..6) {
-  $out = (& $Gh workflow run bench.yml --repo $Repository -f commits= 2>&1 | Out-String).Trim()
-  if ($LASTEXITCODE -eq 0) {
-    Say "started the night's run of bench.yml"
-    exit 0
-  }
-  # a login GitHub refuses (expired or revoked) is refused again
-  if ($out -match 'HTTP 401|Bad credentials') {
-    Say "nothing started: GitHub refused gh's login ($out)"
+try {
+  # the task passes the gh it was registered with, which an update or another install may have moved
+  if (-not $Gh -or -not (Test-Path -LiteralPath $Gh -PathType Leaf)) {
+    Say "nothing started: no gh$(if ($Gh) { " at $Gh" })"
     exit 1
   }
-  Say "attempt $attempt failed: $out"
-  if ($attempt -lt 6) { Start-Sleep -Seconds 30 }
+  # whether gh holds a login, without the network, which may not be up yet; the token itself goes nowhere
+  & $Gh auth token --hostname github.com *> $null
+  if ($LASTEXITCODE -ne 0) {
+    Say 'nothing started: gh holds no login to github.com'
+    exit 1
+  }
+
+  # no commits: the night's run; no prompt for the inputs
+  $env:GH_PROMPT_DISABLED = '1'
+  # the network may take a while to come back after the computer wakes
+  foreach ($attempt in 1..6) {
+    $out = (& $Gh workflow run bench.yml --repo $Repository -f commits= 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0) {
+      Say "started the night's run of bench.yml"
+      exit 0
+    }
+    # a login GitHub refuses (expired or revoked) is refused again
+    if ($out -match 'HTTP 401|Bad credentials') {
+      Say "nothing started: GitHub refused gh's login ($out)"
+      exit 1
+    }
+    Say "attempt $attempt failed: $out"
+    if ($attempt -lt 6) { Start-Sleep -Seconds 30 }
+  }
+  exit 1
+} catch {
+  Say "nothing started: $_"
+  exit 1
 }
-exit 1
