@@ -390,8 +390,12 @@ jobs:
     name: Benchmark
     needs: [prepare, release]
     if: needs.prepare.outputs.bench_base != ''
+    # what bench.yml's jobs ask for, at least: a called workflow asking for more than its caller grants is an invalid
+    # workflow file, which fails every run of this one as it starts, whatever its inputs
     permissions:
-      contents: write   # the queue and the results are pushed to the gh-pages branch and the release notes edited
+      contents: write       # the queue and the results are pushed to the gh-pages branch and the release notes edited
+      issues: read          # bench.yml lists the PRs labeled bench (its night's run and the backfill)
+      pull-requests: read
     uses: ./.github/workflows/bench.yml
     with:
       commits: ${{ needs.prepare.outputs.bench_base }},${{ needs.prepare.outputs.tag }}
