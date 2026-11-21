@@ -95,7 +95,7 @@ export function footprint(start: string, end: string): Footprint {
 /** What `insight footprint-summary` answers: the AI's few sentences, written for the sample. */
 export function footprintSummary(payload: string): InsightReply {
   let label = '这段时间';
-  try { label = (JSON.parse(payload) as { rangeLabel?: string }).rangeLabel || label; } catch { /* the sample's own sentence */ }
+  try { label = (JSON.parse(payload) as { range_label?: string }).range_label || label; } catch { /* the sample's own sentence */ }
   return {
     message: '生成成功',
     insight: label + '里，大部分对话都围绕 WeFlow：和林沐聊新皮肤和深色模式，和陈屿聊按页解密的性能，'

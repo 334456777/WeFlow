@@ -183,10 +183,10 @@ async fn footprint_summary_formats_the_prompt() {
     let fake = FakeModel::start().unwrap();
     let (_root, hub) = hub_with_ai("ins-foot", &fake, "anthropic", "fake-claude", &[]);
     let payload = json!({
-        "rangeLabel": "Last 7 days",
+        "range_label": "Last 7 days",
         "summary": { "private_inbound_people": 5, "private_outbound_people": 4, "private_reply_rate": 0.8, "mention_count": 2, "mention_group_count": 1 },
-        "privateSegments": [{ "displayName": "Bob", "incoming_count": 3, "outgoing_count": 2, "message_count": 5, "replied": true }],
-        "mentionGroups": [{ "displayName": "Team", "count": 2 }]
+        "private_segments": [{ "display_name": "Bob", "incoming_count": 3, "outgoing_count": 2, "message_count": 5, "replied": true }],
+        "mention_groups": [{ "display_name": "Team", "count": 2 }]
     });
     let r = hub.insight_footprint_summary(&payload).await.unwrap();
     assert!(r.insight.unwrap().contains("steady pace"));
