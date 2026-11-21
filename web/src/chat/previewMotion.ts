@@ -2,8 +2,8 @@
 // and the preview's picture take the same `view-transition-name` before and after the change, so the browser moves
 // and grows one into the other while the backdrop fades. The page is not taken (shell/PreviewDialog.css): it stays
 // live under the flight, so a click meanwhile reaches it and may start another flight, which cuts this one short
-// (#844). Where the browser has no view transitions, or less motion is asked for, the preview opens and closes as it
-// did, with a fade.
+// (#844). Where the browser has no view transitions, or less motion is asked for, the preview opens and closes with a
+// fade.
 
 /** The `view-transition-name` of the picture in flight. */
 export const MEDIA_NAME = 'preview-media';

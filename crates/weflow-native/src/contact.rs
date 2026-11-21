@@ -292,8 +292,7 @@ impl Account {
     /// `{ username: { isFolded, isMuted, isPinned } }`.
     ///
     /// WeChat keeps these in `contact.flag` bits (folded group chats: bit 28; muted single chats: bit 9; pinned
-    /// conversations of any kind: bit 11) and, for group chats, in `chat_room_notify` (1 = notifications off).
-    /// `SessionTable.status`, which might have held the pinning, is 0 on WeChat 4.x (#885).
+    /// conversations of any kind: bit 11, #885) and, for group chats, in `chat_room_notify` (1 = notifications off).
     pub fn contact_status(&self, usernames: &[String]) -> Result<Value> {
         let mut map = Map::new();
         for r in self.contact_rows(usernames)? {

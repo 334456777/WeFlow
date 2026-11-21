@@ -1,5 +1,5 @@
-// A column of cards that open and close from their header and can be dragged into a new order, like the side
-// panel of Claude Code. Order and open state stay in this browser (localStorage).
+// A column of cards that open and close from their header and can be dragged into a new order. Order and open state
+// stay in this browser (localStorage).
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { CaretDown } from '@phosphor-icons/react';

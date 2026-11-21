@@ -15,7 +15,7 @@ html { background: var(--page-bg); }
 /*
  * Above a phone the layout fills the window and its parts scroll themselves; the page itself never does, so a part
  * a fraction of a pixel too tall (a popover near the bottom, rounding) cannot bring up the browser's scrollbar (#344).
- * Below the layout's least height (.workspace) the page scrolls as before.
+ * Below the layout's least height (.workspace) the page scrolls.
  */
 @media (min-width: 641px) and (min-height: 520px) { html, body { overflow: hidden; } }
 body {
@@ -220,7 +220,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 .connection.offline .connection-dot { background: var(--state-idle); }
 .connection.incompatible .connection-dot, .connection.unauthorized .connection-dot { background: var(--state-danger); }
 /*
- * Records in the middle, the console in a full-height column on the right, as in Claude.ai (#130). Raised
+ * Records in the middle, the console in a full-height column on the right (#130). Raised
  * surfaces cast about 18px of shadow, so panels and cards keep 20px apart, and the console's scroll box reaches
  * out over the gap and the page margin so its cards' shadows are drawn inside it instead of being cut off.
  */
@@ -406,8 +406,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 .text-button:hover { color: var(--fg); }
 
 /*
- * Operations console: a column of cards on the page, panels of their own, like the side panel of Claude Code. Each
- * card opens and closes from its header (the body's grid row runs from 0fr to 1fr) and can be dragged into place.
+ * Operations console: a column of cards on the page, panels of their own. Each card opens and closes from its header (the body's grid row runs from 0fr to 1fr) and can be dragged into place.
  */
 .console { display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: calc(-1 * var(--gutter)); padding: var(--gutter); }
 .card-stack { display: flex; flex-direction: column; gap: var(--space-5); }
