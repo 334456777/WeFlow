@@ -8,11 +8,9 @@ usage: python bench_queue.py plan --pages DIR --event EVENT [--night] --outputs 
 Commits are measured at night in Japan ([`NIGHT`]). A run asked for
 during the day does not hold a job open until then: its request waits in `<pages>/bench/queue.json`, and a night's run
 of bench.yml measures the requests there in order (bench-commits.py), from 23:30 until the night is over. A night's run
-(`--event night`) is a run of the schedule, or one started by hand on the default branch with no commits, which the
-runner's computer starts at 23:25 (`.github/bench/night.ps1`, #1001). GitHub starts a run of the schedule hours late at
-times, and drops some (#957): the schedule fires three times before the night, for a night that task misses, and a
-night's run that comes before 23:30 waits for it in the queue job, on GitHub's machine. Nothing in the queue is ever
-cancelled or replaced, as runs waiting in a concurrency group would be.
+(`--event night`) is one started by hand on the default branch with no commits, which the runner's computer starts at
+23:25 (`.github/bench/night.ps1`, #1001) and which waits for 23:30 in the queue job, on GitHub's machine. Nothing in
+the queue is ever cancelled or replaced, as runs waiting in a concurrency group would be.
 
 `plan`, in the queue job, run from a checkout of the repository with its history and tags (to resolve the commits):
   - a run asked for by hand or by release.yml with `night` off goes to the measure job at once (`mode=now`,
@@ -259,26 +257,25 @@ def plan(args):
     queue = load_queue(args.pages)
     branch = os.environ.get("OTHER_BRANCH", "")
     if args.event == "night":
-        kind = "定时运行" if os.environ.get("GITHUB_EVENT_NAME") == "schedule" else "手动发起的夜间运行"
         if branch:
             # the queue and its PRs are the default branch's
-            said.append(f"- {kind}：从分支 {branch} 发起，不检查 PR，也不测量队列")
+            said.append(f"- 夜间运行：从分支 {branch} 发起，不检查 PR，也不测量队列")
         else:
             said += queue_bench_prs(queue)
             if not night:
-                # it started after the night, or earlier than the queue job waits (bench.yml)
-                said.append(f"- {kind}：开始时不在夜间时段，只检查带 `bench` 标签的 PR，不用基准机器")
+                # started by hand after the night, or earlier than the queue job waits (bench.yml)
+                said.append("- 夜间运行：开始时不在夜间时段，只检查带 `bench` 标签的 PR，不用基准机器")
             elif queue.get("taken") == tonight:
-                said.append(f"- {kind}：今晚已有一次运行在测量队列，这次不用基准机器")
+                said.append("- 夜间运行：今晚已有一次运行在测量队列，这次不用基准机器")
             elif queue["requests"]:
                 out["mode"], queue["taken"] = "drain", tonight
-                said.append(f"- {kind}：队列里有 {len(queue['requests'])} 个请求，按顺序测到日本时间 {NIGHT[1]:%H:%M}")
+                said.append(f"- 夜间运行：队列里有 {len(queue['requests'])} 个请求，按顺序测到日本时间 {NIGHT[1]:%H:%M}")
             elif calibration_night():
                 # the runner looks whether the calibration changed the profile (bench-runner.sh)
                 out["mode"], queue["taken"] = "drain", tonight
-                said.append(f"- {kind}：队列为空；今天是校准日（周五），在 runner 上检查 profile 是否更换")
+                said.append("- 夜间运行：队列为空；今天是校准日（周五），在 runner 上检查 profile 是否更换")
             else:
-                said.append(f"- {kind}：队列为空，不用基准机器")
+                said.append("- 夜间运行：队列为空，不用基准机器")
             save_queue(args.pages, queue)
     else:
         request = request_from_env()

@@ -4,16 +4,15 @@
   run every day at 23:25 in Japan.
 
 .DESCRIPTION
-  GitHub starts a run of bench.yml's schedule hours late at times, or drops it (#957). This starts a run of bench.yml
-  by hand on the default branch with no commits, which is a night's run as one of the schedule is: its queue job waits
-  until 23:30 in Japan, then queues the PRs labeled bench and measures the queue (.github/scripts/bench_queue.py). The
-  first night's run to reach the night takes the queue; one that comes later that night, of the schedule or not, leaves
-  the runner alone.
+  Starts a run of bench.yml by hand on the default branch with no commits, which is the night's run: its queue job
+  waits until 23:30 in Japan, then queues the PRs labeled bench and measures the queue (.github/scripts/bench_queue.py).
+  A night's run that comes later that night leaves the runner alone.
 
-  It uses the GitHub CLI as you are logged in to it (gh auth login), whose token is in your Windows credentials, so it
-  runs only while you are logged on to Windows. It starts nothing when gh holds no login, or when it starts outside
-  23:00 to 05:00 in Japan: a run missed while the computer was off starts once it is back, and only during the night
-  is there something left to start. What each run did is appended to -Log.
+  It uses the GitHub CLI as you are logged in to it (gh auth login), whose token is in your Windows credentials, so the
+  task runs only while you are logged on to Windows: Task Scheduler does not start it otherwise. A night it does not
+  run (you are not logged on, or the computer is off) is not made up for when you log on or the computer comes back;
+  the queue waits for the next night. It starts nothing when gh holds no login, or when GitHub refuses gh's login. What
+  each run did is appended to -Log.
 
 .EXAMPLE
   .\night.ps1             # once, now
@@ -39,8 +38,8 @@ if ($Register) {
   # Interactive: only while you are logged on, the only time your Windows credentials, and gh's login, can be read
   $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive `
     -RunLevel Limited
-  # wakes the computer from sleep; a run missed while it was off starts once it is back
-  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+  # wakes the computer from sleep; no -StartWhenAvailable, so a night missed is not run once the computer is back
+  $settings = New-ScheduledTaskSettingsSet -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
   Register-ScheduledTask -TaskName 'WeFlow benchmark night run' -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings -Force | Out-Null
   Write-Host "registered: WeFlow benchmark night run, every day at $($at.ToString('HH:mm')) (23:25 in Japan)"
@@ -54,12 +53,6 @@ function Say([string] $line) {
   Add-Content -Path $Log -Value $stamped
 }
 
-# 23:00 to 05:00 in Japan: a night's run started then waits for 23:30 (bench.yml) or has the rest of the night
-$now = [DateTime]::UtcNow.AddHours(9).TimeOfDay
-if ($now -ge [TimeSpan]'05:00' -and $now -lt [TimeSpan]'23:00') {
-  Say "nothing started: $($now.ToString('hh\:mm')) in Japan is outside 23:00-05:00"
-  exit 0
-}
 if (-not $Gh) {
   Say 'nothing started: no gh'
   exit 1
@@ -75,12 +68,17 @@ if ($LASTEXITCODE -ne 0) {
 $env:GH_PROMPT_DISABLED = '1'
 # the network may take a while to come back after the computer wakes
 foreach ($attempt in 1..6) {
-  $out = & $Gh workflow run bench.yml --repo $Repository -f commits= 2>&1 | Out-String
+  $out = (& $Gh workflow run bench.yml --repo $Repository -f commits= 2>&1 | Out-String).Trim()
   if ($LASTEXITCODE -eq 0) {
     Say "started the night's run of bench.yml"
     exit 0
   }
-  Say "attempt $attempt failed: $($out.Trim())"
+  # a login GitHub refuses (expired or revoked) is refused again
+  if ($out -match 'HTTP 401|Bad credentials') {
+    Say "nothing started: GitHub refused gh's login ($out)"
+    exit 1
+  }
+  Say "attempt $attempt failed: $out"
   if ($attempt -lt 6) { Start-Sleep -Seconds 30 }
 }
 exit 1
