@@ -20,9 +20,12 @@ export const DOC = {
         required: ['out'],
       } } } },
     } },
-    '/sns/block-delete': {
-      get: { operationId: 'sns_block_delete_get', tags: ['sns'], summary: '朋友圈防删除', 'x-weflow-command': 'sns block-delete', parameters: [{ name: 'action', in: 'query', required: true, schema: { type: 'string', enum: ['check'] } }] },
-      delete: { operationId: 'sns_block_delete_delete', tags: ['sns'], summary: '朋友圈防删除', 'x-weflow-command': 'sns block-delete', 'x-weflow-refused': true, parameters: [{ name: 'action', in: 'query', required: true, schema: { type: 'string', enum: ['uninstall'] } }] },
+    '/chat/group-hint': {
+      get: { operationId: 'chat_group_hint_get', tags: ['chat'], summary: '群里我的消息数', 'x-weflow-command': 'chat group-hint', parameters: [{ name: 'chatroom-id', in: 'query', required: true, schema: { type: 'string' } }] },
+      put: { operationId: 'chat_group_hint_put', tags: ['chat'], summary: '群里我的消息数', 'x-weflow-command': 'chat group-hint', parameters: [{ name: 'chatroom-id', in: 'query', required: true, schema: { type: 'string' } }, { name: 'set', in: 'query', required: true, schema: { type: 'integer' } }] },
+    },
+    '/lang': {
+      put: { operationId: 'lang', tags: ['lang'], summary: '输出语言', 'x-weflow-command': 'lang', parameters: [{ name: 'lang', in: 'query', required: true, schema: { type: 'string', enum: ['en', 'zh'] } }] },
     },
     '/health': { get: { operationId: 'health', tags: ['server'] } },
   },

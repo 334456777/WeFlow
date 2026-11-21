@@ -17,7 +17,7 @@ description: 新增、修改或删除 weflow 的 CLI 子命令和参数时要一
 ## serve
 
 - 每个命令在 [`serve_api/rules.rs`](../../../crates/weflow-cli/src/serve_api/rules.rs) 的 `METHODS` 里有一个 HTTP 方法：读用 `GET`，运行任务或写文件用 `POST`，改设置用 `PUT`，删除用 `DELETE`。方法随参数变化时用 `Rule::Arg` 或 `Rule::Value`。
-- 只读的数据库层总是拒绝的命令加进同一个文件的 `REFUSED`，见 [weflow-contract](../weflow-contract/SKILL.md#坑)。尚未移植的数据库调用返回 `not implemented`。两者都登记到 Wiki [不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)。
+- 会写微信数据库的操作不做成命令：数据库层只读，见 Wiki [不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能#不提供的写操作)。尚未移植的数据库调用返回 `not implemented`，登记到同一页。
 - 网页经常读的命令可以进入 `/api/` 进程内路由，判断标准见 Wiki [服务端实现#哪些读取进入进程内](https://github.com/334456777/WeFlow/wiki/服务端实现#哪些读取进入进程内)。要进入时改四处：
   1. `weflow-core/src/reads.rs` 的 `Read` 加一个成员，并实现它的读取；
   2. `weflow-cli/src/reads.rs` 的 `read_of` 把命令映射到这个成员；

@@ -453,7 +453,6 @@ fn debug_resource_reports_status_and_decryption_headers() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(r["success"], true, "{r}");
     assert_eq!(r["status"], 200);
     assert_eq!(
         (

@@ -129,7 +129,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 页面之间用完整地址 `[文字](https://github.com/334456777/WeFlow/wiki/页面名#锚点)`，指向仓库文件用完整的 `https://github.com/334456777/WeFlow/blob/main/...` 地址，issue 写完整链接（Wiki 不会自动链接 `#123`）；页面标题由文件名决定，文件名不用 `\ / : * ? " < > |`；小节标题不加序号，否则插入一节后它后面的锚点全部失效
 - 用户可见的行为变了就同步改对应页面。这些靠人工同步，没有测试校验：
   - API 版本（`API_VERSION`）写在[命令-API](https://github.com/334456777/WeFlow/wiki/命令-API#版本)页
-  - 未移植或被拒绝的调用增减时，同步改[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)
+  - 未移植的调用增减时，同步改[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)
   - 报错的文字或处理办法变了，同步改[故障排查](https://github.com/334456777/WeFlow/wiki/故障排查)（按现象列原因和去处，细节留在主题页）
   - 新增在多个页面出现的术语时，登记到[术语表](https://github.com/334456777/WeFlow/wiki/术语表)
 - Wiki 不跟代码走同一个 PR：先推送 Wiki，再合并引用新页面或新锚点的 PR

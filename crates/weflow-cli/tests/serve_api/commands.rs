@@ -162,7 +162,7 @@ fn commands_answer_like_the_terminal() {
 }
 
 #[test]
-fn account_commands_and_read_only_refusals() {
+fn account_commands() {
     let root = temp_root("account");
     let home = account_home(&root);
     let server = start(&home, &["--api-token", TOKEN]);
@@ -172,20 +172,6 @@ fn account_commands_and_read_only_refusals() {
     assert_eq!(r.status, 200, "{}", r.body);
     assert_eq!(r.body, stdout);
     assert!(!r.json()["data"].as_array().unwrap().is_empty());
-
-    // writing WeChat's databases is refused: 501 with the `unsupported` code
-    let r = server.call(
-        "DELETE",
-        "/chat/delete-message",
-        r#"{"session-id": "wxid_friend", "local-id": 1, "create-time": 1}"#,
-    );
-    assert_eq!(r.status, 501, "{}", r.body);
-    assert_eq!(r.json()["error"]["code"], "unsupported");
-    assert_eq!(r.headers["x-weflow-exit-code"], "4");
-    let r = server.call("DELETE", "/sns/block-delete?action=uninstall", "");
-    assert_eq!(r.status, 501, "{}", r.body);
-    let r = server.call("GET", "/sns/block-delete?action=uninstall", "");
-    assert_eq!((r.status, r.headers["allow"].as_str()), (405, "DELETE"));
 }
 
 /// `image auto-download status` through `serve` is the server's own hook (here none: the tests turn it off), in the
@@ -246,69 +232,6 @@ fn clearing_an_account_can_be_looked_at_first() {
     // and only with `yes`, without `dry-run`
     let r = server.call("DELETE", "/cache/clear-account?dry-run=true&yes=true", "");
     assert_eq!(r.status, 400, "{}", r.body);
-}
-
-#[test]
-fn refused_commands_are_marked_and_refused() {
-    let root = temp_root("refused");
-    let home = account_home(&root);
-    let server = start(&home, &["--api-token", TOKEN]);
-    let doc = server.call("GET", "/openapi.json", "").json();
-    let mut marked = Vec::new();
-    for (path, ops) in doc["paths"].as_object().unwrap() {
-        for (method, op) in ops.as_object().unwrap() {
-            if op.get("x-weflow-refused") != Some(&Value::Bool(true)) {
-                continue;
-            }
-            marked.push(format!("{} {path}", method.to_uppercase()));
-            // its required parameters and its lists (the conversations of `anti-revoke install`, which refuses
-            // each one), made up, in the query: they are taken from there for every method
-            let mut query = Vec::new();
-            let mut take = |name: &str, schema: &Value| {
-                let value = match (schema.get("enum"), schema["type"].as_str()) {
-                    (Some(values), _) => values[0].as_str().unwrap().to_string(),
-                    (_, Some("integer")) => "1".to_string(),
-                    _ => "x".to_string(),
-                };
-                query.push(format!("{name}={value}"));
-            };
-            for p in op["parameters"].as_array().unwrap() {
-                if p["required"] == true || p["schema"]["type"] == "array" {
-                    take(p["name"].as_str().unwrap(), &p["schema"]);
-                }
-            }
-            let body = &op["requestBody"]["content"]["application/json"]["schema"];
-            let required = body["required"].as_array().cloned().unwrap_or_default();
-            for (name, schema) in body["properties"].as_object().into_iter().flatten() {
-                if required.contains(&Value::from(name.as_str())) || schema["type"] == "array" {
-                    take(name, schema);
-                }
-            }
-            let r = server.call(
-                &method.to_uppercase(),
-                &format!("{path}?{}", query.join("&")),
-                "",
-            );
-            assert_eq!(r.status, 501, "{method} {path}: {}", r.body);
-            assert_eq!(r.json()["error"]["code"], "unsupported");
-        }
-    }
-    marked.sort();
-    assert_eq!(
-        marked,
-        [
-            "DELETE /chat/anti-revoke/uninstall",
-            "DELETE /chat/delete-message",
-            "DELETE /sns/block-delete",
-            "DELETE /sns/delete",
-            "GET /chat/anti-revoke/check",
-            "GET /sns/block-delete",
-            "PATCH /chat/update-message",
-            "POST /chat/mark-read",
-            "PUT /chat/anti-revoke/install",
-            "PUT /sns/block-delete",
-        ]
-    );
 }
 
 #[test]

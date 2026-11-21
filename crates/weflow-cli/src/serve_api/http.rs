@@ -159,7 +159,7 @@ pub(super) fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
         h.insert("timing-allow-origin", value.clone());
         h.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
-            HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, OPTIONS"),
+            HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
         );
         h.insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,

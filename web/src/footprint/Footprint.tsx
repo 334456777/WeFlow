@@ -158,7 +158,7 @@ export function FootprintAi({ range, data, aiReady }: { range: FootprintRange; d
     }
   };
   const enable = async () => {
-    try { await setSetting('aiFootprintEnabled', 'true'); setNote({ text: t('已开启，可以生成了。') }); } catch (problem) { setNote({ text: (problem instanceof Error && problem.message) || t('没有开启，请重试。'), error: true }); }
+    try { await setSetting('ai_footprint_enabled', 'true'); setNote({ text: t('已开启，可以生成了。') }); } catch (problem) { setNote({ text: (problem instanceof Error && problem.message) || t('没有开启，请重试。'), error: true }); }
   };
   return <div className="excluded-people">
     {aiReady === false && <p className="card-note">{t('还没有填写 AI 的 API Key，先到「设置 › 常规 › AI 见解」里填写。')}</p>}

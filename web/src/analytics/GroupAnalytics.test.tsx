@@ -57,7 +57,7 @@ describe('group analytics', () => {
         return ok({ messages: [{ messageKey: later ? 'k2' : 'k1', localType: 1, createTime: later ? 1_700_000_000 : 1_760_000_000, parsedContent: later ? '早些的' : '周六出发' }], hasMore: !later, nextCursor: 50 });
       }
       return ok({
-        statistics: { totalMessages: 12, textMessages: 10, imageMessages: 2, voiceMessages: 0, videoMessages: 0, emojiMessages: 0, otherMessages: 0, sentMessages: 12, receivedMessages: 0, firstMessageTime: 1_700_000_000, lastMessageTime: 1_760_000_000, activeDays: 5 },
+        statistics: { totalMessages: 12, textMessages: 10, imageMessages: 2, voiceMessages: 0, videoMessages: 0, emojiMessages: 0, otherMessages: 0, firstMessageTime: 1_700_000_000, lastMessageTime: 1_760_000_000, activeDays: 5 },
         timeDistribution: { 9: 12 }, commonPhrases: [{ phrase: '好的', count: 4 }], commonEmojis: [{ emoji: '[呲牙]', count: 3 }],
       });
     }));
@@ -83,7 +83,7 @@ describe('group analytics', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (!url.startsWith('/api/group/member-messages')) {
         return Promise.resolve(ok({
-          statistics: { totalMessages: 1, textMessages: 1, imageMessages: 0, voiceMessages: 0, videoMessages: 0, emojiMessages: 0, otherMessages: 0, sentMessages: 1, receivedMessages: 0, firstMessageTime: 0, lastMessageTime: 0, activeDays: 1 },
+          statistics: { totalMessages: 1, textMessages: 1, imageMessages: 0, voiceMessages: 0, videoMessages: 0, emojiMessages: 0, otherMessages: 0, firstMessageTime: 0, lastMessageTime: 0, activeDays: 1 },
           timeDistribution: {}, commonPhrases: [], commonEmojis: [],
         }));
       }

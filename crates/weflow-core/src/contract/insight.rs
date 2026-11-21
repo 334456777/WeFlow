@@ -157,22 +157,13 @@ pub struct FootprintDiagnostics {
     pub private_session_count: u64,
     /// The groups looked through.
     pub group_session_count: u64,
-    /// Always false.
-    pub fallback_used: bool,
 }
 
-/// One insight record (`insight get`), with `success` inside. A record not found is a
-/// failure of the command instead, so an answer that succeeds holds `success: true` and the record.
+/// One insight record (`insight get`); a record not found is a failure of the command.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightLookup {
-    /// Always true.
-    pub success: bool,
     /// The record.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub record: Option<crate::insight::InsightRecord>,
-    /// Always left out.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub record: crate::insight::InsightRecord,
 }
 
 /// An insight record as lists and events name it, without its log.
@@ -202,8 +193,6 @@ pub struct InsightSummary {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRecords {
-    /// Always true.
-    pub success: bool,
     /// The records of the page.
     pub records: Vec<InsightSummary>,
     /// The records the filters match.
@@ -246,28 +235,21 @@ pub struct InsightTodayStat {
 /// What `insight mark-read` answers; a record not found is a failure of the command.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightMarked {
-    /// Always true.
-    pub success: bool,
-    /// Always left out.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    /// The record marked read.
+    pub id: String,
 }
 
 /// What `insight clear` answers.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightCleared {
-    /// Always true.
-    pub success: bool,
     /// The records removed.
     pub removed: usize,
 }
 
 /// What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the
-/// command fails with `message` instead.
+/// command fails with what happened instead.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightReply {
-    /// Always true.
-    pub success: bool,
     /// What happened, in the server's language.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
@@ -313,22 +295,13 @@ pub struct ModelList {
 }
 
 impl InsightReply {
-    /// A success that says `message`.
+    /// An answer that says `message`.
     pub fn done(message: impl Into<String>) -> Self {
         Self {
-            success: true,
             message: Some(message.into()),
             record: None,
             insight: None,
             probe: None,
-        }
-    }
-
-    /// A failure that says `message`; the command reports it as its error.
-    pub fn failed(message: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            ..Self::done(message)
         }
     }
 }

@@ -29,7 +29,7 @@ const SWITCHES = [
   { key: 'serve_log_requests', label: msg('每个请求在终端输出一行'), fallback: false },
 ] as const;
 
-const KEYS = ['serve_host', ...NUMBERS.map(n => n.key), ...SWITCHES.map(s => s.key), 'autoDownloadWhitelist'];
+const KEYS = ['serve_host', ...NUMBERS.map(n => n.key), ...SWITCHES.map(s => s.key), 'auto_download_whitelist'];
 /** Each key's saved value as text: `''` when none is saved. */
 type Form = Record<string, string>;
 
@@ -65,7 +65,7 @@ export function ServeOptions({ onAi }: { onAi(): void }) {
       for (const k of KEYS) {
         const value = form[k].trim();
         if (value === saved[k]) continue;
-        if (k === 'autoDownloadWhitelist') {
+        if (k === 'auto_download_whitelist') {
           // the config holds a JSON array; the field shows it comma-separated
           const ids = value.split(',').map(s => s.trim()).filter(Boolean);
           await (ids.length ? setSetting(k, JSON.stringify(ids)) : unsetSetting(k));
@@ -117,7 +117,7 @@ export function ServeOptions({ onAi }: { onAi(): void }) {
         <button type="button" className="secondary-button" onClick={onAi}>{t('前往 AI 见解')}<ArrowRight size={12} /></button>)}
       {switchRow(imageDownload)}
       <label className="console-field"><span className="console-field-name">{t('自动下载原图的会话')}</span>
-        <input className="console-input" type="text" spellCheck={false} placeholder={t('会话 ID，用逗号分隔')} value={form.autoDownloadWhitelist} onChange={e => set('autoDownloadWhitelist', e.target.value)} />
+        <input className="console-input" type="text" spellCheck={false} placeholder={t('会话 ID，用逗号分隔')} value={form.auto_download_whitelist} onChange={e => set('auto_download_whitelist', e.target.value)} />
         <small>{t('留空表示不为任何会话下载原图。')}</small></label>
     </SettingsGroup>
     <SaveBar note={note

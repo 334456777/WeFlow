@@ -4,8 +4,7 @@
 //!
 //! WeFlow's desktop app's render-process events (`image:cacheResolved`, `image:decryptProgress`,
 //! `image:updateAvailable`) and the background "better quality available" check have no
-//! counterpart in a CLI; like WeFlow's desktop app's headless worker mode they are disabled, so
-//! `hasUpdate` is always `false`.
+//! counterpart in a CLI, so they are left out.
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -251,12 +250,11 @@ impl ImagePayload {
     }
 }
 
-/// Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead.
+/// Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead: the
+/// command's error, or the row of `image resolve-batch`.
 #[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageResult {
-    /// Whether the image was found and decrypted.
-    pub success: bool,
     /// The decrypted image: its path, or a data URL of it without `preferFilePath`; left out on failure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_path: Option<String>,
@@ -269,24 +267,18 @@ pub struct ImageResult {
     /// The file is only the thumbnail: the original is not on disk.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_thumb: Option<bool>,
-    /// A thumbnail whose original has since been downloaded.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub has_update: Option<bool>,
 }
 
 /// What `image resolve-batch` answers: one result per payload, in their order.
 #[derive(Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 pub struct ImageBatch {
-    /// Always true; each row says how it went.
-    pub success: bool,
-    /// One result for each payload, in their order.
+    /// One result for each payload, in their order: `localPath` when it was found, `error` when not.
     pub rows: Vec<ImageResult>,
 }
 
 impl ImageResult {
     fn ok(local_path: String, is_thumb: Option<bool>) -> Self {
         Self {
-            success: true,
             local_path: Some(local_path),
             is_thumb,
             ..Default::default()
@@ -294,11 +286,31 @@ impl ImageResult {
     }
     fn fail(error: impl Into<String>, kind: &'static str) -> Self {
         Self {
-            success: false,
             error: Some(error.into()),
             failure_kind: Some(kind),
             ..Default::default()
         }
+    }
+
+    /// Whether the image was found and decrypted.
+    pub fn is_ok(&self) -> bool {
+        self.local_path.is_some()
+    }
+
+    /// The result as a command's answer.
+    ///
+    /// # Errors
+    /// The failure, with `failureKind` (and `isThumb` when known) as its details.
+    pub fn into_answer(self) -> AppResult<Self> {
+        if self.is_ok() {
+            return Ok(self);
+        }
+        let mut details = json!({ "failureKind": self.failure_kind });
+        if let Some(thumb) = self.is_thumb {
+            details["isThumb"] = thumb.into();
+        }
+        let message = self.error.unwrap_or_else(|| "image decrypt failed".into());
+        Err(AppError::runtime(message).with_details(details))
     }
 }
 
@@ -1063,7 +1075,7 @@ impl ServiceHub {
             force: true,
             ..p.clone()
         });
-        if !upgraded.success {
+        if !upgraded.is_ok() {
             return None;
         }
         let path = self
@@ -1090,9 +1102,7 @@ impl ServiceHub {
             return ImageResult::fail("missing image identifier", "not_found");
         };
         let finish = |final_path: &str| ImageResult {
-            success: true,
             local_path: Some(local_path_for_payload(final_path, p.prefer_file_path)),
-            has_update: Some(false),
             ..Default::default()
         };
         for key in &keys {
@@ -1295,7 +1305,6 @@ impl ServiceHub {
         let (data, wxgf_failure) = img::unwrap_wxgf(decrypted.data);
         if let Some(reason) = wxgf_failure {
             return ImageResult {
-                success: false,
                 error: Some(unsupported_image_message(p.create_time, reason)),
                 failure_kind: Some(UNSUPPORTED_IMAGE),
                 is_thumb: Some(img::is_thumbnail_path(&dat)),
@@ -1304,7 +1313,6 @@ impl ServiceHub {
         }
         let Some(ext) = img::detect_image_extension(&data) else {
             return ImageResult {
-                success: false,
                 error: Some("decrypted data is not a valid image".into()),
                 failure_kind: Some("decrypt_failed"),
                 is_thumb: Some(img::is_thumbnail_path(&dat)),
@@ -1368,10 +1376,7 @@ impl ServiceHub {
                     .clone()
             })
             .collect();
-        ImageBatch {
-            success: true,
-            rows,
-        }
+        ImageBatch { rows }
     }
 
     /// `chat:getImageData`: the decrypted image of a message as bytes.
@@ -1639,21 +1644,18 @@ impl ServiceHub {
 
     fn image_data_for_payload(&self, payload: &ImagePayload) -> AppResult<Vec<u8>> {
         let result = self.image_decrypt(payload);
-        let path = result
-            .local_path
-            .filter(|_| result.success)
-            .ok_or_else(|| {
-                let err = AppError::runtime(
-                    result
-                        .error
-                        .unwrap_or_else(|| "image decrypt failed".into()),
-                );
-                // what went wrong, as `chat image` says it: `not_found` is a 404 of the command API
-                match result.failure_kind {
-                    Some(kind) => err.with_details(json!({ "failureKind": kind })),
-                    None => err,
-                }
-            })?;
+        let path = result.local_path.ok_or_else(|| {
+            let err = AppError::runtime(
+                result
+                    .error
+                    .unwrap_or_else(|| "image decrypt failed".into()),
+            );
+            // what went wrong, as `chat image` says it: `not_found` is a 404 of the command API
+            match result.failure_kind {
+                Some(kind) => err.with_details(json!({ "failureKind": kind })),
+                None => err,
+            }
+        })?;
         std::fs::read(&path).map_err(|e| AppError::runtime(format!("failed to read {path}: {e}")))
     }
 
@@ -1801,20 +1803,22 @@ mod tests {
 
     #[test]
     fn result_json_omits_unset_fields() {
-        let ok = ImageResult {
-            success: true,
-            local_path: Some("/x.jpg".into()),
-            is_thumb: Some(false),
-            has_update: Some(false),
-            ..Default::default()
-        };
+        let ok = ImageResult::ok("/x.jpg".into(), Some(false));
         assert_eq!(
             serde_json::to_value(&ok).unwrap(),
-            json!({ "success": true, "localPath": "/x.jpg", "isThumb": false, "hasUpdate": false })
+            json!({ "localPath": "/x.jpg", "isThumb": false })
         );
         assert_eq!(
             serde_json::to_value(ImageResult::fail("nope", "not_found")).unwrap(),
-            json!({ "success": false, "error": "nope", "failureKind": "not_found" })
+            json!({ "error": "nope", "failureKind": "not_found" })
         );
+        let err = ImageResult::fail("nope", "not_found")
+            .into_answer()
+            .unwrap_err();
+        assert_eq!(
+            (err.message.as_str(), err.details.clone()),
+            ("nope", Some(json!({ "failureKind": "not_found" })))
+        );
+        assert_eq!(ok.clone().into_answer().unwrap().local_path, ok.local_path);
     }
 }

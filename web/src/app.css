@@ -646,7 +646,6 @@ time, .num { font-variant-numeric: tabular-nums; }
 .toggle input:focus-visible + span { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .settings-footnote { display: block; margin-top: var(--space-4); color: var(--fg-subtle); font-size: var(--text-2xs); }
 .settings-tabs { width: 160px; margin-left: auto; }
-.badge.refused { color: var(--state-danger); box-shadow: var(--tag-shadow); }
 
 /* Notice. */
 .toast {

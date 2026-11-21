@@ -425,13 +425,12 @@ impl ServiceHub {
             };
             let mut path = self.image_decrypt(&payload).local_path;
             if path.is_none() {
-                let cached = self.image_resolve_cache(&crate::services::ImagePayload {
-                    force: false,
-                    ..payload
-                });
-                if cached.success {
-                    path = cached.local_path;
-                }
+                path = self
+                    .image_resolve_cache(&crate::services::ImagePayload {
+                        force: false,
+                        ..payload
+                    })
+                    .local_path;
             }
             let path = path?;
             let thumbnail = !path.starts_with("data:") && crate::image::is_thumbnail_path(&path);

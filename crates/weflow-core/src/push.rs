@@ -289,14 +289,14 @@ impl PushEngine {
     }
 
     fn filter_allows(&self, session_id: &str) -> bool {
-        let mode = self.hub.config_value("messagePushFilterMode");
+        let mode = self.hub.config_value("message_push_filter_mode");
         let mode = mode.as_str().unwrap_or("all");
         if mode != "whitelist" && mode != "blacklist" {
             return true;
         }
         let listed = self
             .hub
-            .config_value("messagePushFilterList")
+            .config_value("message_push_filter_list")
             .as_array()
             .is_some_and(|l| {
                 l.iter()

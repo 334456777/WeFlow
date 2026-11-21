@@ -30,7 +30,7 @@ fn request(session: &str, format: &str) -> MessageExportRequest {
 #[test]
 fn connection_opens_the_encrypted_account() {
     let (_root, hub) = common::mock_hub("n-conn");
-    assert!(hub.db_test().unwrap().connected);
+    assert!(hub.db_test().unwrap().account_dir.is_dir());
 }
 
 #[test]
@@ -586,24 +586,6 @@ fn moments_users_and_export_stats() {
         (Some(s.total_posts), Some(s.total_friends), s.my_posts),
         (Some(5), Some(3), Some(2))
     );
-}
-
-#[test]
-fn operations_that_modify_wechat_databases_are_refused_clearly() {
-    let (_root, hub) = common::mock_hub("n-readonly");
-    for err in [
-        hub.sns_block_delete_install().unwrap_err(),
-        hub.sns_delete_post("1001").unwrap_err(),
-        hub.chat_mark_all_read().unwrap_err(),
-        hub.delete_message("wxid_friend", 1, 1, None).unwrap_err(),
-        hub.anti_revoke("install", &["wxid_friend".into()])
-            .unwrap_err(),
-    ] {
-        // refused by design, told apart from failures (the HTTP API answers 501)
-        assert_eq!((err.code.as_str(), err.exit_code), ("unsupported", 4));
-        let err = err.into_message();
-        assert!(err.contains("read-only"), "{err}");
-    }
 }
 
 // ── reports ──

@@ -213,7 +213,6 @@ function memberStats(params: Params): MemberAnalytics {
     statistics: {
       totalMessages: said.length, textMessages: textCount, imageMessages: images, voiceMessages: voices, videoMessages: videos,
       emojiMessages: stickers, otherMessages: said.length - textCount - images - voices - videos - stickers,
-      sentMessages: username === ME ? said.length : 0, receivedMessages: username === ME ? 0 : said.length,
       firstMessageTime: said[0]?.createTime ?? null, lastMessageTime: said[said.length - 1]?.createTime ?? null,
       activeDays: days.size, messageTypeCounts: types,
     },
@@ -292,10 +291,13 @@ const routes: Record<string, Route> = {
   'GET api/insight/footprint': params => footprint(text(params, 'start'), text(params, 'end')),
   'POST insight/footprint-summary': params => footprintSummary(text(params, 'payload-json')),
   'GET insight/records': params => insightRecords(text(params, 'keyword'), text(params, 'session'), number(params, 'offset') ?? 0, number(params, 'limit') ?? 50),
-  'GET api/insight/get': params => insightRecord(text(params, 'id')),
-  'PUT insight/mark-read': params => markRead(text(params, 'id')),
+  'GET api/insight/get': params => insightRecord(text(params, 'id')) ?? new Failure(404, 'not_found', '未找到该见解记录'),
+  'PUT insight/mark-read': params => markRead(text(params, 'id')) ?? new Failure(404, 'not_found', '未找到该见解记录'),
   'DELETE insight/clear': params => clearInsights(text(params, 'session')),
-  'POST insight/trigger': params => triggerInsight(text(params, 'session-id')),
+  'POST insight/trigger': params => {
+    const reply = triggerInsight(text(params, 'session-id'));
+    return 'problem' in reply ? new Failure(500, 'runtime_error', reply.problem) : reply;
+  },
   'POST insight/test': () => testModel(getSetting('ai_model_api_format'), getSetting('ai_model_api_model')),
   'GET insight/models': () => sampleModels(getSetting('ai_model_api_format')),
   'GET backup/inspect': () => backupManifest(),

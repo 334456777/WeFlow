@@ -109,7 +109,7 @@ describe('AI settings', () => {
     fireEvent.click(save);
     await act(async () => {});
     expect(calls.filter(c => c.method === 'PUT').map(c => c.body)).toEqual([
-      { key: 'aiInsightAllowContext', value: 'true' }, { key: 'aiInsightContextCount', value: '80' },
+      { key: 'ai_insight_allow_context', value: 'true' }, { key: 'ai_insight_context_count', value: '80' },
     ]);
   });
 

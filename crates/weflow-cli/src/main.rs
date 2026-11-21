@@ -129,7 +129,7 @@ async fn main() -> ExitCode {
         let (doc, exit) = json_document(outcome);
         return answered(weflow_core::output::print(&format!("{doc}\n")), exit);
     }
-    match checked(outcome) {
+    match outcome {
         Ok(value) => answered(print_response(&success(value), summary), 0),
         Err(err) => {
             print_failure(&err);
@@ -200,15 +200,7 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
                 } else {
                     whitelist
                 };
-                let started = svc.start(list);
-                if started["success"] != true {
-                    return Err(AppError::runtime(
-                        started["error"]
-                            .as_str()
-                            .unwrap_or("auto download failed to start")
-                            .to_string(),
-                    ));
-                }
+                svc.start(list).map_err(AppError::runtime)?;
                 weflow_core::output::event(
                     json!({ "type": "auto_download_started", "status": svc.status() }),
                 );
@@ -235,10 +227,12 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
         Commands::Image(command) => Ok(match &command.command {
             ImageSubcommand::AutoDownload { .. } => unreachable!("handled above"),
             ImageSubcommand::Decrypt { target, force } => {
-                json!(hub.image_decrypt(&target.payload(*force)))
+                json!(hub.image_decrypt(&target.payload(*force)).into_answer()?)
             }
             ImageSubcommand::ResolveCache { target } => {
-                json!(hub.image_resolve_cache(&target.payload(false)))
+                json!(hub
+                    .image_resolve_cache(&target.payload(false))
+                    .into_answer()?)
             }
             ImageSubcommand::ResolveBatch { payloads_json } => {
                 let list: Vec<Value> = serde_json::from_str(payloads_json).map_err(|e| {
@@ -275,14 +269,6 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
         Commands::Biz(_) => unreachable!("a read"),
         Commands::Cache(_) | Commands::Config(_) | Commands::Lang { .. } => unreachable!(),
     }
-}
-
-/// A result that reports `success: false` itself is a failure.
-fn checked(outcome: AppResult<Value>) -> AppResult<Value> {
-    outcome.and_then(|value| match reported_failure(&value) {
-        Some(err) => Err(err),
-        None => Ok(value),
-    })
 }
 
 /// The exit status of a run whose answer, with exit code `code`, was written to stdout as `written` says. An answer
@@ -384,31 +370,6 @@ impl Summary {
     }
 }
 
-/// Some services report a failure in their result (`{"success": false, "error" | "message": …}`), the shape WeFlow's
-/// desktop app expects. For the CLI that is a failed command: an error envelope and a non-zero exit code, with the
-/// other fields (such as `failureKind`) kept as details.
-fn reported_failure(value: &Value) -> Option<AppError> {
-    let fields = value.as_object()?;
-    if fields.get("success") != Some(&Value::Bool(false)) {
-        return None;
-    }
-    let message = ["error", "message"]
-        .iter()
-        .find_map(|key| fields.get(*key).and_then(Value::as_str))
-        .filter(|text| !text.is_empty())
-        .unwrap_or("the operation failed");
-    let mut err = AppError::runtime(message);
-    let details: serde_json::Map<String, Value> = fields
-        .iter()
-        .filter(|(key, _)| !matches!(key.as_str(), "success" | "error" | "message"))
-        .map(|(key, v)| (key.clone(), v.clone()))
-        .collect();
-    if !details.is_empty() {
-        err.details = Some(Value::Object(details));
-    }
-    Some(err)
-}
-
 /// The process exit status for an error's exit code; one outside 0 to 255 becomes 1 rather than wrapping (256 would
 /// read as success).
 fn exit_status(code: i32) -> u8 {
@@ -423,41 +384,4 @@ fn print_failure(err: &AppError) {
         details,
         Paint::of(Stream::Stderr),
     ));
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reported_failures_become_errors() {
-        let err = reported_failure(
-            &json!({ "success": false, "error": "not found", "failureKind": "not_found" }),
-        )
-        .unwrap();
-        assert_eq!((err.code.as_str(), err.exit_code), ("runtime_error", 1));
-        assert_eq!(err.message, "not found");
-        assert_eq!(err.details, Some(json!({ "failureKind": "not_found" })));
-
-        let err = reported_failure(&json!({ "success": false, "message": "no key" })).unwrap();
-        assert_eq!(
-            (err.message.as_str(), err.details.is_none()),
-            ("no key", true)
-        );
-        assert_eq!(
-            reported_failure(&json!({ "success": false }))
-                .unwrap()
-                .message,
-            weflow_core::locale::localize("the operation failed".to_string())
-        );
-
-        for ok in [
-            json!({ "success": true, "path": "x" }),
-            json!({ "out": "x" }),
-            json!([{ "success": false }]),
-            json!({ "results": [{ "success": false }] }),
-        ] {
-            assert!(reported_failure(&ok).is_none(), "{ok}");
-        }
-    }
 }

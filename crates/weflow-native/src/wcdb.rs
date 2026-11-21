@@ -2,8 +2,7 @@
 //!
 //! Everything is served by the pure-Rust backend in [`crate::db`]/[`crate::msg`]; there is
 //! no dependency on the closed-source `wcdb_api` library. Calls that have not been ported yet return a
-//! clear "not implemented" error instead of touching anything native. The calls refused by design take the
-//! arguments of the operation they stand for and leave them unused.
+//! clear "not implemented" error instead of touching anything native.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -363,11 +362,6 @@ impl Wcdb {
         }
     }
 
-    /// Raw status code and message (some triggers report "already installed" as a positive code).
-    pub fn invoke_status_code(&self, name: &str, _args: &[Arg<'_>]) -> Result<(i32, String)> {
-        self.pending(name)
-    }
-
     // ── search, contacts, groups, statistics, Moments and media ──
 
     /// The messages whose text holds `keyword`, newest first, each hit with its conversation (see
@@ -495,66 +489,9 @@ impl Wcdb {
         self.account()?.sns_export_stats(my_wxid)
     }
 
-    /// Refused: it would check a trigger in WeChat's Moments database.
-    pub fn sns_block_delete_check(&self) -> Result<Value> {
-        self.read_only("sns_block_delete_check")
-    }
-
-    /// Refused: it would install a trigger in WeChat's Moments database.
-    pub fn sns_block_delete_install(&self) -> Result<Value> {
-        self.read_only("sns_block_delete_install")
-    }
-
-    /// Refused: it would remove a trigger from WeChat's Moments database.
-    pub fn sns_block_delete_uninstall(&self) -> Result<Value> {
-        self.read_only("sns_block_delete_uninstall")
-    }
-
-    /// Refused: it would delete a post from WeChat's Moments database.
-    pub fn sns_delete_post(&self, _post_id: &str) -> Result<Value> {
-        self.read_only("sns_delete_post")
-    }
-
     /// The rows of a read-only statement on one database, as JSON objects (see [`Account::exec_query`]).
     pub fn exec_query(&self, kind: &str, path: &str, sql: &str) -> Result<Value> {
         self.account()?.exec_query(kind, Some(path), sql)
-    }
-
-    /// Refused: it would change a message in WeChat's database.
-    pub fn update_message(
-        &self,
-        _session_id: &str,
-        _local_id: i64,
-        _create_time: i32,
-        _content: &str,
-    ) -> Result<Value> {
-        self.read_only("update_message")
-    }
-
-    /// Refused: it would delete a message from WeChat's database.
-    pub fn delete_message(
-        &self,
-        _session_id: &str,
-        _local_id: i64,
-        _create_time: i32,
-        _db_path_hint: Option<&str>,
-    ) -> Result<Value> {
-        self.read_only("delete_message")
-    }
-
-    /// Refused: it would check a conversation's anti-revoke trigger in WeChat's database.
-    pub fn anti_revoke_check(&self, _session_id: &str) -> Result<Value> {
-        self.read_only("anti_revoke_check")
-    }
-
-    /// Refused: it would install an anti-revoke trigger in WeChat's database.
-    pub fn anti_revoke_install(&self, _session_id: &str) -> Result<Value> {
-        self.read_only("anti_revoke_install")
-    }
-
-    /// Refused: it would remove an anti-revoke trigger from WeChat's database.
-    pub fn anti_revoke_uninstall(&self, _session_id: &str) -> Result<Value> {
-        self.read_only("anti_revoke_uninstall")
     }
 
     /// Image/video messages of the conversations `session_ids`, newest first, and whether more remain.
@@ -575,11 +512,6 @@ impl Wcdb {
             limit,
             offset,
         )
-    }
-
-    /// Refused: it would mark every conversation read in WeChat's database.
-    pub fn mark_all_sessions_read(&self) -> Result<Value> {
-        self.read_only("mark_all_sessions_read")
     }
 
     /// `{ username: name }` of the usernames in the JSON array `usernames_json`: the remark, else the nickname, else

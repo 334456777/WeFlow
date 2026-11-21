@@ -62,34 +62,6 @@ pub(crate) enum ChatSubcommand {
         /// Contact username, the wxid
         username: String,
     },
-    /// Edit a message; always refused, as the database is read-only
-    UpdateMessage {
-        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
-        session_id: String,
-        /// Local message id
-        local_id: i64,
-        /// Message create time in seconds
-        create_time: i32,
-        /// New message content
-        content: String,
-    },
-    /// Delete a message; always refused, as the database is read-only
-    DeleteMessage {
-        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
-        session_id: String,
-        /// Local message id
-        local_id: i64,
-        /// Message create time in seconds
-        create_time: i32,
-        /// Database file the message is stored in
-        #[arg(long)]
-        db_path_hint: Option<String>,
-    },
-    /// Anti-revoke triggers; checking, installing and removing are refused, as the database is read-only
-    AntiRevoke {
-        #[command(subcommand)]
-        command: AntiRevokeSubcommand,
-    },
     /// Look up one message by local id or server id
     Message {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
@@ -138,8 +110,6 @@ pub(crate) enum ChatSubcommand {
         #[arg(long)]
         extra: bool,
     },
-    /// Mark all sessions as read; always refused, as the database is read-only
-    MarkRead,
     /// Contact counts per tab: friends, groups, official accounts and former friends
     TabCounts,
     /// Per-session statistics used by the export page
@@ -334,27 +304,6 @@ pub(crate) struct PageArgs {
     pub(crate) parsed: bool,
 }
 
-#[derive(Subcommand, Debug)]
-pub(crate) enum AntiRevokeSubcommand {
-    /// Sessions that anti-revoke can be installed for
-    Sessions,
-    /// Check whether the anti-revoke trigger is installed for sessions; refused, as the database is read-only
-    Check {
-        /// Conversation ids
-        sessions: Vec<String>,
-    },
-    /// Install the anti-revoke trigger for sessions; refused, as the database is read-only
-    Install {
-        /// Conversation ids
-        sessions: Vec<String>,
-    },
-    /// Remove the anti-revoke trigger from sessions; refused, as the database is read-only
-    Uninstall {
-        /// Conversation ids
-        sessions: Vec<String>,
-    },
-}
-
 pub(crate) async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::contract::MediaWritten;
     let command = match media_of(command.command) {
@@ -367,13 +316,11 @@ pub(crate) async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppRe
                     unreachable!("a voice is decoded in memory")
                 };
                 return Ok(json!(weflow_core::contract::VoiceData {
-                    success: true,
                     data: base64::engine::general_purpose::STANDARD.encode(&wav),
                 }));
             };
             let bytes = write_media(file, &path)?;
             return Ok(json!(MediaWritten {
-                success: true,
                 path: path.to_string_lossy().into_owned(),
                 bytes,
             }));
@@ -399,30 +346,6 @@ pub(crate) async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppRe
         | ChatSubcommand::ImageInfo { .. }
         | ChatSubcommand::Statuses { .. }
         | ChatSubcommand::TabCounts => unreachable!("a read"),
-        ChatSubcommand::UpdateMessage {
-            session_id,
-            local_id,
-            create_time,
-            content,
-        } => hub.update_message(session_id, *local_id, *create_time, content),
-        ChatSubcommand::DeleteMessage {
-            session_id,
-            local_id,
-            create_time,
-            db_path_hint,
-        } => hub.delete_message(session_id, *local_id, *create_time, db_path_hint.as_deref()),
-        ChatSubcommand::AntiRevoke { command } => match command {
-            AntiRevokeSubcommand::Sessions => hub.chat_anti_revoke_sessions(),
-            AntiRevokeSubcommand::Check { sessions } => {
-                Ok(json!(hub.anti_revoke("check", sessions)?))
-            }
-            AntiRevokeSubcommand::Install { sessions } => {
-                Ok(json!(hub.anti_revoke("install", sessions)?))
-            }
-            AntiRevokeSubcommand::Uninstall { sessions } => {
-                Ok(json!(hub.anti_revoke("uninstall", sessions)?))
-            }
-        },
         ChatSubcommand::Detail {
             session_id,
             fast,
@@ -431,7 +354,6 @@ pub(crate) async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppRe
             (false, true) => hub.chat_detail_extra(session_id).map(|t| json!(t)),
             _ => hub.chat_detail(session_id).map(|d| json!(d)),
         },
-        ChatSubcommand::MarkRead => hub.chat_mark_all_read(),
         ChatSubcommand::ExportStats {
             sessions,
             start,

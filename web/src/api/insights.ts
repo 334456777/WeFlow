@@ -14,8 +14,8 @@ export type InsightLog = Contract.InsightRecordLog;
 /** A conversation with records, and how many. */
 export type InsightContact = Contract.InsightContact;
 
-/** A page of `insight records`, without the desktop app's `success`. */
-export type InsightPage = Omit<Contract.InsightRecords, 'success'>;
+/** A page of `insight records`. */
+export type InsightPage = Contract.InsightRecords;
 
 /** Records per page. */
 export const PAGE = 50;
@@ -31,7 +31,7 @@ export async function getInsights(filter: { keyword?: string; session?: string |
 /** The log of the record `id` (`insight get`), read in the server's process; null when it has none. */
 export async function getInsightLog(id: string, signal?: AbortSignal): Promise<InsightLog | null> {
   const found = await get<Contract.InsightLookup>('api/insight/get', { id }, signal);
-  return found.record?.log ?? null;
+  return found.record.log ?? null;
 }
 
 /** `insight mark-read`. */

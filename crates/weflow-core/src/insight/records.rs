@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::now_millis;
+use crate::error::{AppError, AppResult};
 use crate::locale::tr;
 use crate::model_api::ModelApiFormat;
 
@@ -339,7 +340,6 @@ impl RecordStore {
             .collect();
         filtered.sort_by_key(|a| std::cmp::Reverse(a.created_at));
         crate::contract::InsightRecords {
-            success: true,
             records: filtered
                 .iter()
                 .skip(offset)
@@ -363,50 +363,38 @@ impl RecordStore {
         }
     }
 
-    /// The account's record `id`, or `success: false` and why when there is none.
-    pub fn get(&self, id: &str) -> crate::contract::InsightLookup {
-        let failed = |error: &str| crate::contract::InsightLookup {
-            success: false,
-            record: None,
-            error: Some(error.to_string()),
-        };
+    /// The account's record `id`.
+    ///
+    /// # Errors
+    /// A usage error when `id` is empty, and a not-found error (a 404 of the command API, #822) when the account has
+    /// no such record.
+    pub fn get(&self, id: &str) -> AppResult<crate::contract::InsightLookup> {
         let id = id.trim();
         if id.is_empty() {
-            return failed(tr("record id is empty", "记录 ID 为空"));
+            return Err(AppError::usage(tr("record id is empty", "记录 ID 为空")));
         }
-        match self.scoped().find(|r| r.id == id) {
-            Some(r) => crate::contract::InsightLookup {
-                success: true,
-                record: Some(r.clone()),
-                error: None,
-            },
-            None => failed(tr("insight record not found", "未找到该见解记录")),
-        }
+        self.scoped()
+            .find(|r| r.id == id)
+            .map(|r| crate::contract::InsightLookup { record: r.clone() })
+            .ok_or_else(not_found)
     }
 
-    /// Marks the account's record `id` read and saves the file, or answers `success: false` when there is none.
-    pub fn mark_read(&mut self, id: &str) -> crate::contract::InsightMarked {
+    /// Marks the account's record `id` read and saves the file.
+    ///
+    /// # Errors
+    /// A not-found error when the account has no such record.
+    pub fn mark_read(&mut self, id: &str) -> AppResult<crate::contract::InsightMarked> {
         let id = id.trim();
-        match self
+        let record = self
             .records
             .iter_mut()
             .find(|r| r.id == id && r.account_scope == self.scope)
-        {
-            None => crate::contract::InsightMarked {
-                success: false,
-                error: Some(tr("insight record not found", "未找到该见解记录").to_string()),
-            },
-            Some(r) => {
-                if !r.read {
-                    r.read = true;
-                    self.persist();
-                }
-                crate::contract::InsightMarked {
-                    success: true,
-                    error: None,
-                }
-            }
+            .ok_or_else(not_found)?;
+        if !record.read {
+            record.read = true;
+            self.persist();
         }
+        Ok(crate::contract::InsightMarked { id: id.to_string() })
     }
 
     /// Removes the account's records that the conversation and the times of `f` match, and saves the file.
@@ -424,11 +412,13 @@ impl RecordStore {
             false
         });
         self.persist();
-        crate::contract::InsightCleared {
-            success: true,
-            removed,
-        }
+        crate::contract::InsightCleared { removed }
     }
+}
+
+/// The failure of a record id the account has no record of.
+fn not_found() -> AppError {
+    AppError::not_found(tr("insight record not found", "未找到该见解记录"))
 }
 
 fn uuid_v4() -> String {
@@ -505,10 +495,10 @@ mod tests {
         };
         assert_eq!(mine.list(&f).total, 1);
         assert!(
-            !other.get(&a.id).success,
+            other.get(&a.id).is_err(),
             "records of other accounts are invisible"
         );
-        assert!(mine.mark_read(&a.id).success);
+        assert_eq!(mine.mark_read(&a.id).unwrap().id, a.id);
         assert_eq!(mine.list(&RecordFilters::default()).unread_count, 1);
 
         let mut again = RecordStore::load(&home, "wxid:me");

@@ -49,7 +49,7 @@ describe('the options weflow serve starts with (#406)', () => {
   });
 
   it('reads and writes the image auto-download whitelist as a JSON array', async () => {
-    const calls = serve({ autoDownloadWhitelist: ['a', 'b'] });
+    const calls = serve({ auto_download_whitelist: ['a', 'b'] });
     render(<ServeOptions onAi={() => {}} />);
     await act(async () => {});
     const field = screen.getByPlaceholderText('会话 ID，用逗号分隔') as HTMLInputElement;
@@ -58,12 +58,12 @@ describe('the options weflow serve starts with (#406)', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await act(async () => {});
     expect(calls.filter(c => c.method !== 'GET')).toEqual([
-      { method: 'PUT', url: '/config/set', body: { key: 'autoDownloadWhitelist', value: '["a","b","c"]' } },
+      { method: 'PUT', url: '/config/set', body: { key: 'auto_download_whitelist', value: '["a","b","c"]' } },
     ]);
     fireEvent.change(field, { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await act(async () => {});
-    expect(calls.filter(c => c.method !== 'GET').at(-1)).toEqual({ method: 'DELETE', url: '/config/unset?key=autoDownloadWhitelist', body: undefined });
+    expect(calls.filter(c => c.method !== 'GET').at(-1)).toEqual({ method: 'DELETE', url: '/config/unset?key=auto_download_whitelist', body: undefined });
   });
 
   it('checks the numbers, and shows what the server refused', async () => {    serve({}, 'serve_host');

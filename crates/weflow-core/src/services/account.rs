@@ -85,10 +85,7 @@ impl ServiceHub {
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
         wcdb.test_connection(&account_dir, &key)
             .map_err(|err| AppError::native(format!("{err:#}")))?;
-        Ok(crate::contract::DbConnection {
-            account_dir,
-            connected: true,
-        })
+        Ok(crate::contract::DbConnection { account_dir })
     }
 
     pub(super) fn open_wcdb(&self) -> AppResult<weflow_native::wcdb::Wcdb> {

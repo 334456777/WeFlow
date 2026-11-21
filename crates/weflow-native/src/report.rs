@@ -817,7 +817,7 @@ impl Account {
             "diagnostics": {
                 "truncated": private_truncated || mention_truncated, "private_truncated": private_truncated, "mention_truncated": mention_truncated,
                 "scanned_dbs": self.message_dbs().len(), "elapsed_ms": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-                "private_session_count": private_ids.len(), "group_session_count": group_ids.len(), "fallback_used": false
+                "private_session_count": private_ids.len(), "group_session_count": group_ids.len()
             }
         }))
     }

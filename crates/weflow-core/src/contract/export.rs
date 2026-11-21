@@ -127,8 +127,6 @@ pub struct ExportWritten {
 /// What `group export-members` or `export-member-messages` wrote.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct GroupExported {
-    /// Always true.
-    pub success: bool,
     /// The members, or the messages, written.
     pub count: usize,
 }
@@ -137,8 +135,6 @@ pub struct GroupExported {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SnsExported {
-    /// Always true.
-    pub success: bool,
     /// Empty when no post matched, and nothing was written.
     pub file_path: PathBuf,
     /// The posts written.

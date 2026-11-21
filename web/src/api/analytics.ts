@@ -57,8 +57,8 @@ export function monthBars(spread: TimeSpread): Bar[] {
   return bars;
 }
 
-/** The kinds of messages, the most first, those with none left out. */
-export function typeBars(o: Overall): Bar[] {
+/** The kinds of messages, the most first, those with none left out: of the private chats, or of a group member. */
+export function typeBars(o: Pick<Overall, 'textMessages' | 'imageMessages' | 'voiceMessages' | 'videoMessages' | 'emojiMessages' | 'otherMessages'>): Bar[] {
   return [
     { label: t('文字'), value: o.textMessages }, { label: t('图片'), value: o.imageMessages }, { label: t('语音'), value: o.voiceMessages },
     { label: t('视频'), value: o.videoMessages }, { label: t('表情'), value: o.emojiMessages }, { label: t('其他'), value: o.otherMessages },

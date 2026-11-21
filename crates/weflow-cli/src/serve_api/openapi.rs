@@ -9,7 +9,7 @@ use clap::{Arg, Command, CommandFactory};
 use serde_json::{json, Map, Value};
 
 use super::endpoints::{api_args, param_of, Kind};
-use super::rules::{refused, Rule, Verb, HIDDEN, METHODS};
+use super::rules::{Rule, Verb, HIDDEN, METHODS};
 use super::{files, in_process, API_VERSION};
 
 fn pick(zh: bool, en: &str, cn: &str) -> String {
@@ -26,7 +26,6 @@ fn verb_name(verb: Verb) -> &'static str {
         Verb::Get => "GET",
         Verb::Post => "POST",
         Verb::Put => "PUT",
-        Verb::Patch => "PATCH",
         Verb::Delete => "DELETE",
     }
 }
@@ -222,8 +221,6 @@ enum Variant {
     Without(&'static str),
     /// The argument is given.
     With(&'static str),
-    /// The argument has one of these values.
-    OneOf(&'static str, Vec<&'static str>),
 }
 
 fn path_item(cmd: &Command, path: &[String], rule: Rule, zh: bool) -> Value {
@@ -245,25 +242,6 @@ fn path_item(cmd: &Command, path: &[String], rule: Rule, zh: bool) -> Value {
                 ),
             )),
         ),
-        Rule::Value { arg, values } => {
-            let mut variants: Vec<(Verb, Variant)> = Vec::new();
-            for (value, verb) in values {
-                match variants.iter_mut().find(|(v, _)| v == verb) {
-                    Some((_, Variant::OneOf(_, list))) => list.push(value),
-                    _ => variants.push((*verb, Variant::OneOf(arg, vec![value]))),
-                }
-            }
-            let pairs: Vec<String> = values
-                .iter()
-                .map(|(value, verb)| format!("`{value}` → {}", verb_name(*verb)))
-                .collect();
-            let note = pick(
-                zh,
-                &format!("The method follows `{arg}`: {}.", pairs.join(", ")),
-                &format!("方法由 `{arg}` 决定：{}。", pairs.join("，")),
-            );
-            (variants, Some(note))
-        }
     };
     let many = variants.len() > 1;
     let mut item = Map::new();
@@ -286,7 +264,7 @@ fn operation(
     zh: bool,
 ) -> Value {
     let name = path.join(" ");
-    let in_body = matches!(verb, Verb::Post | Verb::Put | Verb::Patch);
+    let in_body = matches!(verb, Verb::Post | Verb::Put);
     let mut parameters = Vec::new();
     let mut properties = Map::new();
     let mut required = Vec::new();
@@ -297,10 +275,6 @@ fn operation(
         match variant {
             Variant::Without(a) if param.name == *a => continue,
             Variant::With(a) if param.name == *a => needed = true,
-            Variant::OneOf(a, values) if param.name == *a => {
-                schema = json!({ "type": "string", "enum": values });
-                needed = true;
-            }
             _ => {}
         }
         let help = text(arg.get_long_help().or(arg.get_help()));
@@ -350,13 +324,6 @@ fn operation(
         .collect();
     if !description.is_empty() {
         op["description"] = description.join("\n\n").into();
-    }
-    if refused(&name, verb) {
-        op["x-weflow-refused"] = true.into();
-        // it never succeeds: there is no answer to describe
-        if let Some(responses) = op["responses"].as_object_mut() {
-            responses.remove("200");
-        }
     }
     if in_body && !properties.is_empty() {
         let mut schema = json!({
@@ -711,7 +678,7 @@ pub(super) fn contract() -> &'static Contract {
                 of(generator.subschema_for::<WeChatProcesses>()),
             );
             use weflow_core::contract::{
-                AntiRevokeResults, ChatImages, EmojisDownloaded, GroupHint, MediaStream, MediaWritten,
+                ChatImages, EmojisDownloaded, GroupHint, MediaStream, MediaWritten,
                 SnsMediaFetched, VoiceCache, VoiceData, VoiceMessages, VoicesPrepared,
             };
             data.insert("chat images", of(generator.subschema_for::<ChatImages>()));
@@ -721,15 +688,6 @@ pub(super) fn contract() -> &'static Contract {
             data.insert("chat voice-preload", of(generator.subschema_for::<VoicesPrepared>()));
             data.insert("chat emoji", of(generator.subschema_for::<EmojisDownloaded>()));
             data.insert("chat group-hint", of(generator.subschema_for::<GroupHint>()));
-            data.insert("chat anti-revoke check", of(generator.subschema_for::<AntiRevokeResults>()));
-            data.insert(
-                "chat anti-revoke sessions",
-                json!({
-                    "description": "The conversations but official accounts: the rows of WeChat's session table",
-                    "type": "array",
-                    "items": { "$ref": "#/components/schemas/Row" },
-                }),
-            );
             // the command routes of the media: the `/api/` routes answer the file itself
             for command in ["chat image-data", "chat video-data"] {
                 data.insert(command, of(generator.subschema_for::<MediaWritten>()));
@@ -1343,17 +1301,14 @@ mod tests {
         }
     }
 
-    /// Every command that can succeed says what its `data` holds (#430), but two whose answer is any value.
+    /// Every command says what its `data` holds (#430), but two whose answer is any value.
     #[test]
     fn every_answer_is_described() {
         let undescribed: Vec<String> = super::super::Endpoints::new()
             .0
-            .iter()
-            .filter(|(name, ep)| {
-                !contract().data.contains_key(name.as_str())
-                    && !ep.verbs().iter().all(|verb| refused(name, *verb))
-            })
-            .map(|(name, _)| name.clone())
+            .keys()
+            .filter(|name| !contract().data.contains_key(name.as_str()))
+            .cloned()
             .collect();
         // a contact's row of WeChat's table, and the value of any key of the config
         assert_eq!(undescribed, ["chat contact", "config get"]);
@@ -1962,23 +1917,6 @@ mod tests {
             item["put"]["requestBody"]["content"]["application/json"]["schema"]["required"],
             json!(["set"])
         );
-        let item = &doc["paths"]["/sns/block-delete"];
-        let action = |m: &str| {
-            item[m]["parameters"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .find(|p| p["name"] == "action")
-                .map(|p| p["schema"]["enum"].clone())
-                .unwrap_or_else(|| {
-                    item[m]["requestBody"]["content"]["application/json"]["schema"]["properties"]
-                        ["action"]["enum"]
-                        .clone()
-                })
-        };
-        assert_eq!(action("get"), json!(["check"]));
-        assert_eq!(action("put"), json!(["install"]));
-        assert_eq!(action("delete"), json!(["uninstall"]));
     }
 
     #[test]

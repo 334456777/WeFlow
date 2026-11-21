@@ -85,7 +85,7 @@ fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic:
             while !stop.load(Ordering::Relaxed) {
                 if hub.insight_enabled() {
                     let notify =
-                        hub.config_value("aiInsightNotificationEnabled") != Value::Bool(false);
+                        hub.config_value("ai_insight_notification_enabled") != Value::Bool(false);
                     let mut emit = |r: &weflow_core::insight::InsightRecord| {
                         if notify {
                             print_insight(r);
@@ -94,7 +94,7 @@ fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic:
                     if std::time::Instant::now() >= next_scan {
                         hub.insight_silence_scan(&mut emit).await;
                         let hours = hub
-                            .config_value("aiInsightScanIntervalHours")
+                            .config_value("ai_insight_scan_interval_hours")
                             .as_f64()
                             .filter(|h| *h != 0.0)
                             .unwrap_or(4.0)
@@ -116,7 +116,7 @@ fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic:
 }
 
 pub(crate) fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
-    hub.config_value("autoDownloadWhitelist")
+    hub.config_value("auto_download_whitelist")
         .as_array()
         .map(|a| {
             a.iter()
@@ -183,7 +183,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         .map(str::trim)
         .filter(|t| !t.is_empty())
         .map(str::to_string)
-        .or_else(|| cfg_str("httpApiToken"));
+        .or_else(|| cfg_str("http_api_token"));
     // without a configured token the command API makes one up
     let generated_token = token.is_none().then(serve_api::http::generate_token);
     let addr = listen_address(&host, port).await?;
@@ -200,17 +200,11 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
         && hub.serve_settings().image_auto_download.unwrap_or(true);
     let auto_download = if auto_download_enabled {
         let svc = weflow_core::image_download::ImageAutoDownload::new();
-        let started = svc.start(config_whitelist(hub));
-        if started["success"] != true {
+        if let Err(error) = svc.start(config_whitelist(hub)) {
             weflow_core::output::warn(&format!(
                 "{}\n{}",
                 weflow_core::locale::tr("image auto download not started", "原图自动下载未启动"),
-                weflow_core::render::reason_line(&weflow_core::locale::localize(
-                    started["error"]
-                        .as_str()
-                        .unwrap_or("unknown error")
-                        .to_string()
-                ))
+                weflow_core::render::reason_line(&weflow_core::locale::localize(error))
             ));
         }
         Some(svc)

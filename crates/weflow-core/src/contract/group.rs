@@ -148,10 +148,6 @@ pub struct MemberStatistics {
     pub emoji_messages: i64,
     /// Every other kind.
     pub other_messages: i64,
-    /// As `totalMessages`.
-    pub sent_messages: i64,
-    /// Always 0: a member's messages are all sent by them.
-    pub received_messages: i64,
     /// The time of their first message; null when they sent none.
     pub first_message_time: Option<i64>,
     /// The time of their last message; null when they sent none.

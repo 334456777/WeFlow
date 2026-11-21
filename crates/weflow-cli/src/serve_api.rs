@@ -113,8 +113,8 @@ struct AppState {
 
 impl AppState {
     /// The limit a command with this method runs under.
-    fn limit(&self, verb: Option<Verb>) -> &Arc<Semaphore> {
-        if verb == Some(Post) {
+    fn limit(&self, verb: Verb) -> &Arc<Semaphore> {
+        if verb == Post {
             &self.tasks
         } else {
             &self.reads
@@ -639,19 +639,9 @@ async fn command_route(
     }
 
     // a media route reads, whatever the command does without /api/
-    let verb = if media {
-        Some(Get)
-    } else {
-        endpoint.verb(&params)
-    };
-    match verb {
-        Some(verb) if verb.method() != parts.method => {
-            return Err(method_not_allowed(&[verb]).into())
-        }
-        None if !endpoint.verbs().iter().any(|v| v.method() == parts.method) => {
-            return Err(method_not_allowed(&endpoint.verbs()).into())
-        }
-        _ => {}
+    let verb = if media { Get } else { endpoint.verb(&params) };
+    if verb.method() != parts.method {
+        return Err(method_not_allowed(&[verb]).into());
     }
 
     let command = endpoint.command_name();
@@ -769,7 +759,7 @@ async fn command_route(
         Some((admitted, running)) => (admitted, Some(running)),
         None => {
             let Ok(permit) = limit.clone().try_acquire_owned() else {
-                return Err(busy(verb == Some(Post)).into());
+                return Err(busy(verb == Post).into());
             };
             (permit, None)
         }

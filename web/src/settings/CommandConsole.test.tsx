@@ -30,7 +30,7 @@ describe('CommandConsole', () => {
     render(<CommandConsole pick={null} onPicked={() => {}} />);
     await act(async () => {});
     const list = screen.getByRole('list', { name: '命令' });
-    expect(Array.from(list.querySelectorAll('h4'), h => h.textContent)).toEqual(['chat', 'export', 'sns']);
+    expect(Array.from(list.querySelectorAll('h4'), h => h.textContent)).toEqual(['chat', 'export', 'lang']);
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索命令' }), { target: { value: '导出 通讯录' } });
     expect(Array.from(list.querySelectorAll('.command-item code'), c => c.textContent)).toEqual(['export contacts']);
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索命令' }), { target: { value: '' } });
@@ -95,10 +95,5 @@ describe('CommandConsole', () => {
     await act(async () => {});
     expect(calls.find(c => c.url.startsWith('/export/contacts?return=file'))).toMatchObject({ method: 'POST', prefer: 'respond-async', body: { out: 'contacts.json' } });
     expect(within(form).getByText(/已加入任务中心/)).toBeTruthy();
-
-    fireEvent.click(screen.getAllByRole('button', { name: /sns block-delete/ })[1]);
-    const refused = screen.getByRole('form', { name: '运行 sns block-delete' });
-    expect(refused.textContent).toContain('只读拒绝');
-    expect(within(refused).queryByRole('button', { name: '运行' })).toBeNull();
   });
 });

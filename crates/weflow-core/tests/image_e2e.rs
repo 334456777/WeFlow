@@ -125,7 +125,7 @@ fn decrypts_the_hd_variant_and_caches_it() {
     );
 
     let r = hub.image_decrypt(&p);
-    assert!(r.success, "{:?}", r.error);
+    assert!(r.is_ok(), "{:?}", r.error);
     let path = r.local_path.unwrap();
     assert!(path.ends_with(&format!("{MD5}_hd.jpg")), "{path}");
     assert!(
@@ -141,9 +141,7 @@ fn decrypts_the_hd_variant_and_caches_it() {
 
     // resolving from the cache now succeeds without touching the .dat files
     let again = hub.image_resolve_cache(&p);
-    assert!(again.success);
     assert_eq!(again.local_path.as_deref(), Some(path.as_str()));
-    assert_eq!(again.has_update, Some(false));
 
     // without preferFilePath the result is a data URL
     let data = hub.image_resolve_cache(&ImagePayload {
@@ -167,7 +165,8 @@ fn decrypts_the_hd_variant_and_caches_it() {
     .unwrap();
     assert_eq!(batch["rows"].as_array().unwrap().len(), 3);
     assert_eq!(batch["rows"][0], batch["rows"][1]);
-    assert_eq!(batch["rows"][2]["success"], false);
+    assert_eq!(batch["rows"][2]["failureKind"], "not_found");
+    assert!(batch["rows"][2].get("localPath").is_none());
 
     let cleared = hub.cache_clear(&[weflow_core::services::CachePart::Images]);
     assert!(cleared.warnings.is_empty(), "{:?}", cleared.warnings);
@@ -204,7 +203,7 @@ fn a_username_with_a_folder_like_suffix_is_looked_for_whole_then_cut() {
             allow_cache_index: Some(false),
             ..Default::default()
         });
-        assert!(r.success, "{session}: {:?}", r.error);
+        assert!(r.is_ok(), "{session}: {:?}", r.error);
         assert_eq!(
             std::fs::read(r.local_path.unwrap()).unwrap(),
             image,
@@ -232,7 +231,7 @@ fn falls_back_to_the_thumbnail_and_promotes_it_when_hd_appears() {
         ..Default::default()
     };
     let r = hub.image_decrypt(&p);
-    assert!(r.success, "{:?}", r.error);
+    assert!(r.is_ok(), "{:?}", r.error);
     let path = r.local_path.unwrap();
     assert!(path.ends_with(&format!("{MD5}_t.jpg")), "{path}");
     assert_eq!(r.is_thumb, Some(true));
@@ -242,7 +241,7 @@ fn falls_back_to_the_thumbnail_and_promotes_it_when_hd_appears() {
         force: true,
         ..p.clone()
     });
-    assert!(forced.success);
+    assert!(forced.is_ok());
 
     // the HD file shows up later: resolving the cache upgrades the thumbnail in place
     let hd = jpeg(3000, 4);
@@ -252,7 +251,7 @@ fn falls_back_to_the_thumbnail_and_promotes_it_when_hd_appears() {
     )
     .unwrap();
     let upgraded = hub.image_resolve_cache(&p);
-    assert!(upgraded.success, "{:?}", upgraded.error);
+    assert!(upgraded.is_ok(), "{:?}", upgraded.error);
     let new_path = upgraded.local_path.unwrap();
     assert!(new_path.ends_with(&format!("{MD5}_hd.jpg")), "{new_path}");
     assert_eq!(std::fs::read(&new_path).unwrap(), hd);
@@ -295,7 +294,7 @@ fn the_cache_sees_files_changed_by_another_process() {
         .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
         .unwrap();
     let found = hub.image_resolve_cache(&payload(other));
-    assert!(found.success, "{:?}", found.error);
+    assert!(found.is_ok(), "{:?}", found.error);
     assert_eq!(
         std::fs::read(found.local_path.unwrap()).unwrap(),
         theirs,
@@ -308,7 +307,7 @@ fn the_cache_sees_files_changed_by_another_process() {
         force: true,
         ..payload(MD5)
     });
-    assert!(again.success, "{:?}", again.error);
+    assert!(again.is_ok(), "{:?}", again.error);
     assert_eq!(std::fs::read(&path).unwrap(), mine);
 }
 
@@ -323,7 +322,7 @@ fn reports_missing_files_keys_and_bad_keys() {
         ..Default::default()
     };
     let missing = hub.image_decrypt(&p);
-    assert!(!missing.success);
+    assert!(!missing.is_ok());
     assert_eq!(missing.failure_kind, Some("not_found"));
     assert!(hub
         .image_decrypt(&ImagePayload::default())
@@ -339,13 +338,13 @@ fn reports_missing_files_keys_and_bad_keys() {
     )
     .unwrap();
     let bad = hub.image_decrypt(&p);
-    assert!(!bad.success);
+    assert!(!bad.is_ok());
     assert!(bad.error.unwrap().contains("decrypt failed"));
 
     // no xor key configured at all
     let (_root2, hub2) = common::mock_hub("img-nokeys");
     let r = hub2.image_decrypt(&p);
-    assert!(!r.success);
+    assert!(!r.is_ok());
 }
 
 /// Two image messages from 2023-11-14 in `wxid_bob`'s chat, image keys configured; returns the hub and the
@@ -578,7 +577,7 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
         ..Default::default()
     };
     let r = hub.image_decrypt(&p);
-    assert!(!r.success);
+    assert!(!r.is_ok());
     assert_eq!(r.failure_kind, Some("unsupported_image"));
     let sent = weflow_core::message::time::format_timestamp(1_700_000_000);
     assert_eq!(
@@ -588,7 +587,7 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
         )
     );
     assert!(
-        !hub.image_resolve_cache(&p).success,
+        !hub.image_resolve_cache(&p).is_ok(),
         "nothing was cached from the unconverted file"
     );
 
@@ -640,7 +639,7 @@ async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_m
     )
     .unwrap();
     let r = hub.image_decrypt(&p);
-    assert!(r.success, "{:?}", r.error);
+    assert!(r.is_ok(), "{:?}", r.error);
     let jpg = std::fs::read(r.local_path.unwrap()).unwrap();
     let mut decoder = jpeg_decoder::Decoder::new(&jpg[..]);
     decoder.read_info().unwrap();
@@ -1399,7 +1398,7 @@ fn the_media_index_adds_to_what_the_folders_hold() {
             prefer_file_path: true,
             ..Default::default()
         });
-        assert!(r.success, "{why}: {:?}", r.error);
+        assert!(r.is_ok(), "{why}: {:?}", r.error);
         assert_eq!(
             &std::fs::read(r.local_path.unwrap()).unwrap(),
             expected,
@@ -1430,7 +1429,7 @@ fn the_media_index_adds_to_what_the_folders_hold() {
         "2020-01",
     )]);
     let r = hub.image_decrypt(&later_payload);
-    assert!(r.success, "{:?}", r.error);
+    assert!(r.is_ok(), "{:?}", r.error);
     assert_eq!(std::fs::read(r.local_path.unwrap()).unwrap(), later_image);
 }
 

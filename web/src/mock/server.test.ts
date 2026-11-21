@@ -36,7 +36,7 @@ describe('the sample server (#896)', () => {
     ask('POST', 'key/image', { save: true });
     expect(server.answer('GET', 'api/db/test', {}, false)).toMatchObject({ failed: { message: '当前档案没有设置 decrypt_key' } });
     ask('PUT', 'config/set', { key: 'decrypt_key', value: 'ab'.repeat(32) });
-    expect(ask('GET', 'api/db/test')).toMatchObject({ connected: true });
+    expect(ask('GET', 'api/db/test')).toHaveProperty('accountDir');
     expect(ask<ProfileSummary[]>('GET', 'api/config/profiles').find(p => p.current)).toMatchObject({ complete: true, imageKeys: true });
 
     // clearing the account takes it out of the profile
@@ -56,13 +56,14 @@ describe('the sample server (#896)', () => {
 
     const unread = () => ask<{ unreadCount: number; total: number }>('GET', 'insight/records');
     const { unreadCount, total } = unread();
-    ask('PUT', 'insight/mark-read', { id: 'sample-insight-9' });
+    expect(ask('PUT', 'insight/mark-read', { id: 'sample-insight-9' })).toEqual({ id: 'sample-insight-9' });
+    expect(server.answer('PUT', 'insight/mark-read', { id: 'none' }, false)).toMatchObject({ failed: { status: 404, code: 'not_found' } });
     expect(unread()).toMatchObject({ unreadCount: unreadCount - 1, total });
-    const made = ask<{ success: boolean; record: { sessionId: string; insight: string; read: boolean } }>('POST', 'insight/trigger', { 'session-id': 'wxid_sample_ajie' });
+    const made = ask<{ record: { sessionId: string; insight: string; read: boolean } }>('POST', 'insight/trigger', { 'session-id': 'wxid_sample_ajie' });
     expect(made.record).toMatchObject({ sessionId: 'wxid_sample_ajie', read: false });
     expect(made.record.insight).toContain('阿杰');
     expect(unread()).toMatchObject({ total: total + 1 });
-    expect(ask('DELETE', 'insight/clear', { session: 'wxid_sample_ajie' })).toEqual({ success: true, removed: 2 });
+    expect(ask('DELETE', 'insight/clear', { session: 'wxid_sample_ajie' })).toEqual({ removed: 2 });
   });
 
   it('runs jobs one after another, hands back a note for the file asked for, and cancels or forgets them', async () => {
