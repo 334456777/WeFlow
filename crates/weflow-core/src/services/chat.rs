@@ -496,7 +496,7 @@ impl ServiceHub {
         out
     }
 
-    /// `getExportSessionStats`: message-type counts plus group/private relations.
+    /// The message-type counts plus group/private relations.
     pub fn chat_export_stats(
         &self,
         session_ids: &[String],
@@ -758,7 +758,7 @@ impl ServiceHub {
         out
     }
 
-    /// `getResourceMessages`: images / videos / voice / files across sessions, newest first in the chats' order (a
+    /// The images / videos / voice / files across sessions, newest first in the chats' order (a
     /// place two conversations share by conversation id), `limit` a page (default 300, at most 2,000). The next page
     /// goes on from the `nextCursor` of this one (issue #178).
     pub fn chat_resources(&self, q: &ResourceQuery) -> AppResult<Value> {
@@ -940,7 +940,7 @@ impl ServiceHub {
         }))
     }
 
-    /// `getAllImageMessages`: de-duplicated image identifiers of a session, newest first.
+    /// The de-duplicated image identifiers of a session, newest first.
     pub fn chat_all_images(&self, session_id: &str) -> AppResult<ChatImages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
@@ -979,7 +979,7 @@ impl ServiceHub {
         Ok(ChatImages { images })
     }
 
-    /// `getAllVoiceMessages`
+    /// The voice messages of a conversation, newest first, once each (`chat voice-messages`).
     pub fn chat_all_voices(&self, session_id: &str) -> AppResult<VoiceMessages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
@@ -997,7 +997,7 @@ impl ServiceHub {
         Ok(VoiceMessages { messages })
     }
 
-    /// `getMediaStream`: image/video messages across sessions, paged by the native scanner.
+    /// The image/video messages across sessions, paged by the native scanner.
     pub fn chat_media_stream(
         &self,
         session_id: Option<&str>,
@@ -1061,7 +1061,7 @@ impl ServiceHub {
         })
     }
 
-    /// `resolveTransferDisplayNames`
+    /// The names a group's transfer message shows for its payer and receiver (`chat transfer-names`).
     pub fn chat_transfer_names(
         &self,
         chatroom_id: &str,
@@ -1325,7 +1325,7 @@ impl ServiceHub {
         self.my_wxid_cleaned()
     }
 
-    /// `getNewMessages`: one ascending cursor batch starting at `min_time`.
+    /// One ascending cursor batch starting at `min_time`.
     pub fn chat_new_messages(
         &self,
         session_id: &str,
@@ -1357,7 +1357,7 @@ impl ServiceHub {
         let _ = wcdb.close_message_cursor(cursor);
         let (rows, _) = fetched.map_err(|e| AppError::native(format!("{e:#}")))?;
         let mut msgs = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
-        // `normalizeMessageOrder`
+        // by sort sequence when both have one, else by time, then sequence, local id and server id
         msgs.sort_by(|a, b| {
             let (asq, bsq) = (a.sort_seq.max(0), b.sort_seq.max(0));
             if asq > 0 && bsq > 0 && asq != bsq {
@@ -1373,7 +1373,7 @@ impl ServiceHub {
         Ok(msgs)
     }
 
-    /// `getLatestMessages`: the newest `limit` messages (1 to 500), oldest first (direct-offset read).
+    /// The newest `limit` messages (1 to 500), oldest first (direct-offset read).
     pub fn chat_latest_messages(
         &self,
         session_id: &str,

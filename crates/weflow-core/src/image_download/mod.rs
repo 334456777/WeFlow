@@ -188,7 +188,7 @@ impl ImageAutoDownload {
         }
     }
 
-    /// `image:startAutoDownload`: hooks WeChat now when it runs, and from then on whenever it starts.
+    /// Hooks WeChat now when it runs, and from then on whenever it starts.
     ///
     /// # Errors
     /// Why WeChat could not be hooked, or that this computer cannot download its images.
@@ -226,7 +226,7 @@ impl ImageAutoDownload {
         self.check_and_hook(true)
     }
 
-    /// `image:stopAutoDownload`
+    /// Removes the hook and stops looking for WeChat.
     pub fn stop(&self) {
         let mut inner = self.inner.lock_or_panic();
         if let Some(stop) = inner.poll_stop.take() {
@@ -239,7 +239,7 @@ impl ImageAutoDownload {
         inner.failure = None;
     }
 
-    /// `image:getAutoDownloadStatus`
+    /// Whether the hook is in WeChat, in which process, and whether this computer can run it.
     pub fn status(&self) -> Value {
         let inner = self.inner.lock_or_panic();
         json!({ "isHooked": inner.hook.is_some(), "pid": inner.pid, "supported": supported() })

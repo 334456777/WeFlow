@@ -196,7 +196,7 @@ impl ServiceHub {
         ins::session_allowed(&mode, &list, session_id)
     }
 
-    /// `getCurrentAccountScope`
+    /// The account the insight records belong to: `wxid:<wxid>`, else `db:<hash of the data directory>`, else `default`.
     pub(super) fn insight_scope(&self) -> String {
         let my = self.my_wxid_cleaned();
         if !my.trim().is_empty() {
@@ -247,7 +247,7 @@ impl ServiceHub {
         self.record_store().clear(f)
     }
 
-    /// `getTodayStats`
+    /// How often the engine wrote about each conversation today, and when (`insight today-stats`).
     pub fn insight_today_stats(&self) -> Vec<InsightTodayStat> {
         let mut st = self.insight_state.lock_or_panic();
         let today = start_of_day();
@@ -280,7 +280,7 @@ impl ServiceHub {
 
     // ── connection test / footprint ──
 
-    /// `testConnection`: asks the model API for a short answer, and says where it asked and what came back.
+    /// Asks the model API for a short answer, and says where it asked and what came back.
     ///
     /// # Errors
     /// When the settings lack the model API, or it answered with an error.
@@ -346,7 +346,7 @@ impl ServiceHub {
         })
     }
 
-    /// `generateFootprintInsight`
+    /// The AI's summary of a footprint (`insight footprint-summary`).
     ///
     /// # Errors
     /// When the footprint summary is off, the settings lack the model API, or it answered with an error.
@@ -726,7 +726,7 @@ impl ServiceHub {
 
     // ── generation ──
 
-    /// `generateInsightForSession`: the stored record when an insight was produced; `None` when insights are off or
+    /// An insight about a conversation: the stored record when an insight was produced; `None` when insights are off or
     /// the model had nothing to say (`SKIP`).
     ///
     /// # Errors
@@ -923,7 +923,7 @@ impl ServiceHub {
         }
     }
 
-    /// `triggerTest`: forces an insight for the first eligible private chat.
+    /// Forces an insight for the first eligible private chat.
     ///
     /// # Errors
     /// When the settings lack the model API, there is no conversation to write about, or no insight could be written.
@@ -984,7 +984,7 @@ impl ServiceHub {
         })
     }
 
-    /// `runSilenceScan`
+    /// Writes insights about the private chats that have been silent too long; returns how many.
     pub async fn insight_silence_scan(
         &self,
         on_insight: &mut dyn FnMut(&ins::InsightRecord),
@@ -1041,7 +1041,7 @@ impl ServiceHub {
         generated
     }
 
-    /// `analyzeRecentActivity`: at most one session per call, honouring the cooldown.
+    /// Writes an insight about a recently active conversation: at most one session per call, honouring the cooldown.
     pub async fn insight_analyze_activity(&self, on_insight: &mut dyn FnMut(&ins::InsightRecord)) {
         if !self.insight_enabled() {
             return;

@@ -1,5 +1,5 @@
-//! Moments service: ports the stateful parts of WeFlow's `snsService.ts`
-//! (timeline queries, stats caches, media download/decrypt, export, emoji download).
+//! Moments with the network and the databases: timeline queries, stats caches, media download/decrypt, export and
+//! emoji download.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -74,7 +74,7 @@ pub struct SnsExportOptions {
     pub end: i64,
 }
 
-/// Result of `downloadImage` / `fetchAndDecryptImage`.
+/// A Moments image or video fetched ([`ServiceHub::sns_fetch_media`]).
 #[derive(Clone, Debug, Default)]
 pub struct SnsMediaFetch {
     /// The file, decrypted when there was a key; none for a video, which is only kept on disk.
@@ -414,7 +414,7 @@ impl ServiceHub {
         Ok((total, users.len() as i64, my_wxid.map(|_| mine)))
     }
 
-    /// `getExportStats` / `getExportStatsFast`: returns `{totalPosts, totalFriends, myPosts}`. With
+    /// The Moments' numbers: returns `{totalPosts, totalFriends, myPosts}`. With
     /// [`Freshness::Cached`] (`--prefer-cache`), what was kept will do, and the slow fallback over the timeline is skipped.
     pub fn sns_export_stats(&self, freshness: Freshness) -> AppResult<SnsStats> {
         let prefer_cache = freshness == Freshness::Cached;
@@ -526,12 +526,12 @@ impl ServiceHub {
 
     // ── block-delete trigger / delete ──
 
-    /// `clearMemoryCache`: drops the in-memory image cache and the cached statistics.
+    /// Drops the in-memory image cache and the cached statistics.
     pub fn sns_clear_memory_cache(&self) {
         *self.sns_state.lock_or_panic() = SnsState::default();
     }
 
-    /// `sns:debugResource`: asks the server for the first bytes of a Moments resource the way WeChat does and
+    /// Asks the server for the first bytes of a Moments resource the way WeChat does and
     /// reports the status and the headers that matter for decryption (`x-enc`, `x-time`, length, type).
     pub async fn sns_debug_resource(&self, url: &str) -> AppResult<SnsResourceProbe> {
         if url.trim().is_empty() {
@@ -595,7 +595,7 @@ impl ServiceHub {
         Ok(slot.get_or_insert(client).clone())
     }
 
-    /// `fetchAndDecryptImage`: downloads a Moments image/video, decrypting with the ISAAC64 key.
+    /// Downloads a Moments image/video, decrypting with the ISAAC64 key.
     pub async fn sns_fetch_media(&self, url: &str, key: Option<&str>) -> AppResult<SnsMediaFetch> {
         if url.is_empty() {
             return Err(AppError::usage("url must not be empty"));
@@ -691,7 +691,7 @@ impl ServiceHub {
 
         let mut decoded = raw.clone();
         let raw_is_image = sns::detect_image_mime(&raw, "").starts_with("image/");
-        // decrypted whenever there is a key, whatever the `x-enc` header says (as `snsService.ts` does)
+        // decrypted whenever there is a key, whatever the `x-enc` header says (as the desktop app does)
         if let Some(key) = key {
             if key.chars().all(|c| c.is_ascii_digit()) {
                 let mut decrypted = raw.clone();
@@ -715,7 +715,7 @@ impl ServiceHub {
         })
     }
 
-    /// `proxyImage`: image → `data:` URL (memoised for 15 minutes), video → local path.
+    /// A Moments resource for a page: image → `data:` URL (memoised for 15 minutes), video → local path.
     pub async fn sns_proxy_image(&self, url: &str, key: Option<&str>) -> AppResult<SnsProxyResult> {
         if url.is_empty() {
             return Err(AppError::usage("url must not be empty"));
@@ -818,7 +818,7 @@ impl ServiceHub {
         Some(path)
     }
 
-    /// `downloadSnsEmoji`: cached download of a comment emoji, decrypting with the AES key when needed.
+    /// The cached download of a comment emoji, decrypting with the AES key when needed.
     pub async fn sns_download_emoji(
         &self,
         url: &str,
@@ -901,7 +901,7 @@ impl ServiceHub {
 
     // ── export ──
 
-    /// `exportTimeline`: json / html / arkmejson with optional media download.
+    /// Writes the timeline as json / html / arkmejson with optional media download.
     pub async fn sns_export_timeline(&self, opts: &SnsExportOptions) -> AppResult<SnsExported> {
         use futures::StreamExt;
         let want_media = opts.export_media;
@@ -1214,7 +1214,7 @@ impl ServiceHub {
         })
     }
 
-    /// `buildArkmeInteractionDetails`
+    /// The likes and comments of a post for the arkme export, each with the name and avatar of who left it.
     fn arkme_interaction_details(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -1487,7 +1487,7 @@ impl ServiceHub {
 /// Where `weflow serve` answers `sns media` in its own process.
 const SNS_MEDIA_ROUTE: &str = "/api/sns/media";
 
-/// `toSnsMediaKey` rendered back to text: trimmed, none when empty.
+/// A media key as text: trimmed, none when empty.
 fn media_key(key: Option<&str>) -> Option<String> {
     let t = key?.trim();
     (!t.is_empty()).then(|| t.to_string())

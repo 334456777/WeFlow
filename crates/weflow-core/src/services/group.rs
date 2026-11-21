@@ -1,5 +1,4 @@
-//! Group analytics (WeFlow's `groupAnalyticsService.ts`): members panel, rankings,
-//! activity, media mix, per-member analytics and exports.
+//! Group analytics: members panel, rankings, activity, media mix, per-member analytics and exports.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -103,7 +102,7 @@ fn normalize_group_nickname(v: &str) -> String {
     }
 }
 
-/// `buildTrustedGroupNicknameMap` (group analytics flavour, with candidate filtering).
+/// The group nicknames the members can be trusted to have, of `candidates` only.
 fn trusted_nicknames(
     entries: &Map<String, Value>,
     candidates: &[String],
@@ -603,7 +602,7 @@ impl ServiceHub {
         Ok(data.into_iter().map(|d| d.0).collect())
     }
 
-    /// `getGroupMembersPanelData`: the members panel and when it was built (Unix milliseconds). It is built
+    /// The members panel and when it was built (Unix milliseconds). It is built
     /// anew on every call: one pass over the group's messages gives the counts.
     pub fn group_members_panel(
         &self,
@@ -619,7 +618,7 @@ impl ServiceHub {
         Ok((data, chrono::Utc::now().timestamp_millis()))
     }
 
-    /// `getGroupChats`
+    /// The groups of the account, the latest first, with their names and member counts (`group list`).
     pub fn group_chats(&self) -> AppResult<Vec<GroupChat>> {
         let wcdb = self.open_wcdb()?;
         let sessions = self.wrap_native(wcdb.sessions())?;
@@ -657,7 +656,7 @@ impl ServiceHub {
         Ok(groups)
     }
 
-    /// `getGroupMembers` (full member records)
+    /// The full member records of a group.
     pub fn group_members_full(&self, chatroom_id: &str) -> AppResult<Vec<Value>> {
         let wcdb = self.open_wcdb()?;
         self.group_members_full_with(&wcdb, chatroom_id)
@@ -777,7 +776,7 @@ impl ServiceHub {
         Ok(data)
     }
 
-    /// `getGroupMessageRanking`
+    /// The members of a group with the most messages between `start` and `end` (`group ranking`).
     pub fn group_message_ranking(
         &self,
         chatroom_id: &str,
@@ -836,7 +835,7 @@ impl ServiceHub {
             .collect())
     }
 
-    /// `getGroupActiveHours`
+    /// A group's messages by hour between `start` and `end` (`group hours`).
     pub fn group_active_hours(
         &self,
         chatroom_id: &str,
@@ -862,7 +861,7 @@ impl ServiceHub {
         })
     }
 
-    /// `getGroupMediaStats`
+    /// A group's messages by kind between `start` and `end` (`group media`).
     pub fn group_media_stats(
         &self,
         chatroom_id: &str,
@@ -977,7 +976,7 @@ impl ServiceHub {
         }
     }
 
-    /// `getGroupMemberAnalytics`
+    /// One member's messages in a group between `start` and `end`: counts, hours, phrases and emojis (`group member`).
     pub fn group_member_analytics(
         &self,
         chatroom_id: &str,
@@ -1175,7 +1174,7 @@ impl ServiceHub {
         Ok(out)
     }
 
-    /// `getGroupMemberMessages`: one page of a member's messages (newest first).
+    /// One page of a member's messages (newest first).
     pub fn group_member_messages(
         &self,
         chatroom_id: &str,
@@ -1273,7 +1272,7 @@ impl ServiceHub {
         })
     }
 
-    /// `exportGroupMemberMessages`: CSV (BOM) or XLSX depending on the extension.
+    /// Writes a member's messages in a group as CSV (BOM) or XLSX depending on the extension.
     pub fn group_export_member_messages(
         &self,
         chatroom_id: &str,
@@ -1468,7 +1467,7 @@ impl ServiceHub {
         })
     }
 
-    /// `exportGroupMembers`
+    /// Writes a group's members to `out` (`group export-members`).
     pub fn group_export_members(&self, chatroom_id: &str, out: &Path) -> AppResult<GroupExported> {
         let wcdb = self.open_wcdb()?;
         let export_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();

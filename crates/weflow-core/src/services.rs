@@ -143,7 +143,7 @@ fn copy_atomically(from: &Path, path: &Path) -> std::io::Result<()> {
     copied
 }
 
-/// `normalizeTimestamp` of the WCDB wrapper: ms → s, clamped to i32.
+/// A time in seconds: ms → s, clamped to i32.
 pub(crate) fn normalize_timestamp(input: i64) -> i32 {
     if input <= 0 {
         return 0;
@@ -156,7 +156,7 @@ pub(crate) fn normalize_timestamp(input: i64) -> i32 {
     crate::num::saturating_i32(seconds.max(0))
 }
 
-/// `normalizeRange`: open end → now, end never before begin.
+/// A time range in seconds: open end → now, end never before begin.
 pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
     let b = normalize_timestamp(begin);
     let mut e = normalize_timestamp(end);

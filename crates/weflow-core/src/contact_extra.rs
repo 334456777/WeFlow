@@ -1,7 +1,6 @@
 //! Extended contact fields: labels, signature and region.
 //!
-//! Ports `getContactLabelNameMap`, `parseContactLabels`, `getContactSignature` and `getContactRegion` of
-//! `chatService.ts`. WeChat keeps them in the protobuf `extra_buffer` column of the contact row (field 4
+//! WeChat keeps them in the protobuf `extra_buffer` column of the contact row (field 4
 //! signature, 5 country, 6 province, 7 city, 30 label ids) plus the `contact_label` table; the region names are
 //! translated to Chinese with the same lookup tables as WeFlow's desktop app (`data/contact_region.json`).
 
@@ -65,7 +64,7 @@ fn field<'a>(row: &'a Value, names: &[&str]) -> Option<&'a Value> {
     })
 }
 
-/// `normalizeContactRegionPart`: strips NULs and placeholder values such as `-` or `null`.
+/// One part of a region, without NULs and placeholder values such as `-` or `null`.
 fn normalize_part(raw: &str) -> String {
     let text = raw.replace('\0', "");
     let text = text.trim();

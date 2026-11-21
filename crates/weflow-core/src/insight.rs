@@ -1,5 +1,5 @@
-//! Pure parts of WeFlow's `insightService.ts` and `insightRecordService.ts`: record
-//! storage ([`RecordStore`]), the Telegram push, prompt assembly and text helpers. The model API itself is
+//! The AI insights besides the services that run them: record storage ([`RecordStore`]), the Telegram push,
+//! prompt assembly and text helpers. The model API itself is
 //! [`crate::model_api`].
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -93,7 +93,7 @@ pub fn default_footprint_prompt() -> &'static str {
     )
 }
 
-/// `formatPromptCurrentTime` / `appendPromptCurrentTime`
+/// `prompt` with the current local time appended, so the model knows when it is asked.
 pub fn append_current_time(prompt: &str) -> String {
     let n = Local::now();
     let line = fill(

@@ -1,5 +1,5 @@
 //! WeFlow's caches part by part (`weflow cache list` / `cache clear`), and the removal of the current account's
-//! data (`weflow cache clear-account`, a port of the `chat:clearCurrentAccountData` handler in WeFlow's `main.ts`).
+//! data (`weflow cache clear-account`).
 //! Only WeFlow's own files are touched; WeChat's data is never written.
 
 use std::path::{Path, PathBuf};
@@ -74,7 +74,7 @@ pub fn disk_usage(path: &Path) -> (u64, u64) {
         })
 }
 
-/// `buildAccountNameMatcher`: a file or folder name belongs to the account when one of the (lowercase) ids appears
+/// A file or folder name belongs to the account when one of the (lowercase) ids appears
 /// in it as a whole word, case-insensitively: `wxid_abc`, `wxid_abc_1a2b`, `wxid_abc-moments.json` and
 /// `group_my_message_counts_wxid_abc.json` do, `wxid_abc123.json` (another account) does not.
 fn account_name_matches(name: &str, ids: &[String]) -> bool {
@@ -283,7 +283,7 @@ impl ServiceHub {
         Ok(paths)
     }
 
-    /// `chat:clearCurrentAccountData`: removes [`Self::account_data_paths`]. The caller then resets the account
+    /// Removes [`Self::account_data_paths`]. The caller then resets the account
     /// settings of the profile, as WeFlow's desktop app does.
     pub fn clear_current_account_data(
         &self,

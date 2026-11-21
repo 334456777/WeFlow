@@ -161,7 +161,7 @@ impl ServiceHub {
         }
     }
 
-    /// `getContactAvatar`: `(avatar url, display name)`.
+    /// The avatar URL and the display name of a contact.
     pub fn chat_contact_avatar(&self, username: &str) -> Option<(Option<String>, String)> {
         if username.is_empty() {
             return None;
@@ -201,7 +201,7 @@ impl ServiceHub {
         }
     }
 
-    /// `getSessions`: filtered, typed session list, with display names and avatars from WCDB.
+    /// The filtered, typed session list, with display names and avatars from WCDB.
     pub fn chat_sessions_list(&self) -> AppResult<Vec<Session>> {
         let wcdb = self.open_wcdb()?;
         self.sessions_with(&wcdb)
@@ -481,7 +481,7 @@ impl ServiceHub {
         Ok(sessions)
     }
 
-    /// `getContactLabelNameMap`: label id → name from the contact database (empty when it has no labels).
+    /// The contact labels: label id → name from the contact database (empty when it has no labels).
     fn contact_label_names(&self, wcdb: &weflow_native::wcdb::Wcdb) -> HashMap<i64, String> {
         let mut map = HashMap::new();
         let Ok(info) = wcdb.exec_query(

@@ -1,5 +1,4 @@
-//! Port of WeFlow's `weiboService.ts`: recent public Weibo posts of a bound UID,
-//! used as extra context for AI insights.
+//! Recent public Weibo posts of a bound UID, used as extra context for AI insights.
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -32,7 +31,7 @@ fn cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
     CACHE.get_or_init(Default::default)
 }
 
-/// `normalizeWeiboCookieInput`: a browser-exported JSON cookie array, or a raw `Cookie:` header.
+/// The `Cookie` header of a browser-exported JSON cookie array, or a raw `Cookie:` header.
 fn normalize_cookie_input(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -89,7 +88,7 @@ fn normalize_cookie_input(raw: &str) -> Result<String, String> {
     Ok(body.trim().to_string())
 }
 
-/// `normalizeWeiboUid`: a numeric UID or a `weibo.com/u/<uid>` / `m.weibo.cn/u/<uid>` link.
+/// The UID of a numeric UID or a `weibo.com/u/<uid>` / `m.weibo.cn/u/<uid>` link.
 fn normalize_uid(input: &str) -> Result<String, String> {
     let t = input.trim();
     if t.len() >= 5 && t.bytes().all(|b| b.is_ascii_digit()) {
@@ -102,7 +101,7 @@ fn normalize_uid(input: &str) -> Result<String, String> {
     Err("please enter a valid Weibo UID: digits only".into())
 }
 
-/// `sanitizeWeiboText`
+/// A post's text without zero-width characters, short links and runs of blank space.
 fn sanitize_text(text: &str) -> String {
     let t: String = text
         .chars()
@@ -282,7 +281,7 @@ fn js_string(v: Option<&Value>) -> String {
     }
 }
 
-/// `fetchRecentPosts` with a 30-minute cache per (uid, count, cookie).
+/// The recent posts of a UID, with a 30-minute cache per (uid, count, cookie).
 pub async fn fetch_recent_posts(
     uid_input: &str,
     cookie_input: &str,

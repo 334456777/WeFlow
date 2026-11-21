@@ -152,7 +152,7 @@ pub fn normalize_group_nickname(value: &str) -> String {
     cleaned
 }
 
-/// Keep only identities whose nickname is unambiguous (`buildTrustedGroupNicknameMap`).
+/// Keep only identities whose nickname is unambiguous.
 pub fn build_trusted_group_nicknames(
     entries: impl IntoIterator<Item = (String, String)>,
 ) -> HashMap<String, String> {

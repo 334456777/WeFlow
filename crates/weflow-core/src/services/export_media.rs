@@ -13,7 +13,7 @@ use crate::message::xml::rx;
 use crate::sync::MutexExt;
 
 impl ServiceHub {
-    /// `downloadEmoji`: cached fetch of a sticker by CDN URL.
+    /// The cached fetch of a sticker by CDN URL.
     async fn chat_download_emoji(&self, cdn_url: &str, md5: Option<&str>) -> AppResult<PathBuf> {
         if cdn_url.is_empty() {
             return Err(AppError::usage("invalid CDN URL"));

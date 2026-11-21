@@ -786,7 +786,7 @@ fn default_home_dir() -> AppResult<PathBuf> {
         .ok_or_else(|| AppError::config("failed to locate platform config directory"))
 }
 
-/// The account id of an account folder's name (`cleanAccountDirName`, `normalizeAccountId`).
+/// The account id of an account folder's name.
 ///
 /// `wxid_abc_1a2b` is `wxid_abc` and `name_1a2b` is `name`; a name without the four-character suffix WeChat adds is
 /// the id already.

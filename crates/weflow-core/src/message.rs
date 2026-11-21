@@ -1,9 +1,8 @@
-//! Message decoding and formatting, ported from WeFlow's desktop app's `exportService.ts`.
+//! Message decoding and formatting for the exports.
 //!
-//! Raw WCDB rows go in, [`ExportMsg`] values and human-readable text come out. The
-//! functions mirror their TypeScript counterparts so exports stay comparable with the
-//! desktop app. Placeholder strings such as `[图片]` are data and intentionally stay as
-//! in the desktop exports.
+//! Raw WCDB rows go in, [`ExportMsg`] values and human-readable text come out. The text is
+//! the desktop app's, so exports stay comparable with its exports. Placeholder strings such as
+//! `[图片]` are data and intentionally stay as in the desktop exports.
 
 use serde_json::Value;
 use weflow_native::msg_row::MsgRow;
@@ -75,7 +74,7 @@ pub struct MediaRef {
     pub relative_path: String,
 }
 
-/// A message as the exports read it (WeFlow's `exportService.ts`): the row's fields and what its XML names.
+/// A message as the exports read it: the row's fields and what its XML names.
 #[derive(Clone, Debug, Default)]
 pub struct ExportMsg {
     /// The message's id in its conversation's table.
@@ -234,7 +233,7 @@ fn note_text(normalized: &str, title: &str) -> String {
     }
 }
 
-/// `parseMessageContent` — text used by ChatLab / JSON / WeClone.
+/// The text of a message for ChatLab / JSON / WeClone.
 pub fn parse_message_content(
     content: &str,
     local_type: i64,
@@ -411,7 +410,7 @@ pub fn parse_message_content_in(
     }
 }
 
-/// `formatPlainExportContent` — text used by TXT / Excel / HTML.
+/// The text of a message for TXT / Excel / HTML.
 fn format_plain_export_content(
     content: &str,
     local_type: i64,
@@ -675,7 +674,7 @@ pub fn msg_row_sender(row: &MsgRow, session_id: &str, my_wxid: &str) -> String {
     )
 }
 
-/// `collectMessages` (full mode) of typed rows, which it takes (their text moves into the messages): the messages
+/// The export messages of typed rows, which it takes (their text moves into the messages): the messages
 /// in the time range and of the sender asked for, sorted chronologically.
 pub fn collect_rows(rows: Vec<MsgRow>, opts: &CollectOptions<'_>) -> Vec<ExportMsg> {
     let mut out: Vec<ExportMsg> = Vec::new();

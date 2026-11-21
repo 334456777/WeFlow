@@ -44,7 +44,7 @@ pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> 
     classify_app_message(&MsgXml::new(content), local_type)?.kind
 }
 
-/// `extractArkmeAppMessageMeta` of a message's [`MsgXml`] — extra structured fields for `arkme-json` / `json`.
+/// The app-message fields of a message's [`MsgXml`]: extra structured fields for `arkme-json` / `json`.
 pub fn extract_arkme_app_message_meta_in(
     x: &MsgXml,
     local_type: i64,

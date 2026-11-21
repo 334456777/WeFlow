@@ -1,5 +1,4 @@
-//! Annual and dual ("two people") reports: ports of `annualReportService.ts` and
-//! `dualReportService.ts`.
+//! Annual and dual ("two people") reports.
 
 use std::collections::{HashMap, HashSet};
 
@@ -403,7 +402,7 @@ impl ServiceHub {
         v
     }
 
-    /// `getAvailableYears`: native query, then table time ranges, then first/last message.
+    /// The years the annual report can be made for: native query, then table time ranges, then first/last message.
     pub fn report_available_years(&self) -> AppResult<crate::contract::ReportYears> {
         let (wcdb, cleaned, _) = self.report_connect()?;
         let sessions = self.report_private_sessions(&wcdb, &cleaned);

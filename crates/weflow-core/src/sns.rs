@@ -1,4 +1,4 @@
-//! Moments (朋友圈) logic ported from WeFlow's `snsService.ts`:
+//! Moments (朋友圈) besides the network and the databases:
 //! timeline enrichment, XML parsing, HTML / JSON export builders and media decryption helpers.
 //! Network and database access live in `services/sns.rs`.
 
@@ -186,7 +186,7 @@ fn tag_value(block: &str, pattern: &str) -> Option<String> {
     rx(pattern).captures(block).map(|c| c[1].to_string())
 }
 
-/// `parseCommentsFromXml`: comments incl. emoji payloads and reply references.
+/// The comments of a post's XML, incl. emoji payloads and reply references.
 pub fn parse_comments_from_xml(xml: &str) -> Vec<SnsComment> {
     if xml.is_empty() {
         return Vec::new();
@@ -345,7 +345,7 @@ pub fn parse_like_users_from_xml(xml: &str) -> Vec<LikeUser> {
 
 // ───────────────────────── location ─────────────────────────
 
-/// `parseLocationFromXml`: the `<location>` of a post, its attributes first and then its child tags; none when it
+/// The `<location>` of a post, its attributes first and then its child tags; none when it
 /// says nothing.
 fn parse_location_from_xml(xml: &str) -> Option<SnsLocation> {
     if xml.is_empty() {
@@ -432,7 +432,7 @@ pub struct CachedContact {
     pub avatar_url: Option<String>,
 }
 
-/// `getTimeline` post-processing of one post as read: the addresses of its media fixed and their keys, its comments
+/// One post of the timeline as read: the addresses of its media fixed and their keys, its comments
 /// and location from its XML, the poster's name and avatar from `contact`.
 pub fn enrich_post(post: weflow_native::sns::SnsPost, contact: Option<&CachedContact>) -> SnsPost {
     let is_video_post = post.kind == 15;
@@ -804,7 +804,7 @@ fn build_gcm_layouts(enc: &[u8]) -> Vec<GcmLayout<'_>> {
     layouts
 }
 
-/// `decryptEmojiAes`: GCM layouts → CBC/ECB fallbacks across several key derivations.
+/// A comment sticker decrypted: GCM layouts → CBC/ECB fallbacks across several key derivations.
 pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
     if enc.len() <= 16 {
         return None;

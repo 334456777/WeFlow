@@ -8,7 +8,7 @@ use super::{chat, ServiceHub};
 use crate::error::{AppError, AppResult};
 
 impl ServiceHub {
-    /// `video:getVideoInfo`
+    /// Where a message's video and its poster are (`video info`).
     pub fn video_info(
         &self,
         md5: &str,

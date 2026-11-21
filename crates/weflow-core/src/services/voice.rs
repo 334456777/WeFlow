@@ -1,5 +1,4 @@
-//! Port of the voice pipeline in `chatService.ts` (`getVoiceData`, `preloadVoiceDataBatch`,
-//! `resolveVoiceCache`): pull the SILK blob out of the media databases through WCDB, decode it
+//! Voice messages: pull the SILK blob out of the media databases through WCDB, decode it
 //! with the vendored SILK SDK and wrap it into a 24 kHz mono WAV, cached on disk.
 use std::path::PathBuf;
 
@@ -11,7 +10,7 @@ use crate::message::row::unsigned_token;
 
 const VOICE_SAMPLE_RATE: i32 = 24000;
 
-/// `decodeVoiceBlob` for the hex/base64 strings the WCDB API returns.
+/// The bytes of the hex/base64 strings the WCDB API returns.
 fn decode_voice_blob(raw: &str) -> Option<Vec<u8>> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -30,7 +29,7 @@ fn decode_voice_blob(raw: &str) -> Option<Vec<u8>> {
         .ok()
 }
 
-/// `createWavBuffer`: 16-bit PCM WAV header + data.
+/// A 16-bit PCM WAV file: the header, then `pcm`.
 fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
     // a WAV header holds 32-bit sizes; a voice message never comes near 4 GiB
     let data_len = u32::try_from(pcm.len()).unwrap_or(u32::MAX);
@@ -52,7 +51,7 @@ fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
     out
 }
 
-/// `getVoiceCacheKey`
+/// The file name a decoded voice is cached under: the conversation, the create time when known, and the message id.
 fn voice_cache_key(session_id: &str, msg_id: &str, create_time: Option<i64>) -> String {
     match create_time.filter(|t| *t != 0) {
         Some(t) => format!("{session_id}_{t}_{msg_id}"),
@@ -77,7 +76,7 @@ impl ServiceHub {
         c
     }
 
-    /// `getVoiceDataFromMediaDb`: strict (no self) candidate set first, then the full set; each
+    /// The SILK data of a voice message in the media databases: strict (no self) candidate set first, then the full set; each
     /// plan tries the single native call before the batch call.
     fn voice_silk_from_media_db(
         &self,
@@ -143,7 +142,7 @@ impl ServiceHub {
         Ok(create_wav(&pcm, VOICE_SAMPLE_RATE as u32, 1))
     }
 
-    /// `chat:getVoiceData`: returns the WAV bytes of a voice message.
+    /// Returns the WAV bytes of a voice message.
     pub fn voice_data(
         &self,
         session_id: &str,
@@ -214,7 +213,7 @@ impl ServiceHub {
         Ok(wav)
     }
 
-    /// `chat:resolveVoiceCache`: WeFlow's desktop app only consults its in-memory cache here; the CLI has
+    /// The decoded voice of a message from the cache only (`chat voice-cache`); the CLI has
     /// no long-lived memory, so a hit means a cached WAV for the key without a timestamp exists.
     pub fn voice_resolve_cache(
         &self,
@@ -239,7 +238,7 @@ impl ServiceHub {
         }
     }
 
-    /// `chat:preloadVoiceDataBatch`: decodes and caches a list of voice messages in chunks.
+    /// Decodes and caches a list of voice messages in chunks.
     pub fn voice_preload(
         &self,
         session_id: &str,

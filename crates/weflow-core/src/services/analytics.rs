@@ -1,5 +1,4 @@
-//! Chat analytics (WeFlow's `analyticsService.ts`): overall statistics, contact
-//! rankings, time distribution and the exclusion list.
+//! Chat analytics: overall statistics, contact rankings, time distribution and the exclusion list.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Condvar, Mutex};
@@ -217,12 +216,12 @@ impl ServiceHub {
         )
     }
 
-    /// `getExcludedUsernames`
+    /// The conversations the statistics leave out (`analytics excluded`).
     pub fn analytics_excluded_usernames(&self) -> AppResult<Vec<String>> {
         Ok(self.excluded_list())
     }
 
-    /// `setExcludedUsernames`: normalises and persists the list.
+    /// Saves the conversations the statistics leave out, normalised (`analytics excluded --set`).
     pub fn analytics_set_excluded_usernames(&self, usernames: &[String]) -> AppResult<Vec<String>> {
         let normalized = normalize_excluded(&json!(usernames));
         self.set_config_value("analytics_excluded_usernames", json!(normalized))?;
@@ -262,7 +261,7 @@ impl ServiceHub {
             .collect())
     }
 
-    /// `getAggregateStats`: the messages of `session_ids` between `begin` and `end`, by direction, type and time.
+    /// The messages of `session_ids` between `begin` and `end`, by direction, type and time.
     fn aggregate_raw(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -275,7 +274,7 @@ impl ServiceHub {
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// `computeAggregateByCursor`: cursor-based fallback when the native aggregate is empty.
+    /// The cursor-based fallback when the native aggregate is empty.
     fn aggregate_by_cursor(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -369,7 +368,7 @@ impl ServiceHub {
         }))
     }
 
-    /// `getAggregateWithFallback`: the native aggregate, or a cursor scan when it is empty. Read from the databases
+    /// The native aggregate, or a cursor scan when it is empty. Read from the databases
     /// every time, so it follows new messages; requests for the same aggregate that arrive while it is counted
     /// share that count (see [`Counting`]).
     fn aggregate_with_fallback(
@@ -437,7 +436,7 @@ impl ServiceHub {
             .unwrap_or_default()
     }
 
-    /// `getExcludeCandidates`
+    /// The private chats that can be left out of the statistics, with their names and message counts.
     pub fn analytics_exclude_candidates(&self) -> AppResult<Vec<ExcludeCandidate>> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let excluded: HashSet<String> = self.excluded_list().into_iter().collect();
@@ -478,7 +477,7 @@ impl ServiceHub {
             .collect())
     }
 
-    /// `getOverallStatistics`
+    /// The numbers of all private chats but those left out (`analytics overall`).
     pub fn analytics_overall_statistics(&self) -> AppResult<OverallStatistics> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
@@ -518,7 +517,7 @@ impl ServiceHub {
         })
     }
 
-    /// `getContactRankings`
+    /// The private chats with the most messages between `begin` and `end` (`analytics rankings`).
     pub fn analytics_contact_rankings(
         &self,
         limit: usize,
@@ -573,7 +572,7 @@ impl ServiceHub {
         Ok(rankings)
     }
 
-    /// `getTimeDistribution`
+    /// The messages of all private chats by hour, weekday and month (`analytics time`).
     pub fn analytics_time_distribution(&self) -> AppResult<TimeDistribution> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;

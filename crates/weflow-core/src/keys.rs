@@ -1,8 +1,6 @@
-//! Image-key derivation, ported from `keyService.ts`.
-//!
-//! It covers `deriveImageKeys`, `verifyDerivedAesKey`, `_findTemplateData` and `collectWxidCandidates`. The `kvcomm`
-//! cache yields *codes*; the AES key depends on the account's wxid, so candidate wxids are verified against a `_t.dat`
-//! template.
+//! Image-key derivation: the keys of a code, their check against a thumbnail, the thumbnail templates and the
+//! candidate wxids. The `kvcomm` cache yields *codes*; the AES key depends on the account's wxid, so candidate wxids
+//! are verified against a `_t.dat` template.
 
 use std::path::{Path, PathBuf};
 
@@ -10,7 +8,7 @@ use aes::cipher::{Array, BlockCipherDecrypt, KeyInit};
 
 const V2_MAGIC: [u8; 6] = [0x07, 0x08, 0x56, 0x32, 0x08, 0x07];
 
-/// `cleanWxid` of the key service: keeps everything before the second underscore.
+/// The wxid the image key is derived from: everything before the second underscore.
 pub fn clean_wxid(wxid: &str) -> String {
     let Some(first) = wxid.find('_') else {
         return wxid.to_string();
@@ -21,7 +19,7 @@ pub fn clean_wxid(wxid: &str) -> String {
     }
 }
 
-/// `deriveImageKeys`: xor = code & 0xFF, aes = first 16 hex chars of md5(code + cleanedWxid).
+/// The image keys of a code: xor = code & 0xFF, aes = first 16 hex chars of md5(code + [`clean_wxid`]).
 pub fn derive_image_keys(code: u64, wxid: &str) -> (u8, String) {
     use md5::{Digest, Md5};
     let hash: String = Md5::digest(format!("{code}{}", clean_wxid(wxid)).as_bytes())
@@ -31,7 +29,7 @@ pub fn derive_image_keys(code: u64, wxid: &str) -> (u8, String) {
     ((code & 0xff) as u8, hash[..16].to_string())
 }
 
-/// `verifyDerivedAesKey`: the key must decrypt the template block into an image header.
+/// Whether an AES key is right: the key must decrypt the template block into an image header.
 pub fn verify_derived_aes_key(aes_key: &str, ciphertext: &[u8]) -> bool {
     if !aes_key.is_ascii() {
         return false;
