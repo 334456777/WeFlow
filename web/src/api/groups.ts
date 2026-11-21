@@ -10,8 +10,8 @@ export type Group = Contract.GroupChat;
 export type GroupRanked = Contract.GroupRank;
 /** `group media`: the message types, named, with their counts. */
 export type GroupMedia = Contract.GroupMedia;
-/** `group member`: the member's messages counted (`activeDays` counted, not estimated), by hour, and the words and
- * emoji they use most. */
+/** `group member`: the member's messages and the days they wrote on (`activeDays`) counted, by hour, and the words
+ * and emoji they use most. */
 export type MemberStats = Contract.MemberAnalytics;
 /** A page of `group member-messages`. */
 export type MemberPage = Contract.MemberMessages;

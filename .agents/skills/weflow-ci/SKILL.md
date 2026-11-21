@@ -15,6 +15,6 @@ description: 修改 WeFlow 的 GitHub Actions 工作流（.github/workflows/ 和
   - 改了缓存配置后，对比作业的耗时，并数日志里 `Compiling` 的行数；不同的 cargo 命令（`-p` 与 `--workspace`、不同的 profile）不共用 key。
   - 验证保存行为：在临时分支上把 `save-if` 改为 true，跑两次 `test.<名称>` 比较，测完删除分支、缓存（`gh cache delete <id>`）和这些运行（`gh run delete <id>`）。
   - 各作业缓存的现状写在 `ci.yml`、`pgo-build.sh` 的注释里，以那里为准。新增缓存后在 `main` 上手动运行一次 `ci.yml` 补存。
-- `html-template.yml` 以 github-actions[bot] 推送副本后，PR 页面出现批准运行的按钮；批准后 GitHub 按 bot 的那次提交运行工作流，运行的 `actor` 是 bot，`triggering_actor` 是批准的人。看到 bot 提交上的运行时，先查 `gh api repos/334456777/WeFlow/actions/runs/<id> --jq .triggering_actor.login`：是人，就是手动批准的，不是工作流配置的问题。
+- `html-template.yml` 以 github-actions[bot] 推送副本后，PR 页面出现批准运行的按钮；批准后 GitHub 按 bot 的那次提交运行工作流，运行的 `actor` 是 bot，`triggering_actor` 是批准的人（`gh api repos/334456777/WeFlow/actions/runs/<id> --jq .triggering_actor.login`）。
 - PR 开出后没有任何运行：见 [weflow-pr](../weflow-pr/SKILL.md#开-pr)。
 - 自托管 runner（`weflow-bench`）不能被 `pull_request` 触发的 job 使用，见 [测试与基准#自托管 runner](https://github.com/334456777/WeFlow/wiki/测试与基准#自托管-runner)。

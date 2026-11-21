@@ -34,7 +34,7 @@
 ## 修复流程
 
 - 在自己的 worktree 和分支（`fix/<scope>-<描述>`）上修，不在共用的工作副本里切换分支。
-- 每个 worktree 编译时用自己的 target 目录：`CARGO_TARGET_DIR=<主工作副本>/target/wt-<worktree 名>`。不用 `target/debug`，也不让几个 worktree 共用一个目录，先后修的几个 bug 也不共用。
+- 每个 worktree 编译时用自己的 target 目录：`CARGO_TARGET_DIR=<主工作副本>/target/wt-<worktree 名>`。不用 `target/debug`。
 - 提交：
   - 提交信息和 PR 标题用 `type(scope):` 加中文描述；
   - PR 描述用中文，用 `fixed`、`closed` 关联 issue；

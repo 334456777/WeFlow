@@ -21,7 +21,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 只在部分平台编译的代码：开头写了 `#![cfg(...)]` 的文件在别的平台上不编译，如 [`insight_e2e.rs`](crates/weflow-core/tests/insight_e2e.rs) 只在 Linux 编译。改了这类文件用到的公开接口，或者测试依赖 `cfg!(windows)`、反斜杠路径、符号链接时，在对应的平台上（Windows 上用 WSL）跑一次相关的 clippy 和测试
 - `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README、skill 和本文件的相对链接和锚点、汉字旁的逗号是否为中文逗号（只报告，不自动修改）、skill 的格式，以及 `AGENTS.md`、`.claude/skills` 是否检出为符号链接
 - [`rust-toolchain.toml`](rust-toolchain.toml) 固定了 Rust 版本（本地与 CI 共用）
-- `target/` 不会自动清理：用 `cargo sweep` 清理过期的编译缓存，不用 `find -delete` 自制清理，也不为了腾空间直接 `cargo clean`
+- `target/` 不会自动清理：用 `cargo sweep` 清理过期的编译缓存，不为了腾空间直接 `cargo clean`
 
 ### WebUI
 在 `web/` 下运行，脚本的完整列表见 [`web/README.zh-CN.md`](web/README.zh-CN.md#脚本)。
@@ -84,7 +84,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 渲染：源码按 React 19 来写，构建时由 Preact 11 渲染（`vite.config.ts` 把 `react`、`react-dom` 指到 `preact/compat`，[#783](https://github.com/334456777/WeFlow/issues/783)）；`bun test` 仍用 React
 - 发布：构建产物 `dist/` 由 `serve` 托管在 `/ui/`（[#146](https://github.com/334456777/WeFlow/issues/146)），与二进制分开发布（[#148](https://github.com/334456777/WeFlow/issues/148)）；`package.json` 的 `weflow.apiVersion` / `minBackendVersion` 声明需要的 API，构建时写入 `dist/weflow-web.json`
 - [`src/api/`](web/src/api) 调用命令 API，用 `/health/events` 长连接显示连接状态并检查版本（[#221](https://github.com/334456777/WeFlow/issues/221)）
-- [`src/mock/`](web/src/mock) 是示例服务端（[#879](https://github.com/334456777/WeFlow/issues/879)，见[示例数据](https://github.com/334456777/WeFlow/wiki/WebUI-实现#示例数据)），不是暂用的数据：
+- [`src/mock/`](web/src/mock) 是示例服务端（[#879](https://github.com/334456777/WeFlow/issues/879)，见[示例数据](https://github.com/334456777/WeFlow/wiki/WebUI-实现#示例数据)）：
   - 还没连上服务时，`api/client.ts` 的读取由它按命令 API 的格式回答，各页面用同一套组件显示示例记录，内容围绕 WeFlow 和 WebUI
   - 改动保存在页面的内存里（刷新后复原），作业在页面里按时间跑完，导出只给说明文件，不按格式生成（[#896](https://github.com/334456777/WeFlow/issues/896)）
   - 它是单独的 chunk，只能从页面代码导入类型（[`plugins/plainImport.ts`](web/plugins/plainImport.ts)）
