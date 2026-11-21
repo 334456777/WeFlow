@@ -14,6 +14,9 @@ use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
 
+mod legacy_keys;
+pub use legacy_keys::refuse_renamed;
+
 /// Where a run of `weflow` keeps its files, and which version it is.
 #[derive(Debug, Clone)]
 pub struct AppContext {
@@ -205,7 +208,7 @@ pub struct ProfileConfig {
     pub ai_model_api_max_tokens: Option<u32>,
     /// Whether the AI insights run.
     pub ai_insight_enabled: Option<bool>,
-    /// The profile's other keys (those the WebUI keeps, such as `autoDownloadWhitelist`), kept as they are.
+    /// The profile's other keys (those the WebUI keeps, such as `auto_download_whitelist`), kept as they are.
     pub extra: BTreeMap<String, Value>,
 }
 
@@ -234,10 +237,37 @@ impl ConfigStore {
         }
         let raw = fs::read_to_string(path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        let parsed = serde_json::from_str(&raw)
+        let mut parsed: Self = serde_json::from_str(&raw)
             .or_else(|_| toml::from_str::<Self>(&raw))
             .with_context(|| format!("failed to parse {}", path.display()))?;
+        parsed.rename_legacy_keys();
         Ok(parsed)
+    }
+
+    /// Gives the keys of every profile that carry a name of WeFlow's desktop app (`dbPath`, `aiInsightAllowContext`)
+    /// the key's own name (#1021): a key already set under its own name keeps its value, and a value the key does not
+    /// take stays under the old name.
+    fn rename_legacy_keys(&mut self) {
+        let names: Vec<String> = self.profiles.keys().cloned().collect();
+        for name in names {
+            for (old, new) in legacy_keys::RENAMED {
+                let Some(value) = self
+                    .profiles
+                    .get_mut(&name)
+                    .and_then(|profile| profile.extra.remove(*old))
+                else {
+                    continue;
+                };
+                if !self.get_key(Some(&name), new).is_null() {
+                    continue;
+                }
+                if self.set_key(Some(&name), new, value.clone()).is_err() {
+                    if let Some(profile) = self.profiles.get_mut(&name) {
+                        profile.extra.insert((*old).to_string(), value);
+                    }
+                }
+            }
+        }
     }
 
     /// Write the config through a temporary file and a rename, so a reader never sees a half-written file.
@@ -311,7 +341,7 @@ impl ConfigStore {
     /// The value of `key` (`config get`): a setting of the file itself, else of the profile `profile`, else of the
     /// one `key` names (`work.wxid`), else of the current one; `null` when it is not set.
     pub fn get_key(&self, profile: Option<&str>, key: &str) -> Value {
-        if key == "current_profile" || key == "currentProfile" {
+        if key == "current_profile" {
             return Value::String(self.current_profile.clone());
         }
         if key == "lang" {
@@ -364,8 +394,10 @@ impl ConfigStore {
     /// WeFlow does not read goes to the profile's `extra`.
     ///
     /// # Errors
-    /// A usage error for a value the key does not take, or a profile named in `key` that does not exist.
+    /// A usage error for a name of WeFlow's desktop app ([`refuse_renamed`]), a value the key does not take, or a
+    /// profile named in `key` that does not exist.
     pub fn set_key(&mut self, profile: Option<&str>, key: &str, value: Value) -> AppResult<()> {
+        refuse_renamed(key)?;
         if key == "lang" {
             let lang = as_string(value)?;
             if !matches!(lang.as_str(), "en" | "zh") {
@@ -382,7 +414,7 @@ impl ConfigStore {
         {
             return self.serve.set(name, value);
         }
-        if key == "current_profile" || key == "currentProfile" {
+        if key == "current_profile" {
             self.current_profile = as_string(value)?;
             self.profiles
                 .entry(self.current_profile.clone())
@@ -408,16 +440,16 @@ impl ConfigStore {
         }
         let target = self.profile_mut(profile.as_deref());
         match key.as_str() {
-            "db_path" | "dbPath" => target.db_path = Some(as_string(value)?),
-            "decrypt_key" | "decryptKey" => target.decrypt_key = Some(as_string(value)?),
-            "wxid" | "myWxid" => target.wxid = Some(as_string(value)?),
-            "image_xor_key" | "imageXorKey" => {
+            "db_path" => target.db_path = Some(as_string(value)?),
+            "decrypt_key" => target.decrypt_key = Some(as_string(value)?),
+            "wxid" => target.wxid = Some(as_string(value)?),
+            "image_xor_key" => {
                 target.image_xor_key = Some(as_int_in(value, &key, 0, u8::MAX.into())?);
             }
-            "image_aes_key" | "imageAesKey" => target.image_aes_key = Some(as_string(value)?),
-            "cache_path" | "cachePath" => target.cache_path = Some(as_string(value)?),
-            "http_api_token" | "httpApiToken" => target.http_api_token = Some(as_string(value)?),
-            "ai_model_api_format" | "aiModelApiFormat" => {
+            "image_aes_key" => target.image_aes_key = Some(as_string(value)?),
+            "cache_path" => target.cache_path = Some(as_string(value)?),
+            "http_api_token" => target.http_api_token = Some(as_string(value)?),
+            "ai_model_api_format" => {
                 let text = as_string(value)?;
                 let format = text
                     .parse::<crate::model_api::ModelApiFormat>()
@@ -429,21 +461,13 @@ impl ConfigStore {
                     })?;
                 target.ai_model_api_format = Some(format.as_str().to_string());
             }
-            "ai_model_api_base_url" | "aiModelApiBaseUrl" => {
-                target.ai_model_api_base_url = Some(as_string(value)?)
-            }
-            "ai_model_api_key" | "aiModelApiKey" => {
-                target.ai_model_api_key = Some(as_string(value)?)
-            }
-            "ai_model_api_model" | "aiModelApiModel" => {
-                target.ai_model_api_model = Some(as_string(value)?)
-            }
-            "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => {
+            "ai_model_api_base_url" => target.ai_model_api_base_url = Some(as_string(value)?),
+            "ai_model_api_key" => target.ai_model_api_key = Some(as_string(value)?),
+            "ai_model_api_model" => target.ai_model_api_model = Some(as_string(value)?),
+            "ai_model_api_max_tokens" => {
                 target.ai_model_api_max_tokens = Some(as_int_in(value, &key, 1, u32::MAX)?)
             }
-            "ai_insight_enabled" | "aiInsightEnabled" => {
-                target.ai_insight_enabled = Some(as_bool(value)?)
-            }
+            "ai_insight_enabled" => target.ai_insight_enabled = Some(as_bool(value)?),
             other => {
                 target.extra.insert(other.to_string(), value);
             }
@@ -452,23 +476,27 @@ impl ConfigStore {
     }
 
     /// Unsets `key` (`config unset`), found as [`Self::get_key`] finds it.
-    pub fn unset_key(&mut self, profile: Option<&str>, key: &str) {
+    ///
+    /// # Errors
+    /// A usage error for a name of WeFlow's desktop app ([`refuse_renamed`]).
+    pub fn unset_key(&mut self, profile: Option<&str>, key: &str) -> AppResult<()> {
+        refuse_renamed(key)?;
         if key == "lang" {
             self.lang = None;
-            return;
+            return Ok(());
         }
         if key
             .strip_prefix("serve_")
             .is_some_and(|k| self.serve.unset(k))
         {
-            return;
+            return Ok(());
         }
-        if key == "current_profile" || key == "currentProfile" {
+        if key == "current_profile" {
             self.current_profile = "default".to_string();
             self.profiles
                 .entry(self.current_profile.clone())
                 .or_default();
-            return;
+            return Ok(());
         }
 
         let named_in_key = profile.is_none();
@@ -478,29 +506,28 @@ impl ConfigStore {
             .is_some_and(|name| named_in_key && !self.has_profile(name))
         {
             // nothing to remove, and no profile to make for it
-            return;
+            return Ok(());
         }
         let target = self.profile_mut(profile.as_deref());
         match key.as_str() {
-            "db_path" | "dbPath" => target.db_path = None,
-            "decrypt_key" | "decryptKey" => target.decrypt_key = None,
-            "wxid" | "myWxid" => target.wxid = None,
-            "image_xor_key" | "imageXorKey" => target.image_xor_key = None,
-            "image_aes_key" | "imageAesKey" => target.image_aes_key = None,
-            "cache_path" | "cachePath" => target.cache_path = None,
-            "http_api_token" | "httpApiToken" => target.http_api_token = None,
-            "ai_model_api_format" | "aiModelApiFormat" => target.ai_model_api_format = None,
-            "ai_model_api_base_url" | "aiModelApiBaseUrl" => target.ai_model_api_base_url = None,
-            "ai_model_api_key" | "aiModelApiKey" => target.ai_model_api_key = None,
-            "ai_model_api_model" | "aiModelApiModel" => target.ai_model_api_model = None,
-            "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => {
-                target.ai_model_api_max_tokens = None
-            }
-            "ai_insight_enabled" | "aiInsightEnabled" => target.ai_insight_enabled = None,
+            "db_path" => target.db_path = None,
+            "decrypt_key" => target.decrypt_key = None,
+            "wxid" => target.wxid = None,
+            "image_xor_key" => target.image_xor_key = None,
+            "image_aes_key" => target.image_aes_key = None,
+            "cache_path" => target.cache_path = None,
+            "http_api_token" => target.http_api_token = None,
+            "ai_model_api_format" => target.ai_model_api_format = None,
+            "ai_model_api_base_url" => target.ai_model_api_base_url = None,
+            "ai_model_api_key" => target.ai_model_api_key = None,
+            "ai_model_api_model" => target.ai_model_api_model = None,
+            "ai_model_api_max_tokens" => target.ai_model_api_max_tokens = None,
+            "ai_insight_enabled" => target.ai_insight_enabled = None,
             other => {
                 target.extra.remove(other);
             }
         }
+        Ok(())
     }
 
     fn split_profile_key(
@@ -521,68 +548,68 @@ impl ConfigStore {
 }
 
 impl ProfileConfig {
-    /// The value of `key`, by its `snake_case` or `camelCase` name; `null` when it is not set.
+    /// The value of `key`; `null` when it is not set.
     pub fn get_key(&self, key: &str) -> Value {
         match key {
-            "db_path" | "dbPath" => self
+            "db_path" => self
                 .db_path
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
                 .unwrap_or(Value::Null),
-            "decrypt_key" | "decryptKey" => self
+            "decrypt_key" => self
                 .decrypt_key
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
                 .unwrap_or(Value::Null),
-            "wxid" | "myWxid" => self
+            "wxid" => self
                 .wxid
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
                 .unwrap_or(Value::Null),
-            "image_xor_key" | "imageXorKey" => self
+            "image_xor_key" => self
                 .image_xor_key
                 .map(|value| Value::Number(value.into()))
                 .unwrap_or(Value::Null),
-            "image_aes_key" | "imageAesKey" => self
+            "image_aes_key" => self
                 .image_aes_key
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
                 .unwrap_or(Value::Null),
-            "cache_path" | "cachePath" => self
+            "cache_path" => self
                 .cache_path
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
                 .unwrap_or(Value::Null),
-            "http_api_token" | "httpApiToken" => self
+            "http_api_token" => self
                 .http_api_token
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
                 .unwrap_or(Value::Null),
-            "ai_model_api_format" | "aiModelApiFormat" => self
+            "ai_model_api_format" => self
                 .ai_model_api_format
                 .as_ref()
                 .map(|v| Value::String(v.clone()))
                 .unwrap_or(Value::Null),
-            "ai_model_api_base_url" | "aiModelApiBaseUrl" => self
+            "ai_model_api_base_url" => self
                 .ai_model_api_base_url
                 .as_ref()
                 .map(|v| Value::String(v.clone()))
                 .unwrap_or(Value::Null),
-            "ai_model_api_key" | "aiModelApiKey" => self
+            "ai_model_api_key" => self
                 .ai_model_api_key
                 .as_ref()
                 .map(|v| Value::String(v.clone()))
                 .unwrap_or(Value::Null),
-            "ai_model_api_model" | "aiModelApiModel" => self
+            "ai_model_api_model" => self
                 .ai_model_api_model
                 .as_ref()
                 .map(|v| Value::String(v.clone()))
                 .unwrap_or(Value::Null),
-            "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => self
+            "ai_model_api_max_tokens" => self
                 .ai_model_api_max_tokens
                 .map(|v| Value::Number(v.into()))
                 .unwrap_or(Value::Null),
-            "ai_insight_enabled" | "aiInsightEnabled" => self
+            "ai_insight_enabled" => self
                 .ai_insight_enabled
                 .map(Value::Bool)
                 .unwrap_or(Value::Null),
@@ -798,31 +825,18 @@ fn is_profile_key(key: &str) -> bool {
     matches!(
         key,
         "db_path"
-            | "dbPath"
             | "decrypt_key"
-            | "decryptKey"
             | "wxid"
-            | "myWxid"
             | "image_xor_key"
-            | "imageXorKey"
             | "image_aes_key"
-            | "imageAesKey"
             | "cache_path"
-            | "cachePath"
             | "http_api_token"
-            | "httpApiToken"
             | "ai_model_api_format"
-            | "aiModelApiFormat"
             | "ai_model_api_base_url"
-            | "aiModelApiBaseUrl"
             | "ai_model_api_key"
-            | "aiModelApiKey"
             | "ai_model_api_model"
-            | "aiModelApiModel"
             | "ai_model_api_max_tokens"
-            | "aiModelApiMaxTokens"
             | "ai_insight_enabled"
-            | "aiInsightEnabled"
     )
 }
 
@@ -831,41 +845,29 @@ fn holds_text(key: &str) -> bool {
     matches!(
         key,
         "db_path"
-            | "dbPath"
             | "decrypt_key"
-            | "decryptKey"
             | "wxid"
-            | "myWxid"
             | "image_aes_key"
-            | "imageAesKey"
             | "cache_path"
-            | "cachePath"
             | "http_api_token"
-            | "httpApiToken"
             | "ai_model_api_format"
-            | "aiModelApiFormat"
             | "ai_model_api_base_url"
-            | "aiModelApiBaseUrl"
             | "ai_model_api_key"
-            | "aiModelApiKey"
             | "ai_model_api_model"
-            | "aiModelApiModel"
             | "lang"
             | "current_profile"
-            | "currentProfile"
             | "serve_host"
     )
 }
 
 /// The keys of the file's own settings and of `serve`'s, besides the profiles' keys.
-const FILE_KEYS: &[&str] = &["lang", "current_profile", "currentProfile"];
+const FILE_KEYS: &[&str] = &["lang", "current_profile"];
 
 /// The keys of a profile WeFlow reads beside its fields, kept in `extra`.
 const EXTRA_KEYS: &[&str] = &[
-    "autoDownloadWhitelist",
+    "auto_download_whitelist",
     "no_progress",
     "progress_delay_seconds",
-    "progressDelaySeconds",
 ];
 
 /// Whether `key` (without a profile) is one `config set --help` lists.
@@ -914,7 +916,7 @@ pub fn near_known_key(key: &str) -> Option<String> {
         "ai_insight_enabled",
         "lang",
         "current_profile",
-        "autoDownloadWhitelist",
+        "auto_download_whitelist",
         "no_progress",
         "progress_delay_seconds",
     ];
@@ -1143,6 +1145,81 @@ mod tests {
         assert!(!serde_json::to_string(&store).unwrap().contains("ffmpeg"));
     }
 
+    /// A config file of WeFlow 7.0.0 or earlier, with names of the desktop app, is read with the keys' own (#1021).
+    #[test]
+    fn the_desktop_names_of_an_old_config_file_are_read_as_the_keys() {
+        let dir = temp_dir("weflow-config-desktop-names");
+        let path = dir.join("config.json");
+        fs::write(
+            &path,
+            json!({
+                "current_profile": "default",
+                "profiles": {
+                    "default": { "wxid": "wxid_test", "ai_model_api_model": "kept", "extra": {
+                        "aiInsightAllowContext": true,
+                        "autoDownloadWhitelist": ["a@chatroom"],
+                        "aiInsightApiBaseUrl": "https://api.example.com",
+                        "aiInsightApiModel": "old",
+                        "aiModelApiMaxTokens": "many",
+                        "my_own": 1
+                    } },
+                    "work": { "extra": { "aiFootprintEnabled": true } }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let store = ConfigStore::load(&path).unwrap();
+        assert_eq!(store.get_key(None, "ai_insight_allow_context"), json!(true));
+        assert_eq!(
+            store.get_key(None, "auto_download_whitelist"),
+            json!(["a@chatroom"])
+        );
+        assert_eq!(
+            store.get_key(None, "ai_model_api_base_url"),
+            json!("https://api.example.com")
+        );
+        // a key set under its own name keeps its value; a value the key does not take keeps its old name
+        assert_eq!(store.get_key(None, "ai_model_api_model"), json!("kept"));
+        assert_eq!(store.get_key(None, "ai_model_api_max_tokens"), Value::Null);
+        assert_eq!(
+            store.profiles["default"].extra.keys().collect::<Vec<_>>(),
+            [
+                "aiModelApiMaxTokens",
+                "ai_insight_allow_context",
+                "auto_download_whitelist",
+                "my_own"
+            ]
+        );
+        assert_eq!(
+            store.get_key(None, "work.ai_footprint_enabled"),
+            json!(true)
+        );
+        // saved with the keys' own names
+        store.save(&path).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(!saved.contains("aiInsightAllowContext"), "{saved}");
+        assert!(saved.contains("ai_insight_allow_context"), "{saved}");
+    }
+
+    /// A name of the desktop app is no key: setting or unsetting it says the key's own name (#1021).
+    #[test]
+    fn the_desktop_names_are_refused() {
+        let mut store = ConfigStore::default();
+        for key in [
+            "dbPath",
+            "work.myWxid",
+            "aiInsightAllowContext",
+            "currentProfile",
+        ] {
+            let err = store.set_key_from_text(None, key, "x").unwrap_err();
+            assert_eq!(err.code, "invalid_arguments", "{key}");
+            assert!(err.message.contains("it is written"), "{}", err.message);
+            assert!(store.unset_key(None, key).is_err(), "{key}");
+        }
+        assert_eq!(store.get_key(None, "db_path"), Value::Null);
+    }
+
     #[test]
     fn gets_profile_keys_and_extra_values() {
         let mut store = ConfigStore::default();
@@ -1291,7 +1368,7 @@ mod tests {
         }
         assert_eq!(store.get_key(None, "serve_insight"), Value::Null);
 
-        store.unset_key(None, "serve_port");
+        store.unset_key(None, "serve_port").unwrap();
         assert_eq!(store.get_key(None, "serve_port"), Value::Null);
         assert_eq!(store.serve.host.as_deref(), Some("0.0.0.0"));
     }
@@ -1336,10 +1413,10 @@ mod tests {
             .unwrap();
         assert_eq!(store.get_key(None, "ai_insight_enabled"), json!(true));
         store
-            .set_key_from_text(None, "autoDownloadWhitelist", "[\"a@chatroom\"]")
+            .set_key_from_text(None, "auto_download_whitelist", "[\"a@chatroom\"]")
             .unwrap();
         assert_eq!(
-            store.get_key(None, "autoDownloadWhitelist"),
+            store.get_key(None, "auto_download_whitelist"),
             json!(["a@chatroom"])
         );
     }
@@ -1362,7 +1439,7 @@ mod tests {
             .set_key_from_text(None, "defualt.wxid", "wxid_a")
             .unwrap_err();
         assert!(!err.message.contains("defualt_wxid"), "{}", err.message);
-        store.unset_key(None, "serve.port");
+        store.unset_key(None, "serve.port").unwrap();
         assert_eq!(
             store.profiles.keys().collect::<Vec<_>>(),
             ["default"],
@@ -1393,12 +1470,12 @@ mod tests {
             ("decrpyt_key", "decrypt_key"),
             ("wixd", "wxid"),
             ("progress_delay_second", "progress_delay_seconds"),
+            ("decryptKey", "decrypt_key"),
         ] {
             assert_eq!(near_known_key(typed).as_deref(), Some(known), "{typed}");
         }
         for typed in [
             "decrypt_key",
-            "decryptKey",
             "work.wxid",
             "aiFootprintEnabled",
             "aiInsightSilenceDays",

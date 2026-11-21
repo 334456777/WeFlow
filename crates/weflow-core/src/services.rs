@@ -170,7 +170,7 @@ pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
 }
 
 impl ServiceHub {
-    /// Raw configuration value (`messagePushFilterMode`, …) of the active profile.
+    /// Raw configuration value (`message_push_filter_mode`, …) of the active profile.
     pub fn config_value(&self, key: &str) -> Value {
         self.config.get_key(Some(&self.profile_name), key)
     }

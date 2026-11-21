@@ -189,7 +189,7 @@ pub(crate) fn handle_cache(
             // like WeFlow's desktop app: the account is signed out of this profile
             ConfigStore::update(&ctx.config_path, |config| {
                 for key in ACCOUNT_KEYS {
-                    config.unset_key(None, key);
+                    config.unset_key(None, key)?;
                 }
                 Ok(())
             })?;

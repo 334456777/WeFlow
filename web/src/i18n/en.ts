@@ -888,7 +888,7 @@ export const en: Record<string, string> = {
   "关闭时，见解引擎和 insight scan 都不生成见解；测试连接和手动生成不受影响。": "Off, neither the insight engine nor insight scan makes insights; testing the connection and making one by hand still work.",
   "模型接口": "Model API",
   "自动生成": "Made by themselves",
-  "这里的开关和「启动选项」里的灵感引擎都打开时才自动生成；默认只处理会话名单 aiInsightFilterList 里的会话，名单为空时不生成。": "Insights come by themselves only with both this switch and the insight engine of the startup options on; by default only for the conversations in aiInsightFilterList, none while it is empty.",
+  "这里的开关和「启动选项」里的灵感引擎都打开时才自动生成；默认只处理会话名单 ai_insight_filter_list 里的会话，名单为空时不生成。": "Insights come by themselves only with both this switch and the insight engine of the startup options on; by default only for the conversations in ai_insight_filter_list, none while it is empty.",
   "灵感引擎": "Insight engine",
   "在「启动选项」里打开「运行灵感引擎」，重启 weflow serve 后生效。": "Turn on Run the insight engine in the startup options; it applies once weflow serve restarts.",
   "weflow serve 正在运行灵感引擎。": "weflow serve runs the insight engine.",

@@ -32,10 +32,12 @@ fn hub_with_ai(
         p.ai_model_api_model = Some(model);
         p.ai_insight_enabled = Some(true);
         p.extra
-            .insert("aiInsightFilterMode".into(), json!("whitelist"));
-        p.extra.insert("aiInsightFilterList".into(), json!(filter));
-        p.extra.insert("aiInsightAllowContext".into(), json!(true));
-        p.extra.insert("aiFootprintEnabled".into(), json!(true));
+            .insert("ai_insight_filter_mode".into(), json!("whitelist"));
+        p.extra
+            .insert("ai_insight_filter_list".into(), json!(filter));
+        p.extra
+            .insert("ai_insight_allow_context".into(), json!(true));
+        p.extra.insert("ai_footprint_enabled".into(), json!(true));
     })
 }
 
@@ -152,7 +154,7 @@ async fn a_failed_trigger_says_why() {
         .clone();
     assert!(message.contains("SKIP"), "{message}");
     assert!(
-        !message.contains("aiInsightAllowContext"),
+        !message.contains("ai_insight_allow_context"),
         "the chat was sent: {message}"
     );
 }

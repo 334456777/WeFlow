@@ -51,7 +51,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   const set = (key: keyof AiForm, value: string) => setForm(old => (old ? { ...old, [key]: value } : old));
   const tokensBad = Boolean(form?.ai_model_api_max_tokens.trim()) && !/^\d+$/.test(form!.ai_model_api_max_tokens.trim());
   // the server takes a count below 1 as its default
-  const countBad = Boolean(form?.aiInsightContextCount.trim()) && !/^[1-9]\d*$/.test(form!.aiInsightContextCount.trim());
+  const countBad = Boolean(form?.ai_insight_context_count.trim()) && !/^[1-9]\d*$/.test(form!.ai_insight_context_count.trim());
   const changed = Boolean(form && saved && (form.key.trim() || AI_KEYS.some(k => form[k].trim() !== saved[k])));
   const format = formatOf(form?.ai_model_api_format);
   // choosing the format the saved setting means already leaves the setting as it is (unset reads as openai)
@@ -103,7 +103,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
 
   if (!form) return <SettingsGroup>{note ? <NoteLine note={note} /> : <GridSkeleton label={t('正在读取 AI 设置')} cells={4} />}</SettingsGroup>;
   const info = formatInfo(format);
-  const chatSent = form.aiInsightAllowContext === 'true';
+  const chatSent = form.ai_insight_allow_context === 'true';
   const endpoint = endpointOf(format, form.ai_model_api_base_url);
   const testing = test !== null && 'running' in test;
   const listing = models !== null && 'running' in models;
@@ -112,7 +112,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   const listed = models !== null && 'list' in models ? models.list : [];
   const offered = [...new Set([...listed.map(m => m.id), ...SUGGESTED_MODELS[format]])];
   return <form className="ai-form" onSubmit={save}>
-    <SettingsGroup title={t('自动生成')} note={t('这里的开关和「启动选项」里的灵感引擎都打开时才自动生成；默认只处理会话名单 aiInsightFilterList 里的会话，名单为空时不生成。')}>
+    <SettingsGroup title={t('自动生成')} note={t('这里的开关和「启动选项」里的灵感引擎都打开时才自动生成；默认只处理会话名单 ai_insight_filter_list 里的会话，名单为空时不生成。')}>
       <SettingRow name={t('开启 AI 见解')} text={t('关闭时，见解引擎和 insight scan 都不生成见解；测试连接和手动生成不受影响。')}>
         <Toggle label={t('开启 AI 见解')} checked={form.ai_insight_enabled === 'true'} onChange={on => set('ai_insight_enabled', on ? 'true' : 'false')} />
       </SettingRow>
@@ -127,12 +127,12 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
       <SettingRow name={t('最近的聊天内容')} text={chatSent
         ? t('每次生成见解时，发送这个会话最近的聊天记录。')
         : t('没有打开时，模型只收到提问和当前时间，几乎总是回答没有可说的（SKIP）。')}>
-        <Toggle label={t('发送最近的聊天内容')} checked={chatSent} onChange={on => set('aiInsightAllowContext', on ? 'true' : 'false')} />
+        <Toggle label={t('发送最近的聊天内容')} checked={chatSent} onChange={on => set('ai_insight_allow_context', on ? 'true' : 'false')} />
       </SettingRow>
       <div className="settings-fields">
         <label className="console-field"><span className="console-field-name">{t('发送的条数')}</span>
           <input className="console-input" type="text" inputMode="numeric" disabled={!chatSent} placeholder={t('默认 40')} aria-label={t('发送的条数')}
-            value={form.aiInsightContextCount} onChange={e => set('aiInsightContextCount', e.target.value)} />
+            value={form.ai_insight_context_count} onChange={e => set('ai_insight_context_count', e.target.value)} />
           {countBad ? <small className="setting-warning">{t('要填正整数。')}</small> : <small>{t('条数越多，模型看到的越完整，每次请求也越长。')}</small>}</label>
       </div>
     </SettingsGroup>

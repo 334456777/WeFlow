@@ -14,7 +14,7 @@ const CONFIG_PATH = 'C:\\Users\\sample\\AppData\\Roaming\\weflow\\config.json';
 const SAMPLE_KEY = '5a17c0de'.repeat(8);
 
 /** The settings of the server, not of a profile: how `weflow serve` starts. */
-const isServeKey = (key: string) => key.startsWith('serve_') || key === 'autoDownloadWhitelist';
+const isServeKey = (key: string) => key.startsWith('serve_') || key === 'auto_download_whitelist';
 
 const IMAGE_KEYS = ['image_xor_key', 'image_aes_key'];
 const ACCOUNT_KEYS = ['db_path', 'wxid', 'decrypt_key', ...IMAGE_KEYS];
@@ -23,7 +23,7 @@ const ACCOUNT_KEYS = ['db_path', 'wxid', 'decrypt_key', ...IMAGE_KEYS];
 const configured = (): Settings => ({
   db_path: DATA_DIR, wxid: ME, decrypt_key: SAMPLE_KEY, image_xor_key: '90', image_aes_key: '6c3f9d1e2b8a4f70',
   ai_model_api_base_url: 'https://api.example.com/v1', ai_model_api_model: 'sample-model', ai_model_api_key: 'sample', ai_insight_enabled: 'true',
-  aiInsightAllowContext: 'true',
+  ai_insight_allow_context: 'true',
 });
 
 const profiles = new Map<string, Settings>([['default', configured()]]);

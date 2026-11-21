@@ -213,7 +213,7 @@ impl ServiceHub {
         normalize_excluded(
             &self
                 .fresh_config()
-                .get_key(Some(&self.profile_name), "analyticsExcludedUsernames"),
+                .get_key(Some(&self.profile_name), "analytics_excluded_usernames"),
         )
     }
 
@@ -225,7 +225,7 @@ impl ServiceHub {
     /// `setExcludedUsernames`: normalises and persists the list.
     pub fn analytics_set_excluded_usernames(&self, usernames: &[String]) -> AppResult<Vec<String>> {
         let normalized = normalize_excluded(&json!(usernames));
-        self.set_config_value("analyticsExcludedUsernames", json!(normalized))?;
+        self.set_config_value("analytics_excluded_usernames", json!(normalized))?;
         Ok(normalized)
     }
 

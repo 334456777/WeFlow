@@ -30,7 +30,7 @@ pub(crate) enum ConfigSubcommand {
     /// Set a key
     Set {
         #[arg(
-            help = "Key name; `<profile>.<key>`, such as `work.wxid`, sets the key in another existing profile, which `current_profile` makes\n  db_path                  WeChat data directory; `db detect` finds it\n  wxid                     Account wxid; `db wxid` prints it\n  decrypt_key              Database key in hex; `key db` prints it\n  image_xor_key            Image XOR key, a number; `key image` prints it, and on Linux x64 and macOS `key image-mem` without --ciphertext may too\n  image_aes_key            Image AES key; the same commands print it\n  cache_path               Folder for cached images, voices, stickers and Moments; default: `cache` next to the config file\n  http_api_token           Access token of the HTTP API of `serve`\n  ai_model_api_format      openai or anthropic: the API format of the AI model API used by `insight`, OpenAI's Chat Completions or Anthropic's Messages; default: openai\n  ai_model_api_base_url    Base URL of the AI model API; default: the service of the format\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name; `insight models` lists them\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  autoDownloadWhitelist    JSON array of the conversation ids the image auto-download takes originals for\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears; default 5, and 0 shows it at once\nSettings of the config file itself, stored in that file and not in a profile; each config file has its own:\n  lang                     Output language, en or zh, the same as `weflow lang`\n  current_profile          Active profile name, created when it does not exist; default: default\nOptions of `serve`, used when its command line does not give them:\n  serve_host               Listen address, as --host\n  serve_port               Listen port, as --port\n  serve_max_tasks          Tasks run at once, as --max-tasks\n  serve_max_reads          Other commands run at once, as --max-reads\n  serve_max_media          Images and voices decoded at once, as --max-media\n  serve_log_requests       true or false: true logs each request, as --log-requests\n  serve_insight            true or false: true runs the AI insight engine, as --insight\n  serve_image_auto_download  true or false: turn the image auto-download hook on or off; default: on\n  serve_open_browser       true or false: false does not open the WebUI at the start, as --no-browser\nWhich config file is used, kept next to the default location and not in any config file:\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
+            help = "Key name; `<profile>.<key>`, such as `work.wxid`, sets the key in another existing profile, which `current_profile` makes\n  db_path                  WeChat data directory; `db detect` finds it\n  wxid                     Account wxid; `db wxid` prints it\n  decrypt_key              Database key in hex; `key db` prints it\n  image_xor_key            Image XOR key, a number; `key image` prints it, and on Linux x64 and macOS `key image-mem` without --ciphertext may too\n  image_aes_key            Image AES key; the same commands print it\n  cache_path               Folder for cached images, voices, stickers and Moments; default: `cache` next to the config file\n  http_api_token           Access token of the HTTP API of `serve`\n  ai_model_api_format      openai or anthropic: the API format of the AI model API used by `insight`, OpenAI's Chat Completions or Anthropic's Messages; default: openai\n  ai_model_api_base_url    Base URL of the AI model API; default: the service of the format\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name; `insight models` lists them\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  auto_download_whitelist  JSON array of the conversation ids the image auto-download takes originals for\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears; default 5, and 0 shows it at once\nSettings of the config file itself, stored in that file and not in a profile; each config file has its own:\n  lang                     Output language, en or zh, the same as `weflow lang`\n  current_profile          Active profile name, created when it does not exist; default: default\nOptions of `serve`, used when its command line does not give them:\n  serve_host               Listen address, as --host\n  serve_port               Listen port, as --port\n  serve_max_tasks          Tasks run at once, as --max-tasks\n  serve_max_reads          Other commands run at once, as --max-reads\n  serve_max_media          Images and voices decoded at once, as --max-media\n  serve_log_requests       true or false: true logs each request, as --log-requests\n  serve_insight            true or false: true runs the AI insight engine, as --insight\n  serve_image_auto_download  true or false: turn the image auto-download hook on or off; default: on\n  serve_open_browser       true or false: false does not open the WebUI at the start, as --no-browser\nWhich config file is used, kept next to the default location and not in any config file:\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
         )]
         key: String,
         /// Value to store: as typed for paths, keys, tokens and names; as JSON for numbers, true/false and arrays
@@ -117,7 +117,7 @@ pub(crate) fn handle_config(
             .map_err(|err| AppError::runtime(format!("cannot serialize the config: {err}"))),
         ConfigSubcommand::Profiles | ConfigSubcommand::Get { .. } => unreachable!("a read"),
         ConfigSubcommand::Set { key, value } => {
-            if matches!(key.as_str(), "config_path" | "configPath") {
+            if key == "config_path" {
                 let path = std::path::absolute(&value)
                     .map_err(|err| AppError::usage(format!("invalid path {value}: {err}")))?;
                 if path.is_dir() {
@@ -129,10 +129,7 @@ pub(crate) fn handle_config(
                 weflow_core::config::set_saved_config_path(&path)?;
                 return Ok(written(Some(path)));
             }
-            if matches!(
-                key.as_str(),
-                "progress_delay_seconds" | "progressDelaySeconds"
-            ) && weflow_core::output::parse_delay(&value).is_none()
+            if key == "progress_delay_seconds" && weflow_core::output::parse_delay(&value).is_none()
             {
                 return Err(AppError::usage(format!(
                     "invalid value '{value}' for {key}; use a whole number of seconds, 0 or more"
@@ -147,14 +144,11 @@ pub(crate) fn handle_config(
             }))
         }
         ConfigSubcommand::Unset { key } => {
-            if matches!(key.as_str(), "config_path" | "configPath") {
+            if key == "config_path" {
                 weflow_core::config::clear_saved_config_path()?;
                 return Ok(written(weflow_core::config::default_config_path()));
             }
-            ConfigStore::update(&ctx.config_path, |config| {
-                config.unset_key(None, &key);
-                Ok(())
-            })?;
+            ConfigStore::update(&ctx.config_path, |config| config.unset_key(None, &key))?;
             Ok(written(Some(ctx.config_path.clone())))
         }
         ConfigSubcommand::Clear => {

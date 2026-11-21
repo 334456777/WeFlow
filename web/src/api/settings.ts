@@ -23,12 +23,12 @@ export const listModels = (signal?: AbortSignal) => call<Contract.ModelList>('GE
 
 /**
  * The keys of the AI part, as `config set` names them; the API key is never read back (`config profiles` says it is set).
- * `aiInsightAllowContext` and `aiInsightContextCount` are the desktop app's names: whether the recent messages go with
- * the question, and how many.
+ * `ai_insight_allow_context` and `ai_insight_context_count`: whether the recent messages go with the question, and how
+ * many.
  */
 export const AI_KEYS = [
   'ai_model_api_format', 'ai_model_api_base_url', 'ai_model_api_model', 'ai_model_api_max_tokens', 'ai_insight_enabled',
-  'aiInsightAllowContext', 'aiInsightContextCount',
+  'ai_insight_allow_context', 'ai_insight_context_count',
 ] as const;
 
 /** The parts of the cache, as `cache clear` takes them (the contract's, #430). */

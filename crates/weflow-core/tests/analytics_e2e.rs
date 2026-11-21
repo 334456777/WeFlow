@@ -71,7 +71,7 @@ fn exclusion_list_roundtrip_and_candidates() {
     assert_eq!(saved, vec!["wxid_bob", "ghost"]);
     assert_eq!(hub.analytics_excluded_usernames().unwrap(), saved);
     let persisted = std::fs::read_to_string(root.join("home/config.json")).unwrap();
-    assert!(persisted.contains("analyticsExcludedUsernames"));
+    assert!(persisted.contains("analytics_excluded_usernames"));
 
     // excluded sessions vanish from the aggregate, but stay selectable as candidates
     let err = hub.analytics_overall_statistics().unwrap_err();

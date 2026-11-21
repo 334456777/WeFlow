@@ -81,6 +81,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("missing db_path; run config set db_path", "缺少 db_path；请运行 config set db_path"),
     ("missing decrypt_key; run config set decrypt_key", "缺少 decrypt_key；请运行 config set decrypt_key"),
     ("profile not found: {}", "未找到配置档案：{}"),
+    ("there is no key `{}`; it is written `{}`", "没有 `{}` 这个键，应写作 `{}`"),
     ("wxid is not configured", "未配置 wxid"),
     ("no account or database path configured", "未配置账号或数据库路径"),
     ("account directory not found", "未找到账号目录"),

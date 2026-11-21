@@ -73,7 +73,7 @@ fn millis_since(started: Instant) -> u64 {
 }
 
 /// What a test trigger says when the model had nothing to say about `name`; without the recent messages
-/// (`aiInsightAllowContext` off) the model sees next to nothing, which is the usual reason.
+/// (`ai_insight_allow_context` off) the model sees next to nothing, which is the usual reason.
 fn skipped_message(name: &str, chat_sent: bool) -> String {
     let skipped = fill(
         tr(
@@ -87,8 +87,8 @@ fn skipped_message(name: &str, chat_sent: bool) -> String {
     }
     skipped
         + tr(
-            "\nThe recent messages are not sent because aiInsightAllowContext is off, so the model saw no chat. Turn it on with `weflow config set aiInsightAllowContext true`.",
-            "\n没有开启发送聊天内容 aiInsightAllowContext，模型没有收到聊天记录。可以用 `weflow config set aiInsightAllowContext true` 开启。",
+            "\nThe recent messages are not sent because ai_insight_allow_context is off, so the model saw no chat. Turn it on with `weflow config set ai_insight_allow_context true`.",
+            "\n没有开启发送聊天内容 ai_insight_allow_context，模型没有收到聊天记录。可以用 `weflow config set ai_insight_allow_context true` 开启。",
         )
 }
 
@@ -147,46 +147,38 @@ impl ServiceHub {
         self.fresh_config()
     }
 
-    /// The model API of the profile's settings (`ai_model_api_*`, else WeFlow's older `aiInsightApi*` keys).
+    /// The model API of the profile's settings (`ai_model_api_*`).
     fn model_api(&self) -> ModelApi {
         let c = self.insight_cfg();
         let p = &self.profile_name;
-        let pick = |a: &str, b: &str| {
-            let first = cfg_str(&c, p, a);
-            if first.is_empty() {
-                cfg_str(&c, p, b)
-            } else {
-                first
-            }
-        };
         ModelApi {
-            format: cfg_str(&c, p, "aiModelApiFormat")
+            format: cfg_str(&c, p, "ai_model_api_format")
                 .parse()
                 .unwrap_or_default(),
-            base_url: pick("aiModelApiBaseUrl", "aiInsightApiBaseUrl"),
-            key: pick("aiModelApiKey", "aiInsightApiKey"),
-            model: pick("aiModelApiModel", "aiInsightApiModel"),
-            max_tokens: max_tokens_of(&c.get_key(Some(p), "aiModelApiMaxTokens")),
+            base_url: cfg_str(&c, p, "ai_model_api_base_url"),
+            key: cfg_str(&c, p, "ai_model_api_key"),
+            model: cfg_str(&c, p, "ai_model_api_model"),
+            max_tokens: max_tokens_of(&c.get_key(Some(p), "ai_model_api_max_tokens")),
         }
     }
 
     /// Whether the profile turned the AI insights on (`ai_insight_enabled`).
     pub fn insight_enabled(&self) -> bool {
         self.insight_cfg()
-            .get_key(Some(&self.profile_name), "aiInsightEnabled")
+            .get_key(Some(&self.profile_name), "ai_insight_enabled")
             == Value::Bool(true)
     }
 
-    /// Whether the recent messages go to the model with the question (`aiInsightAllowContext`, off by default).
+    /// Whether the recent messages go to the model with the question (`ai_insight_allow_context`, off by default).
     fn insight_sends_chat(&self) -> bool {
         self.insight_cfg()
-            .get_key(Some(&self.profile_name), "aiInsightAllowContext")
+            .get_key(Some(&self.profile_name), "ai_insight_allow_context")
             == Value::Bool(true)
     }
 
     fn insight_filter(&self) -> (String, Vec<String>) {
         let c = self.insight_cfg();
-        let mode = cfg_str(&c, &self.profile_name, "aiInsightFilterMode").to_lowercase();
+        let mode = cfg_str(&c, &self.profile_name, "ai_insight_filter_mode").to_lowercase();
         (
             if mode == "blacklist" {
                 "blacklist".into()
@@ -194,7 +186,7 @@ impl ServiceHub {
                 "whitelist".into()
             },
             ins::normalize_session_id_list(
-                &c.get_key(Some(&self.profile_name), "aiInsightFilterList"),
+                &c.get_key(Some(&self.profile_name), "ai_insight_filter_list"),
             ),
         )
     }
@@ -361,7 +353,7 @@ impl ServiceHub {
     pub async fn insight_footprint_summary(&self, params: &Value) -> AppResult<InsightReply> {
         let c = self.insight_cfg();
         let p = &self.profile_name;
-        if c.get_key(Some(p), "aiFootprintEnabled") != Value::Bool(true) {
+        if c.get_key(Some(p), "ai_footprint_enabled") != Value::Bool(true) {
             return Err(AppError::runtime(tr(
                 "Please turn on \"AI Footprint summary\" in Settings first",
                 "请先在设置中开启「AI 足迹总结」",
@@ -471,7 +463,7 @@ impl ServiceHub {
                 .collect::<Vec<_>>()
                 .join("\n")
         };
-        let custom = cfg_str(&c, p, "aiFootprintSystemPrompt");
+        let custom = cfg_str(&c, p, "ai_footprint_system_prompt");
         let system = if custom.is_empty() {
             ins::default_footprint_prompt().to_string()
         } else {
@@ -579,10 +571,10 @@ impl ServiceHub {
     async fn insight_moments_section(&self, session_id: &str) -> String {
         let c = self.insight_cfg();
         let p = &self.profile_name;
-        if c.get_key(Some(p), "aiInsightAllowMomentsContext") != Value::Bool(true) {
+        if c.get_key(Some(p), "ai_insight_allow_moments_context") != Value::Bool(true) {
             return String::new();
         }
-        if c.get_key(Some(p), "aiInsightMomentsBindings")
+        if c.get_key(Some(p), "ai_insight_moments_bindings")
             .get(session_id)
             .and_then(|b| b.get("enabled"))
             .and_then(Value::as_bool)
@@ -591,7 +583,7 @@ impl ServiceHub {
             return String::new();
         }
         let raw = c
-            .get_key(Some(p), "aiInsightMomentsContextCount")
+            .get_key(Some(p), "ai_insight_moments_context_count")
             .as_f64()
             .unwrap_or(5.0);
         let count = if raw.floor() >= 1.0 {
@@ -672,12 +664,12 @@ impl ServiceHub {
     async fn insight_social_section(&self, session_id: &str) -> String {
         let c = self.insight_cfg();
         let p = &self.profile_name;
-        if c.get_key(Some(p), "aiInsightAllowSocialContext") != Value::Bool(true) {
+        if c.get_key(Some(p), "ai_insight_allow_social_context") != Value::Bool(true) {
             return String::new();
         }
-        let cookie = cfg_str(&c, p, "aiInsightWeiboCookie");
+        let cookie = cfg_str(&c, p, "ai_insight_weibo_cookie");
         let uid = c
-            .get_key(Some(p), "aiInsightWeiboBindings")
+            .get_key(Some(p), "ai_insight_weibo_bindings")
             .get(session_id)
             .and_then(|b| b.get("uid"))
             .and_then(Value::as_str)
@@ -688,7 +680,7 @@ impl ServiceHub {
             return String::new();
         }
         let raw = c
-            .get_key(Some(p), "aiInsightSocialContextCount")
+            .get_key(Some(p), "ai_insight_social_context_count")
             .as_f64()
             .unwrap_or(3.0);
         let count = if raw.floor() >= 1.0 {
@@ -755,7 +747,7 @@ impl ServiceHub {
         let p = &self.profile_name;
         let allow_context = self.insight_sends_chat();
         let ctx_raw = c
-            .get_key(Some(p), "aiInsightContextCount")
+            .get_key(Some(p), "ai_insight_context_count")
             .as_f64()
             .unwrap_or(0.0);
         #[expect(
@@ -780,7 +772,7 @@ impl ServiceHub {
         }
         let moments = self.insight_moments_section(session_id).await;
         let social = self.insight_social_section(session_id).await;
-        let custom = cfg_str(&c, p, "aiInsightSystemPrompt");
+        let custom = cfg_str(&c, p, "ai_insight_system_prompt");
         let system = if custom.trim().is_empty() {
             ins::default_system_prompt().to_string()
         } else {
@@ -850,9 +842,9 @@ impl ServiceHub {
         };
         let record =
             self.record_store_add(session_id, &name, avatar, reason.as_str(), &insight, log);
-        if c.get_key(Some(p), "aiInsightTelegramEnabled") == Value::Bool(true) {
-            let token = cfg_str(&c, p, "aiInsightTelegramToken");
-            let chat_ids = cfg_str(&c, p, "aiInsightTelegramChatIds");
+        if c.get_key(Some(p), "ai_insight_telegram_enabled") == Value::Bool(true) {
+            let token = cfg_str(&c, p, "ai_insight_telegram_token");
+            let chat_ids = cfg_str(&c, p, "ai_insight_telegram_chat_ids");
             if !token.is_empty() && !chat_ids.is_empty() {
                 let title = fill(
                     tr(
@@ -1008,7 +1000,7 @@ impl ServiceHub {
         }
         let c = self.insight_cfg();
         let days_raw = c
-            .get_key(Some(&self.profile_name), "aiInsightSilenceDays")
+            .get_key(Some(&self.profile_name), "ai_insight_silence_days")
             .as_f64()
             .unwrap_or(0.0);
         let days = if days_raw != 0.0 { days_raw } else { 3.0 };
@@ -1062,7 +1054,7 @@ impl ServiceHub {
         }
         let c = self.insight_cfg();
         let cooldown_min = c
-            .get_key(Some(&self.profile_name), "aiInsightCooldownMinutes")
+            .get_key(Some(&self.profile_name), "ai_insight_cooldown_minutes")
             .as_f64()
             .unwrap_or(120.0);
         let cooldown_ms = crate::num::saturating_i64(cooldown_min * 60_000.0);
@@ -1186,13 +1178,13 @@ mod tests {
     fn a_skip_without_the_chat_says_how_to_send_it() {
         let sent = skipped_message("Bob", true);
         assert!(
-            sent.contains("SKIP") && !sent.contains("aiInsightAllowContext"),
+            sent.contains("SKIP") && !sent.contains("ai_insight_allow_context"),
             "{sent}"
         );
         let unsent = skipped_message("Bob", false);
         assert!(
             unsent.starts_with(&sent)
-                && unsent.contains("weflow config set aiInsightAllowContext true"),
+                && unsent.contains("weflow config set ai_insight_allow_context true"),
             "{unsent}"
         );
     }

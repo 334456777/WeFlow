@@ -1658,7 +1658,7 @@ export interface ProfileConfig {
   ai_model_api_max_tokens: number | null;
   /** Whether the AI insights run. */
   ai_insight_enabled: boolean | null;
-  /** The profile's other keys (those the WebUI keeps, such as `autoDownloadWhitelist`), kept as they are. */
+  /** The profile's other keys (those the WebUI keeps, such as `auto_download_whitelist`), kept as they are. */
   extra: Record<string, unknown>;
 }
 

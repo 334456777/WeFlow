@@ -149,7 +149,7 @@ describe('my footprint', () => {
     expect(screen.getByRole('alert').textContent).toBe('请先在设置中开启「AI 足迹总结」');
     fireEvent.click(screen.getByRole('button', { name: '开启 AI 足迹总结' }));
     await act(async () => {});
-    expect(bodies[1]).toEqual({ url: '/config/set', body: { key: 'aiFootprintEnabled', value: 'true' } });
+    expect(bodies[1]).toEqual({ url: '/config/set', body: { key: 'ai_footprint_enabled', value: 'true' } });
     fireEvent.click(screen.getByRole('button', { name: '总结「本周」' }));
     await act(async () => {});
     const sent = JSON.parse((bodies[2].body as Record<string, string>)['payload-json']);

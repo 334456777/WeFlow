@@ -79,7 +79,7 @@ pub(crate) enum ImageSubcommand {
 pub(crate) enum AutoDownloadSubcommand {
     /// Hook WeChat and keep the hook alive until interrupted; it hooks again after WeChat restarts
     Start {
-        /// Conversation ids to download originals for; default: `autoDownloadWhitelist` from the config
+        /// Conversation ids to download originals for; default: `auto_download_whitelist` from the config
         #[arg(long, value_delimiter = ',')]
         whitelist: Vec<String>,
     },

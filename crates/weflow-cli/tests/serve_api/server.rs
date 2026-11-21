@@ -104,7 +104,7 @@ fn health_data_changes_with_the_configuration_and_each_run() {
     assert_eq!(first.len(), 16);
     assert_eq!(data(), first);
     // another account set up while the server runs
-    let (code, _, err) = run_cli(&root, &["config", "set", "myWxid", "wxid_synthetic_b"]);
+    let (code, _, err) = run_cli(&root, &["config", "set", "wxid", "wxid_synthetic_b"]);
     assert_eq!(code, 0, "{err}");
     let second = data();
     assert_ne!(second, first);

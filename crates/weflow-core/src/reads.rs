@@ -571,12 +571,15 @@ impl Read {
             Read::ReportAnnualYears => Ok(json!(hub.report_available_years()?)),
             Read::CacheList => Ok(json!(hub.cache_list())),
             Read::ConfigGet { key } => {
-                if matches!(key.as_deref(), Some("config_path" | "configPath")) {
+                if key.as_deref() == Some("config_path") {
                     return Ok(json!(hub.config_path().to_string_lossy()));
                 }
                 let config = config_of(hub)?;
                 Ok(match key {
-                    Some(key) => config.get_key(None, key),
+                    Some(key) => {
+                        crate::config::refuse_renamed(key)?;
+                        config.get_key(None, key)
+                    }
                     None => serde_json::to_value(config.profile(None))
                         .map_err(|err| AppError::runtime(format!("{err:#}")))?,
                 })
