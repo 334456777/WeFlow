@@ -44,7 +44,6 @@ if ($Register) {
   return
 }
 
-if (-not (Test-Path $Config)) { throw "no WeFlow config at $Config" }
 $work = Join-Path $BenchDir 'calibrate'
 $profileDir = Join-Path $BenchDir 'profile'
 New-Item -ItemType Directory -Force $work, $profileDir | Out-Null
@@ -59,20 +58,28 @@ function Say([string] $line) {
   Add-Content -Path $log -Value $stamped
 }
 
-$src = Join-Path $work 'src'
-if (-not (Test-Path (Join-Path $src '.git'))) {
-  git clone --quiet --depth 1 $Repository $src
-} else {
-  git -C $src fetch --quiet --depth 1 origin main
-  git -C $src checkout --quiet --force FETCH_HEAD
+# an error that stops the run goes to the log too, which is all a run of the task leaves
+try {
+  if (-not (Test-Path $Config)) { throw "no WeFlow config at $Config" }
+  $src = Join-Path $work 'src'
+  if (-not (Test-Path (Join-Path $src '.git'))) {
+    git clone --quiet --depth 1 $Repository $src
+  } else {
+    git -C $src fetch --quiet --depth 1 origin main
+    git -C $src checkout --quiet --force FETCH_HEAD
+  }
+  if ($LASTEXITCODE) { throw 'could not get main' }
+  $env:CARGO_TARGET_DIR = Join-Path $work 'target'
+  cargo build --quiet --release --manifest-path (Join-Path $src 'Cargo.toml') -p weflow-core --example account_profile_probe
+  if ($LASTEXITCODE) { throw 'could not build account_profile_probe' }
+  $probe = Join-Path $env:CARGO_TARGET_DIR 'release\examples\account_profile_probe.exe'
+  $out = & $probe $Config --calibrate (Join-Path $profileDir 'profile.json') 2>&1
+  $code = $LASTEXITCODE
+  # what the probe says in calibrate mode carries no number of the account; an error is kept to its first line
+  foreach ($line in @($out)) { Say "$line".Split("`n")[0] }
+  if ($code) { Say "the probe failed ($code)"; exit $code }
+} catch {
+  # the first line only, as for the probe's own errors
+  Say "failed: $("$_".Split("`n")[0])"
+  exit 1
 }
-if ($LASTEXITCODE) { throw 'could not get main' }
-$env:CARGO_TARGET_DIR = Join-Path $work 'target'
-cargo build --quiet --release --manifest-path (Join-Path $src 'Cargo.toml') -p weflow-core --example account_profile_probe
-if ($LASTEXITCODE) { throw 'could not build account_profile_probe' }
-$probe = Join-Path $env:CARGO_TARGET_DIR 'release\examples\account_profile_probe.exe'
-$out = & $probe $Config --calibrate (Join-Path $profileDir 'profile.json') 2>&1
-$code = $LASTEXITCODE
-# what the probe says in calibrate mode carries no number of the account; an error is kept to its first line
-foreach ($line in @($out)) { Say "$line".Split("`n")[0] }
-if ($code) { Say "the probe failed ($code)"; exit $code }
