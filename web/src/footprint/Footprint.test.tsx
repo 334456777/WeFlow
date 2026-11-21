@@ -153,9 +153,9 @@ describe('my footprint', () => {
     fireEvent.click(screen.getByRole('button', { name: '总结「本周」' }));
     await act(async () => {});
     const sent = JSON.parse((bodies[2].body as Record<string, string>)['payload-json']);
-    expect(sent.rangeLabel).toBe('本周');
-    expect(sent.privateSegments[0]).toEqual({ session_id: 'wxid_a', displayName: '林沐', incoming_count: 3, outgoing_count: 2, message_count: 5, replied: true });
-    expect(sent.mentionGroups).toEqual([{ session_id: 'room@chatroom', displayName: '周末徒步群', count: 2 }]);
+    expect(sent.range_label).toBe('本周');
+    expect(sent.private_segments[0]).toEqual({ session_id: 'wxid_a', display_name: '林沐', incoming_count: 3, outgoing_count: 2, message_count: 5, replied: true });
+    expect(sent.mention_groups).toEqual([{ session_id: 'room@chatroom', display_name: '周末徒步群', count: 2 }]);
     expect(JSON.stringify(sent)).not.toContain('集合');
     expect(screen.getByLabelText('AI 足迹总结').textContent).toBe('本周这周和林沐聊得最多。');
   });

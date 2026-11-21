@@ -57,7 +57,7 @@ impl Session {
     }
 }
 
-/// `normalizeMessageIdToken`
+/// A message id as the push compares them: trimmed, a number without its sign and leading zeros.
 fn normalize_id_token(value: &str) -> String {
     let raw = value.trim();
     if raw.is_empty() {
@@ -342,7 +342,7 @@ impl PushEngine {
         }
     }
 
-    /// `bootstrapBaseline`
+    /// Reads the conversations as the baseline new messages are counted from; false when they cannot be read.
     pub fn bootstrap(&mut self) -> bool {
         match self.sessions() {
             Some(s) => {

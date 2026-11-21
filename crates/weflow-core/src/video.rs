@@ -1,4 +1,4 @@
-//! The videos WeChat keeps on disk, ported from WeFlow's `videoService.ts`.
+//! The videos WeChat keeps on disk.
 //!
 //! It locates the videos (`<account>/msg/video/<yyyy-mm>/<md5>.mp4`) and their cover and thumbnail images, and
 //! extracts a video's md5 from its message's XML.
@@ -198,7 +198,7 @@ fn info_for(
     info
 }
 
-/// `getVideoInfo`: the video found in a listing of every month folder (md5, then the `_raw` twin).
+/// The video found in a listing of every month folder (md5, then the `_raw` twin).
 pub fn video_info(
     video_base_dir: &Path,
     md5: &str,

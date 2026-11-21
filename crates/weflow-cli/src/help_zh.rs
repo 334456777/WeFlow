@@ -263,7 +263,7 @@ const HELP: &[(&str, &str)] = &[
     ("Show one insight record", "显示一条洞察记录"),
     ("Record id", "记录 ID"),
     ("Mark an insight record as read", "把一条洞察记录标为已读"),
-    ("JSON payload {rangeLabel, summary, privateSegments, mentionGroups}", "JSON 载荷 {rangeLabel, summary, privateSegments, mentionGroups}"),
+    ("JSON payload {range_label, summary, private_segments, mention_groups}, in the keys of `insight footprint`", "JSON 载荷 {range_label, summary, private_segments, mention_groups}，键名与 `insight footprint` 相同"),
     ("Run the AI insight engine", "运行 AI 洞察引擎"),
     ("Create a backup of the current account", "为当前账号创建备份"),
     ("Also back up the images WeChat keeps in msg/attach", "同时备份微信保存在 msg/attach 的图片"),

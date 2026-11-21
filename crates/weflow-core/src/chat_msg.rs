@@ -1,8 +1,8 @@
-//! The chat service's `Message` model (WeFlow's `chatService.ts`).
+//! The messages of a conversation as the chat commands and the command API give them ([`ChatMessage`]).
 //!
 //! It turns typed message rows into messages with parsed display text, media tokens, links and quotes.
 //! This one backs the HTTP API, the chat commands and the analytics code; the exporter has its own model in
-//! `message.rs` (`exportService.ts`), whose text differs on purpose: a chat window's line (`[链接] title`,
+//! `message.rs`, whose text differs on purpose: a chat window's line (`[链接] title`,
 //! `[语音消息]`) against an export's (`[引用 …]`, a transfer's direction, a sticker's caption).
 //!
 //! What a row means is read the same way by both, with `message.rs`'s functions: the sender prefix of a group
@@ -44,7 +44,7 @@ fn extract_sender_from_content(content: &str) -> Option<String> {
     Some(caps[1].trim().to_string()).filter(|s| !s.is_empty())
 }
 
-/// chatService flavour of `extractXmlAttribute`: single or double quotes, whitespace before the name.
+/// The attribute `attr` of the first `<tag>` of `xml`: single or double quotes, whitespace before the name.
 fn xml_attr(xml: &str, tag: &str, attr: &str) -> String {
     let re = rx(&format!(
         r#"(?i)<{}[^>]*\s{}\s*=\s*['"]([^'"]*)['"]"#,
@@ -253,7 +253,7 @@ fn parse_type49(content: &str) -> String {
     .into()
 }
 
-/// `parseMessageContent` of the chat service: the line the chat window shows for any message
+/// The line the chat window shows for any message
 /// ([`ChatMessage::parsed_content`]), `sender` the message's ([`ChatMessage::sender_username`]). The exports word
 /// theirs in [`crate::message::parse_message_content`].
 fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
@@ -653,7 +653,7 @@ fn parse_type49_message(content: &str) -> Type49Info {
     r
 }
 
-/// `parseQuoteMessage` of the chat service: what a reply quotes, as (content, sender).
+/// What a reply quotes, as (content, sender).
 fn quote_of(content: &str) -> (Option<String>, Option<String>) {
     let Some(refer_xml) = refermsg_xml(&decode_entities(content)) else {
         return (None, None);
@@ -965,7 +965,7 @@ struct SourceInfo {
     table_name: String,
 }
 
-/// `buildMessageKey`, scoped by the database's name (`message_0`) instead of its path.
+/// The key of a message, scoped by the database's name (`message_0`) instead of its path.
 fn build_message_key(
     local_id: i64,
     server_id: i64,
@@ -1017,7 +1017,7 @@ fn build_message_key(
 
 // ───────────────────────── isSend / sender ─────────────────────────
 
-/// `resolveMessageIsSend`: a message whose sender is the account itself ([`is_same_wxid`]) is sent whatever its
+/// A message whose sender is the account itself ([`is_same_wxid`]) is sent whatever its
 /// stored flag says; otherwise the flag stands, a missing one meaning received. Without a sender or an account the
 /// flag is kept as it is.
 fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) -> Option<i64> {
@@ -1047,7 +1047,7 @@ struct RowFields {
     sort_seq: i64,
 }
 
-/// `mapRowsToMessages` (the model fields the API and CLI use) of the typed rows of one conversation, which it
+/// The messages (the model fields the API and CLI use) of the typed rows of one conversation, which it
 /// takes: their text moves into the messages.
 pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
     let table_name = weflow_native::msg::table_name_for(session_id);

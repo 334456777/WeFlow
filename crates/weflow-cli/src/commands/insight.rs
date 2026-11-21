@@ -81,7 +81,7 @@ pub(crate) enum InsightSubcommand {
     },
     /// AI footprint summary
     FootprintSummary {
-        /// JSON payload {rangeLabel, summary, privateSegments, mentionGroups}
+        /// JSON payload {range_label, summary, private_segments, mention_groups}, in the keys of `insight footprint`
         payload_json: String,
     },
 }

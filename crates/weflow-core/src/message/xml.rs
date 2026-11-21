@@ -256,7 +256,7 @@ impl<'a> MsgXml<'a> {
         unsigned_token(&extract_xml_value(self.refer_once()?, "svrid"))
     }
 
-    /// Sender wxid of the message the content quotes, following `resolveQuotedSenderUsername`.
+    /// Sender wxid of the message the content quotes.
     pub fn quoted_sender_username(&self) -> Option<String> {
         let refer = self.refer_once()?;
         let chat = extract_xml_value(refer, "chatusr");

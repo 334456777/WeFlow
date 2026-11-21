@@ -1,5 +1,4 @@
-//! Annual and dual ("two people") reports: ports of `annualReportService.ts` and
-//! `dualReportService.ts`.
+//! Annual and dual ("two people") reports.
 
 use std::collections::{HashMap, HashSet};
 
@@ -403,7 +402,7 @@ impl ServiceHub {
         v
     }
 
-    /// `getAvailableYears`: native query, then table time ranges, then first/last message.
+    /// The years the annual report can be made for: native query, then table time ranges, then first/last message.
     pub fn report_available_years(&self) -> AppResult<crate::contract::ReportYears> {
         let (wcdb, cleaned, _) = self.report_connect()?;
         let sessions = self.report_private_sessions(&wcdb, &cleaned);
@@ -442,13 +441,7 @@ impl ServiceHub {
                 if name.is_empty() || db.is_empty() {
                     continue;
                 }
-                let Ok(range) = wcdb.invoke_json(
-                    "wcdb_get_message_table_time_range",
-                    &[
-                        weflow_native::wcdb::Arg::S(&db),
-                        weflow_native::wcdb::Arg::S(&name),
-                    ],
-                ) else {
+                let Ok(range) = wcdb.message_table_time_range(&db, &name) else {
                     continue;
                 };
                 let ts = |keys: &[&str]| {
@@ -509,18 +502,9 @@ impl ServiceHub {
         let (start, end) = year_range(year);
         let now = Local::now();
 
-        let sessions_json =
-            serde_json::to_string(&sessions).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         let (nb, ne) = normalize_range(start, end);
         let d = wcdb
-            .invoke_json(
-                "wcdb_get_annual_report_stats",
-                &[
-                    weflow_native::wcdb::Arg::S(&sessions_json),
-                    weflow_native::wcdb::Arg::I32(nb),
-                    weflow_native::wcdb::Arg::I32(ne),
-                ],
-            )
+            .annual_report_stats(&sessions, nb, ne)
             .or_else(|_| self.aggregate_for_reports(&wcdb, &sessions, start, end))
             .map_err(|e| AppError::native(format!("base statistics failed: {e}")))?;
         let total_messages = num(&d["total"]);
@@ -579,7 +563,7 @@ impl ServiceHub {
         self.emit_progress("annual-report", "loading extended statistics…", 30, 100);
         let (eb, ee) = normalize_range(start, end);
         let extras = wcdb.annual_report_extras(
-            &sessions_json,
+            &sessions,
             eb,
             ee,
             normalize_timestamp(peak_begin),
@@ -930,15 +914,12 @@ impl ServiceHub {
         };
         let self_avatar = {
             let list = vec![raw_wxid.clone(), cleaned.clone()];
-            serde_json::to_string(&list)
-                .ok()
-                .and_then(|payload| wcdb.avatar_urls(&payload).ok())
-                .and_then(|m| {
-                    m.get(&raw_wxid)
-                        .or_else(|| m.get(&cleaned))
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                })
+            wcdb.avatar_urls(&list).ok().and_then(|m| {
+                m.get(&raw_wxid)
+                    .or_else(|| m.get(&cleaned))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
         };
 
         let mut core: Vec<(String, i64, i64)> = contact_stats.clone();
@@ -1271,15 +1252,7 @@ impl ServiceHub {
         end: i64,
     ) -> anyhow::Result<Value> {
         let (b, e) = normalize_range(begin, end);
-        let ids_json = serde_json::to_string(ids)?;
-        wcdb.invoke_json(
-            "wcdb_get_aggregate_stats",
-            &[
-                weflow_native::wcdb::Arg::S(&ids_json),
-                weflow_native::wcdb::Arg::I32(b),
-                weflow_native::wcdb::Arg::I32(e),
-            ],
-        )
+        wcdb.aggregate_stats(ids, b, e)
     }
 
     fn first_messages(
@@ -1335,9 +1308,8 @@ impl ServiceHub {
         let (start, end) = year_range(report_year);
 
         let display = |u: &str, fb: &str| -> String {
-            serde_json::to_string(&[u])
+            wcdb.display_names(&[u])
                 .ok()
-                .and_then(|payload| wcdb.display_names(&payload).ok())
                 .and_then(|m| {
                     m.get(u)
                         .and_then(Value::as_str)
@@ -1358,9 +1330,7 @@ impl ServiceHub {
                 .filter(|s| !s.is_empty() && seen.insert(s.clone()))
                 .collect()
         };
-        let avatars = serde_json::to_string(&candidates)
-            .ok()
-            .and_then(|payload| wcdb.avatar_urls(&payload).ok());
+        let avatars = wcdb.avatar_urls(&candidates).ok();
         let av = |k: &str| {
             avatars
                 .as_ref()

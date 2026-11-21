@@ -13,7 +13,7 @@ use crate::message::xml::rx;
 use crate::sync::MutexExt;
 
 impl ServiceHub {
-    /// `downloadEmoji`: cached fetch of a sticker by CDN URL.
+    /// The cached fetch of a sticker by CDN URL.
     async fn chat_download_emoji(&self, cdn_url: &str, md5: Option<&str>) -> AppResult<PathBuf> {
         if cdn_url.is_empty() {
             return Err(AppError::usage("invalid CDN URL"));
@@ -349,10 +349,7 @@ impl ServiceHub {
             }
         }
         if source == api::AvatarSource::Download && !elsewhere.is_empty() {
-            let urls = serde_json::to_string(&elsewhere)
-                .ok()
-                .and_then(|list| wcdb.avatar_urls(&list).ok())
-                .unwrap_or(Value::Null);
+            let urls = wcdb.avatar_urls(&elsewhere).ok().unwrap_or(Value::Null);
             let wanted: Vec<(String, String)> = elsewhere
                 .into_iter()
                 .filter_map(|user| {

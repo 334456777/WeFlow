@@ -161,16 +161,16 @@ impl ServiceHub {
         }
     }
 
-    /// `getContactAvatar`: `(avatar url, display name)`.
+    /// The avatar URL and the display name of a contact.
     pub fn chat_contact_avatar(&self, username: &str) -> Option<(Option<String>, String)> {
         if username.is_empty() {
             return None;
         }
         let wcdb = self.open_wcdb().ok()?;
         let contact = wcdb.contact(username).ok().filter(Value::is_object);
-        let avatar = serde_json::to_string(&[username])
+        let avatar = wcdb
+            .avatar_urls(&[username])
             .ok()
-            .and_then(|payload| wcdb.avatar_urls(&payload).ok())
             .and_then(|m| m.get(username).and_then(Value::as_str).map(str::to_string))
             .filter(|a| !a.is_empty() && !a.contains("base64,ffd8"));
         let pick = |keys: &[&str]| {
@@ -195,17 +195,13 @@ impl ServiceHub {
         wcdb: &weflow_native::wcdb::Wcdb,
         usernames: &[String],
     ) -> Vec<Value> {
-        let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
-        match wcdb.invoke_json(
-            "wcdb_get_contacts_compact",
-            &[weflow_native::wcdb::Arg::S(&payload)],
-        ) {
+        match wcdb.contacts_compact(usernames) {
             Ok(Value::Array(rows)) => rows,
             _ => Vec::new(),
         }
     }
 
-    /// `getSessions`: filtered, typed session list, with display names and avatars from WCDB.
+    /// The filtered, typed session list, with display names and avatars from WCDB.
     pub fn chat_sessions_list(&self) -> AppResult<Vec<Session>> {
         let wcdb = self.open_wcdb()?;
         self.sessions_with(&wcdb)
@@ -485,7 +481,7 @@ impl ServiceHub {
         Ok(sessions)
     }
 
-    /// `getContactLabelNameMap`: label id → name from the contact database (empty when it has no labels).
+    /// The contact labels: label id → name from the contact database (empty when it has no labels).
     fn contact_label_names(&self, wcdb: &weflow_native::wcdb::Wcdb) -> HashMap<i64, String> {
         let mut map = HashMap::new();
         let Ok(info) = wcdb.exec_query(
@@ -644,7 +640,6 @@ impl ServiceHub {
         wcdb: &weflow_native::wcdb::Wcdb,
         usernames: &[String],
     ) -> (HashMap<String, String>, HashMap<String, String>) {
-        let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
         let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
             v.ok()
                 .and_then(|v| v.as_object().cloned())
@@ -659,8 +654,8 @@ impl ServiceHub {
             return (HashMap::new(), HashMap::new());
         }
         (
-            to_map(wcdb.display_names(&payload)),
-            to_map(wcdb.avatar_urls(&payload)),
+            to_map(wcdb.display_names(usernames)),
+            to_map(wcdb.avatar_urls(usernames)),
         )
     }
 }

@@ -1,10 +1,10 @@
-//! Port of `imageDecryptService.ts`: locates a message image's `.dat` file in the account's
+//! Message images: locates a message image's `.dat` file in the account's
 //! `msg/attach/<md5(session)>/<yyyy-mm>/Img` folder, decrypts it (V1 / V2 / legacy XOR), unwraps
 //! WXGF with the built-in decoder and keeps the result in `<cache>/Images/<session>/<yyyy-mm>/`.
 //!
-//! WeFlow's desktop app's render-process events (`image:cacheResolved`, `image:decryptProgress`,
-//! `image:updateAvailable`) and the background "better quality available" check have no
-//! counterpart in a CLI, so they are left out.
+//! The desktop app's events for a page that shows images as they are decrypted, and its
+//! background "better quality available" check, have no counterpart in a CLI, so they are
+//! left out.
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -344,7 +344,7 @@ fn file_mtime_ms(p: &str) -> u128 {
         .unwrap_or(0)
 }
 
-/// `pickLargestDatPath`: biggest file, then newest, then name.
+/// The largest of `paths`: biggest file, then newest, then name.
 fn pick_largest(paths: &[String]) -> Option<String> {
     let mut list: Vec<String> = Vec::new();
     for p in paths {
@@ -398,7 +398,7 @@ fn local_path_for_payload(path: &str, prefer_file: bool) -> String {
     }
 }
 
-/// `getCacheKeys`
+/// The keys a message image may be cached under: its md5 and `.dat` name as given, lower-cased, and without the variant suffix.
 fn cache_keys(p: &ImagePayload) -> Vec<String> {
     let mut keys: Vec<String> = Vec::new();
     let mut add = |value: &str| {
@@ -438,7 +438,7 @@ struct DatSearch {
     allow_dat_name_fallback: bool,
 }
 
-/// `collectHardlinkLookupMd5s` + the dat-name scan fallback of `collectLookupBasesForScan`.
+/// The md5s to look an image up by in WeChat's media index, then the `.dat` names to scan for.
 fn lookup_bases(
     md5: Option<&str>,
     dat_name: Option<&str>,
@@ -537,7 +537,7 @@ impl ServiceHub {
         self.image_state.lock_or_panic().resolved.remove(key);
     }
 
-    /// `isUsableImageCacheFile`: a recognised extension, present, not empty and not a zeroed-out JPEG.
+    /// Whether a cached image can be used: a recognised extension, present, not empty and not a zeroed-out JPEG.
     fn usable_image_cache_file(&self, path: &str) -> bool {
         // an empty file is never an image (an older cache may hold one left half written)
         if !img::is_image_file(path) || std::fs::metadata(path).map_or(true, |m| m.len() == 0) {
@@ -583,7 +583,7 @@ impl ServiceHub {
         }
     }
 
-    /// `collectDatCandidatesFromSessionMonth`: `msg/attach/<md5(session)>/<yyyy-mm>/Img`, at most 240 directories;
+    /// The `.dat` files of a message in `msg/attach/<md5(session)>/<yyyy-mm>/Img`, at most 240 directories;
     /// `<md5(session)>` is the first of [`img::session_dirs_for_storage`] with that month's folder.
     fn collect_dat_candidates(
         &self,
@@ -773,7 +773,7 @@ impl ServiceHub {
         by_md5
     }
 
-    /// `selectBestDatPathByBase`: HD variant in an Img folder, else `<md5>.dat`, else a `_t` thumbnail.
+    /// The best `.dat` file of a listing: HD variant in an Img folder, else `<md5>.dat`, else a `_t` thumbnail.
     fn select_listed_dat(
         &self,
         account_dir: &Path,
@@ -1030,7 +1030,7 @@ impl ServiceHub {
         }
     }
 
-    /// `tryPromoteThumbnailCache`: swaps a cached thumbnail for the HD rendition when one exists.
+    /// Swaps a cached thumbnail for the HD rendition when one exists.
     fn try_promote_thumbnail(
         &self,
         p: &ImagePayload,
@@ -1095,7 +1095,7 @@ impl ServiceHub {
         Some(path)
     }
 
-    /// `image:resolveCache`: answers from the cache only; never decrypts a missing file.
+    /// Answers from the cache only; never decrypts a missing file.
     pub fn image_resolve_cache(&self, p: &ImagePayload) -> ImageResult {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
@@ -1153,7 +1153,7 @@ impl ServiceHub {
         ImageResult::fail("cached image not found", "not_found")
     }
 
-    /// `image:decrypt`
+    /// Decrypts a message image into the cache, or finds it there (`image decrypt`).
     pub fn image_decrypt(&self, p: &ImagePayload) -> ImageResult {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
@@ -1353,7 +1353,7 @@ impl ServiceHub {
         ImageResult::ok(local, Some(img::is_thumbnail_path(&dat)))
     }
 
-    /// `image:resolveCacheBatch`: one result row per payload (duplicates are resolved once).
+    /// One result row per payload (duplicates are resolved once).
     pub fn image_resolve_cache_batch(&self, payloads: &[ImagePayload]) -> ImageBatch {
         let mut memo: HashMap<String, ImageResult> = HashMap::new();
         let rows: Vec<ImageResult> = payloads
@@ -1379,7 +1379,7 @@ impl ServiceHub {
         ImageBatch { rows }
     }
 
-    /// `chat:getImageData`: the decrypted image of a message as bytes.
+    /// The decrypted image of a message as bytes.
     /// The decrypted image of a message; `create_time` tells apart messages of different message databases that
     /// share the local id (an image is preferred among them anyway).
     pub fn image_data_for_message(

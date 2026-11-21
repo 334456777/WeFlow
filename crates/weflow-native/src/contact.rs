@@ -41,25 +41,14 @@ fn placeholders(n: usize) -> String {
     vec!["?"; n].join(",")
 }
 
-/// Distinct, non-empty usernames from a JSON array (or a bare string).
-pub fn usernames_from_json(payload: &str) -> Vec<String> {
+/// The distinct, non-empty usernames of `names`, trimmed, in their order.
+pub fn distinct_usernames(names: &[impl AsRef<str>]) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
-    let items: Vec<String> = match serde_json::from_str::<Value>(payload) {
-        // ids can also arrive as numbers (numeric session ids)
-        Ok(Value::Array(a)) => a
-            .iter()
-            .filter_map(|v| match v {
-                Value::String(s) => Some(s.trim().to_string()),
-                Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            })
-            .collect(),
-        Ok(Value::String(s)) => vec![s.trim().to_string()],
-        _ => Vec::new(),
-    };
-    items
-        .into_iter()
-        .filter(|u| !u.is_empty() && seen.insert(u.clone()))
+    names
+        .iter()
+        .map(|name| name.as_ref().trim())
+        .filter(|name| !name.is_empty() && seen.insert(*name))
+        .map(str::to_string)
         .collect()
 }
 
@@ -696,10 +685,8 @@ mod tests {
     }
 
     #[test]
-    fn username_payloads() {
-        assert_eq!(usernames_from_json(r#"[" a ","b","a",""]"#), ["a", "b"]);
-        assert_eq!(usernames_from_json(r#""solo""#), ["solo"]);
-        assert!(usernames_from_json("null").is_empty());
-        assert!(usernames_from_json("not json").is_empty());
+    fn usernames_are_trimmed_and_given_once() {
+        assert_eq!(distinct_usernames(&[" a ", "b", "a", ""]), ["a", "b"]);
+        assert!(distinct_usernames(&[" ", ""]).is_empty());
     }
 }

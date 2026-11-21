@@ -10,7 +10,7 @@ use crate::error::{AppError, AppResult};
 use crate::locale::tr;
 
 impl ServiceHub {
-    /// `key:autoGetDbKey`. WeChat only produces the key while it opens its databases, so on Windows and Linux the
+    /// Gets the database key from WeChat. WeChat only produces the key while it opens its databases, so on Windows and Linux the
     /// command asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for
     /// the user to click "Enter WeChat". On macOS it hooks the running WeChat. Everywhere the login prompt
     /// follows the installed hook.

@@ -346,7 +346,7 @@ fn voice_messages_decode_from_silk_to_a_cached_wav() {
         b"cached-wav"
     );
 
-    // the key without a timestamp is what `resolveVoiceCache` looks at
+    // the key without a timestamp is what `voice_resolve_cache` looks at
     assert!(!hub.voice_resolve_cache("wxid_bob", "5").has_cache);
     assert!(hub.voice_data("wxid_bob", "abc", None, None, None).is_err());
     // a voice that is not in the media database is an error that explains what to do

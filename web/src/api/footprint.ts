@@ -67,15 +67,15 @@ export function rangeOf(choice: FootprintChoice, now = new Date()): FootprintRan
 
 /** `insight footprint-summary`: the AI's few sentences on the range, from the numbers and the busiest chats and groups. */
 export async function summarizeFootprint(range: FootprintRange, data: Footprint, name: (session: string) => string): Promise<string> {
+  // in the keys of the footprint itself: the first twelve segments, or chats, and groups, each with its name
   const payload = {
-    rangeLabel: range.label,
+    range_label: range.label,
     summary: data.summary,
-    // as the desktop app sends them: the first twelve segments, or chats, and groups
-    privateSegments: (data.private_segments.length ? data.private_segments : data.private_sessions).slice(0, 12).map(s => ({
-      session_id: s.session_id, displayName: name(s.session_id), incoming_count: s.incoming_count, outgoing_count: s.outgoing_count,
+    private_segments: (data.private_segments.length ? data.private_segments : data.private_sessions).slice(0, 12).map(s => ({
+      session_id: s.session_id, display_name: name(s.session_id), incoming_count: s.incoming_count, outgoing_count: s.outgoing_count,
       message_count: 'message_count' in s ? s.message_count : s.incoming_count + s.outgoing_count, replied: s.replied,
     })),
-    mentionGroups: data.mention_groups.slice(0, 12).map(g => ({ session_id: g.session_id, displayName: name(g.session_id), count: g.count })),
+    mention_groups: data.mention_groups.slice(0, 12).map(g => ({ session_id: g.session_id, display_name: name(g.session_id), count: g.count })),
   };
   const answer = await call<Contract.InsightReply>('POST', 'insight/footprint-summary', { 'payload-json': JSON.stringify(payload) });
   if (!answer.insight) throw new Error(answer.message || t('AI 没有给出总结。'));

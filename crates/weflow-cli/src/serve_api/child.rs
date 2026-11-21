@@ -98,7 +98,6 @@ pub(super) fn status_for(doc: &Value, exit: i32) -> StatusCode {
     match error["code"].as_str().unwrap_or("") {
         "invalid_arguments" => StatusCode::BAD_REQUEST,
         "config_error" => StatusCode::CONFLICT,
-        "unsupported" => StatusCode::NOT_IMPLEMENTED,
         "native_error" => StatusCode::INTERNAL_SERVER_ERROR,
         "runtime_error" if error["details"]["failureKind"] == "not_found" => StatusCode::NOT_FOUND,
         "runtime_error" => StatusCode::INTERNAL_SERVER_ERROR,
@@ -137,10 +136,6 @@ mod tests {
         assert_eq!(
             status_for(&fail("config_error", Value::Null), 3),
             StatusCode::CONFLICT
-        );
-        assert_eq!(
-            status_for(&fail("unsupported", Value::Null), 4),
-            StatusCode::NOT_IMPLEMENTED
         );
         assert_eq!(
             status_for(&fail("native_error", Value::Null), 4),

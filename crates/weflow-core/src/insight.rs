@@ -1,5 +1,5 @@
-//! Pure parts of WeFlow's `insightService.ts` and `insightRecordService.ts`: record
-//! storage ([`RecordStore`]), the Telegram push, prompt assembly and text helpers. The model API itself is
+//! The AI insights besides the services that run them: record storage ([`RecordStore`]), the Telegram push,
+//! prompt assembly and text helpers. The model API itself is
 //! [`crate::model_api`].
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -57,8 +57,11 @@ pub async fn send_telegram(token: &str, chat_id: &str, text: &str) -> Result<(),
     let data = resp.text().await.map_err(crate::http_client::failure)?;
     let v: Value = serde_json::from_str(&data).map_err(|_| {
         fill(
-            tr("Response parse failed: {v0}", "响应解析失败: {v0}"),
-            &[("v0", data.chars().take(100).collect())],
+            tr(
+                "Response parse failed: {response}",
+                "响应解析失败: {response}",
+            ),
+            &[("response", data.chars().take(100).collect())],
         )
     })?;
     if v.get("ok").and_then(Value::as_bool) == Some(true) {
@@ -90,7 +93,7 @@ pub fn default_footprint_prompt() -> &'static str {
     )
 }
 
-/// `formatPromptCurrentTime` / `appendPromptCurrentTime`
+/// `prompt` with the current local time appended, so the model knows when it is asked.
 pub fn append_current_time(prompt: &str) -> String {
     let n = Local::now();
     let line = fill(
@@ -175,16 +178,16 @@ fn format_message_content(m: &ChatMessage) -> String {
         };
         return if reply.is_empty() {
             fill(
-                tr("[Quote {quoteLabel}]", "[引用 {quoteLabel}]"),
-                &[("quoteLabel", label)],
+                tr("[Quote {quote_label}]", "[引用 {quote_label}]"),
+                &[("quote_label", label)],
             )
         } else {
             fill(
                 tr(
-                    "{replyText}[Quote {quoteLabel}]",
-                    "{replyText}[引用 {quoteLabel}]",
+                    "{reply_text}[Quote {quote_label}]",
+                    "{reply_text}[引用 {quote_label}]",
                 ),
-                &[("replyText", reply), ("quoteLabel", label)],
+                &[("reply_text", reply), ("quote_label", label)],
             )
         };
     }
@@ -222,12 +225,12 @@ pub fn build_context_section(messages: &[ChatMessage], peer: &str) -> String {
         .collect();
     fill(
         tr(
-            "Recent chat history (latest {length} messages):\n\n{v1}",
-            "近期聊天记录（最近 {length} 条）：\n\n{v1}",
+            "Recent chat history (latest {length} messages):\n\n{messages}",
+            "近期聊天记录（最近 {length} 条）：\n\n{messages}",
         ),
         &[
             ("length", lines.len().to_string()),
-            ("v1", lines.join("\n\n")),
+            ("messages", lines.join("\n\n")),
         ],
     )
 }

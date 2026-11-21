@@ -180,8 +180,6 @@ const CATALOG: &[(&str, &str)] = &[
     ("native decrypt failed, check the image keys: {}", "原生解密失败，请检查图片密钥：{}"),
     ("image cache", "图片缓存"),
     ("record id is empty", "记录 ID 为空"),
-    ("{} is not supported: the native database backend opens WeChat's databases read-only", "不支持 {}：原生数据库后端以只读方式打开微信数据库"),
-    ("{} is not implemented in the native database backend yet", "原生数据库后端尚未实现 {}"),
     ("Telegram push failed for chat {}: {}", "Telegram 推送到聊天 {0} 失败：{1}"),
     // backup and Weibo
     ("refusing to restore through the link {}: it may point outside {}", "拒绝通过链接 {0} 恢复：它可能指向 {1} 以外的位置"),
@@ -332,19 +330,6 @@ mod tests {
         assert_eq!(
             translate("permission denied: cannot read WeChat's memory, pid 42\nRun weflow as root, or allow ptrace through /proc/sys/kernel/yama/ptrace_scope.\nReason: denied").as_deref(),
             Some("无法读取微信的内存，pid 42\n请以 root 运行 weflow，或通过 /proc/sys/kernel/yama/ptrace_scope 允许 ptrace。\n原因：denied")
-        );
-    }
-
-    #[test]
-    fn a_refused_or_missing_database_call_keeps_its_name() {
-        assert_eq!(
-            translate("delete_message is not supported: the native database backend opens WeChat's databases read-only").as_deref(),
-            Some("不支持 delete_message：原生数据库后端以只读方式打开微信数据库")
-        );
-        assert_eq!(
-            translate("wcdb_get_x is not implemented in the native database backend yet")
-                .as_deref(),
-            Some("原生数据库后端尚未实现 wcdb_get_x")
         );
     }
 

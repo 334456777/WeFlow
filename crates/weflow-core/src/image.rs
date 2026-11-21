@@ -1,4 +1,4 @@
-//! Pure helpers of WeFlow's `imageDecryptService.ts`: `.dat` / cache file naming,
+//! What finding and decrypting message images needs besides the files: `.dat` / cache file naming,
 //! quality tiers, WXGF (HEVC) unwrapping and JPEG sanity checks.
 use std::path::{Path, PathBuf};
 
@@ -40,7 +40,7 @@ fn strip_dat_variant_suffix(base: &str) -> String {
     lower
 }
 
-/// `normalizeDatBase`: lower-cases, drops `.dat` / `.jpg` and every variant suffix.
+/// The base name of an image file: lower-cased, without `.dat` / `.jpg` and every variant suffix.
 pub fn normalize_dat_base(name: &str) -> String {
     let mut base = name.to_lowercase();
     if base.ends_with(".dat") || base.ends_with(".jpg") {
@@ -92,12 +92,12 @@ fn stem_and_ext(path: &str) -> (String, String) {
     }
 }
 
-/// `isHdPath` on a decrypted cache file (`…_hd.jpg`).
+/// Whether a decrypted cache file is the HD rendition (`…_hd.jpg`).
 pub fn is_hd_path(path: &str) -> bool {
     stem_and_ext(path).0.ends_with("_hd")
 }
 
-/// `isThumbnailPath`: whether `path` names a thumbnail, by a substring test of the file name.
+/// Whether `path` names a thumbnail, by a substring test of the file name.
 ///
 /// The test is the one of WeFlow's desktop app. The folders are not looked at: a conversation or a folder named like
 /// `wxid_t…` or `my_temp` does not make every image in it a thumbnail.
@@ -160,7 +160,7 @@ fn sanitize_dir_name(s: &str) -> String {
     }
 }
 
-/// `resolveTimeDir`: `YYYY-MM` of the file's mtime (or now).
+/// `YYYY-MM` of the file's mtime (or now).
 fn time_dir(path: &Path) -> String {
     let dt = std::fs::metadata(path)
         .and_then(|m| m.modified())
@@ -170,7 +170,7 @@ fn time_dir(path: &Path) -> String {
     format!("{}-{:02}", dt.year(), dt.month())
 }
 
-/// `resolveYearMonthFromCreateTime`
+/// `YYYY-MM` of a message's create time in local time, else of now.
 pub fn year_month_from_create_time(create_time: Option<i64>) -> String {
     let Some(raw) = create_time.filter(|t| *t > 0) else {
         return String::new();
@@ -182,7 +182,7 @@ pub fn year_month_from_create_time(create_time: Option<i64>) -> String {
     }
 }
 
-/// `resolveSessionDirForStorage`: WeChat stores chat attachments under `md5(username)`, the username lower-cased.
+/// The attachment folder of a conversation: WeChat stores chat attachments under `md5(username)`, the username lower-cased.
 /// The first of [`session_dirs_for_storage`]; empty for an empty username.
 pub fn session_dir_for_storage(session_id: &str) -> String {
     session_dirs_for_storage(session_id)
@@ -374,7 +374,7 @@ impl ImageFormat {
     }
 }
 
-/// `detectImageExtension` of the service (needs 12 bytes, knows four formats).
+/// The extension of an image by its first bytes (needs 12 bytes, knows four formats).
 pub fn detect_image_extension(b: &[u8]) -> Option<&'static str> {
     if b.len() < 12 {
         return None;
@@ -384,7 +384,7 @@ pub fn detect_image_extension(b: &[u8]) -> Option<&'static str> {
 
 // ───────────────────────── JPEG sanity ─────────────────────────
 
-/// `isLikelyCorruptedJpegBuffer`: an encoder that was fed garbage emits an almost all-zero scan.
+/// Whether a JPEG is likely corrupt: an encoder that was fed garbage emits an almost all-zero scan.
 pub fn is_likely_corrupted_jpeg(data: &[u8]) -> bool {
     if data.len() < 4096 {
         return false;
@@ -468,7 +468,7 @@ fn merge_nalus(units: &[&[u8]]) -> Vec<u8> {
     out
 }
 
-/// `buildWxgfHevcCandidates`: VPS-delimited groups (largest first), all NAL units, raw payload.
+/// The HEVC streams to try for a WXGF blob: VPS-delimited groups (largest first), all NAL units, raw payload.
 pub fn wxgf_hevc_candidates(buf: &[u8]) -> Vec<(String, Vec<u8>)> {
     let units = extract_hevc_nalus(buf);
     let mut out: Vec<(String, Vec<u8>)> = Vec::new();
@@ -528,7 +528,7 @@ pub fn is_wxgf(buf: &[u8]) -> bool {
     buf.len() >= 20 && &buf[0..4] == b"wxgf"
 }
 
-/// `unwrapWxgf`: the image bytes of `buf`, converted from WXGF when it is a WXGF blob.
+/// The image bytes of `buf`, converted from WXGF when it is a WXGF blob.
 ///
 /// When the data is still an undecoded WXGF blob, the second value says why the built-in decoder ([`crate::hevc`])
 /// could not convert it (`None`: it is an image, or was not WXGF). The candidates are tried in order; the reason

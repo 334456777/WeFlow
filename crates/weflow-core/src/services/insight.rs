@@ -196,7 +196,7 @@ impl ServiceHub {
         ins::session_allowed(&mode, &list, session_id)
     }
 
-    /// `getCurrentAccountScope`
+    /// The account the insight records belong to: `wxid:<wxid>`, else `db:<hash of the data directory>`, else `default`.
     pub(super) fn insight_scope(&self) -> String {
         let my = self.my_wxid_cleaned();
         if !my.trim().is_empty() {
@@ -247,7 +247,7 @@ impl ServiceHub {
         self.record_store().clear(f)
     }
 
-    /// `getTodayStats`
+    /// How often the engine wrote about each conversation today, and when (`insight today-stats`).
     pub fn insight_today_stats(&self) -> Vec<InsightTodayStat> {
         let mut st = self.insight_state.lock_or_panic();
         let today = start_of_day();
@@ -280,7 +280,7 @@ impl ServiceHub {
 
     // ── connection test / footprint ──
 
-    /// `testConnection`: asks the model API for a short answer, and says where it asked and what came back.
+    /// Asks the model API for a short answer, and says where it asked and what came back.
     ///
     /// # Errors
     /// When the settings lack the model API, or it answered with an error.
@@ -309,10 +309,10 @@ impl ServiceHub {
                 }),
                 ..InsightReply::done(fill(
                     tr(
-                        "Connection successful. Model reply: {v0}",
-                        "连接成功，模型回复：{v0}",
+                        "Connection successful. Model reply: {reply}",
+                        "连接成功，模型回复：{reply}",
                     ),
-                    &[("v0", reply.text.chars().take(50).collect())],
+                    &[("reply", reply.text.chars().take(50).collect())],
                 ))
             }),
             Err(e) => Err(AppError::runtime(fill(
@@ -346,7 +346,7 @@ impl ServiceHub {
         })
     }
 
-    /// `generateFootprintInsight`
+    /// The AI's summary of a footprint (`insight footprint-summary`).
     ///
     /// # Errors
     /// When the footprint summary is off, the settings lack the model API, or it answered with an error.
@@ -373,7 +373,7 @@ impl ServiceHub {
         };
         let summary = params.get("summary").cloned().unwrap_or_else(|| json!({}));
         let range_label = params
-            .get("rangeLabel")
+            .get("range_label")
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|s| !s.is_empty())
@@ -386,9 +386,9 @@ impl ServiceHub {
                 .map(|a| a.iter().take(6).cloned().collect())
                 .unwrap_or_default()
         };
-        let (private, mentions) = (list("privateSegments"), list("mentionGroups"));
+        let (private, mentions) = (list("private_segments"), list("mention_groups"));
         let name_of = |item: &Value, fallback: String| {
-            item.get("displayName")
+            item.get("display_name")
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty())
                 .or_else(|| {
@@ -409,8 +409,8 @@ impl ServiceHub {
                     let name = name_of(
                         it,
                         fill(
-                            tr("Contact {v0}", "联系人{v0}"),
-                            &[("v0", (i + 1).to_string())],
+                            tr("Contact {n}", "联系人{n}"),
+                            &[("n", (i + 1).to_string())],
                         ),
                     );
                     let (inb, outb) = (
@@ -425,15 +425,15 @@ impl ServiceHub {
                         ""
                     };
                     tr(
-                        "{v0}. {name} (in {inbound}/out {outbound}/total {total}{v5})",
-                        "{v0}. {name}（收{inbound}/发{outbound}/总{total}{v5}）",
+                        "{n}. {name} (in {inbound}/out {outbound}/total {total}{replied})",
+                        "{n}. {name}（收{inbound}/发{outbound}/总{total}{replied}）",
                     )
-                    .replace("{v0}", &(i + 1).to_string())
+                    .replace("{n}", &(i + 1).to_string())
                     .replace("{name}", &name)
                     .replace("{inbound}", &inb.to_string())
                     .replace("{outbound}", &outb.to_string())
                     .replace("{total}", &total.to_string())
-                    .replace("{v5}", replied)
+                    .replace("{replied}", replied)
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -447,13 +447,13 @@ impl ServiceHub {
                 .map(|(i, it)| {
                     let name = name_of(
                         it,
-                        fill(tr("Group {v0}", "群聊{v0}"), &[("v0", (i + 1).to_string())]),
+                        fill(tr("Group {n}", "群聊{n}"), &[("n", (i + 1).to_string())]),
                     );
                     tr(
-                        "{v0}. {name} (@-mentioned me {count} times)",
-                        "{v0}. {name}（@我 {count} 次）",
+                        "{n}. {name} (@-mentioned me {count} times)",
+                        "{n}. {name}（@我 {count} 次）",
                     )
-                    .replace("{v0}", &(i + 1).to_string())
+                    .replace("{n}", &(i + 1).to_string())
                     .replace("{name}", &name)
                     .replace(
                         "{count}",
@@ -470,34 +470,34 @@ impl ServiceHub {
             custom
         };
         let tpl = tr(
-            "Range: {rangeLabel}\nPeople chatted with: {v1}\nPeople I replied to: {v2}\nReply rate: {v3}%\n@-mentions of me: {v4}\nGroups involved: {v5}\n\nPrivate chat highlights:\n{topPrivateText}\n\nGroup @-mention highlights:\n{topMentionText}\n\nGive the footprint review (2-3 sentences, with a suggestion):",
-            "统计范围：{rangeLabel}\n有聊天的人数：{v1}\n我有回复的人数：{v2}\n回复率：{v3}%\n@我次数：{v4}\n涉及群聊：{v5}\n\n私聊重点：\n{topPrivateText}\n\n群聊@我重点：\n{topMentionText}\n\n请给出足迹复盘（2-3句，含建议）：",
+            "Range: {range}\nPeople chatted with: {people}\nPeople I replied to: {replied_people}\nReply rate: {reply_rate}%\n@-mentions of me: {mentions}\nGroups involved: {groups}\n\nPrivate chat highlights:\n{private_highlights}\n\nGroup @-mention highlights:\n{mention_highlights}\n\nGive the footprint review (2-3 sentences, with a suggestion):",
+            "统计范围：{range}\n有聊天的人数：{people}\n我有回复的人数：{replied_people}\n回复率：{reply_rate}%\n@我次数：{mentions}\n涉及群聊：{groups}\n\n私聊重点：\n{private_highlights}\n\n群聊@我重点：\n{mention_highlights}\n\n请给出足迹复盘（2-3句，含建议）：",
         );
         let prompt = tpl
-            .replace("{rangeLabel}", &range_label)
+            .replace("{range}", &range_label)
             .replace(
-                "{v1}",
+                "{people}",
                 &crate::num::saturating_i64(num(summary.get("private_inbound_people"))).to_string(),
             )
             .replace(
-                "{v2}",
+                "{replied_people}",
                 &crate::num::saturating_i64(num(summary.get("private_outbound_people")))
                     .to_string(),
             )
             .replace(
-                "{v3}",
+                "{reply_rate}",
                 &format!("{:.1}", num(summary.get("private_reply_rate")) * 100.0),
             )
             .replace(
-                "{v4}",
+                "{mentions}",
                 &crate::num::saturating_i64(num(summary.get("mention_count"))).to_string(),
             )
             .replace(
-                "{v5}",
+                "{groups}",
                 &crate::num::saturating_i64(num(summary.get("mention_group_count"))).to_string(),
             )
-            .replace("{topPrivateText}", &top_private)
-            .replace("{topMentionText}", &top_mention);
+            .replace("{private_highlights}", &top_private)
+            .replace("{mention_highlights}", &top_mention);
         let user = ins::append_current_time(&prompt);
         let prompt = Prompt {
             system: Some(&system),
@@ -632,16 +632,16 @@ impl ServiceHub {
                     .unwrap_or_default();
                 Some(if time.is_empty() {
                     fill(
-                        tr("[Moments] {shortText}", "[朋友圈] {shortText}"),
-                        &[("shortText", short)],
+                        tr("[Moments] {short_text}", "[朋友圈] {short_text}"),
+                        &[("short_text", short)],
                     )
                 } else {
                     fill(
                         tr(
-                            "[Moments {time}] {shortText}",
-                            "[朋友圈 {time}] {shortText}",
+                            "[Moments {time}] {short_text}",
+                            "[朋友圈 {time}] {short_text}",
                         ),
-                        &[("time", time), ("shortText", short)],
+                        &[("time", time), ("short_text", short)],
                     )
                 })
             })
@@ -651,12 +651,12 @@ impl ServiceHub {
         }
         fill(
             tr(
-                "Recent Moments (latest {length} posts):\n{v1}",
-                "近期朋友圈内容（最近 {length} 条）：\n{v1}",
+                "Recent Moments (latest {length} posts):\n{posts}",
+                "近期朋友圈内容（最近 {length} 条）：\n{posts}",
             ),
             &[
                 ("length", lines.len().to_string()),
-                ("v1", lines.join("\n")),
+                ("posts", lines.join("\n")),
             ],
         )
     }
@@ -721,12 +721,12 @@ impl ServiceHub {
                 )
             })
             .collect();
-        fill(tr("Recent public social platform content (source: Weibo, latest {length} posts):\n{v1}", "近期公开社交平台内容（来源：微博，最近 {length} 条）：\n{v1}"), &[("length", lines.len().to_string()), ("v1", lines.join("\n"))])
+        fill(tr("Recent public social platform content (source: Weibo, latest {length} posts):\n{posts}", "近期公开社交平台内容（来源：微博，最近 {length} 条）：\n{posts}"), &[("length", lines.len().to_string()), ("posts", lines.join("\n"))])
     }
 
     // ── generation ──
 
-    /// `generateInsightForSession`: the stored record when an insight was produced; `None` when insights are off or
+    /// An insight about a conversation: the stored record when an insight was produced; `None` when insights are off or
     /// the model had nothing to say (`SKIP`).
     ///
     /// # Errors
@@ -781,13 +781,10 @@ impl ServiceHub {
         let silence = match (reason, silent_days) {
             (Trigger::Silence, Some(d)) if d != 0 => fill(
                 tr(
-                    "It has been {silentDays} days since you contacted \"{resolvedDisplayName}\".",
-                    "已 {silentDays} 天未联系「{resolvedDisplayName}」。",
+                    "It has been {silent_days} days since you contacted \"{name}\".",
+                    "已 {silent_days} 天未联系「{name}」。",
                 ),
-                &[
-                    ("silentDays", d.to_string()),
-                    ("resolvedDisplayName", name.clone()),
-                ],
+                &[("silent_days", d.to_string()), ("name", name.clone())],
             ),
             _ => String::new(),
         };
@@ -847,11 +844,8 @@ impl ServiceHub {
             let chat_ids = cfg_str(&c, p, "ai_insight_telegram_chat_ids");
             if !token.is_empty() && !chat_ids.is_empty() {
                 let title = fill(
-                    tr(
-                        "Insight · {resolvedDisplayName}",
-                        "见解 · {resolvedDisplayName}",
-                    ),
-                    &[("resolvedDisplayName", name.clone())],
+                    tr("Insight · {name}", "见解 · {name}"),
+                    &[("name", name.clone())],
                 );
                 let text = format!("【WeFlow】 {title}\n\n{insight}");
                 for id in chat_ids.split(',').map(str::trim).filter(|s| !s.is_empty()) {
@@ -929,7 +923,7 @@ impl ServiceHub {
         }
     }
 
-    /// `triggerTest`: forces an insight for the first eligible private chat.
+    /// Forces an insight for the first eligible private chat.
     ///
     /// # Errors
     /// When the settings lack the model API, there is no conversation to write about, or no insight could be written.
@@ -979,10 +973,10 @@ impl ServiceHub {
         };
         let message = fill(
             tr(
-                "A test insight was generated for \"{displayName}\"",
-                "已生成「{displayName}」的测试见解",
+                "A test insight was generated for \"{name}\"",
+                "已生成「{name}」的测试见解",
             ),
-            &[("displayName", name)],
+            &[("name", name)],
         );
         Ok(InsightReply {
             record: Some(record.summary()),
@@ -990,7 +984,7 @@ impl ServiceHub {
         })
     }
 
-    /// `runSilenceScan`
+    /// Writes insights about the private chats that have been silent too long; returns how many.
     pub async fn insight_silence_scan(
         &self,
         on_insight: &mut dyn FnMut(&ins::InsightRecord),
@@ -1047,7 +1041,7 @@ impl ServiceHub {
         generated
     }
 
-    /// `analyzeRecentActivity`: at most one session per call, honouring the cooldown.
+    /// Writes an insight about a recently active conversation: at most one session per call, honouring the cooldown.
     pub async fn insight_analyze_activity(&self, on_insight: &mut dyn FnMut(&ins::InsightRecord)) {
         if !self.insight_enabled() {
             return;
