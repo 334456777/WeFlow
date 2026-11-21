@@ -1,6 +1,6 @@
 {
   "name": "weflow-web",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "imports": {
@@ -10,7 +10,7 @@
   "license": "Unlicense",
   "weflow": {
     "apiVersion": "3",
-    "minBackendVersion": "5.0.0"
+    "minBackendVersion": "7.0.0"
   },
   "packageManager": "bun@1.4.3",
   "engines": {

@@ -34,7 +34,7 @@ class FakeEventSource {
     streams.push(this);
     log.push('stream ' + url.split('?')[0]);
     queueMicrotask(() => {
-      if (!this.closed && !url.startsWith('/jobs/')) this.emit('hello', { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: '5.0.1', data: account });
+      if (!this.closed && !url.startsWith('/jobs/')) this.emit('hello', { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: __WEFLOW_WEB__.minBackendVersion, data: account });
     });
   }
   addEventListener(type: string, listener: (event: MessageEvent) => void) {
