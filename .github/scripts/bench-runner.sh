@@ -123,7 +123,7 @@ case "${1:-}" in
     rm -rf tools results index.json requests.json
     ;;
   *)
-    echo "usage: $0 wait | measure | clean" >&2
+    echo "usage: $0 measure | clean" >&2
     exit 2
     ;;
 esac

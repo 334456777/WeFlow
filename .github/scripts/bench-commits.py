@@ -212,17 +212,15 @@ def clean_up(bench_dir, anchors, accounts):
 
 
 def load_pending(pending_dir, index):
-    """{env key: {sha: (folder, result)}} of the results measured before but not published yet; those gh-pages holds
-    now are removed. A result's own environment says where it belongs, whatever folder it sits in (the folders of an
-    older layout, `pending/<sha>/`, are read too)."""
+    """{env key: {sha: (folder, result)}} of the results measured before but not published yet, in
+    `pending/<env key>/<sha>/`; those gh-pages holds now are removed. A result's own environment says where it
+    belongs, whatever folder it sits in."""
     pending = {}
     os.makedirs(pending_dir, exist_ok=True)
     folders = []
     for name in os.listdir(pending_dir):
         top = os.path.join(pending_dir, name)
-        if os.path.exists(os.path.join(top, "result.json")):
-            folders.append(top)
-        elif os.path.isdir(top):
+        if os.path.isdir(top):
             folders += [os.path.join(top, sha) for sha in os.listdir(top)]
             if not os.listdir(top):
                 os.rmdir(top)

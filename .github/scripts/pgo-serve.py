@@ -88,8 +88,7 @@ def get(base, path, params=None, raw=False, quiet=False):
 
 def train(base, group, friend):
     spec = json.loads(get(base, "/openapi.json", raw=True) or b"{}")
-    rows = get(base, "/api/chat/messages", {"session-id": group, "limit": 3000, "parsed": "true"}) or []
-    messages = rows.get("messages", []) if isinstance(rows, dict) else rows
+    messages = get(base, "/api/chat/messages", {"session-id": group, "limit": 3000, "parsed": "true"}) or []
 
     def media_call(path, kind):
         # not every message has its file on disk: the first that answers
