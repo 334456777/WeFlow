@@ -74,7 +74,16 @@ jq -r --argjson new "$NEW_JSON" --arg repo "$REPO" --arg prev "$PREV" --arg tag 
     elif any(.[]; . == "bug" or . == "反常") then "修复"
     elif any(.[]; . == "文档") then null
     else "其他" end;
-  def line: "- #\(.number) \(.title)";
+  # A title is plain text, but in the notes it is Markdown: GitHub takes an @name outside a code span for a mention
+  # and lists that account under Contributors on the release page (the CSS at-rule @layer would credit the account layer),
+  # so each one goes into a code span. A backtick with no closing one does not open a code span.
+  def unmention:
+    split("`") | length as $n | to_entries
+    | map(if .key % 2 == 0 or .key == $n - 1
+          then .value | gsub("(?<m>(?<![A-Za-z0-9_])@[A-Za-z0-9][A-Za-z0-9-]*(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)?)"; "`\(.m)`")
+          else .value end)
+    | join("`");
+  def line: "- #\(.number) \(.title | unmention)";
 
   ([$prs[] | .number as $pr | .issues[] | . + {pr: $pr}]
     | group_by(.number) | map(.[0] + {prs: map(.pr)})

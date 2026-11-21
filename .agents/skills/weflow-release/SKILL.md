@@ -34,6 +34,8 @@ description: 发布 weflow 和 WebUI 的新版本（维护者）：定版本号�
    gh workflow run release.yml --ref main -f tag=vX.Y.Z -f notes="…"
    ```
 
+   `notes` 和手动修改的发布说明里，不是指人的 `@` 写在反引号里（见 [weflow-issues](../weflow-issues/SKILL.md#写正文和评论)），否则同名的账号会被列进发布页的 Contributors。
+
 3. 发布完成后，在各平台 `build` job 的日志里查 `PGO training run failed` 和 `PGO serve training` 两种警告：单条训练失败只给警告，发布照常完成，那部分代码按冷代码优化。有就修训练清单。
 4. 在 Wiki 仓库的最新提交上打与版本同名的附注 tag 并推送。
 
