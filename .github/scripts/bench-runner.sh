@@ -12,7 +12,7 @@
 #                                   built, and results/summary.md says so; first, a new profile's environment is
 #                                   measured on the releases and bench PRs (bench-commits.py --backfill), which an
 #                                   empty queue goes through only when the profile is not the one noted in
-#                                   profile-seen
+#                                   profile-seen or a backfill begun before is not measured through
 #        bench-runner.sh clean     what the next run will not use: the Rust toolchains neither this commit's nor used
 #                                   in the last TOOLCHAIN_DAYS days (an older commit built here brings its own, and a
 #                                   backfill over several runs keeps it; bench-commits.py notes in
@@ -51,11 +51,13 @@ case "${1:-}" in
         exit 0
       fi
       # An empty queue: only a new profile (the calibration of #605) has something to measure, a backfill of its new
-      # environment (bench-commits.py --backfill). profile-seen holds the hash of the profile the last run of the queue
-      # went through; the same one again needs no tools built.
+      # environment (bench-commits.py --backfill), or a backfill a run before did not measure through, whose list
+      # bench-commits.py keeps in backfill/. profile-seen holds the hash of the profile the last run of the queue went
+      # through; the same one again with no such list needs no tools built.
       profile_sha=$( { cat "$dir/profile/profile.json" 2>/dev/null || true; } | sha256sum | cut -d' ' -f1)
-      if ! grep -q '"id"' requests.json && [ "$profile_sha" = "$(cat "$dir/profile-seen" 2>/dev/null || true)" ]; then
-        printf '## 运行情况\n\n- 队列为空，profile 没有更换，不测量\n' > results/summary.md
+      if ! grep -q '"id"' requests.json && [ "$profile_sha" = "$(cat "$dir/profile-seen" 2>/dev/null || true)" ] \
+        && ! ls "$dir"/backfill/*.json > /dev/null 2>&1; then
+        printf '## 运行情况\n\n- 队列为空，profile 没有更换，也没有没测完的补测，不测量\n' > results/summary.md
         exit 0
       fi
     else
