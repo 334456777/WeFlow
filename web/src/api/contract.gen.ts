@@ -2175,24 +2175,6 @@ export interface GroupHint {
   source?: string;
 }
 
-/** What `chat anti-revoke check` answers for each conversation asked for. */
-export interface AntiRevokeResults {
-  /** One for each conversation, in the order asked for. */
-  results: AntiRevokeResult[];
-}
-
-/** One conversation's anti-revoke check. */
-export interface AntiRevokeResult {
-  /** The conversation's username. */
-  sessionId: string;
-  /** Whether the check ran. */
-  success: boolean;
-  /** What the database layer answered; left out when it failed. */
-  data?: unknown;
-  /** Why it failed; left out when it ran. */
-  error?: string;
-}
-
 /** A media file a command wrote (`chat image-data`, `video-data`, `voice-data` with `out`). */
 export interface MediaWritten {
   /** The file written. */
@@ -2823,9 +2805,6 @@ export interface Answers {
   /** What was removed; with `dry-run`, what would be */
   "cache clear-account": AccountCleared | RemovalPlan | Cancelled;
   "cache list": CacheUsage[];
-  "chat anti-revoke check": AntiRevokeResults;
-  /** The conversations but official accounts: the rows of WeChat's session table */
-  "chat anti-revoke sessions": Row[];
   /** With `parsed=true`, the contacts sorted and classified; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
   /** Each conversation asked for, with how many messages it has */

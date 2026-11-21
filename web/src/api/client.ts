@@ -111,7 +111,7 @@ export function apiUrl(path: string, params: Params = {}): string {
 }
 
 /** The HTTP methods of the command API. */
-export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 /**
  * What the sample server answers a route: its data; its error, as a server's status and `error`; or `refused`, for a

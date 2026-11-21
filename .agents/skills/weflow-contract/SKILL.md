@@ -1,6 +1,6 @@
 ---
 name: weflow-contract
-description: 修改命令 API 的契约之后要做的事：重新生成 web/contract 的快照和 WebUI 的类型、跑完整的契约测试，以及 schemars 与生成器的坑、总被拒绝的命令、serve 集成测试的写法。改 weflow-core 的 contract/ 类型或它们的文档注释、加响应字段或路由、改 serve_api 时使用。
+description: 修改命令 API 的契约之后要做的事：重新生成 web/contract 的快照和 WebUI 的类型、跑完整的契约测试，以及 schemars 与生成器的坑、serve 集成测试的写法。改 weflow-core 的 contract/ 类型或它们的文档注释、加响应字段或路由、改 serve_api 时使用。
 ---
 
 # 改命令 API 的契约
@@ -25,6 +25,6 @@ description: 修改命令 API 的契约之后要做的事：重新生成 web/con
 - 展开（`#[serde(flatten)]`）的 `Option` 或被跳过的字段：`left_out_not_null` 会把 `null` 从 schema 里去掉，回复里真有 `null` 时校验失败。拆成明确的类型，例如 untagged enum `MessagesBundle { Folder, Zip }`。
 - `web/scripts/contract.ts` 不认 `allOf`：直接用 `of(generator.subschema_for::<T>())` 登记。
 - 给契约枚举的成员写 `///` 后，schemars 把 `"enum": [...]` 改写成 `oneOf`，每项带 `const` 和 `description`；生成的 TS 联合类型不变（按声明顺序重排），`contract-compat.ts` 不报。`#[serde(flatten)]` 字段和 `$ref` 字段上的文档会作为 `description` 与 `$ref` 并列。
-- 总被只读层拒绝的命令加进 `crates/weflow-cli/src/serve_api/rules.rs` 的 `REFUSED`，不要硬给它描述 `data`；`every_answer_is_described` 的例外只有 `chat contact` 和 `config get`。`left_out_not_null`、`every_answer_is_described`、`contract_snapshot_is_current` 都在 `serve_api/openapi.rs`。
+- 每个命令都要描述 `data`，`every_answer_is_described` 的例外只有 `chat contact` 和 `config get`。`left_out_not_null`、`every_answer_is_described`、`contract_snapshot_is_current` 都在 `serve_api/openapi.rs`。
 - 原生层的回复读进契约类型时用 `deny_unknown_fields`，从 `Value` 里 `take` 出来，不 clone。
 - serve 的集成测试：GET 路由不读请求体，参数写进查询串；用 `crates/weflow-cli/tests/serve_api/common.rs` 的 `misfits(&contract, &json!({"$ref": …}), &data)` 对照契约。

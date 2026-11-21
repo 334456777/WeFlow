@@ -317,33 +317,6 @@ impl ServiceHub {
             .collect())
     }
 
-    /// Refused by the read-only database layer: marking every conversation read writes to WeChat's database.
-    pub fn chat_mark_all_read(&self) -> AppResult<Value> {
-        self.open_wcdb()?.mark_all_sessions_read().map_err(native)
-    }
-
-    /// The rows of `SessionTable` but for the official accounts', the conversations an anti-revoke trigger may
-    /// guard.
-    pub fn chat_anti_revoke_sessions(&self) -> AppResult<Value> {
-        let sessions = self.sessions()?;
-        let kept: Vec<Value> = sessions
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter(|s| {
-                        let name = ["username", "userName", "talker", "sessionId"]
-                            .iter()
-                            .find_map(|k| s.get(*k).and_then(Value::as_str))
-                            .unwrap_or("");
-                        !name.starts_with("gh_")
-                    })
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        Ok(Value::Array(kept))
-    }
-
     // ── session detail ──
 
     /// Who a conversation is with and how many messages it has (`chat detail --fast`).
@@ -1335,80 +1308,6 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         wcdb.contact(username)
             .map_err(|err| AppError::native(format!("{err:#}")))
-    }
-
-    /// Refused by the read-only database layer (`chat update-message`).
-    pub fn update_message(
-        &self,
-        session_id: &str,
-        local_id: i64,
-        create_time: i32,
-        content: &str,
-    ) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        wcdb.update_message(session_id, local_id, create_time, content)
-            .map_err(AppError::from_native)
-    }
-
-    /// Refused by the read-only database layer (`chat delete-message`).
-    pub fn delete_message(
-        &self,
-        session_id: &str,
-        local_id: i64,
-        create_time: i32,
-        db_path_hint: Option<&str>,
-    ) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        wcdb.delete_message(session_id, local_id, create_time, db_path_hint)
-            .map_err(AppError::from_native)
-    }
-
-    /// `chat anti-revoke`: `check`, `install` or `uninstall` the anti-revoke trigger of each conversation; the
-    /// read-only database layer refuses all three.
-    ///
-    /// # Errors
-    /// The first conversation's failure when every one failed; otherwise each result says how it went.
-    pub fn anti_revoke(
-        &self,
-        action: &str,
-        sessions: &[String],
-    ) -> AppResult<crate::contract::AntiRevokeResults> {
-        let wcdb = self.open_wcdb()?;
-        let mut results = Vec::new();
-        let mut first_error = None;
-        for session_id in sessions {
-            let result = match action {
-                "check" => wcdb.anti_revoke_check(session_id),
-                "install" => wcdb.anti_revoke_install(session_id),
-                "uninstall" => wcdb.anti_revoke_uninstall(session_id),
-                _ => Err(anyhow::anyhow!("unknown anti revoke action")),
-            };
-            match result {
-                Ok(data) => results.push(crate::contract::AntiRevokeResult {
-                    session_id: session_id.clone(),
-                    success: true,
-                    data: Some(data),
-                    error: None,
-                }),
-                Err(err) => {
-                    results.push(crate::contract::AntiRevokeResult {
-                        session_id: session_id.clone(),
-                        success: false,
-                        data: None,
-                        error: Some(err.to_string()),
-                    });
-                    first_error.get_or_insert(err);
-                }
-            }
-        }
-        // Per-session results are kept for partial failures, but when every session failed the command itself failed
-        // (otherwise a script reading only `success` would treat a refused operation as done).
-        if !results.is_empty() && results.iter().all(|r| !r.success) {
-            return Err(AppError::from_native(
-                first_error.unwrap_or_else(|| anyhow::anyhow!("anti-revoke failed")),
-            ));
-        }
-        Ok(crate::contract::AntiRevokeResults { results })
     }
 
     /// `{ "private", "group", "official", "former_friend" }`: how many contacts of each kind.

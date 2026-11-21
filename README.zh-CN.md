@@ -106,7 +106,7 @@ weflow export messages <会话 ID> --format html --out chat.html
 
 ## CLI 不支持的功能
 
-WeFlow Rust CLI 以**只读**方式打开数据库，不会修改微信数据库；会修改数据库的命令只是占位符。WeFlow 桌面端的一些功能（语音转文字、弹窗等桌面进程功能）也没有实现。
+WeFlow Rust CLI 以**只读**方式打开数据库，不会修改微信数据库，也没有修改数据库的命令。WeFlow 桌面端的一些功能（语音转文字、弹窗等桌面进程功能）也没有实现。
 
 详细清单见 Wiki 的[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)。
 

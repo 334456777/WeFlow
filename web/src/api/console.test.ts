@@ -6,22 +6,22 @@ import { DOC } from './console.fixture';
 describe('console', () => {
   it('reads every command of the document, without the server routes and the in-process copies', () => {
     const commands = commandsOf(DOC);
-    expect(commands.map(c => c.method + ' ' + c.command)).toEqual(['GET chat messages', 'POST export contacts', 'GET sns block-delete', 'DELETE sns block-delete']);
-    const [messages, contacts, , refused] = commands;
+    expect(commands.map(c => c.method + ' ' + c.command)).toEqual(['GET chat group-hint', 'PUT chat group-hint', 'GET chat messages', 'POST export contacts', 'PUT lang']);
+    const [, , messages, contacts, chosen] = commands;
     expect(messages.fields).toEqual([
       { name: 'session-id', type: 'string', required: true, description: '会话 ID', defaultValue: undefined },
       { name: 'limit', type: 'integer', required: false, description: '', defaultValue: '50' },
       { name: 'parsed', type: 'boolean', required: false, description: '', defaultValue: undefined },
     ]);
-    expect([messages.file, contacts.file, refused.refused, commands[2].refused]).toEqual([false, true, true, false]);
+    expect([messages.file, contacts.file]).toEqual([false, true]);
     expect(contacts.fields.map(f => [f.name, f.type, f.required, f.integers ?? false])).toEqual([
       ['out', 'string', true, false], ['format', 'string', false, false], ['kind', 'list', false, false], ['ids', 'list', false, true],
     ]);
-    expect(refused.fields[0]).toMatchObject({ type: 'choice', options: ['uninstall'] });
+    expect(chosen.fields[0]).toMatchObject({ type: 'choice', options: ['en', 'zh'] });
   });
 
   it('turns a form into parameters, and says what it misses', () => {
-    const [messages, contacts] = commandsOf(DOC);
+    const [, , messages, contacts] = commandsOf(DOC);
     expect(formProblems(messages, { 'session-id': ' ', limit: '5x', parsed: false })).toEqual(['请填写 session-id。', 'limit 要填整数。']);
     expect(paramsOf(messages, { 'session-id': ' wxid_a ', limit: '20', parsed: true })).toEqual({ 'session-id': 'wxid_a', limit: 20, parsed: true });
     expect(paramsOf(messages, { 'session-id': 'wxid_a', limit: '', parsed: false })).toEqual({ 'session-id': 'wxid_a' });

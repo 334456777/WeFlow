@@ -860,8 +860,6 @@ export const en: Record<string, string> = {
   "没有收到回复：{why}": "No answer: {why}",
   "连接中断": "the connection broke",
   "运行 {command}": "Run {command}",
-  "只读拒绝": "Refused, read only",
-  "这条命令要写入微信的数据库，而 WeFlow 只读打开数据库，所以它总是被拒绝（HTTP 501）。": "This command writes to WeChat's database, which WeFlow opens read only, so it is always refused (HTTP 501).",
   "这条命令没有参数。": "This command takes no arguments.",
   "作为任务运行": "Run as a task",
   "在任务中心看进度，并下载写出的文件": "follow it in Tasks and download the file it writes",

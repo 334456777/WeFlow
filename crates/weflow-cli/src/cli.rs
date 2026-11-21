@@ -53,7 +53,7 @@ pub(crate) enum Commands {
     Db(DbCommand),
     /// Extract database and image keys
     Key(KeyCommand),
-    /// Read sessions, messages and contacts; anti-revoke triggers; media
+    /// Read sessions, messages, contacts and media
     Chat(ChatCommand),
     /// Export sessions, contacts, messages, footprint and media
     Export(ExportCommand),
@@ -63,7 +63,7 @@ pub(crate) enum Commands {
     Group(GroupCommand),
     /// Annual and dual-person reports
     Report(ReportCommand),
-    /// Moments, WeChat's SNS: timeline, export and block-delete trigger
+    /// Moments, WeChat's SNS: timeline, export and media
     Sns(SnsCommand),
     /// Official accounts and WeChat Pay records
     Biz(BizCommand),

@@ -1,4 +1,4 @@
-//! Which HTTP method each command takes, and the commands that are refused.
+//! Which HTTP method each command takes.
 
 use axum::http::Method;
 
@@ -12,7 +12,6 @@ pub(super) enum Verb {
     Get,
     Post,
     Put,
-    Patch,
     Delete,
 }
 
@@ -22,7 +21,6 @@ impl Verb {
             Get => Method::GET,
             Post => Method::POST,
             Put => Method::PUT,
-            Patch => Method::PATCH,
             Delete => Method::DELETE,
         }
     }
@@ -38,35 +36,6 @@ pub(super) enum Rule {
         without: Verb,
         with: Verb,
     },
-    /// Chosen by the value of an argument (`sns block-delete <action>`).
-    Value {
-        arg: &'static str,
-        values: &'static [(&'static str, Verb)],
-    },
-}
-
-/// The commands the read-only database layer always refuses (`unsupported`, HTTP 501), with the methods that run
-/// them so: those that would write WeChat's databases, and `sns block-delete check`, which looks for a trigger the
-/// layer does not read. `/openapi.json` marks them `x-weflow-refused` (#217) so a client need not offer them, and
-/// gives them no `200` answer (#430). `refused_commands_are_marked_and_refused` (`tests/serve_api/commands.rs`) checks
-/// both against a running server.
-const REFUSED: &[(&str, &[Verb])] = &[
-    ("chat update-message", &[Patch]),
-    ("chat delete-message", &[Delete]),
-    ("chat mark-read", &[Post]),
-    // looking for the trigger is refused like installing it (#644)
-    ("chat anti-revoke check", &[Get]),
-    ("chat anti-revoke install", &[Put]),
-    ("chat anti-revoke uninstall", &[Delete]),
-    ("sns block-delete", &[Get, Put, Delete]),
-    ("sns delete", &[Delete]),
-];
-
-/// Whether `name` run with `verb` is one of the [`REFUSED`].
-pub(super) fn refused(name: &str, verb: Verb) -> bool {
-    REFUSED
-        .iter()
-        .any(|(n, verbs)| *n == name && verbs.contains(&verb))
 }
 
 /// The HTTP method of every command: `GET` reads (it may fill caches that can be rebuilt), `POST` runs a task or
@@ -94,19 +63,12 @@ pub(super) const METHODS: &[(&str, Rule)] = &[
     ("chat search", Rule::Fixed(Get)),
     ("chat contacts", Rule::Fixed(Get)),
     ("chat contact", Rule::Fixed(Get)),
-    ("chat update-message", Rule::Fixed(Patch)),
-    ("chat delete-message", Rule::Fixed(Delete)),
-    ("chat anti-revoke sessions", Rule::Fixed(Get)),
-    ("chat anti-revoke check", Rule::Fixed(Get)),
-    ("chat anti-revoke install", Rule::Fixed(Put)),
-    ("chat anti-revoke uninstall", Rule::Fixed(Delete)),
     ("chat message", Rule::Fixed(Get)),
     ("chat dates", Rule::Fixed(Get)),
     ("chat date-counts", Rule::Fixed(Get)),
     ("chat counts", Rule::Fixed(Get)),
     ("chat statuses", Rule::Fixed(Get)),
     ("chat detail", Rule::Fixed(Get)),
-    ("chat mark-read", Rule::Fixed(Post)),
     ("chat tab-counts", Rule::Fixed(Get)),
     ("chat export-stats", Rule::Fixed(Get)),
     (
@@ -167,14 +129,6 @@ pub(super) const METHODS: &[(&str, Rule)] = &[
     ("sns media", Rule::Fixed(Post)),
     ("sns download-emoji", Rule::Fixed(Post)),
     ("sns download-image", Rule::Fixed(Post)),
-    (
-        "sns block-delete",
-        Rule::Value {
-            arg: "action",
-            values: &[("check", Get), ("install", Put), ("uninstall", Delete)],
-        },
-    ),
-    ("sns delete", Rule::Fixed(Delete)),
     ("biz accounts", Rule::Fixed(Get)),
     ("biz messages", Rule::Fixed(Get)),
     ("biz pay-records", Rule::Fixed(Get)),
@@ -272,7 +226,7 @@ mod tests {
         for (path, rule) in METHODS {
             let arg = match rule {
                 Rule::Fixed(_) => continue,
-                Rule::Arg { arg, .. } | Rule::Value { arg, .. } => arg,
+                Rule::Arg { arg, .. } => arg,
             };
             let ep = endpoints.0.get(*path).unwrap();
             assert!(

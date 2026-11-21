@@ -1,8 +1,8 @@
-//! `weflow sns`: Moments, their media and the block-delete trigger.
+//! `weflow sns`: Moments and their media.
 
 use std::path::{Path, PathBuf};
 
-use clap::{Args, Subcommand, ValueEnum};
+use clap::{Args, Subcommand};
 
 use serde_json::{json, Value};
 use weflow_core::error::{AppError, AppResult};
@@ -116,23 +116,6 @@ pub(crate) enum SnsSubcommand {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Moments block-delete trigger; checking, installing and removing are refused, as the database is read-only
-    BlockDelete {
-        /// check, install or uninstall
-        action: TriggerAction,
-    },
-    /// Delete a Moments post; always refused, as the database is read-only
-    Delete {
-        /// Post id
-        post_id: String,
-    },
-}
-
-#[derive(Clone, Copy, Debug, ValueEnum)]
-pub(crate) enum TriggerAction {
-    Check,
-    Install,
-    Uninstall,
 }
 
 pub(crate) async fn handle_sns(command: SnsCommand, hub: &ServiceHub) -> AppResult<Value> {
@@ -211,12 +194,6 @@ pub(crate) async fn handle_sns(command: SnsCommand, hub: &ServiceHub) -> AppResu
         SnsSubcommand::DownloadImage { url, out } => {
             Ok(json!(hub.sns_download_image(&url, out.as_deref()).await?))
         }
-        SnsSubcommand::BlockDelete { action } => match action {
-            TriggerAction::Check => hub.sns_block_delete_status(),
-            TriggerAction::Install => hub.sns_block_delete_install(),
-            TriggerAction::Uninstall => hub.sns_block_delete_uninstall(),
-        },
-        SnsSubcommand::Delete { post_id } => hub.sns_delete_post(&post_id),
     }
 }
 

@@ -14,7 +14,7 @@ use super::commands::group::{GroupCommand, GroupSubcommand};
 use super::commands::insight::{InsightCommand, InsightSubcommand};
 use super::commands::report::{AnnualSubcommand, ReportCommand, ReportSubcommand};
 use super::commands::sns::{SnsCommand, SnsSubcommand};
-use super::{checked, exit_status, VERSION};
+use super::{exit_status, VERSION};
 use serde_json::Value;
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::error::{AppError, AppResult};
@@ -346,7 +346,7 @@ pub(crate) fn write_media(file: MediaFile, out: &Path) -> AppResult<u64> {
     reason = "a document of JSON values and strings always serializes"
 )]
 pub(crate) fn json_document(outcome: AppResult<Value>) -> (Value, u8) {
-    let (mut doc, exit) = match checked(outcome) {
+    let (mut doc, exit) = match outcome {
         Ok(value) => (
             serde_json::to_value(success(value)).expect("a success document serializes"),
             0,

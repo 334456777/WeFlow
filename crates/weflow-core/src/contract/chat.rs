@@ -496,29 +496,6 @@ pub struct GroupHint {
     pub source: Option<String>,
 }
 
-/// What `chat anti-revoke check` answers for each conversation asked for.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-pub struct AntiRevokeResults {
-    /// One for each conversation, in the order asked for.
-    pub results: Vec<AntiRevokeResult>,
-}
-
-/// One conversation's anti-revoke check.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AntiRevokeResult {
-    /// The conversation's username.
-    pub session_id: String,
-    /// Whether the check ran.
-    pub success: bool,
-    /// What the database layer answered; left out when it failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<serde_json::Value>,
-    /// Why it failed; left out when it ran.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
 /// The names a group's transfer message shows for its two sides (`chat transfer-names`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

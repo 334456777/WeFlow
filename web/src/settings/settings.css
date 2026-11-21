@@ -127,7 +127,6 @@
 .command-item code { flex-shrink: 0; color: var(--fg); }
 /* a row in the well of the list (styles/roles.css: in-well) */
 .command-item:hover, .command-item[aria-pressed='true'] { color: var(--fg); }
-.command-item.refused code { color: var(--fg-subtle); text-decoration: line-through; }
 .command-summary { flex: 1; min-width: 0; font-size: var(--text-xs); }
 .command-method { flex-shrink: 0; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); }
 .console-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--card-shadow); }

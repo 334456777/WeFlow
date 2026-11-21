@@ -4,7 +4,7 @@ import { apiUrl, token, type Params } from './client';
 import { t } from '../i18n';
 
 /** The HTTP methods of the command API. */
-export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 /** A parameter of a command, as the console's form asks for it. */
 export interface Field {
@@ -33,8 +33,6 @@ export interface ConsoleCommand {
   fields: Field[];
   /** It writes a file the server can hand back (`return=file`). */
   file: boolean;
-  /** WeChat's databases are read-only: the command always answers 501 (`x-weflow-refused`). */
-  refused: boolean;
 }
 
 interface Schema { type?: string; enum?: unknown[]; items?: Schema; default?: unknown; description?: string }
@@ -51,7 +49,7 @@ function fieldOf(name: string, schema: Schema, required: boolean, description?: 
   }
 }
 
-const METHODS: Method[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE'];
 
 /** The commands of an OpenAPI document of `weflow serve`, by tag and name; the server's own routes left out. */
 export function commandsOf(doc: unknown): ConsoleCommand[] {
@@ -63,7 +61,7 @@ export function commandsOf(doc: unknown): ConsoleCommand[] {
     for (const [verb, raw] of Object.entries(ops)) {
       const method = verb.toUpperCase() as Method;
       const op = raw as {
-        operationId?: string; tags?: string[]; summary?: string; description?: string; 'x-weflow-command'?: string; 'x-weflow-refused'?: boolean;
+        operationId?: string; tags?: string[]; summary?: string; description?: string; 'x-weflow-command'?: string;
         parameters?: { name?: string; $ref?: string; required?: boolean; schema?: Schema; description?: string }[];
         requestBody?: { content?: { 'application/json'?: { schema?: { properties?: Record<string, Schema>; required?: string[] } } } };
       };
@@ -79,7 +77,7 @@ export function commandsOf(doc: unknown): ConsoleCommand[] {
       out.push({
         command, id: op.operationId ?? command, path, method, tag: op.tags?.[0] ?? command.split(' ')[0],
         summary: op.summary ?? '', description: op.description ?? '', fields,
-        file: (op.parameters ?? []).some(p => p.$ref?.endsWith('/return')), refused: Boolean(op['x-weflow-refused']),
+        file: (op.parameters ?? []).some(p => p.$ref?.endsWith('/return')),
       });
     }
   }

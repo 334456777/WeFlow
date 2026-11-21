@@ -2,7 +2,7 @@
 // form made from its parameters, shown as the command line it runs, and run at once or as a job of the task centre.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowClockwise, Check, CircleNotch, MagnifyingGlass, Play, Prohibit, Terminal } from '@phosphor-icons/react';
+import { ArrowClockwise, Check, CircleNotch, MagnifyingGlass, Play, Terminal } from '@phosphor-icons/react';
 import {
   commandLine, formProblems, getOpenApi, paramsOf, runRaw, shellLine, type ConsoleCommand, type Field, type RunAnswer,
 } from '../api/console';
@@ -86,7 +86,7 @@ function CommandForm({ cmd }: { cmd: ConsoleCommand }) {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (problems.length || cmd.refused) return;
+    if (problems.length) return;
     setNote(null); setAnswer(null);
     if (job) {
       try {
@@ -112,14 +112,11 @@ function CommandForm({ cmd }: { cmd: ConsoleCommand }) {
 
   return <form className="console-form" onSubmit={submit} aria-label={t('运行 {command}', { command: cmd.command })}>
     <header>
-      <h3><Terminal size={16} aria-hidden="true" /><code>weflow {cmd.command}</code><span className="badge">{cmd.method}</span>{cmd.refused && <span className="badge refused">{t('只读拒绝')}</span>}</h3>
+      <h3><Terminal size={16} aria-hidden="true" /><code>weflow {cmd.command}</code><span className="badge">{cmd.method}</span></h3>
       <p>{cmd.summary}</p>
       {cmd.description && <p className="console-description">{cmd.description}</p>}
     </header>
-    {cmd.refused
-      ? <p className="setting-warning"><Prohibit size={14} /> {t('这条命令要写入微信的数据库，而 WeFlow 只读打开数据库，所以它总是被拒绝（HTTP 501）。')}</p>
-      : <>
-        {cmd.fields.length ? <div className="console-fields">{cmd.fields.map(f => <FieldInput key={f.name} field={f} value={values[f.name]} onChange={value => setValues(old => ({ ...old, [f.name]: value }))} />)}</div>
+    {cmd.fields.length ? <div className="console-fields">{cmd.fields.map(f => <FieldInput key={f.name} field={f} value={values[f.name]} onChange={value => setValues(old => ({ ...old, [f.name]: value }))} />)}</div>
           : <p className="muted">{t('这条命令没有参数。')}</p>}
         <div className="console-options">
           {cmd.method === 'POST' && <label className="checkbox"><input type="checkbox" aria-label={t('作为任务运行')} checked={asJob} onChange={event => setAsJob(event.target.checked)} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('作为任务运行')} <small>{cmd.file ? t('在任务中心看进度，并下载写出的文件') : t('在任务中心看进度')}</small></span></label>}
@@ -133,7 +130,6 @@ function CommandForm({ cmd }: { cmd: ConsoleCommand }) {
           <button type="submit" className="primary-button" disabled={Boolean(problems.length) || running}>{running ? <CircleNotch size={16} className="spin" /> : <Play size={16} />}{running ? t('正在运行') : job ? t('加入任务') : t('运行')}</button>
           {running && <button type="button" className="secondary-button" onClick={() => run.current?.abort()}>{t('不再等待')}</button>}
         </div>
-      </>}
     {note && <p className={'card-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined}>{note.text}</p>}
     {answer && <Answer answer={answer} />}
   </form>;
@@ -184,7 +180,7 @@ export function CommandConsole({ pick, onPicked }: {
         : <div className="command-list scroll-area" role="list" aria-label={t('命令')}>
           {groups.length ? groups.map(([tag, list]) => <div key={tag} className="command-group" role="listitem">
             <h4>{tag}</h4>
-            {list.map(c => <button type="button" key={c.id} className={'command-item as-row in-well' + (c.refused ? ' refused' : '')} aria-pressed={c.id === selected} onClick={() => setSelected(c.id)}>
+            {list.map(c => <button type="button" key={c.id} className="command-item as-row in-well" aria-pressed={c.id === selected} onClick={() => setSelected(c.id)}>
               <code>{c.command}</code><span className="command-summary clamp-1">{c.summary}</span><span className="command-method">{c.method}</span>
             </button>)}
           </div>) : <p className="muted">{t('没有匹配的命令。')}</p>}

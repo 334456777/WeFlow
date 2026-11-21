@@ -177,7 +177,6 @@ fn chat_media_answers_fit_the_contract() {
             String::new(),
             "GroupHint",
         ),
-        ("GET", "/chat/anti-revoke/check".into(), String::new(), "AntiRevokeResults"),
         (
             "POST",
             "/chat/image-data".into(),
@@ -196,14 +195,6 @@ fn chat_media_answers_fit_the_contract() {
         );
         assert!(misfit.is_empty(), "{route}: {misfit:#?}\n{data}");
     }
-    let sessions = server.call("GET", "/chat/anti-revoke/sessions", "");
-    assert_eq!(sessions.status, 200, "{}", sessions.body);
-    let misfit = misfits(
-        &contract,
-        &json!({ "type": "array", "items": { "$ref": "#/components/schemas/Row" } }),
-        &sessions.json()["data"],
-    );
-    assert!(misfit.is_empty(), "{misfit:#?}");
 }
 
 /// A media server that answers every request with `body` as a PNG, with the headers WeChat's servers send.

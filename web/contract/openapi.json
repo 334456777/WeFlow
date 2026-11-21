@@ -613,90 +613,6 @@
         }
       }
     },
-    "/chat/anti-revoke/check": {
-      "get": {
-        "operationId": "api_chat_anti_revoke_check",
-        "x-weflow-command": "chat anti-revoke check",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/AntiRevokeResults"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/chat/anti-revoke/sessions": {
-      "get": {
-        "operationId": "api_chat_anti_revoke_sessions",
-        "x-weflow-command": "chat anti-revoke sessions",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "description": "The conversations but official accounts: the rows of WeChat's session table",
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Row"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/chat/contacts": {
       "get": {
         "operationId": "api_chat_contacts",
@@ -9979,47 +9895,6 @@
           }
         },
         "description": "A group's own message count, as `chat group-hint` saved it (all left out when there is none); with `set`, only\nwhen it was saved."
-      },
-      "AntiRevokeResults": {
-        "type": "object",
-        "properties": {
-          "results": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AntiRevokeResult"
-            },
-            "description": "One for each conversation, in the order asked for."
-          }
-        },
-        "required": [
-          "results"
-        ],
-        "description": "What `chat anti-revoke check` answers for each conversation asked for."
-      },
-      "AntiRevokeResult": {
-        "type": "object",
-        "properties": {
-          "sessionId": {
-            "type": "string",
-            "description": "The conversation's username."
-          },
-          "success": {
-            "type": "boolean",
-            "description": "Whether the check ran."
-          },
-          "data": {
-            "description": "What the database layer answered; left out when it failed."
-          },
-          "error": {
-            "type": "string",
-            "description": "Why it failed; left out when it ran."
-          }
-        },
-        "required": [
-          "sessionId",
-          "success"
-        ],
-        "description": "One conversation's anti-revoke check."
       },
       "MediaWritten": {
         "type": "object",

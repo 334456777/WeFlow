@@ -106,7 +106,7 @@ For the full flow and how it works on each platform, see [Key acquisition - Data
 
 ## What the CLI does not support
 
-The WeFlow Rust CLI opens databases **read-only** and never modifies WeChat databases; commands that would modify a database are only placeholders. Some features of the WeFlow desktop app (desktop-process features such as voice-to-text and popups) are not implemented either.
+The WeFlow Rust CLI opens databases **read-only** and never modifies WeChat databases, so it has no commands that would modify one. Some features of the WeFlow desktop app (desktop-process features such as voice-to-text and popups) are not implemented either.
 
 For the detailed list, see [Unsupported features](https://github.com/334456777/WeFlow/wiki/不支持的功能) on the Wiki.
 

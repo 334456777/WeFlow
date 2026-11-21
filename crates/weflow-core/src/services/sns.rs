@@ -527,44 +527,6 @@ impl ServiceHub {
 
     // ── block-delete trigger / delete ──
 
-    /// Whether the trigger that keeps deleted posts is installed; refused by the read-only database layer.
-    pub fn sns_block_delete_status(&self) -> AppResult<Value> {
-        let v = self.sns_block_delete("check")?;
-        Ok(json!({ "success": true, "installed": v["installed"].as_bool().unwrap_or(false) }))
-    }
-
-    /// Installs the trigger that keeps deleted posts; refused by the read-only database layer.
-    pub fn sns_block_delete_install(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let (rc, msg) = wcdb
-            .invoke_status_code("wcdb_install_sns_block_delete_trigger", &[])
-            .map_err(err_native)?;
-        match rc {
-            1 => Ok(json!({ "success": true, "alreadyInstalled": true })),
-            0 => Ok(json!({ "success": true, "alreadyInstalled": false })),
-            _ => Err(AppError::native(if msg.is_empty() {
-                format!("DLL error {rc}")
-            } else {
-                msg
-            })),
-        }
-    }
-
-    /// Removes the trigger that keeps deleted posts; refused by the read-only database layer.
-    pub fn sns_block_delete_uninstall(&self) -> AppResult<Value> {
-        let _ = self.sns_block_delete("uninstall")?;
-        Ok(json!({ "success": true }))
-    }
-
-    /// `deleteSnsPost`: also drops the stats caches.
-    pub fn sns_delete_post(&self, post_id: &str) -> AppResult<Value> {
-        let v = self.sns_delete(post_id)?;
-        let mut st = self.sns_state.lock_or_panic();
-        st.user_counts = None;
-        st.export_stats = None;
-        Ok(json!({ "success": true, "result": v }))
-    }
-
     /// `clearMemoryCache`: drops the in-memory image cache and the cached statistics.
     pub fn sns_clear_memory_cache(&self) {
         *self.sns_state.lock_or_panic() = SnsState::default();
@@ -1605,22 +1567,6 @@ fn export_post_json(p: &SnsPost, saved: &[SavedMedia], arkme: bool) -> Value {
 }
 
 impl ServiceHub {
-    pub(crate) fn sns_block_delete(&self, action: &str) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let result = match action {
-            "check" => wcdb.sns_block_delete_check(),
-            "install" => wcdb.sns_block_delete_install(),
-            "uninstall" => wcdb.sns_block_delete_uninstall(),
-            _ => Err(anyhow::anyhow!("unknown sns block-delete action")),
-        };
-        result.map_err(AppError::from_native)
-    }
-
-    pub(crate) fn sns_delete(&self, post_id: &str) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        wcdb.sns_delete_post(post_id).map_err(AppError::from_native)
-    }
-
     /// Downloads the image at `url` (`sns download-image`), decrypted with the image keys when it is a `.dat`
     /// payload; written to `out`, else answered in base64.
     ///

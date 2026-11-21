@@ -164,45 +164,30 @@ impl Endpoint {
         self.path.join(" ")
     }
 
-    /// The verb a request with these parameters must use, or `None` when it cannot be told yet (the command
-    /// then reports the missing argument itself).
-    pub(super) fn verb(&self, params: &Params) -> Option<Verb> {
+    /// The verb a request with these parameters must use.
+    pub(super) fn verb(&self, params: &Params) -> Verb {
         match self.rule {
-            Rule::Fixed(v) => Some(v),
+            Rule::Fixed(v) => v,
             Rule::Arg { arg, without, with } => {
                 let given = params.iter().any(|(k, values)| {
                     find_param(self, k).is_some_and(|p| p.name == arg)
                         && !values.iter().all(|v| v == &Value::Bool(false))
                 });
-                Some(if given { with } else { without })
-            }
-            Rule::Value { arg, values } => {
-                let given = params
-                    .iter()
-                    .find(|(k, _)| find_param(self, k).is_some_and(|p| p.name == arg))
-                    .and_then(|(_, v)| v.first())
-                    .map(text_of)?;
-                values
-                    .iter()
-                    .find(|(name, _)| *name == given)
-                    .map(|(_, v)| *v)
+                if given {
+                    with
+                } else {
+                    without
+                }
             }
         }
     }
 
+    /// Every verb the command may take, for the tests that go through the routes.
+    #[cfg(test)]
     pub(super) fn verbs(&self) -> Vec<Verb> {
         match self.rule {
             Rule::Fixed(v) => vec![v],
             Rule::Arg { without, with, .. } => vec![without, with],
-            Rule::Value { values, .. } => {
-                let mut out: Vec<Verb> = Vec::new();
-                for (_, v) in values {
-                    if !out.contains(v) {
-                        out.push(*v);
-                    }
-                }
-                out
-            }
         }
     }
 
@@ -484,17 +469,12 @@ mod tests {
     fn methods_follow_the_arguments() {
         let endpoints = Endpoints::new();
         let ep = |p: &str| endpoints.0.get(p).unwrap();
-        assert_eq!(ep("config list").verb(&Params::new()), Some(Get));
-        assert_eq!(ep("analytics excluded").verb(&Params::new()), Some(Get));
+        assert_eq!(ep("config list").verb(&Params::new()), Get);
+        assert_eq!(ep("analytics excluded").verb(&Params::new()), Get);
         assert_eq!(
             ep("analytics excluded").verb(&params(&[("set", json!(["a"]))])),
-            Some(Put)
+            Put
         );
-        assert_eq!(
-            ep("sns block-delete").verb(&params(&[("action", json!("uninstall"))])),
-            Some(Delete)
-        );
-        assert_eq!(ep("sns block-delete").verb(&Params::new()), None);
-        assert_eq!(ep("sns block-delete").verbs(), [Get, Put, Delete]);
+        assert_eq!(ep("analytics excluded").verbs(), [Get, Put]);
     }
 }
