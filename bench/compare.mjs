@@ -8,7 +8,6 @@
 
 export const MIB = 1024 * 1024;
 export const SIDES = ['base', 'head'];
-export const COLOURS = { base: '#2563eb', head: '#dc2626' };
 
 const CPU_NOTE = '进程及其子进程的合计（Job Object）。Windows 的 CPU 时间精度为 15.6 ms，对耗时约 1 秒的命令而言，数十毫秒的差异属于噪声。';
 const IO_NOTE = '逻辑 I/O，含命中系统文件缓存的部分；Windows 不按进程统计实际磁盘 I/O。';
