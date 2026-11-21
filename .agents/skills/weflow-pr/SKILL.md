@@ -34,7 +34,7 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 
 1. `git push -u origin <分支>`。
 2. `gh pr create`：标题、正文的语言和关闭 issue 的关键词按 CLAUDE.md 的「提交与 Pull Request」，正文说明做了什么、怎么验证的，链接的写法见 [weflow-issues](../weflow-issues/SKILL.md#写正文和评论)。长期任务 issue 只写 `Refs #N`，不写关闭关键词，否则合并时会关掉它。
-3. 维护者：加标签、加入看板并设置 `In Review` 和 `Priority`，做法见 [weflow-issues](../weflow-issues/SKILL.md)。改动会明显影响性能（基准所测的命令、读取层、导出、统计、serve 路由、体积或启动、依赖与编译参数）时，开 PR 时就加 `bench` 标签：合并后夜间的定时运行会自动测合并前后（Wiki [测试与基准#夜间队列](https://github.com/334456777/WeFlow/wiki/测试与基准#夜间队列)），漏标就不会测。
+3. 维护者：加标签、加入看板并设置 `In Review` 和 `Priority`，做法见 [weflow-issues](../weflow-issues/SKILL.md)。改动会明显影响性能（基准所测的命令、读取层、导出、统计、serve 路由、体积或启动、依赖与编译参数）时，开 PR 时就加 `bench` 标签：合并后的夜间运行会自动测合并前后（Wiki [测试与基准#夜间队列](https://github.com/334456777/WeFlow/wiki/测试与基准#夜间队列)），漏标就不会测。
 4. 看一眼 `gh run list --branch <分支>`。PR 开出后偶尔没有触发任何运行，`mergeable` 一直是 `UNKNOWN`，关闭再重开也没用；手动运行一次（`gh workflow run <工作流>.yml --ref <分支>`）后，PR 自己的运行也会出现。
 
 ## 等 CI
