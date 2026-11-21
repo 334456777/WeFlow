@@ -164,7 +164,11 @@ async fn serve(reg: Arc<Registry_>) -> String {
 }
 
 /// A store in a folder that does not exist yet, inside a directory of the test's own.
+///
+/// Every test takes its store before its first install, so this is also where the language is fixed.
 fn temp_store(tag: &str) -> (TestDir, WebStore) {
+    // the tests compare English texts: they must not depend on the language of the machine they run on
+    weflow_core::locale::set(weflow_core::locale::Lang::En);
     let dir = TestDir::new_in(
         std::path::Path::new(env!("CARGO_TARGET_TMPDIR")),
         &format!("webui-{tag}"),
