@@ -88,17 +88,18 @@ jobs:
 
       # a change of the contract the clients of a released API would read wrong raises the API version (#400):
       # compared with the contract of the latest release of weflow (every release since v6.0.0 keeps it), so an API
-      # version no release has yet may still change.
+      # version no release has yet may still change. The latest release always has one, so not reading it (the API or
+      # the fetch failed) fails the check rather than passing it unchecked.
       - name: Compatibility of the contract
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           earlier="$RUNNER_TEMP/contract-earlier.json"
-          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
-          if [ -z "$tag" ] || ! git fetch --quiet --depth=1 origin "refs/tags/$tag:refs/tags/$tag" \
-            || ! git show "$tag:web/contract/openapi.json" > "$earlier" 2>/dev/null; then
-            echo "no release with a contract to compare with"
-            exit 0
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          git fetch --quiet --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
+          if ! git show "$tag:web/contract/openapi.json" > "$earlier"; then
+            echo "::error::the latest release $tag has no web/contract/openapi.json to compare with"
+            exit 1
           fi
           echo "compared with the contract of $tag"
           bun scripts/contract-compat.ts "$earlier"
