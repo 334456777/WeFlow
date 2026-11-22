@@ -63,7 +63,9 @@ describe('annual report', () => {
       return json({ success: true, data: url.startsWith('/api/report/annual/years') ? { years: [2024, 2025] } : { ...REPORT, year: JSON.parse(String(init?.body)).year } });
     }));
     const onYear = vi.fn();
-    const { rerender } = render(<ReportsPage mode="annual" year={null} onYear={onYear} friend={null} onFriend={() => {}} />);
+    const shown: (string | null)[] = [];
+    const page = (year: number | null) => <ReportsPage mode="annual" year={year} onYear={onYear} friend={null} onFriend={() => {}} onShown={key => shown.push(key)} />;
+    const { rerender, unmount } = render(page(null));
     await act(async () => {});
     await act(async () => {});
     // generating takes a POST (#336)
@@ -72,9 +74,12 @@ describe('annual report', () => {
     expect(screen.getByRole('button', { name: '2025 年' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: '全部年份' }));
     expect(onYear).toHaveBeenCalledWith(0);
-    rerender(<ReportsPage mode="annual" year={0} onYear={onYear} friend={null} onFriend={() => {}} />);
+    rerender(page(0));
     await act(async () => {});
     expect(urls.at(-1)).toBe('POST /report/annual/generate {"year":0}');
     expect(screen.getByRole('article').getAttribute('aria-label')).toBe('全部年份的年度报告');
+    // the report there is told, and none while the next one is read, or once the page is gone (#1077)
+    unmount();
+    expect(shown.filter((key, i) => key !== shown[i - 1])).toEqual([null, 'annual:2025', null, 'annual:0', null]);
   });
 });

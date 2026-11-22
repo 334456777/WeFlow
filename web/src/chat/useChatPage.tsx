@@ -98,11 +98,17 @@ export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
   // another conversation or other options: the card lets go of its job, which goes on in the task centre
   const resetExport = () => { setExportJobId(null); setExportError(''); };
 
+  // another conversation opened, here or from another page: a search of the one left behind is over, as its hits are
+  // not of the conversation the card names; one of all conversations still holds
+  const openConversation = (id: string) => {
+    setOpenId(id);
+    const searched = search.state.query?.sessionId;
+    if (searched && searched !== id) search.clear();
+  };
+
   const selectConversation = (id: string) => {
     mediaLookup.current?.abort();
-    setOpenId(id);
-    // a search of the conversation left behind is over; one of all conversations still holds
-    if (search.state.query?.sessionId) search.clear();
+    openConversation(id);
     setMobileDetail(true); resetExport();
   };
 
@@ -216,8 +222,8 @@ export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
 
   return {
     view, cards, shown,
-    open: setOpenId,
-    openAt: (sessionId, localId, createTime) => { setOpenId(sessionId); void openMessage(sessionId, localId, createTime); },
+    open: openConversation,
+    openAt: (sessionId, localId, createTime) => { openConversation(sessionId); void openMessage(sessionId, localId, createTime); },
     leave: reset => {
       mediaLookup.current?.abort();
       if (reset) resetExport();
