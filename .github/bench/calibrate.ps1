@@ -11,6 +11,10 @@
   benchmark account from that profile from its next run on: a new profile is a new environment, whose results are
   compared among themselves, while the older ones stay as they were.
 
+  -Config is the config file weflow itself reads when it is not given: the file that `weflow config set config_path`
+  chose, else config.json, in WEFLOW_HOME or else in weflow's folder under %APPDATA%. -Register records the path it
+  finds at that moment for the task, so register again after `weflow config set config_path`.
+
   -BenchDir\profile is readable by the runner's account (-RunnerAccount), writable by you only. What each run printed
   is appended to -BenchDir\profile\calibrate.log.
 
@@ -23,12 +27,26 @@
 #>
 param(
   [string] $BenchDir = 'E:\weflow-bench',
-  [string] $Config = (Join-Path ($env:WEFLOW_HOME ? $env:WEFLOW_HOME : (Join-Path $env:APPDATA 'weflow')) 'config.json'),
+  [string] $Config,
   [string] $RunnerAccount = 'weflow-bench',
   [string] $Repository = 'https://github.com/334456777/WeFlow.git',
   [switch] $Register
 )
 $ErrorActionPreference = 'Stop'
+
+# The config file weflow reads (crates/weflow-core/src/config.rs): in its home folder, the file the `config_path`
+# pointer names when it holds a path, else config.json. The home folder is WEFLOW_HOME when that is not blank, else
+# weflow in %APPDATA%.
+function Get-WeflowConfig {
+  $folder = if ([string]::IsNullOrWhiteSpace($env:WEFLOW_HOME)) { Join-Path $env:APPDATA 'weflow' } else { $env:WEFLOW_HOME }
+  $pointer = Join-Path $folder 'config_path'
+  if (Test-Path -LiteralPath $pointer -PathType Leaf) {
+    $chosen = Get-Content -LiteralPath $pointer -Raw -Encoding utf8
+    if (-not [string]::IsNullOrWhiteSpace($chosen)) { return $chosen.Trim() }
+  }
+  Join-Path $folder 'config.json'
+}
+if (-not $Config) { $Config = Get-WeflowConfig }
 
 if ($Register) {
   $action = New-ScheduledTaskAction -Execute (Get-Command pwsh).Source `
