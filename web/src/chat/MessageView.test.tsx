@@ -36,7 +36,7 @@ describe('a video message whose thumbnail fails (#1073)', () => {
 
   it('draws the play button in place of the warning when the video plays', async () => {
     const { button, badgeOver } = failedThumbnail(2);
-    expect(await screen.findByText('视频的缩略图无法显示')).toBeTruthy();
+    expect(await screen.findByText('缩略图无法显示')).toBeTruthy();
     expect(button.querySelector('.media-missing')?.firstElementChild?.className).toBe('play-badge');
     expect(badgeOver()).toBe(false);
   });

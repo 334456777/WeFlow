@@ -135,7 +135,7 @@ describe('the resource browser (#206)', () => {
     expect(calls.filter(call => call.includes('local-id=1&'))).toHaveLength(1);
 
     expect(await within(tiles[1]).findByText('该视频没有缩略图或封面')).toBeTruthy();
-    expect(within(tiles[1]).getByText('视频的缩略图无法显示')).toBeTruthy();
+    expect(within(tiles[1]).getByText('缩略图无法显示')).toBeTruthy();
     // in the flow of the words, where the warning is otherwise, not laid over them
     expect(tiles[1].querySelector('.resource-missing')?.firstElementChild?.className).toBe('play-badge');
     expect(badgeOver(tiles[1])).toBe(false);

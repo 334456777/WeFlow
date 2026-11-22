@@ -289,7 +289,7 @@ function MediaThumb({ src, label, video, badge }: { src: string; label: string; 
   }, [state, video]);
   if (state === 'failed') {
     return plays
-      ? <span className="media-missing">{badge}<small>{t('{label}的缩略图无法显示', { label })}</small></span>
+      ? <span className="media-missing">{badge}<small>{t('缩略图无法显示')}</small></span>
       : <span className="media-missing"><Warning size={20} /><small>{t('{label}无法显示', { label })}</small></span>;
   }
   return <><img className={'message-thumb' + (state === 'loading' ? ' loading' : '')} src={src} alt={label} loading="lazy" decoding="async"

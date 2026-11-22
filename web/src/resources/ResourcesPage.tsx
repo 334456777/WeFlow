@@ -124,7 +124,7 @@ function Thumb({ src, label, video, badge }: { src: string; label: string; video
   if (state === 'failed') {
     return <span className="resource-missing">
       {failure?.plays ? badge : <Warning size={20} />}
-      <small>{failure?.plays ? t('{label}的缩略图无法显示', { label }) : t('{label}无法显示', { label })}</small>
+      <small>{failure?.plays ? t('缩略图无法显示') : t('{label}无法显示', { label })}</small>
       {failure?.reason && <small className="clamp-2">{failure.reason}</small>}
     </span>;
   }
