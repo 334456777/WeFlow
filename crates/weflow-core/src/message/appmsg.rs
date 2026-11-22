@@ -39,7 +39,8 @@ struct AppMessageClass {
     kind: Option<&'static str>,
 }
 
-/// `appMsgKind` of [`extract_arkme_app_message_meta_in`], without reading the other fields.
+/// `appMsgKind` of [`extract_arkme_app_message_meta_in`], without reading the other fields; `None` for an image, a
+/// voice message, a video, a sticker and a location, which are not app messages.
 pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> {
     classify_app_message(&MsgXml::new(content), local_type)?.kind
 }
@@ -77,16 +78,23 @@ pub fn quote_or_link_app_message_meta_in(
     app_message_fields(class, local_type, x)
 }
 
-/// The first part of [`extract_arkme_app_message_meta_in`]; `None` when the message has no meta at all.
+/// The base types (the low 32 bits of the local type) of an image, a voice message, a video, a sticker and a location.
+const NON_APP_TYPES: [i64; 5] = [3, 34, 43, 47, 48];
+
+/// Whether `local_type` is an image's, a voice message's, a video's, a sticker's or a location's: never an app
+/// message, though its XML is a `<msg>` as an app message's is, and the `<refermsg>` of a reply can quote one.
+pub(crate) fn is_non_app_type(local_type: i64) -> bool {
+    NON_APP_TYPES.contains(&(local_type & 0xFFFF_FFFF))
+}
+
+/// The first part of [`extract_arkme_app_message_meta_in`]; `None` when the message has no meta at all, as one of
+/// [`is_non_app_type`] has none.
 fn classify_app_message(x: &MsgXml, local_type: i64) -> Option<AppMessageClass> {
-    if x.content().is_empty() {
+    if x.content().is_empty() || is_non_app_type(local_type) {
         return None;
     }
     let n = x.once().to_string();
-    let looks_app = local_type == 49
-        || local_type == 244813135921
-        || n.contains("<appmsg")
-        || n.contains("<msg>");
+    let looks_app = local_type == 49 || local_type == 244813135921 || n.contains("<appmsg");
     let has_refer = n.contains("<refermsg>");
     let xml_type = x.app_type_twice().to_string();
     let is_finder = xml_type == "51"
@@ -372,6 +380,81 @@ mod tests {
         let cm = extract_arkme_contact_card_meta(card, 42).unwrap();
         assert_eq!(cm["contactCardWxid"], "wxid_x");
         assert_eq!(cm["contactCardGender"], 1);
+    }
+
+    #[test]
+    fn only_app_messages_have_an_app_kind() {
+        let not_apps = [
+            (
+                3,
+                "<?xml version=\"1.0\"?>\n<msg><img md5=\"aabb\" length=\"10\"/></msg>",
+            ),
+            // a reply whose quote is an app message
+            (
+                3,
+                "<msg><img md5=\"x\"/><extcommoninfo><refermsg><type>49</type><svrid>9</svrid><content>&lt;msg&gt;&lt;appmsg&gt;&lt;type&gt;5&lt;/type&gt;&lt;/appmsg&gt;&lt;/msg&gt;</content></refermsg></extcommoninfo></msg>",
+            ),
+            (34, "<msg><voicemsg length=\"1000\" voicelength=\"1\"/></msg>"),
+            (43, "<msg><videomsg md5=\"aabb\" playlength=\"3\"/></msg>"),
+            (47, "<msg><emoji md5=\"aabb\" cdnurl=\"http://e\"/></msg>"),
+            (
+                48,
+                "<msg><location x=\"31.2\" y=\"121.4\" label=\"Bund\" poiname=\"Bund\"/></msg>",
+            ),
+            (1, "a <msg> in a text"),
+        ];
+        for (t, xml) in not_apps {
+            let x = MsgXml::new(xml);
+            assert_eq!(app_message_kind(xml, t), None, "{xml:?} as {t}");
+            assert_eq!(
+                extract_arkme_app_message_meta_in(&x, t),
+                None,
+                "{xml:?} as {t}"
+            );
+            assert_eq!(
+                quote_or_link_app_message_meta_in(&x, t),
+                None,
+                "{xml:?} as {t}"
+            );
+        }
+        let apps = [
+            (
+                49,
+                "<msg><appmsg><title>t</title><type>5</type><url>http://a</url></appmsg></msg>",
+                "link",
+            ),
+            (
+                25_769_803_825,
+                "<msg><appmsg><title>f.pdf</title><type>6</type></appmsg></msg>",
+                "file",
+            ),
+            (
+                244_813_135_921,
+                "<msg><appmsg><title>ok</title><refermsg><svrid>1</svrid></refermsg></appmsg></msg>",
+                "quote",
+            ),
+            // an app message of a type it has no kind of, or whose XML names none
+            (
+                49,
+                "<msg><appmsg><title>t</title><type>999</type></appmsg></msg>",
+                "card",
+            ),
+            (49, "<msg><voicemsg length=\"1\"/></msg>", "card"),
+            (
+                21_474_836_529,
+                "<msg><appmsg><title>t</title><type>5</type></appmsg></msg>",
+                "link",
+            ),
+        ];
+        for (t, xml, kind) in apps {
+            assert_eq!(app_message_kind(xml, t), Some(kind), "{xml:?} as {t}");
+            let meta = extract_arkme_app_message_meta_in(&MsgXml::new(xml), t);
+            assert_eq!(
+                meta.as_ref().and_then(|m| m["appMsgKind"].as_str()),
+                Some(kind),
+                "{xml:?} as {t}"
+            );
+        }
     }
 
     #[test]

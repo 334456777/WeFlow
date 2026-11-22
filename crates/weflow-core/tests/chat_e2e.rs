@@ -245,6 +245,41 @@ fn resources_page_across_conversations_from_a_cursor() {
 }
 
 #[test]
+fn only_the_files_among_resources_have_an_app_kind() {
+    let (_root, hub, _f) = common::custom_hub("chat-res-kinds", resources_world);
+    let all = hub
+        .chat_resources(&ResourceQuery {
+            limit: 100,
+            ..Default::default()
+        })
+        .unwrap();
+    let kinds: Vec<(&str, Option<&str>)> = all["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| {
+            (
+                i["resourceType"].as_str().unwrap(),
+                i.get("appMsgKind").map(|k| k.as_str().unwrap()),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("video", None),
+            ("voice", None),
+            ("image", None),
+            ("image", None),
+            ("file", Some("file")),
+            ("file", Some("file")),
+            ("image", None),
+            ("image", None),
+        ]
+    );
+}
+
+#[test]
 fn group_hint_roundtrip_and_transfer_names() {
     let (_root, hub) = common::mock_hub("chat-hint");
     assert_eq!(

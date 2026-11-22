@@ -167,6 +167,76 @@ fn group_export_uses_group_nicknames_members_and_system_messages() {
     assert_eq!(hello["senderID"], bob["senderID"]);
 }
 
+#[test]
+fn arkme_json_names_the_app_kind_of_app_messages_only() {
+    let (root, hub, _f) = common::custom_hub("arkme-kinds", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        f.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+        let xml = [
+            (
+                3,
+                "<msg><img md5=\"aabbccddeeff00112233445566778899\"/></msg>",
+            ),
+            (34, "<msg><voicemsg length=\"1000\"/></msg>"),
+            (
+                43,
+                "<msg><videomsg md5=\"aabbccddeeff00112233445566778899\"/></msg>",
+            ),
+            (
+                47,
+                "<msg><emoji md5=\"aabbccddeeff00112233445566778899\"/></msg>",
+            ),
+            (
+                48,
+                "<msg><location x=\"31.2\" y=\"121.4\" label=\"Bund\" poiname=\"Bund\"/></msg>",
+            ),
+            (
+                49,
+                "<msg><appmsg><title>t</title><type>5</type><url>http://x</url></appmsg></msg>",
+            ),
+            (
+                49,
+                "<msg><appmsg><title>t</title><type>999</type></appmsg></msg>",
+            ),
+        ];
+        let msgs: Vec<MsgSpec> = xml
+            .iter()
+            .zip(1..)
+            .map(|(&(t, content), id)| {
+                MsgSpec::text(id, "wxid_bob", T0 + id * 60, content).of_type(t)
+            })
+            .collect();
+        f.message_shard(0, &[("wxid_bob", msgs)]);
+    });
+    let out = root.join("arkme.json");
+    hub.export_messages(&request("wxid_bob", "arkme-json"), &out)
+        .unwrap();
+    let v: Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+    let kinds: Vec<(i64, Option<&str>)> = v["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            (
+                m["localType"].as_i64().unwrap(),
+                m.get("appMsgKind").map(|k| k.as_str().unwrap()),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            (3, None),
+            (34, None),
+            (43, None),
+            (47, None),
+            (48, None),
+            (49, Some("link")),
+            (49, Some("card")),
+        ]
+    );
+}
+
 fn txt_request(sender: Option<&str>, display_pref: DisplayPref) -> MessageExportRequest {
     MessageExportRequest {
         sender: sender.map(str::to_string),

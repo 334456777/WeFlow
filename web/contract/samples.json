@@ -155,7 +155,6 @@
           "content": "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>",
           "text": "[图片]",
           "imageMd5": "aabbccddeeff00112233445566778899",
-          "appMsgKind": "card",
           "_cursor": "1700000180000.1700000180.4.0:wxid_bob",
           "sessionDisplayName": "Bob",
           "sessionId": "wxid_bob",
@@ -220,8 +219,7 @@
         "senderUsername": "wxid_bob",
         "content": "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>",
         "text": "[图片]",
-        "imageMd5": "aabbccddeeff00112233445566778899",
-        "appMsgKind": "card"
+        "imageMd5": "aabbccddeeff00112233445566778899"
       }
     },
     {

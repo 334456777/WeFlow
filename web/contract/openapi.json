@@ -5059,7 +5059,7 @@
           },
           "appMsgKind": {
             "type": "string",
-            "description": "The kind of an app message (`link`, `file`, `music`…)."
+            "description": "The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a\nsticker and a location, which are not app messages."
           }
         },
         "required": [
@@ -5285,7 +5285,7 @@
           },
           "appMsgKind": {
             "type": "string",
-            "description": "The kind of an app message (`link`, `file`, `music`…)."
+            "description": "The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a\nsticker and a location, which are not app messages."
           },
           "_cursor": {
             "type": "string",
@@ -9797,7 +9797,7 @@
           },
           "appMsgKind": {
             "type": "string",
-            "description": "The kind of an app message (`link`, `file`, `music`…)."
+            "description": "The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a\nsticker and a location, which are not app messages."
           },
           "sessionId": {
             "type": "string",
