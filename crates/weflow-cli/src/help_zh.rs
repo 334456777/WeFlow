@@ -239,6 +239,7 @@ const HELP: &[(&str, &str)] = &[
     ("Statistics of this user only", "只看这个用户的统计"),
     ("Use the counts kept from an earlier read while they have not expired", "之前读取的计数还没过期时直接使用"),
     ("Export format: json, html or arkmejson", "导出格式：json、html 或 arkmejson"),
+    ("Output folder, made when missing; the export is written in it as 朋友圈导出_<time>.json or .html, the files of --media in its media folder", "输出文件夹，不存在时创建；导出写成其中的 朋友圈导出_<时间>.json 或 .html，--media 的文件放在其中的 media 文件夹里"),
     ("Decryption key", "解密密钥"),
     ("Output file; default: print base64 in the result", "输出文件；默认：在结果中输出 base64"),
     ("Output file; without it only the size and the file in the cache are given", "输出文件；不给时只返回大小和缓存中的文件"),

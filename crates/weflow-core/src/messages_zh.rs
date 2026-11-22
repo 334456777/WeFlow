@@ -43,6 +43,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("no contacts of the kinds asked for", "没有所选类型的联系人"),
     ("none of the sessions asked for is in the session list", "会话列表里没有所选的会话"),
     ("unsupported export format: {}; supported: json, csv, txt, html, excel, sql", "不支持的导出格式：{}；支持：json、csv、txt、html、excel、sql"),
+    ("unsupported sns export format: {}; supported: json, html, arkmejson", "不支持的朋友圈导出格式：{}；支持：json、html、arkmejson"),
     ("CSV export expects an array; use --format json for nested data", "CSV 导出需要数组数据；嵌套数据请使用 --format json"),
     // WebUI
     ("WebUI {} cannot run with this weflow: it needs API {}, this weflow serves API {}", "网页 {} 无法在这个 weflow 上运行：它需要 API {}，这个 weflow 提供 API {}"),
@@ -284,6 +285,11 @@ mod tests {
         assert_eq!(
             translate("invalid year 1969; use 0 for all years, or 1970-2100").as_deref(),
             Some("年份 1969 无效；0 表示所有年份，其余请使用 1970-2100")
+        );
+        assert_eq!(
+            translate("unsupported sns export format: xlsx; supported: json, html, arkmejson")
+                .as_deref(),
+            Some("不支持的朋友圈导出格式：xlsx；支持：json、html、arkmejson")
         );
         assert_eq!(translate("not in the catalog"), None);
     }

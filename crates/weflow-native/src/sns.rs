@@ -11,6 +11,7 @@ use regex::Regex;
 use serde_json::{json, Map, Value};
 
 use crate::db::{same_identity, Account};
+use crate::entities::decode_entities;
 
 #[expect(clippy::expect_used, reason = "callers pass only static patterns")]
 fn re(p: &str) -> Regex {
@@ -39,13 +40,7 @@ fn decode(s: &str) -> String {
         .strip_prefix("<![CDATA[")
         .and_then(|t| t.strip_suffix("]]>"))
         .unwrap_or(s);
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&amp;", "&")
-        .trim()
-        .to_string()
+    decode_entities(s).trim().to_string()
 }
 
 /// Each opening `<name>` or `<name ...>` tag: (where its attributes begin, where they end, just after the tag).
@@ -484,6 +479,22 @@ mod tests {
         assert_eq!(p.video_key.as_deref(), Some("2105122989"));
         assert_eq!(p.raw_xml, XML);
         assert_eq!(liker_usernames(XML), ["wxid_carol", "wxid_me"]);
+    }
+
+    #[test]
+    fn text_and_nicknames_decode_each_entity_once() {
+        assert_eq!(
+            decode(" <![CDATA[it&#39;s &amp;lt; &AMP;]]> "),
+            "it's &lt; &"
+        );
+        let p = parse_post(
+            1,
+            "wxid_bob",
+            "<TimelineObject><contentDesc>it&#39;s &amp;amp;</contentDesc>\
+             <like_user_list><user_comment><username>wxid_a</username><nickname>A&#39;&amp;B</nickname></user_comment></like_user_list></TimelineObject>",
+        );
+        assert_eq!(p.content_desc, "it's &amp;");
+        assert_eq!(p.likes, ["A'&B"]);
     }
 
     #[test]

@@ -60,6 +60,11 @@ fn decode_xml_text(text: &str) -> String {
     crate::xml::decode_entities(&t).into_owned()
 }
 
+/// [`decode_xml_text`] of the text of an element, without the white space around it.
+fn decode_trimmed(text: &str) -> String {
+    decode_xml_text(text).trim().to_string()
+}
+
 static CMT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // ───────────────────────── URL / mime helpers ─────────────────────────
@@ -237,10 +242,8 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<SnsComment> {
             let h = tag_value(ex, r"(?is)<height>([^<]*)</height>");
             let enc = tag_value(ex, r"(?is)<encrypt_url>([^<]*)</encrypt_url>");
             let aes = tag_value(ex, r"(?is)<aes_key>([^<]*)</aes_key>");
-            let url = url_raw
-                .map(|u| u.trim().replace("&amp;", "&"))
-                .unwrap_or_default();
-            let encrypt_url = enc.map(|u| u.trim().replace("&amp;", "&"));
+            let url = url_raw.map(|u| decode_trimmed(&u)).unwrap_or_default();
+            let encrypt_url = enc.map(|u| decode_trimmed(&u));
             let aes_key = aes.map(|a| a.trim().to_string());
             if !url.is_empty() || encrypt_url.as_deref().is_some_and(|u| !u.is_empty()) {
                 emojis.push(SnsEmoji {
@@ -264,12 +267,12 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<SnsComment> {
                         CMT_COUNTER.fetch_add(1, Ordering::Relaxed)
                     )
                 }),
-                nickname: nickname.map(|n| n.trim().to_string()).unwrap_or_default(),
+                nickname: nickname.map(|n| decode_trimmed(&n)).unwrap_or_default(),
                 username: username.map(|u| u.trim().to_string()),
-                content: content.map(|c| c.trim().to_string()).unwrap_or_default(),
+                content: content.map(|c| decode_trimmed(&c)).unwrap_or_default(),
                 ref_comment_id: if ref_id == "0" { String::new() } else { ref_id },
                 ref_username: ref_user.map(|u| u.trim().to_string()),
-                ref_nickname: ref_nick.map(|u| u.trim().to_string()),
+                ref_nickname: ref_nick.map(|n| decode_trimmed(&n)),
                 emojis,
             });
         }
@@ -332,9 +335,10 @@ pub fn parse_like_users_from_xml(xml: &str) -> Vec<LikeUser> {
         let username =
             tag_value(block, r"(?is)<username>([^<]*)</username>").and_then(|u| opt_str(&u));
         let nickname = tag_value(block, r"(?is)<nickname>([^<]*)</nickname>")
-            .and_then(|n| opt_str(&n))
+            .and_then(|n| opt_str(&decode_xml_text(&n)))
             .or_else(|| {
-                tag_value(block, r"(?is)<nickName>([^<]*)</nickName>").and_then(|n| opt_str(&n))
+                tag_value(block, r"(?is)<nickName>([^<]*)</nickName>")
+                    .and_then(|n| opt_str(&decode_xml_text(&n)))
             });
         if username.is_some() || nickname.is_some() {
             out.push(LikeUser { username, nickname });
@@ -961,6 +965,39 @@ mod tests {
         assert_eq!(c[1].emojis[0].url, "http://e/x?a=1&b=2");
         assert_eq!(c[1].emojis[0].width, Some(10));
         assert_eq!(c[1].emojis[0].aes_key.as_deref(), Some("k"));
+    }
+
+    #[test]
+    fn comments_and_likes_decode_each_entity_once() {
+        let xml = "<CommentUserList><CommentUser><cmtid>1</cmtid><username>wxid_a</username>\
+<nickname>A&amp;B</nickname><content>1 &lt; 2 &amp;amp; 3</content></CommentUser>\
+<CommentUser><cmtid>2</cmtid><username>wxid_c</username><nickname>C&#39;s</nickname>\
+<content>&quot;ok&quot; &gt; &AMP;</content><refCommentId>1</refCommentId><refNickname>A&amp;B</refNickname>\
+<emojiinfo><cdn_url>http://e/x?a=1&amp;b=2</cdn_url><encrypt_url>http://e/y?a=1&amp;b=2</encrypt_url></emojiinfo></CommentUser>\
+<CommentUser><cmtid>3</cmtid><username>wxid_d</username><nickname>D</nickname><content>re</content>\
+<refCommentId>1</refCommentId><ref_username>wxid_a</ref_username></CommentUser></CommentUserList>";
+        let c = parse_comments_from_xml(xml);
+        assert_eq!(c.len(), 3);
+        assert_eq!(c[0].nickname, "A&B");
+        assert_eq!(c[0].content, "1 < 2 &amp; 3");
+        assert_eq!(c[1].nickname, "C's");
+        assert_eq!(c[1].content, "\"ok\" > &");
+        assert_eq!(c[1].ref_nickname.as_deref(), Some("A&B"));
+        assert_eq!(c[1].emojis[0].url, "http://e/x?a=1&b=2");
+        assert_eq!(
+            c[1].emojis[0].encrypt_url.as_deref(),
+            Some("http://e/y?a=1&b=2")
+        );
+        assert_eq!(
+            c[2].ref_nickname.as_deref(),
+            Some("A&B"),
+            "a reply names the decoded nickname of whom it answers"
+        );
+
+        let likes = parse_like_users_from_xml(
+            "<LikeUserList><LikeUser><username>wxid_a</username><nickname>A&amp;B</nickname></LikeUser></LikeUserList>",
+        );
+        assert_eq!(likes[0].nickname.as_deref(), Some("A&B"));
     }
 
     #[test]

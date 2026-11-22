@@ -356,6 +356,46 @@ fn usage_errors_are_answered_in_process() {
     }
 }
 
+/// The message of a usage error says which arguments are missing and which values an argument takes, in the process
+/// of the server and in a child's (#1041).
+#[test]
+fn usage_errors_say_what_is_missing_and_what_is_possible() {
+    let root = temp_root("usage-details");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let message = |target: &str| {
+        let r = server.call("GET", target, "");
+        assert_eq!(r.status, 400, "{target}: {}", r.body);
+        assert_eq!(r.json()["error"]["code"], "invalid_arguments", "{target}");
+        r.json()["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    // a child process: the route has no `/api/` form
+    assert_eq!(
+        message("/chat/transfer-names?chatroom-id=a"),
+        "the following required arguments were not provided: <PAYER>, <RECEIVER>"
+    );
+    // the process of the server, which says what a child says
+    for target in ["/api/chat/messages?limit=1", "/chat/messages?limit=1"] {
+        assert_eq!(
+            message(target),
+            "the following required arguments were not provided: <SESSION_ID>",
+            "{target}"
+        );
+    }
+    assert_eq!(
+        message("/api/chat/image-data?session-id=wxid_bob&local-id=1&variant=bogus"),
+        "invalid value 'bogus' for '--variant <VARIANT>'; possible values: best, thumb, normal, hd"
+    );
+    // an error of one line is that line
+    assert_eq!(
+        message("/api/chat/messages?session-id=wxid_bob&limit=many"),
+        "invalid value 'many' for '--limit <LIMIT>': invalid digit found in string"
+    );
+}
+
 #[test]
 fn answers_tell_where_the_time_went() {
     let root = temp_root("timing");

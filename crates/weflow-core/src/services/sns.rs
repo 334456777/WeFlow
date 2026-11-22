@@ -60,7 +60,7 @@ pub struct SnsTimelineQuery {
 pub struct SnsExportOptions {
     /// The folder the export goes to.
     pub output_dir: PathBuf,
-    /// `json` | `html` | `arkmejson`
+    /// `json` | `html` | `arkmejson`, in any case; another value is refused.
     pub format: String,
     /// Only the posts of these wxids; all when empty.
     pub usernames: Vec<String>,
@@ -72,6 +72,82 @@ pub struct SnsExportOptions {
     pub start: i64,
     /// Unix seconds: only posts up to then; 0 for no bound.
     pub end: i64,
+}
+
+/// The formats `sns export` writes ([`SnsExportOptions::format`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SnsExportFormat {
+    Json,
+    Html,
+    ArkmeJson,
+}
+
+impl SnsExportFormat {
+    /// The format `name` asks for, in any case.
+    fn parse(name: &str) -> AppResult<Self> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "json" => Ok(Self::Json),
+            "html" => Ok(Self::Html),
+            "arkmejson" => Ok(Self::ArkmeJson),
+            other => Err(AppError::usage(format!(
+                "unsupported sns export format: {other}; supported: json, html, arkmejson"
+            ))),
+        }
+    }
+
+    /// The extension of the file it is written to, without the dot.
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Json | Self::ArkmeJson => "json",
+            Self::Html => "html",
+        }
+    }
+}
+
+/// What a medium saved by `sns export` may hold: its content type and the extension it is saved under.
+const MEDIA_EXTENSIONS: [(&str, &str); 8] = [
+    ("image/jpeg", "jpg"),
+    ("image/png", "png"),
+    ("image/gif", "gif"),
+    ("image/webp", "webp"),
+    ("image/bmp", "bmp"),
+    ("image/avif", "avif"),
+    ("image/heic", "heic"),
+    ("video/mp4", "mp4"),
+];
+
+/// The extension a medium of `content_type` is saved under; `jpg`, or `mp4` for a video, when the type is none of
+/// [`MEDIA_EXTENSIONS`].
+fn media_extension(content_type: &str, is_video: bool) -> &'static str {
+    MEDIA_EXTENSIONS
+        .iter()
+        .find(|(mime, _)| *mime == content_type)
+        .map_or(if is_video { "mp4" } else { "jpg" }, |(_, ext)| *ext)
+}
+
+/// The file an earlier export saved in `dir` as `stem`, whatever its extension: the name of a medium is known only
+/// once it is fetched.
+fn saved_media(dir: &Path, stem: &str) -> Option<String> {
+    MEDIA_EXTENSIONS
+        .iter()
+        .map(|(_, ext)| format!("{stem}.{ext}"))
+        .find(|name| dir.join(name).exists())
+}
+
+/// Saves a fetched medium in `dir` as `stem` and the extension of what it holds; returns the file's name, or none
+/// when it could not be written.
+fn save_fetched(dir: &Path, stem: &str, fetched: SnsMediaFetch, is_video: bool) -> Option<String> {
+    let name = format!(
+        "{stem}.{}",
+        media_extension(&fetched.content_type, is_video)
+    );
+    let path = dir.join(&name);
+    let written = match (fetched.data, fetched.cache_path) {
+        (Some(data), _) => std::fs::write(path, data).is_ok(),
+        (None, Some(cached)) => std::fs::copy(cached, path).is_ok(),
+        (None, None) => false,
+    };
+    written.then_some(name)
 }
 
 /// A Moments image or video fetched ([`ServiceHub::sns_fetch_media`]).
@@ -902,9 +978,14 @@ impl ServiceHub {
     // ── export ──
 
     /// Writes the timeline as json / html / arkmejson with optional media download.
+    ///
+    /// # Errors
+    /// When the format is none of the three (nothing is made then), when the Moments database cannot be read (the
+    /// posts read so far are not written), or when the folder or a file cannot be written.
     pub async fn sns_export_timeline(&self, opts: &SnsExportOptions) -> AppResult<SnsExported> {
         use futures::StreamExt;
         let want_media = opts.export_media;
+        let format = SnsExportFormat::parse(&opts.format)?;
 
         std::fs::create_dir_all(&opts.output_dir).map_err(|e| {
             AppError::runtime(format!(
@@ -934,10 +1015,11 @@ impl ServiceHub {
                 start: opts.start,
                 end: opts.end,
             };
-            let batch = match self.sns_timeline_with(&wcdb, &q) {
-                Ok(b) if !b.is_empty() => b,
-                _ => break,
-            };
+            // a page that cannot be read ends the export with its error: the pages read so far are not the timeline
+            let batch = self.sns_timeline_with(&wcdb, &q)?;
+            if batch.is_empty() {
+                break;
+            }
             let n = crate::num::saturating_i32(batch.len());
             posts.extend(batch.into_iter().filter(|p| loaded.insert(p.tid.clone())));
             self.emit_progress("sns", "loading Moments…", posts.len(), 0);
@@ -1016,27 +1098,20 @@ impl ServiceHub {
                     let is_video = task.kind == "video"
                         || task.kind == "livephoto"
                         || sns::is_video_url(&task.url);
-                    let ext = if is_video { "mp4" } else { "jpg" };
                     let suffix = if task.kind == "livephoto" {
                         "_live"
                     } else {
                         ""
                     };
-                    let file_name =
-                        format!("{}_{}{}.{}", task.post_id, task.media_idx, suffix, ext);
-                    let path = media_dir_ref.join(&file_name);
-                    if path.exists() {
-                        return (task, Some(format!("media/{file_name}")));
+                    let stem = format!("{}_{}{}", task.post_id, task.media_idx, suffix);
+                    if let Some(name) = saved_media(media_dir_ref, &stem) {
+                        return (task, Some(format!("media/{name}")));
                     }
-                    let ok = match self.sns_fetch_media(&task.url, task.key.as_deref()).await {
-                        Ok(f) => match (f.data, f.cache_path) {
-                            (Some(d), _) => std::fs::write(&path, d).is_ok(),
-                            (None, Some(c)) => std::fs::copy(c, &path).is_ok(),
-                            _ => false,
-                        },
-                        Err(_) => false,
+                    let saved = match self.sns_fetch_media(&task.url, task.key.as_deref()).await {
+                        Ok(fetched) => save_fetched(media_dir_ref, &stem, fetched, is_video),
+                        Err(_) => None,
                     };
-                    (task, ok.then(|| format!("media/{file_name}")))
+                    (task, saved.map(|name| format!("media/{name}")))
                 })
                 .buffer_unordered(5)
                 .inspect(|_| {
@@ -1063,7 +1138,7 @@ impl ServiceHub {
 
         // 2.5 avatars (html only)
         let mut avatar_map: HashMap<String, String> = HashMap::new();
-        if opts.format == "html" {
+        if format == SnsExportFormat::Html {
             std::fs::create_dir_all(&media_dir).map_err(|e| {
                 AppError::runtime(format!("failed to create {}: {e}", media_dir.display()))
             })?;
@@ -1082,16 +1157,15 @@ impl ServiceHub {
             let media_dir_ref = &media_dir;
             let fetched: Vec<(String, Option<String>)> = futures::stream::iter(unique)
                 .map(|(user, avatar)| async move {
-                    let file_name = format!("avatar_{}.jpg", &md5_hex(user.as_bytes())[..8]);
-                    let path = media_dir_ref.join(&file_name);
-                    if path.exists() {
-                        return (user, Some(format!("media/{file_name}")));
+                    let stem = format!("avatar_{}", &md5_hex(user.as_bytes())[..8]);
+                    if let Some(name) = saved_media(media_dir_ref, &stem) {
+                        return (user, Some(format!("media/{name}")));
                     }
                     let saved = match self.sns_fetch_media(&avatar, None).await {
-                        Ok(f) => f.data.is_some_and(|d| std::fs::write(&path, d).is_ok()),
-                        Err(_) => false,
+                        Ok(fetched) => save_fetched(media_dir_ref, &stem, fetched, false),
+                        Err(_) => None,
                     };
-                    (user, saved.then(|| format!("media/{file_name}")))
+                    (user, saved.map(|name| format!("media/{name}")))
                 })
                 .buffer_unordered(5)
                 .collect()
@@ -1105,14 +1179,19 @@ impl ServiceHub {
         }
 
         // 3. output file
+        // the name carries the local time, as the other exports' pages do; the data says when in UTC
         let now_utc = chrono::Utc::now();
-        let stamp = now_utc.format("%Y-%m-%dT%H-%M-%S").to_string();
+        let stamp = now_utc
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%dT%H-%M-%S")
+            .to_string();
         let export_time = now_utc.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
         let filters = json!({ "usernames": usernames, "keyword": keyword.unwrap_or("") });
-        let out_path;
-        match opts.format.as_str() {
-            "json" => {
-                out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.json"));
+        let out_path = opts
+            .output_dir
+            .join(format!("朋友圈导出_{stamp}.{}", format.extension()));
+        match format {
+            SnsExportFormat::Json => {
                 let posts_json: Vec<Value> = posts
                     .iter()
                     .zip(&saved)
@@ -1125,8 +1204,7 @@ impl ServiceHub {
                     AppError::runtime(format!("failed to write {}: {e}", out_path.display()))
                 })?;
             }
-            "arkmejson" => {
-                out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.json"));
+            SnsExportFormat::ArkmeJson => {
                 let mut identity_cache: HashMap<String, Option<Value>> = HashMap::new();
                 let uniq: Vec<String> = {
                     let mut seen = std::collections::BTreeSet::new();
@@ -1197,8 +1275,7 @@ impl ServiceHub {
                     AppError::runtime(format!("failed to write {}: {e}", out_path.display()))
                 })?;
             }
-            _ => {
-                out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.html"));
+            SnsExportFormat::Html => {
                 let html = sns::generate_html(&posts, &saved, keyword, &avatar_map)
                     .map_err(|e| AppError::runtime(format!("{e:#}")))?;
                 std::fs::write(&out_path, html).map_err(|e| {
