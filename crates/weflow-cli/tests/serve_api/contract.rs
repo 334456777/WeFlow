@@ -957,6 +957,16 @@ fn answers_fit_the_contract() {
     };
     assert!(keys(&whole).len() >= 2, "{whole}");
     assert_eq!(whole["nextCursor"], Value::Null);
+    // a file is an app message and has its kind; an image, a voice message or a video has none
+    let items = whole["items"].as_array().unwrap();
+    assert!(items.iter().any(|i| i["resourceType"] != "file"), "{whole}");
+    for item in items {
+        assert_eq!(
+            item.get("appMsgKind").is_some(),
+            item["resourceType"] == "file",
+            "{item}"
+        );
+    }
     let mut listed = Vec::new();
     let mut before = String::new();
     loop {

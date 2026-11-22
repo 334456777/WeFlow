@@ -188,7 +188,8 @@ pub struct MessageView {
     /// A location's label, its address as WeChat shows it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_label: Option<String>,
-    /// The kind of an app message (`link`, `file`, `music`…).
+    /// The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a
+    /// sticker and a location, which are not app messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_kind: Option<String>,
 }

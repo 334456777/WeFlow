@@ -167,6 +167,160 @@ fn group_export_uses_group_nicknames_members_and_system_messages() {
     assert_eq!(hello["senderID"], bob["senderID"]);
 }
 
+#[test]
+fn arkme_json_names_the_app_kind_of_app_messages_only() {
+    let (root, hub, _f) = common::custom_hub("arkme-kinds", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        f.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+        let xml = [
+            (
+                3,
+                "<msg><img md5=\"aabbccddeeff00112233445566778899\"/></msg>",
+            ),
+            (34, "<msg><voicemsg length=\"1000\"/></msg>"),
+            (
+                43,
+                "<msg><videomsg md5=\"aabbccddeeff00112233445566778899\"/></msg>",
+            ),
+            (
+                47,
+                "<msg><emoji md5=\"aabbccddeeff00112233445566778899\"/></msg>",
+            ),
+            (
+                48,
+                "<msg><location x=\"31.2\" y=\"121.4\" label=\"Bund\" poiname=\"Bund\"/></msg>",
+            ),
+            (
+                49,
+                "<msg><appmsg><title>t</title><type>5</type><url>http://x</url></appmsg></msg>",
+            ),
+            (
+                49,
+                "<msg><appmsg><title>t</title><type>999</type></appmsg></msg>",
+            ),
+        ];
+        let msgs: Vec<MsgSpec> = xml
+            .iter()
+            .zip(1..)
+            .map(|(&(t, content), id)| {
+                MsgSpec::text(id, "wxid_bob", T0 + id * 60, content).of_type(t)
+            })
+            .collect();
+        f.message_shard(0, &[("wxid_bob", msgs)]);
+    });
+    let out = root.join("arkme.json");
+    hub.export_messages(&request("wxid_bob", "arkme-json"), &out)
+        .unwrap();
+    let v: Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+    let kinds: Vec<(i64, Option<&str>)> = v["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            (
+                m["localType"].as_i64().unwrap(),
+                m.get("appMsgKind").map(|k| k.as_str().unwrap()),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            (3, None),
+            (34, None),
+            (43, None),
+            (47, None),
+            (48, None),
+            (49, Some("link")),
+            (49, Some("card")),
+        ]
+    );
+}
+
+#[test]
+fn media_replies_keep_their_quote_and_no_app_fields_in_the_json_exports() {
+    // a reply to a text, and one to a link, whose XML would make the reply look like an app message
+    let refers = [
+        "<refermsg><type>1</type><svrid>9001</svrid><fromusr>wxid_bob</fromusr><chatusr>wxid_bob</chatusr>\
+         <displayname>Bob</displayname><content>hi there</content></refermsg>",
+        "<refermsg><type>49</type><svrid>9003</svrid><fromusr>wxid_bob</fromusr><chatusr>wxid_bob</chatusr>\
+         <displayname>Bob</displayname><content>&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;A link&lt;/title&gt;\
+         &lt;des&gt;d&lt;/des&gt;&lt;type&gt;5&lt;/type&gt;&lt;url&gt;http://a&lt;/url&gt;&lt;/appmsg&gt;&lt;/msg&gt;</content>\
+         </refermsg>",
+    ];
+    let media = [
+        (3, "<img md5=\"aabbccddeeff00112233445566778899\"/>"),
+        (34, "<voicemsg length=\"1000\"/>"),
+        (43, "<videomsg md5=\"aabbccddeeff00112233445566778899\"/>"),
+        (47, "<emoji md5=\"aabbccddeeff00112233445566778899\"/>"),
+        (
+            48,
+            "<location x=\"31.2\" y=\"121.4\" label=\"Bund\" poiname=\"Bund\"/>",
+        ),
+    ];
+    let replies: Vec<(i64, String)> = media
+        .iter()
+        .flat_map(|&(t, m)| {
+            refers.iter().map(move |r| {
+                (
+                    t,
+                    format!("<msg>{m}<extcommoninfo>{r}</extcommoninfo></msg>"),
+                )
+            })
+        })
+        .collect();
+    let (root, hub, _f) = common::custom_hub("media-replies", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        f.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+        let msgs: Vec<MsgSpec> = replies
+            .iter()
+            .zip(1..)
+            .map(|((t, content), id)| {
+                MsgSpec::text(id, "wxid_bob", T0 + id * 60, content).of_type(*t)
+            })
+            .collect();
+        f.message_shard(0, &[("wxid_bob", msgs)]);
+    });
+    // the fields of what each reply quotes, as an app message's quote has them
+    let to_text = serde_json::json!({
+        "quotedContent": "hi there",
+        "quotedSender": "Bob",
+        "quotedType": "1",
+        "quotedSvrid": "9001",
+    });
+    let to_link = serde_json::json!({
+        "quotedContent": "[链接]",
+        "quotedSender": "Bob",
+        "quotedType": "49",
+        "quotedSvrid": "9003",
+    });
+    for format in ["json", "arkme-json"] {
+        let out = root.join(format!("{format}.json"));
+        hub.export_messages(&request("wxid_bob", format), &out)
+            .unwrap();
+        let v: Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+        let msgs = v["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), replies.len(), "{format}");
+        for (m, want) in msgs.iter().zip([&to_text, &to_link].into_iter().cycle()) {
+            let mut want = want.as_object().unwrap().clone();
+            let svrid = want["quotedSvrid"].clone();
+            // arkme-json keeps no server id of the quote
+            if format == "arkme-json" {
+                want.remove("quotedSvrid");
+            }
+            let got: serde_json::Map<String, Value> = m
+                .as_object()
+                .unwrap()
+                .iter()
+                .filter(|(k, _)| k.starts_with("quoted") || k.starts_with("appMsg"))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            assert_eq!(got, want, "{format}: {m}");
+            assert_eq!(m["replyToMessageId"], svrid, "{format}: {m}");
+        }
+    }
+}
+
 fn txt_request(sender: Option<&str>, display_pref: DisplayPref) -> MessageExportRequest {
     MessageExportRequest {
         sender: sender.map(str::to_string),

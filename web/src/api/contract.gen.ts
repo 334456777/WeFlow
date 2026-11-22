@@ -304,7 +304,10 @@ export interface MessageView {
   locationPoiname?: string;
   /** A location's label, its address as WeChat shows it. */
   locationLabel?: string;
-  /** The kind of an app message (`link`, `file`, `music`…). */
+  /**
+   * The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a
+   * sticker and a location, which are not app messages.
+   */
   appMsgKind?: string;
 }
 
@@ -394,7 +397,10 @@ export interface Resource {
   locationPoiname?: string;
   /** A location's label, its address as WeChat shows it. */
   locationLabel?: string;
-  /** The kind of an app message (`link`, `file`, `music`…). */
+  /**
+   * The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a
+   * sticker and a location, which are not app messages.
+   */
   appMsgKind?: string;
   /** Where the message stands in the listing (not in its conversation): `before` reads on from it. */
   _cursor: string;
@@ -2117,7 +2123,10 @@ export interface MediaStreamItem {
   locationPoiname?: string;
   /** A location's label, its address as WeChat shows it. */
   locationLabel?: string;
-  /** The kind of an app message (`link`, `file`, `music`…). */
+  /**
+   * The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a
+   * sticker and a location, which are not app messages.
+   */
   appMsgKind?: string;
   /** The conversation's username. */
   sessionId: string;

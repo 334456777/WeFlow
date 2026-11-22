@@ -1208,7 +1208,9 @@ fn chat_message(
         (m.quoted_content, m.quoted_sender) = quote_of(&content);
     }
 
-    let has_appmsg = content.contains("<appmsg") || content.contains("&lt;appmsg");
+    // a media message or a location is no app message: an `<appmsg>` in it is the message its `<refermsg>` quotes
+    let has_appmsg = !crate::message::appmsg::is_non_app_type(local_type)
+        && (content.contains("<appmsg") || content.contains("&lt;appmsg"));
     if has_appmsg && app_message {
         // `t49` is the parse of this content already: only the location it names is not the message's yet
         if let Some(t) = m.t49.take() {
@@ -1551,6 +1553,39 @@ mod tests {
         let key = build_message_key(0, 77, 12, 12, None, 1, &in_db(""));
         assert!(key.starts_with("server:77:12:12:0:"), "{key}");
         assert_eq!(encode_uri_component("a b/é"), "a%20b%2F%C3%A9");
+    }
+
+    #[test]
+    fn a_media_reply_takes_no_app_fields_from_the_app_message_it_quotes() {
+        let quote = "<refermsg><type>49</type><svrid>9</svrid><content>&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;t\
+                     &lt;/title&gt;&lt;type&gt;5&lt;/type&gt;&lt;/appmsg&gt;&lt;/msg&gt;</content></refermsg>";
+        for (local_type, media) in [
+            (3, "<img md5=\"x\"/>"),
+            (34, "<voicemsg length=\"1000\"/>"),
+            (43, "<videomsg md5=\"x\"/>"),
+            (47, "<emoji md5=\"x\"/>"),
+        ] {
+            let content = format!("<msg>{media}<extcommoninfo>{quote}</extcommoninfo></msg>");
+            let row = MsgRow {
+                local_type,
+                content: content.clone(),
+                ..MsgRow::default()
+            };
+            let m = map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0);
+            assert!(m.t49.is_none(), "{content}");
+            // nor has it an app kind as a resource or in arkme-json
+            assert_eq!(
+                crate::message::appmsg::app_message_kind(&content, local_type),
+                None
+            );
+            if local_type != 47 {
+                assert_eq!(
+                    m.quoted_content.as_deref(),
+                    Some("__SVRID__9__"),
+                    "{content}"
+                );
+            }
+        }
     }
 
     #[test]
