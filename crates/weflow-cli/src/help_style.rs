@@ -2,15 +2,26 @@
 //! built-in help become words, and on a terminal the headings are bold and the `error:` label red.
 
 use weflow_core::colour::{Paint, Role};
-use weflow_core::locale::tr;
+use weflow_core::locale::Lang;
+
+/// The text of `lang`: `en` or `zh`.
+pub(crate) fn pick(lang: Lang, en: &'static str, zh: &'static str) -> &'static str {
+    match lang {
+        Lang::En => en,
+        Lang::Zh => zh,
+    }
+}
 
 /// Clap's notes after an option's help, which it puts in square brackets, and the words they become.
-fn note_labels() -> [(&'static str, &'static str); 4] {
+fn note_labels(lang: Lang) -> [(&'static str, &'static str); 4] {
     [
-        ("[default: ", tr("default: ", "默认：")),
-        ("[env: ", tr("environment variable: ", "环境变量：")),
-        ("[possible values: ", tr("possible values: ", "可选值：")),
-        ("[aliases: ", tr("aliases: ", "别名：")),
+        ("[default: ", pick(lang, "default: ", "默认：")),
+        ("[env: ", pick(lang, "environment variable: ", "环境变量：")),
+        (
+            "[possible values: ",
+            pick(lang, "possible values: ", "可选值："),
+        ),
+        ("[aliases: ", pick(lang, "aliases: ", "别名：")),
     ]
 }
 
@@ -31,15 +42,15 @@ const BUILT_IN: [(&str, &str); 3] = [
 ];
 
 /// `text` with clap's bracketed notes written as words after a semicolon (`Maximum number of results; default: 50`)
-/// and its built-in help reworded.
-pub(crate) fn plain_notes(text: &str) -> String {
+/// and its built-in help reworded, in `lang`.
+pub(crate) fn plain_notes(text: &str, lang: Lang) -> String {
     text.split('\n')
         .map(|line| {
             let mut line = line.to_string();
             for (en, plain) in BUILT_IN {
                 line = line.replace(en, plain);
             }
-            for (open, label) in note_labels() {
+            for (open, label) in note_labels(lang) {
                 while let Some(start) = line.find(open) {
                     let Some(len) = line[start..].find(']') else {
                         break;
@@ -50,7 +61,7 @@ pub(crate) fn plain_notes(text: &str) -> String {
                     let lead = if before.trim().is_empty() {
                         before.to_string()
                     } else {
-                        format!("{}{}", before.trim_end(), tr("; ", "；"))
+                        format!("{}{}", before.trim_end(), pick(lang, "; ", "；"))
                     };
                     line = format!("{lead}{label}{content}{}", &line[start + len + 1..]);
                 }
@@ -112,26 +123,31 @@ mod tests {
 
     #[test]
     fn notes_become_words_after_a_semicolon() {
-        let zh = weflow_core::locale::current() == weflow_core::locale::Lang::Zh;
-        let (default, values, sep) = if zh {
-            ("默认：", "可选值：", "；")
-        } else {
-            ("default: ", "possible values: ", "; ")
-        };
-        assert_eq!(
-            plain_notes("      --limit <LIMIT>    Maximum number of results [default: 50]"),
-            format!("      --limit <LIMIT>    Maximum number of results{sep}{default}50")
-        );
-        // a note on a line of its own, as in a parse error
-        assert_eq!(
-            plain_notes("  [possible values: en, zh]"),
-            format!("  {values}en, zh")
-        );
-        assert_eq!(
-            plain_notes("  help  Print this message or the help of the given subcommand(s)"),
-            "  help  Print this message or the help of the given subcommands"
-        );
-        assert!(!plain_notes("a [default: 1] [env: X]").contains('['));
+        for (lang, default, values, sep) in [
+            (Lang::En, "default: ", "possible values: ", "; "),
+            (Lang::Zh, "默认：", "可选值：", "；"),
+        ] {
+            assert_eq!(
+                plain_notes(
+                    "      --limit <LIMIT>    Maximum number of results [default: 50]",
+                    lang
+                ),
+                format!("      --limit <LIMIT>    Maximum number of results{sep}{default}50")
+            );
+            // a note on a line of its own, as in a parse error
+            assert_eq!(
+                plain_notes("  [possible values: en, zh]", lang),
+                format!("  {values}en, zh")
+            );
+            assert_eq!(
+                plain_notes(
+                    "  help  Print this message or the help of the given subcommand(s)",
+                    lang
+                ),
+                "  help  Print this message or the help of the given subcommands"
+            );
+            assert!(!plain_notes("a [default: 1] [env: X]", lang).contains('['));
+        }
     }
 
     #[test]
