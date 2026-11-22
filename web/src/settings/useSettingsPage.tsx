@@ -43,7 +43,7 @@ function Sections({ open, pane, children }: { open: SectionId; pane: RefObject<H
 /** The settings show no cards of their own: the console keeps those of the page browsed before. */
 export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { profiles, failed, reload }, recheck, onSetup }: {
   profiles: ProfilesState; recheck(): void; onSetup(): void;
-}): Page {
+}): Page & { openSection(id: SectionId): void } {
   // what is kept on the server: the one that answers, or the sample server in its place (#896); the page's versions and
   // the console need a server
   const { backend, connected, sample, usable, health: acting, profile, mobileDetail, setMobileDetail } = shell;
@@ -120,5 +120,5 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
     list={<SettingsNav open={open} summaries={summaries} connected={connected} sample={sample} onOpen={go} />}>
     <Sections open={open} pane={pane}>{section}</Sections>
   </BrowserPanel>;
-  return { view };
+  return { view, openSection: go };
 }

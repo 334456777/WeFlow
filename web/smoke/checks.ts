@@ -140,6 +140,25 @@ export const checks: Check[] = [
     },
   },
   {
+    // nothing is saved: the account's settings stay as the developer left them
+    name: 'AI settings: the private chats the insights are written for, ticked and unticked again (#1078)',
+    async run(page) {
+      await navigate(page, '设置', '设置');
+      await page.click('.settings-nav-row', 'AI 见解');
+      const state = () => ({
+        ticked: Object.fromEntries([...document.querySelectorAll('.insight-session-list .checkbox')]
+          .map(row => [row.textContent, (row.querySelector('input') as HTMLInputElement).checked])),
+        // none while the settings are read
+        unsaved: (document.querySelector('.ai-form button[type="submit"]') as HTMLButtonElement | null)?.disabled === false,
+      });
+      const before = await page.until('the private chats', s => '周舟' in s.ticked && !s.unsaved, state);
+      await page.click('.insight-session-list .checkbox', '周舟');
+      await page.until('周舟 ticked or unticked, to be saved', s => s.ticked['周舟'] === !before.ticked['周舟'] && s.unsaved, state);
+      await page.click('.insight-session-list .checkbox', '周舟');
+      await page.until('周舟 as saved, nothing to save', s => s.ticked['周舟'] === before.ticked['周舟'] && !s.unsaved, state);
+    },
+  },
+  {
     // index.html hides the page while a skin other than the default is on its way; skin.ts shows it, here at once
     name: 'a skin kept that this page does not have: the default skin, the page shown before the first paint gives up (#830)',
     async run(page, browsing) {

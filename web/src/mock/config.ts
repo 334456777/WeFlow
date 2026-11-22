@@ -24,6 +24,8 @@ const configured = (): Settings => ({
   db_path: DATA_DIR, wxid: ME, decrypt_key: SAMPLE_KEY, image_xor_key: '90', image_aes_key: '6c3f9d1e2b8a4f70',
   ai_model_api_base_url: 'https://api.example.com/v1', ai_model_api_model: 'sample-model', ai_model_api_key: 'sample', ai_insight_enabled: 'true',
   ai_insight_allow_context: 'true',
+  // kept as the text `config set` is given; the server keeps the array
+  ai_insight_filter_list: JSON.stringify(['wxid_sample_linmu', 'wxid_sample_chenyu', 'wxid_sample_xiaolu']),
 });
 
 const profiles = new Map<string, Settings>([['default', configured()]]);

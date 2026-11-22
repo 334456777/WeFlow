@@ -1,13 +1,15 @@
 // The AI model API of the insights (#213): its API format (OpenAI's Chat Completions or Anthropic's Messages), the
 // address a question goes to, the key, the model (from the service's own list when asked for), and a test that says
-// where it asked and what came back; and whether the recent messages go with the question, and how many (#950).
+// where it asked and what came back; whether the recent messages go with the question, and how many (#950); and the
+// conversations the insights are written for (#1078).
 import { useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, CheckCircle, CircleNotch, Key, ListBullets, Plugs, WarningCircle } from '@phosphor-icons/react';
 import type { ModelApiFormat, ModelInfo, ModelProbe } from '../api/contract.gen';
-import { AI_KEYS, getSetting, listModels, setSetting, testAi, unsetSetting } from '../api/settings';
+import { AI_KEYS, getInsightSessions, getSetting, listModels, sameSessions, setInsightSessions, setSetting, testAi, unsetSetting, type InsightSessions as Sessions } from '../api/settings';
 import type { Profile } from '../api/setup';
 import { GridSkeleton } from '../Skeleton';
+import { InsightSessions } from './InsightSessions';
 import { NoteLine, reason, SaveBar, SettingRow, SettingsGroup, Toggle, type Note } from './layout';
 import { endpointOf, formatInfo, formatOf, FORMATS, SUGGESTED_MODELS } from './modelApi';
 import { t } from '../i18n';
@@ -35,6 +37,9 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
 }) {
   const [saved, setSaved] = useState<AiForm | null>(null);
   const [form, setForm] = useState<AiForm | null>(null);
+  // the conversations the insights are written for, saved with the form
+  const [savedSessions, setSavedSessions] = useState<Sessions | null>(null);
+  const [sessions, setSessions] = useState<Sessions | null>(null);
   const [busy, setBusy] = useState<'save' | null>(null);
   const [note, setNote] = useState<Note>(null);
   const [test, setTest] = useState<Test | null>(null);
@@ -42,9 +47,10 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   const suggestions = useId();
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all(AI_KEYS.map(k => getSetting(k, controller.signal))).then(values => {
+    Promise.all([Promise.all(AI_KEYS.map(k => getSetting(k, controller.signal))), getInsightSessions(controller.signal)]).then(([values, chosen]) => {
       const read = { ...Object.fromEntries(AI_KEYS.map((k, i) => [k, values[i] ?? ''])), key: '' } as AiForm;
       setSaved(read); setForm(read);
+      setSavedSessions(chosen); setSessions(chosen);
     }, problem => { if (!controller.signal.aborted) setNote({ text: reason(problem, t('读不到 AI 设置。')), error: true }); });
     return () => controller.abort();
   }, []);
@@ -52,7 +58,8 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   const tokensBad = Boolean(form?.ai_model_api_max_tokens.trim()) && !/^\d+$/.test(form!.ai_model_api_max_tokens.trim());
   // the server takes a count below 1 as its default
   const countBad = Boolean(form?.ai_insight_context_count.trim()) && !/^[1-9]\d*$/.test(form!.ai_insight_context_count.trim());
-  const changed = Boolean(form && saved && (form.key.trim() || AI_KEYS.some(k => form[k].trim() !== saved[k])));
+  const sessionsChanged = Boolean(sessions && savedSessions && (sessions.mode !== savedSessions.mode || !sameSessions(sessions.list, savedSessions.list)));
+  const changed = sessionsChanged || Boolean(form && saved && (form.key.trim() || AI_KEYS.some(k => form[k].trim() !== saved[k])));
   const format = formatOf(form?.ai_model_api_format);
   // choosing the format the saved setting means already leaves the setting as it is (unset reads as openai)
   const choose = (id: ModelApiFormat) => {
@@ -74,6 +81,10 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
       }
       // the key goes to the server only, typed in; it is never read back
       if (form.key.trim()) await setSetting('ai_model_api_key', form.key.trim());
+      if (sessions && savedSessions) {
+        await setInsightSessions(sessions, savedSessions);
+        setSavedSessions(sessions);
+      }
       setSaved({ ...form, key: '' });
       // what was typed while it saved stays, as a change still to save
       setForm(now => now && { ...now, key: now.key === form.key ? '' : now.key });
@@ -112,7 +123,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   const listed = models !== null && 'list' in models ? models.list : [];
   const offered = [...new Set([...listed.map(m => m.id), ...SUGGESTED_MODELS[format]])];
   return <form className="ai-form" onSubmit={save}>
-    <SettingsGroup title={t('自动生成')} note={t('这里的开关和「启动选项」里的灵感引擎都打开时才自动生成；默认只处理会话名单 ai_insight_filter_list 里的会话，名单为空时不生成。')}>
+    <SettingsGroup title={t('自动生成')} note={t('这里的开关和「启动选项」里的灵感引擎都打开时才自动生成，只为下面「会话名单」允许的私聊写见解。')}>
       <SettingRow name={t('开启 AI 见解')} text={t('关闭时，见解引擎和 insight scan 都不生成见解；测试连接和手动生成不受影响。')}>
         <Toggle label={t('开启 AI 见解')} checked={form.ai_insight_enabled === 'true'} onChange={on => set('ai_insight_enabled', on ? 'true' : 'false')} />
       </SettingRow>
@@ -122,6 +133,8 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
         <button type="button" className="secondary-button" onClick={onServe}>{t('前往启动选项')}<ArrowRight size={12} /></button>
       </SettingRow>
     </SettingsGroup>
+
+    {sessions && savedSessions && <InsightSessions value={sessions} saved={savedSessions.list} onChange={next => { setSessions(next); setNote(null); }} />}
 
     <SettingsGroup title={t('发送给模型的内容')} note={t('打开的内容会随提问发给上面配置的模型服务。朋友圈和微博还要按会话绑定，需用 weflow config set 设置。')}>
       <SettingRow name={t('最近的聊天内容')} text={chatSent

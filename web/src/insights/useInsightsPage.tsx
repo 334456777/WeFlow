@@ -9,8 +9,8 @@ import { useInsights, type InsightFilter } from './useInsights';
 import { t } from '../i18n';
 import './insights.css';
 
-/** The insights page: its view and its console cards. */
-export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
+/** The insights page: its view and its console cards; `openAiSettings` opens the settings where the session list is. */
+export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWith, openAiSettings: () => void): Page {
   const { backend, records, scope, setMobileDetail } = shell;
   const [filter, setFilter] = useState<InsightFilter>({ keyword: '', session: null });
   useEffect(() => { setFilter({ keyword: '', session: null }); }, [scope]);
@@ -24,7 +24,7 @@ export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWit
       id: 'insights-summary', title: t('见解概况'), summary: page ? t('{n} 条未读', { n: page.unreadCount }) : '',
       content: <InsightsSummary state={insights.state} engine={shell.health?.insight} aiReady={shell.profile?.aiKey} />,
     },
-    { id: 'insights-trigger', title: t('生成见解'), summary: name ?? '', content: <InsightTrigger session={filter.session} name={name} onDone={insights.reload} /> },
+    { id: 'insights-trigger', title: t('生成见解'), summary: name ?? '', content: <InsightTrigger session={filter.session} name={name} onDone={insights.reload} onSettings={openAiSettings} /> },
     { id: 'insights-clear', title: t('删除见解'), content: <InsightClear session={filter.session} name={name} count={count} onDone={insights.reload} /> },
   ];
   const view = <BrowserPanel label={t('灵感信箱')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回联系人')} title={t('见解')} paneLabel={t('见解')} detailKey={filter.session}

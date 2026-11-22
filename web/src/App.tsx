@@ -113,6 +113,9 @@ export function App() {
     selectSection('chat');
     chat.openAt(sessionId, localId, createTime);
   };
+  const settings = useSettingsPage(shell, prefs, { profiles, recheck: recheckBackend, onSetup: () => setSetupOpen(true) });
+  // from the insights page: the AI settings, where the conversations the insights are written for are chosen (#1078)
+  const openAiSettings = () => { selectSection('settings'); settings.openSection('ai'); };
   const pages: Record<Navigation, Page> = {
     chat,
     moments: useMomentsPage(shell, category === 'moments'),
@@ -122,10 +125,10 @@ export function App() {
     analytics: useAnalyticsPage(shell, section === 'analytics', chatWith),
     reports: useReportsPage(shell),
     footprint: useFootprintPage(shell, openInChat(t('这段聊天所在的会话不在会话列表里。'))),
-    insights: useInsightsPage(shell, section === 'insights', chatWith),
+    insights: useInsightsPage(shell, section === 'insights', chatWith, openAiSettings),
     export: useExportPage(shell),
     backup: backupPage(shell),
-    settings: useSettingsPage(shell, prefs, { profiles, recheck: recheckBackend, onSetup: () => setSetupOpen(true) }),
+    settings,
   };
   // a page with nothing to show yet (Moments, WeChat Pay while the server is looked for) leaves the chat page's
   const page = pages[section];
