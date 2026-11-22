@@ -776,7 +776,8 @@ impl ServiceHub {
         Ok(data)
     }
 
-    /// The members of a group with the most messages between `start` and `end` (`group ranking`).
+    /// The `limit` members of a group with the most messages between `start` and `end` (`group ranking`); a `limit`
+    /// of 0 is all of them.
     pub fn group_message_ranking(
         &self,
         chatroom_id: &str,
@@ -815,7 +816,9 @@ impl ServiceHub {
             })
             .collect();
         rankings.sort_by_key(|a| std::cmp::Reverse(a.1));
-        rankings.truncate(limit);
+        if limit > 0 {
+            rankings.truncate(limit);
+        }
         let names_in: Vec<String> = rankings.iter().map(|r| r.0.clone()).collect();
         let (names, avatars) = self.names_and_avatars(&wcdb, &names_in);
         Ok(rankings

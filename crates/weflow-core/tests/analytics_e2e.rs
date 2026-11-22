@@ -32,9 +32,10 @@ fn rankings_and_time_distribution() {
     assert_eq!(r[0]["messageCount"], 5);
     assert_eq!(r[0]["sentCount"], 2);
     assert_eq!(hub.analytics_contact_rankings(1, 0, 0).unwrap().len(), 1);
-    assert!(
-        hub.analytics_contact_rankings(0, 0, 0).unwrap().is_empty(),
-        "a limit of 0 returns nothing"
+    assert_eq!(
+        hub.analytics_contact_rankings(0, 0, 0).unwrap().len(),
+        1,
+        "a limit of 0 is every chat"
     );
 
     let t = json!(hub.analytics_time_distribution().unwrap());
@@ -48,6 +49,52 @@ fn rankings_and_time_distribution() {
     );
     assert_eq!(sum(&t["weekdayDistribution"]), 5);
     assert_eq!(t["monthlyDistribution"]["2023-11"], 5);
+}
+
+/// A limit of 0 is every ranked chat, as it is for the other lists (#1047).
+#[test]
+fn a_limit_of_zero_ranks_every_chat() {
+    use weflow_native::fixture::{ContactSpec, MsgSpec, SessionSpec, T0};
+    let (_root, hub, _f) = common::custom_hub("an-rank-all", |f| {
+        f.contact_db(
+            &[
+                ContactSpec::new("wxid_me", 1, "Me"),
+                ContactSpec::new("wxid_bob", 1, "Bob"),
+                ContactSpec::new("wxid_carol", 1, "Carol"),
+            ],
+            &[],
+        );
+        let session = |username| SessionSpec {
+            username,
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        };
+        f.session_db(&[session("wxid_bob"), session("wxid_carol")]);
+        f.message_shard(
+            0,
+            &[
+                (
+                    "wxid_bob",
+                    vec![
+                        MsgSpec::text(1, "wxid_bob", T0, "hello"),
+                        MsgSpec::text(2, "wxid_me", T0 + 1, "hi"),
+                    ],
+                ),
+                (
+                    "wxid_carol",
+                    vec![MsgSpec::text(1, "wxid_carol", T0, "hey")],
+                ),
+            ],
+        );
+    });
+    let ranked = |limit| hub.analytics_contact_rankings(limit, 0, 0).unwrap();
+    assert_eq!(ranked(1).len(), 1);
+    assert_eq!(ranked(2).len(), 2);
+    let all = ranked(0);
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].username, "wxid_bob", "the most messages first");
 }
 
 #[test]

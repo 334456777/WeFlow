@@ -66,6 +66,18 @@ describe('the sample server (#896)', () => {
     expect(ask('DELETE', 'insight/clear', { session: 'wxid_sample_ajie' })).toEqual({ removed: 2 });
   });
 
+  it('ranks every chat and every member for a limit of 0, as the commands do (#1047)', () => {
+    const chats = ask<{ username: string }[]>('GET', 'api/analytics/rankings', { limit: 50 });
+    expect(ask<unknown[]>('GET', 'api/analytics/rankings', { limit: 1 })).toHaveLength(1);
+    expect(ask<unknown[]>('GET', 'api/analytics/rankings', { limit: 0 })).toHaveLength(chats.length);
+
+    const [group] = ask<{ username: string }[]>('GET', 'api/group/list');
+    const members = ask<unknown[]>('GET', 'api/group/ranking', { 'chatroom-id': group.username, limit: 50 });
+    expect(members.length).toBeGreaterThan(1);
+    expect(ask<unknown[]>('GET', 'api/group/ranking', { 'chatroom-id': group.username, limit: 1 })).toHaveLength(1);
+    expect(ask<unknown[]>('GET', 'api/group/ranking', { 'chatroom-id': group.username, limit: 0 })).toHaveLength(members.length);
+  });
+
   it('runs jobs one after another, hands back a note for the file asked for, and cancels or forgets them', async () => {
     // after the jobs other tests started, which have ended by then
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });

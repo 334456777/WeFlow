@@ -488,6 +488,13 @@ fn group_ranking_hours_and_media_mix() {
         .unwrap();
     assert_eq!(ranking.len(), 3);
     assert!(ranking.iter().all(|r| r.message_count == 1));
+    // a limit of 0 is every member, as it is for the other lists (#1047)
+    let ranked = |limit| {
+        hub.group_message_ranking("room1@chatroom", limit, 0, 0)
+            .unwrap()
+            .len()
+    };
+    assert_eq!((ranked(0), ranked(1), ranked(2)), (3, 1, 2));
     let names: Vec<&str> = ranking
         .iter()
         .map(|r| r.member.display_name.as_str())

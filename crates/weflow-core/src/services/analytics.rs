@@ -517,7 +517,8 @@ impl ServiceHub {
         })
     }
 
-    /// The private chats with the most messages between `begin` and `end` (`analytics rankings`).
+    /// The `limit` private chats with the most messages between `begin` and `end` (`analytics rankings`); a `limit`
+    /// of 0 is all of them.
     pub fn analytics_contact_rankings(
         &self,
         limit: usize,
@@ -568,7 +569,9 @@ impl ServiceHub {
             })
             .collect();
         rankings.sort_by_key(|r| std::cmp::Reverse(r.message_count));
-        rankings.truncate(limit);
+        if limit > 0 {
+            rankings.truncate(limit);
+        }
         Ok(rankings)
     }
 
