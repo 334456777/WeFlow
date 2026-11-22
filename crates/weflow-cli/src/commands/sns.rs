@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 
+use crate::numbers::{non_negative_i32, non_negative_i64};
 use serde_json::{json, Value};
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::services::{ServiceHub, SnsMediaFetch};
@@ -18,11 +19,11 @@ pub(crate) struct SnsCommand {
 pub(crate) enum SnsSubcommand {
     /// Moments timeline, newest first
     Timeline {
-        /// Number of posts
-        #[arg(long, default_value_t = 20)]
+        /// Number of posts; 0 means all
+        #[arg(long, default_value_t = 20, value_parser = non_negative_i32(), allow_negative_numbers = true)]
         limit: i32,
         /// Number of posts to skip
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i32(), allow_negative_numbers = true)]
         offset: i32,
         /// Only posts of these users; repeat for several
         #[arg(long = "user")]
@@ -31,10 +32,10 @@ pub(crate) enum SnsSubcommand {
         #[arg(long)]
         keyword: Option<String>,
         /// Only posts from this time on, in Unix seconds; 0 means no limit
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         start: i64,
         /// Only posts up to this time, in Unix seconds; 0 means no limit
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         end: i64,
         /// Download and decrypt images / videos into the cache and inline them as data URLs
         #[arg(long)]
@@ -81,10 +82,10 @@ pub(crate) enum SnsSubcommand {
         #[arg(long)]
         keyword: Option<String>,
         /// Only posts from this time on, in Unix seconds; 0 means no limit
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         start: i64,
         /// Only posts up to this time, in Unix seconds; 0 means no limit
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         end: i64,
         /// Also save images / live photos / videos next to the export
         #[arg(long)]

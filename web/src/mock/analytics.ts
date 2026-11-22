@@ -53,8 +53,8 @@ export function overall(): OverallStatistics {
   };
 }
 
-/** `analytics rankings`: the first `limit` private chats counted. */
-export const rankings = (limit: number): ContactRank[] => counted().slice(0, limit).map(([username, sent, received]) => ({
+/** `analytics rankings`: the first `limit` private chats counted, all of them for 0. */
+export const rankings = (limit: number): ContactRank[] => counted().slice(0, limit || undefined).map(([username, sent, received]) => ({
   username, displayName: person(username)?.name ?? username, wechatId: person(username)?.alias ?? username,
   messageCount: sent + received, sentCount: sent, receivedCount: received, lastMessageTime: lastWith(username),
 }));
@@ -91,11 +91,11 @@ export function groupMessages(chatroomId: string, start: string, end: string): M
     && (!start || m.createTime >= dayStart(start)) && (!end || m.createTime <= dayEnd(end)));
 }
 
-/** `group ranking`: who sent the most of the group's messages between the two days. */
+/** `group ranking`: who sent the most of the group's messages between the two days, the first `limit` of them, all for 0. */
 export function groupRanking(chatroomId: string, start: string, end: string, limit: number): GroupRank[] {
   const counts = new Map<string, number>();
   for (const m of groupMessages(chatroomId, start, end)) counts.set(m.senderUsername!, (counts.get(m.senderUsername!) ?? 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit)
+  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit || undefined)
     .map(([username, messageCount]) => ({ member: { username, displayName: person(username)?.name ?? username }, messageCount }));
 }
 

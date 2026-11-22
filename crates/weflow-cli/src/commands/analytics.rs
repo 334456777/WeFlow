@@ -2,6 +2,7 @@
 
 use clap::{Args, Subcommand};
 
+use crate::numbers::non_negative_usize;
 use serde_json::{json, Value};
 use weflow_core::error::AppResult;
 use weflow_core::services::ServiceHub;
@@ -18,8 +19,8 @@ pub(crate) enum AnalyticsSubcommand {
     Overall,
     /// Contacts ranked by message count
     Rankings {
-        /// Number of contacts
-        #[arg(long, default_value_t = 20)]
+        /// Number of contacts; 0 means all
+        #[arg(long, default_value_t = 20, value_parser = non_negative_usize, allow_negative_numbers = true)]
         limit: usize,
         /// Start date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]

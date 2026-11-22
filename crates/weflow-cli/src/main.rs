@@ -13,6 +13,7 @@ mod files;
 mod help_style;
 mod i18n;
 mod launch;
+mod numbers;
 mod reads;
 mod serve_api;
 mod stop;

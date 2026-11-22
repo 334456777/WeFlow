@@ -178,7 +178,7 @@ pub enum Read {
     GroupRanking {
         /// The group, `…@chatroom`.
         chatroom_id: String,
-        /// The most members.
+        /// The most members; 0 for all of them.
         limit: usize,
         /// The first day.
         start: Option<String>,
@@ -233,7 +233,7 @@ pub enum Read {
     AnalyticsOverall,
     /// `analytics rankings`.
     AnalyticsRankings {
-        /// The most chats.
+        /// The most chats; 0 for all of them.
         limit: usize,
         /// The first day.
         start: Option<String>,

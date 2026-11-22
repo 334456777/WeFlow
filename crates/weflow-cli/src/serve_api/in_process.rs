@@ -281,8 +281,23 @@ impl Given {
             .transpose()
     }
 
-    fn number_or<T: std::str::FromStr>(&self, name: &str, default: T) -> Taken<T> {
-        Ok(self.number(name)?.unwrap_or(default))
+    /// A count or a time as `numbers` has clap read it: a negative one is [`Refused`], and clap then says why.
+    fn non_negative<T: std::str::FromStr + Default + PartialOrd>(
+        &self,
+        name: &str,
+    ) -> Taken<Option<T>> {
+        match self.number::<T>(name)? {
+            Some(number) if number < T::default() => Err(Refused),
+            number => Ok(number),
+        }
+    }
+
+    fn non_negative_or<T: std::str::FromStr + Default + PartialOrd>(
+        &self,
+        name: &str,
+        default: T,
+    ) -> Taken<T> {
+        Ok(self.non_negative(name)?.unwrap_or(default))
     }
 
     /// A switch, set at most once (clap refuses it twice).
@@ -310,7 +325,7 @@ impl Given {
     pub(super) fn read(&self, command: &str) -> Taken<Read> {
         Ok(match command {
             "chat sessions" => Read::ChatSessions {
-                limit: self.number_or("limit", 0)?,
+                limit: self.non_negative_or("limit", 0)?,
             },
             "chat messages" => {
                 self.without("before", &["offset", "after"])?;
@@ -318,11 +333,11 @@ impl Given {
                 self.without("since", &["offset", "before", "after"])?;
                 Read::ChatMessages(MessagePage {
                     session_id: self.required("session-id")?,
-                    limit: self.number_or("limit", 50)?,
-                    offset: self.number_or("offset", 0)?,
+                    limit: self.non_negative_or("limit", 50)?,
+                    offset: self.non_negative_or("offset", 0)?,
                     before: self.text("before")?,
                     after: self.text("after")?,
-                    since: self.number("since")?,
+                    since: self.non_negative("since")?,
                     parsed: self.switch("parsed")?,
                 })
             }
@@ -350,10 +365,10 @@ impl Given {
             "chat search" => Read::ChatSearch {
                 keyword: self.required("keyword")?,
                 session: self.text("session")?,
-                limit: self.number_or("limit", 50)?,
-                offset: self.number_or("offset", 0)?,
-                start: self.number_or("start", 0)?,
-                end: self.number_or("end", 0)?,
+                limit: self.non_negative_or("limit", 50)?,
+                offset: self.non_negative_or("offset", 0)?,
+                start: self.non_negative_or("start", 0)?,
+                end: self.non_negative_or("end", 0)?,
                 parsed: self.switch("parsed")?,
             },
             "chat dates" => Read::ChatDates {
@@ -377,7 +392,7 @@ impl Given {
                 types: self.list("type"),
                 start: self.text("start")?,
                 end: self.text("end")?,
-                limit: self.number_or("limit", 300)?,
+                limit: self.non_negative_or("limit", 300)?,
                 before: self.text("before")?,
             },
             "chat image-info" => Read::ChatImageInfo {
@@ -395,12 +410,12 @@ impl Given {
                     return Err(Refused);
                 }
                 Read::SnsTimeline {
-                    limit: self.number_or("limit", 20)?,
-                    offset: self.number_or("offset", 0)?,
+                    limit: self.non_negative_or("limit", 20)?,
+                    offset: self.non_negative_or("offset", 0)?,
                     users: self.list("user"),
                     keyword: self.text("keyword")?,
-                    start: self.number_or("start", 0)?,
-                    end: self.number_or("end", 0)?,
+                    start: self.non_negative_or("start", 0)?,
+                    end: self.non_negative_or("end", 0)?,
                 }
             }
             "sns users" => Read::SnsUsers,
@@ -418,7 +433,7 @@ impl Given {
             "group list" => Read::GroupList,
             "group ranking" => Read::GroupRanking {
                 chatroom_id: self.required("chatroom-id")?,
-                limit: self.number_or("limit", 20)?,
+                limit: self.non_negative_or("limit", 20)?,
                 start: self.text("start")?,
                 end: self.text("end")?,
             },
@@ -441,14 +456,14 @@ impl Given {
             "group member-messages" => Read::GroupMemberMessages {
                 chatroom_id: self.required("chatroom-id")?,
                 username: self.required("username")?,
-                limit: self.number_or("limit", 50)?,
-                cursor: self.number_or("cursor", 0)?,
+                limit: self.non_negative_or("limit", 50)?,
+                cursor: self.non_negative_or("cursor", 0)?,
                 start: self.text("start")?,
                 end: self.text("end")?,
             },
             "analytics overall" => Read::AnalyticsOverall,
             "analytics rankings" => Read::AnalyticsRankings {
-                limit: self.number_or("limit", 20)?,
+                limit: self.non_negative_or("limit", 20)?,
                 start: self.text("start")?,
                 end: self.text("end")?,
             },
@@ -464,12 +479,12 @@ impl Given {
             "biz accounts" => Read::BizAccounts,
             "biz messages" => Read::BizMessages {
                 username: self.required("username")?,
-                limit: self.number_or("limit", 50)?,
-                offset: self.number_or("offset", 0)?,
+                limit: self.non_negative_or("limit", 50)?,
+                offset: self.non_negative_or("offset", 0)?,
             },
             "biz pay-records" => Read::BizPayRecords {
-                limit: self.number_or("limit", 50)?,
-                offset: self.number_or("offset", 0)?,
+                limit: self.non_negative_or("limit", 50)?,
+                offset: self.non_negative_or("offset", 0)?,
             },
             "insight footprint" => Read::InsightFootprint {
                 start: self.text("start")?,

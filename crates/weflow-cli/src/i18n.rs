@@ -146,6 +146,10 @@ const BUILTIN: &[(&str, &str)] = &[
         "错误：缺少以下必需的参数：",
     ),
     (
+        "error: invalid value '{}' for '{}': {} is not in {}..={}",
+        "错误：'{1}' 的值 '{0}' 无效：{2} 不在 {3}..={4} 的范围内",
+    ),
+    (
         "error: invalid value '{}' for '{}': {}",
         "错误：'{1}' 的值 '{0}' 无效：{2}",
     ),
@@ -585,6 +589,50 @@ mod tests {
             json_message(&line("thum"), Lang::Zh),
             "'--variant <VARIANT>' 的值 'thum' 无效；可选值：best, thumb, normal, hd"
         );
+    }
+
+    /// A negative count or time is refused with the range it must be in, whether it is written `--limit -1` or
+    /// `--limit=-1` (#1047).
+    #[test]
+    fn the_json_error_names_the_range_of_a_negative_number() {
+        for args in [
+            &["chat", "messages", "wxid_a", "--limit", "-1"][..],
+            &["chat", "messages", "wxid_a", "--limit=-1"][..],
+        ] {
+            assert_eq!(
+                json_message(args, Lang::En),
+                "invalid value '-1' for '--limit <LIMIT>': -1 is not in 0..=2147483647"
+            );
+            assert_eq!(
+                json_message(args, Lang::Zh),
+                "'--limit <LIMIT>' 的值 '-1' 无效：-1 不在 0..=2147483647 的范围内"
+            );
+        }
+        let sessions = ["chat", "sessions", "--limit", "-3"];
+        assert_eq!(
+            json_message(&sessions, Lang::En),
+            format!(
+                "invalid value '-3' for '--limit <LIMIT>': -3 is not in 0..={}",
+                usize::MAX
+            )
+        );
+        // a time in Unix seconds
+        assert_eq!(
+            json_message(&["chat", "messages", "wxid_a", "--since", "-5"], Lang::En),
+            "invalid value '-5' for '--since <SINCE>': -5 is not in 0..=9223372036854775807"
+        );
+    }
+
+    /// `config set` takes a negative number as the value, which the config then refuses with its own message
+    /// (#1047).
+    #[test]
+    fn config_set_takes_a_negative_number_as_its_value() {
+        let line = ["weflow", "config", "set", "progress_delay_seconds", "-1"].map(String::from);
+        let parsed = try_parse_from::<crate::cli::Cli>(&line);
+        assert!(parsed.is_ok(), "{:?}", parsed.err().map(|e| e.to_string()));
+        // anything else that starts with a hyphen is still an option
+        let line = ["weflow", "config", "set", "wxid", "-x"].map(String::from);
+        assert!(try_parse_from::<crate::cli::Cli>(&line).is_err());
     }
 
     /// An error of one line stays that line.

@@ -165,6 +165,9 @@ pub struct ResourceQuery {
     pub before: Option<String>,
 }
 
+/// The kinds of message `chat resources --type` takes.
+const RESOURCE_TYPES: [&str; 4] = ["image", "video", "voice", "file"];
+
 impl ServiceHub {
     pub(super) fn my_wxid_cleaned(&self) -> String {
         clean_account_dir_name(&self.configured_wxid().unwrap_or_default())
@@ -199,11 +202,18 @@ impl ServiceHub {
     }
 
     /// `chat message --server-id`.
+    ///
+    /// # Errors
+    /// A usage error when `server_id` is not a decimal number; a `not_found` failure when no message has it.
     pub fn chat_message_by_server_id(
         &self,
         session_id: &str,
         server_id: &str,
     ) -> AppResult<MsgRow> {
+        // the database layer compares the id as a number: what is not one is the caller's mistake
+        if server_id.trim().parse::<i64>().is_err() {
+            return Err(AppError::usage(format!("invalid server id: {server_id}")));
+        }
         self.open_wcdb()?
             .message_by_server_id(session_id, server_id)
             .map_err(native)?
@@ -761,15 +771,26 @@ impl ServiceHub {
     /// The images / videos / voice / files across sessions, newest first in the chats' order (a
     /// place two conversations share by conversation id), `limit` a page (default 300, at most 2,000). The next page
     /// goes on from the `nextCursor` of this one (issue #178).
+    ///
+    /// # Errors
+    /// A usage error when a type of `q` is none of `image`, `video`, `voice` and `file`, or its cursor is not one.
     pub fn chat_resources(&self, q: &ResourceQuery) -> AppResult<Value> {
         use std::cmp::Ordering;
         use weflow_native::msg::{MsgPos, Ties};
+        if let Some(unknown) = q
+            .types
+            .iter()
+            .find(|t| !RESOURCE_TYPES.contains(&t.as_str()))
+        {
+            return Err(AppError::usage(format!(
+                "unknown resource type: {unknown}; use image, video, voice or file"
+            )));
+        }
         let wcdb = self.open_wcdb()?;
-        let all_types = ["image", "video", "voice", "file"];
         let wanted: Vec<&str> = if q.types.is_empty() {
-            all_types.to_vec()
+            RESOURCE_TYPES.to_vec()
         } else {
-            all_types
+            RESOURCE_TYPES
                 .iter()
                 .copied()
                 .filter(|t| q.types.iter().any(|x| x == t))
@@ -998,6 +1019,9 @@ impl ServiceHub {
     }
 
     /// The image/video messages across sessions, paged by the native scanner.
+    ///
+    /// # Errors
+    /// A usage error when `media_type` is none of `image`, `video` and `all`.
     pub fn chat_media_stream(
         &self,
         session_id: Option<&str>,
@@ -1007,15 +1031,20 @@ impl ServiceHub {
         limit: i32,
         offset: i32,
     ) -> AppResult<MediaStream> {
+        let code = match media_type {
+            "image" => 1,
+            "video" => 2,
+            "all" => 0,
+            other => {
+                return Err(AppError::usage(format!(
+                    "unknown media type: {other}; use image, video or all"
+                )))
+            }
+        };
         let wcdb = self.open_wcdb()?;
         let ids: Vec<String> = match session_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => vec![s.to_string()],
             None => crate::services::chat::extract_session_ids(&wcdb.sessions().map_err(native)?),
-        };
-        let code = match media_type {
-            "image" => 1,
-            "video" => 2,
-            _ => 0,
         };
         let ids = uniq(&ids);
         let (rows, has_more) = wcdb

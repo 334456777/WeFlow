@@ -749,3 +749,129 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
     );
     assert_eq!(ids(&around), vec![10, 5]);
 }
+
+// ── input that cannot be used is a usage error (#1047) ──
+
+fn refused(err: &weflow_core::error::AppError, said: &str) {
+    assert_eq!(
+        (err.code.as_str(), err.exit_code),
+        ("invalid_arguments", 2),
+        "{}",
+        err.message
+    );
+    assert!(err.message.contains(said), "{}", err.message);
+}
+
+fn not_found(err: &weflow_core::error::AppError) {
+    assert_eq!(
+        err.details.as_ref().map(|d| &d["failureKind"]),
+        Some(&json!("not_found")),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn a_server_id_that_is_not_a_number_is_a_usage_error() {
+    let (_root, hub) = common::mock_hub("c-server-id");
+    for bad in ["abc", "12x", "", " ", "1.5", "99999999999999999999"] {
+        let err = hub.chat_message_by_server_id("wxid_bob", bad).unwrap_err();
+        refused(&err, "invalid server id");
+    }
+    // a number that names no message is not found
+    not_found(&hub.chat_message_by_server_id("wxid_bob", "77").unwrap_err());
+}
+
+#[test]
+fn the_media_of_a_message_of_another_kind_is_a_usage_error() {
+    use weflow_core::services::ImageVariant;
+    let (_root, hub, _f) = common::custom_hub("c-not-media", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![
+                    MsgSpec::text(1, "wxid_bob", T0, "hello"),
+                    // an image that names no file
+                    MsgSpec::text(2, "wxid_bob", T0 + 1, "<msg><img/></msg>").of_type(3),
+                ],
+            )],
+        );
+    });
+    for variant in [
+        ImageVariant::Best,
+        ImageVariant::Thumb,
+        ImageVariant::Normal,
+        ImageVariant::Hd,
+    ] {
+        let err = hub
+            .image_variant_for_message("wxid_bob", "1", None, variant)
+            .unwrap_err();
+        refused(&err, "the message is not an image");
+    }
+    let err = hub
+        .image_info_for_message("wxid_bob", "1", None)
+        .unwrap_err();
+    refused(&err, "the message is not an image");
+    let err = hub
+        .voice_data("wxid_bob", "1", None, None, None)
+        .unwrap_err();
+    refused(&err, "the message is not a voice message");
+
+    // an image that names no file keeps the failure of the work
+    let err = hub
+        .image_info_for_message("wxid_bob", "2", None)
+        .unwrap_err();
+    assert_eq!(err.code, "runtime_error", "{}", err.message);
+    assert!(err.message.contains("md5"), "{}", err.message);
+    // a message that is not there is not found, of whatever kind it is asked for
+    not_found(
+        &hub.image_info_for_message("wxid_bob", "99", None)
+            .unwrap_err(),
+    );
+    not_found(
+        &hub.voice_data("wxid_bob", "99", None, None, None)
+            .unwrap_err(),
+    );
+}
+
+#[test]
+fn an_unknown_media_type_is_a_usage_error() {
+    let (_root, hub) = common::mock_hub("c-types");
+    for types in [
+        vec!["bogus"],
+        vec!["image", "vedio"],
+        vec!["images"],
+        vec![""],
+        vec!["Image"],
+    ] {
+        let q = ResourceQuery {
+            types: types.iter().map(ToString::to_string).collect(),
+            ..Default::default()
+        };
+        refused(
+            &hub.chat_resources(&q).unwrap_err(),
+            "unknown resource type",
+        );
+    }
+    for types in [
+        vec![],
+        vec!["image"],
+        vec!["image", "video", "voice", "file"],
+    ] {
+        let q = ResourceQuery {
+            types: types.iter().map(ToString::to_string).collect(),
+            ..Default::default()
+        };
+        assert!(hub.chat_resources(&q).is_ok(), "{types:?}");
+    }
+
+    for bad in ["bogus", "images", "", "voice", "Image"] {
+        let err = hub.chat_media_stream(None, bad, 0, 0, 10, 0).unwrap_err();
+        refused(&err, "unknown media type");
+    }
+    for kind in ["image", "video", "all"] {
+        hub.chat_media_stream(None, kind, 0, 0, 10, 0).unwrap();
+    }
+}
