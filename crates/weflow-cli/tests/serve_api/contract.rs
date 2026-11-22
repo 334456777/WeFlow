@@ -885,7 +885,8 @@ fn answers_fit_the_contract() {
         }
     }
     let contacts = read("/api/chat/contacts?parsed=true", Some(list_of("Contact")));
-    assert!(contacts.as_array().unwrap().len() >= 5, "{contacts}");
+    // bob, carol, the group and the official account: the account's own row is no contact (#1079)
+    assert_eq!(contacts.as_array().unwrap().len(), 4, "{contacts}");
     read(
         "/api/chat/message?session-id=wxid_bob&local-id=2",
         Some(component("MessageLookup")),

@@ -558,10 +558,12 @@ impl ServiceHub {
                 .cloned()
                 .unwrap_or_else(|| wxid.clone());
             let lw = wxid.to_lowercase();
+            // the account's own row is a friend's (`local_type` 1) in WeChat's contacts; it is not a friend (#1079)
             let is_friend = !(lw.is_empty()
                 || lw.contains("@chatroom")
                 || lw.starts_with("gh_")
-                || FRIEND_EXCLUDE.contains(&lw.as_str()))
+                || FRIEND_EXCLUDE.contains(&lw.as_str())
+                || normalized_wxid == my_wxid)
                 && contact.as_ref().is_some_and(|c| c.local_type == 1);
             let is_owner = owner.as_deref() == Some(wxid.as_str());
             let count = lookup_candidates
