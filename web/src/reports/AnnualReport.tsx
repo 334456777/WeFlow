@@ -9,6 +9,7 @@ import { n } from '../analytics/AnalyticsViews';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 import { weekdays } from '../calendar/dates';
+import { useShownReport } from './shown';
 import { t } from '../i18n';
 
 /** A report that could not be made: why, and a button to try again. */
@@ -129,9 +130,10 @@ export function AnnualReportView({ report }: { report: AnnualReport }) {
   </article>;
 }
 
-/** The report of the year picked, 0 for all of them. */
-export function AnnualReportPage({ year }: { year: number }) {
+/** The report of the year picked, 0 for all of them; `onShown` is told which one is there. */
+export function AnnualReportPage({ year, onShown }: { year: number; onShown(key: string | null): void }) {
   const [report, retry] = useRead('report:' + year, signal => getAnnualReport(year, signal));
+  useShownReport(report.status === 'ready' ? 'annual:' + report.value.year : null, onShown);
   return report.status === 'error'
     ? <Failed title={t('生成报告失败')} message={report.message} onRetry={retry} />
     : report.status === 'loading'

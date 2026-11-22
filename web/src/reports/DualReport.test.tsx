@@ -79,12 +79,18 @@ describe('dual report', () => {
       urls.push((init?.method ?? 'GET') + ' ' + url + (init?.body ? ' ' + init.body : ''));
       return json({ success: true, data: url.startsWith('/api/report/annual/years') ? { years: [2025] } : REPORT });
     }));
-    const { rerender } = render(<ReportsPage mode="dual" year={null} onYear={() => {}} friend={null} onFriend={() => {}} />);
+    const shown: (string | null)[] = [];
+    const page = (friend: { username: string; displayName: string } | null) =>
+      <ReportsPage mode="dual" year={null} onYear={() => {}} friend={friend} onFriend={() => {}} onShown={key => shown.push(key)} />;
+    const { rerender } = render(page(null));
     await act(async () => {});
     expect(screen.getByText('选一位好友，生成你们两个人的报告。')).toBeTruthy();
-    rerender(<ReportsPage mode="dual" year={null} onYear={() => {}} friend={{ username: 'wxid_a', displayName: '林沐' }} onFriend={() => {}} />);
+    // no friend, no report to save (#1077)
+    expect(shown.every(key => key === null)).toBe(true);
+    rerender(page({ username: 'wxid_a', displayName: '林沐' }));
     await act(async () => {});
     expect(urls).toEqual(['GET /api/report/annual/years', 'POST /report/dual/generate {"friend":"wxid_a","year":2025}']);
     expect(screen.getByRole('article').getAttribute('aria-label')).toBe('我自己和林沐的 2025 年双人报告');
+    expect(shown.at(-1)).toBe('dual:wxid_a:2025');
   });
 });

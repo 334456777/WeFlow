@@ -134,6 +134,26 @@ describe('App', () => {
     expect(document.querySelector('.search-results .search-result')).toBeNull();
   }, 15_000);
 
+  it('saves only a report that is shown, and says nothing of the one before (#1077)', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:x');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    onTestFinished(() => vi.restoreAllMocks());
+    await renderWith(null);
+    fireEvent.click(screen.getByRole('button', { name: '年度报告' }));
+    const disabled = () => ['保存为图片', '保存为网页'].map(name => screen.getByRole<HTMLButtonElement>('button', { name }).disabled);
+    await waitFor(() => expect(document.querySelector('article.report')).toBeTruthy());
+    await waitFor(() => expect(disabled()).toEqual([false, false]));
+    fireEvent.click(screen.getByRole('button', { name: '保存为网页' }));
+    const done = '已交给浏览器下载。头像换成了名字的第一个字。';
+    await waitFor(() => expect(screen.getByText(done)).toBeTruthy());
+    // the dual report, its friend not picked yet: nothing there to save
+    fireEvent.click(screen.getByRole('button', { name: '双人' }));
+    await waitFor(() => expect(screen.getByText('选一位好友，生成你们两个人的报告。')).toBeTruthy());
+    expect(disabled()).toEqual([true, true]);
+    expect(screen.queryByText(done)).toBeNull();
+  }, 15_000);
+
   it('shows the sample on every page that shows records, said to be the sample (#879)', async () => {
     await renderWith(null);
     await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
