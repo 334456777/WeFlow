@@ -310,6 +310,22 @@ fn a_negative_count_or_time_is_a_usage_error() {
     refused(&r, "progress_delay_seconds", "PUT /config/set");
 }
 
+/// A negative report year written after `--year` is a number to clap, not an option of its own, so the range of the
+/// year refuses it (#1066) as it refuses the `--year=-5` spelling.
+#[test]
+fn a_negative_report_year_after_the_option_is_refused_by_its_range() {
+    let root = temp_root("usage-year");
+    let home = account_home(&root);
+    for argv in [
+        &["report", "annual", "generate", "--year", "-5"][..],
+        &[
+            "report", "dual", "generate", "--friend", "wxid_bob", "--year", "-5",
+        ],
+    ] {
+        refused_on_the_command_line(&home, argv, "invalid year -5");
+    }
+}
+
 /// How many items the answer of a route holds.
 fn count(server: &Server, target: &str) -> usize {
     let reply = server.call("GET", target, "");

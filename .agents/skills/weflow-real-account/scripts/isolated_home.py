@@ -47,6 +47,9 @@ def read_pointer(pointer):
 
 def ask_weflow(binary):
     """The config file `weflow --json config path` names; None when the binary cannot say."""
+    if os.path.dirname(binary):
+        # Windows looks a relative path with `/` up nowhere; a bare name is left to the search of PATH
+        binary = os.path.abspath(binary)
     try:
         done = subprocess.run([binary, "--json", "config", "path"], capture_output=True, timeout=60)
         answer = json.loads(done.stdout)

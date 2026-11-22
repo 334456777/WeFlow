@@ -91,7 +91,7 @@ run report annual years
 run report annual generate
 run report dual generate --friend "$FRIEND"
 run sns timeline
-run sns export --format json --out "$OUT/sns.json"
+run sns export --format json --out "$OUT/sns"
 run biz accounts
 "$PYTHON" .github/scripts/pgo-serve.py "$WEFLOW" "$GROUP" "$FRIEND" || echo "::warning::PGO serve training failed"
 
