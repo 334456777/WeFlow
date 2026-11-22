@@ -26,6 +26,23 @@ pub(crate) fn export_path(out: &Path, default_name: &str) -> PathBuf {
     }
 }
 
+/// The zip `--zip` writes (#1040): `out` when it names a `.zip` file, `default_name` in the folder `out` otherwise.
+///
+/// # Errors
+///
+/// A usage error when `out` has another extension: a zip is not written under the name of a text, a page or a table.
+pub(crate) fn zip_target(out: &Path, default_name: &str) -> AppResult<PathBuf> {
+    if out
+        .extension()
+        .is_some_and(|ext| !ext.eq_ignore_ascii_case("zip"))
+    {
+        return Err(AppError::usage(
+            "--zip writes a zip: give --out a folder or a .zip file",
+        ));
+    }
+    Ok(export_path(out, default_name))
+}
+
 /// The folder `path` goes into, made when it is not there: the writers of xlsx, HTML and SQL do not make it.
 pub(crate) fn make_parent(path: &Path) -> AppResult<()> {
     if let Some(parent) = path.parent() {
@@ -98,4 +115,34 @@ pub(crate) fn write_csv_file(path: &Path, value: &Value) -> AppResult<()> {
         }
     }
     write_text_file(path, &out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_zip_goes_to_a_zip_file_or_into_a_folder() {
+        let zip = |out: &str| zip_target(Path::new(out), "chat.zip");
+        assert_eq!(zip("out/a.zip").unwrap(), Path::new("out/a.zip"));
+        assert_eq!(zip("out/A.ZIP").unwrap(), Path::new("out/A.ZIP"));
+        assert_eq!(zip("out").unwrap(), Path::new("out/chat.zip"));
+        assert_eq!(
+            zip("out/folder/").unwrap(),
+            Path::new("out/folder/chat.zip")
+        );
+    }
+
+    #[test]
+    fn a_zip_is_not_named_like_another_kind_of_file() {
+        for out in [
+            "chat.txt",
+            "out/chat.html",
+            "out/chat.json",
+            "out/a.zip.txt",
+        ] {
+            let err = zip_target(Path::new(out), "chat.zip").unwrap_err();
+            assert_eq!((err.code.as_str(), err.exit_code), ("invalid_arguments", 2));
+        }
+    }
 }
