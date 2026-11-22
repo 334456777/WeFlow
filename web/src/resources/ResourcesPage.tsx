@@ -3,8 +3,8 @@
 // from the cursor of `chat resources` (#178) as the grid is scrolled. A picture or video opens in the preview, which goes through those read so far and
 // can open the message in its conversation; a voice plays where it is; a file opens its message.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { RefObject } from 'react';
-import { ArrowSquareOut, CaretDown, ChatsCircle, CircleNotch, FilePdf, FileText, MagnifyingGlass, Play, Warning, X } from '@phosphor-icons/react';
+import type { ReactNode, RefObject } from 'react';
+import { ArrowSquareOut, CaretDown, ChatsCircle, CircleNotch, FilePdf, FileText, MagnifyingGlass, Warning, X } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import type { ChatSession } from '../api/chat';
 import { listResources, voiceSeconds, type Resource, type ResourceQuery, type ResourceType } from '../api/details';
@@ -12,7 +12,7 @@ import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
 import { formatClock, formatFileSize } from '../chat/messages';
-import { imagePreview, reasonOf, Voice, type Preview } from '../chat/MessageView';
+import { imagePreview, PlayBadge, thumbFailure, Voice, type Preview } from '../chat/MessageView';
 import { Popover } from '../Popover';
 import { Failed } from '../reports/AnnualReport';
 import { Segmented } from '../Segmented';
@@ -109,19 +109,26 @@ function previewOf(item: Resource, onOpen: (item: Resource) => void): Preview | 
   return null;
 }
 
-/** A thumbnail; when it cannot be decoded, why (the server's answer: a format not supported yet, a file not downloaded…). */
-function Thumb({ src, label }: { src: string; label: string }) {
+/** A thumbnail, with `badge` over it; when it cannot be decoded, why (the server's answer: a format not supported yet,
+ * a file not downloaded…), with the badge in place of the warning only when `video`, the video it stands for, still
+ * plays, so that the badge never covers the reason. */
+function Thumb({ src, label, video, badge }: { src: string; label: string; video?: string; badge?: ReactNode }) {
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
-  const [reason, setReason] = useState('');
+  const [failure, setFailure] = useState<{ reason: string; plays: boolean } | null>(null);
   useEffect(() => {
     if (state !== 'failed') return;
     let live = true;
-    reasonOf(src).then(r => { if (live) setReason(r); });
+    thumbFailure(src, video).then(f => { if (live) setFailure(f); });
     return () => { live = false; };
-  }, [state, src]);
-  return state === 'failed'
-    ? <span className="resource-missing"><Warning size={20} /><small>{t('{label}无法显示', { label })}</small>{reason && <small className="clamp-2">{reason}</small>}</span>
-    : <img className={state === 'loading' ? 'loading' : undefined} src={src} alt="" loading="lazy" decoding="async" onLoad={() => setState('ready')} onError={() => setState('failed')} />;
+  }, [state, src, video]);
+  if (state === 'failed') {
+    return <span className="resource-missing">
+      {failure?.plays ? badge : <Warning size={20} />}
+      <small>{failure?.plays ? t('缩略图无法显示') : t('{label}无法显示', { label })}</small>
+      {failure?.reason && <small className="clamp-2">{failure.reason}</small>}
+    </span>;
+  }
+  return <><img className={state === 'loading' ? 'loading' : undefined} src={src} alt="" loading="lazy" decoding="async" onLoad={() => setState('ready')} onError={() => setState('failed')} />{badge}</>;
 }
 
 function Tile({ item, onPreview, onOpen }: { item: Resource; onPreview(item: Resource): void; onOpen(item: Resource): void }) {
@@ -140,7 +147,7 @@ function Tile({ item, onPreview, onOpen }: { item: Resource; onPreview(item: Res
       </button>{caption}</div>;
     case 'video':
       return <div className="resource-tile"><button type="button" className="resource-open as-control press-on-hover resource-thumb" aria-label={t('播放视频，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>
-        <Thumb src={mediaUrl('video-data', sid, message, { thumb: true })} label={t('视频')} /><span className="play-badge" aria-hidden="true"><Play size={18} weight="fill" /></span>
+        <Thumb src={mediaUrl('video-data', sid, message, { thumb: true })} label={t('视频')} video={mediaUrl('video-data', sid, message)} badge={<PlayBadge size={18} />} />
       </button>{caption}</div>;
     case 'voice':
       return <div className="resource-tile"><Voice sessionId={sid} message={message} className="resource-open as-control press-on-hover resource-voice" />{caption}</div>;

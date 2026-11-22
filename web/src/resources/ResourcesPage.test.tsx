@@ -110,6 +110,37 @@ describe('the resource browser (#206)', () => {
     expect(screen.getByText('图片无法显示')).toBeTruthy();
   });
 
+  it('draws the play button over a video thumbnail, and never over why it cannot be shown (#1073)', async () => {
+    const failed = (message: string) => new Response(JSON.stringify({ success: false, error: { code: 'runtime_error', message, details: { failureKind: 'not_found' } } }), { status: 404 });
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), 'http://localhost');
+      calls.push(url.pathname + url.search);
+      if (url.pathname === '/api/chat/resources') return json({ items: [item(1, 'video', OCT), item(2, 'video', SEP)], hasMore: false, nextCursor: null });
+      // the first video is not on this computer: it and its thumbnail answer so; the second plays without a thumbnail
+      if (url.searchParams.get('local-id') === '1') return failed('该视频不在本机：请先在微信中打开该视频');
+      return url.searchParams.has('thumb') ? failed('该视频没有缩略图或封面') : new Response(new Uint8Array([0]), { status: 206 });
+    }));
+    const { container } = page();
+    const tiles = await waitFor(() => { const found = [...container.querySelectorAll<HTMLElement>('.resource-thumb')]; if (found.length < 2) throw new Error('no tiles'); return found; });
+    // laid over the tile: a child of its button
+    const badgeOver = (tile: HTMLElement) => [...tile.children].some(child => child.classList.contains('play-badge'));
+    expect(tiles.map(badgeOver)).toEqual([true, true]);
+    for (const tile of tiles) fireEvent.error(tile.querySelector('img')!);
+
+    expect(await within(tiles[0]).findByText('该视频不在本机：请先在微信中打开该视频')).toBeTruthy();
+    expect(within(tiles[0]).getByText('视频无法显示')).toBeTruthy();
+    expect(tiles[0].querySelector('.play-badge')).toBeNull();
+    // the video is asked for itself, once: its answer says why the thumbnail failed too
+    expect(calls.filter(call => call.includes('local-id=1&'))).toHaveLength(1);
+
+    expect(await within(tiles[1]).findByText('该视频没有缩略图或封面')).toBeTruthy();
+    expect(within(tiles[1]).getByText('缩略图无法显示')).toBeTruthy();
+    // in the flow of the words, where the warning is otherwise, not laid over them
+    expect(tiles[1].querySelector('.resource-missing')?.firstElementChild?.className).toBe('play-badge');
+    expect(badgeOver(tiles[1])).toBe(false);
+  });
+
   it('reads the next page within 800px of the bottom of the scroll area, or of the window where the area does not scroll', async () => {
     const watched: { root: Element | Document | null | undefined; rootMargin?: string; fire(): void }[] = [];
     vi.stubGlobal('IntersectionObserver', class {

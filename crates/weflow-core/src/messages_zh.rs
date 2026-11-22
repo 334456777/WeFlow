@@ -10,6 +10,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("No kvcomm directory could be read", "所有 kvcomm 目录均无法读取"),
     ("No candidate code found in the kvcomm filenames", "kvcomm 文件名中未找到候选 code"),
     ("No valid V2 thumbnail found in the selected account", "选定账号中未找到有效 V2 缩略图模板"),
+    ("No valid V2 thumbnail found in the selected account; open a few images in WeChat first", "选定账号中未找到有效 V2 缩略图模板；请先在微信里打开几张图片"),
     ("The cached codes do not match the selected account's V2 samples", "缓存 code 与选定账号的 V2 样本不匹配"),
     ("Multiple distinct image-key pairs match the selected account; no pair was chosen", "多个不同图片密钥组合匹配选定账号，未选择任何组合"),
     // CLI
@@ -47,6 +48,20 @@ const CATALOG: &[(&str, &str)] = &[
     ("unsupported export format: {}; supported: json, csv, txt, html, excel, sql", "不支持的导出格式：{}；支持：json、csv、txt、html、excel、sql"),
     ("unsupported sns export format: {}; supported: json, html, arkmejson", "不支持的朋友圈导出格式：{}；支持：json、html、arkmejson"),
     ("CSV export expects an array; use --format json for nested data", "CSV 导出需要数组数据；嵌套数据请使用 --format json"),
+    ("export footprint writes json, csv or excel, not {}", "export footprint 只能写出 json、csv 或 excel，不支持 {}"),
+    ("--format {} writes .{} as another format given does; give one of them", "--format {0} 与另一个指定的格式都写出 .{1} 文件；请只指定其中一个"),
+    ("several formats are written to a folder: give --out a folder, or pack them with --zip", "多个格式会写进一个文件夹：--out 请给文件夹，或用 --zip 打包"),
+    ("cannot serialize the config: {}", "无法序列化配置：{}"),
+    ("invalid path {}: {}", "路径 {0} 无效：{1}"),
+    ("{} is a folder; give the config file path", "{} 是文件夹；请给出配置文件的路径"),
+    ("no decrypt_key to save", "没有可保存的 decrypt_key"),
+    ("no image keys to save", "没有可保存的图片密钥"),
+    ("`key image` does not know where WeChat keeps its kvcomm cache on this platform; pass --kvcomm-dir", "`key image` 不知道这个平台上微信的 kvcomm 缓存在哪里；请用 --kvcomm-dir 指定"),
+    ("cannot locate the weflow executable: {}", "找不到 weflow 可执行文件：{}"),
+    ("the command failed: {}", "命令执行失败：{}"),
+    ("the media came back empty", "取回的媒体为空"),
+    ("url must be an https address of WeChat's Moments media servers", "url 必须是微信朋友圈媒体服务器的 https 地址"),
+    ("the media could not be read", "无法读取该媒体"),
     // WebUI
     ("WebUI {} cannot run with this weflow: it needs API {}, this weflow serves API {}", "网页 {} 无法在这个 weflow 上运行：它需要 API {}，这个 weflow 提供 API {}"),
     ("WebUI {} cannot run with this weflow: it needs weflow {} or newer, this is {}", "网页 {} 无法在这个 weflow 上运行：它需要 weflow {} 或更新的版本，当前是 {}"),
@@ -74,6 +89,8 @@ const CATALOG: &[(&str, &str)] = &[
     ("the package of {} holds {} {}", "{} 的安装包里是 {} {}"),
     ("cannot move the WebUI into {}: {}", "无法把网页移入 {}：{}"),
     ("cannot open WebUI {} in {}", "无法打开 {1} 中的网页 {0}"),
+    ("unknown digest {}", "未知的摘要 {}"),
+    ("the WebUI package is bigger than its manifest says", "网页安装包比清单中写的大"),
     // config
     ("invalid value '{}' for lang; use en or zh", "lang 的值 '{}' 无效；请使用 en 或 zh"),
     ("invalid value {} for {}; use a whole number from {} to {}", "{1} 的值 {0} 无效；请使用 {2} 到 {3} 之间的整数"),
@@ -82,6 +99,9 @@ const CATALOG: &[(&str, &str)] = &[
     ("expected scalar string value", "需要字符串值"),
     ("expected integer value", "需要整数值"),
     ("invalid value '{}' for {}; use true or false", "{1} 的值 '{0}' 无效；请使用 true 或 false"),
+    ("invalid value '{}' for {}; use openai or anthropic", "{1} 的值 '{0}' 无效；请使用 openai 或 anthropic"),
+    ("invalid value '{}' for {}; use an IP address such as 127.0.0.1, 0.0.0.0 or [::1]", "{1} 的值 '{0}' 无效；请使用 IP 地址，例如 127.0.0.1、0.0.0.0 或 [::1]"),
+    ("failed to update {}: {}", "更新 {} 失败：{}"),
     ("a profile name cannot be empty", "档案名称不能为空"),
     ("invalid profile name '{}'; a name cannot hold a dot, a slash, a backslash or a control character", "档案名称 '{}' 无效；不能包含点、斜杠、反斜杠或控制字符"),
     ("'{}' is reserved for the config file's own settings; choose another profile name", "'{}' 是配置文件自身设置使用的名字；请换一个档案名称"),
@@ -142,6 +162,22 @@ const CATALOG: &[(&str, &str)] = &[
     ("the message is not an image", "该消息不是图片"),
     ("the message is not a voice message", "该消息不是语音消息"),
     ("the message is not a video", "该消息不是视频"),
+    ("the video message has no md5", "该视频消息没有 md5"),
+    ("the video is not on this computer: open it in WeChat first", "该视频不在本机：请先在微信中打开该视频"),
+    ("the video has no thumbnail or cover", "该视频没有缩略图或封面"),
+    ("the HD original of this image is not on this computer: open the image in WeChat and choose View original", "这张图片的高清原图不在本机：请在微信中打开该图片并点击「查看原图」"),
+    ("decrypted data is not a valid image", "解密后的数据不是有效的图片"),
+    ("failed to save the decrypted emoji", "保存解密后的表情失败"),
+    ("`{}` is not a resource cursor; pass the `nextCursor` of a page", "`{}` 不是资源游标；请传入某一页的 `nextCursor`"),
+    ("`{}` is not a message cursor; pass the `_cursor` of a message", "`{}` 不是消息游标；请传入某条消息的 `_cursor`"),
+    ("the statistics stopped before they were counted", "统计在完成前中止"),
+    ("message reader thread panicked", "读取消息的线程异常退出"),
+    ("the message readers stopped before the end of the conversation", "读取消息的线程在读完会话前停止"),
+    ("the footprint: {}", "无法读取足迹：{}"),
+    ("the native {}: {}", "无法读取原生层返回的 {0}：{1}"),
+    ("Windows database-key extraction requires x64", "在 Windows 上获取数据库密钥需要 x64"),
+    ("Linux database-key extraction requires x64", "在 Linux 上获取数据库密钥需要 x64"),
+    ("database-key extraction is not available on this platform", "这个平台不支持获取数据库密钥"),
     ("unknown resource type: {}; use image, video, voice or file", "未知的资源类型：{}；请使用 image、video、voice 或 file"),
     ("unknown media type: {}; use image, video or all", "未知的媒体类型：{}；请使用 image、video 或 all"),
     ("image has no md5 / datName, cannot locate the original file", "图片没有 md5 / datName，无法定位原文件"),
@@ -204,12 +240,22 @@ const CATALOG: &[(&str, &str)] = &[
     ("refusing to restore through the link {}: it may point outside {}", "拒绝通过链接 {0} 恢复：它可能指向 {1} 以外的位置"),
     ("cannot read {} of the account's database files, so no backup was written: {}", "无法读取账号的 {0} 个数据库文件，没有写出备份：{1}"),
     ("please enter a valid Weibo UID: digits only", "请输入有效的微博 UID：只能是数字"),
+    // files: last, so that the messages above that begin the same way match first
+    ("cannot create {}: {}", "无法创建 {}：{}"),
+    ("cannot open {}: {}", "无法打开 {}：{}"),
+    ("cannot read {}: {}", "无法读取 {}：{}"),
+    ("cannot write {}: {}", "无法写入 {}：{}"),
+    ("cannot remove {}: {}", "无法删除 {}：{}"),
+    ("cannot lock {}: {}", "无法锁定 {}：{}"),
 ];
 
 /// The Chinese of the English error `message`, with the texts its `{}` matched put in; `None` when it has no entry.
 pub fn translate(message: &str) -> Option<String> {
     translate_with(CATALOG, message)
 }
+
+#[cfg(test)]
+mod source_scan;
 
 #[cfg(test)]
 mod tests {
@@ -313,6 +359,26 @@ mod tests {
             Some("不支持的朋友圈导出格式：xlsx；支持：json、html、arkmejson")
         );
         assert_eq!(translate("not in the catalog"), None);
+    }
+
+    /// The entries for any file come last: a message that begins the same way keeps its own entry.
+    #[test]
+    fn a_message_about_a_file_keeps_its_own_entry() {
+        assert_eq!(
+            translate(
+                "cannot read 3 of the account's database files, so no backup was written: denied"
+            )
+            .as_deref(),
+            Some("无法读取账号的 3 个数据库文件，没有写出备份：denied")
+        );
+        assert_eq!(
+            translate("cannot lock WebUI 0.6.0: busy").as_deref(),
+            Some("无法锁定网页 0.6.0：busy")
+        );
+        assert_eq!(
+            translate("cannot read web/meta.json: denied").as_deref(),
+            Some("无法读取 web/meta.json：denied")
+        );
     }
 
     /// `config set <profile>.<key>` for a profile there is not names what it can suggest: nothing, `current_profile`,

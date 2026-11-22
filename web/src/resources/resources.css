@@ -21,6 +21,9 @@
 
 .resource-voice.error { color: var(--fg-muted); }
 .resource-missing { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2); color: var(--fg-subtle); font-size: var(--text-2xs); text-align: center; }
+/* a video that plays without its thumbnail: the play button in place of the warning, above the reason */
+.resource-missing .play-badge { position: static; width: 24px; height: 24px; margin: 0; flex: none; }
+.resource-missing .play-badge svg { width: 14px; height: 14px; }
 .resource-caption { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-1); padding: 0 var(--space-1); font-size: var(--text-xs); }
 .resource-caption > .clamp-1 { color: var(--fg); }
 .resource-caption small { grid-column: 1; color: var(--fg-muted); font-size: var(--text-2xs); }

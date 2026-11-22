@@ -122,6 +122,7 @@ export const en: Record<string, string> = {
   "{what}无法显示": "{what} cannot be shown",
   "正在查找原因…": "Looking for the reason…",
   "{label}无法显示": "{label} cannot be shown",
+  "缩略图无法显示": "The thumbnail cannot be shown",
   "正在查看这台电脑上有没有高清原图": "Looking for the full-size original on this computer",
   "没能查到这张图片有没有高清原图": "Could not find out whether this image has a full-size original",
   "这张图片没有高清原图": "This image has no full-size original",

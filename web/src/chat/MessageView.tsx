@@ -148,7 +148,7 @@ export function MessageView({ sessionId, message, onPreview }: {
       const poster = mediaUrl('video-data', sessionId, message, { thumb: true });
       return <button type="button" className="photo-button video-button" aria-label={t('播放视频')}
         onClick={() => onPreview(mediaPreview(sessionId, message)!)}>
-        <MediaThumb src={poster} label={t('视频')} /><span className="play-badge" aria-hidden="true"><Play size={20} weight="fill" /></span>
+        <MediaThumb src={poster} label={t('视频')} video={mediaUrl('video-data', sessionId, message)} badge={<PlayBadge size={20} />} />
       </button>;
     }
     case 'emoji':
@@ -205,15 +205,48 @@ export function MessageView({ sessionId, message, onPreview }: {
   }
 }
 
-/** Why a media address failed: the server answers its error as JSON (a video not downloaded yet, an image in a format not supported yet…). */
-export async function reasonOf(src: string): Promise<string> {
+/** The first byte of a media address, which says whether its file is there. */
+const firstByte = (src: string) => fetch(src, { headers: { Range: 'bytes=0-0' } });
+
+/** What a failed answer says: the server answers its error as JSON. */
+async function failureIn(response: Response): Promise<string> {
   try {
-    const response = await fetch(src, { headers: { Range: 'bytes=0-0' } });
     const doc = await response.json();
     return doc?.error?.message || t('无法读取（HTTP {status}）', { status: response.status });
   } catch {
     return t('无法读取');
   }
+}
+
+/** Why a media address failed: the server answers its error as JSON (a video not downloaded yet, an image in a format not supported yet…). */
+async function reasonOf(src: string): Promise<string> {
+  try {
+    return await failureIn(await firstByte(src));
+  } catch {
+    return t('无法读取');
+  }
+}
+
+/** Whether the video at `src` is there to play, asked for its first byte; when not, why. */
+async function videoPlays(src: string): Promise<{ plays: boolean; reason: string }> {
+  try {
+    const answer = await firstByte(src);
+    if (!answer.ok) return { plays: false, reason: await failureIn(answer) };
+    await answer.body?.cancel();
+    return { plays: true, reason: '' };
+  } catch {
+    return { plays: false, reason: t('无法读取') };
+  }
+}
+
+/** Why the thumbnail at `src` failed, and with `video`, the address of the video it stands for, whether that still
+ * plays. A video not on this computer answers why for itself and its thumbnail alike, so it is asked first. */
+export async function thumbFailure(src: string, video?: string): Promise<{ reason: string; plays: boolean }> {
+  if (video) {
+    const answer = await videoPlays(video);
+    if (!answer.plays) return answer;
+  }
+  return { plays: Boolean(video), reason: await reasonOf(src) };
 }
 
 function MediaError({ src, what }: { src: string; what: string }) {
@@ -238,11 +271,27 @@ export function PreviewVideo({ src, poster, thumb }: { src: string; poster?: str
     : <video className="preview-video" src={src} poster={poster} controls autoPlay playsInline onError={() => setFailed(true)} style={thumb && previewSize(thumb)} />;
 }
 
-/** A thumbnail from the server; when it cannot be decoded, a placeholder that says so instead of a broken image. */
-function MediaThumb({ src, label }: { src: string; label: string }) {
+/** The play button drawn on a video's thumbnail; on a thumbnail that failed, in place of the warning. */
+export function PlayBadge({ size }: { size: number }) {
+  return <span className="play-badge" aria-hidden="true"><Play size={size} weight="fill" /></span>;
+}
+
+/** A thumbnail from the server, with `badge` over it; when it cannot be decoded, a placeholder that says so instead
+ * of a broken image, which has the badge only when `video`, the video it stands for, still plays. */
+function MediaThumb({ src, label, video, badge }: { src: string; label: string; video?: string; badge?: ReactNode }) {
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
-  return state === 'failed'
-    ? <span className="media-missing"><Warning size={20} /><small>{t('{label}无法显示', { label })}</small></span>
-    : <img className={'message-thumb' + (state === 'loading' ? ' loading' : '')} src={src} alt={label} loading="lazy" decoding="async"
-      onLoad={() => setState('ready')} onError={() => setState('failed')} />;
+  const [plays, setPlays] = useState(false);
+  useEffect(() => {
+    if (state !== 'failed' || !video) return;
+    let live = true;
+    videoPlays(video).then(answer => { if (live) setPlays(answer.plays); });
+    return () => { live = false; };
+  }, [state, video]);
+  if (state === 'failed') {
+    return plays
+      ? <span className="media-missing">{badge}<small>{t('缩略图无法显示')}</small></span>
+      : <span className="media-missing"><Warning size={20} /><small>{t('{label}无法显示', { label })}</small></span>;
+  }
+  return <><img className={'message-thumb' + (state === 'loading' ? ' loading' : '')} src={src} alt={label} loading="lazy" decoding="async"
+    onLoad={() => setState('ready')} onError={() => setState('failed')} />{badge}</>;
 }
