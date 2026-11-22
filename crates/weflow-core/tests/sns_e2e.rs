@@ -9,6 +9,7 @@ mod common;
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -433,6 +434,242 @@ fn export_ends_when_a_full_page_ends_with_posts_without_time() {
     ids.sort();
     ids.dedup();
     assert_eq!(ids.len(), 51, "every post once");
+}
+
+/// The names in `dir`, sorted; none when it is not there.
+fn names_in(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+/// A hub over an account whose Moments are `posts` and whose contacts are `contacts`.
+fn moments_hub(
+    tag: &str,
+    posts: &[weflow_native::fixture::SnsPostSpec],
+    contacts: &[weflow_native::fixture::ContactSpec],
+) -> (
+    weflow_native::fixture::TestDir,
+    weflow_core::services::ServiceHub,
+    weflow_native::fixture::Fixture,
+) {
+    common::custom_hub(tag, |f| {
+        f.session_db(&[]);
+        f.contact_db(contacts, &[]);
+        f.sns_db(posts);
+    })
+}
+
+/// A text post of `wxid_bob` carrying `extra` XML.
+fn bob_post(tid: i64, extra: &str) -> weflow_native::fixture::SnsPostSpec<'_> {
+    weflow_native::fixture::SnsPostSpec {
+        tid,
+        user: "wxid_bob",
+        create_time: weflow_native::fixture::T0,
+        desc: "post",
+        kind: 1,
+        media: 0,
+        likes: &[],
+        extra,
+    }
+}
+
+fn export_options(dir: &Path, format: &str) -> SnsExportOptions {
+    SnsExportOptions {
+        output_dir: dir.to_path_buf(),
+        format: format.into(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn export_reports_a_moments_database_that_cannot_be_read() {
+    let (root, hub, f) = moments_hub("sns-export-unreadable", &[bob_post(9001, "")], &[]);
+    // every page after the first is zeros: the database is malformed from the first read on (#1037)
+    let db = f.db_storage().join("sns").join("sns.db");
+    let mut bytes = std::fs::read(&db).unwrap();
+    assert!(bytes.len() > 4096, "the database has pages after the first");
+    bytes[4096..].fill(0);
+    std::fs::write(&db, bytes).unwrap();
+    let timeline = hub.sns_timeline_query(&SnsTimelineQuery {
+        limit: 1,
+        ..SnsTimelineQuery::default()
+    });
+    assert!(timeline.is_err(), "the timeline reports it");
+
+    let out = root.join("out");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let err = rt
+        .block_on(hub.sns_export_timeline(&export_options(&out, "json")))
+        .unwrap_err();
+    assert_eq!(err.code, "native_error", "{}", err.message);
+    assert_eq!(names_in(&out), Vec::<String>::new(), "no export file");
+}
+
+#[test]
+fn export_refuses_a_format_it_does_not_write_before_writing_anything() {
+    let (root, hub) = common::mock_hub("sns-export-format");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    for (i, format) in ["bogus", "xlsx", "csv", "arkme-json", ""]
+        .iter()
+        .enumerate()
+    {
+        let out = root.join(format!("out-{i}"));
+        let err = rt
+            .block_on(hub.sns_export_timeline(&export_options(&out, format)))
+            .unwrap_err();
+        assert_eq!(err.code, "invalid_arguments", "{format:?}");
+        assert!(
+            err.message.contains("supported: json, html, arkmejson"),
+            "{format:?}: {}",
+            err.message
+        );
+        assert!(!out.exists(), "{format:?}: the folder is not made");
+    }
+}
+
+#[test]
+fn export_format_is_read_in_any_case_and_html_in_any_case_gets_its_avatars() {
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    png.extend((0..300u32).map(|i| (i % 251) as u8));
+    let base = serve(vec![("/avatar", vec![], png)]);
+    let avatar = format!("{base}/avatar");
+    let contacts = [weflow_native::fixture::ContactSpec {
+        avatar: &avatar,
+        ..weflow_native::fixture::ContactSpec::new("wxid_bob", 1, "Bob")
+    }];
+    let (root, hub, _f) = moments_hub("sns-export-case", &[bob_post(9101, "")], &contacts);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let mut files = Vec::new();
+    for (i, (format, extension)) in [
+        ("JSON", "json"),
+        (" Html ", "html"),
+        ("ArkmeJson", "json"),
+        ("HTML", "html"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let out = root.join(format!("out-{i}"));
+        let res = rt
+            .block_on(hub.sns_export_timeline(&export_options(&out, format)))
+            .unwrap();
+        assert_eq!(res.post_count, 1, "{format:?}");
+        assert_eq!(
+            res.file_path.extension().and_then(|e| e.to_str()),
+            Some(extension),
+            "{format:?}"
+        );
+        files.push((out, res.file_path));
+    }
+    // the file of each format is its own: the arkme export names its format
+    let ark: Value = serde_json::from_str(&std::fs::read_to_string(&files[2].1).unwrap()).unwrap();
+    assert_eq!(ark["format"], "arkmejson");
+    let plain: Value =
+        serde_json::from_str(&std::fs::read_to_string(&files[0].1).unwrap()).unwrap();
+    assert_eq!(plain.get("format"), None);
+    // a page in whatever case is written with the avatars its folder holds
+    for i in [1, 3] {
+        let media = names_in(&files[i].0.join("media"));
+        assert!(
+            matches!(media.as_slice(), [one] if one.starts_with("avatar_") && one.ends_with(".png")),
+            "{media:?}"
+        );
+        let html = std::fs::read_to_string(&files[i].1).unwrap();
+        assert!(html.contains(&media[0]), "the page shows the avatar");
+    }
+    assert!(
+        !files[0].0.join("media").exists(),
+        "a json export has no avatars"
+    );
+}
+
+#[test]
+fn export_saves_each_medium_under_the_extension_of_what_it_holds() {
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    png.extend((0..300u32).map(|i| (i % 251) as u8));
+    let mut gif = b"GIF89a".to_vec();
+    gif.extend((0..300u32).map(|i| (i % 241) as u8));
+    let mut jpeg = fake_jpeg();
+    jpeg.extend((0..300u32).map(|i| (i % 239) as u8));
+    let mut video = vec![0, 0, 0, 0x18];
+    video.extend_from_slice(b"ftypmp42");
+    video.extend((0..400u32).map(|i| (i % 200) as u8));
+    let base = serve(vec![
+        ("/pic", vec![], png),
+        ("/anim", vec![], gif),
+        ("/photo", vec![], jpeg),
+        ("/snsvideodownload/clip", vec![], video),
+    ]);
+    // the addresses of a post's media are made https; the scheme in capitals is left as it is
+    let base = base.replacen("http", "HTTP", 1);
+    let media: String = ["pic", "anim", "photo", "snsvideodownload/clip"]
+        .iter()
+        .map(|name| format!("<media><url>{base}/{name}</url></media>"))
+        .collect();
+    let (root, hub, _f) = moments_hub("sns-export-media", &[bob_post(9201, &media)], &[]);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let out = root.join("out");
+    let opts = SnsExportOptions {
+        export_media: true,
+        ..export_options(&out, "json")
+    };
+    let res = rt.block_on(hub.sns_export_timeline(&opts)).unwrap();
+    assert_eq!(res.media_count, 4);
+    let exported: Value =
+        serde_json::from_str(&std::fs::read_to_string(&res.file_path).unwrap()).unwrap();
+    let local: Vec<&str> = exported["posts"][0]["media"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["localPath"].as_str().unwrap())
+        .collect();
+    let want = [
+        "media/9201_0.png",
+        "media/9201_1.gif",
+        "media/9201_2.jpg",
+        "media/9201_3.mp4",
+    ];
+    assert_eq!(local, want);
+    let names = names_in(&out.join("media"));
+    assert_eq!(
+        names,
+        ["9201_0.png", "9201_1.gif", "9201_2.jpg", "9201_3.mp4"]
+    );
+
+    // the next export into the same folder finds them, and saves none a second time
+    let again = rt.block_on(hub.sns_export_timeline(&opts)).unwrap();
+    assert_eq!(again.media_count, 4);
+    assert_eq!(names_in(&out.join("media")), names);
+}
+
+#[test]
+fn export_file_name_carries_the_local_time_and_the_data_the_utc_time() {
+    let (root, hub) = common::mock_hub("sns-export-stamp");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let res = rt
+        .block_on(hub.sns_export_timeline(&export_options(&root.join("out"), "json")))
+        .unwrap();
+    let name = res.file_path.file_stem().unwrap().to_string_lossy();
+    let stamp = name.strip_prefix("朋友圈导出_").unwrap();
+    let named = chrono::NaiveDateTime::parse_from_str(stamp, "%Y-%m-%dT%H-%M-%S").unwrap();
+    let now = chrono::Local::now().naive_local();
+    assert!(
+        (now - named).num_seconds().abs() < 120,
+        "{stamp} is not the local time {now}"
+    );
+    let exported: Value =
+        serde_json::from_str(&std::fs::read_to_string(&res.file_path).unwrap()).unwrap();
+    let time = exported["exportTime"].as_str().unwrap();
+    assert!(time.ends_with('Z'), "{time} is UTC");
+    let utc = chrono::DateTime::parse_from_rfc3339(time).unwrap();
+    assert!((chrono::Utc::now() - utc.to_utc()).num_seconds().abs() < 120);
 }
 
 #[test]

@@ -397,3 +397,39 @@ fn only_a_first_line_naming_the_sender_is_taken_off_a_text() {
         assert!(!txt.contains("wxid_bob:\nTODO"), "{txt}");
     }
 }
+
+/// `sns export` takes its format in any case, and refuses another before it makes the folder (#1038).
+#[test]
+fn the_moments_export_reads_its_format_in_any_case() {
+    let root = temp_root("sns-export-format");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let refused = root.join("refused");
+    let body = json!({ "out": refused, "format": "bogus" });
+    let r = server.call("POST", "/sns/export", &body.to_string());
+    assert_eq!(r.status, 400, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], "invalid_arguments");
+    assert!(!refused.exists());
+
+    let out = root.join("page");
+    let (exit, stdout, stderr) = run_cli(
+        &home,
+        &[
+            "--json",
+            "sns",
+            "export",
+            "--format",
+            "JSON",
+            "--out",
+            &out.to_string_lossy(),
+        ],
+    );
+    assert_eq!(exit, 0, "{stdout}{stderr}");
+    let answer: Value = serde_json::from_str(&stdout).unwrap();
+    let file = PathBuf::from(answer["data"]["filePath"].as_str().unwrap());
+    assert!(
+        answer["data"]["postCount"].as_u64().unwrap() > 0 && file.starts_with(&out),
+        "{answer}"
+    );
+    assert_eq!(file.extension().and_then(|e| e.to_str()), Some("json"));
+}
