@@ -29,6 +29,11 @@ python .agents/skills/weflow-real-account/scripts/isolated_home.py target/real-v
 WEFLOW_HOME=target/real-verify/home weflow --json chat sessions
 ```
 
+- 复制的是 `weflow` 自己读的那份配置：家目录是 `WEFLOW_HOME`（不为空白时），否则是平台默认的 `weflow` 配置目录；家目录下的 `config_path` 指针（`config set config_path` 选定的文件）有内容就读它指向的文件，否则读家目录的 `config.json`。用过 `config set config_path` 的机器上，`config.json` 可能是早已不用的旧配置。`--weflow <二进制>` 让脚本问它（`weflow --json config path`），问不到才用脚本自己的规则；也可以直接给配置文件的路径。脚本结尾输出读的是哪个文件，核对一下是不是要验证的账号。
+- 复制出来的目录和配置文件在 Linux、macOS 上只有所有者可读写（配置里有密钥），已存在的目录和文件也收紧；Windows 上继承所在目录的权限。
+- 复制时关掉 `serve.image_auto_download`、`serve.insight` 和各档案的 `ai_insight_enabled`：隔离目录里 `serve` 不挂钩微信、不运行见解，满足上面的「只读、不联网」。要测这些功能时，在复制出的配置里自己打开，只在合成账号上。脚本结尾输出关掉了哪些键。
+- 改了脚本后运行 `python -m unittest discover -s .agents/skills/weflow-real-account/scripts`，测试只用人工构造的配置；设了 `WEFLOW_BIN` 时还核对 `--weflow` 与脚本的规则一致。
+
 缓存会挡住新下载的结果，做导出对比时每次用新的目录。
 
 ## 改动前后对比
