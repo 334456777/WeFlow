@@ -1,6 +1,6 @@
 //! `weflow image`: decrypting images and the automatic download hook.
 
-use clap::{Args, Subcommand};
+use clap::{ArgGroup, Args, Subcommand};
 
 #[derive(Args, Debug)]
 pub(crate) struct ImageCommand {
@@ -8,15 +8,23 @@ pub(crate) struct ImageCommand {
     pub(crate) command: ImageSubcommand,
 }
 
+/// The image of a message, named by its md5, its `.dat` name or both: without either clap refuses the command line as
+/// a usage error (#1076).
 #[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("image")
+        .args(["md5", "dat_name"])
+        .required(true)
+        .multiple(true)
+))]
 pub(crate) struct ImageTarget {
     /// Conversation the image belongs to; its images are in the folder under msg/attach/ named by the md5 of its id
     #[arg(long)]
     session: Option<String>,
-    /// Image md5 from the message
+    /// Image md5 from the message; give it, --dat-name or both
     #[arg(long)]
     md5: Option<String>,
-    /// Image .dat file name
+    /// Image .dat file name; give it, --md5 or both
     #[arg(long)]
     dat_name: Option<String>,
     /// Message create time in seconds; selects the year-month folder

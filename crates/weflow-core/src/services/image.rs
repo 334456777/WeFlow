@@ -38,6 +38,9 @@ struct LinkedImages {
 
 /// `failureKind` of a WXGF image the built-in decoder cannot convert.
 const UNSUPPORTED_IMAGE: &str = "unsupported_image";
+/// `failureKind` of a payload that names no image, with neither an md5 nor a `.dat` name: a usage error as a
+/// command's answer (#1076).
+const NO_IDENTIFIER: &str = "invalid_arguments";
 
 /// Directory listings (and cache folders' names) kept at most; past that the cache starts over.
 const MAX_DIR_LISTINGS: usize = 1024;
@@ -261,7 +264,8 @@ pub struct ImageResult {
     /// What went wrong; left out on success.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Why it failed: `not_found`, `no_key`, `unsupported_image`, …
+    /// Why it failed: `not_found`, `decrypt_failed`, `unsupported_image`, or `invalid_arguments` for a payload with
+    /// neither an md5 nor a `.dat` name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_kind: Option<&'static str>,
     /// The file is only the thumbnail: the original is not on disk.
@@ -292,6 +296,11 @@ impl ImageResult {
         }
     }
 
+    /// The failure of a payload with neither an md5 nor a `.dat` name.
+    fn no_identifier() -> Self {
+        Self::fail("missing image identifier", NO_IDENTIFIER)
+    }
+
     /// Whether the image was found and decrypted.
     pub fn is_ok(&self) -> bool {
         self.local_path.is_some()
@@ -300,16 +309,20 @@ impl ImageResult {
     /// The result as a command's answer.
     ///
     /// # Errors
-    /// The failure, with `failureKind` (and `isThumb` when known) as its details.
+    /// A usage error for a payload that names no image; any other failure as a runtime error, with `failureKind`
+    /// (and `isThumb` when known) as its details.
     pub fn into_answer(self) -> AppResult<Self> {
         if self.is_ok() {
             return Ok(self);
+        }
+        let message = self.error.unwrap_or_else(|| "image decrypt failed".into());
+        if self.failure_kind == Some(NO_IDENTIFIER) {
+            return Err(AppError::usage(message));
         }
         let mut details = json!({ "failureKind": self.failure_kind });
         if let Some(thumb) = self.is_thumb {
             details["isThumb"] = thumb.into();
         }
-        let message = self.error.unwrap_or_else(|| "image decrypt failed".into());
         Err(AppError::runtime(message).with_details(details))
     }
 }
@@ -1099,7 +1112,7 @@ impl ServiceHub {
     pub fn image_resolve_cache(&self, p: &ImagePayload) -> ImageResult {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
-            return ImageResult::fail("missing image identifier", "not_found");
+            return ImageResult::no_identifier();
         };
         let finish = |final_path: &str| ImageResult {
             local_path: Some(local_path_for_payload(final_path, p.prefer_file_path)),
@@ -1157,7 +1170,7 @@ impl ServiceHub {
     pub fn image_decrypt(&self, p: &ImagePayload) -> ImageResult {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
-            return ImageResult::fail("missing image identifier", "not_found");
+            return ImageResult::no_identifier();
         };
         if p.force {
             for key in &keys {
