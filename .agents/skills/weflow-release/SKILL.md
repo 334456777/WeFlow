@@ -54,6 +54,7 @@ CLI 命令和参数写死在 `.github/scripts/pgo-build.sh`，`serve` 的读取�
 ## 坑
 
 - 补发旧版本、`null == false` 为真：见 Wiki [发布与 CI#补发旧版本](https://github.com/334456777/WeFlow/wiki/发布与-CI#补发旧版本)。改了发版的构建或检查，先用 `test.<名称>` 试跑（[发布与 CI#试跑](https://github.com/334456777/WeFlow/wiki/发布与-CI#试跑)）。
+- `web-release.yml` 的「Check that the version is not published yet」只在 GHCR 明确回答没有这个版本时才放行：日志里出现 `cannot tell whether … is published` 说明查询本身出错（网络、登录、5xx，脚本已重试三次），看日志里 oras 的报错，处理后重新运行；此时没有推送任何东西。
 - Windows 的 Git Bash 会把 `origin/x:.github/y`、`/users/...` 这类参数改写成本地路径：设 `MSYS_NO_PATHCONV=1`，`gh api` 的端点不以 `/` 开头。
 - `gh run download` 不覆盖已有的文件，重新下载前先清空目录。
 - 推送历史 tag 又不想触发工作流时，先 `gh workflow disable Release`，推完再 `gh workflow enable Release`；禁用期间的事件直接丢弃。

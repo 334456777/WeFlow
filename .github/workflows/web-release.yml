@@ -6,7 +6,8 @@ name: WebUI release
 # - run it by hand (Actions → WebUI release → Run workflow) with that version.
 # The package is web/dist zipped (its weflow-web.json inside); the manifest also names the API the page needs and the
 # oldest weflow it runs on, so weflow can refuse it before downloading it. A version is published once: publishing it
-# again is refused, as weflow trusts a version never to change.
+# again is refused, as weflow trusts a version never to change, and so is a push when the registry's answer to "is it
+# published?" is an error instead of "no such version".
 on:
   push:
     tags:
