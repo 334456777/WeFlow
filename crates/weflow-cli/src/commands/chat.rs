@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
+use crate::numbers::{non_negative_i32, non_negative_i64, non_negative_usize};
 use crate::reads::{media_of, write_media};
 
 use serde_json::{json, Value};
@@ -23,7 +24,7 @@ pub(crate) enum ChatSubcommand {
     /// List conversations, newest first
     Sessions {
         /// Maximum number of sessions; 0 means all
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_usize, allow_negative_numbers = true)]
         limit: usize,
     },
     /// A page of a conversation's messages
@@ -35,17 +36,17 @@ pub(crate) enum ChatSubcommand {
         /// Only search this conversation; default: all conversations
         #[arg(long)]
         session: Option<String>,
-        /// Maximum number of results
-        #[arg(long, default_value_t = 50)]
+        /// Maximum number of results; 0 means 50
+        #[arg(long, default_value_t = 50, value_parser = non_negative_i32(), allow_negative_numbers = true)]
         limit: i32,
         /// Number of results to skip
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i32(), allow_negative_numbers = true)]
         offset: i32,
         /// Only messages from this time on, in Unix seconds; 0 means no limit
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i32(), allow_negative_numbers = true)]
         start: i32,
         /// Only messages up to this time, in Unix seconds; 0 means no limit
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i32(), allow_negative_numbers = true)]
         end: i32,
         /// Each hit parsed into type, text, quote, media, link, file and so on, instead of the database row
         #[arg(long)]
@@ -131,7 +132,7 @@ pub(crate) enum ChatSubcommand {
         /// Group chat id, such as xxx@chatroom
         chatroom_id: String,
         /// Store this value as the "my message count"
-        #[arg(long)]
+        #[arg(long, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         set: Option<i64>,
     },
     /// List image / video / voice / file messages across sessions
@@ -148,8 +149,8 @@ pub(crate) enum ChatSubcommand {
         /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
-        /// Maximum number of results
-        #[arg(long, default_value_t = 300)]
+        /// Maximum number of results in the page, from 1 to 2000; 0 means 300
+        #[arg(long, default_value_t = 300, value_parser = non_negative_usize, allow_negative_numbers = true)]
         limit: usize,
         /// Cursor returned as `nextCursor` by the previous page
         #[arg(long)]
@@ -179,11 +180,11 @@ pub(crate) enum ChatSubcommand {
         /// End date as YYYY-MM-DD, local time, inclusive
         #[arg(long)]
         end: Option<String>,
-        /// Maximum number of results
-        #[arg(long, default_value_t = 200)]
+        /// Maximum number of results; 0 means all
+        #[arg(long, default_value_t = 200, value_parser = non_negative_i32(), allow_negative_numbers = true)]
         limit: i32,
         /// Number of results to skip
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, value_parser = non_negative_i32(), allow_negative_numbers = true)]
         offset: i32,
     },
     /// Resolve payer / receiver display names of a transfer message
@@ -284,11 +285,11 @@ pub(crate) enum ChatSubcommand {
 pub(crate) struct PageArgs {
     /// Conversation id: the other party's wxid, or xxx@chatroom for a group
     pub(crate) session_id: String,
-    /// Maximum number of results
-    #[arg(long, default_value_t = 50)]
+    /// Maximum number of results; 0 means all
+    #[arg(long, default_value_t = 50, value_parser = non_negative_i32(), allow_negative_numbers = true)]
     pub(crate) limit: i32,
     /// Number of results to skip
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, value_parser = non_negative_i32(), allow_negative_numbers = true)]
     pub(crate) offset: i32,
     /// Only messages older than this one: the `_cursor` of the last message of the previous page, as fast however far back
     #[arg(long, conflicts_with_all = ["offset", "after"])]
@@ -297,7 +298,7 @@ pub(crate) struct PageArgs {
     #[arg(long, conflicts_with = "offset")]
     pub(crate) after: Option<String>,
     /// The messages from where this time, in Unix seconds, falls in the chat's order: the earliest ones, still newest first, as when a chat window jumps to a day
-    #[arg(long, conflicts_with_all = ["offset", "before", "after"])]
+    #[arg(long, conflicts_with_all = ["offset", "before", "after"], value_parser = non_negative_i64(), allow_negative_numbers = true)]
     pub(crate) since: Option<i64>,
     /// Each message parsed into type, text, quote, media, link, file and so on, instead of the database row
     #[arg(long)]

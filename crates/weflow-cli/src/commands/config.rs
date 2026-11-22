@@ -35,6 +35,7 @@ pub(crate) enum ConfigSubcommand {
         )]
         key: String,
         /// Value to store: as typed for paths, keys, tokens and names; as JSON for numbers, true/false and arrays
+        #[arg(allow_negative_numbers = true)]
         value: String,
     },
     /// Remove a key

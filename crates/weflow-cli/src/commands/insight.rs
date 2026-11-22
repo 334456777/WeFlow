@@ -2,6 +2,7 @@
 
 use clap::{Args, Subcommand};
 
+use crate::numbers::non_negative_i64;
 use serde_json::{json, Value};
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::services::ServiceHub;
@@ -32,16 +33,16 @@ pub(crate) enum InsightSubcommand {
         #[arg(long)]
         session: Option<String>,
         /// Only records from this time on, in Unix seconds
-        #[arg(long)]
+        #[arg(long, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         start: Option<i64>,
         /// Only records up to this time, in Unix seconds
-        #[arg(long)]
+        #[arg(long, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         end: Option<i64>,
-        /// Maximum number of records
-        #[arg(long)]
+        /// Maximum number of records, at most 200; without it, or 0, 100
+        #[arg(long, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         limit: Option<i64>,
         /// Number of records to skip
-        #[arg(long)]
+        #[arg(long, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         offset: Option<i64>,
     },
     /// Show one insight record
@@ -60,10 +61,10 @@ pub(crate) enum InsightSubcommand {
         #[arg(long)]
         session: Option<String>,
         /// Only records from this time on, in Unix seconds
-        #[arg(long)]
+        #[arg(long, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         start: Option<i64>,
         /// Only records up to this time, in Unix seconds
-        #[arg(long)]
+        #[arg(long, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         end: Option<i64>,
     },
     /// Today's trigger counts; only meaningful inside a running `serve --insight`
