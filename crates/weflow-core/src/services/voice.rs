@@ -163,6 +163,11 @@ impl ServiceHub {
             if let Ok(Some(row)) =
                 super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(34))
             {
+                // the lookup prefers a voice only among several messages of the id: the one it found is the
+                // message asked for, of whatever kind
+                if row.local_type & 0xFFFF_FFFF != 34 {
+                    return Err(AppError::usage("the message is not a voice message"));
+                }
                 let my = self.my_wxid_cleaned();
                 let table_name = weflow_native::msg::table_name_for(session_id);
                 let m = chat_msg::map_msg_row(row, &table_name, &my);
