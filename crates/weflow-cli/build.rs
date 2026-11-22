@@ -1,7 +1,14 @@
 //! Gives the binary its version (from the git tag), its build info (commit and time) and the WebUI version it was
 //! built for (from `web/package.json`), and on Windows its 8 MiB main-thread stack.
 
+use std::path::Path;
 use std::process::Command;
+use std::time::SystemTime;
+
+#[path = "build/git_watch.rs"]
+mod git_watch;
+#[path = "build/utc.rs"]
+mod utc;
 
 fn run(cmd: &str, args: &[&str]) -> Option<String> {
     Command::new(cmd)
@@ -40,7 +47,7 @@ fn main() {
     let commit = run("git", &["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "unknown".into());
     let dirty = run("git", &["status", "--porcelain", "--untracked-files=no"])
         .is_some_and(|s| !s.is_empty());
-    let stamp = run("date", &["-u", "+%Y-%m-%d %H:%MZ"]).unwrap_or_else(|| "unknown".into());
+    let stamp = utc::utc_stamp(SystemTime::now()).unwrap_or_else(|| "unknown".into());
     println!(
         "cargo:rustc-env=WEFLOW_BUILD_INFO={commit}{} {stamp}",
         if dirty { "-dirty" } else { "" }
@@ -57,9 +64,8 @@ fn main() {
     // the WebUI version this build runs by default (issue #148): the one in web/ next to it, checked together
     println!("cargo:rustc-env=WEFLOW_WEB_VERSION={}", web_version());
     println!("cargo:rerun-if-changed=../../web/package.json");
-    println!("cargo:rerun-if-changed=../../.git/HEAD");
-    println!("cargo:rerun-if-changed=../../.git/index");
-    println!("cargo:rerun-if-changed=../../.git/refs/tags");
-    println!("cargo:rerun-if-changed=../../.git/packed-refs");
+    for path in git_watch::watched_paths(Path::new(".")) {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
     println!("cargo:rerun-if-changed=src");
 }
