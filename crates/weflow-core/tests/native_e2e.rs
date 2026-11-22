@@ -242,6 +242,8 @@ fn dates_counts_statuses_and_tab_counts() {
 
     let tabs = json!(hub.chat_tab_counts().unwrap());
     assert_eq!(tabs["group"], 1);
+    // bob and carol: not the account's own row (#1079), nor the file helper
+    assert_eq!(tabs["private"], 2, "{tabs}");
 }
 
 #[test]
@@ -285,7 +287,8 @@ fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
             )
         })
         .collect();
-    // newest conversation first, then by name; the kind of each, and the name WeFlow's desktop app shows
+    // newest conversation first, then by name; the kind of each, and the name WeFlow's desktop app shows; the
+    // account's own row (`wxid_me`, kept as a friend's) is not a contact (#1079)
     assert_eq!(
         rows,
         [
@@ -293,7 +296,6 @@ fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
             "group room1@chatroom Project Room",
             "official gh_news News",
             "friend wxid_carol Carol",
-            "friend wxid_me Me Nick",
         ]
     );
     let bob = contacts

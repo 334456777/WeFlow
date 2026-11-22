@@ -15,8 +15,10 @@ fn members_panel_is_sorted_and_enriched() {
     assert_eq!(
         names,
         vec!["wxid_bob", "wxid_me", "wxid_quiet"],
-        "friends first (bob, me), then non-friends"
+        "the owner (bob), then the others by their messages and names"
     );
+    // the account's own row is a friend's in WeChat's contacts; the account is not its own friend (#1079)
+    assert_eq!(entries[1]["isFriend"], false, "{}", entries[1]);
     assert_eq!(entries[0]["messageCount"], 1);
     assert_eq!(entries[0]["isFriend"], true);
     assert_eq!(entries[0]["isOwner"], true);

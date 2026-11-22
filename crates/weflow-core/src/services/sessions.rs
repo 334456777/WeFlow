@@ -538,8 +538,10 @@ impl ServiceHub {
     }
 
     /// `chat contacts --parsed` (#205): friends / groups / official accounts / former friends, newest contact first,
-    /// each with its `avatarUrl`, for a contact list that shows the faces without asking for them one by one.
+    /// each with its `avatarUrl`, for a contact list that shows the faces without asking for them one by one. The
+    /// account's own row, which WeChat keeps as a friend's (`local_type` 1), is left out (#1079).
     pub fn chat_contacts_parsed(&self) -> AppResult<Vec<Contact>> {
+        let me = self.configured_wxid().unwrap_or_default();
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
             .contacts()
@@ -565,7 +567,7 @@ impl ServiceHub {
         let mut contacts: Vec<(Contact, i64)> = Vec::new();
         for row in &rows {
             let username = first_str(row, &["username"]).trim().to_string();
-            if username.is_empty() {
+            if username.is_empty() || weflow_native::db::same_identity(&username, &me) {
                 continue;
             }
             let local_type = row_int(row, &["local_type", "localType", "WCDB_CT_local_type"], 0);

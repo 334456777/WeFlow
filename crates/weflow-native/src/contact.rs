@@ -186,7 +186,8 @@ impl Account {
             .unwrap_or_else(|| json!({})))
     }
 
-    /// `{ "private": n, "group": n, "official": n, "former_friend": n }`.
+    /// `{ "private": n, "group": n, "official": n, "former_friend": n }`. The account's own row, kept as a friend's
+    /// (`local_type` 1), is not counted (#1079).
     pub fn contact_type_counts(&self) -> Result<Value> {
         let (mut private, mut group, mut official, mut former) = (0, 0, 0, 0);
         let rows = self.query(
@@ -196,7 +197,7 @@ impl Account {
         )?;
         for r in &rows {
             let username = text(r, "username");
-            if username.is_empty() {
+            if username.is_empty() || self.is_me(&username) {
                 continue;
             }
             if username.ends_with("@chatroom") {
