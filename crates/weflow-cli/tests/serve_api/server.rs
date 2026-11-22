@@ -211,6 +211,47 @@ fn answers_are_in_the_server_s_language() {
     assert_eq!(health.json()["lang"], "en");
 }
 
+/// The errors the server answers itself, not a command, are in its language too, with their own codes (#1090).
+#[test]
+fn the_server_s_own_errors_are_in_its_language() {
+    let root = temp_root("own-errors");
+    let server = start_env(&root, &["--api-token", TOKEN], &[("WEFLOW_LANG", "zh")]);
+    let auth = format!("Bearer {TOKEN}");
+    let chinese = |text: &str| text.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c));
+    for (method, target, token, status, code) in [
+        ("GET", "/chat/sessions", "Bearer wrong", 401, "unauthorized"),
+        (
+            "GET",
+            "/chat/no-such-command",
+            auth.as_str(),
+            404,
+            "not_found",
+        ),
+        ("GET", "/jobs/no-such-job", auth.as_str(), 404, "not_found"),
+        (
+            "GET",
+            "/chat/sessions?no-such-parameter=1",
+            auth.as_str(),
+            400,
+            "invalid_arguments",
+        ),
+        (
+            "POST",
+            "/openapi.json",
+            auth.as_str(),
+            405,
+            "method_not_allowed",
+        ),
+    ] {
+        let r = server.request(method, target, &[("Authorization", token)], "");
+        assert_eq!(r.status, status, "{method} {target}: {}", r.body);
+        let error = &r.json()["error"];
+        assert_eq!(error["code"], code, "{method} {target}");
+        let message = error["message"].as_str().unwrap_or_default();
+        assert!(chinese(message), "{method} {target}: {message}");
+    }
+}
+
 #[test]
 fn only_requests_to_this_machine_are_answered() {
     let root = temp_root("host");
