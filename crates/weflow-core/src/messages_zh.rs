@@ -86,6 +86,10 @@ const CATALOG: &[(&str, &str)] = &[
     ("'{}' is reserved for the config file's own settings; choose another profile name", "'{}' 是配置文件自身设置使用的名字；请换一个档案名称"),
     ("'{}' is the current profile; switch to another with `config set current_profile` first", "'{}' 是当前档案；请先用 `config set current_profile` 切换到其他档案"),
     ("there is no profile named '{}'; `config profiles` lists them", "没有名为 '{}' 的档案；`config profiles` 会列出所有档案"),
+    ("there is no profile named '{}'", "没有名为 '{}' 的档案"),
+    ("there is no profile named '{}'; `config set current_profile {}` makes one", "没有名为 '{0}' 的档案；`config set current_profile {1}` 会建立这个档案"),
+    ("there is no profile named '{}'; the setting is written {}", "没有名为 '{0}' 的档案；该设置应写作 {1}"),
+    ("there is no profile named '{}'; `config set current_profile {}` makes one, and the setting is written {}", "没有名为 '{0}' 的档案；`config set current_profile {1}` 会建立这个档案，该设置应写作 {2}"),
     ("missing db_path; run config set db_path", "缺少 db_path；请运行 config set db_path"),
     ("missing decrypt_key; run config set decrypt_key", "缺少 decrypt_key；请运行 config set decrypt_key"),
     ("profile not found: {}", "未找到配置档案：{}"),
@@ -304,6 +308,40 @@ mod tests {
             Some("不支持的朋友圈导出格式：xlsx；支持：json、html、arkmejson")
         );
         assert_eq!(translate("not in the catalog"), None);
+    }
+
+    /// `config set <profile>.<key>` for a profile there is not names what it can suggest: nothing, `current_profile`,
+    /// the setting spelt with an underscore, or both. Each way is told in Chinese.
+    #[test]
+    fn a_missing_profile_is_told_in_chinese_whatever_is_suggested() {
+        let mut store = crate::config::ConfigStore::default();
+        for (key, zh) in [
+            ("serve.nothing", "没有名为 'serve' 的档案"),
+            (
+                "work.wxid",
+                "没有名为 'work' 的档案；`config set current_profile work` 会建立这个档案",
+            ),
+            (
+                "serve.port",
+                "没有名为 'serve' 的档案；该设置应写作 serve_port",
+            ),
+            (
+                "ai.model_api_key",
+                "没有名为 'ai' 的档案；`config set current_profile ai` 会建立这个档案，该设置应写作 ai_model_api_key",
+            ),
+        ] {
+            let err = store.set_key_from_text(None, key, "x").unwrap_err();
+            assert_eq!(
+                translate(&err.message).as_deref(),
+                Some(zh),
+                "{key}: {}",
+                err.message
+            );
+        }
+        assert_eq!(
+            translate("there is no profile named 'zzz'; `config profiles` lists them").as_deref(),
+            Some("没有名为 'zzz' 的档案；`config profiles` 会列出所有档案")
+        );
     }
 
     #[test]
