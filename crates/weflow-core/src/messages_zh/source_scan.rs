@@ -16,6 +16,8 @@ const CONSTRUCTORS: &[(&str, &str, bool)] = &[
     ("AppError", "native", false),
     ("AppError", "new", true),
     ("ImageResult", "fail", false),
+    // `ImageResult::fail` as its own methods call it
+    ("Self", "fail", false),
 ];
 
 /// Templates whose placeholders hold a phrase the catalog matches on, with a value for each placeholder in order: a
@@ -460,6 +462,7 @@ fn finds_the_messages_but_those_of_tests() {
             fn t() { AppError::runtime("in a test {"); }
         }
         fn after() -> AppError { AppError::native("after the tests") }
+        fn own() -> Self { Self::fail("by its own method", "not_found") }
     "##;
     let found: Vec<(String, String)> = messages_in("x.rs", source)
         .into_iter()
@@ -472,6 +475,7 @@ fn finds_the_messages_but_those_of_tests() {
         ("image result", "x.rs:12"),
         ("on its own line", "x.rs:13"),
         ("after the tests", "x.rs:24"),
+        ("by its own method", "x.rs:25"),
     ];
     assert_eq!(
         found,
