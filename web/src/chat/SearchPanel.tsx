@@ -5,10 +5,10 @@ import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowSquareOut, CircleNotch, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
-import type { SearchHit } from '../api/messages';
+import type { SearchHit, SearchQuery } from '../api/messages';
 import { DateField } from '../calendar/DateField';
 import { DateRange, type Range } from '../calendar/DateRange';
-import { addDays, parseDay } from '../calendar/dates';
+import { addDays, parseDay, toDay } from '../calendar/dates';
 import { ResultsSkeleton } from '../Skeleton';
 import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
@@ -32,6 +32,17 @@ export function secondsOf(range: Range): { start: number; end: number } {
   };
 }
 
+/** The days a search was limited to, as `secondsOf` gave them; open where it was, and with no search. */
+export function rangeOf(query: SearchQuery | null): Range {
+  return {
+    from: query?.start ? toDay(new Date(query.start * 1000)) : '',
+    to: query?.end ? toDay(new Date(query.end * 1000)) : '',
+  };
+}
+
+/** Whether a search was of all conversations or of one; with no search, of one. */
+export const scopeOf = (query: SearchQuery | null): Scope => (query && !query.sessionId ? 'all' : 'session');
+
 /** The text with each match of the keyword marked. */
 function Marked({ text, keyword }: { text: string; keyword: string }) {
   const lower = text.toLocaleLowerCase();
@@ -52,7 +63,15 @@ function Marked({ text, keyword }: { text: string; keyword: string }) {
 export function searchSummary(state: SearchState): string {
   if (state.status === 'ready') return t('{n} 条结果', { n: state.hits.length + (state.hasMore ? '+' : '') });
   if (state.status === 'loading') return t('正在搜索');
-  return state.query && !state.query.sessionId ? t('全部会话') : t('当前会话');
+  return scopeOf(state.query) === 'all' ? t('全部会话') : t('当前会话');
+}
+
+/** How many hits there are so far, and in which scope they were searched: it may since have been changed. */
+function foundIn(state: SearchState): string {
+  const all = scopeOf(state.query) === 'all';
+  const n = state.hits.length;
+  if (state.hasMore) return all ? t('已显示 {n} 条记录（全部会话）', { n }) : t('已显示 {n} 条记录（当前会话）', { n });
+  return all ? t('找到 {n} 条记录（全部会话）', { n }) : t('找到 {n} 条记录（当前会话）', { n });
 }
 
 /** The search card: the query, its hits, and the calendar of the conversation's days. */
@@ -63,9 +82,10 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
   onOpenHit: (hit: SearchHit) => void;
   onJumpDay: (sessionId: string, day: string) => void;
 }) {
-  const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<Scope>('session');
-  const [range, setRange] = useState<Range>({ from: '', to: '' });
+  // the search is the page's and outlives the card: mounted again, the card starts from what its hits were searched with
+  const [query, setQuery] = useState(() => search.state.query?.keyword ?? '');
+  const [scope, setScope] = useState<Scope>(() => scopeOf(search.state.query));
+  const [range, setRange] = useState<Range>(() => rangeOf(search.state.query));
   const [jumpDay, setJumpDay] = useState('');
   const sessionId = session?.username ?? null;
   const { counts, request } = useDateCounts(sessionId);
@@ -135,7 +155,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
         : state.status === 'loading' ? <ResultsSkeleton label={t('正在搜索')} />
           : state.status === 'error' ? <p className="empty-text">{state.error}</p>
             : state.hits.length
-              ? <><p className="results-count">{state.hasMore ? t('已显示 {n} 条记录', { n: state.hits.length }) : t('找到 {length} 条记录', { length: state.hits.length })}<span>{t('点击可定位到消息')}</span></p>
+              ? <><p className="results-count">{foundIn(state)}<span>{t('点击可定位到消息')}</span></p>
                 {state.hits.map(hit => <button className="search-result as-row" type="button" key={hit._session_id + ' ' + hit._cursor} onClick={() => onOpenHit(hit)}>
                   <span className={'search-result-copy' + (state.query?.sessionId ? '' : ' stacked')}><strong className="clamp-1">{titleOf(hit)}</strong><span className="clamp-1"><Marked text={hit.parsedContent} keyword={keyword} /></span></span>
                   <time>{dayOf(hit.createTime)} {formatClock(hit.createTime)}</time><ArrowSquareOut size={14} />

@@ -100,6 +100,40 @@ describe('App', () => {
     expect(note).toContain('任务：导出聊天记录 · WeFlow 开发群');
   }, 15_000);
 
+  it('shows the search of all conversations as it was once the chat page is opened again (#1077)', async () => {
+    await renderWith(null);
+    await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '全部会话' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索全部会话的消息' }), { target: { value: 'WeFlow' } });
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+    await waitFor(() => expect(document.querySelector('.search-results .results-count')?.textContent).toMatch(/^(找到|已显示) \d+ 条记录（全部会话）/));
+    // what the hits are, not who sent them: the names in a group come once its members are read
+    const shown = () => [document.querySelector('.search-results .results-count')!.textContent, Array.from(document.querySelectorAll('.search-result time'), time => time.textContent)];
+    const hits = shown();
+    fireEvent.click(screen.getByRole('button', { name: '资源浏览' }));
+    await waitFor(() => expect(screen.queryByRole('searchbox', { name: '搜索全部会话的消息' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '聊天' }));
+    const field = await waitFor(() => screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索全部会话的消息' }));
+    expect([field.value, field.placeholder]).toEqual(['WeFlow', '搜索全部会话的消息']);
+    expect(screen.getByRole('button', { name: '全部会话' }).getAttribute('aria-pressed')).toBe('true');
+    expect(shown()).toEqual(hits);
+  }, 15_000);
+
+  it('lets go of a search of one conversation once another is opened from another page (#1077)', async () => {
+    await renderWith(null);
+    await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索此会话的消息' }), { target: { value: 'WeFlow' } });
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+    await waitFor(() => expect(document.querySelector('.search-results .results-count')?.textContent).toMatch(/^(找到|已显示) \d+ 条记录（当前会话）/));
+    fireEvent.click(screen.getByRole('button', { name: '通讯录' }));
+    fireEvent.click(await screen.findByRole('button', { name: '查看林沐' }));
+    fireEvent.click(within(await screen.findByRole('article', { name: '林沐的资料' })).getByRole('button', { name: '查看聊天记录' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true'));
+    // the hits were of the group: none is left under a card that names 林沐
+    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索此会话的消息' }).placeholder).toBe('搜索林沐的消息');
+    expect(document.querySelector('.search-results .search-result')).toBeNull();
+  }, 15_000);
+
   it('shows the sample on every page that shows records, said to be the sample (#879)', async () => {
     await renderWith(null);
     await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
