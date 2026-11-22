@@ -1,7 +1,8 @@
 """Tests of isolated_home.py with made-up configs, never a real one: `python -m unittest` in this folder.
 
 Every run gets its own environment (WEFLOW_HOME, the platform's config folder), so what the script picks is the file
-the test put there. Set WEFLOW_BIN to a weflow binary to also check that --weflow agrees with the script's own rules.
+the test put there. Set WEFLOW_BIN to a weflow binary to also check that --weflow agrees with the script's own rules
+and takes a relative path.
 """
 import json
 import os
@@ -54,11 +55,11 @@ class Case(unittest.TestCase):
         path.write_text(text if text is not None else json.dumps(value), encoding="utf-8")
         return path
 
-    def run_script(self, *args, home=None, check=True):
+    def run_script(self, *args, home=None, check=True, cwd=None):
         env = dict(self.env)
         if home is not None:
             env["WEFLOW_HOME"] = str(home)
-        done = subprocess.run([sys.executable, str(SCRIPT), *args], env=env, capture_output=True, text=True)
+        done = subprocess.run([sys.executable, str(SCRIPT), *args], env=env, capture_output=True, text=True, cwd=cwd)
         if check:
             self.assertEqual(done.returncode, 0, done.stderr)
         return done
@@ -180,6 +181,14 @@ class AskWeflow(Case):
                     dict(returncode=0, stdout=b'{"success":true,"data":""}')):
             self.assertEqual(self.answered(**bad), own, bad)
 
+    def test_a_relative_path_is_made_absolute_and_a_bare_name_is_left_to_path(self):
+        done = subprocess.CompletedProcess([], returncode=1, stdout=b"")
+        with mock.patch.object(isolated_home.subprocess, "run", return_value=done) as run:
+            isolated_home.ask_weflow("target/debug/weflow")
+            isolated_home.ask_weflow("weflow")
+        started = [call.args[0][0] for call in run.call_args_list]
+        self.assertEqual(started, [os.path.abspath("target/debug/weflow"), "weflow"])
+
     def test_a_binary_that_is_not_there(self):
         with mock.patch.dict(os.environ, self.env, clear=True):
             self.assertEqual(isolated_home.default_config(str(self.root / "no-such-weflow"))[0],
@@ -198,6 +207,18 @@ class AskWeflow(Case):
                 asked = isolated_home.ask_weflow(os.environ["WEFLOW_BIN"])
                 own = isolated_home.default_config()[0]
             self.assertEqual(asked, own)
+
+    @unittest.skipUnless(os.environ.get("WEFLOW_BIN"), "set WEFLOW_BIN to a weflow binary")
+    def test_the_real_binary_is_asked_through_a_relative_path_with_slashes(self):
+        binary = Path(os.environ["WEFLOW_BIN"]).resolve()
+        home = self.root / "bin-home"
+        self.write(home / "config.json", config("asked"))
+        # run from the folder above the binary's, so that the path to it is relative with a `/` between its parts
+        relative = f"{binary.parent.name}/{binary.name}"
+        done = self.run_script("--weflow", relative, self.out, home=home, cwd=binary.parent.parent)
+        self.assertIn("named by weflow", done.stdout)
+        self.assertNotIn("did not name", done.stderr)
+        self.assertEqual(self.copied()["current_profile"], "asked")
 
 
 class WhatIsCopied(Case):
