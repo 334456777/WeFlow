@@ -369,6 +369,88 @@ fn exports_json_html_and_arkmejson() {
     );
 }
 
+#[test]
+fn comments_and_likes_show_decoded_entities_in_the_timeline_and_every_export() {
+    use weflow_native::fixture::{ContactSpec, SessionSpec, SnsPostSpec, T0};
+    // how WeChat writes `A&B`, `1 < 2 &amp; 3` and `<b>bold</b>` into the XML of a post
+    const COMMENTS: &str = "<comment_user_list>\
+        <user_comment><comment_id>1</comment_id><username>wxid_carol</username><nickname>A&amp;B</nickname><content>1 &lt; 2 &amp;amp; 3</content><ref_comment_id>0</ref_comment_id></user_comment>\
+        <user_comment><comment_id>2</comment_id><username>wxid_bob</username><nickname>Bob</nickname><content>&lt;b&gt;bold&lt;/b&gt; &quot;ok&quot;</content><ref_comment_id>1</ref_comment_id><refNickname>A&amp;B</refNickname></user_comment>\
+        </comment_user_list>";
+    let (root, hub, _f) = common::custom_hub("sns-comment-entities", |f| {
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        f.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+        f.sns_db(&[SnsPostSpec {
+            tid: 2001,
+            user: "wxid_bob",
+            create_time: T0 + 500,
+            desc: "hello moments",
+            kind: 1,
+            media: 0,
+            likes: &[("wxid_carol", "A&amp;B")],
+            extra: COMMENTS,
+        }]);
+    });
+    let posts = hub
+        .sns_timeline_query(&SnsTimelineQuery {
+            limit: 10,
+            ..SnsTimelineQuery::default()
+        })
+        .unwrap();
+    let comments = &posts[0].comments;
+    assert_eq!(comments[0].nickname, "A&B");
+    assert_eq!(comments[0].content, "1 < 2 &amp; 3");
+    assert_eq!(comments[1].content, "<b>bold</b> \"ok\"");
+    assert_eq!(comments[1].ref_nickname.as_deref(), Some("A&B"));
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let mut exported = Vec::new();
+    for fmt in ["json", "html", "arkmejson"] {
+        let opts = SnsExportOptions {
+            output_dir: root.join(format!("out-{fmt}")),
+            format: fmt.into(),
+            ..Default::default()
+        };
+        let file = rt
+            .block_on(hub.sns_export_timeline(&opts))
+            .unwrap()
+            .file_path;
+        exported.push(std::fs::read_to_string(file).unwrap());
+    }
+    let json: Value = serde_json::from_str(&exported[0]).unwrap();
+    assert_eq!(json["posts"][0]["likes"], json!(["A&B"]));
+    assert_eq!(json["posts"][0]["comments"][0]["nickname"], "A&B");
+    assert_eq!(json["posts"][0]["comments"][0]["content"], "1 < 2 &amp; 3");
+    assert_eq!(json["posts"][0]["comments"][1]["refNickname"], "A&B");
+
+    // the page reads its data as text and escapes it, so a decoded `<b>` stays text
+    let html = &exported[1];
+    let open = r#"<script id="wf-data" type="application/json">"#;
+    let start = html.find(open).unwrap() + open.len();
+    let end = start + html[start..].find("</script>").unwrap();
+    let page: Value = serde_json::from_str(&html[start..end]).unwrap();
+    assert_eq!(page["posts"][0]["likes"], json!(["A&B"]));
+    assert_eq!(page["posts"][0]["cmts"][0], json!(["A&B", "1 < 2 &amp; 3"]));
+    assert_eq!(
+        page["posts"][0]["cmts"][1],
+        json!(["Bob", "<b>bold</b> \"ok\"", "A&B"])
+    );
+    assert!(!html.contains("<b>bold</b>"), "the data never holds a `<`");
+
+    let ark: Value = serde_json::from_str(&exported[2]).unwrap();
+    let post = &ark["posts"][0];
+    assert_eq!(post["likesDetail"][0]["nickname"], "A&B");
+    assert_eq!(post["commentsDetail"][0]["nickname"], "A&B");
+    assert_eq!(post["commentsDetail"][0]["content"], "1 < 2 &amp; 3");
+    assert_eq!(post["commentsDetail"][1]["refNickname"], "A&B");
+}
+
 /// Exports to JSON an account whose Moments are `(tid, create_time)`, returning the exported post ids.
 fn export_posts_with_times(tag: &str, times: &[(i64, i64)]) -> Vec<String> {
     use weflow_native::fixture::SnsPostSpec;
