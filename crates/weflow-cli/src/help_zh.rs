@@ -185,7 +185,7 @@ const HELP: &[(&str, &str)] = &[
     ("List conversations, newest first", "列出会话，最新在前"),
     ("Maximum number of sessions; 0 means all", "最多返回的会话数；0 表示全部"),
     ("A page of a conversation's messages", "某个会话的一页消息"),
-    ("Number of messages, from 1 to 100; 0 counts as 1", "消息条数，1 到 100；0 按 1 算"),
+    ("Number of messages, from 1 to 100", "消息条数，1 到 100"),
     ("Search the messages of one conversation or of all of them", "在某个会话或所有会话中搜索消息"),
     ("Text to search for", "要搜索的文字"),
     ("Only search this conversation; default: all conversations", "只搜索这个会话；默认：所有会话"),

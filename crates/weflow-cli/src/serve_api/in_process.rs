@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime};
 use serde_json::Value;
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::reads::{image_variant, MediaRead, MessagePage, Read};
-use weflow_core::services::ServiceHub;
+use weflow_core::services::{ServiceHub, MEMBER_MESSAGES_LIMIT};
 use weflow_core::sync::MutexExt;
 
 use super::endpoints::{find_param, flag_value, Endpoint, Kind, Params};
@@ -300,6 +300,19 @@ impl Given {
         Ok(self.non_negative(name)?.unwrap_or(default))
     }
 
+    /// A count as `numbers::usize_in` has clap read it: one outside `range` is [`Refused`], and clap then says why.
+    fn within_or(
+        &self,
+        name: &str,
+        range: &std::ops::RangeInclusive<usize>,
+        default: usize,
+    ) -> Taken<usize> {
+        match self.number::<usize>(name)?.unwrap_or(default) {
+            number if range.contains(&number) => Ok(number),
+            _ => Err(Refused),
+        }
+    }
+
     /// A switch, set at most once (clap refuses it twice).
     fn switch(&self, name: &str) -> Taken<bool> {
         match self.all(name).len() {
@@ -456,7 +469,7 @@ impl Given {
             "group member-messages" => Read::GroupMemberMessages {
                 chatroom_id: self.required("chatroom-id")?,
                 username: self.required("username")?,
-                limit: self.non_negative_or("limit", 50)?,
+                limit: self.within_or("limit", &MEMBER_MESSAGES_LIMIT, 50)?,
                 cursor: self.non_negative_or("cursor", 0)?,
                 start: self.text("start")?,
                 end: self.text("end")?,

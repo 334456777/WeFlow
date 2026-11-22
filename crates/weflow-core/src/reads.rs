@@ -220,7 +220,7 @@ pub enum Read {
         chatroom_id: String,
         /// The member's wxid.
         username: String,
-        /// The most messages of the page.
+        /// The most messages of the page, in [`MEMBER_MESSAGES_LIMIT`](crate::services::MEMBER_MESSAGES_LIMIT).
         limit: usize,
         /// The `nextCursor` of the page before; 0 for the first.
         cursor: usize,

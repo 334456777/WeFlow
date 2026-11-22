@@ -131,3 +131,41 @@ fn member_analytics_and_exports() {
     assert_eq!(page["messages"][0]["parsedContent"], "welcome");
     assert_eq!(page["messages"][0]["senderUsername"], "wxid_bob");
 }
+
+/// A page of a member's messages holds 1 to 100 of them: any other `limit` is a usage error (#1067).
+#[test]
+fn a_member_messages_limit_outside_1_to_100_is_a_usage_error() {
+    let (_root, hub) = common::mock_hub("group-limit");
+    let page =
+        |limit: usize| hub.group_member_messages("room1@chatroom", "wxid_bob", 0, 0, limit, 0);
+    for limit in [0, 101, 1000, usize::MAX] {
+        let err = page(limit).unwrap_err();
+        assert_eq!(
+            (err.code.as_str(), err.exit_code),
+            ("invalid_arguments", 2),
+            "limit {limit}"
+        );
+        assert_eq!(err.message, format!("invalid limit {limit}; use 1-100"));
+    }
+    // the ends of the range, and what is between them, answer the one message Bob has sent
+    for limit in [1, 2, 50, 100] {
+        let page = page(limit).unwrap();
+        assert_eq!(page.messages.len(), 1, "limit {limit}");
+        assert!(!page.has_more, "limit {limit}");
+    }
+    // the same through the typed read the command and the command API run
+    let read = |limit: usize| {
+        weflow_core::reads::Read::GroupMemberMessages {
+            chatroom_id: "room1@chatroom".into(),
+            username: "wxid_bob".into(),
+            limit,
+            cursor: 0,
+            start: None,
+            end: None,
+        }
+        .run(&hub)
+    };
+    assert_eq!(read(0).unwrap_err().code, "invalid_arguments");
+    assert_eq!(read(101).unwrap_err().code, "invalid_arguments");
+    assert_eq!(read(100).unwrap()["messages"].as_array().unwrap().len(), 1);
+}
