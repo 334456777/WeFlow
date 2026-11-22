@@ -55,5 +55,6 @@ CLI 命令和参数写死在 `.github/scripts/pgo-build.sh`，`serve` 的读取�
 
 - 补发旧版本、`null == false` 为真：见 Wiki [发布与 CI#补发旧版本](https://github.com/334456777/WeFlow/wiki/发布与-CI#补发旧版本)。改了发版的构建或检查，先用 `test.<名称>` 试跑（[发布与 CI#试跑](https://github.com/334456777/WeFlow/wiki/发布与-CI#试跑)）。
 - Windows 的 Git Bash 会把 `origin/x:.github/y`、`/users/...` 这类参数改写成本地路径：设 `MSYS_NO_PATHCONV=1`，`gh api` 的端点不以 `/` 开头。
+- 「Write the changelog」一步失败并带有 `could not read … for the changelog` 的 `::error::` 时，是读某个 PR 的 GitHub 调用重试三次后仍失败（网络、限流、5xx），不是更新日志的内容有问题：稍后重新运行失败的作业。编号不是 PR（直接推送的提交标题以 issue 编号结尾）的会跳过，不算失败。
 - `gh run download` 不覆盖已有的文件，重新下载前先清空目录。
 - 推送历史 tag 又不想触发工作流时，先 `gh workflow disable Release`，推完再 `gh workflow enable Release`；禁用期间的事件直接丢弃。

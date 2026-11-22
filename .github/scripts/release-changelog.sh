@@ -11,6 +11,9 @@
 # - the pull requests that closed no issue;
 # - the issues opened since the previous release that are still open.
 # Anything labelled 文档 without 增强/优化/bug/反常 is left out.
+#
+# A number that is no pull request (a commit pushed to main may end in the (#N) of an issue) is skipped. Any other failed
+# read is tried again and then stops the script with an ::error:: line: no pull request is left out of the notes silently.
 set -euo pipefail
 
 TAG="$1"
@@ -31,24 +34,53 @@ MERGES="$(git log --first-parent --format=%s "$PREV..$SHA" |
 
 DEFAULT="$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)"
 
+# gh_retry <what> <answer> <gh argument>...: prints what `gh <argument>...` prints. A failure (network, rate limit, 5xx)
+# is tried again, twice at most, and then reported on stderr as an ::error:: naming <what>, with return 1. A message
+# containing the text <answer> is gh's answer, not a failure: nothing is printed. Errexit is off inside a command
+# substitution, so every caller checks the status: OUT="$(gh_retry ...)" || exit 1
+gh_retry() {
+  local what="$1" answer="$2" out attempt
+  shift 2
+  for attempt in 1 2 3; do
+    if out="$(gh "$@" 2>&1)"; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    if [ -n "$answer" ] && grep -Fq "$answer" <<< "$out"; then
+      return 0
+    fi
+    if [ "$attempt" -lt 3 ]; then
+      sleep $((attempt * 5))
+    fi
+  done
+  echo "::error::could not read $what for the changelog: ${out//$'\n'/ }" >&2
+  return 1
+}
+
+NOT_A_PR='Could not resolve to a PullRequest' # what GitHub answers for the number of an issue
+
 # The layers below pull request $1 in its stack: down its base branches, the merged pull request whose head that
 # branch is and whose merge commit is the same, until a base is the default branch
 below() {
-  local base merge next
-  read -r base merge <<< "$(gh pr view "$1" --repo "$REPO" --json baseRefName,mergeCommit \
-    --jq '"\(.baseRefName) \(.mergeCommit.oid)"')"
+  local out base merge next
+  out="$(gh_retry "the base of #$1" "$NOT_A_PR" pr view "$1" --repo "$REPO" --json baseRefName,mergeCommit \
+    --jq '"\(.baseRefName) \(.mergeCommit.oid)"')" || return 1
+  read -r base merge <<< "$out"
+  [ -n "$base" ] || return 0 # $1 is no pull request
   while [ "$base" != "$DEFAULT" ]; do
-    read -r next base <<< "$(gh pr list --repo "$REPO" --state merged --head "$base" --json number,baseRefName,mergeCommit \
-      --jq ".[] | select(.mergeCommit.oid == \"$merge\") | \"\(.number) \(.baseRefName)\"")"
+    out="$(gh_retry "the pull request merged from branch $base" '' pr list --repo "$REPO" --state merged --head "$base" \
+      --json number,baseRefName,mergeCommit \
+      --jq ".[] | select(.mergeCommit.oid == \"$merge\") | \"\(.number) \(.baseRefName)\"")" || return 1
+    read -r next base <<< "$out"
     [ -n "$next" ] || break
     echo "$next"
   done
 }
 
-PRS="$(for n in $MERGES; do echo "$n"; below "$n"; done | sort -un)"
-
-PR_JSON="$(for n in $PRS; do
-  gh api graphql -f owner="${REPO%/*}" -f name="${REPO#*/}" -F number="$n" -f query='
+# Pull request $1 as one line of JSON; nothing when it is no pull request or is not merged
+pr_json() {
+  local out
+  out="$(gh_retry "#$1" "$NOT_A_PR" api graphql -f owner="${REPO%/*}" -f name="${REPO#*/}" -F number="$1" -f query='
     query($owner: String!, $name: String!, $number: Int!) {
       repository(owner: $owner, name: $name) {
         pullRequest(number: $number) {
@@ -57,12 +89,29 @@ PR_JSON="$(for n in $PRS; do
           closingIssuesReferences(first: 20) { nodes { number title labels(first: 20) { nodes { name } } } }
         }
       }
-    }' --jq '.data.repository.pullRequest | select(.merged) | {
-      number, title,
-      labels: [.labels.nodes[].name],
-      issues: [.closingIssuesReferences.nodes[] | {number, title, labels: [.labels.nodes[].name]}]
-    }'
-done | jq -s 'map(select(.number))')" # gh prints the error's answer for a number that is no pull request
+    }')" || return 1
+  jq -c '.data.repository.pullRequest | select(. != null and .merged) | {
+    number, title,
+    labels: [.labels.nodes[].name],
+    issues: [.closingIssuesReferences.nodes[] | {number, title, labels: [.labels.nodes[].name]}]
+  }' <<< "$out" || { echo "::error::could not read the answer for #$1 for the changelog: ${out//$'\n'/ }" >&2; return 1; }
+}
+
+# The loops run in the main shell, not in a pipeline or a command substitution, where errexit is off: `|| exit 1` stops
+# the script
+ALL=""
+for n in $MERGES; do
+  LAYERS="$(below "$n")" || exit 1
+  ALL+="$n $LAYERS "
+done
+PRS="$(printf '%s\n' $ALL | sort -un)"
+
+PR_LINES=""
+for n in $PRS; do
+  ONE="$(pr_json "$n")" || exit 1
+  PR_LINES+="$ONE"$'\n'
+done
+PR_JSON="$(jq -s . <<< "$PR_LINES")"
 
 NEW_JSON="$(gh issue list --repo "$REPO" --state open --search "created:>=$PREV_DATE" --limit 100 \
   --json number,title,labels --jq '[.[] | {number, title, labels: [.labels[].name]}]')"
