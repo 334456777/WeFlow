@@ -31,6 +31,7 @@ mod sns;
 mod voice;
 pub use chat::ResourceQuery;
 pub use export::{MessageExportRequest, MESSAGE_EXPORT_FORMATS};
+pub use group::MEMBER_MESSAGES_LIMIT;
 pub use key::interrupt_key_db;
 pub use sns::{SnsExportOptions, SnsMediaFetch, SnsProxyResult, SnsTimelineQuery};
 

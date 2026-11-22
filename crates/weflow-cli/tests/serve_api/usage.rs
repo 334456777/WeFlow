@@ -228,7 +228,8 @@ const COUNTS: &[Counts] = &[
         route: "group/member-messages",
         needs: "chatroom-id=room1%40chatroom&username=wxid_bob",
         argv: &["group", "member-messages", "room1@chatroom", "wxid_bob"],
-        options: &["limit", "cursor"],
+        // its `limit` has a range of its own: see `a_member_messages_limit_outside_1_to_100_is_a_usage_error`
+        options: &["cursor"],
         api: true,
     },
     Counts {
@@ -308,6 +309,65 @@ fn a_negative_count_or_time_is_a_usage_error() {
         r#"{"key": "progress_delay_seconds", "value": "-1"}"#,
     );
     refused(&r, "progress_delay_seconds", "PUT /config/set");
+}
+
+/// A page of `group member-messages` holds 1 to 100 messages: a `limit` outside that range, 0 and a negative number
+/// included, is a usage error from the command line, from a route that runs the command in a child process and from the
+/// `/api/` route (#1067); the ends of the range and no `limit` are answered.
+#[test]
+fn a_member_messages_limit_outside_1_to_100_is_a_usage_error() {
+    let root = temp_root("usage-page");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let needs = "chatroom-id=room1%40chatroom&username=wxid_bob";
+    let argv = ["group", "member-messages", "room1@chatroom", "wxid_bob"];
+
+    for value in ["0", "101", "1000000", "-1", "99999999999999999999999999"] {
+        let said = format!("{value} is not in 1..=100");
+        for (target, reply) in get_both(
+            &server,
+            "group/member-messages",
+            &format!("{needs}&limit={value}"),
+            true,
+        ) {
+            refused(&reply, &said, &target);
+            assert!(reply.body.contains("--limit"), "{target}: {}", reply.body);
+        }
+        // written after the option and joined to it: a negative number is not an option of its own either way
+        let mut line = argv.to_vec();
+        line.extend(["--limit", value]);
+        refused_on_the_command_line(&home, &line, &said);
+        let joined = format!("--limit={value}");
+        let mut line = argv.to_vec();
+        line.push(&joined);
+        refused_on_the_command_line(&home, &line, &said);
+    }
+
+    // the ends of the range, what is between them and no `limit`: the one message Bob has sent
+    for query in [
+        format!("{needs}&limit=1"),
+        format!("{needs}&limit=50"),
+        format!("{needs}&limit=100"),
+        needs.to_string(),
+    ] {
+        for (target, reply) in get_both(&server, "group/member-messages", &query, true) {
+            assert_eq!(reply.status, 200, "{target}: {}", reply.body);
+            let doc = reply.json();
+            assert_eq!(
+                doc["data"]["messages"].as_array().map(Vec::len),
+                Some(1),
+                "{target}: {}",
+                reply.body
+            );
+        }
+    }
+    for limit in ["1", "100"] {
+        let mut line = vec!["--json"];
+        line.extend(argv);
+        line.extend(["--limit", limit]);
+        let (exit, stdout, stderr) = run_cli(&home, &line);
+        assert_eq!(exit, 0, "{line:?}: {stdout}{stderr}");
+    }
 }
 
 /// A negative report year written after `--year` is a number to clap, not an option of its own, so the range of the

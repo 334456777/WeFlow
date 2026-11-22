@@ -19,6 +19,9 @@ use weflow_native::msg_row::MsgRow;
 
 const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 
+/// How many messages a page of `group member-messages` holds: a `limit` outside this range is a usage error.
+pub const MEMBER_MESSAGES_LIMIT: std::ops::RangeInclusive<usize> = 1..=100;
+
 #[derive(Clone, Debug, Default)]
 struct MemberContact {
     remark: String,
@@ -1178,6 +1181,10 @@ impl ServiceHub {
     }
 
     /// One page of a member's messages (newest first).
+    ///
+    /// # Errors
+    ///
+    /// A usage error when `limit` is not in [`MEMBER_MESSAGES_LIMIT`].
     pub fn group_member_messages(
         &self,
         chatroom_id: &str,
@@ -1194,7 +1201,13 @@ impl ServiceHub {
         if member.is_empty() {
             return Err(AppError::usage("member id must not be empty"));
         }
-        let limit = limit.clamp(1, 100);
+        if !MEMBER_MESSAGES_LIMIT.contains(&limit) {
+            return Err(AppError::usage(format!(
+                "invalid limit {limit}; use {}-{}",
+                MEMBER_MESSAGES_LIMIT.start(),
+                MEMBER_MESSAGES_LIMIT.end()
+            )));
+        }
         let wcdb = self.open_wcdb()?;
         let my_wxid = self.my_wxid_cleaned();
         let batch_size = crate::num::saturating_i32((limit * 4).max(240));

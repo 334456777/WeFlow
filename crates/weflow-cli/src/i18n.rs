@@ -623,6 +623,35 @@ mod tests {
         );
     }
 
+    /// The page size of `group member-messages` is refused with its range of 1 to 100 below, above and at any size
+    /// (#1067), in either language.
+    #[test]
+    fn the_json_error_names_the_range_of_a_page_size() {
+        for (value, shown) in [
+            ("0", "0"),
+            ("101", "101"),
+            ("-1", "-1"),
+            ("99999999999999999999999999", "99999999999999999999999999"),
+        ] {
+            let args = [
+                "group",
+                "member-messages",
+                "room@chatroom",
+                "wxid_a",
+                "--limit",
+                value,
+            ];
+            assert_eq!(
+                json_message(&args, Lang::En),
+                format!("invalid value '{value}' for '--limit <LIMIT>': {shown} is not in 1..=100")
+            );
+            assert_eq!(
+                json_message(&args, Lang::Zh),
+                format!("'--limit <LIMIT>' 的值 '{value}' 无效：{shown} 不在 1..=100 的范围内")
+            );
+        }
+    }
+
     /// `config set` takes a negative number as the value, which the config then refuses with its own message
     /// (#1047).
     #[test]

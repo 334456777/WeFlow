@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 
 use super::analytics::day_span;
-use crate::numbers::non_negative_usize;
+use crate::numbers::{non_negative_usize, usize_in};
 use serde_json::{json, Value};
 use weflow_core::error::AppResult;
-use weflow_core::services::ServiceHub;
+use weflow_core::services::{ServiceHub, MEMBER_MESSAGES_LIMIT};
 
 #[derive(Args, Debug)]
 pub(crate) struct GroupCommand {
@@ -83,8 +83,8 @@ pub(crate) enum GroupSubcommand {
         chatroom_id: String,
         /// Member username, the wxid
         username: String,
-        /// Number of messages, from 1 to 100; 0 counts as 1
-        #[arg(long, default_value_t = 50, value_parser = non_negative_usize, allow_negative_numbers = true)]
+        /// Number of messages, from 1 to 100
+        #[arg(long, default_value_t = 50, value_parser = usize_in(MEMBER_MESSAGES_LIMIT), allow_negative_numbers = true)]
         limit: usize,
         /// Cursor returned as `nextCursor` by the previous page
         #[arg(long, default_value_t = 0, value_parser = non_negative_usize, allow_negative_numbers = true)]
