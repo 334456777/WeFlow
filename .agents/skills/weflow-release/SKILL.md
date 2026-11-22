@@ -36,13 +36,15 @@ description: 发布 weflow 和 WebUI 的新版本（维护者）：定版本号�
 
    `notes` 和手动修改的发布说明里，不是指人的 `@` 写在反引号里（见 [weflow-issues](../weflow-issues/SKILL.md#写正文和评论)），否则同名的账号会被列进发布页的 Contributors。
 
-3. 发布完成后，在各平台 `build` job 的日志里查 `PGO training run failed` 和 `PGO serve training` 两种警告：单条训练失败只给警告，发布照常完成，那部分代码按冷代码优化。有就修训练清单。
+3. 发布完成后，在各平台 `build` job 的日志里查 `PGO training run failed` 和 `PGO serve training` 两种警告：单条训练失败、`serve` 的某条读取路由没有被调用或每次回答都是空的，都只给警告，发布照常完成，那部分代码按冷代码优化。有就修训练清单。
 4. 在 Wiki 仓库的最新提交上打与版本同名的附注 tag 并推送。
 
 ## PGO 训练清单
 
-CLI 命令和参数写死在 `.github/scripts/pgo-build.sh`，`serve` 的读取路由由 `pgo-serve.py` 从 `/openapi.json` 自动取，必填参数按名字填写。`bench.yml` 测的是普通编译版，发现不了训练清单的失效。
+CLI 命令和参数写死在 `.github/scripts/pgo-build.sh`，`serve` 的读取路由由 `pgo-serve.py` 从 `/openapi.json` 自动取，必填参数按名字填写，会话列表 `sessions` 填合成账号的前 30 个会话。`bench.yml` 测的是普通编译版，发现不了训练清单的失效。
 
+- `pgo-serve.py` 训练结束时检查覆盖：没有被调用的 GET 路由（需要的参数没有值，或媒体路由在账号里找不到有文件的消息）、每次回答都是空的路由，各发一条 `PGO serve training` 警告。不会被训练的路由登记在脚本的 `SKIPPED`，合成账号里本来就没有内容可读的路由登记在 `EMPTY_OK`，都写明原因；合成账号补上了相应的内容后，把它从 `EMPTY_OK` 去掉。
+- 不带会话就回答空对象的 CLI 读取（`chat counts`、`chat statuses`、`chat export-stats`），`pgo-build.sh` 里要写上会话。`run` 只在命令失败时警告，不检查回答是不是空的。
 - 删改 CLI 子命令或参数、改 `/api/` 路由必填参数的名字时，同步修改这两个脚本，并在本地运行一次，确认没有警告（Windows 上约 10 分钟）：
 
   ```sh
