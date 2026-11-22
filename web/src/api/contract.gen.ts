@@ -1792,7 +1792,10 @@ export interface ImageResult {
   localPath?: string;
   /** What went wrong; left out on success. */
   error?: string;
-  /** Why it failed: `not_found`, `no_key`, `unsupported_image`, … */
+  /**
+   * Why it failed: `not_found`, `decrypt_failed`, `unsupported_image`, or `invalid_arguments` for a payload with
+   * neither an md5 nor a `.dat` name.
+   */
   failureKind?: string;
   /** The file is only the thumbnail: the original is not on disk. */
   isThumb?: boolean;

@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
+import { afterEach, beforeEach, describe, expect, it, resetZone, vi } from '#test';
 import type { ChatSession } from '../api/chat';
 import type { SearchHit } from '../api/messages';
-import { SearchPanel, secondsOf } from './SearchPanel';
+import { rangeOf, SearchPanel, secondsOf } from './SearchPanel';
 import { useSearch } from './useSearch';
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -30,9 +30,10 @@ function serve(hits: (url: URL) => SearchHit[]) {
   }));
 }
 
-function Panel({ onOpenHit = () => {}, onJumpDay = () => {} }: { onOpenHit?: (hit: SearchHit) => void; onJumpDay?: (id: string, day: string) => void }) {
+/** The card and the search it shows, which is the page's: another `mount` makes the card anew, the search kept. */
+function Panel({ onOpenHit = () => {}, onJumpDay = () => {}, mount = 0 }: { onOpenHit?: (hit: SearchHit) => void; onJumpDay?: (id: string, day: string) => void; mount?: number }) {
   const search = useSearch();
-  return <SearchPanel session={sessions[0]} sessions={sessions} search={search} onOpenHit={onOpenHit} onJumpDay={onJumpDay} />;
+  return <SearchPanel key={mount} session={sessions[0]} sessions={sessions} search={search} onOpenHit={onOpenHit} onJumpDay={onJumpDay} />;
 }
 
 const submit = (text: string) => {
@@ -55,7 +56,7 @@ describe('SearchPanel', () => {
     const opened: SearchHit[] = [];
     render(<Panel onOpenHit={h => opened.push(h)} />);
     submit(' trip ');
-    await screen.findByText('已显示 20 条记录', { exact: false });
+    await screen.findByText('已显示 20 条记录（当前会话）', { exact: false });
     const query = new URL(calls[0], 'http://x').searchParams;
     expect(query.get('keyword')).toBe('trip');
     expect(query.get('session')).toBe('wxid_a');
@@ -69,7 +70,7 @@ describe('SearchPanel', () => {
     expect(results[1].querySelector('mark')!.textContent).toBe('Trip');
 
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
-    await screen.findByText('找到 23 条记录', { exact: false });
+    await screen.findByText('找到 23 条记录（当前会话）', { exact: false });
     expect(new URL(calls[1], 'http://x').searchParams.get('offset')).toBe('20');
     fireEvent.click(results[1]);
     expect(opened[0]._cursor).toBe('c.1');
@@ -84,13 +85,39 @@ describe('SearchPanel', () => {
     fireEvent.click(screen.getByRole('gridcell', { name: /^2026年10月9日/ }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     submit('trip');
-    await screen.findByText('找到 1 条记录', { exact: false });
+    await screen.findByText('找到 1 条记录（全部会话）', { exact: false });
     const query = new URL(calls.filter(c => c.includes('/chat/search')).at(-1)!, 'http://x').searchParams;
     expect(query.get('session')).toBeNull();
     expect(Number(query.get('start'))).toBe(secondsOf({ from: '2026-10-03', to: '' }).start);
     expect(Number(query.get('end'))).toBe(new Date(2026, 9, 9, 23, 59, 59).getTime() / 1000);
     // a hit of a group: the group and the sender, by the name in the group once its members are read
     await waitFor(() => expect(screen.getByRole('button', { name: /旅行计划/ }).querySelector('strong')!.textContent).toBe('设计协作群 · 小陈'));
+  });
+
+  it('starts again from the search its hits are of, and says which scope they were searched in (#1077)', async () => {
+    serve(() => [hit(1, 'g@chatroom')]);
+    const { rerender } = render(<Panel />);
+    fireEvent.click(screen.getByRole('button', { name: '全部会话' }));
+    fireEvent.click(screen.getByRole('button', { name: /^开始日期/ }));
+    fireEvent.click(screen.getByRole('gridcell', { name: /^2026年10月3日/ }));
+    fireEvent.click(screen.getByRole('gridcell', { name: /^2026年10月9日/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    submit('trip');
+    await screen.findByText('找到 1 条记录（全部会话）', { exact: false });
+    // the card made anew, as when another page is opened and then this one again: the search it shows is the same
+    rerender(<Panel mount={1} />);
+    expect(screen.getByRole('button', { name: '全部会话' }).getAttribute('aria-pressed')).toBe('true');
+    const field = screen.getByRole<HTMLInputElement>('searchbox');
+    expect([field.value, field.placeholder]).toEqual(['trip', '搜索全部会话的消息']);
+    expect(screen.getByRole('button', { name: /^开始日期/ }).getAttribute('aria-label')).toBe('开始日期：2026-10-03');
+    expect(screen.getByRole('button', { name: /^结束日期/ }).getAttribute('aria-label')).toBe('结束日期：2026-10-09');
+    expect(document.querySelector('.results-count')!.textContent).toMatch(/^找到 1 条记录（全部会话）/);
+    // the scope changed, not searched again: the hits are still said to be of all conversations
+    const searches = calls.filter(c => c.includes('/chat/search')).length;
+    fireEvent.click(screen.getByRole('button', { name: '当前会话' }));
+    expect(field.placeholder).toBe('搜索林沐的消息');
+    expect(document.querySelector('.results-count')!.textContent).toMatch(/^找到 1 条记录（全部会话）/);
+    expect(calls.filter(c => c.includes('/chat/search'))).toHaveLength(searches);
   });
 
   it('jumps to a day picked in a calendar that marks the days with messages', async () => {
@@ -112,8 +139,7 @@ describe('SearchPanel', () => {
 });
 
 describe('secondsOf (#241)', () => {
-  const zone = process.env.TZ;
-  afterEach(() => { process.env.TZ = zone; });
+  afterEach(resetZone);
   const local = (y: number, m: number, d: number, h = 0, min = 0, sec = 0) => new Date(y, m - 1, d, h, min, sec).getTime() / 1000;
   const midnight = (day: string) => { const [y, m, d] = day.split('-').map(Number); return local(y, m, d); };
 
@@ -142,5 +168,16 @@ describe('secondsOf (#241)', () => {
   it('leaves an open end open', () => {
     expect(secondsOf({ from: '', to: '' })).toEqual({ start: 0, end: 0 });
     expect(secondsOf({ from: '2026-10-03', to: '' }).end).toBe(0);
+  });
+
+  it('gives back the days it was given, for a card that starts from a search (#1077)', () => {
+    const query = (range: { from: string; to: string }) => ({ keyword: 'x', sessionId: null, ...secondsOf(range) });
+    for (const tz of ['Asia/Tokyo', 'UTC', 'America/Los_Angeles']) {
+      process.env.TZ = tz;
+      for (const range of [{ from: '2026-11-01', to: '2026-11-01' }, { from: '2026-03-08', to: '2026-12-31' }, { from: '2026-10-03', to: '' }, { from: '', to: '2027-01-01' }, { from: '', to: '' }]) {
+        expect(rangeOf(query(range)), tz + ' ' + JSON.stringify(range)).toEqual(range);
+      }
+    }
+    expect(rangeOf(null)).toEqual({ from: '', to: '' });
   });
 });

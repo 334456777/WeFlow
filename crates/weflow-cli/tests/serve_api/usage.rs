@@ -370,6 +370,65 @@ fn a_member_messages_limit_outside_1_to_100_is_a_usage_error() {
     }
 }
 
+/// `image decrypt` and `image resolve-cache` need an md5, a `.dat` name or both: without either, or with both empty,
+/// they are usage errors from the command line and from their routes (#1076), not images that are not found.
+#[test]
+fn an_image_without_md5_or_dat_name_is_a_usage_error() {
+    let root = temp_root("usage-image");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    // what clap says of the missing pair, on the command line and in a route's child process
+    let missing = "--md5 <MD5>|--dat-name <DAT_NAME>";
+
+    for query in [
+        "",
+        "session=wxid_bob&create-time=1700000000&no-data-url=true",
+    ] {
+        let target = format!("/image/resolve-cache?{query}");
+        refused(&server.call("GET", &target, ""), missing, &target);
+    }
+    for body in ["{}", r#"{"session": "wxid_bob", "force": true}"#] {
+        let reply = server.call("POST", "/image/decrypt", body);
+        refused(&reply, missing, &format!("POST /image/decrypt {body}"));
+    }
+    for command in ["resolve-cache", "decrypt"] {
+        refused_on_the_command_line(&home, &["image", command], missing);
+        refused_on_the_command_line(&home, &["image", command, "--session", "wxid_bob"], missing);
+    }
+
+    // given but empty, they name no image either: the command refuses them itself
+    let target = "/image/resolve-cache?md5=&dat-name=";
+    refused(
+        &server.call("GET", target, ""),
+        "missing image identifier",
+        target,
+    );
+    let reply = server.call("POST", "/image/decrypt", r#"{"md5": ""}"#);
+    refused(
+        &reply,
+        "missing image identifier",
+        "POST /image/decrypt md5=''",
+    );
+    for command in ["resolve-cache", "decrypt"] {
+        refused_on_the_command_line(
+            &home,
+            &["image", command, "--md5", ""],
+            "missing image identifier",
+        );
+    }
+
+    // an image that is named but not there is still not found
+    let target = format!("/image/resolve-cache?md5={}", "f".repeat(32));
+    let reply = server.call("GET", &target, "");
+    assert_eq!(reply.status, 404, "{target}: {}", reply.body);
+    let reply = server.call(
+        "POST",
+        "/image/decrypt",
+        &format!(r#"{{"dat-name": "{}"}}"#, "f".repeat(32)),
+    );
+    assert_eq!(reply.status, 404, "POST /image/decrypt: {}", reply.body);
+}
+
 /// A negative report year written after `--year` is a number to clap, not an option of its own, so the range of the
 /// year refuses it (#1066) as it refuses the `--year=-5` spelling.
 #[test]

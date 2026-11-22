@@ -15,6 +15,7 @@ description: 新增、修改或删除 weflow 的 CLI 子命令和参数时要一
 - 运行时报错的中文在 `weflow-core/src/messages_zh.rs` 的 `CATALOG`，`{}` 匹配任意文字；没有对应项的报错显示英文。新的报错要在终端里显示中文时加一项。
 - 不能为负的参数（`--limit`、`--offset`、`--cursor`，以及 Unix 秒的 `--start`、`--end`、`--since`）用 [`numbers.rs`](../../../crates/weflow-cli/src/numbers.rs) 的 `non_negative_*` 作 `value_parser`，并写 `allow_negative_numbers = true`：`--limit -1` 才走到取值校验、报 `-1 is not in 0..=…`，而不是 clap 的 `unexpected argument`。进程内路由的 `Given` 读这些参数用 `non_negative`、`non_negative_or`，否则 `typed_reads_take_what_clap_takes_and_read_it_the_same` 失败。每个 `--limit` 的帮助写明 0 的含义。
 - 有上下限的计数（`group member-messages` 的 `--limit`，1 到 100）：范围常量写在 `weflow-core`（如 `MEMBER_MESSAGES_LIMIT`），服务层用它返回用法错误，命令行用 `numbers.rs` 的 `usize_in(范围)`、进程内路由的 `Given` 用 `within_or`，三处同一个范围；范围之外（含 0 和负数）都报用法错误。
+- 几个可选参数至少要给一个（`image decrypt`、`image resolve-cache` 的 `--md5`、`--dat-name`）：在参数结构上加 `#[command(group(ArgGroup::new(…).args([…]).required(true).multiple(true)))]`，缺少时 clap 报用法错误并列出这组参数；不写 `multiple(true)` 时组里的参数互相冲突。`/openapi.json` 表达不了「至少一个」，在这些参数的帮助里写明。给了空值也算没给的，由服务层的兜底检查返回用法错误（`AppError::usage`）。
 
 ## serve
 

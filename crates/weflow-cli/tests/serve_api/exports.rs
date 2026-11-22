@@ -98,6 +98,12 @@ fn list_exports_write_the_rows_in_every_format() {
             } else {
                 std::fs::read_to_string(&path).unwrap()
             };
+            // a CSV starts with the byte order mark, which Excel needs to read it as UTF-8 (#1075)
+            assert_eq!(
+                text.starts_with('\u{feff}'),
+                format == "csv",
+                "{route} as {format} ({more})"
+            );
             assert!(
                 text.contains("wxid_bob"),
                 "{route} as {format} ({more}) has no row for wxid_bob"
@@ -223,6 +229,10 @@ fn the_footprint_is_exported_as_json_or_as_a_timeline() {
     let (code, v, stderr) = export("csv");
     assert_eq!(code, 0, "{stderr}");
     let csv = std::fs::read_to_string(v["data"]["out"].as_str().unwrap()).unwrap();
+    // the byte order mark Excel needs to read it as UTF-8 (#1075), then the table
+    let csv = csv
+        .strip_prefix('\u{feff}')
+        .unwrap_or_else(|| panic!("no byte order mark: {csv}"));
     let lines: Vec<&str> = csv.lines().collect();
     assert_eq!(
         lines[0],

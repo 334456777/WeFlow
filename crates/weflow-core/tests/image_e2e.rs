@@ -324,11 +324,42 @@ fn reports_missing_files_keys_and_bad_keys() {
     let missing = hub.image_decrypt(&p);
     assert!(!missing.is_ok());
     assert_eq!(missing.failure_kind, Some("not_found"));
-    assert!(hub
-        .image_decrypt(&ImagePayload::default())
-        .error
-        .unwrap()
-        .contains("missing image identifier"));
+
+    // a payload that names no image, not even with an empty md5 or .dat name, is a usage error (#1076)
+    for unnamed in [
+        ImagePayload::default(),
+        ImagePayload {
+            session_id: Some("wxid_bob".into()),
+            image_md5: Some(String::new()),
+            image_dat_name: Some(String::new()),
+            create_time: Some(1_700_000_000),
+            ..Default::default()
+        },
+    ] {
+        for (what, r) in [
+            ("decrypt", hub.image_decrypt(&unnamed)),
+            ("resolve-cache", hub.image_resolve_cache(&unnamed)),
+        ] {
+            assert_eq!(r.failure_kind, Some("invalid_arguments"), "{what}");
+            assert_eq!(
+                r.error.as_deref(),
+                Some("missing image identifier"),
+                "{what}"
+            );
+            let err = r.into_answer().unwrap_err();
+            assert_eq!(
+                (err.code.as_str(), err.exit_code, err.message.as_str()),
+                ("invalid_arguments", 2, "missing image identifier"),
+                "{what}"
+            );
+            assert!(err.details.is_none(), "{what}: {:?}", err.details);
+        }
+    }
+    // in a batch it is that payload's row, the batch itself is answered
+    let batch =
+        serde_json::to_value(hub.image_resolve_cache_batch(&[ImagePayload::default()])).unwrap();
+    assert_eq!(batch["rows"][0]["failureKind"], "invalid_arguments");
+    assert_eq!(batch["rows"][0]["error"], "missing image identifier");
 
     // wrong AES key: the strict padding check rejects it
     let plain = jpeg(2000, 5);

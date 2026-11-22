@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 
 use crate::files::{
-    export_path, make_parent, write_csv_file, write_json_file, write_text_file, zip_target,
+    export_path, make_parent, write_csv_file, write_csv_text, write_json_file, write_text_file,
+    zip_target,
 };
 
 use super::analytics::day_span;
@@ -241,7 +242,7 @@ pub(crate) async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> A
                 for row in &rows {
                     csv += &(row.iter().map(cell).collect::<Vec<_>>().join(",") + "\n");
                 }
-                write_text_file(&path, &csv)?;
+                write_csv_text(&path, &csv)?;
             } else {
                 weflow_core::export::export_table_excel(&headers, &rows, &path)
                     .map_err(|err| AppError::runtime(format!("{err:#}")))?;

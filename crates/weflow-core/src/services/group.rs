@@ -12,7 +12,7 @@ use crate::contract::{
     EmojiCount, GroupChat, GroupExported, GroupHours, GroupMedia, GroupMember, GroupRank,
     MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
-use crate::export_msg::csv_cell;
+use crate::export_msg::{csv_cell, write_csv};
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
@@ -1288,7 +1288,7 @@ impl ServiceHub {
         })
     }
 
-    /// Writes a member's messages in a group as CSV (BOM) or XLSX depending on the extension.
+    /// Writes a member's messages in a group as CSV or XLSX depending on the extension.
     pub fn group_export_member_messages(
         &self,
         chatroom_id: &str,
@@ -1421,9 +1421,7 @@ impl ServiceHub {
                 .iter()
                 .map(|r| r.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(","))
                 .collect();
-            std::fs::write(out, format!("\u{feff}{}", lines.join("\n"))).map_err(|e| {
-                AppError::runtime(format!("failed to write {}: {e}", out.display()))
-            })?;
+            write_csv(out, &lines.join("\n")).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         } else {
             use rust_xlsxwriter::{Format, FormatAlign, Workbook};
             let bold = Format::new()
@@ -1620,9 +1618,7 @@ impl ServiceHub {
                 .iter()
                 .map(|r| r.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(","))
                 .collect();
-            std::fs::write(out, format!("\u{feff}{}", lines.join("\n"))).map_err(|e| {
-                AppError::runtime(format!("failed to write {}: {e}", out.display()))
-            })?;
+            write_csv(out, &lines.join("\n")).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         } else {
             use rust_xlsxwriter::{Format, FormatAlign, Workbook};
             let bold = Format::new()

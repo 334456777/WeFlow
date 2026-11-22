@@ -5,9 +5,20 @@ import { setSystemTime as setTime, vi as bunVi } from 'bun:test';
 export { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, test } from 'bun:test';
 
 const realSetTimeout = globalThis.setTimeout;
+// the zone the tests run in, which `bun test` sets to UTC without putting it in `process.env.TZ`
+const startZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const fake = { useFakeTimers: bunVi.useFakeTimers, useRealTimers: bunVi.useRealTimers };
 const stubbed = new Map<string, PropertyDescriptor | undefined>();
 let dateOnly = false;
+
+/**
+ * The time zone the tests started in, set again, for an `afterEach` of tests that set `process.env.TZ` (#1087).
+ * `process.env.TZ` reads `undefined` under `bun test`: assigning that back sets the string "undefined", which leaves
+ * the process in the zone set last, and deleting it puts the process in the system's zone, not the tests' UTC.
+ */
+export function resetZone() {
+  process.env.TZ = startZone;
+}
 
 /** The promise callbacks queued so far, and those they queue in turn. */
 async function settle() {
