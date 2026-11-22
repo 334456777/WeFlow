@@ -149,10 +149,10 @@ impl ServeSettings {
             "max_tasks" => self.max_tasks = Some(as_int_in(value, &name, 1, u16::MAX)?),
             "max_reads" => self.max_reads = Some(as_int_in(value, &name, 1, u16::MAX)?),
             "max_media" => self.max_media = Some(as_int_in(value, &name, 1, u16::MAX)?),
-            "log_requests" => self.log_requests = Some(as_bool(value)?),
-            "insight" => self.insight = Some(as_bool(value)?),
-            "image_auto_download" => self.image_auto_download = Some(as_bool(value)?),
-            "open_browser" => self.open_browser = Some(as_bool(value)?),
+            "log_requests" => self.log_requests = Some(as_bool(value, &name)?),
+            "insight" => self.insight = Some(as_bool(value, &name)?),
+            "image_auto_download" => self.image_auto_download = Some(as_bool(value, &name)?),
+            "open_browser" => self.open_browser = Some(as_bool(value, &name)?),
             _ => unreachable!("`{key}` is not one of ServeSettings::KEYS"),
         }
         Ok(())
@@ -230,18 +230,66 @@ impl ConfigStore {
     /// The config file at `path`, as JSON or TOML; the default config when there is none.
     ///
     /// # Errors
-    /// When the file cannot be read or parsed.
+    /// When the file cannot be read or parsed. The message is that of the parser of the format the file is in (JSON
+    /// when it starts with `{`, else TOML), with the line and column of the mistake and without the text found
+    /// there: the config holds keys.
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
         let raw = fs::read_to_string(path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        let mut parsed: Self = serde_json::from_str(&raw)
-            .or_else(|_| toml::from_str::<Self>(&raw))
-            .with_context(|| format!("failed to parse {}", path.display()))?;
+        let mut parsed =
+            Self::parse(&raw).with_context(|| format!("failed to parse {}", path.display()))?;
         parsed.rename_legacy_keys();
+        parsed.settle_checked_values();
         Ok(parsed)
+    }
+
+    /// The config in `text`: JSON when it starts with `{`, else TOML, so that a mistake is reported by the parser
+    /// of the format the file is in (#1044). A file with nothing in it is the default config.
+    fn parse(text: &str) -> Result<Self> {
+        // some editors put a byte order mark first, which neither format has
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+        if text.trim_start().starts_with('{') {
+            return serde_json::from_str(text)
+                .map_err(|err| anyhow::anyhow!("{}", without_found_value(&err.to_string())));
+        }
+        toml::from_str(text).map_err(|err| {
+            let message = without_found_value(err.message());
+            // `Display` of the error shows the line of the file it is at: the config holds keys
+            let at = err.span().and_then(|span| {
+                let before = text.get(..span.start)?;
+                let line = before.matches('\n').count() + 1;
+                let column = before
+                    .rsplit('\n')
+                    .next()
+                    .map_or(0, |tail| tail.chars().count())
+                    + 1;
+                Some(format!(" at line {line} column {column}"))
+            });
+            anyhow::anyhow!("TOML error: {message}{}", at.unwrap_or_default())
+        })
+    }
+
+    /// Gives the values of a profile that `set_key` checks (`no_progress`, `progress_delay_seconds`) the form it
+    /// keeps them in (#1042), for a file written before it did: `no_progress` as `1` or `yes` is `true`. A value the
+    /// key does not take stays as it is.
+    fn settle_checked_values(&mut self) {
+        let names: Vec<String> = self.profiles.keys().cloned().collect();
+        for name in names {
+            for key in CHECKED_EXTRA_KEYS {
+                let Some(value) = self
+                    .profiles
+                    .get(&name)
+                    .and_then(|profile| profile.extra.get(*key))
+                    .cloned()
+                else {
+                    continue;
+                };
+                let _ = self.set_key(Some(&name), key, value);
+            }
+        }
     }
 
     /// Gives the keys of every profile that carry a name of WeFlow's desktop app (`dbPath`, `aiInsightAllowContext`)
@@ -394,8 +442,9 @@ impl ConfigStore {
     /// WeFlow does not read goes to the profile's `extra`.
     ///
     /// # Errors
-    /// A usage error for a name of WeFlow's desktop app ([`refuse_renamed`]), a value the key does not take, or a
-    /// profile named in `key` that does not exist.
+    /// A usage error for a name of WeFlow's desktop app ([`refuse_renamed`]), a value the key does not take, a
+    /// profile named in `key` that does not exist, or a name for a new profile that cannot be addressed (empty, with a
+    /// `.`, `/` or `\`, or the name of a setting).
     pub fn set_key(&mut self, profile: Option<&str>, key: &str, value: Value) -> AppResult<()> {
         refuse_renamed(key)?;
         if key == "lang" {
@@ -415,10 +464,16 @@ impl ConfigStore {
             return self.serve.set(name, value);
         }
         if key == "current_profile" {
-            self.current_profile = as_string(value)?;
-            self.profiles
-                .entry(self.current_profile.clone())
-                .or_default();
+            let typed = as_string(value)?;
+            // a profile the file has can be switched to whatever its name is (a hand-written file may hold names
+            // `config set` refuses); only the name of a new one is checked (#1043)
+            let name = if self.profiles.contains_key(&typed) {
+                typed
+            } else {
+                checked_profile_name(&typed)?
+            };
+            self.profiles.entry(name.clone()).or_default();
+            self.current_profile = name;
             return Ok(());
         }
 
@@ -429,12 +484,17 @@ impl ConfigStore {
             .filter(|name| named_in_key && !self.has_profile(name))
         {
             // `serve.port` or `defualt.wxid`: a profile is made only by `current_profile` (#813)
-            let mut message = format!(
-                "there is no profile named '{name}'; `config set current_profile {name}` makes one"
-            );
+            let mut hints = Vec::new();
+            if checked_profile_name(name).is_ok() {
+                hints.push(format!("`config set current_profile {name}` makes one"));
+            }
             let setting = format!("{name}_{key}");
             if is_known_key(&setting) {
-                message.push_str(&format!(", and the setting is written {setting}"));
+                hints.push(format!("the setting is written {setting}"));
+            }
+            let mut message = format!("there is no profile named '{name}'");
+            if !hints.is_empty() {
+                message.push_str(&format!("; {}", hints.join(", and ")));
             }
             return Err(AppError::usage(message));
         }
@@ -467,10 +527,39 @@ impl ConfigStore {
             "ai_model_api_max_tokens" => {
                 target.ai_model_api_max_tokens = Some(as_int_in(value, &key, 1, u32::MAX)?)
             }
-            "ai_insight_enabled" => target.ai_insight_enabled = Some(as_bool(value)?),
+            "ai_insight_enabled" => target.ai_insight_enabled = Some(as_bool(value, &key)?),
+            "no_progress" => {
+                let off = as_bool(value, &key)?;
+                target.extra.insert(key, Value::Bool(off));
+            }
+            "progress_delay_seconds" => {
+                let seconds = as_seconds(value, &key)?;
+                target.extra.insert(key, json!(seconds));
+            }
             other => {
                 target.extra.insert(other.to_string(), value);
             }
+        }
+        Ok(())
+    }
+
+    /// Removes the profile `name` from the file (`config remove-profile`), with the account and keys it holds.
+    /// WeFlow's cache is left as it is.
+    ///
+    /// # Errors
+    /// A usage error when there is no such profile, or when it is the current one: the commands would be left with
+    /// none to read.
+    pub fn remove_profile(&mut self, name: &str) -> AppResult<()> {
+        let shown = name.escape_debug();
+        if name == self.current_profile {
+            return Err(AppError::usage(format!(
+                "'{shown}' is the current profile; switch to another with `config set current_profile` first"
+            )));
+        }
+        if self.profiles.remove(name).is_none() {
+            return Err(AppError::usage(format!(
+                "there is no profile named '{shown}'; `config profiles` lists them"
+            )));
         }
         Ok(())
     }
@@ -870,6 +959,9 @@ const EXTRA_KEYS: &[&str] = &[
     "progress_delay_seconds",
 ];
 
+/// The keys of `EXTRA_KEYS` that `set_key` checks and keeps as one type: a switch, a number of seconds.
+const CHECKED_EXTRA_KEYS: &[&str] = &["no_progress", "progress_delay_seconds"];
+
 /// Whether `key` (without a profile) is one `config set --help` lists.
 fn is_known_key(key: &str) -> bool {
     is_profile_key(key)
@@ -957,6 +1049,21 @@ fn edit_distance(a: &[char], b: &[char]) -> usize {
     previous[b.len()]
 }
 
+/// `message` of a parser, without the value it found where it wanted another type: `invalid type: integer `42`,
+/// expected a string` becomes `invalid type, expected a string`, as the value may be a key (#1044).
+fn without_found_value(message: &str) -> String {
+    for kind in ["invalid type", "invalid value"] {
+        let wanted = message
+            .strip_prefix(kind)
+            .and_then(|rest| rest.strip_prefix(": "))
+            .and_then(|rest| rest.rsplit_once(", expected "));
+        if let Some((_, expected)) = wanted {
+            return format!("{kind}, expected {expected}");
+        }
+    }
+    message.to_string()
+}
+
 fn as_string(value: Value) -> AppResult<String> {
     match value {
         Value::String(s) => Ok(s),
@@ -996,16 +1103,70 @@ where
         })
 }
 
-fn as_bool(value: Value) -> AppResult<bool> {
-    match value {
-        Value::Bool(b) => Ok(b),
-        Value::String(s) => match s.as_str() {
-            "true" | "1" | "yes" | "on" => Ok(true),
-            "false" | "0" | "no" | "off" => Ok(false),
-            _ => Err(AppError::usage("expected boolean value")),
-        },
-        _ => Err(AppError::usage("expected boolean value")),
+/// A switch for the key `key`: `true` or `false`, or `1`/`0`, `yes`/`no`, `on`/`off`, in any case.
+fn as_bool(value: Value, key: &str) -> AppResult<bool> {
+    let text = match &value {
+        Value::Bool(b) => return Ok(*b),
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => s.trim().to_ascii_lowercase(),
+        _ => String::new(),
+    };
+    match text.as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => {
+            let shown = match &value {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            Err(AppError::usage(format!(
+                "invalid value '{shown}' for {key}; use true or false"
+            )))
+        }
     }
+}
+
+/// A number of seconds, 0 or more, for the key `key`; given as a number or as text that holds one.
+fn as_seconds(value: Value, key: &str) -> AppResult<u64> {
+    let text = match &value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    crate::output::parse_delay(&text).ok_or_else(|| {
+        AppError::usage(format!(
+            "invalid value '{text}' for {key}; use a whole number of seconds, 0 or more"
+        ))
+    })
+}
+
+/// Names a profile cannot take besides those of the keys `config set` lists: the file's own top-level keys, and
+/// `config_path`, which is kept beside the config.
+const RESERVED_PROFILE_NAMES: &[&str] = &["profiles", "serve", "extra", "config_path"];
+
+/// The name `typed` makes for a new profile (#1043), without the spaces around it.
+///
+/// `<profile>.<key>` is read at the first `.`, so a name with one cannot be addressed, and nor can one that is also a
+/// key: `wxid.db_path` is read as a key of the profile `wxid`, while `wxid` itself is the current profile's.
+fn checked_profile_name(typed: &str) -> AppResult<String> {
+    let name = typed.trim();
+    if name.is_empty() {
+        return Err(AppError::usage("a profile name cannot be empty"));
+    }
+    let shown = name.escape_debug();
+    if name
+        .chars()
+        .any(|c| matches!(c, '.' | '/' | '\\') || c.is_control())
+    {
+        return Err(AppError::usage(format!(
+            "invalid profile name '{shown}'; a name cannot hold a dot, a slash, a backslash or a control character"
+        )));
+    }
+    if is_known_key(name) || RESERVED_PROFILE_NAMES.contains(&name) {
+        return Err(AppError::usage(format!(
+            "'{shown}' is reserved for the config file's own settings; choose another profile name"
+        )));
+    }
+    Ok(name.to_string())
 }
 
 #[cfg(test)]
@@ -1426,15 +1587,25 @@ mod tests {
     #[test]
     fn a_profile_is_not_made_by_a_key() {
         let mut store = ConfigStore::default();
+        // `serve` cannot name a profile (#1043), so only the setting is offered
         let err = store
             .set_key_from_text(None, "serve.port", "8080")
             .unwrap_err();
         assert!(
-            err.message.contains("current_profile serve"),
+            !err.message.contains("current_profile serve"),
             "{}",
             err.message
         );
         assert!(err.message.contains("serve_port"), "{}", err.message);
+        // a name that can be one is offered, for a slip or for a profile still to make
+        let err = store
+            .set_key_from_text(None, "work.wxid", "wxid_a")
+            .unwrap_err();
+        assert!(
+            err.message.contains("current_profile work"),
+            "{}",
+            err.message
+        );
         let err = store
             .set_key_from_text(None, "defualt.wxid", "wxid_a")
             .unwrap_err();
@@ -1458,6 +1629,416 @@ mod tests {
             .unwrap();
         assert_eq!(store.get_key(None, "default.wxid"), json!("wxid_b"));
         assert_eq!(store.get_key(None, "work.wxid"), Value::Null);
+    }
+
+    /// A switch is taken as `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off` in any case, and a value that is none of
+    /// them names the key and the words it takes (#1042).
+    #[test]
+    fn a_switch_takes_every_spelling_of_yes_and_no() {
+        let mut store = ConfigStore::default();
+        store
+            .set_key(None, "current_profile", json!("work"))
+            .unwrap();
+        for (typed, on) in [
+            ("true", true),
+            ("TRUE", true),
+            ("1", true),
+            ("yes", true),
+            ("Yes", true),
+            ("on", true),
+            (" ON ", true),
+            ("false", false),
+            ("False", false),
+            ("0", false),
+            ("no", false),
+            ("OFF", false),
+        ] {
+            for key in [
+                "serve_insight",
+                "serve_log_requests",
+                "serve_open_browser",
+                "serve_image_auto_download",
+                "ai_insight_enabled",
+                "work.ai_insight_enabled",
+                "no_progress",
+            ] {
+                store.set_key_from_text(None, key, typed).unwrap();
+                assert_eq!(store.get_key(None, key), json!(on), "{key}={typed}");
+            }
+        }
+        for (key, bad) in [
+            ("serve_insight", "maybe"),
+            ("serve_log_requests", "2"),
+            ("serve_open_browser", "1.5"),
+            ("ai_insight_enabled", "[1]"),
+            ("no_progress", "null"),
+            ("no_progress", ""),
+        ] {
+            let err = store.set_key_from_text(None, key, bad).unwrap_err();
+            assert_eq!(err.code, "invalid_arguments", "{key}={bad}");
+            assert!(
+                err.message.contains(key) && err.message.contains("use true or false"),
+                "{key}={bad}: {}",
+                err.message
+            );
+        }
+    }
+
+    /// `no_progress` and `progress_delay_seconds` are checked by `set_key` like the other keys, wherever the value
+    /// comes from, and kept as a switch and a number whatever was typed (#1042).
+    #[test]
+    fn the_progress_settings_are_checked_and_kept_as_one_type() {
+        let mut store = ConfigStore::default();
+        for typed in ["1", "yes", "on", "TRUE"] {
+            store.set_key_from_text(None, "no_progress", typed).unwrap();
+            assert_eq!(store.get_key(None, "no_progress"), json!(true), "{typed}");
+        }
+        store.set_key(None, "no_progress", json!("off")).unwrap();
+        assert_eq!(store.get_key(None, "no_progress"), json!(false));
+        store.set_key(None, "no_progress", json!(1)).unwrap();
+        assert_eq!(store.get_key(None, "no_progress"), json!(true));
+        let err = store
+            .set_key_from_text(None, "no_progress", "maybe")
+            .unwrap_err();
+        assert!(err.message.contains("no_progress"), "{}", err.message);
+        // the value that was there stays
+        assert_eq!(store.get_key(None, "no_progress"), json!(true));
+
+        for typed in ["5", " 5 ", "\"5\""] {
+            store
+                .set_key_from_text(None, "progress_delay_seconds", typed)
+                .unwrap();
+            assert_eq!(
+                store.get_key(None, "progress_delay_seconds"),
+                json!(5),
+                "{typed}"
+            );
+        }
+        store
+            .set_key(None, "progress_delay_seconds", json!(0))
+            .unwrap();
+        assert_eq!(store.get_key(None, "progress_delay_seconds"), json!(0));
+        for bad in ["-1", "abc", "1.5", "1e3", "true", "[1]", ""] {
+            let err = store
+                .set_key_from_text(None, "progress_delay_seconds", bad)
+                .unwrap_err();
+            assert!(
+                err.message
+                    .contains("use a whole number of seconds, 0 or more")
+                    && err.message.contains("progress_delay_seconds"),
+                "{bad}: {}",
+                err.message
+            );
+        }
+        assert_eq!(store.get_key(None, "progress_delay_seconds"), json!(0));
+    }
+
+    /// A file written before `set_key` checked the progress settings holds `1` or `yes` for `no_progress`: it is read
+    /// as `true`, and a value no setting takes is left for the file's owner to see (#1042).
+    #[test]
+    fn the_progress_settings_of_an_old_file_are_read_as_set_keeps_them() {
+        let dir = temp_dir("weflow-config-progress");
+        let path = dir.join("config.json");
+        fs::write(
+            &path,
+            json!({
+                "current_profile": "a",
+                "profiles": {
+                    "a": { "extra": { "no_progress": 1, "progress_delay_seconds": "9" } },
+                    "b": { "extra": { "no_progress": "yes", "progress_delay_seconds": 0 } },
+                    "c": { "extra": { "no_progress": "on" } },
+                    "d": { "extra": { "no_progress": "maybe", "progress_delay_seconds": "soon" } },
+                    "e": { "extra": { "no_progress": false } },
+                    "f": {}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let store = ConfigStore::load(&path).unwrap();
+        assert_eq!(store.get_key(None, "no_progress"), json!(true));
+        assert_eq!(store.get_key(None, "progress_delay_seconds"), json!(9));
+        assert_eq!(store.get_key(None, "b.no_progress"), json!(true));
+        assert_eq!(store.get_key(None, "b.progress_delay_seconds"), json!(0));
+        assert_eq!(store.get_key(None, "c.no_progress"), json!(true));
+        assert_eq!(store.get_key(None, "d.no_progress"), json!("maybe"));
+        assert_eq!(
+            store.get_key(None, "d.progress_delay_seconds"),
+            json!("soon")
+        );
+        assert_eq!(store.get_key(None, "e.no_progress"), json!(false));
+        assert!(store.profiles["f"].extra.is_empty());
+    }
+
+    /// A new profile is made only under a name `<profile>.<key>` can address and no key is spelt as (#1043).
+    #[test]
+    fn a_profile_is_not_made_under_a_name_that_cannot_be_addressed() {
+        let mut store = ConfigStore::default();
+        for name in [
+            "",
+            "  ",
+            "a.b",
+            ".",
+            "a/b",
+            "a\\b",
+            "a\nb",
+            "a\u{7}",
+            // names of the keys `config set` lists, of the file's own and of what is kept beside it
+            "wxid",
+            "lang",
+            "db_path",
+            "current_profile",
+            "serve_port",
+            "no_progress",
+            "profiles",
+            "serve",
+            "extra",
+            "config_path",
+        ] {
+            let err = store
+                .set_key(None, "current_profile", json!(name))
+                .unwrap_err();
+            assert_eq!(err.code, "invalid_arguments", "{name:?}");
+            // said once, without the name's control characters as they are
+            assert!(!err.message.contains(['\n', '\u{7}']), "{}", err.message);
+            assert_eq!(store.current_profile, "default", "{name:?}");
+            assert_eq!(store.profiles.len(), 1, "{name:?}: {:?}", store.profiles);
+        }
+        let err = store
+            .set_key_from_text(None, "current_profile", "a.b")
+            .unwrap_err();
+        assert!(err.message.contains("'a.b'"), "{}", err.message);
+        assert!(err.message.contains("dot"), "{}", err.message);
+
+        // names that can be addressed, with the spaces around them left off; a number is one too
+        for (typed, made) in [
+            ("work", "work"),
+            ("  home  ", "home"),
+            ("家里", "家里"),
+            ("my account", "my account"),
+            ("1", "1"),
+            ("my-profile_2", "my-profile_2"),
+            // only a whole key is a key
+            ("wxid2", "wxid2"),
+            ("profile", "profile"),
+        ] {
+            store
+                .set_key_from_text(None, "current_profile", typed)
+                .unwrap();
+            assert_eq!(store.current_profile, made, "{typed:?}");
+            assert!(store.profiles.contains_key(made), "{typed:?}");
+            store
+                .set_key_from_text(None, &format!("{made}.wxid"), "wxid_a")
+                .unwrap_or_else(|err| panic!("{made:?}: {err}"));
+            assert_eq!(
+                store.get_key(None, &format!("{made}.wxid")),
+                json!("wxid_a")
+            );
+        }
+        // switching to a profile there is takes no new name
+        store
+            .set_key(None, "current_profile", json!("default"))
+            .unwrap();
+        assert_eq!(store.current_profile, "default");
+    }
+
+    /// A file written by hand or by an earlier version may hold a profile `config set` would not make: it can be
+    /// switched to and read, and `remove-profile` takes it away (#1043).
+    #[test]
+    fn a_profile_with_a_name_set_would_refuse_can_still_be_used_and_removed() {
+        let dir = temp_dir("weflow-config-odd-profile");
+        let path = dir.join("config.json");
+        fs::write(
+            &path,
+            json!({
+                "current_profile": "",
+                "profiles": { "": {}, "a.b": { "wxid": "odd" }, "default": {} }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut store = ConfigStore::load(&path).unwrap();
+        assert_eq!(store.current_profile, "");
+        store
+            .set_key(None, "current_profile", json!("a.b"))
+            .unwrap();
+        assert_eq!(store.get_key(None, "wxid"), json!("odd"));
+        store.set_key(None, "current_profile", json!("")).unwrap();
+        assert_eq!(store.current_profile, "");
+        store
+            .set_key(None, "current_profile", json!("default"))
+            .unwrap();
+        store.remove_profile("").unwrap();
+        store.remove_profile("a.b").unwrap();
+        assert_eq!(store.profiles.keys().collect::<Vec<_>>(), ["default"]);
+    }
+
+    /// `remove_profile` takes a profile out of the file; the current one, and one there is not, are refused (#1043).
+    #[test]
+    fn a_profile_is_removed_unless_it_is_the_current_one() {
+        let mut store = ConfigStore::default();
+        store
+            .set_key(None, "current_profile", json!("work"))
+            .unwrap();
+        store.set_key(None, "wxid", json!("wxid_work")).unwrap();
+        store
+            .set_key(None, "current_profile", json!("home"))
+            .unwrap();
+        store.set_key(None, "wxid", json!("wxid_home")).unwrap();
+        let before = store.clone();
+
+        let err = store.remove_profile("home").unwrap_err();
+        assert_eq!(err.code, "invalid_arguments");
+        assert!(
+            err.message.contains("current profile")
+                && err.message.contains("config set current_profile"),
+            "{}",
+            err.message
+        );
+        let err = store.remove_profile("nobody").unwrap_err();
+        assert_eq!(err.code, "invalid_arguments");
+        assert!(
+            err.message.contains("'nobody'") && err.message.contains("config profiles"),
+            "{}",
+            err.message
+        );
+        assert_eq!(
+            serde_json::to_value(&store).unwrap(),
+            serde_json::to_value(&before).unwrap(),
+            "a refusal changes nothing"
+        );
+
+        store.remove_profile("work").unwrap();
+        assert_eq!(
+            store.profiles.keys().collect::<Vec<_>>(),
+            ["default", "home"]
+        );
+        assert_eq!(store.current_profile, "home");
+        assert_eq!(store.get_key(None, "wxid"), json!("wxid_home"));
+        assert_eq!(store.get_key(None, "work.wxid"), Value::Null);
+        // `default` is a profile like the others: it goes when another is the current one
+        store.remove_profile("default").unwrap();
+        assert_eq!(store.profiles.keys().collect::<Vec<_>>(), ["home"]);
+        // the name is taken as it is: `wxid` is no key of a profile here
+        assert!(store.remove_profile("home.wxid").is_err());
+    }
+
+    /// A config in JSON that does not parse is reported by the JSON parser, with the line and column of the mistake
+    /// (#1044).
+    #[test]
+    fn a_json_config_that_does_not_parse_is_reported_as_json() {
+        let dir = temp_dir("weflow-config-bad-json");
+        let path = dir.join("config.json");
+        fs::write(
+            &path,
+            "{\n  \"current_profile\": \"default\",\n  \"profiles\": { \"default\": { \"wxid\": \"a\", } }\n}\n",
+        )
+        .unwrap();
+        let err = format!("{:#}", ConfigStore::load(&path).unwrap_err());
+        assert!(err.contains("failed to parse"), "{err}");
+        assert!(err.contains("line 3"), "{err}");
+        assert!(!err.contains("TOML"), "{err}");
+    }
+
+    /// An error does not show the text it was found at: the config holds keys, and the file may be on one line
+    /// (#1044).
+    #[test]
+    fn a_config_that_does_not_parse_does_not_show_its_keys() {
+        let dir = temp_dir("weflow-config-secret");
+        let path = dir.join("config.json");
+        let secret = "5ecretKeyThatMustNotBeShown";
+        let broken = [
+            // a mistake of syntax
+            format!("{{ \"profiles\": {{ \"default\": {{ \"decrypt_key\": \"{secret}\", }} }} }}"),
+            // a key of the wrong type, which the parser names by its value
+            format!("{{ \"profiles\": {{ \"default\": {{ \"decrypt_key\": 123456789, \"wxid\": \"{secret}\" }} }} }}"),
+            format!("{{ \"profiles\": {{ \"default\": {{ \"image_xor_key\": \"{secret}\" }} }} }}"),
+            format!("{{ \"profiles\": {{ \"default\": {{ \"decrypt_key\": \"{secret}\"  \"wxid\": 1 }} }} }}"),
+            // the same in TOML
+            format!("[profiles.default]\ndecrypt_key = \"{secret}\" oops\n"),
+            format!("[profiles.default]\ndecrypt_key = 123456789\nimage_xor_key = \"{secret}\"\n"),
+            format!("profiles = {{ default = {{ decrypt_key = \"{secret}\", wxid = }} }}\n"),
+        ];
+        for text in broken {
+            fs::write(&path, &text).unwrap();
+            let err = format!("{:#}", ConfigStore::load(&path).unwrap_err());
+            assert!(err.contains("failed to parse"), "{text}: {err}");
+            assert!(!err.contains(secret), "{text}: {err}");
+            assert!(!err.contains("123456789"), "{text}: {err}");
+            assert!(!err.contains("decrypt_key"), "{text}: {err}");
+        }
+    }
+
+    /// The parsers name the value they found where they wanted another type; the message keeps what was wanted and
+    /// where, not what was found (#1044).
+    #[test]
+    fn what_a_parser_found_is_left_out_of_its_message() {
+        let json = serde_json::from_str::<ProfileConfig>("{\n \"decrypt_key\": 123456789\n}")
+            .unwrap_err()
+            .to_string();
+        assert!(json.contains("123456789"), "the reason for the cut: {json}");
+        let kept = without_found_value(&json);
+        assert!(!kept.contains("123456789"), "{kept}");
+        assert!(
+            kept.starts_with("invalid type, expected a string"),
+            "{kept}"
+        );
+        assert!(kept.ends_with("at line 2 column 25"), "{kept}");
+
+        let toml = toml::from_str::<ProfileConfig>("decrypt_key = 123456789\n")
+            .unwrap_err()
+            .message()
+            .to_string();
+        assert!(!without_found_value(&toml).contains("123456789"));
+        for other in [
+            "trailing comma at line 3 column 43",
+            "invalid length 2, expected a tuple of size 3",
+            "",
+        ] {
+            assert_eq!(without_found_value(other), other);
+        }
+    }
+
+    /// A config that is not JSON is TOML, and says so, with the line and column of the mistake (#1044).
+    #[test]
+    fn a_toml_config_that_does_not_parse_is_reported_as_toml() {
+        let dir = temp_dir("weflow-config-bad-toml");
+        let path = dir.join("config.json");
+        fs::write(
+            &path,
+            "current_profile = \"a\"\n\n[profiles.a\nwxid = \"x\"\n",
+        )
+        .unwrap();
+        let err = format!("{:#}", ConfigStore::load(&path).unwrap_err());
+        assert!(err.contains("TOML"), "{err}");
+        assert!(err.contains("line 3"), "{err}");
+    }
+
+    /// Both formats load, and so do a file with nothing in it (the default config) and a JSON file that starts with a
+    /// byte order mark (#1044).
+    #[test]
+    fn json_toml_and_an_empty_file_load() {
+        let dir = temp_dir("weflow-config-formats");
+        let path = dir.join("config.json");
+        let json = "{\"current_profile\": \"work\", \"profiles\": {\"work\": {\"wxid\": \"a\"}}}";
+        let toml = "current_profile = \"work\"\n[profiles.work]\nwxid = \"a\"\n";
+        for (text, wxid) in [
+            (json.to_string(), json!("a")),
+            (format!("  \n{json}"), json!("a")),
+            (format!("\u{feff}{json}"), json!("a")),
+            (toml.to_string(), json!("a")),
+            (format!("\u{feff}{toml}"), json!("a")),
+        ] {
+            fs::write(&path, &text).unwrap();
+            let store = ConfigStore::load(&path).unwrap_or_else(|err| panic!("{text:?}: {err:#}"));
+            assert_eq!(store.get_key(None, "wxid"), wxid, "{text:?}");
+        }
+        for empty in ["", "\n", "  \r\n\t"] {
+            fs::write(&path, empty).unwrap();
+            let store = ConfigStore::load(&path).unwrap();
+            assert_eq!(store.current_profile, "default", "{empty:?}");
+            assert!(store.profiles.contains_key("default"), "{empty:?}");
+        }
     }
 
     #[test]

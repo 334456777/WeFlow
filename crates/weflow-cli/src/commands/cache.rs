@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
-use crate::term::{align_columns, format_bytes, is_yes};
+use crate::term::{align_columns, ask_yes, can_ask, format_bytes};
 use crate::CacheShown;
 use serde_json::{json, Value};
 use weflow_core::colour::{Paint, Role, Stream};
@@ -249,13 +249,12 @@ fn cache_part_label(part: CachePart) -> &'static str {
 /// Lists `targets` on stderr under `heading` and asks for `y`; only `y` or `yes` goes ahead, anything else, Enter
 /// included, is a no. `yes` skips the question; without a terminal to ask on, it is required.
 fn confirm_removal(heading: &str, targets: &[RemovalTarget], yes: bool) -> AppResult<bool> {
-    use std::io::{IsTerminal, Write};
     use weflow_core::locale::tr;
 
     if yes {
         return Ok(true);
     }
-    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+    if !can_ask() {
         return Err(AppError::usage("this removes files; add --yes to confirm"));
     }
     let paint = Paint::of(Stream::Stderr);
@@ -283,14 +282,7 @@ fn confirm_removal(heading: &str, targets: &[RemovalTarget], yes: bool) -> AppRe
         "Remove them? Type y to confirm, anything else cancels: ",
         "确认清理？输入 y 确认，其他输入取消：",
     ));
-    let mut err = std::io::stderr();
-    let _ = err.write_all(text.as_bytes());
-    let _ = err.flush();
-    let mut answer = String::new();
-    std::io::stdin()
-        .read_line(&mut answer)
-        .map_err(|e| AppError::runtime(format!("failed to read the answer: {e}")))?;
-    Ok(is_yes(&answer))
+    ask_yes(&text)
 }
 
 /// `cache list` as a table under a bold header; `cache clear` / `clear-account`: what was removed, in green, the

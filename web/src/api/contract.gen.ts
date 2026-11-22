@@ -2843,6 +2843,8 @@ export interface Answers {
   /** Where the config file is */
   "config path": string;
   "config profiles": ProfileSummary[];
+  /** The config file the profile was removed from; `cancelled` when it was not confirmed */
+  "config remove-profile": ConfigWritten | Cancelled;
   "config set": ConfigWritten;
   "config unset": ConfigWritten;
   "db detect": DbCandidates;
