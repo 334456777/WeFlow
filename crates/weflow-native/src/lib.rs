@@ -7,6 +7,7 @@
 pub mod cipher_vfs;
 pub mod contact;
 pub mod db;
+pub mod entities;
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod fixture;
 pub mod image_key_scan;
