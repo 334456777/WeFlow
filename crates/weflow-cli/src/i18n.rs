@@ -5,6 +5,8 @@ use clap::builder::StyledStr;
 use clap::{Arg, ArgAction, Command, CommandFactory, Error, FromArgMatches};
 use weflow_core::locale::{self, translate_with, Lang};
 
+use crate::help_style::pick;
+
 include!("help_zh.rs");
 
 fn parse_lang(value: &str) -> Option<Lang> {
@@ -297,18 +299,28 @@ where
 /// What clap says of `err`, in the active language, the options last in a usage line and its bracketed notes in
 /// words.
 fn rendered(err: &Error) -> String {
+    rendered_in(err, locale::current())
+}
+
+/// What clap says of `err` as [`rendered`] has it, in `lang`.
+fn rendered_in(err: &Error, lang: Lang) -> String {
     let text = options_last(&err.to_string());
-    let text = if locale::current() == Lang::Zh {
+    let text = if lang == Lang::Zh {
         localize_rendered(&text)
     } else {
         text
     };
-    crate::help_style::plain_notes(&text)
+    crate::help_style::plain_notes(&text, lang)
 }
 
 /// The `--json` document of a parse error and its exit code, as `--json` prints them; `None` for help and the
 /// version, which are no errors.
 pub fn json_failure(err: &Error) -> Option<(serde_json::Value, i32)> {
+    json_failure_in(err, locale::current())
+}
+
+/// The `--json` document of a parse error as [`json_failure`] has it, in `lang`.
+fn json_failure_in(err: &Error, lang: Lang) -> Option<(serde_json::Value, i32)> {
     use clap::error::ErrorKind;
     if matches!(
         err.kind(),
@@ -316,15 +328,16 @@ pub fn json_failure(err: &Error) -> Option<(serde_json::Value, i32)> {
     ) {
         return None;
     }
-    let text = rendered(err);
+    let text = rendered_in(err, lang);
     let message = if err.kind() == ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand {
-        locale::tr(
+        pick(
+            lang,
             "a subcommand or argument is missing; see --help",
             "缺少子命令或参数；请查看 --help",
         )
         .to_string()
     } else {
-        parse_error_message(&text)
+        parse_error_message(&text, lang)
     };
     let mut failure = weflow_core::error::AppError::usage(message);
     if let Some(usage) = text
@@ -393,17 +406,32 @@ fn json_flag_in(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
         .any(|arg| arg == "--json")
 }
 
-/// The first line of clap's rendered error, without its `error: ` prefix.
-fn parse_error_message(text: &str) -> String {
-    let line = text
-        .lines()
+/// The message of a parse error from clap's rendered `text` in `lang`: the first line without its `error: ` prefix,
+/// then the lines indented under it up to the next empty line, which name the missing arguments or the possible
+/// values; clap's tips come after that empty line and are left out. After a first line that ends in a colon the lines
+/// are a list (`...were not provided: <PAYER>, <RECEIVER>`), after any other they are notes behind a semicolon.
+fn parse_error_message(text: &str, lang: Lang) -> String {
+    let mut lines = text.lines().skip_while(|line| line.trim().is_empty());
+    let first = lines.next().map(str::trim).unwrap_or_default();
+    let first = first
+        .strip_prefix("error: ")
+        .or_else(|| first.strip_prefix("错误："))
+        .unwrap_or(first);
+    let details: Vec<&str> = lines
+        .take_while(|line| !line.trim().is_empty())
         .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or_default();
-    line.strip_prefix("error: ")
-        .or_else(|| line.strip_prefix("错误："))
-        .unwrap_or(line)
-        .to_string()
+        .filter(|line| !line.starts_with("tip:") && !line.starts_with("提示："))
+        .collect();
+    if details.is_empty() {
+        first.to_string()
+    } else if first.ends_with(':') {
+        format!("{first} {}", details.join(", "))
+    } else if first.ends_with('：') {
+        format!("{first}{}", details.join(", "))
+    } else {
+        let note = pick(lang, "; ", "；");
+        format!("{first}{note}{}", details.join(note))
+    }
 }
 
 #[cfg(test)]
@@ -443,11 +471,131 @@ mod tests {
     #[test]
     fn parse_error_message_is_the_first_line_without_prefix() {
         assert_eq!(
-            parse_error_message("error: unexpected argument '--bogus' found\n\nUsage: weflow chat"),
+            parse_error_message(
+                "error: unexpected argument '--bogus' found\n\nUsage: weflow chat",
+                Lang::En
+            ),
             "unexpected argument '--bogus' found"
         );
         assert_eq!(
-            parse_error_message("错误：发现意外的参数 '--bogus'\n\n用法：weflow chat"),
+            parse_error_message(
+                "错误：发现意外的参数 '--bogus'\n\n用法：weflow chat",
+                Lang::Zh
+            ),
+            "发现意外的参数 '--bogus'"
+        );
+        // the tips after an empty line are no part of the message
+        assert_eq!(
+            parse_error_message(
+                "error: unexpected argument '--limt' found\n\n  tip: a similar argument exists: '--limit'\n\nUsage: weflow chat",
+                Lang::En
+            ),
+            "unexpected argument '--limt' found"
+        );
+    }
+
+    /// The indented lines under the first line say which arguments are missing and which values are possible (#1041).
+    #[test]
+    fn parse_error_message_keeps_the_lines_under_the_first_line() {
+        assert_eq!(
+            parse_error_message(
+                "error: the following required arguments were not provided:\n  <PAYER>\n  <RECEIVER>\n\nUsage: weflow chat transfer-names <CHATROOM_ID> <PAYER> <RECEIVER>\n\nFor more information, try '--help'.",
+                Lang::En
+            ),
+            "the following required arguments were not provided: <PAYER>, <RECEIVER>"
+        );
+        assert_eq!(
+            parse_error_message(
+                "错误：缺少以下必需的参数：\n  <PAYER>\n  <RECEIVER>\n\n用法：weflow chat transfer-names <CHATROOM_ID> <PAYER> <RECEIVER>",
+                Lang::Zh
+            ),
+            "缺少以下必需的参数：<PAYER>, <RECEIVER>"
+        );
+        assert_eq!(
+            parse_error_message(
+                "error: invalid value 'bogus' for '--variant <VARIANT>'\n  possible values: best, thumb, normal, hd\n\n  tip: a similar value exists: 'best'\n\nUsage: weflow chat image-data",
+                Lang::En
+            ),
+            "invalid value 'bogus' for '--variant <VARIANT>'; possible values: best, thumb, normal, hd"
+        );
+        assert_eq!(
+            parse_error_message(
+                "错误：'--variant <VARIANT>' 的值 'bogus' 无效\n  可选值：best, thumb, normal, hd\n\n用法：weflow chat image-data",
+                Lang::Zh
+            ),
+            "'--variant <VARIANT>' 的值 'bogus' 无效；可选值：best, thumb, normal, hd"
+        );
+    }
+
+    /// The error clap gives for `args` (without the program's name).
+    fn parse_failure(args: &[&str]) -> Error {
+        let line: Vec<String> = std::iter::once("weflow")
+            .chain(args.iter().copied())
+            .map(String::from)
+            .collect();
+        match try_parse_from::<crate::cli::Cli>(&line) {
+            Ok(_) => panic!("{args:?} parses"),
+            Err(err) => err,
+        }
+    }
+
+    /// The `error.message` of the `--json` document of the error of `args`, in `lang`.
+    fn json_message(args: &[&str], lang: Lang) -> String {
+        let (doc, exit) = json_failure_in(&parse_failure(args), lang).expect("a parse error");
+        assert_eq!(exit, 2, "{args:?}");
+        assert_eq!(doc["error"]["code"], "invalid_arguments", "{args:?}");
+        doc["error"]["message"]
+            .as_str()
+            .expect("a message")
+            .to_string()
+    }
+
+    /// `--json` names the arguments a command is missing, not only that some are (#1041).
+    #[test]
+    fn the_json_error_names_the_missing_arguments() {
+        let args = ["chat", "transfer-names", "a"];
+        assert_eq!(
+            json_message(&args, Lang::En),
+            "the following required arguments were not provided: <PAYER>, <RECEIVER>"
+        );
+        assert_eq!(
+            json_message(&args, Lang::Zh),
+            "缺少以下必需的参数：<PAYER>, <RECEIVER>"
+        );
+    }
+
+    /// `--json` gives the values an argument takes when it is given another (#1041).
+    #[test]
+    fn the_json_error_lists_the_possible_values() {
+        let line = |value: &'static str| ["chat", "image-data", "wxid_a", "1", "--variant", value];
+        assert_eq!(
+            json_message(&line("bogus"), Lang::En),
+            "invalid value 'bogus' for '--variant <VARIANT>'; possible values: best, thumb, normal, hd"
+        );
+        assert_eq!(
+            json_message(&line("bogus"), Lang::Zh),
+            "'--variant <VARIANT>' 的值 'bogus' 无效；可选值：best, thumb, normal, hd"
+        );
+        // clap's tip for a value close to a possible one is no part of the message
+        assert_eq!(
+            json_message(&line("thum"), Lang::En),
+            "invalid value 'thum' for '--variant <VARIANT>'; possible values: best, thumb, normal, hd"
+        );
+        assert_eq!(
+            json_message(&line("thum"), Lang::Zh),
+            "'--variant <VARIANT>' 的值 'thum' 无效；可选值：best, thumb, normal, hd"
+        );
+    }
+
+    /// An error of one line stays that line.
+    #[test]
+    fn the_json_error_of_one_line_is_that_line() {
+        assert_eq!(
+            json_message(&["chat", "sessions", "--bogus"], Lang::En),
+            "unexpected argument '--bogus' found"
+        );
+        assert_eq!(
+            json_message(&["chat", "sessions", "--bogus"], Lang::Zh),
             "发现意外的参数 '--bogus'"
         );
     }
