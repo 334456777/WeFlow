@@ -29,7 +29,8 @@ description: 新增、修改或删除 weflow 的 CLI 子命令和参数时要一
 ## PGO 训练清单
 
 - 常用的 CLI 命令加进 `.github/scripts/pgo-build.sh` 里调用 `run` 的那一串；会联网的命令（表情、朋友圈媒体和 HTML 的头像、AI）不加。删改这些命令的参数时同步修改。
-- `/api/` 的读取路由由 `pgo-serve.py` 从 `/openapi.json` 自动训练，但它只会填 `session-id`、`chatroom-id`、`keyword`、`username` 四种必填参数。新路由的必填参数叫别的名字时，这条路由被静默跳过，也不报警告；要训练它，就在 `pgo-serve.py` 里补上这个参数的取值。
+- `/api/` 的读取路由由 `pgo-serve.py` 从 `/openapi.json` 自动训练，但它只会填 `session-id`、`chatroom-id`、`keyword`、`username` 四种必填参数和会话列表 `sessions`。新路由的必填参数叫别的名字时，这条路由不会被调用，训练结束时发 `was not called` 警告；要训练它，就在 `pgo-serve.py` 里补上这个参数的取值。
+- 不带会话就回答空对象的读取（如 `chat counts`），CLI 的训练命令也要写上会话。
 - 改完在本地运行一次，确认没有警告，见 [weflow-release](../weflow-release/SKILL.md#pgo-训练清单)。
 
 ## 删改已有的参数

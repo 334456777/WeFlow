@@ -75,7 +75,10 @@ run chat date-counts "$GROUP"
 run chat images "$GROUP"
 run chat voice-messages "$GROUP"
 run chat resources --limit 2000
-run chat export-stats
+# without a conversation these three answer `{}` and read nothing
+run chat export-stats "$GROUP" "$FRIEND"
+run chat counts "$GROUP" "$FRIEND"
+run chat statuses "$GROUP" "$FRIEND"
 run analytics overall
 run analytics rankings
 run analytics time
