@@ -34,6 +34,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("--zip writes a zip: give --out a folder or a .zip file", "--zip 写出的是 zip：--out 请给文件夹或 .zip 文件"),
     ("unsupported media type: {}; use image, voice, video, emoji, file or all", "不支持的媒体类型：{}；请使用 image、voice、video、emoji、file 或 all"),
     ("--start {} is after --end {}", "--start {0} 晚于 --end {1}"),
+    ("invalid year {}; use 0 for all years, or 1970-2100", "年份 {} 无效；0 表示所有年份，其余请使用 1970-2100"),
     ("payload_json must be JSON: {}", "payload_json 必须是合法的 JSON：{}"),
     ("invalid listen address {}: {}", "监听地址 {0} 无效：{1}"),
     ("failed to bind HTTP server: {}", "绑定 HTTP 服务失败：{}"),
@@ -286,6 +287,10 @@ mod tests {
         assert_eq!(
             translate("--start b is after --end a").as_deref(),
             Some("--start b 晚于 --end a")
+        );
+        assert_eq!(
+            translate("invalid year 1969; use 0 for all years, or 1970-2100").as_deref(),
+            Some("年份 1969 无效；0 表示所有年份，其余请使用 1970-2100")
         );
         assert_eq!(
             translate("unsupported sns export format: xlsx; supported: json, html, arkmejson")

@@ -134,14 +134,14 @@ const HELP: &[(&str, &str)] = &[
     ("Read sessions, messages, contacts and media", "读取会话、消息、联系人和媒体"),
     ("Remove a key", "删除一个键"),
     ("Reset the whole config file: every profile, with all accounts and their keys, and its own settings are removed", "把整个配置文件恢复为默认内容：所有档案、每个账号及其密钥，以及配置文件自身的设置都会清空"),
-    ("Remove a profile from the config file, with its account settings and keys; the cache is kept", "从配置文件中删除一个档案，连同其中的账号设置和密钥；缓存会保留"),
+    ("Report year, 1970-2100; 0 covers all years", "报告年份，1970-2100；0 表示所有年份"),
+    ("Remove a profile from the config file, with its account settings and keys; the cache is kept","从配置文件中删除一个档案，连同其中的账号设置和密钥；缓存会保留"),
     ("Remove a profile from the config file, with its account settings and keys; the cache is kept
 
 `config profiles` lists the profiles. The current profile cannot be removed: switch to another with `config set current_profile` first. Only the config file's entry goes: the cache of the account stays, and `cache clear-account` removes the cache of the current account. Asks for y first.", "从配置文件中删除一个档案，连同其中的账号设置和密钥；缓存会保留
 
 `config profiles` 列出各档案。当前档案不能删除：请先用 `config set current_profile` 切换到其他档案。只删除配置文件里的这一项：账号的缓存仍然保留，`cache clear-account` 删除的是当前账号的缓存。先要求输入 y 确认。"),
     ("Name of the profile, as `config profiles` lists it", "档案名称，即 `config profiles` 列出的名称"),
-    ("Report year; 0 covers all years", "报告年份；0 表示所有年份"),
     ("Resolve many images", "批量解析图片"),
     ("Resolve payer / receiver display names of a transfer message", "解析转账消息的付款方 / 收款方显示名"),
     ("Return `file://` URLs for the posters instead of base64 data URLs", "封面返回 `file://` URL，而不是 base64 data URL"),

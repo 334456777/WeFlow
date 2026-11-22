@@ -54,15 +54,38 @@ fn local_ts(year: i32, month: u32, day: u32, h: u32, m: u32, s: u32) -> i64 {
         .unwrap_or(0)
 }
 
-fn year_range(year: i32) -> (i64, i64) {
-    if year <= 0 {
-        (0, 0)
+/// The year of a report as the commands take it: `0` for all years, otherwise one of [`crate::dates::YEARS`].
+///
+/// Before 1970 the Unix times of a year are negative, which the reading layer reads as no limit: such a year would
+/// report every year.
+fn checked_year(year: i32) -> AppResult<i32> {
+    if year == 0 || crate::dates::YEARS.contains(&year) {
+        Ok(year)
     } else {
-        (
-            local_ts(year, 1, 1, 0, 0, 0),
-            local_ts(year, 12, 31, 23, 59, 59),
-        )
+        Err(AppError::usage(format!(
+            "invalid year {year}; use 0 for all years, or 1970-2100"
+        )))
     }
+}
+
+/// The first and last second of a year in the machine's local time zone; `(0, 0)`, no limit, for `0`, all years.
+fn year_range(year: i32) -> (i64, i64) {
+    year_range_in(&Local, year)
+}
+
+/// [`year_range`] in the time zone `tz`, for a year [`checked_year`] returned.
+///
+/// The start is at least 1: the start of 1970 east of UTC is a negative Unix time, which is no limit either.
+fn year_range_in<Tz: TimeZone>(tz: &Tz, year: i32) -> (i64, i64) {
+    if year == 0 {
+        return (0, 0);
+    }
+    let at = |month, day, hour, minute, second| {
+        tz.with_ymd_and_hms(year, month, day, hour, minute, second)
+            .earliest()
+            .map_or(0, |t| t.timestamp())
+    };
+    (at(1, 1, 0, 0, 0).max(1), at(12, 31, 23, 59, 59))
 }
 
 fn is_report_private_session(username: &str, cleaned_wxid: &str) -> bool {
@@ -490,15 +513,18 @@ impl ServiceHub {
     }
 
     /// `annualReport:generateReport`
+    ///
+    /// # Errors
+    /// `invalid_arguments` when `year` is neither `0` (all years) nor a year from 1970 to 2100.
     pub fn report_annual(&self, year: i32) -> AppResult<AnnualReport> {
+        let year = checked_year(year)?;
         self.emit_progress("annual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
         let sessions = self.report_private_sessions(&wcdb, &cleaned);
         if sessions.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
-        let is_all = year <= 0;
-        let report_year = if is_all { 0 } else { year };
+        let is_all = year == 0;
         let (start, end) = year_range(year);
         let now = Local::now();
 
@@ -1225,7 +1251,7 @@ impl ServiceHub {
         }
 
         Ok(AnnualReport {
-            year: report_year,
+            year,
             total_messages,
             total_friends: contact_stats.len(),
             core_friends,
@@ -1295,17 +1321,20 @@ impl ServiceHub {
     }
 
     /// `dualReport:generateReport`
+    ///
+    /// # Errors
+    /// `invalid_arguments` when `year` is neither `0` (all years) nor a year from 1970 to 2100.
     pub fn report_dual(
         &self,
         friend: &str,
         year: i32,
         exclude_words: &[String],
     ) -> AppResult<DualReport> {
+        let year = checked_year(year)?;
         self.emit_progress("dual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
-        let report_year = year.max(0);
-        let is_all = report_year == 0;
-        let (start, end) = year_range(report_year);
+        let is_all = year == 0;
+        let (start, end) = year_range(year);
 
         let display = |u: &str, fb: &str| -> String {
             wcdb.display_names(&[u])
@@ -1556,7 +1585,7 @@ impl ServiceHub {
         let fr_excl = exclusive(&fr_map, &my_map);
 
         let report = DualReport {
-            year: report_year,
+            year,
             self_name: my_name,
             self_avatar_url: self_avatar,
             friend_username: friend.to_string(),
@@ -1583,6 +1612,58 @@ impl ServiceHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{FixedOffset, Utc};
+
+    #[test]
+    fn a_report_year_is_all_years_or_one_from_1970_to_2100() {
+        for year in [0, 1970, 1971, 2026, 2100] {
+            assert_eq!(checked_year(year).unwrap(), year);
+        }
+        for year in [1, 1800, 1969, -1, -5, 2101, i32::MIN, i32::MAX] {
+            let err = checked_year(year).unwrap_err();
+            assert_eq!(err.code, "invalid_arguments", "{year}");
+            assert_eq!(err.exit_code, 2, "{year}");
+            assert!(err.message.contains(&year.to_string()), "{}", err.message);
+        }
+    }
+
+    #[test]
+    fn a_year_range_is_a_limit_in_every_time_zone() {
+        for hours in -12..=14 {
+            let tz = FixedOffset::east_opt(hours * 3600).unwrap();
+            for year in crate::dates::YEARS {
+                let (start, end) = year_range_in(&tz, year);
+                assert!(
+                    0 < start && start < end,
+                    "{year} at UTC{hours:+}: {start}..{end}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_year_range_runs_from_the_first_to_the_last_second_of_the_year() {
+        let utc = year_range_in(&Utc, 2023);
+        assert_eq!(utc, (1_672_531_200, 1_704_067_199));
+        let tokyo = FixedOffset::east_opt(9 * 3600).unwrap();
+        assert_eq!(
+            year_range_in(&tokyo, 2023),
+            (1_672_531_200 - 32_400, 1_704_067_199 - 32_400)
+        );
+        let new_york = FixedOffset::west_opt(5 * 3600).unwrap();
+        assert_eq!(
+            year_range_in(&new_york, 2023),
+            (1_672_531_200 + 18_000, 1_704_067_199 + 18_000)
+        );
+        // the start of 1970 is the epoch in UTC and before it east of UTC: both read as no limit, so it is held at 1
+        assert_eq!(year_range_in(&Utc, 1970), (1, 31_535_999));
+        assert_eq!(year_range_in(&tokyo, 1970), (1, 31_535_999 - 32_400));
+        assert_eq!(
+            year_range_in(&new_york, 1970),
+            (18_000, 31_535_999 + 18_000)
+        );
+        assert_eq!(year_range_in(&Utc, 0), (0, 0), "all years have no limit");
+    }
 
     #[test]
     fn emoji_urls_with_broken_escapes_do_not_panic() {

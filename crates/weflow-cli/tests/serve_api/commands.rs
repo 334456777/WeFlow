@@ -161,6 +161,40 @@ fn commands_answer_like_the_terminal() {
     assert_eq!(r.status, 400);
 }
 
+/// A report year that is neither 0 nor 1970-2100 is refused on the terminal and by the server alike, not read as all
+/// the years.
+#[test]
+fn a_report_year_outside_1970_to_2100_is_refused() {
+    let root = temp_root("report-year");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    for (route, body, args) in [
+        (
+            "/report/annual/generate",
+            r#"{"year": 1969}"#,
+            &["annual", "generate", "--year=1969"][..],
+        ),
+        (
+            "/report/annual/generate",
+            r#"{"year": -5}"#,
+            &["annual", "generate", "--year=-5"],
+        ),
+        (
+            "/report/dual/generate",
+            r#"{"friend": "wxid_bob", "year": 2101}"#,
+            &["dual", "generate", "--year=2101", "--friend=wxid_bob"],
+        ),
+    ] {
+        let r = server.call("POST", route, body);
+        let mut argv = vec!["--json", "report"];
+        argv.extend_from_slice(args);
+        let (exit, stdout, _) = run_cli(&home, &argv);
+        assert_eq!((r.status, exit), (400, 2), "{route} {body}: {}", r.body);
+        assert_eq!(r.json()["error"]["code"], "invalid_arguments", "{body}");
+        assert_eq!(r.body, stdout, "{route} {body}");
+    }
+}
+
 /// The names of the profiles `config profiles` lists.
 fn profile_names(home: &std::path::Path) -> Vec<String> {
     let (exit, stdout, stderr) = run_cli(home, &["--json", "config", "profiles"]);
