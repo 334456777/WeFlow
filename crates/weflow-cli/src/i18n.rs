@@ -568,6 +568,54 @@ mod tests {
         );
     }
 
+    /// An image command given neither `--md5` nor `--dat-name` names both, as the pair it needs one of (#1076).
+    #[test]
+    fn the_json_error_names_the_image_options_it_needs_one_of() {
+        for args in [
+            &["image", "decrypt"][..],
+            &[
+                "image",
+                "resolve-cache",
+                "--session",
+                "wxid_a",
+                "--no-data-url",
+            ][..],
+        ] {
+            assert_eq!(
+                json_message(args, Lang::En),
+                "the following required arguments were not provided: <--md5 <MD5>|--dat-name <DAT_NAME>>",
+                "{args:?}"
+            );
+            assert_eq!(
+                json_message(args, Lang::Zh),
+                "缺少以下必需的参数：<--md5 <MD5>|--dat-name <DAT_NAME>>",
+                "{args:?}"
+            );
+        }
+        // either of them, or both, is enough
+        for args in [
+            &["weflow", "image", "decrypt", "--md5", "abc"][..],
+            &["weflow", "image", "resolve-cache", "--dat-name", "abc_t"][..],
+            &[
+                "weflow",
+                "image",
+                "decrypt",
+                "--md5",
+                "abc",
+                "--dat-name",
+                "abc_t",
+            ][..],
+        ] {
+            let line: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+            let parsed = try_parse_from::<crate::cli::Cli>(&line);
+            assert!(
+                parsed.is_ok(),
+                "{args:?}: {:?}",
+                parsed.err().map(|e| e.to_string())
+            );
+        }
+    }
+
     /// `--json` gives the values an argument takes when it is given another (#1041).
     #[test]
     fn the_json_error_lists_the_possible_values() {
