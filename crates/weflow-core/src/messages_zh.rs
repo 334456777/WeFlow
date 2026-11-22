@@ -240,6 +240,42 @@ const CATALOG: &[(&str, &str)] = &[
     ("refusing to restore through the link {}: it may point outside {}", "拒绝通过链接 {0} 恢复：它可能指向 {1} 以外的位置"),
     ("cannot read {} of the account's database files, so no backup was written: {}", "无法读取账号的 {0} 个数据库文件，没有写出备份：{1}"),
     ("please enter a valid Weibo UID: digits only", "请输入有效的微博 UID：只能是数字"),
+    // the command API's own answers (#1090)
+    ("this server only answers requests to localhost, 127.0.0.1 or [::1]; to reach it by another name, start it with --host", "此服务只回答发往 localhost、127.0.0.1 或 [::1] 的请求；要用其他名字访问它，请用 --host 启动"),
+    ("invalid or missing access token", "访问令牌无效或缺失"),
+    ("no such command", "没有这个命令"),
+    ("`{}` does not run in process; use /{}", "`{0}` 不在服务进程内运行；请使用 /{1}"),
+    ("unknown parameter `{}`: `{}` takes no parameters", "未知的参数 `{0}`：`{1}` 不接受参数"),
+    ("unknown parameter `{}` for `{}`; expected one of: {}", "`{1}` 没有参数 `{0}`；可用的参数：{2}"),
+    ("unknown parameter `{}`", "未知的参数 `{}`"),
+    ("parameter `{}` is a switch: pass true or false", "参数 `{}` 是开关：请传 true 或 false"),
+    ("parameter `{}` takes one value, not several", "参数 `{}` 只接受一个值"),
+    ("a parameter holds a NUL byte, which a command line cannot carry", "有参数含有 NUL 字节，命令行无法传递"),
+    ("the request body must be a JSON object", "请求体必须是 JSON 对象"),
+    ("request body too large", "请求体过大"),
+    ("unknown std value `{}`; expected in, out or err", "未知的 std 值 `{}`；应为 in、out 或 err"),
+    ("unknown return value `{}`; expected json or file", "未知的 return 值 `{}`；应为 json 或 file"),
+    ("`{}` does not write a single file, so return=file is not available for it", "`{}` 写出的不是单个文件，不能使用 return=file"),
+    ("several formats are written to a folder, which return=file cannot send: add zip=true to pack them into one zip", "多个格式会写进一个文件夹，return=file 无法发送：请加上 zip=true，打包成一个 zip"),
+    ("return=file cannot be combined with std", "return=file 不能与 std 同时使用"),
+    ("fields picks the columns of a --json document answered right away: not with std, return=file, `Prefer: respond-async` or a media route", "fields 只用于立即回答的 --json 文档：不能与 std、return=file、`Prefer: respond-async` 或媒体路由同时使用"),
+    ("/api/ answers the --json document right away: std, return=file and `Prefer: respond-async` are for the routes without /api/", "/api/ 立即回答 --json 文档：std、return=file 和 `Prefer: respond-async` 只用于不带 /api/ 的路由"),
+    ("an /api/ media route answers with the file itself: leave out `out`", "/api/ 的媒体路由直接回答文件本身：请去掉 `out`"),
+    ("this /api/ media route does not take the request as it is: give each parameter once, as the command takes it", "这个 /api/ 媒体路由不接受这样的请求：请按命令的参数，每个参数只给一次"),
+    ("std=out and std=err are answered right away; send them without `Prefer: respond-async`", "std=out 和 std=err 会立即回答；请不要带 `Prefer: respond-async`"),
+    ("another task is running; retry later, or send `Prefer: respond-async` to queue it", "另一个任务正在运行；请稍后重试，或带上 `Prefer: respond-async` 排队"),
+    ("too many commands are running; retry later, or send `Prefer: respond-async` to queue it", "正在运行的命令太多；请稍后重试，或带上 `Prefer: respond-async` 排队"),
+    ("too many images, voices and videos are asked for; retry later", "请求的图片、语音和视频太多；请稍后重试"),
+    ("too many reads are asked for; retry later", "请求的读取太多；请稍后重试"),
+    ("failed to run weflow: {}", "运行 weflow 失败：{}"),
+    ("cannot build the answer: {}", "无法生成回答：{}"),
+    ("the address cannot be redirected", "无法重定向到这个地址"),
+    ("method not allowed; use {}", "不支持这个请求方法；请使用 {}"),
+    ("no such job", "没有这个任务"),
+    ("the job has no file: it was not started with return=file, or has not succeeded", "这个任务没有文件：它不是用 return=file 启动的，或者还没有成功"),
+    ("no WebUI is served; start serve with --ui-dir <a built WebUI>", "没有托管网页；请用 --ui-dir <构建好的网页> 启动 serve"),
+    ("the WebUI's files are read-only; use GET", "网页的文件是只读的；请使用 GET"),
+    ("no such file in the WebUI", "网页中没有这个文件"),
     // files: last, so that the messages above that begin the same way match first
     ("cannot create {}: {}", "无法创建 {}：{}"),
     ("cannot open {}: {}", "无法打开 {}：{}"),
@@ -279,6 +315,28 @@ mod tests {
         }
     }
 
+    /// `source` with each string literal continued on the next line (a `\` at the end of the line) put on one line, as
+    /// the literal's text is: the line break and the indent after it taken out.
+    fn continued_lines_joined(source: &str) -> String {
+        let source = source.replace("\r\n", "\n");
+        let mut joined = String::with_capacity(source.len());
+        let mut rest = source.as_str();
+        while let Some(at) = rest.find("\\\n") {
+            joined.push_str(&rest[..at]);
+            rest = rest[at + 2..].trim_start_matches([' ', '\t']);
+        }
+        joined.push_str(rest);
+        joined
+    }
+
+    #[test]
+    fn a_continued_literal_is_joined_as_its_text_is() {
+        assert_eq!(
+            continued_lines_joined("(\"one, \\\r\n             two\", \"a\\\\b\")"),
+            "(\"one, two\", \"a\\\\b\")"
+        );
+    }
+
     /// Every message the catalog translates is still said somewhere in the source: an entry whose message was
     /// reworded or removed would never be used again.
     #[test]
@@ -288,6 +346,7 @@ mod tests {
         for krate in ["weflow-cli", "weflow-core", "weflow-native"] {
             sources_under(&crates.join(krate).join("src"), &mut sources);
         }
+        let sources = continued_lines_joined(&sources);
         // a piece between placeholders as a string literal writes it
         let said = |piece: &str| {
             sources.contains(
@@ -359,6 +418,33 @@ mod tests {
             Some("不支持的朋友圈导出格式：xlsx；支持：json、html、arkmejson")
         );
         assert_eq!(translate("not in the catalog"), None);
+    }
+
+    /// The command API's own answers (#1090), the templated ones with what the server puts in.
+    #[test]
+    fn the_command_api_s_own_errors_are_translated() {
+        for (en, zh) in [
+            (
+                "unknown parameter `x` for `chat sessions`; expected one of: limit, offset",
+                "`chat sessions` 没有参数 `x`；可用的参数：limit, offset",
+            ),
+            (
+                "unknown parameter `x`: `health` takes no parameters",
+                "未知的参数 `x`：`health` 不接受参数",
+            ),
+            ("unknown parameter `x`", "未知的参数 `x`"),
+            (
+                "method not allowed; use GET, POST",
+                "不支持这个请求方法；请使用 GET, POST",
+            ),
+            (
+                "`chat sessions` does not run in process; use /chat/sessions",
+                "`chat sessions` 不在服务进程内运行；请使用 /chat/sessions",
+            ),
+            ("no such job", "没有这个任务"),
+        ] {
+            assert_eq!(translate(en).as_deref(), Some(zh), "{en}");
+        }
     }
 
     /// The entries for any file come last: a message that begins the same way keeps its own entry.

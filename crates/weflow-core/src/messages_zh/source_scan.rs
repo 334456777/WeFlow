@@ -1,6 +1,6 @@
 //! Every English message the code gives an error constructor (`AppError::runtime("…")`, `ImageResult::fail("…", …)`,
-//! or the template of a `format!` given to them) has a Chinese entry in the catalog, so that a run in Chinese does not
-//! show it in English.
+//! or the template of a `format!` given to them) or an error the command API answers itself (`error_response`) has a
+//! Chinese entry in the catalog, so that a run in Chinese does not show it in English.
 
 use std::path::{Path, PathBuf};
 
@@ -19,6 +19,11 @@ const CONSTRUCTORS: &[(&str, &str, bool)] = &[
     // `ImageResult::fail` as its own methods call it
     ("Self", "fail", false),
 ];
+
+/// The functions of the command API that answer an error themselves (#1090), and how many arguments come before the
+/// message: `error_response(status, code, message)`, and those that give it a message of their own. Every literal in
+/// the message's argument counts, as `busy_with(if task { "…" } else { "…" }, …)` gives one of two.
+const ANSWERS: &[(&str, usize)] = &[("error_response", 2), ("bad_request", 0), ("busy_with", 0)];
 
 /// Templates whose placeholders hold a phrase the catalog matches on, with a value for each placeholder in order: a
 /// plain sample there would make a message the code never gives.
@@ -302,61 +307,129 @@ fn render(template: &str, fills: &[&str]) -> Option<String> {
     words.then_some(text)
 }
 
-/// The messages `source` (the file at `place`) gives the [`CONSTRUCTORS`] outside its tests.
+/// Whether the tokens at `at` begin a `format!(`.
+fn is_format(tokens: &[(usize, Token)], at: usize) -> bool {
+    is_word(tokens.get(at), "format")
+        && is_punct(tokens.get(at + 1), '!')
+        && is_punct(tokens.get(at + 2), '(')
+}
+
+/// The literal given to one of the [`CONSTRUCTORS`] whose type is the word `ty` at `i`, and whether it is the
+/// template of a `format!`; `None` when there is no such call there, or it is given no literal.
+fn constructed(tokens: &[(usize, Token)], i: usize, ty: &str) -> Option<(String, bool)> {
+    let &(_, _, coded) = CONSTRUCTORS
+        .iter()
+        .find(|(t, f, _)| *t == ty && is_word(tokens.get(i + 3), f))?;
+    if !(is_punct(tokens.get(i + 1), ':')
+        && is_punct(tokens.get(i + 2), ':')
+        && is_punct(tokens.get(i + 4), '('))
+    {
+        return None;
+    }
+    let mut at = i + 5;
+    if coded {
+        if !(matches!(tokens.get(at), Some((_, Token::Str(_))))
+            && is_punct(tokens.get(at + 1), ','))
+        {
+            return None;
+        }
+        at += 2;
+    }
+    let formatted = is_format(tokens, at);
+    if formatted {
+        at += 3;
+    }
+    match tokens.get(at) {
+        Some((_, Token::Str(literal))) => Some((literal.clone(), formatted)),
+        _ => None,
+    }
+}
+
+/// The index of the `,` or the closing bracket that ends the argument starting at `at`.
+fn argument_end(tokens: &[(usize, Token)], mut at: usize) -> usize {
+    let mut depth = 0usize;
+    while let Some((_, token)) = tokens.get(at) {
+        match token {
+            Token::Punct(')' | ']' | '}' | ',') if depth == 0 => break,
+            Token::Punct('(' | '[' | '{') => depth += 1,
+            Token::Punct(')' | ']' | '}') => depth -= 1,
+            _ => {}
+        }
+        at += 1;
+    }
+    at
+}
+
+/// The literals given to a call of one of the [`ANSWERS`] whose name is at `i`, as the message after `skip` other
+/// arguments, each with whether it is the template of a `format!`; none for the function's definition.
+fn answered(tokens: &[(usize, Token)], i: usize, skip: usize) -> Vec<(String, bool)> {
+    let defined = i
+        .checked_sub(1)
+        .is_some_and(|before| is_word(tokens.get(before), "fn"));
+    if defined || !is_punct(tokens.get(i + 1), '(') {
+        return Vec::new();
+    }
+    let mut start = i + 2;
+    for _ in 0..skip {
+        start = argument_end(tokens, start);
+        if !is_punct(tokens.get(start), ',') {
+            return Vec::new();
+        }
+        start += 1;
+    }
+    let borrowed = usize::from(is_punct(tokens.get(start), '&'));
+    if is_format(tokens, start + borrowed) {
+        return match tokens.get(start + borrowed + 3) {
+            Some((_, Token::Str(template))) => vec![(template.clone(), true)],
+            _ => Vec::new(),
+        };
+    }
+    let end = argument_end(tokens, start);
+    tokens
+        .get(start..end)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|(_, token)| match token {
+            Token::Str(literal) => Some((literal.clone(), false)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The [`Message`] of `literal` at `place`: the literal itself, or, the template of a `format!`, the template with
+/// its placeholders filled; `None` for a template of placeholders alone.
+fn message(literal: String, formatted: bool, place: String) -> Option<Message> {
+    let text = if formatted {
+        let fills = FILLS
+            .iter()
+            .find(|(template, _)| *template == literal)
+            .map_or(&[][..], |(_, fills)| fills);
+        render(&literal, fills)?
+    } else {
+        literal.clone()
+    };
+    Some(Message {
+        literal,
+        text,
+        place,
+    })
+}
+
+/// The messages `source` (the file at `place`) gives the [`CONSTRUCTORS`] and the [`ANSWERS`] outside its tests.
 fn messages_in(place: &str, source: &str) -> Vec<Message> {
     let tokens = without_tests(lex(source));
     let mut messages = Vec::new();
     for (i, (line, token)) in tokens.iter().enumerate() {
-        let Token::Word(ty) = token else {
+        let Token::Word(word) = token else {
             continue;
         };
-        let Some(&(_, _, coded)) = CONSTRUCTORS
-            .iter()
-            .find(|(t, f, _)| t == ty && is_word(tokens.get(i + 3), f))
-        else {
-            continue;
+        let given = match ANSWERS.iter().find(|(name, _)| name == word) {
+            Some(&(_, skip)) => answered(&tokens, i, skip),
+            None => constructed(&tokens, i, word).into_iter().collect(),
         };
-        if !(is_punct(tokens.get(i + 1), ':')
-            && is_punct(tokens.get(i + 2), ':')
-            && is_punct(tokens.get(i + 4), '('))
-        {
-            continue;
-        }
-        let mut at = i + 5;
-        if coded {
-            if !(matches!(tokens.get(at), Some((_, Token::Str(_))))
-                && is_punct(tokens.get(at + 1), ','))
-            {
-                continue;
-            }
-            at += 2;
-        }
-        let formatted = is_word(tokens.get(at), "format")
-            && is_punct(tokens.get(at + 1), '!')
-            && is_punct(tokens.get(at + 2), '(');
-        if formatted {
-            at += 3;
-        }
-        let Some((_, Token::Str(literal))) = tokens.get(at) else {
-            continue;
-        };
-        let text = if formatted {
-            let fills = FILLS
-                .iter()
-                .find(|(template, _)| template == literal)
-                .map_or(&[][..], |(_, fills)| fills);
-            match render(literal, fills) {
-                Some(text) => text,
-                None => continue,
-            }
-        } else {
-            literal.clone()
-        };
-        messages.push(Message {
-            literal: literal.clone(),
-            text,
-            place: format!("{place}:{line}"),
-        });
+        messages.extend(given.into_iter().filter_map(|(literal, formatted)| {
+            message(literal, formatted, format!("{place}:{line}"))
+        }));
     }
     messages
 }
@@ -405,14 +478,17 @@ fn workspace_messages() -> Vec<Message> {
 #[test]
 fn every_message_given_to_an_error_is_in_the_catalog() {
     let messages = workspace_messages();
-    // a scan that stopped finding the constructors would pass with nothing to check
-    assert!(
-        messages
-            .iter()
-            .any(|m| m.literal == "the video has no thumbnail or cover"),
-        "the scan found {} messages, but not the one of reads.rs",
-        messages.len()
-    );
+    // a scan that stopped finding the constructors or the answers would pass with nothing to check
+    for (literal, file) in [
+        ("the video has no thumbnail or cover", "reads.rs"),
+        ("no such job", "serve_api/job_routes.rs"),
+    ] {
+        assert!(
+            messages.iter().any(|m| m.literal == literal),
+            "the scan found {} messages, but not the one of {file}",
+            messages.len()
+        );
+    }
     let untranslated: Vec<String> = messages
         .iter()
         .filter(|m| !NOT_SHOWN.iter().any(|(literal, _)| *literal == m.literal))
@@ -463,6 +539,13 @@ fn finds_the_messages_but_those_of_tests() {
         }
         fn after() -> AppError { AppError::native("after the tests") }
         fn own() -> Self { Self::fail("by its own method", "not_found") }
+        fn error_response(status: StatusCode, code: &str, message: &str) -> Response { todo!() }
+        fn answers(task: bool) {
+            error_response(StatusCode::NOT_FOUND, "not_found", "answered");
+            super::error_response(StatusCode::OK, "busy", &format!("answered {what}"));
+            bad_request(&message);
+            busy_with(if task { "one" } else { "other" }, if task { "5" } else { "1" });
+        }
     "##;
     let found: Vec<(String, String)> = messages_in("x.rs", source)
         .into_iter()
@@ -476,6 +559,10 @@ fn finds_the_messages_but_those_of_tests() {
         ("on its own line", "x.rs:13"),
         ("after the tests", "x.rs:24"),
         ("by its own method", "x.rs:25"),
+        ("answered", "x.rs:28"),
+        ("answered X", "x.rs:29"),
+        ("one", "x.rs:31"),
+        ("other", "x.rs:31"),
     ];
     assert_eq!(
         found,

@@ -55,8 +55,10 @@ pub(super) fn built(resp: Result<Response, axum::http::Error>) -> Response {
     })
 }
 
-/// An error answered by the server itself, in the shape of a failed `--json` command.
+/// An error answered by the server itself, in the shape of a failed `--json` command and, as the commands' errors
+/// are, in the server's language (#1090).
 pub(super) fn error_response(status: StatusCode, code: &str, message: &str) -> Response {
+    let message = weflow_core::locale::localize(message.to_owned());
     let body = json!({ "success": false, "error": { "code": code, "message": message } });
     let mut resp = json_body(status, body.to_string());
     resp.headers_mut().insert(
