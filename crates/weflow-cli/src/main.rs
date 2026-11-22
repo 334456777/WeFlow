@@ -311,8 +311,8 @@ enum Summary {
     /// A command that ends with its outcome on the line that said it was running (`image auto-download start`).
     AlreadySaid,
     Cache(CacheShown),
-    /// `config set`, `unset` and `clear`, which succeed silently: the config file path is not news. A key spelt almost
-    /// as one WeFlow reads is named.
+    /// `config set`, `unset`, `clear` and `remove-profile`, which succeed silently: the config file path is not news.
+    /// A key spelt almost as one WeFlow reads is named.
     ConfigSaved,
     DbDetect,
     DbWxid,
@@ -346,7 +346,8 @@ impl Summary {
                 command:
                     ConfigSubcommand::Set { .. }
                     | ConfigSubcommand::Unset { .. }
-                    | ConfigSubcommand::Clear,
+                    | ConfigSubcommand::Clear
+                    | ConfigSubcommand::RemoveProfile { .. },
             }) => Self::ConfigSaved,
             Commands::Db(DbCommand { command }) => match command {
                 DbSubcommand::Detect => Self::DbDetect,

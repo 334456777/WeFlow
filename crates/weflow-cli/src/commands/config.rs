@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
+use crate::term::{ask_yes, can_ask};
 use serde_json::{json, Value};
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::error::{AppError, AppResult};
@@ -30,7 +31,7 @@ pub(crate) enum ConfigSubcommand {
     /// Set a key
     Set {
         #[arg(
-            help = "Key name; `<profile>.<key>`, such as `work.wxid`, sets the key in another existing profile, which `current_profile` makes\n  db_path                  WeChat data directory; `db detect` finds it\n  wxid                     Account wxid; `db wxid` prints it\n  decrypt_key              Database key in hex; `key db` prints it\n  image_xor_key            Image XOR key, a number; `key image` prints it, and on Linux x64 and macOS `key image-mem` without --ciphertext may too\n  image_aes_key            Image AES key; the same commands print it\n  cache_path               Folder for cached images, voices, stickers and Moments; default: `cache` next to the config file\n  http_api_token           Access token of the HTTP API of `serve`\n  ai_model_api_format      openai or anthropic: the API format of the AI model API used by `insight`, OpenAI's Chat Completions or Anthropic's Messages; default: openai\n  ai_model_api_base_url    Base URL of the AI model API; default: the service of the format\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name; `insight models` lists them\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  auto_download_whitelist  JSON array of the conversation ids the image auto-download takes originals for\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears; default 5, and 0 shows it at once\nSettings of the config file itself, stored in that file and not in a profile; each config file has its own:\n  lang                     Output language, en or zh, the same as `weflow lang`\n  current_profile          Active profile name, created when it does not exist; default: default\nOptions of `serve`, used when its command line does not give them:\n  serve_host               Listen address, as --host\n  serve_port               Listen port, as --port\n  serve_max_tasks          Tasks run at once, as --max-tasks\n  serve_max_reads          Other commands run at once, as --max-reads\n  serve_max_media          Images and voices decoded at once, as --max-media\n  serve_log_requests       true or false: true logs each request, as --log-requests\n  serve_insight            true or false: true runs the AI insight engine, as --insight\n  serve_image_auto_download  true or false: turn the image auto-download hook on or off; default: on\n  serve_open_browser       true or false: false does not open the WebUI at the start, as --no-browser\nWhich config file is used, kept next to the default location and not in any config file:\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
+            help = "Key name; `<profile>.<key>`, such as `work.wxid`, sets the key in another existing profile, which `current_profile` makes\n  db_path                  WeChat data directory; `db detect` finds it\n  wxid                     Account wxid; `db wxid` prints it\n  decrypt_key              Database key in hex; `key db` prints it\n  image_xor_key            Image XOR key, a number; `key image` prints it, and on Linux x64 and macOS `key image-mem` without --ciphertext may too\n  image_aes_key            Image AES key; the same commands print it\n  cache_path               Folder for cached images, voices, stickers and Moments; default: `cache` next to the config file\n  http_api_token           Access token of the HTTP API of `serve`\n  ai_model_api_format      openai or anthropic: the API format of the AI model API used by `insight`, OpenAI's Chat Completions or Anthropic's Messages; default: openai\n  ai_model_api_base_url    Base URL of the AI model API; default: the service of the format\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name; `insight models` lists them\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  auto_download_whitelist  JSON array of the conversation ids the image auto-download takes originals for\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears; default 5, and 0 shows it at once\nSettings of the config file itself, stored in that file and not in a profile; each config file has its own:\n  lang                     Output language, en or zh, the same as `weflow lang`\n  current_profile          Active profile name, created when it does not exist; it cannot be empty, hold a dot, a slash or a backslash, or be the name of a key; default: default\nOptions of `serve`, used when its command line does not give them:\n  serve_host               Listen address, as --host\n  serve_port               Listen port, as --port\n  serve_max_tasks          Tasks run at once, as --max-tasks\n  serve_max_reads          Other commands run at once, as --max-reads\n  serve_max_media          Images and voices decoded at once, as --max-media\n  serve_log_requests       true or false: true logs each request, as --log-requests\n  serve_insight            true or false: true runs the AI insight engine, as --insight\n  serve_image_auto_download  true or false: turn the image auto-download hook on or off; default: on\n  serve_open_browser       true or false: false does not open the WebUI at the start, as --no-browser\nWhich config file is used, kept next to the default location and not in any config file:\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
         )]
         key: String,
         /// Value to store: as typed for paths, keys, tokens and names; as JSON for numbers, true/false and arrays
@@ -43,6 +44,16 @@ pub(crate) enum ConfigSubcommand {
     },
     /// Reset the whole config file: every profile, with all accounts and their keys, and its own settings are removed
     Clear,
+    /// Remove a profile from the config file, with its account settings and keys; the cache is kept
+    ///
+    /// `config profiles` lists the profiles. The current profile cannot be removed: switch to another with `config set current_profile` first. Only the config file's entry goes: the cache of the account stays, and `cache clear-account` removes the cache of the current account. Asks for y first.
+    RemoveProfile {
+        /// Name of the profile, as `config profiles` lists it
+        name: String,
+        /// Do not ask before removing
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 }
 
 /// Progress bar settings from the config (`no_progress`, `progress_delay_seconds`) and `WEFLOW_PROGRESS_DELAY`;
@@ -51,23 +62,16 @@ pub(crate) fn apply_progress_settings(
     config: &ConfigStore,
     progress: weflow_core::output::ProgressMode,
 ) {
-    if progress == weflow_core::output::ProgressMode::Auto {
-        let off = config.get_key(None, "no_progress");
-        if off
-            .as_bool()
-            .unwrap_or_else(|| off.as_str() == Some("true"))
-        {
-            weflow_core::output::set_progress_mode(weflow_core::output::ProgressMode::Off);
-        }
+    // `ConfigStore::load` has given both settings the type `set_key` keeps them in
+    if progress == weflow_core::output::ProgressMode::Auto
+        && config.get_key(None, "no_progress") == Value::Bool(true)
+    {
+        weflow_core::output::set_progress_mode(weflow_core::output::ProgressMode::Off);
     }
     let from_env = std::env::var("WEFLOW_PROGRESS_DELAY")
         .ok()
         .and_then(|v| weflow_core::output::parse_delay(&v));
-    let v = config.get_key(None, "progress_delay_seconds");
-    let delay = from_env.or_else(|| {
-        v.as_u64()
-            .or_else(|| v.as_str().and_then(weflow_core::output::parse_delay))
-    });
+    let delay = from_env.or_else(|| config.get_key(None, "progress_delay_seconds").as_u64());
     if let Some(d) = delay {
         weflow_core::output::set_progress_delay(d);
     }
@@ -129,12 +133,6 @@ pub(crate) fn handle_config(
                 weflow_core::config::set_saved_config_path(&path)?;
                 return Ok(written(Some(path)));
             }
-            if key == "progress_delay_seconds" && weflow_core::output::parse_delay(&value).is_none()
-            {
-                return Err(AppError::usage(format!(
-                    "invalid value '{value}' for {key}; use a whole number of seconds, 0 or more"
-                )));
-            }
             ConfigStore::update(&ctx.config_path, |config| {
                 config.set_key_from_text(None, &key, &value)
             })?;
@@ -158,5 +156,34 @@ pub(crate) fn handle_config(
             })?;
             Ok(written(Some(ctx.config_path.clone())))
         }
+        ConfigSubcommand::RemoveProfile { name, yes } => {
+            // the refusals come before the question: nothing is asked about what cannot be done
+            config.clone().remove_profile(&name)?;
+            if !confirm_profile_removal(&name, yes)? {
+                return Ok(json!(weflow_core::contract::Cancelled { cancelled: true }));
+            }
+            ConfigStore::update(&ctx.config_path, |config| config.remove_profile(&name))?;
+            Ok(written(Some(ctx.config_path.clone())))
+        }
     }
+}
+
+/// Asks on stderr for `y` before the profile `name` is removed: its account settings and keys go from the config
+/// file. `yes` skips the question; without a terminal to ask on, it is required.
+fn confirm_profile_removal(name: &str, yes: bool) -> AppResult<bool> {
+    use weflow_core::locale::tr;
+
+    if yes {
+        return Ok(true);
+    }
+    if !can_ask() {
+        return Err(AppError::usage(
+            "this removes a profile; add --yes to confirm",
+        ));
+    }
+    let question = tr(
+        "About to remove the profile '{name}' from the config file, with its account settings and keys. The cache is kept.\nRemove it? Type y to confirm, anything else cancels: ",
+        "将要从配置文件中删除档案 '{name}'，连同其中的账号设置和密钥；缓存会保留。\n确认删除？输入 y 确认，其他输入取消：",
+    );
+    ask_yes(&question.replace("{name}", &name.escape_debug().to_string()))
 }

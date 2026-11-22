@@ -1857,6 +1857,54 @@
         }
       }
     },
+    "/config/remove-profile": {
+      "get": {
+        "operationId": "api_config_remove_profile",
+        "x-weflow-command": "config remove-profile",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "The config file the profile was removed from; `cancelled` when it was not confirmed",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/ConfigWritten"
+                        },
+                        {
+                          "$ref": "#/components/schemas/Cancelled"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/set": {
       "get": {
         "operationId": "api_config_set",

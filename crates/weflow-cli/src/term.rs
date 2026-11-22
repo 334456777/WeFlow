@@ -1,7 +1,29 @@
 //! The terminal: sizes in words, columns and yes/no answers. Colours are `weflow_core::colour`'s.
 
-pub(crate) fn is_yes(answer: &str) -> bool {
+use weflow_core::error::{AppError, AppResult};
+
+fn is_yes(answer: &str) -> bool {
     matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+/// Whether a question can be put to the user: stdin and stderr are both a terminal.
+pub(crate) fn can_ask() -> bool {
+    use std::io::IsTerminal;
+    std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
+}
+
+/// Writes `question` on stderr and reads the answer from stdin: only `y` or `yes` is a yes, anything else, Enter
+/// included, is a no.
+pub(crate) fn ask_yes(question: &str) -> AppResult<bool> {
+    use std::io::Write;
+    let mut err = std::io::stderr();
+    let _ = err.write_all(question.as_bytes());
+    let _ = err.flush();
+    let mut answer = String::new();
+    std::io::stdin()
+        .read_line(&mut answer)
+        .map_err(|e| AppError::runtime(format!("failed to read the answer: {e}")))?;
+    Ok(is_yes(&answer))
 }
 
 /// `1536` → `1.5 KB`: binary units, one decimal below 10.
