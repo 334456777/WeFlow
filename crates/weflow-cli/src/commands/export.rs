@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 
-use crate::files::{export_path, make_parent, write_csv_file, write_json_file, write_text_file};
+use crate::files::{
+    export_path, make_parent, write_csv_file, write_json_file, write_text_file, zip_target,
+};
 
 use super::analytics::day_span;
 use serde_json::{json, Value};
@@ -384,7 +386,7 @@ fn message_formats(given: &[String]) -> Vec<String> {
 
 /// `export messages` in several formats or packed (#342): every format into one folder, the media in its `media/`
 /// folder; with `zip`, the folder (beside the zip, taken away after) packed into the zip, whose path is the result's
-/// `out`, the formats' files named inside it.
+/// `out`, the formats' files and their media folder named inside it.
 #[allow(clippy::too_many_arguments)]
 async fn export_messages_bundle(
     hub: &ServiceHub,
@@ -396,7 +398,9 @@ async fn export_messages_bundle(
     zip: bool,
     media: &weflow_core::api::ApiMediaOptions,
 ) -> AppResult<MessagesBundle> {
-    let zip_path = zip.then(|| export_path(out, &format!("{safe_name}.zip")));
+    let zip_path = zip
+        .then(|| zip_target(out, &format!("{safe_name}.zip")))
+        .transpose()?;
     let folder = match &zip_path {
         Some(z) => z.with_file_name(format!(
             ".{}.parts",
@@ -432,9 +436,12 @@ async fn export_messages_bundle(
         weflow_core::export::zip_folder(&folder, &zip_path).map_err(|err| {
             AppError::runtime(format!("failed to write {}: {err:#}", zip_path.display()))
         })?;
-        // the files are inside the zip now: their names there
+        // the files and their media are inside the zip now: their paths there
         for (file, (_, path)) in files.iter_mut().zip(&outs) {
             file.out = path.file_name().map(PathBuf::from).unwrap_or_default();
+            if let Some(copied) = file.media.as_mut().filter(|m| m.dir.starts_with(&folder)) {
+                copied.dir = weflow_core::export::zip_entry_name(&folder, &copied.dir).into();
+            }
         }
         Ok(files)
     });
@@ -588,15 +595,7 @@ async fn export_list(
     if !zip {
         return write_list(hub, kind, format, out, value, avatars).await;
     }
-    if out
-        .extension()
-        .is_some_and(|ext| !ext.eq_ignore_ascii_case("zip"))
-    {
-        return Err(AppError::usage(
-            "--zip writes a zip: give --out a folder or a .zip file",
-        ));
-    }
-    let zip_path = export_path(out, &format!("{}.zip", kind.name()));
+    let zip_path = zip_target(out, &format!("{}.zip", kind.name()))?;
     let folder = zip_path.with_file_name(format!(
         ".{}.parts",
         zip_path

@@ -53,7 +53,7 @@ pub struct MessagesZip {
     pub formats: Vec<String>,
     /// Each format's file, named as it is inside the zip.
     pub files: Vec<MessagesExported>,
-    /// The media packed with them; null without `media`.
+    /// The media packed with them, its `dir` the folder inside the zip; null without `media`.
     pub media: Option<MediaCopied>,
 }
 
@@ -66,7 +66,7 @@ pub struct MediaCopied {
     pub exported: usize,
     /// The ones whose file is not on disk, or could not be read or converted.
     pub missing: usize,
-    /// The folder they went to, `media/<name of the export>` beside the export.
+    /// The folder they went to, `media/<name of the export>` beside the export; in a zip, its path inside the zip.
     pub dir: PathBuf,
 }
 

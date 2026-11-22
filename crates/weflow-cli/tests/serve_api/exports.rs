@@ -1,7 +1,7 @@
 //! List exports: contacts by kind, every format, the zip with its page and avatars, the sessions named, the
 //! footprint.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
@@ -263,6 +263,166 @@ fn the_footprint_is_exported_as_json_or_as_a_timeline() {
         "{v}"
     );
     assert!(!root.join("out").join("html").exists());
+}
+
+/// `export messages --zip --media` (#1039): the result names the media folder as it is inside the zip, not the folder
+/// the zip was made from, which is taken away; every format's file and the result's `media` say the same folder.
+#[test]
+fn a_messages_zip_names_its_media_folder_inside_the_zip() {
+    use std::io::Read;
+    use weflow_native::fixture::{DAY, T0};
+    let root = temp_root("messages-zip-media");
+    let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    jpeg.extend((0..3000u32).map(|i| (i as u8).wrapping_mul(7) | 1));
+    let home = account_home_with(&root, |f| {
+        // the image of `wxid_bob`'s message 3, an old-style .dat: the whole file XOR-ed
+        let img = f
+            .account_dir
+            .join("msg/attach")
+            .join(weflow_core::image::session_dir_for_storage("wxid_bob"))
+            .join(weflow_core::image::year_month_from_create_time(Some(
+                T0 + DAY,
+            )))
+            .join("Img");
+        std::fs::create_dir_all(&img).unwrap();
+        std::fs::write(
+            img.join("aabbccddeeff00112233445566778899.dat"),
+            jpeg.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
+        )
+        .unwrap();
+    });
+    let (exit, _, stderr) = run_cli(&home, &["config", "set", "image_xor_key", "90"]);
+    assert_eq!(exit, 0, "{stderr}");
+
+    let out = root.join("out").join("bob.zip");
+    let (exit, stdout, stderr) = run_cli(
+        &home,
+        &[
+            "--json",
+            "export",
+            "messages",
+            "wxid_bob",
+            "--out",
+            out.to_str().unwrap(),
+            "--format",
+            "json,txt",
+            "--zip",
+            "--media",
+            "image",
+        ],
+    );
+    assert_eq!(exit, 0, "{stdout}{stderr}");
+    let result: Value = serde_json::from_str(&stdout).unwrap();
+    let data = &result["data"];
+    assert_eq!(data["media"]["exported"], 1, "{data}");
+
+    let dir = data["media"]["dir"].as_str().unwrap().to_string();
+    assert!(!dir.contains(".parts"), "{dir}");
+    assert_eq!(dir, "media/wxid_bob");
+    let files = data["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2, "{data}");
+    assert!(
+        files.iter().all(|f| f["media"]["dir"] == dir.as_str()),
+        "{data}"
+    );
+
+    // the folder is in the zip, with the image in it; the one the zip was made from is gone
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+    let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+    let inside = format!("{dir}/");
+    assert!(
+        names.iter().any(|n| n.starts_with(&inside)),
+        "no file under {dir} in {names:?}"
+    );
+    assert!(names.contains(&"wxid_bob.json".to_string()), "{names:?}");
+    assert!(names.contains(&"wxid_bob.txt".to_string()), "{names:?}");
+    let left: Vec<_> = std::fs::read_dir(out.parent().unwrap())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(left, ["bob.zip"]);
+
+    // the messages point at the same folder as the result does
+    let mut messages = String::new();
+    zip.by_name("wxid_bob.json")
+        .unwrap()
+        .read_to_string(&mut messages)
+        .unwrap();
+    assert!(messages.contains(&inside), "{messages}");
+}
+
+/// `export messages --zip` (#1040) writes a zip, so `--out` is a folder or a `.zip` file, as for the lists: not a
+/// file with another extension, whose name would claim a text, a page or a table for a zip.
+#[test]
+fn a_messages_zip_is_not_written_under_another_files_name() {
+    let root = temp_root("messages-zip-name");
+    let home = account_home(&root);
+    let out = root.join("out");
+    let export = |target: &Path, formats: &str| {
+        run_cli(
+            &home,
+            &[
+                "--json",
+                "export",
+                "messages",
+                "wxid_bob",
+                "--out",
+                target.to_str().unwrap(),
+                "--format",
+                formats,
+                "--zip",
+            ],
+        )
+    };
+
+    for (name, formats) in [
+        ("chat.txt", "txt"),
+        ("chat.html", "html,txt"),
+        ("chat.json", "json"),
+    ] {
+        let target = out.join(name);
+        let (exit, stdout, _) = export(&target, formats);
+        assert_eq!(exit, 2, "{name}: {stdout}");
+        let v: Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(v["error"]["code"], "invalid_arguments", "{name}: {v}");
+        assert!(
+            v["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("--zip writes a zip"),
+            "{name}: {v}"
+        );
+        // nothing was written, not even the folder the zip is made in
+        assert!(!out.exists(), "{name}");
+    }
+
+    // a .zip file, in any case, and a folder (the zip goes in it, named after the conversation)
+    for (target, zipped) in [
+        (
+            out.join("a").join("chat.zip"),
+            out.join("a").join("chat.zip"),
+        ),
+        (
+            out.join("b").join("CHAT.ZIP"),
+            out.join("b").join("CHAT.ZIP"),
+        ),
+        (out.join("c"), out.join("c").join("wxid_bob.zip")),
+    ] {
+        let (exit, stdout, stderr) = export(&target, "txt");
+        assert_eq!(exit, 0, "{}: {stdout}{stderr}", target.display());
+        let v: Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(PathBuf::from(v["data"]["out"].as_str().unwrap()), zipped);
+        let zip = zip::ZipArchive::new(std::fs::File::open(&zipped).unwrap()).unwrap();
+        assert_eq!(zip.file_names().collect::<Vec<_>>(), ["wxid_bob.txt"]);
+    }
+
+    // the same through `serve`
+    let server = start(&home, &["--api-token", TOKEN]);
+    let body = json!({ "session-id": "wxid_bob", "zip": true, "out": root.join("serve").join("chat.txt") });
+    let r = server.call("POST", "/export/messages", &body.to_string());
+    assert_eq!(r.status, 400, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], "invalid_arguments");
+    assert!(!root.join("serve").exists());
 }
 
 /// `--format ""` stands for the default format, txt, both on the command line and through `serve`.
