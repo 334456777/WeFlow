@@ -49,6 +49,7 @@ pub(super) const METHODS: &[(&str, Rule)] = &[
     ("config set", Rule::Fixed(Put)),
     ("config unset", Rule::Fixed(Delete)),
     ("config clear", Rule::Fixed(Delete)),
+    ("config remove-profile", Rule::Fixed(Delete)),
     ("db detect", Rule::Fixed(Get)),
     ("db scan", Rule::Fixed(Get)),
     ("db test", Rule::Fixed(Get)),

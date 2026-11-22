@@ -1857,6 +1857,54 @@
         }
       }
     },
+    "/config/remove-profile": {
+      "get": {
+        "operationId": "api_config_remove_profile",
+        "x-weflow-command": "config remove-profile",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "The config file the profile was removed from; `cancelled` when it was not confirmed",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/ConfigWritten"
+                        },
+                        {
+                          "$ref": "#/components/schemas/Cancelled"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/set": {
       "get": {
         "operationId": "api_config_set",
@@ -8753,7 +8801,7 @@
           },
           "dir": {
             "type": "string",
-            "description": "The folder they went to, `media/<name of the export>` beside the export."
+            "description": "The folder they went to, `media/<name of the export>` beside the export; in a zip, its path inside the zip."
           }
         },
         "required": [
@@ -8836,7 +8884,7 @@
                 "type": "null"
               }
             ],
-            "description": "The media packed with them; null without `media`."
+            "description": "The media packed with them, its `dir` the folder inside the zip; null without `media`."
           }
         },
         "required": [

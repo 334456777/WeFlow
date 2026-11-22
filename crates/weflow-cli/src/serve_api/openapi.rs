@@ -600,6 +600,13 @@ pub(super) fn contract() -> &'static Contract {
             for command in ["config set", "config unset", "config clear"] {
                 data.insert(command, of(generator.subschema_for::<ConfigWritten>()));
             }
+            data.insert(
+                "config remove-profile",
+                json!({
+                    "description": "The config file the profile was removed from; `cancelled` when it was not confirmed",
+                    "anyOf": [of(generator.subschema_for::<ConfigWritten>()), cancelled],
+                }),
+            );
             data.insert("config list", of(generator.subschema_for::<weflow_core::config::ConfigStore>()));
             data.insert(
                 "config path",

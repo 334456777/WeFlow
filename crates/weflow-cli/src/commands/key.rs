@@ -182,7 +182,14 @@ pub(crate) fn key_summary(summary: Summary, data: &Value, paint: Paint) -> Optio
     match summary {
         Summary::AlreadySaid => Some(String::new()),
         Summary::Cache(shown) => cache_summary(shown, data, paint),
-        // silent unless the key is spelt almost as one WeFlow reads (#813)
+        // silent unless the key is spelt almost as one WeFlow reads (#813), or `remove-profile` was not confirmed
+        Summary::ConfigSaved if data["cancelled"] == true => Some(format!(
+            "{}\n",
+            tr(
+                "Cancelled; the profile was not removed.",
+                "已取消，没有删除档案。"
+            )
+        )),
         Summary::ConfigSaved => Some(match data["didYouMean"].as_str() {
             Some(known) => labelled(
                 tr("warning:", "警告："),

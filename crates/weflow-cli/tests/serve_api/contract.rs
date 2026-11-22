@@ -627,6 +627,25 @@ fn settings_changes_fit_the_contract() {
         component("ConfigWritten"),
     );
     fits("GET", "/config/list", "", component("ConfigStore"));
+    // a profile is made, left for another and removed again
+    fits(
+        "PUT",
+        "/config/set",
+        r#"{"key": "current_profile", "value": "spare"}"#,
+        component("ConfigWritten"),
+    );
+    fits(
+        "PUT",
+        "/config/set",
+        r#"{"key": "current_profile", "value": "default"}"#,
+        component("ConfigWritten"),
+    );
+    fits(
+        "DELETE",
+        "/config/remove-profile",
+        r#"{"name": "spare", "yes": true}"#,
+        component("ConfigWritten"),
+    );
     fits("GET", "/config/path", "", json!({ "type": "string" }));
     fits("PUT", "/lang", r#"{"lang": "en"}"#, component("LangSaved"));
     // last: the account goes with the rest of the config

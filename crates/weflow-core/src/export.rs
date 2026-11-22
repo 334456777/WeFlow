@@ -294,6 +294,17 @@ fn write_file(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     fs::write(path, content).with_context(|| format!("write {}", path.display()))
 }
 
+/// The name of `path` in the zip [`zip_folder`] makes of `dir`: its path from `dir`, the parts joined with `/` on every
+/// platform. A path that is not under `dir` is named by its whole path.
+pub fn zip_entry_name(dir: &Path, path: &Path) -> String {
+    path.strip_prefix(dir)
+        .unwrap_or(path)
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Packs everything under `dir` into the zip `out` (#342), paths relative to `dir` with `/`; pictures, videos and
 /// other files that are compressed already are stored as they are.
 pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
@@ -320,13 +331,7 @@ pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
         fs::File::create(out).with_context(|| format!("create {}", out.display()))?,
     );
     for path in files {
-        let name = path
-            .strip_prefix(dir)
-            .unwrap_or(&path)
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
+        let name = zip_entry_name(dir, &path);
         let stored = path
             .extension()
             .and_then(|e| e.to_str())
@@ -358,6 +363,21 @@ mod tests {
     #[test]
     fn sql_escapes() {
         assert_eq!(sql_escape("it's"), "it''s");
+    }
+
+    #[test]
+    fn a_zip_entry_is_named_from_the_folder_with_slashes() {
+        let dir = Path::new("out").join(".chat.zip.parts");
+        let image = dir.join("media").join("chat").join("images").join("1.jpg");
+        assert_eq!(zip_entry_name(&dir, &image), "media/chat/images/1.jpg");
+        assert_eq!(zip_entry_name(&dir, &dir.join("chat.txt")), "chat.txt");
+        assert_eq!(
+            zip_entry_name(&dir, &dir.join("media").join("chat")),
+            "media/chat"
+        );
+        // not under the folder: named by the whole path
+        let elsewhere = Path::new("elsewhere").join("chat.txt");
+        assert_eq!(zip_entry_name(&dir, &elsewhere), "elsewhere/chat.txt");
     }
 
     #[test]

@@ -1714,7 +1714,7 @@ export interface MediaCopied {
   exported: number;
   /** The ones whose file is not on disk, or could not be read or converted. */
   missing: number;
-  /** The folder they went to, `media/<name of the export>` beside the export. */
+  /** The folder they went to, `media/<name of the export>` beside the export; in a zip, its path inside the zip. */
   dir: string;
 }
 
@@ -1739,7 +1739,7 @@ export interface MessagesZip {
   formats: string[];
   /** Each format's file, named as it is inside the zip. */
   files: MessagesExported[];
-  /** The media packed with them; null without `media`. */
+  /** The media packed with them, its `dir` the folder inside the zip; null without `media`. */
   media: MediaCopied | null;
 }
 
@@ -2843,6 +2843,8 @@ export interface Answers {
   /** Where the config file is */
   "config path": string;
   "config profiles": ProfileSummary[];
+  /** The config file the profile was removed from; `cancelled` when it was not confirmed */
+  "config remove-profile": ConfigWritten | Cancelled;
   "config set": ConfigWritten;
   "config unset": ConfigWritten;
   "db detect": DbCandidates;

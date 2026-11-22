@@ -195,6 +195,197 @@ fn a_report_year_outside_1970_to_2100_is_refused() {
     }
 }
 
+/// The names of the profiles `config profiles` lists.
+fn profile_names(home: &std::path::Path) -> Vec<String> {
+    let (exit, stdout, stderr) = run_cli(home, &["--json", "config", "profiles"]);
+    assert_eq!(exit, 0, "{stderr}");
+    let doc: Value = serde_json::from_str(&stdout).unwrap();
+    doc["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// `config set` refuses a profile that could not be addressed (#1043), and `config remove-profile` takes a profile
+/// out of the config: not the current one, and where there is no terminal to ask on only with `--yes`.
+#[test]
+fn a_profile_is_made_with_a_name_that_works_and_removed_with_yes() {
+    let root = temp_root("remove-profile");
+    let set = |key: &str, value: &str| run_cli(&root, &["--json", "config", "set", key, value]);
+    for name in ["work", "spare"] {
+        let (exit, _, stderr) = set("current_profile", name);
+        assert_eq!(exit, 0, "{stderr}");
+        let (exit, _, stderr) = set("wxid", &format!("wxid_{name}"));
+        assert_eq!(exit, 0, "{stderr}");
+    }
+    let (exit, _, stderr) = set("current_profile", "home");
+    assert_eq!(exit, 0, "{stderr}");
+    let all = ["default", "home", "spare", "work"];
+    assert_eq!(profile_names(&root), all);
+
+    // a name that no `<profile>.<key>` reaches is refused, and makes no profile
+    for bad in ["", "a.b", "wxid", "serve"] {
+        let (exit, stdout, _) = set("current_profile", bad);
+        let doc: Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(
+            (exit, &doc["error"]["code"]),
+            (2, &json!("invalid_arguments")),
+            "{bad:?}: {stdout}"
+        );
+    }
+    assert_eq!(profile_names(&root), all);
+    let (_, stdout, _) = run_cli(&root, &["--json", "config", "get", "current_profile"]);
+    assert_eq!(
+        serde_json::from_str::<Value>(&stdout).unwrap()["data"],
+        "home"
+    );
+
+    // there is no terminal to ask on here
+    let remove = |args: &[&str]| {
+        let mut argv = vec!["--json", "config", "remove-profile"];
+        argv.extend_from_slice(args);
+        let (exit, stdout, _) = run_cli(&root, &argv);
+        (exit, serde_json::from_str::<Value>(&stdout).unwrap())
+    };
+    let (exit, doc) = remove(&["work"]);
+    assert_eq!(exit, 2, "{doc}");
+    assert!(
+        doc["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("add --yes"),
+        "{doc}"
+    );
+    // not the current one, not one there is not, and nothing is asked about either
+    let (exit, doc) = remove(&["--yes", "home"]);
+    assert_eq!(exit, 2, "{doc}");
+    assert!(
+        doc["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("current profile"),
+        "{doc}"
+    );
+    let (exit, doc) = remove(&["nobody"]);
+    assert_eq!(exit, 2, "{doc}");
+    assert!(
+        doc["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no profile named 'nobody'"),
+        "{doc}"
+    );
+    assert_eq!(profile_names(&root), all);
+
+    let (exit, doc) = remove(&["work", "-y"]);
+    assert_eq!(exit, 0, "{doc}");
+    assert!(doc["data"]["configPath"].is_string(), "{doc}");
+    assert_eq!(profile_names(&root), ["default", "home", "spare"]);
+    let (_, stdout, _) = run_cli(&root, &["--json", "config", "get", "spare.wxid"]);
+    assert_eq!(
+        serde_json::from_str::<Value>(&stdout).unwrap()["data"],
+        "wxid_spare"
+    );
+
+    // through `serve`: a `DELETE`, with `yes` as the terminal has `--yes`
+    let server = start(&root, &["--api-token", TOKEN]);
+    let r = server.call("GET", "/config/remove-profile?name=spare", "");
+    assert_eq!((r.status, r.headers["allow"].as_str()), (405, "DELETE"));
+    let r = server.call("DELETE", "/config/remove-profile?name=spare", "");
+    assert_eq!(r.status, 400, "{}", r.body);
+    assert_eq!(profile_names(&root), ["default", "home", "spare"]);
+    let r = server.call("DELETE", "/config/remove-profile?name=spare&yes=true", "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(profile_names(&root), ["default", "home"]);
+    let r = server.call("DELETE", "/config/remove-profile?name=home&yes=true", "");
+    assert_eq!(r.status, 400, "{}", r.body);
+}
+
+/// A switch takes `1` and `yes` as well as `true`, and a value that is none says which key it was for; the progress
+/// settings are checked as the others are, and `no_progress` is read whichever way a file wrote it (#1042).
+#[test]
+fn switches_take_every_spelling_and_no_progress_is_read_as_one() {
+    let root = temp_root("config-switches");
+    let get = |key: &str| {
+        let (exit, stdout, stderr) = run_cli(&root, &["--json", "config", "get", key]);
+        assert_eq!(exit, 0, "{stderr}");
+        serde_json::from_str::<Value>(&stdout).unwrap()["data"].clone()
+    };
+    for (key, typed, kept) in [
+        ("serve_insight", "1", json!(true)),
+        ("serve_log_requests", "0", json!(false)),
+        ("serve_insight", "TRUE", json!(true)),
+        ("ai_insight_enabled", "on", json!(true)),
+        ("no_progress", "yes", json!(true)),
+        ("no_progress", "0", json!(false)),
+        ("progress_delay_seconds", "7", json!(7)),
+    ] {
+        let (exit, stdout, stderr) = run_cli(&root, &["--json", "config", "set", key, typed]);
+        assert_eq!(exit, 0, "{key}={typed}: {stdout}{stderr}");
+        assert_eq!(get(key), kept, "{key}={typed}");
+    }
+    for (key, typed) in [
+        ("serve_insight", "maybe"),
+        ("no_progress", "maybe"),
+        ("progress_delay_seconds", "soon"),
+    ] {
+        let (exit, stdout, _) = run_cli(&root, &["--json", "config", "set", key, typed]);
+        let doc: Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(exit, 2, "{key}={typed}: {stdout}");
+        assert!(
+            doc["error"]["message"].as_str().unwrap().contains(key),
+            "{stdout}"
+        );
+    }
+
+    // a file written before `set` checked the value: whichever way `no_progress` is written, it is read as `true`
+    let path = root.join("config.json");
+    for written in [json!(true), json!(1), json!("yes"), json!("on")] {
+        std::fs::write(
+            &path,
+            json!({ "profiles": { "default": { "extra": { "no_progress": written } } } })
+                .to_string(),
+        )
+        .unwrap();
+        assert_eq!(get("no_progress"), json!(true), "{written}");
+    }
+}
+
+/// A config file with a mistake in it is reported by the parser of its format, with the place of the mistake and
+/// without the text there (#1044).
+#[test]
+fn a_config_file_with_a_mistake_is_reported_as_the_format_it_is_in() {
+    let root = temp_root("config-mistake");
+    let path = root.join("config.json");
+    std::fs::write(
+        &path,
+        "{\n  \"current_profile\": \"default\",\n  \"profiles\": { \"default\": { \"wxid\": \"a\", } }\n}\n",
+    )
+    .unwrap();
+    let (exit, stdout, _) = run_cli(&root, &["--json", "config", "list"]);
+    let doc: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(
+        (exit, &doc["error"]["code"]),
+        (3, &json!("config_error")),
+        "{stdout}"
+    );
+    let message = doc["error"]["message"].as_str().unwrap();
+    assert!(message.contains("line 3"), "{message}");
+    assert!(!message.contains("TOML"), "{message}");
+
+    // one line holding a key: the key is not in the message
+    std::fs::write(
+        &path,
+        r#"{ "profiles": { "default": { "decrypt_key": "sEcr3tK3y", "image_xor_key": "abc", } } }"#,
+    )
+    .unwrap();
+    let (exit, stdout, _) = run_cli(&root, &["--json", "config", "list"]);
+    assert_eq!(exit, 3, "{stdout}");
+    assert!(!stdout.contains("sEcr3tK3y"), "{stdout}");
+}
+
 #[test]
 fn account_commands() {
     let root = temp_root("account");
