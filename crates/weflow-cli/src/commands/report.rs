@@ -33,7 +33,7 @@ pub(crate) enum AnnualSubcommand {
     /// Generate the annual report
     Generate {
         /// Report year, 1970-2100; 0 covers all years
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, allow_negative_numbers = true)]
         year: i32,
     },
 }
@@ -46,7 +46,7 @@ pub(crate) enum DualSubcommand {
         #[arg(long)]
         friend: String,
         /// Report year, 1970-2100; 0 covers all years
-        #[arg(long, default_value_t = 0)]
+        #[arg(long, default_value_t = 0, allow_negative_numbers = true)]
         year: i32,
         /// Words to exclude from the phrase rankings; repeat for several.
         #[arg(long = "exclude-word")]
