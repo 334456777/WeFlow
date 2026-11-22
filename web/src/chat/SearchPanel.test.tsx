@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
+import { afterEach, beforeEach, describe, expect, it, resetZone, vi } from '#test';
 import type { ChatSession } from '../api/chat';
 import type { SearchHit } from '../api/messages';
 import { rangeOf, SearchPanel, secondsOf } from './SearchPanel';
@@ -139,8 +139,7 @@ describe('SearchPanel', () => {
 });
 
 describe('secondsOf (#241)', () => {
-  const zone = process.env.TZ;
-  afterEach(() => { process.env.TZ = zone; });
+  afterEach(resetZone);
   const local = (y: number, m: number, d: number, h = 0, min = 0, sec = 0) => new Date(y, m - 1, d, h, min, sec).getTime() / 1000;
   const midnight = (day: string) => { const [y, m, d] = day.split('-').map(Number); return local(y, m, d); };
 

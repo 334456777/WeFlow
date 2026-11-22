@@ -2,7 +2,7 @@
 // code. A test of weflow-cli checks the same samples, and the answers a running server sends, against the contract,
 // so what is read here is what the server answers, not what a fixture of the page supposes it does.
 import { readFileSync } from 'node:fs';
-import { afterEach, describe, expect, it, vi } from '#test';
+import { afterEach, describe, expect, it, resetZone, vi } from '#test';
 import { dayOf, formatClock, formatFileSize, isMine, kindOf, withoutLabel } from '../chat/messages';
 import { formatSessionTime, kindOf as sessionKind, sessionRows } from '../chat/sessions';
 import { contactLine } from '../contacts/ContactList';
@@ -41,10 +41,9 @@ function serve(...replies: Array<{ status: number; doc: unknown }>) {
 const ok = (data: unknown) => ({ status: 200, doc: { success: true, data } });
 const failed = (status: number, error: Contract.Error) => ({ status, doc: { success: false, error } });
 
-const zone = process.env.TZ;
 afterEach(() => {
   vi.unstubAllGlobals();
-  process.env.TZ = zone;
+  resetZone();
 });
 
 describe('the samples of the contract (#400)', () => {
