@@ -113,6 +113,47 @@ describe('AI settings', () => {
     ]);
   });
 
+  it('chooses the conversations the insights are written for, and saves the list as an array (#1078)', async () => {
+    const people = [{ username: 'wxid_a', displayName: '林沐', wechatId: 'linmu' }, { username: 'wxid_b', displayName: '陈屿', wechatId: '' }];
+    const read = settings({ ai_model_api_model: 'm1', ai_insight_filter_list: ['wxid_b', 'wxid_gone'] });
+    const calls = serve((_method, url) => (url.startsWith('/api/analytics/exclude-candidates') ? ok(people) : read(url)));
+    render(<AiSetting profile={PROFILE} engine={false} onSaved={() => {}} onServe={() => {}} />);
+    await act(async () => {});
+    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
+    // the chosen first, one the list no longer has among them, by its id
+    expect(Array.from(document.querySelectorAll('.insight-session-list .checkbox'), c => c.textContent)).toEqual(['陈屿', 'wxid_gone', '林沐']);
+    expect(box('陈屿').checked).toBe(true);
+    expect(box('林沐').checked).toBe(false);
+    expect(document.body.textContent).toContain('只为选中的 2 个私聊写见解。');
+    // found by WeChat ID
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索私聊' }), { target: { value: 'LINMU' } });
+    expect(Array.from(document.querySelectorAll('.insight-session-list .checkbox'), c => c.textContent)).toEqual(['林沐']);
+    fireEvent.click(box('林沐'));
+    fireEvent.click(screen.getByRole('button', { name: '选中的会话除外' }));
+    expect(document.body.textContent).toContain('为选中的 3 个以外的所有私聊写见解。');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await act(async () => {});
+    expect(calls.filter(c => c.method === 'PUT').map(c => c.body)).toEqual([
+      { key: 'ai_insight_filter_mode', value: 'blacklist' }, { key: 'ai_insight_filter_list', value: '["wxid_b","wxid_gone","wxid_a"]' },
+    ]);
+  });
+
+  it('warns that an empty list allows none, and unsets what goes back to the default', async () => {
+    const read = settings({ ai_model_api_model: 'm1', ai_insight_filter_mode: 'blacklist', ai_insight_filter_list: ['wxid_a'] });
+    const calls = serve((_method, url) => (url.startsWith('/api/analytics/exclude-candidates') ? ok([{ username: 'wxid_a', displayName: '林沐', wechatId: '' }]) : read(url)));
+    render(<AiSetting profile={PROFILE} engine={false} onSaved={() => {}} onServe={() => {}} />);
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: '选中的会话除外' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('checkbox', { name: '林沐' }));
+    fireEvent.click(screen.getByRole('button', { name: '只处理选中的会话' }));
+    expect(document.body.textContent).toContain('还没有选会话：灵感引擎和「生成见解」都不会写见解。');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await act(async () => {});
+    expect(calls.filter(c => c.method === 'DELETE').map(c => c.url)).toEqual([
+      '/config/unset?key=ai_insight_filter_mode', '/config/unset?key=ai_insight_filter_list',
+    ]);
+  });
+
   it('shows what the test found, and offers the models the service lists', async () => {
     serve((_method, url) => {
       if (url === '/insight/test') return ok({ success: true, message: '连接成功', probe: {

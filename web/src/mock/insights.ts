@@ -3,6 +3,7 @@
 import type { InsightCleared, InsightContact, InsightMarked, InsightRecord, InsightReply, InsightSummary, ModelList } from '../api/contract.gen';
 import { threads } from './chats';
 import { ago, at, dayOf, NOW } from './clock';
+import { getSetting } from './config';
 import { ME, nameOf } from './people';
 
 interface Written { id: string; session: string; at: number; reason: 'activity' | 'silence' | 'test'; text: string; read: boolean }
@@ -86,16 +87,25 @@ let made = 0;
 const privateChats = () => [...threads].filter(([id]) => id.startsWith('wxid_') && id !== ME)
   .sort(([, a], [, b]) => b[b.length - 1].createTime - a[a.length - 1].createTime);
 
+/** Whether the session list of the settings allows a conversation, as the server reads the two settings (#1078). */
+function allowed(id: string): boolean {
+  let list: unknown = [];
+  try { list = JSON.parse(getSetting('ai_insight_filter_list') ?? '[]'); } catch { /* no list */ }
+  const listed = Array.isArray(list) && list.includes(id);
+  return getSetting('ai_insight_filter_mode') === 'blacklist' ? !listed : listed;
+}
+
 /**
- * `insight trigger [session]`: one insight now, of that conversation or of the private chat talked in last, from the
- * last thing said in it with something to it: the other side's first, a reply of a word or two passed over; the
- * problem when there is nothing to write about.
+ * `insight trigger [session]`: one insight now, of that conversation or of the private chat talked in last that the
+ * session list allows, from the last thing said in it with something to it: the other side's first, a reply of a word
+ * or two passed over; the problem when there is nothing to write about.
  */
 export function triggerInsight(session: string): InsightReply | { problem: string } {
-  const id = session || privateChats()[0]?.[0];
-  const texts = [...(id ? threads.get(id) ?? [] : [])].reverse().filter(m => m.localType === 1);
+  const id = session || privateChats().find(([chat]) => allowed(chat))?.[0];
+  if (!id) return { problem: '未找到任何可触发的私聊会话\n请检查黑白名单模式与选择列表。' };
+  const texts = [...(threads.get(id) ?? [])].reverse().filter(m => m.localType === 1);
   const said = texts.find(m => m.senderUsername !== ME && m.parsedContent.length >= 8) ?? texts.find(m => m.parsedContent.length >= 8) ?? texts[0];
-  if (!id || !said) return { problem: '这个会话最近没有可以总结的文字消息。' };
+  if (!said) return { problem: '这个会话最近没有可以总结的文字消息。' };
   const name = nameOf(id);
   const line = said.parsedContent.length > 24 ? said.parsedContent.slice(0, 24) + '…' : said.parsedContent;
   made += 1;

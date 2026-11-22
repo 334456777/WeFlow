@@ -31,6 +31,47 @@ export const AI_KEYS = [
   'ai_insight_allow_context', 'ai_insight_context_count',
 ] as const;
 
+/** Which private chats the insights are written for: only those of the list, or all but them. */
+export type InsightSessionMode = 'whitelist' | 'blacklist';
+
+/** `ai_insight_filter_mode` and `ai_insight_filter_list`, the conversations the insights are written for (#1078). */
+export interface InsightSessions { mode: InsightSessionMode; list: string[] }
+
+/** The ids of a list as the server keeps it (a JSON array) or as the sample server does (its text); none otherwise. */
+function sessionIds(value: unknown): string[] {
+  let ids = value;
+  if (typeof ids === 'string') {
+    try { ids = JSON.parse(ids); } catch { return []; }
+  }
+  if (!Array.isArray(ids)) return [];
+  return [...new Set(ids.filter((id): id is string => typeof id === 'string').map(id => id.trim()).filter(Boolean))];
+}
+
+/** The conversations the insights are written for; the server reads an unset mode as the list's alone. */
+export async function getInsightSessions(signal?: AbortSignal): Promise<InsightSessions> {
+  const [mode, list] = await Promise.all([
+    get<unknown>('api/config/get', { key: 'ai_insight_filter_mode' }, signal),
+    get<unknown>('api/config/get', { key: 'ai_insight_filter_list' }, signal),
+  ]);
+  return { mode: String(mode ?? '').trim().toLowerCase() === 'blacklist' ? 'blacklist' : 'whitelist', list: sessionIds(list) };
+}
+
+/** Saves what of `next` differs from `saved`: the default mode and an empty list are unset rather than written. */
+export async function setInsightSessions(next: InsightSessions, saved: InsightSessions): Promise<void> {
+  if (next.mode !== saved.mode) {
+    await (next.mode === 'blacklist' ? setSetting('ai_insight_filter_mode', 'blacklist') : unsetSetting('ai_insight_filter_mode'));
+  }
+  if (!sameSessions(next.list, saved.list)) {
+    await (next.list.length ? setSetting('ai_insight_filter_list', JSON.stringify(next.list)) : unsetSetting('ai_insight_filter_list'));
+  }
+}
+
+/** Whether two lists hold the same conversations, in any order. */
+export const sameSessions = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every(id => b.includes(id));
+
+/** Whether no conversation may have an insight: the list alone is allowed, and it is empty. */
+export const noSessionAllowed = (s: InsightSessions) => s.mode === 'whitelist' && s.list.length === 0;
+
 /** The parts of the cache, as `cache clear` takes them (the contract's, #430). */
 export type CachePartName = Contract.CachePart;
 

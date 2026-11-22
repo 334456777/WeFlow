@@ -2,9 +2,10 @@
 // see how many, write one now and clear them.
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowClockwise, ChatCircleDots, CircleNotch, Copy, Lightbulb, MagnifyingGlass, Sparkle, Trash } from '@phosphor-icons/react';
+import { ArrowClockwise, ArrowRight, ChatCircleDots, CircleNotch, Copy, Lightbulb, MagnifyingGlass, Sparkle, Trash } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { clearInsights, getInsightLog, reasonLabel, triggerInsight, type InsightContact, type InsightLog, type InsightRecord } from '../api/insights';
+import { getInsightSessions, noSessionAllowed } from '../api/settings';
 import { Avatar } from '../Avatar';
 import { formatSessionTime } from '../chat/sessions';
 import { HoverTrack } from '../HoverTrack';
@@ -148,12 +149,28 @@ export function InsightsSummary({ state, engine, aiReady }: { state: InsightsSta
   </>;
 }
 
-/** `insight trigger`: one insight now, for the conversation chosen or the first one it may write for. */
-export function InsightTrigger({ session, name, onDone }: { session: string | null; name: string | null; onDone(): void }) {
+/**
+ * `insight trigger`: one insight now, for the conversation chosen or the first one it may write for. With none chosen,
+ * the conversations it may write for are those the session list of the AI settings allows (#1078): when the list alone
+ * is allowed and it is empty, that is said, with the way to the settings, instead of asking the server.
+ */
+export function InsightTrigger({ session, name, onDone, onSettings }: {
+  session: string | null; name: string | null; onDone(): void;
+  /** Opens the AI settings, where the session list is. */
+  onSettings?(): void;
+}) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
-  useEffect(() => setNote(null), [session]);
+  const [noneAllowed, setNoneAllowed] = useState(false);
+  // read again on each try, as the list may have changed in the settings since; a list not read leaves it to the server
+  const listIsEmpty = () => getInsightSessions().then(noSessionAllowed, () => false).then(none => { setNoneAllowed(none); return none; });
+  useEffect(() => {
+    setNote(null);
+    if (session) setNoneAllowed(false);
+    else void listIsEmpty();
+  }, [session]);
   const run = async () => {
+    if (!session && await listIsEmpty()) return;
     setBusy(true); setNote(null);
     try {
       const done = await triggerInsight(session);
@@ -170,7 +187,12 @@ export function InsightTrigger({ session, name, onDone }: { session: string | nu
       ? t('为「{name}」立即生成一条见解，要等模型回答，可能需要几十秒。', { name: name ?? session })
       : t('为第一个可以写见解的私聊立即生成一条见解，要等模型回答，可能需要几十秒。')}</p>
     <button type="button" className="primary-button large export-pending" disabled={busy} onClick={run}>{busy ? <CircleNotch size={18} className="spin" /> : <Sparkle size={18} />}{busy ? t('正在生成') : t('生成见解')}</button>
-    {note && <p className={'card-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined}>{note.text}</p>}
+    {!session && noneAllowed && <div className="insight-none-allowed" role="status">
+      <p className="card-note setting-warning">{t('会话名单是空的，不会为任何会话写见解。先在「设置 → AI 见解」的会话名单里选择要写见解的私聊。')}</p>
+      {onSettings && <button type="button" className="secondary-button" onClick={onSettings}>{t('前往 AI 见解')}<ArrowRight size={12} /></button>}
+    </div>}
+    {/* the server's reasons may run over lines */}
+    {note && <p className={'card-note insight-trigger-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined}>{note.text}</p>}
   </>;
 }
 

@@ -81,6 +81,35 @@ describe('insights', () => {
     expect(screen.getByRole('alert').textContent).toBe('请先填写 API 地址和 Key');
   });
 
+  it('says, instead of asking the server, that an empty session list allows no insight (#1078)', async () => {
+    let list: string[] = [];
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.startsWith('/api/config/get')) return json({ success: true, data: url.includes('filter_list') ? list : null });
+      return json({ success: false, error: { code: 'runtime_error', message: '未找到任何可触发的私聊会话\n请检查黑白名单模式与选择列表。' } }, 500);
+    }));
+    const onSettings = vi.fn();
+    render(<InsightTrigger session={null} name={null} onDone={() => {}} onSettings={onSettings} />);
+    await act(async () => {});
+    expect(screen.getByRole('status').textContent).toContain('会话名单是空的');
+    fireEvent.click(screen.getByRole('button', { name: '前往 AI 见解' }));
+    expect(onSettings).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '生成见解' }));
+    await act(async () => {});
+    expect(urls.some(u => u.startsWith('/insight/trigger'))).toBe(false);
+
+    // chosen in the settings since: read again on the next try, which goes to the server, whose reason keeps its lines
+    list = ['wxid_a'];
+    fireEvent.click(screen.getByRole('button', { name: '生成见解' }));
+    await act(async () => {});
+    expect(urls.filter(u => u.startsWith('/insight/trigger'))).toHaveLength(1);
+    expect(screen.queryByRole('status')).toBeNull();
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe('未找到任何可触发的私聊会话\n请检查黑白名单模式与选择列表。');
+    expect(alert.classList.contains('insight-trigger-note')).toBe(true);
+  });
+
   it('clears the insights of a conversation only after asking', async () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => { urls.push(url); return json({ success: true, data: { success: true, removed: 1 } }); }));
