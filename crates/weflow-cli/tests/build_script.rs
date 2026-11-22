@@ -1,6 +1,7 @@
-//! The parts of `build.rs` that are more than cargo directives (issue #1054): the files of git it has cargo watch, in a
-//! plain checkout and in a linked worktree where `.git` is a file, and the build time it works out itself. Build
-//! scripts take no part in `cargo test`, so the modules are included here.
+//! The parts of `build.rs` that are more than cargo directives (issues #1054 and #1065): the files of git it has cargo
+//! watch, in a plain checkout and in a linked worktree where `.git` is a file, the `git status` that tells a dirty
+//! checkout, and the build time it works out itself. Build scripts take no part in `cargo test`, so the modules are
+//! included here.
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"
@@ -13,6 +14,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use weflow_native::fixture::TestDir;
 
+#[path = "../build/git_status.rs"]
+mod git_status;
 #[path = "../build/git_watch.rs"]
 mod git_watch;
 #[path = "../build/utc.rs"]
@@ -229,6 +232,64 @@ fn git_dirs_are_two_lines_and_a_relative_one_is_taken_from_the_working_directory
     );
     assert_eq!(git_watch::dirs_from(dir, ".git"), None);
     assert_eq!(git_watch::dirs_from(dir, ""), None);
+}
+
+/// What the build script's dirty check prints in `dir`, trimmed as the script does.
+fn dirty_check(dir: &Path) -> String {
+    let out = Command::new("git")
+        .current_dir(dir)
+        .args(git_status::DIRTY_CHECK)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {:?} failed: {}",
+        git_status::DIRTY_CHECK,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// Sets the modification time of the file `path`, leaving its content as it is.
+fn set_modified(path: &Path, time: SystemTime) {
+    fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(time)
+        .unwrap();
+}
+
+#[test]
+fn the_dirty_check_leaves_the_index_as_it_is_for_a_file_whose_time_changed() {
+    let root = TestDir::new("build-git");
+    let repo = repo(&root);
+    let index = repo.join(".git/index");
+
+    // the stat data in the index no longer fits the file, as in a checkout written a moment after the index; the
+    // index gets a time of its own so that a write to it shows without waiting for the clock to move on
+    let file_time = UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+    let index_time = UNIX_EPOCH + Duration::from_secs(1_500_000_000);
+    set_modified(&repo.join("README"), file_time);
+    set_modified(&index, index_time);
+
+    assert_eq!(dirty_check(&repo), "", "the content is the committed one");
+    assert_eq!(
+        fs::metadata(&index).unwrap().modified().unwrap(),
+        index_time,
+        "the dirty check wrote the index, which `build.rs` has cargo watch"
+    );
+}
+
+#[test]
+fn the_dirty_check_names_a_file_whose_content_changed() {
+    let root = TestDir::new("build-git");
+    let repo = repo(&root);
+    assert_eq!(dirty_check(&repo), "", "a clean checkout prints nothing");
+
+    fs::write(repo.join("README"), "another content").unwrap();
+    let answer = dirty_check(&repo);
+    assert!(answer.contains("README"), "{answer:?}");
 }
 
 /// The stamp of `secs` after the epoch.

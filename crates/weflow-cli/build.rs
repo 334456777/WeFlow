@@ -5,6 +5,8 @@ use std::path::Path;
 use std::process::Command;
 use std::time::SystemTime;
 
+#[path = "build/git_status.rs"]
+mod git_status;
 #[path = "build/git_watch.rs"]
 mod git_watch;
 #[path = "build/utc.rs"]
@@ -45,8 +47,7 @@ fn web_version() -> String {
 fn main() {
     println!("cargo:rustc-env=WEFLOW_VERSION={}", tag_version());
     let commit = run("git", &["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "unknown".into());
-    let dirty = run("git", &["status", "--porcelain", "--untracked-files=no"])
-        .is_some_and(|s| !s.is_empty());
+    let dirty = run("git", &git_status::DIRTY_CHECK).is_some_and(|s| !s.is_empty());
     let stamp = utc::utc_stamp(SystemTime::now()).unwrap_or_else(|| "unknown".into());
     println!(
         "cargo:rustc-env=WEFLOW_BUILD_INFO={commit}{} {stamp}",
