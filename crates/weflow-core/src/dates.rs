@@ -1,6 +1,11 @@
 //! `YYYY-MM-DD` dates in the machine's local time zone, as the commands take them (`--start`, `--end`).
 
+use std::ops::RangeInclusive;
+
 use crate::error::{AppError, AppResult};
+
+/// The years a date or a report can be for.
+pub(crate) const YEARS: RangeInclusive<i32> = 1970..=2100;
 
 /// `YYYY-MM-DD` → (year, month, day), validated.
 fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
@@ -17,7 +22,7 @@ fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
     let d: u32 = parts[2]
         .parse()
         .map_err(|_| format!("invalid day in '{s}'"))?;
-    if !(1970..=2100).contains(&y) {
+    if !YEARS.contains(&y) {
         return Err(format!("invalid year in '{s}'; use 1970-2100"));
     }
     if !(1..=12).contains(&m) {

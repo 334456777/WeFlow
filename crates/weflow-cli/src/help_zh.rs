@@ -134,7 +134,7 @@ const HELP: &[(&str, &str)] = &[
     ("Read sessions, messages, contacts and media", "读取会话、消息、联系人和媒体"),
     ("Remove a key", "删除一个键"),
     ("Reset the whole config file: every profile, with all accounts and their keys, and its own settings are removed", "把整个配置文件恢复为默认内容：所有档案、每个账号及其密钥，以及配置文件自身的设置都会清空"),
-    ("Report year; 0 covers all years", "报告年份；0 表示所有年份"),
+    ("Report year, 1970-2100; 0 covers all years", "报告年份，1970-2100；0 表示所有年份"),
     ("Resolve many images", "批量解析图片"),
     ("Resolve payer / receiver display names of a transfer message", "解析转账消息的付款方 / 收款方显示名"),
     ("Return `file://` URLs for the posters instead of base64 data URLs", "封面返回 `file://` URL，而不是 base64 data URL"),

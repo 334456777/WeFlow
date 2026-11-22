@@ -690,6 +690,27 @@ fn annual_report_uses_native_extras_and_native_moments() {
 }
 
 #[test]
+fn a_report_year_outside_1970_to_2100_is_refused() {
+    let (_root, hub) = common::mock_hub("n-report-year");
+    // the messages are all of 2023: a year before 1970 once reported all of them
+    for year in [1969, 1800, -5, 2101, i32::MIN, i32::MAX] {
+        let annual = hub.report_annual(year).unwrap_err();
+        assert_eq!(annual.code, "invalid_arguments", "annual {year}");
+        assert_eq!(annual.exit_code, 2, "annual {year}");
+        let dual = hub.report_dual("wxid_bob", year, &[]).unwrap_err();
+        assert_eq!(dual.code, "invalid_arguments", "dual {year}");
+        assert_eq!(dual.exit_code, 2, "dual {year}");
+    }
+    // the ends of the range are years like any other: no messages, and an empty report rather than an error
+    for year in [1970, 2100] {
+        let annual = hub.report_annual(year).unwrap();
+        assert_eq!((annual.year, annual.total_messages), (year, 0));
+        let dual = hub.report_dual("wxid_bob", year, &[]).unwrap();
+        assert_eq!((dual.year, dual.stats.total_messages), (year, 0));
+    }
+}
+
+#[test]
 fn annual_report_breaks_ties_the_same_way_every_time() {
     use chrono::TimeZone;
     use weflow_native::fixture::{MsgSpec, SessionSpec};
