@@ -8,9 +8,10 @@ import { AnnualReportPage, Failed } from './AnnualReport';
 import { DualReportPage, type Friend } from './DualReport';
 import { t } from '../i18n';
 
-/** The years to pick, then the report of the year picked. */
-export function ReportsPage({ mode, year, onYear, friend, onFriend }: {
+/** The years to pick, then the report of the year picked; `onShown` is told which report is there, if any. */
+export function ReportsPage({ mode, year, onYear, friend, onFriend, onShown }: {
   mode: 'annual' | 'dual'; year: number | null; onYear(year: number): void; friend: Friend | null; onFriend(friend: Friend): void;
+  onShown(key: string | null): void;
 }) {
   const [years, retry] = useRead('years', signal => getReportYears(signal));
   if (years.status === 'error') return <Failed title={t('读取年份失败')} message={years.message} onRetry={retry} />;
@@ -23,6 +24,6 @@ export function ReportsPage({ mode, year, onYear, friend, onFriend }: {
       {list.map(y => <Chip key={y} label={t('{y} 年', { y })} pressed={chosen === y} onClick={() => onYear(y)} />)}
       <Chip label={t('全部年份')} pressed={chosen === 0} onClick={() => onYear(0)} />
     </div>
-    {mode === 'annual' ? <AnnualReportPage year={chosen} /> : <DualReportPage friend={friend} onFriend={onFriend} year={chosen} />}
+    {mode === 'annual' ? <AnnualReportPage year={chosen} onShown={onShown} /> : <DualReportPage friend={friend} onFriend={onFriend} year={chosen} onShown={onShown} />}
   </>;
 }

@@ -18,8 +18,10 @@ export function useReportsPage(shell: Shell): Page {
   const [year, setYear] = useState<number | null>(null);
   const [friend, setFriend] = useState<Friend | null>(null);
   useEffect(() => { setYear(null); setFriend(null); }, [scope]);
+  // the report there to save, by its key; none while it is read, failed, or waits for a friend to be picked
+  const [shown, setShown] = useState<string | null>(null);
   const scroller = useRef<HTMLElement>(null);
-  const cards = [{ id: 'report-save', title: t('保存报告'), content: <SaveReport find={() => scroller.current?.querySelector<HTMLElement>('article.report') ?? null} /> }];
+  const cards = [{ id: 'report-save', title: t('保存报告'), content: <SaveReport report={shown} find={() => scroller.current?.querySelector<HTMLElement>('article.report') ?? null} /> }];
   const view = <ScrollPage label={t('年度报告')} icon={CalendarStar} scroller={scroller} tabs={
     <Segmented className="settings-tabs" count={2} index={mode === 'annual' ? 0 : 1} role="group" aria-label={t('哪种报告')}>
       <button type="button" aria-pressed={mode === 'annual'} onClick={() => setMode('annual')}>{t('年度')}</button>
@@ -27,7 +29,7 @@ export function useReportsPage(shell: Shell): Page {
     </Segmented>}>
     <Connected backend={shell.backend} offline={t('连接 weflow serve 后，可以在这里生成私聊的年度报告。')}>
       <ReportsPage key={scope} mode={mode} year={year} onYear={next => { setYear(next); scroller.current?.scrollTo({ top: 0 }); }}
-        friend={friend} onFriend={setFriend} />
+        friend={friend} onFriend={setFriend} onShown={setShown} />
     </Connected>
   </ScrollPage>;
   return { view, cards, shown: shell.records ? ['report-save'] : [] };

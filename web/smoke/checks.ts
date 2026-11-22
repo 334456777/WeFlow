@@ -54,6 +54,65 @@ async function navigate(page: Page, label: string, panel: string): Promise<void>
   await page.waitFor(`the ${panel} panel`, panel => document.querySelector(`.main-area > .panel[aria-label="${panel}"]`) !== null, panel);
 }
 
+/**
+ * Settings → 缓存, a part's clear plan opened (`cache clear --dry-run`) with a path longer than the plan: the path cut
+ * short at the plan's edge, the plan no wider than its row, and both its buttons in view, each the element at its own
+ * middle (#1072). Cancelled after.
+ */
+async function clearPlanInView(page: Page, phone: boolean): Promise<void> {
+  if (phone) {
+    await page.click('.mobile-tab', '更多');
+    await page.click('dialog.nav-sheet .nav-sheet-item', '设置');
+    await page.waitFor('the settings panel', () => document.querySelector('.main-area > .panel[aria-label="设置"]') !== null);
+  } else {
+    await navigate(page, '设置', '设置');
+  }
+  await page.click('.settings-nav-row', '缓存');
+  // the first part the synthetic account has files of, brought into view first: on a phone its button is under the
+  // pane's fold, its middle still in the viewport, where `click` takes it for covered and does not scroll to it
+  const part = '.cache-list > li > .secondary-button:not(:disabled)';
+  await page.waitFor('a part with files', part => document.querySelector(part) !== null, part);
+  await page.eval(part => document.querySelector(part)!.scrollIntoView({ block: 'center', behavior: 'instant' }), part);
+  await page.click(part);
+  await count(page, 'the clear plan', '.cache-list .clear-plan .account-path', n => n > 0);
+  // the synthetic account's paths are no longer than its target folder's; a real account's may be longer than any screen
+  await page.eval(() => {
+    const deeper = Array.from({ length: 16 }, (_, i) => `a-folder-of-a-long-name-${i}`).join('/');
+    for (const path of document.querySelectorAll('.cache-list .clear-plan .account-path')) path.textContent += '/' + deeper;
+    // the buttons brought to the middle of the pane, which scrolls only up and down
+    const actions = document.querySelector('.cache-list .clear-plan-actions')!, pane = actions.closest('.message-pane')!;
+    const box = actions.getBoundingClientRect(), shown = pane.getBoundingClientRect();
+    pane.scrollBy({ top: box.top + box.height / 2 - (shown.top + shown.height / 2), behavior: 'instant' });
+  });
+  const inView = (b: { left: number; top: number; right: number; bottom: number; hit: boolean }, shown: { left: number; top: number; right: number; bottom: number }) =>
+    b.hit && b.left >= shown.left && b.right <= shown.right && b.top >= shown.top && b.bottom <= shown.bottom;
+  const plan = await page.until('the plan as wide as its row, its path cut short, both buttons in view',
+    p => p.within && p.cut && p.buttons.length === 2 && p.buttons.every(b => inView(b, p.shown)), () => {
+    const plan = document.querySelector('.cache-list .clear-plan')!;
+    // what shows of the page: the viewport, cut down by each box around the plan that clips what overflows it
+    let shown = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+    for (let box = plan.parentElement; box; box = box.parentElement) {
+      if (getComputedStyle(box).overflowX === 'visible') continue;
+      const r = box.getBoundingClientRect();
+      shown = { left: Math.max(shown.left, r.left), top: Math.max(shown.top, r.top), right: Math.min(shown.right, r.right), bottom: Math.min(shown.bottom, r.bottom) };
+    }
+    const row = plan.parentElement!.getBoundingClientRect(), own = plan.getBoundingClientRect();
+    return {
+      shown: { left: Math.floor(shown.left), top: Math.floor(shown.top), right: Math.ceil(shown.right), bottom: Math.ceil(shown.bottom) },
+      within: own.right <= row.right + 0.5,
+      cut: [...plan.querySelectorAll('.account-path')].every(path => path.scrollWidth > path.clientWidth),
+      buttons: [...plan.querySelectorAll('.clear-plan-actions button')].map(button => {
+        const r = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return { label: button.textContent, left: r.left, top: r.top, right: r.right, bottom: r.bottom, hit: Boolean(hit && button.contains(hit)) };
+      }),
+    };
+  });
+  if (plan.buttons.map(b => b.label).join() !== '取消,确认清理') throw new Error('the plan’s buttons: ' + JSON.stringify(plan.buttons));
+  await page.click('.cache-list .clear-plan-actions button', '取消');
+  await count(page, 'the plan gone', '.cache-list .clear-plan', n => n === 0);
+}
+
 /** The picture of 「图片测试」 whose message is `id` (dev_account.rs: ① is 2, ⑧ is 16), opened in the preview. */
 export const picture = (id: number) => `.message-row:has(img.message-thumb[src*="local-id=${id}&"]) button[aria-label="预览图片"]`;
 
@@ -157,6 +216,15 @@ export const checks: Check[] = [
       await page.click('.insight-session-list .checkbox', '周舟');
       await page.until('周舟 as saved, nothing to save', s => s.ticked['周舟'] === before.ticked['周舟'] && !s.unsaved, state);
     },
+  },
+  {
+    name: 'settings: a clear plan of the cache, its long path cut short, both its buttons in view (#1072)',
+    run: page => clearPlanInView(page, false),
+  },
+  {
+    name: 'phone: a clear plan of the cache, its long path cut short, both its buttons in view (#1072)',
+    phone: true,
+    run: page => clearPlanInView(page, true),
   },
   {
     // index.html hides the page while a skin other than the default is on its way; skin.ts shows it, here at once

@@ -10,8 +10,9 @@ use crate::message::time::format_iso_timestamp;
 use crate::message::xml::{extract_xml_value, MsgXml};
 use crate::message::*;
 
+use super::csv::{create_csv, write_csv};
 use super::format::csv_cell;
-use super::{chrome, write_bytes, Exporter};
+use super::{chrome, Exporter};
 
 impl<'a, 'n> Exporter<'a, 'n> {
     /// WeClone: a header, then one row per message (quote replies left out), numbered as written.
@@ -27,7 +28,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let mut writer: Option<std::io::BufWriter<std::fs::File>> = None;
         for msg in msgs {
             if writer.is_none() {
-                let mut w = super::create_output(out)?;
+                let mut w = create_csv(out)?;
                 w.write_all(Self::WECLONE_HEADER.as_bytes())?;
                 writer = Some(w);
             }
@@ -48,8 +49,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ───────────────────────────────── WeClone CSV ─────────────────────────────────
 
+    /// The header line; the file's byte order mark is written before it with the file (see [`create_csv`]).
     const WECLONE_HEADER: &'static str =
-        "\u{feff}id,MsgSvrID,type_name,is_sender,talker,msg,src,CreateTime\r\n";
+        "id,MsgSvrID,type_name,is_sender,talker,msg,src,CreateTime\r\n";
 
     /// One WeClone CSV row (with its line ending); `id` is the row number, starting at 1.
     fn weclone_row(&mut self, msg: &ExportMsg, id: usize) -> String {
@@ -129,6 +131,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         format!("{}\r\n", line.join(","))
     }
 
+    /// The CSV text of `msgs`: the header, then the rows, without the file's byte order mark.
     pub(super) fn render_weclone(&mut self, msgs: &[ExportMsg]) -> String {
         let mut out = String::from(Self::WECLONE_HEADER);
         let rows = msgs.iter().filter(|m| !is_text_quote(m));
@@ -143,8 +146,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     /// # Errors
     /// When the file cannot be written.
     pub fn write_weclone(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
-        let text = self.render_weclone(msgs);
-        write_bytes(out, text.as_bytes())
+        write_csv(out, &self.render_weclone(msgs))
     }
 }
 
@@ -157,18 +159,36 @@ fn is_text_quote(msg: &ExportMsg) -> bool {
 mod tests {
     use crate::export_msg::tests::with_exporter;
     use crate::message::{collect_rows, CollectOptions};
+    use weflow_native::fixture::TestDir;
     use weflow_native::msg_row::MsgRow;
 
     #[test]
     fn weclone_csv() {
         let csv = with_exporter(false, |ex, msgs| ex.render_weclone(msgs));
-        assert!(csv
-            .starts_with("\u{feff}id,MsgSvrID,type_name,is_sender,talker,msg,src,CreateTime\r\n"));
+        assert!(csv.starts_with("id,MsgSvrID,type_name,is_sender,talker,msg,src,CreateTime\r\n"));
         let lines: Vec<&str> = csv.trim_end().split("\r\n").collect();
         // quoted reply row is filtered out
         assert_eq!(lines.len(), 1 + 4);
         assert!(lines[1].starts_with("1,111,text,1,Me Nick,\"hello \"\"world\"\", ok\","));
         assert!(lines[3].contains(",image,0,Bobby,"));
+    }
+
+    /// The file, written whole or as the messages arrive, is the byte order mark and then the rendered text (#1075).
+    #[test]
+    fn a_weclone_file_starts_with_the_byte_order_mark() {
+        let dir = TestDir::new("weclone-bom");
+        let (whole, streamed) = (dir.join("whole.csv"), dir.join("streamed.csv"));
+        let text = with_exporter(false, |ex, msgs| {
+            ex.write_weclone(msgs, &whole).unwrap();
+            ex.stream_weclone(&streamed, &mut msgs.iter().cloned())
+                .unwrap();
+            ex.render_weclone(msgs)
+        });
+        for out in [whole, streamed] {
+            let bytes = std::fs::read(&out).unwrap();
+            assert_eq!(bytes[..3], [0xEF, 0xBB, 0xBF], "{}", out.display());
+            assert_eq!(bytes[3..], *text.as_bytes(), "{}", out.display());
+        }
     }
 
     #[test]

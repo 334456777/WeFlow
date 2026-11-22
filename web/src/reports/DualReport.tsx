@@ -10,6 +10,7 @@ import { Popover } from '../Popover';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 import { Failed, Heatmap, Moment, Phrases } from './AnnualReport';
+import { useShownReport } from './shown';
 import { locale, t } from '../i18n';
 
 /** Up to this many people are listed; the rest are found by name. */
@@ -137,9 +138,12 @@ export function DualReportView({ report }: { report: DualReport }) {
   </article>;
 }
 
-/** The friend picked, and the dual report of the year chosen with them. */
-export function DualReportPage({ friend, onFriend, year }: { friend: Friend | null; onFriend(friend: Friend): void; year: number }) {
+/** The friend picked, and the dual report of the year chosen with them; `onShown` is told which one is there. */
+export function DualReportPage({ friend, onFriend, year, onShown }: { friend: Friend | null; onFriend(friend: Friend): void; year: number; onShown(key: string | null): void }) {
   const [report, retry] = useRead('dual:' + (friend?.username ?? '') + ':' + year, signal => (friend ? getDualReport(friend.username, year, signal) : Promise.resolve(null)));
+  // none until a friend is picked: the read answers null
+  const shown = report.status === 'ready' && report.value ? 'dual:' + report.value.friendUsername + ':' + report.value.year : null;
+  useShownReport(shown, onShown);
   return <div className="group-analytics">
     <FriendPicker selected={friend} onSelect={onFriend} />
     {!friend ? <p className="muted">{t('选一位好友，生成你们两个人的报告。')}</p>

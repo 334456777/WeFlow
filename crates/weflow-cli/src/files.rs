@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use weflow_core::error::{AppError, AppResult};
-use weflow_core::export_msg::csv_cell;
+use weflow_core::export_msg::{csv_cell, write_csv};
 
 pub(crate) fn write_json_file(path: &Path, value: &Value) -> AppResult<()> {
     if let Some(parent) = path.parent() {
@@ -57,6 +57,12 @@ pub(crate) fn write_text_file(path: &Path, text: &str) -> AppResult<()> {
     make_parent(path)?;
     std::fs::write(path, text)
         .map_err(|err| AppError::runtime(format!("failed to write {}: {err}", path.display())))
+}
+
+/// Writes `text`, the lines of a CSV file, to `path` as every CSV is written: UTF-8 after a byte order mark, so that
+/// Excel reads it as UTF-8 (see [`write_csv`]).
+pub(crate) fn write_csv_text(path: &Path, text: &str) -> AppResult<()> {
+    write_csv(path, text).map_err(|err| AppError::runtime(format!("{err:#}")))
 }
 
 pub(crate) fn write_csv_file(path: &Path, value: &Value) -> AppResult<()> {
@@ -114,12 +120,39 @@ pub(crate) fn write_csv_file(path: &Path, value: &Value) -> AppResult<()> {
             out.push('\n');
         }
     }
-    write_text_file(path, &out)
+    write_csv_text(path, &out)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    /// A list's CSV is the byte order mark, then the header of the rows' keys and a line per row (#1075).
+    #[test]
+    fn a_list_csv_starts_with_the_byte_order_mark() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-list-csv");
+        let out = dir.join("contacts.csv");
+        let list = json!([
+            { "username": "wxid_bob", "remark": "老鲍" },
+            { "username": "room@chatroom", "remark": "a, b" },
+        ]);
+        write_csv_file(&out, &list).unwrap();
+        let bytes = std::fs::read(&out).unwrap();
+        assert_eq!(bytes[..3], [0xEF, 0xBB, 0xBF]);
+        let text = std::str::from_utf8(&bytes[3..]).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 3, "{text}");
+        let header: Vec<&str> = lines[0].split(',').collect();
+        assert!(
+            header.contains(&"username") && header.contains(&"remark"),
+            "{text}"
+        );
+        assert!(
+            lines[1].contains("老鲍") && lines[2].contains("\"a, b\""),
+            "{text}"
+        );
+    }
 
     #[test]
     fn a_zip_goes_to_a_zip_file_or_into_a_folder() {
