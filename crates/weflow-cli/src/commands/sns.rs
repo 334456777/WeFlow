@@ -64,7 +64,11 @@ pub(crate) enum SnsSubcommand {
     },
     /// Export the timeline as json, html or arkmejson
     Export {
-        /// Output file
+        /// Output folder, made when missing; the export is written in it as 朋友圈导出_<time>.json or .html, the files of --media in its media folder
+        #[expect(
+            rustdoc::invalid_html_tags,
+            reason = "the comment is the --help text, where <time> stands for the local time of the export"
+        )]
         #[arg(long)]
         out: PathBuf,
         /// Export format: json, html or arkmejson
