@@ -221,4 +221,16 @@ proptest! {
         }
         prop_assert_eq!(dct_quantize(&block, &quant), scalar);
     }
+
+    /// Any coefficients, mostly 0 as quantized ones are, and the extremes: the same bits however they are found.
+    #[test]
+    fn any_coefficients_have_the_same_nonzero_bits_on_every_path(
+        coefficients in proptest::collection::vec(
+            prop_oneof![4 => Just(0i16), 2 => -3i16..=3, 1 => any::<i16>(), 1 => Just(i16::MIN), 1 => Just(i16::MAX)],
+            64,
+        ),
+    ) {
+        let zz: [i16; 64] = coefficients.try_into().unwrap();
+        prop_assert_eq!(nonzero(&zz), nonzero_each(&zz));
+    }
 }
