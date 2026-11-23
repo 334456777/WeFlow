@@ -253,10 +253,17 @@ fn parse_type49(content: &str) -> String {
     .into()
 }
 
-/// What a quote (local type 244813135921) says: the `<appmsg>` title of its XML, empty when it has none. This is the
-/// quote's [`ChatMessage::parsed_content`], which shows `[引用消息]` for an empty one.
+/// What a quote (local type 244813135921) says: the `<appmsg>` title of its XML with its entities decoded, empty when
+/// it has none. This is the quote's [`ChatMessage::parsed_content`], which shows `[引用消息]` for an empty one.
 pub(crate) fn quote_reply_text(content: &str) -> String {
-    extract_xml_value(&clean_utf16(&decode_entities(content)), "title")
+    // only the title is decoded: decoding the whole XML first copies all of it, and an escaped `</title>` in the
+    // text would end the title there
+    let title = extract_xml_value(content, "title");
+    if title.is_empty() && crate::xml::tag_inner(content, "title").is_none() {
+        // XML escaped as a whole, or no title at all
+        return extract_xml_value(&clean_utf16(&decode_entities(content)), "title");
+    }
+    clean_utf16(&decode_entities(&title)).trim().to_string()
 }
 
 /// The line the chat window shows for any message
@@ -1353,6 +1360,8 @@ mod tests {
         for (title, said) in [
             ("好的 &amp; 收到", "好的 & 收到"),
             ("<![CDATA[好的]]>", "好的"),
+            // a reply that writes a tag is that text, not the end of the title
+            ("写 &lt;/title&gt; 就行", "写 </title> 就行"),
         ] {
             assert_eq!(quote_reply_text(&quote(title)), said, "{title}");
             assert_eq!(
@@ -1361,10 +1370,16 @@ mod tests {
                 "{title}"
             );
         }
+        // XML escaped as a whole
+        assert_eq!(
+            quote_reply_text("&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;好的&lt;/title&gt;&lt;/appmsg&gt;&lt;/msg&gt;"),
+            "好的"
+        );
         let untitled =
             "<msg><appmsg><type>57</type><refermsg><content>hi</content></refermsg></appmsg></msg>";
         assert_eq!(quote_reply_text(untitled), "");
         assert_eq!(parsed_content(untitled, 244813135921, None), "[引用消息]");
+        assert_eq!(quote_reply_text(&quote("")), "");
     }
 
     #[test]
