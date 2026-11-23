@@ -180,6 +180,15 @@ impl ChangeGuard {
             None => self.at_open.is_none() && main_stamp(main) == self.stamp_at_open,
         }
     }
+
+    /// [`Self::consistent`] for a read, which runs on every chunk read from the main file. When there was no
+    /// wal-index as the snapshot was opened, the snapshot is the main file as it was then (with the WAL copied at
+    /// open): while the file's size and time are still those, a page read from it is the snapshot's, and the
+    /// wal-index is not looked for. Looking for a file that is not there is a system call on every read, and on
+    /// Windows one that costs tens of microseconds.
+    fn consistent_read(&self, main: &File) -> bool {
+        (self.at_open.is_none() && main_stamp(main) == self.stamp_at_open) || self.consistent(main)
+    }
 }
 
 // ───────────────────────────── one snapshot ─────────────────────────────
@@ -195,6 +204,8 @@ pub struct CipherFile {
     page1: Box<[u8]>,
     /// Encrypted copy of the newest committed WAL frame of each page (taken at open).
     wal_pages: HashMap<u32, Box<[u8]>>,
+    /// The WAL as it was at open, for [`Self::unchanged`].
+    wal: WalAtOpen,
     chunks: Mutex<ChunkCache>,
     guard: ChangeGuard,
     stale: AtomicBool,
@@ -217,6 +228,14 @@ impl RawPage<'_> {
             Self::Chunk(chunk, at) => &chunk[*at..*at + PAGE_SIZE],
         }
     }
+}
+
+/// A snapshot's WAL as it was when the snapshot was opened.
+enum WalAtOpen {
+    /// Open, and its size and time then.
+    Held(File, Option<MainStamp>),
+    /// There was none at this path.
+    Missing(PathBuf),
 }
 
 /// The raw chunks of a file read last, at most [`CHUNKS_KEPT`]; `order` lists each chunk of `chunks` once, the
@@ -254,17 +273,26 @@ impl CipherFile {
             if attempt > 0 {
                 std::thread::sleep(std::time::Duration::from_millis(20 * attempt));
             }
-            // Order matters: wal-index first, then the WAL, so the WAL copy holds every frame the index counted.
+            // The main file's stamp first, so that a change from here on shows (`ChangeGuard`, `unchanged`).
+            let file =
+                File::open(path).with_context(|| format!("cannot read {}", path.display()))?;
+            let stamp_at_open = main_stamp(&file);
+            let len = stamp_at_open.map(|s| s.len).unwrap_or(0);
+            // Order matters: wal-index first, then the WAL, so the WAL copy holds every frame the index counted. The
+            // WAL is stamped before it is read, and kept open to be stamped again.
             let shm = File::open(&shm_path).ok();
             let at_open = shm.as_ref().and_then(|f| {
                 let mut b = [0u8; 136];
                 read_at(f, &mut b, 0).ok().and_then(|_| ShmState::parse(&b))
             });
-            let wal = fs::read(&wal_path).ok();
-            let file =
-                File::open(path).with_context(|| format!("cannot read {}", path.display()))?;
-            let stamp_at_open = main_stamp(&file);
-            let len = stamp_at_open.map(|s| s.len).unwrap_or(0);
+            let wal_file = File::open(&wal_path).ok();
+            let wal_stamp_at_open = wal_file.as_ref().and_then(main_stamp);
+            let wal = wal_file.as_ref().and_then(|mut f| {
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut f, &mut bytes)
+                    .ok()
+                    .map(|_| bytes)
+            });
             let mut first = vec![0u8; PAGE_SIZE];
             read_at(&file, &mut first, 0)
                 .with_context(|| format!("{} is smaller than one page", path.display()))?;
@@ -341,6 +369,10 @@ impl CipherFile {
                 total_pages,
                 page1: page1.into_boxed_slice(),
                 wal_pages,
+                wal: match wal_file {
+                    Some(file) => WalAtOpen::Held(file, wal_stamp_at_open),
+                    None => WalAtOpen::Missing(wal_path),
+                },
                 chunks: Mutex::default(),
                 guard,
                 stale: AtomicBool::new(false),
@@ -351,6 +383,19 @@ impl CipherFile {
         Err(last_err.unwrap_or_else(|| {
             anyhow!("{} kept changing while it was being opened", path.display())
         }))
+    }
+
+    /// Whether the main file and its WAL are as they were when the snapshot was opened, by their sizes and
+    /// modification times: one that changed means WeChat wrote since, and a fresh snapshot shows it. They are asked
+    /// through the handles the snapshot holds, which is a call that opens nothing (on Windows, opening a file to ask
+    /// for its size costs tens of microseconds, and a snapshot is checked before every read); a WAL there was not
+    /// then is looked for by its name.
+    pub fn unchanged(&self) -> bool {
+        main_stamp(&self.file) == self.guard.stamp_at_open
+            && match &self.wal {
+                WalAtOpen::Held(file, stamp) => main_stamp(file) == *stamp,
+                WalAtOpen::Missing(path) => fs::metadata(path).is_err(),
+            }
     }
 
     /// The keys that decrypt the file's pages, to open its next snapshot without deriving them again.
@@ -408,7 +453,7 @@ impl CipherFile {
             return Err(self.fail(format!("cannot read {}: {e}", self.path.display())));
         }
         // The pages are in memory now; if no checkpoint moved past our snapshot until this moment, they are ours.
-        if !self.guard.consistent(&self.file) {
+        if !self.guard.consistent_read(&self.file) {
             return Err(self.fail(format!(
                 "{} changed while it was being read",
                 self.path.display()
@@ -1089,6 +1134,29 @@ mod tests {
         assert!(!cf.is_stale());
         // but when SQLite finds the pages it read malformed, the caller can tell the file moved and start over
         assert!(cf.changed_since_open());
+    }
+
+    #[test]
+    fn a_snapshot_opened_without_an_index_reads_while_the_main_file_stays_as_it_was() {
+        let dir = temp_dir("no-index");
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        let path = dir.join("a.db");
+        let mut enc = encrypt_db(&big("d"), &cipher);
+        fs::write(&path, &enc).unwrap();
+        let (cf, conn) = open(&path);
+        // WeChat starting makes a wal-index of its own; the main file, the snapshot, is as it was
+        fs::write(sibling(&path, "-shm"), shm((5, 6), 0, 0)).unwrap();
+        assert_eq!(rows(&conn).len(), 2000);
+        assert!(!cf.is_stale());
+        // once the main file changes (a checkpoint), a read from it fails
+        fs::remove_file(sibling(&path, "-shm")).unwrap();
+        let (cf, conn) = open(&path);
+        enc.extend(vec![0u8; PAGE_SIZE]);
+        fs::write(&path, &enc).unwrap();
+        assert!(conn
+            .query_row("select count(v) from t", [], |r| r.get::<_, i64>(0))
+            .is_err());
+        assert!(cf.is_stale());
     }
 
     #[test]
