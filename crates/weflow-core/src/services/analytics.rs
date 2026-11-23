@@ -11,6 +11,7 @@ use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDist
 use crate::sync::MutexExt;
 use weflow_native::msg::Order;
 use weflow_native::msg_row::Columns;
+use weflow_native::wcdb::Databases;
 
 /// Aggregates being counted right now, by what they count. A request for one of them waits for that count and gets
 /// its result rather than counting the same messages again beside it. A finished count is dropped at once, so a later
@@ -411,6 +412,9 @@ impl ServiceHub {
             .filter(|w| !w.is_empty())
             .ok_or_else(|| AppError::config("wxid is not configured"))?;
         let wcdb = self.open_wcdb()?;
+        // every statistic reads the conversation list, then the messages
+        wcdb.prefetch(&[Databases::Sessions, Databases::Messages])
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         Ok((wcdb, clean_account_dir_name(&wxid)))
     }
 
