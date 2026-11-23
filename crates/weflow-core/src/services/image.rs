@@ -610,7 +610,7 @@ impl ServiceHub {
     }
 
     /// The folder of the decrypted images, `Images` in the cache folder. It is made when a decrypted image is first
-    /// written into it ([`Self::make_image_cache_dir`]).
+    /// written into it.
     pub fn image_cache_root(&self) -> PathBuf {
         if let Some(root) = &self.image_state.lock_or_panic().cache_root {
             return root.clone();
