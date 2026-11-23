@@ -22,6 +22,7 @@ pub mod msg;
 pub mod msg_row;
 pub mod quote;
 pub mod report;
+mod sha512x4;
 pub mod sns;
 pub mod sqlcipher;
 pub mod stats;

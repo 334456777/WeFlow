@@ -11,6 +11,8 @@
 //! A row whose wanted cells are not integers or nulls, a record longer than the wanted cells allow in the page, or a
 //! page of a kind a rowid table does not have, ends the scan as unusual: the caller then reads the table through SQL.
 
+use std::ops::ControlFlow;
+
 use anyhow::{bail, Result};
 
 use crate::cipher_vfs::CipherFile;
@@ -95,6 +97,8 @@ enum Scan {
 const PAGES_PER_PART: usize = 512;
 /// Most threads a scan uses: the HMAC of every page is most of its work.
 const MAX_PARTS: usize = 8;
+/// Leaf pages whose HMACs are checked at once, a multiple of what the CPU hashes side by side ([`crate::sha512x4`]).
+const CHECKED_TOGETHER: usize = 4 * crate::sha512x4::LANES;
 
 /// The cells `columns` (indexes into the record, in any order) of every row of the rowid table whose b-tree starts at
 /// page `root` of `file`, `None` for a null: each part of the leaf pages, read by a thread of its own, starts an
@@ -160,19 +164,28 @@ pub(crate) fn rows<A: Send>(
         let mut page = Lazy::new(file.page_cipher());
         let mut values = vec![None; columns.len()];
         let mut serials: Vec<u64> = Vec::with_capacity(last + 1);
-        for &pgno in pages {
-            let scan = file
-                .with_checked_page(pgno, |raw| -> Result<Scan> {
-                    page.start(raw);
-                    if page.bytes(0, 1)?[0] != LEAF_TABLE {
-                        return Ok(Scan::Unusual);
-                    }
-                    leaf_rows(&mut page, &wanted, &mut serials, &mut values, &mut |row| {
+        // the HMACs of a few pages are checked at once (`with_checked_pages`)
+        for group in pages.chunks(CHECKED_TOGETHER) {
+            let scan = file.with_checked_pages(group, |_, raw| {
+                // a page never written is not a leaf
+                let Some(raw) = raw else {
+                    return ControlFlow::Break(Ok(Scan::Unusual));
+                };
+                page.start(raw);
+                let scan = match page.bytes(0, 1) {
+                    Ok(kind) if kind[0] != LEAF_TABLE => Ok(Scan::Unusual),
+                    Ok(_) => leaf_rows(&mut page, &wanted, &mut serials, &mut values, &mut |row| {
                         each(&mut acc, row)
-                    })
-                })?
-                .transpose()?;
-            if scan != Some(Scan::Done) {
+                    }),
+                    Err(e) => Err(e),
+                };
+                match scan {
+                    Ok(Scan::Done) => ControlFlow::Continue(()),
+                    other => ControlFlow::Break(other),
+                }
+            })?;
+            if let ControlFlow::Break(scan) = scan {
+                scan?;
                 return Ok(None);
             }
         }
