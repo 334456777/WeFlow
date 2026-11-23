@@ -70,7 +70,10 @@ impl Lang {
 
 /// The operating system's display language as a locale string (`zh-CN`, `en-US`, ...), if it can be determined.
 // The `return`s stay: each platform block is compiled alone, but only the last one is a tail expression.
-#[allow(clippy::needless_return)]
+#[allow(
+    clippy::needless_return,
+    reason = "on Linux no block returns, so `expect` would not be met there"
+)]
 fn system_locale() -> Option<String> {
     #[cfg(windows)]
     {
@@ -102,7 +105,10 @@ fn system_locale() -> Option<String> {
 }
 
 /// First entry of `defaults read -g AppleLanguages` output, e.g. `(\n    "zh-Hans-CN",\n    "en-CN"\n)`.
-#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "macos", test)),
+    expect(dead_code, reason = "only macOS has `defaults`")
+)]
 fn first_apple_language(output: &str) -> Option<String> {
     output
         .lines()

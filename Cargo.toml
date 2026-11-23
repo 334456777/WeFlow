@@ -19,12 +19,19 @@ license = "Unlicense"
 missing_docs = "warn"
 # the proofs of `cargo kani` (#501)
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+# an `unsafe fn` says what its callers promise; each unsafe operation in it still has its own block and `SAFETY` (#1113)
+unsafe_op_in_unsafe_fn = "warn"
 
 [workspace.lints.clippy]
+# a warning let through says why (#1113)
+allow_attributes_without_reason = "warn"
 cast_possible_truncation = "warn"
+# left from debugging (#1113)
+dbg_macro = "warn"
 expect_used = "warn"
 large_futures = "warn"
 redundant_clone = "warn"
+todo = "warn"
 undocumented_unsafe_blocks = "warn"
 unwrap_used = "warn"
 

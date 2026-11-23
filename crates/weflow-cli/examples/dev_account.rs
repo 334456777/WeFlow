@@ -398,7 +398,10 @@ fn dat(image: &[u8]) -> Vec<u8> {
 }
 
 /// Writes the files of one picture where WeChat keeps them, and gives the message's XML.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "where the picture goes, its renditions and its look: each a fact of its own"
+)]
 fn write_picture(
     account: &Path,
     session: &str,

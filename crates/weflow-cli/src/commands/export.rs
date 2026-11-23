@@ -388,7 +388,10 @@ fn message_formats(given: &[String]) -> Vec<String> {
 /// `export messages` in several formats or packed (#342): every format into one folder, the media in its `media/`
 /// folder; with `zip`, the folder (beside the zip, taken away after) packed into the zip, whose path is the result's
 /// `out`, the formats' files and their media folder named inside it.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "what the command was given: the request, the formats and where they go"
+)]
 async fn export_messages_bundle(
     hub: &ServiceHub,
     request: &weflow_core::services::MessageExportRequest,
