@@ -352,7 +352,7 @@ mod tests {
         .unwrap();
         let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
         let sqlite = Connection::open_in_memory().unwrap();
-        let mut want = serde_json::Map::new();
+        let mut want = Map::new();
         for (_, offset, ..) in &msgs {
             let day: String = sqlite
                 .query_row(

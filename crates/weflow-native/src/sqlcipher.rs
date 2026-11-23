@@ -93,7 +93,7 @@ impl PageCipher {
         let mac =
             <HmacSha512 as KeyInit>::new_from_slice(&mac_key).expect("hmac accepts any key length");
         Self {
-            aes: <Aes256 as aes::cipher::KeyInit>::new(&enc_key.into()),
+            aes: <Aes256 as KeyInit>::new(&enc_key.into()),
             enc_key,
             mac_states: sha512x4::HmacKey::new(&mac_key),
             mac_key,

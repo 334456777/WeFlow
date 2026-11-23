@@ -11,7 +11,7 @@ use crate::message::*;
 use super::format::sql_escape;
 use super::{write_bytes, Exporter};
 
-impl<'a, 'n> Exporter<'a, 'n> {
+impl Exporter<'_, '_> {
     // ─────────────────────────────────── SQL ───────────────────────────────────
 
     pub(super) const SQL_HEADER: &'static str = "CREATE TABLE IF NOT EXISTS \"messages\" (\n\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\tsession_id TEXT,\n\tlocal_id INTEGER,\n\tserver_id TEXT,\n\tcreate_time INTEGER,\n\tsender TEXT,\n\tis_send INTEGER,\n\tlocal_type INTEGER,\n\ttype_name TEXT,\n\tcontent TEXT\n);\n\n";

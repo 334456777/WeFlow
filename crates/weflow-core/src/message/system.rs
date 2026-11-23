@@ -82,9 +82,9 @@ pub fn clean_system_message(content: &str) -> String {
     if let Some(c) = rx(r"(?i)<template><!\[CDATA\[(.*?)\]\]></template>").captures(&content) {
         let template = fill_template_links(&c[1], &content);
         let source = content.clone();
-        let replaced = rx(r"\$\{([^}]+)\}").replace_all(&template, |caps: &regex::Captures| {
+        let replaced = rx(r"\$\{([^}]+)\}").replace_all(&template, |caps: &regex::Captures<'_>| {
             let name = regex::escape(&caps[1]);
-            let pat = format!(r"(?i)<{0}><!\[CDATA\[([^\]]*)\]\]></{0}>", name);
+            let pat = format!(r"(?i)<{name}><!\[CDATA\[([^\]]*)\]\]></{name}>");
             rx(&pat)
                 .captures(&source)
                 .map(|m| m[1].to_string())

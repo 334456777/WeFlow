@@ -523,7 +523,7 @@ impl Hook {
                     }
                     return Ok(None);
                 }
-                Ok(Some(_)) | Ok(None) => {}
+                Ok(Some(_) | None) => {}
                 Err(error) if error.raw_os_error() == Some(libc::ECHILD) => return Ok(None),
                 Err(error) => return Err(error),
             }

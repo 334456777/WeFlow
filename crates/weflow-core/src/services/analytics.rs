@@ -191,17 +191,16 @@ fn map_get<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
 }
 
 impl ServiceHub {
-    pub(super) fn fresh_config(&self) -> crate::config::ConfigStore {
+    pub(super) fn fresh_config(&self) -> ConfigStore {
         if !self.ctx.config_path.exists() {
             return self.config.clone();
         }
-        crate::config::ConfigStore::load(&self.ctx.config_path)
-            .unwrap_or_else(|_| self.config.clone())
+        ConfigStore::load(&self.ctx.config_path).unwrap_or_else(|_| self.config.clone())
     }
 
     /// Persists one key of the active profile to the config file.
     fn set_config_value(&self, key: &str, value: Value) -> AppResult<()> {
-        crate::config::ConfigStore::update_or(
+        ConfigStore::update_or(
             &self.ctx.config_path,
             || self.config.clone(),
             |cfg| cfg.set_key(Some(&self.profile_name), key, value),

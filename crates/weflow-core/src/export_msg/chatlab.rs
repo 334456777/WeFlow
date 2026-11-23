@@ -21,7 +21,7 @@ use super::names::{resolve_group_nickname, Profile};
 use super::spool::{EntryFormat, RenderedEntries, SenderTally, Spool};
 use super::Exporter;
 
-impl<'a, 'n> Exporter<'a, 'n> {
+impl Exporter<'_, '_> {
     // ───────────────────────────────── ChatLab ─────────────────────────────────
 
     fn chatlab_header(&self) -> ChatlabHeader {
@@ -477,7 +477,7 @@ mod tests {
         let dir = TestDir::new("weflow-jsonl");
         let out = dir.join("a.jsonl");
         with_exporter(false, |ex, msgs| {
-            ex.write_chatlab(msgs, &out, true).unwrap()
+            ex.write_chatlab(msgs, &out, true).unwrap();
         });
         let text = fs::read_to_string(&out).unwrap();
         let lines: Vec<Value> = text

@@ -99,12 +99,9 @@ pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateS
             return finish_scan(scan, limit);
         };
         scan.entries_scanned += 1;
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => {
-                scan.read_errors += 1;
-                continue;
-            }
+        let Ok(entry) = entry else {
+            scan.read_errors += 1;
+            continue;
         };
         if !entry.file_type().is_file() || !entry.file_name().to_string_lossy().ends_with("_t.dat")
         {
@@ -160,7 +157,7 @@ pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateS
                     std::io::ErrorKind::UnexpectedEof | std::io::ErrorKind::InvalidData
                 ) =>
             {
-                scan.damaged_templates += 1
+                scan.damaged_templates += 1;
             }
             Err(_) => scan.read_errors += 1,
         }

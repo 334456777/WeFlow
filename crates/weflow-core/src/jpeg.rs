@@ -39,7 +39,7 @@ pub(crate) fn encode<P: Plane>(
     let (w, h) = luma.size();
     let (width, height) = (u16::try_from(w).ok()?, u16::try_from(h).ok()?);
     let (hs, vs) = chroma.as_ref().map_or((1, 1), |c| c.factors);
-    if w == 0 || h == 0 || !matches!((hs, vs), (1, 1) | (2, 1) | (2, 2)) {
+    if w == 0 || h == 0 || !matches!((hs, vs), (1 | 2, 1) | (2, 2)) {
         return None;
     }
     let tables = [

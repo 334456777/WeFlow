@@ -398,7 +398,7 @@ pub(crate) async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> App
     // whichever request stops it (Ctrl+C, `systemctl stop`, a closed window, #810) takes this way out: the jobs'
     // processes end as the server is dropped, and the insight engine and the auto-download hook stop below
     let outcome = tokio::select! {
-        result = server => result.map(|_| ()),
+        result = server => result,
         stop = crate::stop::requested() => {
             // the open event streams end with `bye`, so a page tells a server that stopped from one it lost
             farewell.say(std::time::Duration::from_millis(500)).await;

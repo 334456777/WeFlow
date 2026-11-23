@@ -516,13 +516,7 @@ impl ServiceHub {
             nick_candidates.extend(build_id_candidates(&vals));
         }
         let nick_map = match wcdb.group_nicknames(chatroom_id) {
-            Ok(Value::Object(m)) => trusted_nicknames(
-                &m,
-                &nick_candidates
-                    .iter()
-                    .map(|c| c.to_string())
-                    .collect::<Vec<_>>(),
-            ),
+            Ok(Value::Object(m)) => trusted_nicknames(&m, &nick_candidates.clone()),
             _ => HashMap::new(),
         };
         let my_wxid = self.my_wxid_cleaned();

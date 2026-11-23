@@ -398,8 +398,7 @@ fn jobs_keep_the_file_they_wrote_for_the_browser() {
     names.sort();
     assert_eq!(names, ["wxid_bob.html", "wxid_bob.txt"]);
     let mut text = String::new();
-    std::io::Read::read_to_string(&mut archive.by_name("wxid_bob.txt").unwrap(), &mut text)
-        .unwrap();
+    Read::read_to_string(&mut archive.by_name("wxid_bob.txt").unwrap(), &mut text).unwrap();
     assert!(text.contains("see you"), "{text}");
     let zipped = PathBuf::from(done["result"]["data"]["out"].as_str().unwrap());
     assert!(

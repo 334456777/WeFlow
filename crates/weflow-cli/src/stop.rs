@@ -34,7 +34,7 @@ pub(crate) async fn requested() -> Stop {
     // `nohup` asks for a closed terminal to be ignored: listening would undo that
     let hangup = async {
         if hangup_ignored() {
-            std::future::pending().await
+            std::future::pending::<()>().await;
         } else {
             next(SignalKind::hangup()).await;
         }

@@ -107,8 +107,8 @@ mod tests {
     #[test]
     fn columns_line_up_and_skip_empty_ones() {
         let rows = vec![
-            vec!["".to_string(), "图片".to_string(), "1 KB".to_string()],
-            vec!["".to_string(), "keys".to_string(), "20 MB".to_string()],
+            vec![String::new(), "图片".to_string(), "1 KB".to_string()],
+            vec![String::new(), "keys".to_string(), "20 MB".to_string()],
         ];
         assert_eq!(align_columns(&rows), ["图片  1 KB", "keys  20 MB"]);
     }

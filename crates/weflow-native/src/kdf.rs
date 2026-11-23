@@ -24,7 +24,7 @@ pub(crate) fn pbkdf2_hmac_sha512<const N: usize>(
         assert!(
             N <= OUT,
             "one block of PBKDF2-HMAC-SHA512 gives at most 64 bytes"
-        )
+        );
     };
     let key = HmacKey::new(password);
 

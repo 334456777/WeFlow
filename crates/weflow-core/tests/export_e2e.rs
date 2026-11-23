@@ -484,18 +484,17 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
         leftovers.is_empty(),
         "spool files left behind: {leftovers:?}"
     );
-    let json: serde_json::Value =
-        serde_json::from_str(&read("all-json.out")).expect("streamed JSON is valid");
+    let json: Value = serde_json::from_str(&read("all-json.out")).expect("streamed JSON is valid");
     assert_eq!(json["session"]["messageCount"], 3);
     assert_eq!(json["messages"].as_array().unwrap().len(), 3);
-    let chatlab: serde_json::Value =
+    let chatlab: Value =
         serde_json::from_str(&read("all-chatlab.out")).expect("streamed ChatLab is valid");
     assert_eq!(chatlab["messages"].as_array().unwrap().len(), 3);
     // the page's data, in its JSON script element
     let html = read("all-html.out");
     let open = "<script id=\"wf-data\" type=\"application/json\">";
     let data = &html[html.find(open).expect("the page has its data") + open.len()..];
-    let data: serde_json::Value =
+    let data: Value =
         serde_json::from_str(&data[..data.find("</script>").unwrap()]).expect("valid data");
     assert_eq!(data["msgs"].as_array().unwrap().len(), 3);
 }

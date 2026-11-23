@@ -225,7 +225,7 @@ mod tests {
                 },
                 MomentComment {
                     name: "Bob".into(),
-                    text: "".into(),
+                    text: String::new(),
                     to: Some("Amy".into()),
                 },
             ],

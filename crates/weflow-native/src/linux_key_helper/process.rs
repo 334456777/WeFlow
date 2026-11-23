@@ -64,9 +64,8 @@ pub(super) fn mappings(pid: u32) -> io::Result<Vec<Mapping>> {
         if fields.iter().any(|field| field.is_empty()) {
             continue;
         }
-        let (start, end) = match fields[0].split_once('-') {
-            Some(parts) => parts,
-            None => continue,
+        let Some((start, end)) = fields[0].split_once('-') else {
+            continue;
         };
         let (Ok(start), Ok(end)) = (
             usize::from_str_radix(start, 16),

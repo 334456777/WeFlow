@@ -170,7 +170,7 @@ fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
     .into();
     let content = match path.last().map(String::as_str) {
         Some("voice-data") => json!({ "audio/wav": {} }),
-        Some("video-data") | Some("media") => json!({ "video/mp4": {}, "image/*": {} }),
+        Some("video-data" | "media") => json!({ "video/mp4": {}, "image/*": {} }),
         _ => json!({ "image/*": {} }),
     };
     let what = match path.last().map(String::as_str) {
@@ -1767,7 +1767,7 @@ mod tests {
         };
         // an id as a number would lose its last digits in JavaScript
         broken("ParsedMessage", 0, &|v| {
-            v["serverId"] = json!(9007199254740993u64)
+            v["serverId"] = json!(9007199254740993u64);
         });
         // the cursor of a page is what the next page is asked from
         broken("ParsedMessage", 0, &|v| v["_cursor"] = json!(1));
@@ -1782,10 +1782,10 @@ mod tests {
         broken("ParsedMessage", 0, &|v| v["isSend"] = json!(false));
         // times are whole seconds
         broken("ParsedMessage", 0, &|v| {
-            v["createTime"] = json!("2023-11-14")
+            v["createTime"] = json!("2023-11-14");
         });
         broken("ParsedMessage", 0, &|v| {
-            v["createTime"] = json!(1700000000.5)
+            v["createTime"] = json!(1700000000.5);
         });
         broken("Session", 0, &|v| v["avatarUrl"] = Value::Null);
         broken("Session", 2, &|v| {
@@ -1799,19 +1799,19 @@ mod tests {
         });
         broken("ResourcePage", 0, &|v| v["hasMore"] = json!(1));
         broken("ResourcePage", 0, &|v| {
-            v["items"][0]["resourceType"] = json!("emoji")
+            v["items"][0]["resourceType"] = json!("emoji");
         });
         broken("ResourcePage", 0, &|v| {
             v["items"][0].as_object_mut().unwrap().remove("_cursor");
         });
         broken("ResourcePage", 0, &|v| {
-            v["items"][0]["serverId"] = json!(9007199254740995u64)
+            v["items"][0]["serverId"] = json!(9007199254740995u64);
         });
         broken("MessageLookup", 1, &|v| {
             v.as_object_mut().unwrap().remove("message");
         });
         broken("MessageRow", 0, &|v| {
-            v["serverId"] = json!(9007199254740993u64)
+            v["serverId"] = json!(9007199254740993u64);
         });
         broken("MessageRow", 1, &|v| {
             v.as_object_mut().unwrap().remove("_cursor");

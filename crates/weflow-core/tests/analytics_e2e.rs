@@ -111,7 +111,7 @@ fn exclusion_list_roundtrip_and_candidates() {
         .analytics_set_excluded_usernames(&[
             "  WXID_Bob ".into(),
             "wxid_bob".into(),
-            "".into(),
+            String::new(),
             "Ghost".into(),
         ])
         .unwrap();

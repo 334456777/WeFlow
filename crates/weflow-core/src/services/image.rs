@@ -1953,9 +1953,8 @@ impl ServiceHub {
         let local_id = crate::api::js_parse_int(msg_id)
             .ok_or_else(|| AppError::usage("invalid message id"))?;
         let wcdb = self.open_wcdb()?;
-        let row =
-            super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(3))?
-                .ok_or_else(|| AppError::not_found("message not found"))?;
+        let row = chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(3))?
+            .ok_or_else(|| AppError::not_found("message not found"))?;
         // the lookup prefers an image only among several messages of the id: the one it found may be of any kind
         if row.local_type & 0xFFFF_FFFF != 3 {
             return Err(AppError::usage("the message is not an image"));

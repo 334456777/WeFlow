@@ -321,7 +321,9 @@ impl CipherFile {
             let shm = File::open(&shm_path).ok();
             let at_open = shm.as_ref().and_then(|f| {
                 let mut b = [0u8; 136];
-                read_at(f, &mut b, 0).ok().and_then(|_| ShmState::parse(&b))
+                read_at(f, &mut b, 0)
+                    .ok()
+                    .and_then(|()| ShmState::parse(&b))
             });
             let wal_file = File::open(&wal_path).ok();
             let wal_stamp_at_open = wal_file.as_ref().and_then(main_stamp);
@@ -702,7 +704,7 @@ impl CipherFile {
             } else {
                 let buf = scratch.get_or_insert_with(|| vec![0u8; PAGE_SIZE]);
                 self.page_into(pgno, buf)
-                    .map(|_| out[done..done + n].copy_from_slice(&buf[in_page..in_page + n]))
+                    .map(|()| out[done..done + n].copy_from_slice(&buf[in_page..in_page + n]))
             };
             if let Err(rc) = result {
                 return rc;
@@ -806,7 +808,7 @@ fn register_vfs() -> Result<()> {
         )]
         let vfs = Box::new(ffi::sqlite3_vfs {
             iVersion: 2,
-            szOsFile: d.szOsFile.max(std::mem::size_of::<VfsFile>() as c_int),
+            szOsFile: d.szOsFile.max(size_of::<VfsFile>() as c_int),
             mxPathname: d.mxPathname,
             pNext: std::ptr::null_mut(),
             zName: VFS_NAME.as_ptr(),

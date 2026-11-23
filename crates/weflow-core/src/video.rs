@@ -328,7 +328,7 @@ pub fn parse_video_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
-    let lower = |c: &regex::Captures| c[1].to_lowercase();
+    let lower = |c: &regex::Captures<'_>| c[1].to_lowercase();
     if let Some(c) = rx(r#"(?i)<videomsg[^>]*\smd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content)
     {
         return Some(lower(&c));
@@ -370,10 +370,7 @@ mod tests {
             parse_video_md5(r#"<videomsg length="1" rawmd5="EEee"/>"#).as_deref(),
             Some("eeee")
         );
-        assert_eq!(
-            parse_video_md5(r#"<x md5='aa11'/>"#).as_deref(),
-            Some("aa11")
-        );
+        assert_eq!(parse_video_md5(r"<x md5='aa11'/>").as_deref(), Some("aa11"));
         assert_eq!(parse_video_md5("<md5>ab12</md5>").as_deref(), Some("ab12"));
         assert_eq!(
             parse_video_md5(r#"<x newmd5="zz" rawmd5="beef"/>"#).as_deref(),

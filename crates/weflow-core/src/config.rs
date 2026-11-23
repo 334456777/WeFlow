@@ -525,7 +525,7 @@ impl ConfigStore {
             "ai_model_api_key" => target.ai_model_api_key = Some(as_string(value)?),
             "ai_model_api_model" => target.ai_model_api_model = Some(as_string(value)?),
             "ai_model_api_max_tokens" => {
-                target.ai_model_api_max_tokens = Some(as_int_in(value, &key, 1, u32::MAX)?)
+                target.ai_model_api_max_tokens = Some(as_int_in(value, &key, 1, u32::MAX)?);
             }
             "ai_insight_enabled" => target.ai_insight_enabled = Some(as_bool(value, &key)?),
             "no_progress" => {
@@ -1414,7 +1414,7 @@ mod tests {
                 let path = &path;
                 s.spawn(move || {
                     ConfigStore::update(path, |c| c.set_key(None, &format!("k{i}"), json!(i)))
-                        .unwrap()
+                        .unwrap();
                 });
             }
         });

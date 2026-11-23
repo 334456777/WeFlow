@@ -414,7 +414,7 @@ impl ServiceHub {
         if msg.local_type == 3 && opts.images {
             // the folders and indexes the images are looked up in are checked once for the whole export
             let since = run.map_or_else(Since::now, |r| r.since);
-            let payload = crate::services::ImagePayload {
+            let payload = ImagePayload {
                 session_id: Some(talker.to_string()),
                 image_md5: msg.image_md5.clone().filter(|m| !m.is_empty()),
                 image_dat_name: msg.image_dat_name.clone().filter(|m| !m.is_empty()),
@@ -432,7 +432,7 @@ impl ServiceHub {
                         Some(path) => path,
                         None => {
                             self.image_resolve_cache_since(
-                                &crate::services::ImagePayload {
+                                &ImagePayload {
                                     force: false,
                                     ..payload
                                 },
@@ -794,7 +794,7 @@ impl ServiceHub {
             (&[34], "voice", opts.voices),
             (&[43], "video", opts.videos),
             (&[47], "emoji", opts.emojis),
-            (&super::chat::FILE_APP_TYPES, "file", opts.files),
+            (&chat::FILE_APP_TYPES, "file", opts.files),
         ];
         let my = self.wmy();
 
@@ -906,7 +906,7 @@ impl ServiceHub {
                         path: m.full_path,
                         local_id: msg.local_id,
                         create_time: msg.create_time,
-                    })
+                    });
                 }
                 None => *missing_by_kind.entry(kind).or_default() += 1,
             }

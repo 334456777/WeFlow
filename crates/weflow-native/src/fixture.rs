@@ -501,7 +501,7 @@ impl Fixture {
     }
 
     /// `sns/sns.db` with the posts.
-    pub fn sns_db(&self, posts: &[SnsPostSpec]) {
+    pub fn sns_db(&self, posts: &[SnsPostSpec<'_>]) {
         let rows: Vec<(i64, &str, String)> =
             posts.iter().map(|p| (p.tid, p.user, p.xml())).collect();
         self.write(
@@ -520,10 +520,10 @@ impl Fixture {
     }
 
     /// `message/media_<n>.db` with the voices.
-    pub fn media_db(&self, n: u32, voices: &[VoiceSpec]) {
+    pub fn media_db(&self, n: u32, voices: &[VoiceSpec<'_>]) {
         /// (chat id, create time, local id, server id, data, chat name)
         type VoiceRow<'a> = (i64, i64, i64, i64, Vec<u8>, &'a str);
-        let rows: Vec<VoiceRow> = {
+        let rows: Vec<VoiceRow<'_>> = {
             let mut names: Vec<&str> = Vec::new();
             voices
                 .iter()
@@ -596,7 +596,7 @@ impl Fixture {
     }
 
     /// `hardlink/hardlink.db` with the image/video/file tables and the `dir2id` directory names.
-    pub fn hardlink_db(&self, rows: &[HardlinkSpec]) {
+    pub fn hardlink_db(&self, rows: &[HardlinkSpec<'_>]) {
         let rows = rows.to_vec();
         self.write(
             "hardlink/hardlink.db",
@@ -652,7 +652,7 @@ impl Fixture {
     }
 
     /// `session/session.db` with the conversations.
-    pub fn session_db(&self, sessions: &[SessionSpec]) {
+    pub fn session_db(&self, sessions: &[SessionSpec<'_>]) {
         let rows: Vec<(String, String, i64, i64, i64)> = sessions
             .iter()
             .map(|s| {
@@ -682,15 +682,15 @@ impl Fixture {
     }
 
     /// `contact/contact.db` with the contacts and the groups.
-    pub fn contact_db(&self, contacts: &[ContactSpec], rooms: &[RoomSpec]) {
+    pub fn contact_db(&self, contacts: &[ContactSpec<'_>], rooms: &[RoomSpec<'_>]) {
         self.contact_db_with_labels(contacts, rooms, &[]);
     }
 
     /// Like [`contact_db`](Self::contact_db) with `(label id, name)` rows in `contact_label`.
     pub fn contact_db_with_labels(
         &self,
-        contacts: &[ContactSpec],
-        rooms: &[RoomSpec],
+        contacts: &[ContactSpec<'_>],
+        rooms: &[RoomSpec<'_>],
         labels: &[(i64, &'static str)],
     ) {
         let labels = labels.to_vec();
@@ -752,7 +752,7 @@ impl Fixture {
     /// `message/message_fts.db` in the shape WeChat writes it: an FTS5 table per group (here with SQLite's own
     /// tokenizer, where WeChat has its `mmftstokenizer`), and a table of user names whose row numbers are the
     /// `session_id` of the rows.
-    pub fn message_fts_db(&self, groups: &[Vec<FtsSpec>]) {
+    pub fn message_fts_db(&self, groups: &[Vec<FtsSpec<'_>>]) {
         let groups = groups.to_vec();
         self.write(
             "message/message_fts.db",

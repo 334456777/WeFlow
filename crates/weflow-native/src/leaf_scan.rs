@@ -112,7 +112,7 @@ pub(crate) fn int_columns<A: Send>(
     each: impl Fn(&mut A, &[Option<i64>]) + Sync,
 ) -> Result<Option<Vec<A>>> {
     rows(file, root, columns, None, start, |acc, row| {
-        each(acc, row.ints)
+        each(acc, row.ints);
     })
 }
 
@@ -175,7 +175,7 @@ pub(crate) fn rows<A: Send>(
                 let scan = match page.bytes(0, 1) {
                     Ok(kind) if kind[0] != LEAF_TABLE => Ok(Scan::Unusual),
                     Ok(_) => leaf_rows(&mut page, &wanted, &mut serials, &mut values, &mut |row| {
-                        each(&mut acc, row)
+                        each(&mut acc, row);
                     }),
                     Err(e) => Err(e),
                 };
@@ -277,8 +277,8 @@ struct Wanted<'a> {
 
 /// The rows of one leaf page.
 fn leaf_rows(
-    page: &mut Lazy,
-    wanted: &Wanted,
+    page: &mut Lazy<'_>,
+    wanted: &Wanted<'_>,
     serials: &mut Vec<u64>,
     values: &mut [Option<i64>],
     each: &mut impl FnMut(Row<'_>),

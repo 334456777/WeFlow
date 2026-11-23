@@ -450,15 +450,13 @@ impl ServiceHub {
             for t in tables {
                 let name = ["table_name", "name"]
                     .iter()
-                    .filter_map(|k| t.get(*k).and_then(Value::as_str))
-                    .next()
+                    .find_map(|k| t.get(*k).and_then(Value::as_str))
                     .unwrap_or("")
                     .trim()
                     .to_string();
                 let db = ["db_path", "dbPath"]
                     .iter()
-                    .filter_map(|k| t.get(*k).and_then(Value::as_str))
-                    .next()
+                    .find_map(|k| t.get(*k).and_then(Value::as_str))
                     .unwrap_or("")
                     .trim()
                     .to_string();

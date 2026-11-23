@@ -165,9 +165,8 @@ fn not_found() -> Response {
 }
 
 async fn send(ui: &UiDir, file: &Path, head: bool) -> Response {
-    let bytes = match tokio::fs::read(file).await {
-        Ok(bytes) => bytes,
-        Err(_) => return not_found(),
+    let Ok(bytes) = tokio::fs::read(file).await else {
+        return not_found();
     };
     let ext = file
         .extension()

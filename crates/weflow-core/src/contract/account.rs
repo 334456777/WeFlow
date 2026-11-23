@@ -39,7 +39,7 @@ pub struct DbCandidates {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbCandidate {
     /// The directory, with the home directory expanded.
-    pub path: std::path::PathBuf,
+    pub path: PathBuf,
     /// Whether it exists.
     pub exists: bool,
 }
@@ -57,7 +57,7 @@ pub struct DbAccount {
     /// As `config set wxid` takes it, without the suffix of its folder's name.
     pub wxid: String,
     /// Its folder.
-    pub path: std::path::PathBuf,
+    pub path: PathBuf,
 }
 
 /// That the databases open with the configured key (`db test`); a failure is an error instead.
@@ -65,7 +65,7 @@ pub struct DbAccount {
 #[serde(rename_all = "camelCase")]
 pub struct DbConnection {
     /// The account's folder whose databases were opened.
-    pub account_dir: std::path::PathBuf,
+    pub account_dir: PathBuf,
 }
 
 /// The accounts `db scan` found under a folder: those with a `db_storage` folder.

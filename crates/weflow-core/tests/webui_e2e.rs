@@ -22,7 +22,7 @@ use weflow_core::webui::{self, Backend, Registry, WebStore, ARTIFACT_TYPE, LAYER
 use weflow_native::fixture::TestDir;
 
 const REPO: &str = "334456777/weflow-web";
-const BACKEND: Backend = Backend {
+const BACKEND: Backend<'_> = Backend {
     api_version: "1",
     version: "5.0.0-rc.5",
 };

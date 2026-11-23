@@ -359,9 +359,9 @@ impl Account {
         (begin, end): (i64, i64),
         below: Option<i64>,
         hits: &mut Newest,
-    ) -> Result<std::collections::HashMap<String, i64>> {
+    ) -> Result<HashMap<String, i64>> {
         let wanted: std::collections::HashSet<&str> = sessions.iter().map(String::as_str).collect();
-        let mut ids = std::collections::HashMap::new();
+        let mut ids = HashMap::new();
         for r in self.query(
             &ix.path,
             &format!("select rowid as id, username from \"{}\"", ix.users),
@@ -372,12 +372,12 @@ impl Account {
                 ids.insert(int(&r, "id"), name);
             }
         }
-        let mut newest = std::collections::HashMap::new();
+        let mut newest = HashMap::new();
         if ids.is_empty() {
             return Ok(newest);
         }
         let list = ids.keys().map(i64::to_string).collect::<Vec<_>>().join(",");
-        let mut tops = std::collections::HashMap::<i64, i64>::new();
+        let mut tops = HashMap::<i64, i64>::new();
         for (table, [t, id, seq, s, time]) in &ix.tables {
             let mut range = String::new();
             if begin > 0 {
@@ -398,7 +398,7 @@ impl Account {
                  where {s} in ({list}) order by rowid desc"
             );
             let mut found = Newest::new(hits.k);
-            let mut table_tops = std::collections::HashMap::<i64, i64>::new();
+            let mut table_tops = HashMap::<i64, i64>::new();
             self.with_db(&ix.path, |conn| {
                 found = Newest::new(hits.k);
                 table_tops.clear();
@@ -522,7 +522,7 @@ impl Account {
         }
         // each row once, found by either place a hit may name it by
         let mut rows: Vec<Option<SessionRow>> = Vec::new();
-        let mut whole = std::collections::HashMap::new();
+        let mut whole = HashMap::new();
         for (at, ids) in wanted {
             let (sid, t) = &tables[at];
             let sql = Self::select_sql(t, &format!("where m.local_id in ({})", ids.join(",")));
@@ -637,7 +637,7 @@ impl Account {
             line = Some(l);
         }
         // an index that cannot be read is left aside, and every message scanned instead
-        let mut covered = std::collections::HashMap::new();
+        let mut covered = HashMap::new();
         if let Some(ix) = index {
             let mut found = Newest::new(want);
             if let Ok(newest) =
@@ -1022,8 +1022,8 @@ impl Account {
 
     /// Every sticker caption, keyed by lower-case md5: the user's own sticker text, else the store package caption
     /// (Chinese first). Two table scans: a `lower(md5) = lower(?)` lookup per sticker cannot use an index.
-    pub fn emoticon_captions(&self) -> Result<std::collections::HashMap<String, String>> {
-        let mut out = std::collections::HashMap::new();
+    pub fn emoticon_captions(&self) -> Result<HashMap<String, String>> {
+        let mut out = HashMap::new();
         let own = self.query(
             &self.emoticon_db(),
             "select md5, caption from kNonStoreEmoticonTable where caption <> ''",

@@ -529,7 +529,7 @@ mod tests {
             ] }),
         )
         .unwrap();
-        assert!(text.contains("7"));
+        assert!(text.contains('7'));
         assert!(text.contains("WeChat.app"));
         let first = text.lines().next().unwrap();
         assert!(first.contains("main") || first.contains("主程序"), "{text}");

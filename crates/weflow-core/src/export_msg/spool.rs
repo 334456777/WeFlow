@@ -31,7 +31,7 @@ impl SenderTally {
 /// into the output between a header and a footer that need the totals. Removed when dropped.
 pub(super) struct Spool {
     path: std::path::PathBuf,
-    writer: Option<std::io::BufWriter<std::fs::File>>,
+    writer: Option<io::BufWriter<std::fs::File>>,
     entries: usize,
 }
 
@@ -52,7 +52,7 @@ impl Spool {
     pub(super) fn push_with(
         &mut self,
         separator: &str,
-        write: impl FnOnce(&mut std::io::BufWriter<std::fs::File>) -> io::Result<()>,
+        write: impl FnOnce(&mut io::BufWriter<std::fs::File>) -> io::Result<()>,
     ) -> Result<()> {
         use std::io::Write;
         if let Some(w) = self.writer.as_mut() {
@@ -83,12 +83,12 @@ impl Spool {
     }
 
     /// Copies everything written so far to `out`.
-    pub(super) fn copy_to(&mut self, out: &mut impl std::io::Write) -> Result<()> {
+    pub(super) fn copy_to(&mut self, out: &mut impl io::Write) -> Result<()> {
         use std::io::Write;
         if let Some(mut w) = self.writer.take() {
             w.flush()?;
         }
-        std::io::copy(&mut std::fs::File::open(&self.path)?, out)?;
+        io::copy(&mut std::fs::File::open(&self.path)?, out)?;
         Ok(())
     }
 }

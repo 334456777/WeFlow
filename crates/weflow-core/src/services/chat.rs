@@ -223,7 +223,7 @@ impl ServiceHub {
     /// `chat message` without `parsed`: the row, and the message as the query commands list it.
     pub fn message_lookup(&self, row: MsgRow, session_id: &str) -> MessageLookup {
         let my = self.my_wxid_cleaned();
-        let message = crate::message::collect_rows(
+        let message = collect_rows(
             vec![row.clone()],
             &CollectOptions {
                 session_id,
@@ -1071,7 +1071,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let ids: Vec<String> = match session_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => vec![s.to_string()],
-            None => crate::services::chat::extract_session_ids(&wcdb.sessions().map_err(native)?),
+            None => extract_session_ids(&wcdb.sessions().map_err(native)?),
         };
         let ids = uniq(&ids);
         let (rows, has_more) = wcdb
@@ -1212,7 +1212,7 @@ impl ServiceHub {
                     .and_then(|user| names.get(user))
                     .cloned()
                     .unwrap_or(Value::Null);
-                let mut named = serde_json::Map::with_capacity(fields.len() + 1);
+                let mut named = Map::with_capacity(fields.len() + 1);
                 for (key, value) in fields {
                     let after = key == "username";
                     named.insert(key, value);
@@ -1287,7 +1287,7 @@ impl ServiceHub {
         session_id: &str,
     ) -> Vec<crate::contract::ParsedMessage> {
         let cursors: Vec<String> = rows.iter().map(|r| r.pos().token()).collect();
-        crate::chat_msg::map_msg_rows(rows, session_id, &self.wmy())
+        chat_msg::map_msg_rows(rows, session_id, &self.wmy())
             .into_iter()
             .zip(cursors)
             .map(|(message, cursor)| crate::contract::ParsedMessage {
@@ -1330,9 +1330,9 @@ impl ServiceHub {
         hits.into_iter()
             .map(|hit| {
                 let cursor = hit.row.pos().token();
-                let table_name = weflow_native::msg::table_name_for(&hit.session_id);
+                let table_name = table_name_for(&hit.session_id);
                 crate::contract::ParsedMessage {
-                    message: crate::chat_msg::map_msg_row(hit.row, &table_name, &my),
+                    message: chat_msg::map_msg_row(hit.row, &table_name, &my),
                     cursor: Some(cursor),
                     session_id: Some(hit.session_id),
                 }

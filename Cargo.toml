@@ -15,12 +15,16 @@ license = "Unlicense"
 
 # Lints every member inherits (`[lints] workspace = true`); CI turns warnings into errors (issue #142).
 [workspace.lints.rust]
+# a type that borrows shows it, `Formatter<'_>` rather than `Formatter` (#1113)
+elided_lifetimes_in_paths = "warn"
 # every public item, and every crate root (tests, examples and build scripts too), has a doc comment (#915)
 missing_docs = "warn"
 # the proofs of `cargo kani` (#501)
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 # an `unsafe fn` says what its callers promise; each unsafe operation in it still has its own block and `SAFETY` (#1113)
 unsafe_op_in_unsafe_fn = "warn"
+# a path no longer than it needs to be, given what is in scope (#1113)
+unused_qualifications = "warn"
 
 [workspace.lints.clippy]
 # a warning let through says why (#1113)
@@ -34,6 +38,21 @@ redundant_clone = "warn"
 todo = "warn"
 undocumented_unsafe_blocks = "warn"
 unwrap_used = "warn"
+# some of `pedantic`, each with few cases when it was turned on (#1113)
+collapsible_else_if = "warn"
+elidable_lifetime_names = "warn"
+explicit_iter_loop = "warn"
+filter_map_next = "warn"
+ignored_unit_patterns = "warn"
+implicit_clone = "warn"
+manual_let_else = "warn"
+manual_string_new = "warn"
+needless_continue = "warn"
+needless_raw_string_hashes = "warn"
+semicolon_if_nothing_returned = "warn"
+single_char_pattern = "warn"
+uninlined_format_args = "warn"
+unnested_or_patterns = "warn"
 
 [workspace.dependencies]
 aes = "0.9"

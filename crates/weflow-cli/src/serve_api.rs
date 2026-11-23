@@ -1014,7 +1014,7 @@ mod tests {
         let limit = Line::new(Arc::new(Semaphore::new(1)), 1);
         let first = limit.enter(Duration::ZERO).await.expect("a free place");
         // the place is taken: a request waits, and gets it once it is given back
-        let (waited, _) = tokio::join!(limit.enter(Duration::from_secs(10)), async {
+        let (waited, ()) = tokio::join!(limit.enter(Duration::from_secs(10)), async {
             tokio::time::sleep(Duration::from_millis(50)).await;
             drop(first);
         });

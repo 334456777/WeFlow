@@ -161,7 +161,7 @@ impl ServiceHub {
         if !strong {
             // several message databases may hold the local id: the create time, then the voice type, pick one
             if let Ok(Some(row)) =
-                super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(34))
+                chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(34))
             {
                 // the lookup prefers a voice only among several messages of the id: the one it found is the
                 // message asked for, of whatever kind

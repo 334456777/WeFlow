@@ -347,7 +347,7 @@ impl ServiceHub {
                 ))),
             },
         );
-        if !matches!(written, Ok(Ok(_))) {
+        if !matches!(written, Ok(Ok(()))) {
             // a write that failed part-way (a full disk) leaves no truncated export behind
             remove_if_written(out, before);
         }

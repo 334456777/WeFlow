@@ -214,7 +214,7 @@ pub(super) fn events(status: Status, farewell: &Farewell) -> Response {
         loop {
             tokio::select! {
                 _ = every.tick() => yield Ok(status.beat()),
-                _ = listening.stopping() => {
+                () = listening.stopping() => {
                     yield Ok(bye());
                     break;
                 }

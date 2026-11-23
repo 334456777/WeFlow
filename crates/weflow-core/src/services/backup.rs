@@ -69,7 +69,7 @@ impl ServiceHub {
         let emoji_dir = self.cache_base().join("Emojis");
         let stickers =
             crate::backup::restore_backup(path, target_dir, Some(&emoji_dir), &|current, total| {
-                self.emit_progress("restore", "restoring backup", current, total)
+                self.emit_progress("restore", "restoring backup", current, total);
             })
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         Ok(crate::contract::BackupRestored {

@@ -129,7 +129,7 @@ struct SenderFields {
     pub group_nickname: String,
 }
 
-impl<'a, 'n> Exporter<'a, 'n> {
+impl Exporter<'_, '_> {
     fn resolve_profile(&mut self, wxid: &str, fallback: &str, extra: &[&str]) -> Profile {
         let resolved = {
             let w = wxid.trim();
@@ -303,7 +303,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         Some(format!("{payer_name} 转账给 {receiver_name}"))
     }
 
-    fn quoted_with_names(&mut self, local_type: i64, x: &MsgXml) -> Option<QuotedDisplay> {
+    fn quoted_with_names(&mut self, local_type: i64, x: &MsgXml<'_>) -> Option<QuotedDisplay> {
         if !is_text_quote_message_in(local_type, x) {
             return None;
         }
@@ -353,7 +353,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     /// [`message_text`](Self::message_text) given the message's [`MsgXml`].
-    fn message_text_in(&mut self, msg: &ExportMsg, x: &MsgXml) -> String {
+    fn message_text_in(&mut self, msg: &ExportMsg, x: &MsgXml<'_>) -> String {
         self.message_text_with(msg, x, Some(LinkStyle::AppendUrl), true)
     }
 
@@ -365,7 +365,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     fn message_text_with(
         &mut self,
         msg: &ExportMsg,
-        x: &MsgXml,
+        x: &MsgXml<'_>,
         link: Option<LinkStyle>,
         wrap_system: bool,
     ) -> String {
@@ -380,7 +380,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     fn message_text_generic(
         &mut self,
         msg: &ExportMsg,
-        x: &MsgXml,
+        x: &MsgXml<'_>,
         link: Option<LinkStyle>,
         wrap_system: bool,
     ) -> String {
@@ -436,7 +436,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     /// Text for TXT / Excel rows (formatPlainExportContent + transfer + quote + link).
-    fn plain_row_content(&mut self, msg: &ExportMsg, x: &MsgXml) -> (String, bool) {
+    fn plain_row_content(&mut self, msg: &ExportMsg, x: &MsgXml<'_>) -> (String, bool) {
         if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
             return (m.relative_path.clone(), false);
         }
@@ -577,14 +577,14 @@ impl<'a, 'n> Exporter<'a, 'n> {
         } else {
             ""
         };
-        let open = || -> Result<std::io::BufWriter<std::fs::File>> {
+        let open = || -> Result<std::io::BufWriter<fs::File>> {
             let mut w = create_output(out)?;
             w.write_all(header.as_bytes())?;
             Ok(w)
         };
         let mut count = 0usize;
         // created with the first entry, so an empty range leaves no file behind
-        let mut writer: Option<std::io::BufWriter<std::fs::File>> = None;
+        let mut writer: Option<std::io::BufWriter<fs::File>> = None;
         while let Some(page) = next(self) {
             for text in page.entries() {
                 if writer.is_none() {
@@ -632,7 +632,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     /// The text of a message on the HTML page (see [`html`]): written as in the other formats, but the page draws link
     /// cards and system messages itself.
-    fn html_message_text(&mut self, msg: &ExportMsg, x: &MsgXml) -> String {
+    fn html_message_text(&mut self, msg: &ExportMsg, x: &MsgXml<'_>) -> String {
         if msg.content.is_empty() && msg.local_type != 47 {
             return String::new();
         }
@@ -1112,13 +1112,13 @@ mod tests {
                 });
                 assert_eq!(count, written, "{name}, group={group}");
                 assert_eq!(
-                    std::fs::read(&paged).unwrap(),
-                    std::fs::read(&alone).unwrap(),
+                    fs::read(&paged).unwrap(),
+                    fs::read(&alone).unwrap(),
                     "{name}, group={group}"
                 );
             }
         }
-        let lab = std::fs::read_to_string(dir.join("true-alone.chatlab")).unwrap();
+        let lab = fs::read_to_string(dir.join("true-alone.chatlab")).unwrap();
         for who in ["Alice", "Carol", "Dave"] {
             assert!(
                 lab.contains(&format!("\"platformId\": \"{who}\"")),
@@ -1130,7 +1130,7 @@ mod tests {
     #[test]
     fn streamed_exports_are_byte_identical_to_serializing_the_whole_value() {
         let dir = TestDir::new("weflow-json-stream");
-        let read = |f: &Path| std::fs::read_to_string(f).unwrap();
+        let read = |f: &Path| fs::read_to_string(f).unwrap();
         for group in [false, true] {
             let file = dir.join(format!("g{group}.json"));
             let (detailed, arkme) = (
@@ -1288,7 +1288,7 @@ mod tests {
                     .unwrap()
             });
             assert_eq!(n, 5, "{format}");
-            assert!(std::fs::metadata(&out).unwrap().len() > 0, "{format}");
+            assert!(fs::metadata(&out).unwrap().len() > 0, "{format}");
             let none = dir.join(format!("{format}.none"));
             let n = with_exporter(true, |ex, _| {
                 ex.write_streamed(format, &none, &mut std::iter::empty())
@@ -1313,8 +1313,8 @@ mod tests {
             ex.write_streamed("excel", &big, &mut many).unwrap()
         });
         assert_eq!(n, Exporter::EXCEL_BIG + 1);
-        assert!(std::fs::metadata(&big).unwrap().len() > 0);
-        let leftovers = std::fs::read_dir(&dir)
+        assert!(fs::metadata(&big).unwrap().len() > 0);
+        let leftovers = fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_name().to_string_lossy().ends_with(".part"))

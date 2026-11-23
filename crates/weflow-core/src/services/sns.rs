@@ -925,7 +925,7 @@ impl ServiceHub {
                 ".gif"
             };
             let p = dir.join(format!("{cache_key}{ext}"));
-            std::fs::write(&p, buf).ok().map(|_| p)
+            std::fs::write(&p, buf).ok().map(|()| p)
         };
 
         if let (Some(enc_url), Some(key)) = (encrypt_url, aes_key) {
@@ -1376,7 +1376,7 @@ impl ServiceHub {
 
         let mut base: Vec<SnsComment> = Vec::new();
         if !xml_comments.is_empty() {
-            for c in xml_comments.iter() {
+            for c in &xml_comments {
                 let fb = by_id.get(c.id.as_str()).copied();
                 let pick = |own: &str, of: fn(&SnsComment) -> &str| -> String {
                     if !own.is_empty() {
@@ -1575,7 +1575,7 @@ fn url_encode(s: &str) -> String {
     for b in s.bytes() {
         match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
+                out.push(b as char);
             }
             _ => out.push_str(&format!("%{b:02X}")),
         }
@@ -1655,7 +1655,7 @@ impl ServiceHub {
     ) -> AppResult<crate::contract::SnsImageDownload> {
         use crate::contract::{SnsImageDownload, SnsImageInline, SnsImageSaved};
         let client = crate::http_client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(Duration::from_secs(30))
             .build()
             .map_err(|err| AppError::runtime(format!("failed to create HTTP client: {err}")))?;
         let response = client.get(url).send().await.map_err(|err| {

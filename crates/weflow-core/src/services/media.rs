@@ -163,7 +163,7 @@ impl ServiceHub {
             .map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
         let crate::media::EmojiDownloads { files, failed } =
             crate::media::download_emojis(&metas, out, &|current, t| {
-                self.emit_progress("emoji", "downloading emojis", current, t)
+                self.emit_progress("emoji", "downloading emojis", current, t);
             })
             .await
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;

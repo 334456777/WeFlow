@@ -45,7 +45,7 @@ fn write_json_entry(w: &mut impl io::Write, entry: &[u8], local_id: usize) -> io
     w.write_all(&entry[start + digits..])
 }
 
-impl<'a, 'n> Exporter<'a, 'n> {
+impl Exporter<'_, '_> {
     /// Detailed JSON: the entries go to a spool file, numbered as they are written; the session header, which comes
     /// first in the file and has the totals, is written at the end.
     pub(super) fn write_rendered_json(

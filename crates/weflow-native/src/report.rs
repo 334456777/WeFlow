@@ -184,9 +184,9 @@ impl SessionExtras {
                 }
                 _ => {
                     if m.mine {
-                        e.initiated += 1
+                        e.initiated += 1;
                     } else {
-                        e.received += 1
+                        e.received += 1;
                     }
                 }
             }
@@ -479,7 +479,7 @@ impl Account {
         let sessions: Vec<(&String, &Vec<MsgTable>)> = session_ids.iter().zip(&tables).collect();
         let summed = crate::stats::each_table(&sessions, |(_, ts)| {
             let mut placed: Vec<Placed> = Vec::new();
-            for t in ts.iter() {
+            for t in *ts {
                 placed.extend(self.extras_messages(t, &mine[&t.db], begin, end)?);
             }
             placed.sort_by_key(|a| a.0);
@@ -556,9 +556,9 @@ impl Account {
                     }
                     if is_phrase(t) {
                         if m.mine {
-                            mine_texts.push(t)
+                            mine_texts.push(t);
                         } else {
-                            their_texts.push(t)
+                            their_texts.push(t);
                         }
                     }
                 }
@@ -579,9 +579,9 @@ impl Account {
                 }
                 _ => {
                     if m.mine {
-                        initiated += 1
+                        initiated += 1;
                     } else {
-                        received += 1
+                        received += 1;
                     }
                 }
             }
@@ -895,7 +895,7 @@ mod tests {
 
     fn world(
         tag: &str,
-        sessions: &[SessionSpec],
+        sessions: &[SessionSpec<'_>],
         shard: &[(&str, Vec<MsgSpec>)],
     ) -> (TestDir, Account) {
         let root = TestDir::new(&format!("weflow-report-{tag}"));

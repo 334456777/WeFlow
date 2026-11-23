@@ -183,7 +183,7 @@ fn extract_amount_from_text(text: &str) -> Option<String> {
 /// this way).
 fn decode_numeric_entities(text: &str) -> String {
     rx(r"&#(?:[xX]([0-9a-fA-F]+)|([0-9]+));")
-        .replace_all(text, |c: &regex::Captures| {
+        .replace_all(text, |c: &regex::Captures<'_>| {
             let code = match (c.get(1), c.get(2)) {
                 (Some(h), _) => u32::from_str_radix(h.as_str(), 16).ok(),
                 (_, Some(d)) => d.as_str().parse::<u32>().ok(),
@@ -252,7 +252,7 @@ pub fn parse_message_content(
 
 /// [`parse_message_content`] of a message's `MsgXml`.
 pub fn parse_message_content_in(
-    x: &MsgXml,
+    x: &MsgXml<'_>,
     local_type: i64,
     my_wxid: Option<&str>,
     sender_wxid: Option<&str>,

@@ -296,7 +296,7 @@ pub fn build_quoted_reply_text(d: &QuotedDisplay) -> String {
 
 /// Whether the message is a reply (a text quote): only local type 244813135921 and app message type 57 are.
 /// Images, forwarded chat records and others may carry a `<refermsg>` too, and are not text quotes.
-pub fn is_text_quote_message_in(local_type: i64, x: &MsgXml) -> bool {
+pub fn is_text_quote_message_in(local_type: i64, x: &MsgXml<'_>) -> bool {
     if local_type == 244_813_135_921 {
         return true;
     }

@@ -710,7 +710,7 @@ mod tests {
         let account = fixture.db_storage().parent().unwrap().to_path_buf();
         let key = fixture.key_hex();
 
-        let (done, finished) = std::sync::mpsc::channel();
+        let (done, finished) = channel();
         std::thread::spawn(move || {
             let mut wcdb = Wcdb::new();
             wcdb.open(&account, &key, Some("wxid_me_ab12")).unwrap();
