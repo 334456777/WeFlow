@@ -16,6 +16,7 @@ use crate::message::emoji::percent_decode;
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
 use weflow_native::msg_row::MsgRow;
+use weflow_native::quote::{reply_text, QUOTE};
 
 const CONVERSATION_GAP: i64 = 3600;
 
@@ -714,8 +715,13 @@ impl ServiceHub {
                             }
                         }
                         last_message.insert(sid.clone(), (create_time, sent));
-                        if (local_type == 1 || local_type == 244813135921) && sent {
-                            let text = row.content.trim().to_string();
+                        if (local_type == 1 || local_type == QUOTE) && sent {
+                            // a quote's content is the XML of its appmsg: what it says is its title
+                            let text = if local_type == QUOTE {
+                                reply_text(&row.content)
+                            } else {
+                                row.content.trim().to_string()
+                            };
                             let n = text.chars().count();
                             if (2..=20).contains(&n)
                                 && !text.contains("http")

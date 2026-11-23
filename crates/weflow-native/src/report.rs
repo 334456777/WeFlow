@@ -2,7 +2,8 @@
 //!
 //! The formulas are WeFlow's desktop app's, taken from the service layer's own cursor fallbacks:
 //! a *conversation* is a run of messages with gaps of at most one hour; replies are measured only for the
-//! account owner; phrases are short exact-match texts; days and hours are local time.
+//! account owner; phrases are short exact-match texts, of text messages and of what quotes say
+//! ([`reply_text`]); days and hours are local time.
 //! The annual report's extended statistics (`annual_report_extras`) use the same definitions as the service
 //! layer's cursor fallback, so both paths give the same numbers.
 
@@ -15,12 +16,13 @@ use serde_json::{json, Map, Value};
 
 use crate::db::Account;
 use crate::msg::MsgTable;
+use crate::quote::{reply_text, QUOTE};
 
 /// A new conversation (or footprint segment) starts after this many seconds of silence.
 const GAP: i64 = 3600;
 /// Replies slower than this are not counted as replies.
 const MAX_RESPONSE: i64 = 86_400;
-/// Text kinds that can contain typed phrases.
+/// A text message; with [`QUOTE`], the kinds whose text is typed and can be a phrase ([`typed_text`]).
 const TEXT: i64 = 1;
 const IMAGE: i64 = 3;
 const VOICE: i64 = 34;
@@ -108,6 +110,16 @@ fn is_phrase(t: &str) -> bool {
     (2..=20).contains(&n) && !t.contains("http") && !t.contains('<') && !t.starts_with('[')
 }
 
+/// The text a message of `kind` with `content` was typed with: a text message's content, what a quote says. The
+/// SQL reads the content of these two kinds only.
+fn typed_text(kind: i64, content: String) -> String {
+    if kind == QUOTE {
+        reply_text(&content)
+    } else {
+        content
+    }
+}
+
 /// A message's place in its conversation's order (`sort_seq`, or `create_time * 1000` without one, then
 /// `create_time` and `local_id`), and the message.
 type Placed = ((i64, i64, i64), Msg);
@@ -179,7 +191,7 @@ impl SessionExtras {
                 }
             }
             last = Some((m.time, m.mine));
-            if m.kind == TEXT && m.mine {
+            if matches!(m.kind, TEXT | QUOTE) && m.mine {
                 let t = m.content.trim();
                 if is_phrase(t) {
                     e.phrases.push(t.to_string());
@@ -235,7 +247,7 @@ impl Account {
              (m.real_sender_id in ({mine})) as mine, cast({h} as integer) as h, cast({w} as integer) as w, \
              date(m.create_time, 'unixepoch', 'localtime') as d, \
              cast(julianday(date(m.create_time, 'unixepoch', 'localtime')) + 0.5 as integer) as dn, \
-             case when m.local_type = {TEXT} then m.message_content end as c \
+             case when m.local_type in ({TEXT}, {QUOTE}) then m.message_content end as c \
              from \"{table}\" m where m.create_time > 0{range}",
             h = local("%H"),
             w = local("%w"),
@@ -254,18 +266,19 @@ impl Account {
                     0 => time * 1000,
                     s => s,
                 };
+                let kind = int(&r, "k");
                 rows.borrow_mut().push((
                     (seq, time, int(&r, "l")),
                     Msg {
                         time,
                         local_id: int(&r, "l"),
-                        kind: int(&r, "k"),
+                        kind,
                         mine: int(&r, "mine") == 1,
                         hour: int(&r, "h").clamp(0, 23) as usize,
                         weekday_mon: ((int(&r, "w") + 6) % 7) as usize,
                         day: text(&r, "d"),
                         day_no: int(&r, "dn"),
-                        content: text(&r, "c"),
+                        content: typed_text(kind, text(&r, "c")),
                     },
                 ));
             },
@@ -274,9 +287,10 @@ impl Account {
     }
 
     /// [`table_messages`](Self::table_messages) for the annual report's extras, read through the leaf scan: a text is
-    /// kept only where the extras read one, the owner's text messages that may be a phrase ([`is_phrase`]), and it
-    /// is read through SQL when the scan does not decrypt it (longer than [`LONGEST_TEXT`], stored on overflow pages
-    /// or compressed). Read through SQL altogether when the scan does not read the table.
+    /// kept only where the extras read one, the owner's text messages and quotes whose text may be a phrase
+    /// ([`typed_text`], [`is_phrase`]), and it is read through SQL when the scan does not decrypt it (longer than
+    /// [`LONGEST_TEXT`], stored on overflow pages or compressed). Read through SQL altogether when the scan does not
+    /// read the table.
     fn extras_messages(
         &self,
         t: &MsgTable,
@@ -340,10 +354,13 @@ impl Account {
                             return;
                         }
                         let mine = sender.is_some_and(|s| ids.contains(&s));
-                        // the content the SQL reads is that of the text type itself, not of a missing type
-                        let wanted = mine && *kind == Some(TEXT);
+                        // the content the SQL reads is that of these types themselves, not of a missing type
+                        let wanted = mine && matches!(*kind, Some(TEXT | QUOTE));
                         let (text, unread) = match (wanted, row.text) {
                             (false, _) | (true, crate::leaf_scan::Text::Null) => (None, false),
+                            (true, crate::leaf_scan::Text::Short(t)) if *kind == Some(QUOTE) => {
+                                (Some(reply_text(t)).filter(|said| is_phrase(said)), false)
+                            }
                             (true, crate::leaf_scan::Text::Short(t)) => {
                                 (is_phrase(t.trim()).then(|| t.to_string()), false)
                             }
@@ -377,7 +394,7 @@ impl Account {
         for ids in unread.chunks(500) {
             let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
             let sql = format!(
-                "select m.local_id as l, case when m.local_type = {TEXT} then m.message_content end as c \
+                "select m.local_id as l, case when m.local_type in ({TEXT}, {QUOTE}) then m.message_content end as c \
                  from \"{}\" m where m.local_id in ({list})",
                 t.table
             );
@@ -386,7 +403,7 @@ impl Account {
             }
         }
         for f in found.iter_mut().filter(|f| f.unread) {
-            f.text = texts.remove(&f.key.2);
+            f.text = texts.remove(&f.key.2).map(|c| typed_text(f.kind, c));
         }
         // the local hour, weekday and day of each quarter of an hour (see `stats::time_groups`)
         let quarters: std::collections::BTreeSet<i64> =
@@ -532,9 +549,11 @@ impl Account {
                 IMAGE => images += 1,
                 VOICE => voices += 1,
                 EMOJI => emojis += 1,
-                TEXT => {
+                TEXT | QUOTE => {
                     let t = m.content.trim();
-                    words += t.chars().count() as i64;
+                    if m.kind == TEXT {
+                        words += t.chars().count() as i64;
+                    }
                     if is_phrase(t) {
                         if m.mine {
                             mine_texts.push(t)
@@ -1304,6 +1323,52 @@ mod tests {
             none.get("streak").is_none()
                 && none["conversation"] == json!({})
                 && none["topPhrases"] == json!([])
+        );
+    }
+
+    #[test]
+    fn what_quotes_say_counts_as_phrases() {
+        let quote = |id, who: &'static str, dt: i64, said: &str, quoted: &str| {
+            let xml = format!(
+                "<msg><appmsg><title>{said}</title><type>57</type><refermsg><type>1</type>\
+                 <content>{quoted}</content></refermsg></appmsg></msg>"
+            );
+            MsgSpec::text(id, who, T0 + dt, &xml).of_type(QUOTE)
+        };
+        let long = "长".repeat(LONGEST_TEXT);
+        let (_dir, a) = world(
+            "quotes",
+            &[session("wxid_pal")],
+            &[(
+                "wxid_pal",
+                vec![
+                    MsgSpec::text(1, "wxid_pal", T0, "吃了吗"),
+                    // read by the scan, compressed, and longer than the scan decrypts: the last two through SQL
+                    quote(2, "wxid_me", 10, "吃过了", "吃了吗"),
+                    quote(3, "wxid_me", 20, "吃过了", "吃了吗").compressed(),
+                    quote(4, "wxid_me", 30, "吃过了", &long),
+                    quote(5, "wxid_pal", 40, "好的呀", "吃过了"),
+                    quote(6, "wxid_pal", 50, "好的呀", "吃过了"),
+                ],
+            )],
+        );
+        let mine = json!([{"phrase": "吃过了", "count": 3}]);
+        let extras = a
+            .annual_report_extras(&ids(&["wxid_pal"]), 0, 0, 0, 0)
+            .unwrap();
+        assert_eq!(
+            extras["topPhrases"], mine,
+            "my replies, not the quoted messages"
+        );
+        let dual = a.dual_report_stats("wxid_pal", 0, 0).unwrap();
+        assert_eq!(dual["myPhrases"], mine);
+        assert_eq!(
+            dual["friendPhrases"],
+            json!([{"phrase": "好的呀", "count": 2}])
+        );
+        assert_eq!(
+            dual["counts"]["words"], 3,
+            "only text messages count their words"
         );
     }
 

@@ -763,6 +763,68 @@ fn annual_report_breaks_ties_the_same_way_every_time() {
 }
 
 #[test]
+fn reports_count_what_quotes_say_as_phrases() {
+    use chrono::TimeZone;
+    use weflow_native::fixture::{MsgSpec, SessionSpec};
+    let noon = chrono::Local
+        .with_ymd_and_hms(2023, 11, 14, 12, 0, 0)
+        .unwrap()
+        .timestamp();
+    let quote = |local_id, who: &'static str, after: i64, said: &str| {
+        MsgSpec::text(
+            local_id,
+            who,
+            noon + after,
+            &format!(
+                "<msg><appmsg appid=\"\" sdkver=\"0\"><title>{said}</title><des></des><type>57</type>\
+                 <refermsg><type>1</type><svrid>1001</svrid><fromusr>wxid_pal</fromusr>\
+                 <displayname>Pal</displayname><content>吃饭了吗</content></refermsg></appmsg></msg>"
+            ),
+        )
+        .of_type(244813135921)
+    };
+    let (_root, hub, _f) = common::custom_hub("n-report-quotes", |f| {
+        f.session_db(&[SessionSpec {
+            username: "wxid_pal",
+            summary: "",
+            last_timestamp: noon,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_pal",
+                vec![
+                    MsgSpec::text(1, "wxid_pal", noon, "吃饭了吗"),
+                    quote(2, "wxid_me", 60, "吃过了"),
+                    // stored compressed, as WeChat stores most app messages
+                    quote(3, "wxid_me", 120, "吃过了").compressed(),
+                    quote(4, "wxid_pal", 180, "好的呀"),
+                    quote(5, "wxid_pal", 240, "好的呀").compressed(),
+                ],
+            )],
+        );
+    });
+    let mine = json!([{"phrase": "吃过了", "count": 2}]);
+    let annual = serde_json::to_value(hub.report_annual(2023).unwrap()).unwrap();
+    assert_eq!(
+        annual["topPhrases"], mine,
+        "my replies, not the quoted message"
+    );
+    let dual = serde_json::to_value(hub.report_dual("wxid_pal", 2023, &[]).unwrap()).unwrap();
+    assert_eq!(
+        dual["topPhrases"],
+        json!([{"phrase": "吃过了", "count": 2}, {"phrase": "好的呀", "count": 2}])
+    );
+    assert_eq!(dual["myExclusivePhrases"], mine);
+    assert_eq!(
+        dual["friendExclusivePhrases"],
+        json!([{"phrase": "好的呀", "count": 2}])
+    );
+}
+
+#[test]
 fn footprint_reports_private_chats_segments_and_mentions() {
     let (_root, hub) = common::mock_hub("n-footprint");
     let f = hub.footprint(0, 0).unwrap();
