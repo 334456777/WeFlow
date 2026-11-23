@@ -11,6 +11,7 @@ use crate::chat_msg::{self, ChatMessage};
 use crate::contract::{Contact, ContactKind, Session};
 use crate::message::row::{row_field, row_int};
 use crate::message::xml::rx;
+use weflow_native::wcdb::Databases;
 
 const FRIEND_EXCLUDE_USERNAMES: [&str; 5] =
     ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
@@ -204,6 +205,13 @@ impl ServiceHub {
     /// The filtered, typed session list, with display names and avatars from WCDB.
     pub fn chat_sessions_list(&self) -> AppResult<Vec<Session>> {
         let wcdb = self.open_wcdb()?;
+        // the list reads the conversations, their contacts and their messages, in that order
+        wcdb.prefetch(&[
+            Databases::Sessions,
+            Databases::Contacts,
+            Databases::Messages,
+        ])
+        .map_err(|e| AppError::native(format!("{e:#}")))?;
         self.sessions_with(&wcdb)
     }
 

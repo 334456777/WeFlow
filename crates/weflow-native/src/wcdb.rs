@@ -14,6 +14,17 @@ use crate::db::Account;
 use crate::msg::Order;
 use crate::msg_row::{Columns, MsgRow};
 
+/// A group of an account's databases, for [`Wcdb::prefetch`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Databases {
+    /// The conversation list, `session/session.db`.
+    Sessions,
+    /// The contacts, `contact/contact.db`.
+    Contacts,
+    /// Every message database (`message/message_<n>.db`, `biz_message_<n>.db`).
+    Messages,
+}
+
 /// The handle of one account's databases that the service layer calls; closed until [`Wcdb::open`].
 #[derive(Debug, Default)]
 pub struct Wcdb {
@@ -161,6 +172,25 @@ impl Wcdb {
     pub fn warm_chat_databases(&self) -> Result<usize> {
         let account = self.account()?;
         Ok(account.warm(&account.chat_databases()))
+    }
+
+    /// Opens the databases of `groups` side by side, ahead of a read that goes through them one after another: the
+    /// first open of each derives its key (PBKDF2, about 130 ms that one thread does alone), so opened as the read
+    /// reaches each they add up, and opened here they overlap (#1100). Those already open cost nothing (see
+    /// [`Account::prefetch`](crate::db::Account::prefetch)).
+    pub fn prefetch(&self, groups: &[Databases]) -> Result<()> {
+        let account = self.account()?;
+        let mut paths = Vec::new();
+        for group in groups {
+            match group {
+                Databases::Sessions => paths.push(account.session_db()),
+                Databases::Contacts => paths.push(account.db_path("contact/contact.db")),
+                Databases::Messages => paths.extend(account.message_dbs()),
+            }
+        }
+        paths.retain(|p| p.is_file());
+        account.prefetch(&paths);
+        Ok(())
     }
 
     /// How many messages a conversation has (see [`Account::message_count`]).
