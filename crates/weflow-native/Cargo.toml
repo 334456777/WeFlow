@@ -13,7 +13,6 @@ anyhow.workspace = true
 cbc.workspace = true
 hmac = "0.13"
 md-5.workspace = true
-pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 regex.workspace = true
 rusqlite = { version = "0.40", features = ["bundled", "serialize"] }
 serde.workspace = true
@@ -41,6 +40,8 @@ mach2 = "0.5"
 tracing.workspace = true
 
 [dev-dependencies]
+# the reference the derivation of the page keys (src/kdf.rs) is checked against
+pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 proptest.workspace = true
 # the fixture is built for the crate's own tests too, without `test-fixtures`
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }

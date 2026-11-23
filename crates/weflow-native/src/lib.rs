@@ -11,6 +11,7 @@ pub mod entities;
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod fixture;
 pub mod image_key_scan;
+mod kdf;
 mod leaf_scan;
 #[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
 pub mod linux_key_helper;
@@ -21,6 +22,7 @@ pub mod msg;
 pub mod msg_row;
 pub mod quote;
 pub mod report;
+mod sha512x4;
 pub mod sns;
 pub mod sqlcipher;
 pub mod stats;

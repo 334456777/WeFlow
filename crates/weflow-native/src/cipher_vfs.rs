@@ -15,6 +15,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::ffi::{c_char, c_int, c_void, CStr};
 use std::fs::{self, File};
+use std::ops::ControlFlow;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -199,6 +200,23 @@ pub struct CipherFile {
     stale: AtomicBool,
     error: Mutex<Option<String>>,
     pages_decrypted: AtomicU64,
+}
+
+/// The encrypted bytes of a page as a snapshot holds them ([`CipherFile::with_checked_pages`]).
+enum RawPage<'a> {
+    /// Its copy in the WAL.
+    Wal(&'a [u8]),
+    /// In a chunk of the main file, from this offset.
+    Chunk(Arc<[u8]>, usize),
+}
+
+impl RawPage<'_> {
+    fn bytes(&self) -> &[u8] {
+        match self {
+            Self::Wal(bytes) => bytes,
+            Self::Chunk(chunk, at) => &chunk[*at..*at + PAGE_SIZE],
+        }
+    }
 }
 
 /// The raw chunks of a file read last, at most [`CHUNKS_KEPT`]; `order` lists each chunk of `chunks` once, the
@@ -434,6 +452,56 @@ impl CipherFile {
             .map_err(|_| anyhow!(self.read_error().unwrap_or_else(|| "read failed".into())))?;
         let i = (pgno - first) as usize * PAGE_SIZE;
         read(&chunk[i..i + PAGE_SIZE])
+    }
+
+    /// [`Self::with_checked_page`] for each of `pgnos` in turn, their HMACs checked together first (four at a time
+    /// where the CPU can, see [`PageCipher::verify_each`]): `f` gets each page's encrypted bytes, `None` for a page
+    /// never written, until it breaks. When a page fails its HMAC the pages are taken one by one instead, so `f` has
+    /// had the pages before it, as with [`Self::with_checked_page`].
+    pub(crate) fn with_checked_pages<B>(
+        &self,
+        pgnos: &[u32],
+        mut f: impl FnMut(u32, Option<&[u8]>) -> ControlFlow<B>,
+    ) -> Result<ControlFlow<B>> {
+        let mut held: Vec<(u32, Option<RawPage<'_>>)> = Vec::with_capacity(pgnos.len());
+        for &pgno in pgnos {
+            let raw = if let Some(enc) = self.wal_pages.get(&pgno) {
+                Some(RawPage::Wal(enc))
+            } else if pgno == 0 || pgno > self.main_pages {
+                None
+            } else {
+                let (chunk, first) = self.chunk(pgno).map_err(|_| {
+                    anyhow!(self.read_error().unwrap_or_else(|| "read failed".into()))
+                })?;
+                Some(RawPage::Chunk(chunk, (pgno - first) as usize * PAGE_SIZE))
+            };
+            // a page that was never written is all zeros, and has no HMAC
+            held.push((pgno, raw.filter(|r| r.bytes().iter().any(|b| *b != 0))));
+        }
+        let written: Vec<(u32, &[u8])> = held
+            .iter()
+            .filter_map(|(pgno, raw)| Some((*pgno, raw.as_ref()?.bytes())))
+            .collect();
+        let together = self.cipher.verify_each(&written).is_ok();
+        if together {
+            self.pages_decrypted
+                .fetch_add(written.len() as u64, Ordering::Relaxed);
+        }
+        for (pgno, raw) in &held {
+            let raw = raw.as_ref().map(RawPage::bytes);
+            if let (false, Some(enc)) = (together, raw) {
+                if let Err(e) = self.cipher.verify(*pgno, enc) {
+                    let why = format!("{}: {e}", self.path.display());
+                    self.fail(why.clone());
+                    return Err(anyhow!(why));
+                }
+                self.pages_decrypted.fetch_add(1, Ordering::Relaxed);
+            }
+            if let ControlFlow::Break(b) = f(*pgno, raw) {
+                return Ok(ControlFlow::Break(b));
+            }
+        }
+        Ok(ControlFlow::Continue(()))
     }
 
     /// Page `pgno` decrypted and checked, as SQLite gets it.

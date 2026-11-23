@@ -19,6 +19,8 @@ use cbc::cipher::{block_padding::NoPadding, BlockModeDecrypt, InnerIvInit};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
+use crate::sha512x4;
+
 /// The page size of WeChat's databases, in bytes, reserved tail included.
 pub const PAGE_SIZE: usize = 4096;
 const SALT_LEN: usize = 16;
@@ -61,6 +63,8 @@ pub struct PageCipher {
     mac_key: [u8; 32],
     /// HMAC already keyed with `mac_key`: cloning it per page skips re-hashing the key pads.
     mac: HmacSha512,
+    /// The same keying as SHA-512 states, for checking several pages at once ([`Self::verify_each`]).
+    mac_states: sha512x4::HmacKey,
     /// AES with `enc_key` expanded: cloning it per decryption skips the key schedule.
     aes: Aes256,
 }
@@ -69,22 +73,21 @@ impl PageCipher {
     /// The keys of a file with `salt`, derived from the database key `raw_key` (PBKDF2-HMAC-SHA512, 256 000
     /// rounds: slow on purpose).
     pub fn derive(raw_key: &[u8; 32], salt: &[u8]) -> Self {
-        let mut enc_key = [0u8; 32];
-        pbkdf2::pbkdf2_hmac::<Sha512>(raw_key, salt, KDF_ITER, &mut enc_key);
+        let enc_key = crate::kdf::pbkdf2_hmac_sha512(raw_key, salt, KDF_ITER);
         Self::from_enc_key(enc_key, salt)
     }
 
     /// The keys of a database whose page key, the slow part of [`Self::derive`], is known.
     fn from_enc_key(enc_key: [u8; 32], salt: &[u8]) -> Self {
         let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3a).collect();
-        let mut mac_key = [0u8; 32];
-        pbkdf2::pbkdf2_hmac::<Sha512>(&enc_key, &mac_salt, 2, &mut mac_key);
+        let mac_key = crate::kdf::pbkdf2_hmac_sha512(&enc_key, &mac_salt, 2);
         #[expect(clippy::expect_used, reason = "HMAC accepts a key of any length")]
         let mac =
             <HmacSha512 as KeyInit>::new_from_slice(&mac_key).expect("hmac accepts any key length");
         Self {
             aes: <Aes256 as aes::cipher::KeyInit>::new(&enc_key.into()),
             enc_key,
+            mac_states: sha512x4::HmacKey::new(&mac_key),
             mac_key,
             mac,
         }
@@ -129,9 +132,53 @@ impl PageCipher {
         let mut mac = self.mac.clone();
         mac.update(signed);
         mac.update(&pgno.to_le_bytes());
-        mac.verify_slice(stored_mac).map_err(|_| {
-            anyhow!("HMAC check failed for page {pgno}: wrong key, or the page is corrupt")
-        })
+        mac.verify_slice(stored_mac).map_err(|_| hmac_failed(pgno))
+    }
+
+    /// [`Self::verify`] of each of `pages` (a page number and its encrypted bytes), four at once where the CPU can
+    /// ([`sha512x4`]): the error is the first failing page's.
+    pub(crate) fn verify_each(&self, pages: &[(u32, &[u8])]) -> Result<()> {
+        let signed = PAGE_SIZE - RESERVE + IV_LEN;
+        let mut rest = pages;
+        while let Some((four, after)) = rest.split_first_chunk::<{ sha512x4::LANES }>() {
+            rest = after;
+            // page 1 signs less (its salt is not signed), and every lane hashes the same length
+            let tags = four
+                .iter()
+                .all(|(pgno, page)| *pgno != 1 && page.len() == PAGE_SIZE)
+                .then(|| {
+                    let numbers = four.map(|(pgno, _)| pgno.to_le_bytes());
+                    sha512x4::hmac4(
+                        &self.mac_states,
+                        four.map(|(_, page)| &page[..signed]),
+                        std::array::from_fn(|l| &numbers[l][..]),
+                    )
+                })
+                .flatten();
+            match tags {
+                Some(tags) => {
+                    for ((pgno, page), tag) in four.iter().zip(&tags) {
+                        // every byte compared, as `verify` does
+                        let differ = tag
+                            .iter()
+                            .zip(&page[signed..])
+                            .fold(0u8, |d, (a, b)| d | (a ^ b));
+                        if differ != 0 {
+                            return Err(hmac_failed(*pgno));
+                        }
+                    }
+                }
+                None => {
+                    for (pgno, page) in four {
+                        self.verify(*pgno, page)?;
+                    }
+                }
+            }
+        }
+        for (pgno, page) in rest {
+            self.verify(*pgno, page)?;
+        }
+        Ok(())
     }
 
     /// Verify and decrypt one encrypted page into `out` (`PAGE_SIZE` bytes).
@@ -163,6 +210,11 @@ impl PageCipher {
         // Keep the reserve area (IV/HMAC slot) zeroed: SQLite treats it as unused.
         Ok(())
     }
+}
+
+/// The error of a page whose HMAC does not match.
+fn hmac_failed(pgno: u32) -> anyhow::Error {
+    anyhow!("HMAC check failed for page {pgno}: wrong key, or the page is corrupt")
 }
 
 /// Cheap key check: derive the keys and verify page 1 of `db`.
