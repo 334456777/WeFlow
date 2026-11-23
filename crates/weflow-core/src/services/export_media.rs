@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::image::Since;
+use super::image::{CacheWrites, Since};
 use super::*;
 use crate::api::{self, ApiExportedMedia, ApiMediaOptions};
 use crate::chat_msg::{self, ChatMessage};
@@ -423,32 +423,36 @@ impl ServiceHub {
                 prefer_file_path: true,
                 ..Default::default()
             };
-            let decrypted = self.image_decrypt_data(&payload, since);
-            let (path, data) = match decrypted.result.local_path {
-                Some(path) => (path, decrypted.data),
+            // what is decrypted just now is written here; only images converted from WXGF are cached as well
+            let decrypted = self.image_decrypt_data(&payload, since, CacheWrites::OnlyWxgf);
+            let (bytes, thumbnail) = match decrypted.fresh {
+                Some(fresh) => (fresh.data, fresh.thumbnail),
                 None => {
-                    let cached = self.image_resolve_cache_since(
-                        &crate::services::ImagePayload {
-                            force: false,
-                            ..payload
-                        },
-                        since,
-                    );
-                    (cached.local_path?, None)
+                    let path = match decrypted.result.local_path {
+                        Some(path) => path,
+                        None => {
+                            self.image_resolve_cache_since(
+                                &crate::services::ImagePayload {
+                                    force: false,
+                                    ..payload
+                                },
+                                since,
+                            )
+                            .local_path?
+                        }
+                    };
+                    let thumbnail =
+                        !path.starts_with("data:") && crate::image::is_thumbnail_path(&path);
+                    let bytes = match path.strip_prefix("data:") {
+                        Some(rest) => {
+                            use base64::Engine;
+                            let b64 = rest.split_once(";base64,")?.1;
+                            base64::engine::general_purpose::STANDARD.decode(b64).ok()?
+                        }
+                        None => std::fs::read(&path).ok()?,
+                    };
+                    (bytes, thumbnail)
                 }
-            };
-            let thumbnail = !path.starts_with("data:") && crate::image::is_thumbnail_path(&path);
-            let bytes = match data {
-                // decrypted just now: the cache file holds the same bytes
-                Some(data) => data,
-                None => match path.strip_prefix("data:") {
-                    Some(rest) => {
-                        use base64::Engine;
-                        let b64 = rest.split_once(";base64,")?.1;
-                        base64::engine::general_purpose::STANDARD.decode(b64).ok()?
-                    }
-                    None => std::fs::read(&path).ok()?,
-                },
             };
             let ext = api_detect_image_ext(&bytes);
             let base = api::sanitize_file_name(

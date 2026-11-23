@@ -359,16 +359,39 @@ pub struct ImageResult {
 
 /// A message image as [`ServiceHub::image_decrypt_data`] finds it.
 pub(super) struct DecryptedImage {
-    /// The answer of [`ServiceHub::image_decrypt`].
+    /// The answer of [`ServiceHub::image_decrypt`]; empty (neither a path nor an error) for an image decrypted just
+    /// now that was not cached ([`CacheWrites::OnlyWxgf`]).
     pub(super) result: ImageResult,
-    /// The image's bytes, when they were decrypted just now (not when the cache already held the image).
-    pub(super) data: Option<Vec<u8>>,
+    /// The image, when it was decrypted just now (not when the cache already held it).
+    pub(super) fresh: Option<FreshImage>,
 }
 
 impl From<ImageResult> for DecryptedImage {
     fn from(result: ImageResult) -> Self {
-        Self { result, data: None }
+        Self {
+            result,
+            fresh: None,
+        }
     }
+}
+
+/// An image decrypted just now ([`DecryptedImage::fresh`]).
+pub(super) struct FreshImage {
+    /// Its bytes.
+    pub(super) data: Vec<u8>,
+    /// Whether it is a thumbnail, by the name of its file in the cache ([`img::is_thumbnail_path`]).
+    pub(super) thumbnail: bool,
+}
+
+/// Which images decrypted just now [`ServiceHub::image_decrypt_data`] writes into the image cache.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CacheWrites {
+    /// Every one: the answer is its file in the cache.
+    All,
+    /// Those converted from WXGF, slow to convert again. The others are as quick to decrypt again as to read back
+    /// from the cache, and an export writes their bytes where they go: writing them into the cache too would make
+    /// two files of each, and on Windows making the files is most of what an image costs an export.
+    OnlyWxgf,
 }
 
 /// What `image resolve-batch` answers: one result per payload, in their order.
@@ -1433,12 +1456,17 @@ impl ServiceHub {
 
     /// [`Self::image_decrypt`] that takes on trust what was checked for `since`.
     pub(super) fn image_decrypt_since(&self, p: &ImagePayload, since: Since) -> ImageResult {
-        self.image_decrypt_data(p, since).result
+        self.image_decrypt_data(p, since, CacheWrites::All).result
     }
 
-    /// [`Self::image_decrypt_since`], with the image's bytes when it was decrypted just now: an export writes them
-    /// rather than read the cache file back.
-    pub(super) fn image_decrypt_data(&self, p: &ImagePayload, since: Since) -> DecryptedImage {
+    /// [`Self::image_decrypt_since`], with the image when it was decrypted just now: an export writes its bytes
+    /// rather than read the cache file back. `cache` says which images decrypted just now go into the cache.
+    pub(super) fn image_decrypt_data(
+        &self,
+        p: &ImagePayload,
+        since: Since,
+        cache: CacheWrites,
+    ) -> DecryptedImage {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
             return ImageResult::no_identifier().into();
@@ -1485,7 +1513,7 @@ impl ServiceHub {
             }
             self.image_state_remove(&cache_key);
         }
-        self.image_decrypt_internal(p, &cache_key, since)
+        self.image_decrypt_internal(p, &cache_key, since, cache)
     }
 
     fn image_decrypt_internal(
@@ -1493,6 +1521,7 @@ impl ServiceHub {
         p: &ImagePayload,
         cache_key: &str,
         since: Since,
+        cache: CacheWrites,
     ) -> DecryptedImage {
         let Ok(account_dir) = self.account_dir_since(since) else {
             return ImageResult::fail("no account or database path configured", "not_found").into();
@@ -1582,6 +1611,7 @@ impl ServiceHub {
                     .into()
                 }
             };
+        let wxgf = img::is_wxgf(&decrypted.data);
         let (data, wxgf_failure) = img::unwrap_wxgf(decrypted.data);
         if let Some(reason) = wxgf_failure {
             return ImageResult {
@@ -1608,11 +1638,18 @@ impl ServiceHub {
             ext,
             p.session_id.as_deref(),
         );
+        let out = output.to_string_lossy().to_string();
+        let thumbnail = img::is_thumbnail_path(&out);
+        if !wxgf && cache == CacheWrites::OnlyWxgf {
+            return DecryptedImage {
+                result: ImageResult::default(),
+                fresh: Some(FreshImage { data, thumbnail }),
+            };
+        }
         // renamed into place: an export's other media threads may read this cache file as soon as it exists
         if let Err(e) = self.write_cache_file(&output, &data) {
             return ImageResult::fail(e.to_string(), "not_found").into();
         }
-        let out = output.to_string_lossy().to_string();
         self.remove_duplicate_cache_candidates(&dat, &month, p.session_id.as_deref(), &out, since);
         self.cache_resolved_paths(
             cache_key,
@@ -1634,7 +1671,7 @@ impl ServiceHub {
         };
         DecryptedImage {
             result: ImageResult::ok(local, Some(img::is_thumbnail_path(&dat))),
-            data: Some(data),
+            fresh: Some(FreshImage { data, thumbnail }),
         }
     }
 

@@ -482,6 +482,91 @@ async fn export_media_copies_images_of_a_conversation() {
         .is_err());
 }
 
+/// The files in the image cache of `hub` (not those being written).
+fn cached_images(hub: &weflow_core::services::ServiceHub) -> Vec<std::path::PathBuf> {
+    fn walk(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if entry.file_name() != ".partial" {
+                    walk(&path, found);
+                }
+            } else {
+                found.push(path);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(&hub.image_cache_root(), &mut found);
+    found
+}
+
+#[tokio::test]
+async fn an_export_caches_only_the_images_it_converted_from_wxgf() {
+    let md5 = "aabbccddeeff00112233445566778899";
+    let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
+    let shown = ImagePayload {
+        session_id: Some("wxid_bob".into()),
+        image_md5: Some(md5.into()),
+        create_time: Some(1_700_000_000),
+        prefer_file_path: true,
+        ..Default::default()
+    };
+
+    // decrypting it again is as quick as reading it back: written where it goes, and not cached
+    let (root, hub, img_dir) = export_world("img-export-uncached");
+    let plain = jpeg(3000, 21);
+    std::fs::write(
+        img_dir.join(format!("{md5}_h.dat")),
+        encrypt_v2(&plain, &key, 0x5a),
+    )
+    .unwrap();
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(r["exported"], 1, "{r}");
+    assert_eq!(
+        std::fs::read(r["files"][0]["path"].as_str().unwrap()).unwrap(),
+        plain
+    );
+    assert_eq!(cached_images(&hub), Vec::<std::path::PathBuf>::new());
+    // cached when it is shown
+    let shown_now = hub.image_decrypt(&shown);
+    assert_eq!(std::fs::read(shown_now.local_path.unwrap()).unwrap(), plain);
+    assert_eq!(cached_images(&hub).len(), 1);
+
+    // converted from WXGF: cached too, so that the next export or view does not convert it again
+    let (root, hub, img_dir) = export_world("img-export-wxgf-cached");
+    let mut blob = b"wxgf".to_vec();
+    blob.extend([0x24u8, 0x01, 0x00, 0x46, 0x00, 0x2e]); // a header, before the HEVC stream
+    blob.extend(include_bytes!("../testdata/wxgf/full_range.hevc"));
+    std::fs::write(
+        img_dir.join(format!("{md5}_h.dat")),
+        encrypt_v2(&blob, &key, 0x5a),
+    )
+    .unwrap();
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(r["exported"], 1, "{r}");
+    let exported = std::fs::read(r["files"][0]["path"].as_str().unwrap()).unwrap();
+    let cached = cached_images(&hub);
+    assert_eq!(cached.len(), 1, "{cached:?}");
+    assert_eq!(std::fs::read(&cached[0]).unwrap(), exported);
+    assert_eq!(
+        hub.image_resolve_cache(&shown)
+            .local_path
+            .map(std::path::PathBuf::from),
+        Some(cached[0].clone())
+    );
+}
+
 /// The same image (md5) shown by two messages: the older one, from a month whose folder has no file, and the newer
 /// one, whose month has it. The threads of an export reach them in either order.
 fn shared_image_world(tag: &str) -> (TestDir, weflow_core::services::ServiceHub, Vec<u8>) {
@@ -728,8 +813,8 @@ async fn export_media_reports_thumbnail_only_images() {
     assert_eq!(r["files"][0]["isThumb"], true);
 }
 
-/// An image exported while only its thumbnail was on disk, then opened in WeChat: the next export takes the image
-/// WeChat downloaded, not the thumbnail cached by the first one, in the same process and in a later one (#858).
+/// An image exported and shown (which caches it) while only its thumbnail was on disk, then opened in WeChat: the next
+/// export takes the image WeChat downloaded, not the cached thumbnail, in the same process and in a later one (#858).
 #[tokio::test]
 async fn an_image_downloaded_after_its_thumbnail_was_cached_is_exported_whole() {
     let md5 = "aabbccddeeff00112233445566778899";
@@ -772,6 +857,18 @@ async fn an_image_downloaded_after_its_thumbnail_was_cached_is_exported_whole() 
         assert_eq!(
             std::fs::read(first["files"][0]["path"].as_str().unwrap()).unwrap(),
             thumb
+        );
+        let shown = hub.image_decrypt(&ImagePayload {
+            session_id: Some("wxid_bob".into()),
+            image_md5: Some(md5.into()),
+            create_time: Some(1_700_000_000),
+            prefer_file_path: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            std::fs::read(shown.local_path.unwrap()).unwrap(),
+            thumb,
+            "the thumbnail is cached"
         );
 
         download(&img_dir);
