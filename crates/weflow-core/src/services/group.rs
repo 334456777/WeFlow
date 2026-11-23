@@ -18,6 +18,7 @@ use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
 use weflow_native::msg::Order;
 use weflow_native::msg_row::{Columns, MsgRow};
+use weflow_native::wcdb::Databases;
 
 const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 
@@ -619,6 +620,14 @@ impl ServiceHub {
             return Err(AppError::usage("chatroom id must not be empty"));
         }
         let wcdb = self.open_wcdb()?;
+        // the panel reads the members from the contacts and, with their counts, the messages
+        let groups: &[Databases] = if include_counts {
+            &[Databases::Contacts, Databases::Messages]
+        } else {
+            &[Databases::Contacts]
+        };
+        wcdb.prefetch(groups)
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let data = self.panel_fresh(&wcdb, chatroom_id, include_counts)?;
         Ok((data, chrono::Utc::now().timestamp_millis()))
     }
@@ -791,6 +800,9 @@ impl ServiceHub {
         end: i64,
     ) -> AppResult<Vec<GroupRank>> {
         let wcdb = self.open_wcdb()?;
+        // the ranking counts the messages, then names the senders from the contacts
+        wcdb.prefetch(&[Databases::Messages, Databases::Contacts])
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let d = self.group_stats_data(&wcdb, chatroom_id, start, end)?;
         let Some(senders) = d
             .pointer(&format!(

@@ -22,6 +22,7 @@ use crate::message::{collect_rows, CollectOptions, ExportMsg};
 use weflow_native::media::SessionRow;
 use weflow_native::msg::{table_name_for, Order};
 use weflow_native::msg_row::{Columns, MsgRow};
+use weflow_native::wcdb::Databases;
 
 const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 pub(super) const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
@@ -521,6 +522,13 @@ impl ServiceHub {
             });
         }
         let wcdb = self.open_wcdb()?;
+        // the statistics read the messages, then the conversations and the contacts
+        wcdb.prefetch(&[
+            Databases::Messages,
+            Databases::Sessions,
+            Databases::Contacts,
+        ])
+        .map_err(|e| AppError::native(format!("{e:#}")))?;
         let begin = crate::message::time::normalize_timestamp_seconds(begin as f64);
         let end = crate::message::time::normalize_timestamp_seconds(end as f64);
         let options = json!({
