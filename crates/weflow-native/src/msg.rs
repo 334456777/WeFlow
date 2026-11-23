@@ -27,13 +27,21 @@ pub struct MsgTable {
 /// Sort key of a message: (`sort_seq`, `create_time`, `local_id`, shard index).
 type Key = (i64, i64, i64, usize);
 
+/// Which end of a conversation a read of its messages starts from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Order {
+    /// The oldest message first.
+    OldestFirst,
+    /// The newest message first.
+    NewestFirst,
+}
+
 /// `keys` in the chat's order, oldest or newest first; equal keys of different databases by ascending database
 /// number either way, as the pages by offset list them.
-fn sort_keys(keys: &mut [Key], ascending: bool) {
-    if ascending {
-        keys.sort_unstable();
-    } else {
-        keys.sort_unstable_by(newest_first);
+fn sort_keys(keys: &mut [Key], order: Order) {
+    match order {
+        Order::OldestFirst => keys.sort_unstable(),
+        Order::NewestFirst => keys.sort_unstable_by(newest_first),
     }
 }
 
@@ -378,7 +386,12 @@ mod proofs {
         let mut keys: [Key; 3] = kani::any();
         let before = keys;
         let ascending: bool = kani::any();
-        sort_keys(&mut keys, ascending);
+        let order = if ascending {
+            Order::OldestFirst
+        } else {
+            Order::NewestFirst
+        };
+        sort_keys(&mut keys, order);
         for w in keys.windows(2) {
             let (a, b) = ((w[0].0, w[0].1, w[0].2), (w[1].0, w[1].1, w[1].2));
             assert!(if ascending { a <= b } else { a >= b });

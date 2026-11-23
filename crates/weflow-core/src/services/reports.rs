@@ -15,7 +15,8 @@ use crate::contract::{
 use crate::message::emoji::percent_decode;
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
-use weflow_native::msg_row::MsgRow;
+use weflow_native::msg::Order;
+use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::quote::{reply_text, QUOTE};
 
 const CONVERSATION_GAP: i64 = 3600;
@@ -492,8 +493,9 @@ impl ServiceHub {
         if years.is_empty() {
             strategy = "edge-scan";
             for sid in &sessions {
-                let edge = |asc: bool| -> i64 {
-                    let Ok(cursor) = wcdb.open_message_cursor(sid, 1, asc, 0, 0, true) else {
+                let edge = |order: Order| -> i64 {
+                    let Ok(cursor) = wcdb.open_message_cursor(sid, 1, order, 0, 0, Columns::Lite)
+                    else {
                         return 0;
                     };
                     let r = wcdb.fetch_message_batch(cursor);
@@ -502,7 +504,11 @@ impl ServiceHub {
                         .and_then(|(rows, _)| rows.first().and_then(|r| r.create_time))
                         .unwrap_or(0)
                 };
-                Self::add_years_from_range(&mut years, edge(true), edge(false));
+                Self::add_years_from_range(
+                    &mut years,
+                    edge(Order::OldestFirst),
+                    edge(Order::NewestFirst),
+                );
             }
         }
         Ok(crate::contract::ReportYears {
@@ -665,10 +671,10 @@ impl ServiceHub {
                 let Ok(cursor) = wcdb.open_message_cursor(
                     sid,
                     1000,
-                    true,
+                    Order::OldestFirst,
                     crate::num::saturating_i32(start.max(0)),
                     crate::num::saturating_i32(end.max(0)),
-                    true,
+                    Columns::Lite,
                 ) else {
                     continue;
                 };
@@ -789,10 +795,10 @@ impl ServiceHub {
                 let Ok(cursor) = wcdb.open_message_cursor(
                     sid,
                     2000,
-                    true,
+                    Order::OldestFirst,
                     crate::num::saturating_i32(start.max(0)),
                     crate::num::saturating_i32(end.max(0)),
-                    true,
+                    Columns::Lite,
                 ) else {
                     continue;
                 };
@@ -1302,10 +1308,10 @@ impl ServiceHub {
         let Ok(cursor) = wcdb.open_message_cursor(
             session,
             crate::num::saturating_i32(limit.max(1)),
-            true,
+            Order::OldestFirst,
             crate::num::saturating_i32(safe_begin.max(0)),
             crate::num::saturating_i32(safe_end.max(0)),
-            true,
+            Columns::Lite,
         ) else {
             return Vec::new();
         };
@@ -1462,10 +1468,10 @@ impl ServiceHub {
             if let Ok(cursor) = wcdb.open_message_cursor(
                 friend,
                 500,
-                true,
+                Order::OldestFirst,
                 crate::num::saturating_i32(start.max(0)),
                 crate::num::saturating_i32(end.max(0)),
-                true,
+                Columns::Lite,
             ) {
                 loop {
                     let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {

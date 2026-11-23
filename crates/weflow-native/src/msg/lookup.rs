@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, Result};
 
+use super::Order;
 use crate::db::Account;
 use crate::msg_row::MsgRow;
 
@@ -13,7 +14,7 @@ impl Account {
         &self,
         session_id: &str,
         local_type: i64,
-        ascending: bool,
+        order: Order,
     ) -> Result<Vec<MsgRow>> {
         let mut rows: Vec<MsgRow> = Vec::new();
         for t in self.message_tables(session_id)? {
@@ -21,10 +22,9 @@ impl Account {
             rows.extend(self.read_rows(&t, &sql, &[&local_type])?);
         }
         // stable: equal keys keep the order of the databases
-        if ascending {
-            rows.sort_by_key(MsgRow::key);
-        } else {
-            rows.sort_by_key(|r| std::cmp::Reverse(r.key()));
+        match order {
+            Order::OldestFirst => rows.sort_by_key(MsgRow::key),
+            Order::NewestFirst => rows.sort_by_key(|r| std::cmp::Reverse(r.key())),
         }
         Ok(rows)
     }
@@ -84,20 +84,29 @@ impl Account {
 mod tests {
     use crate::msg::tests::account;
     use crate::msg::tests::{texts, DAY, T0};
+    use crate::msg::Order;
 
     #[test]
     fn lookups_by_type_and_id() {
         let (_dir, acct) = account("lookup");
         assert_eq!(
-            texts(&acct.messages_by_type("wxid_bob", 1, true).unwrap()),
+            texts(
+                &acct
+                    .messages_by_type("wxid_bob", 1, Order::OldestFirst)
+                    .unwrap()
+            ),
             ["hello", "third", "fourth"]
         );
         assert_eq!(
-            texts(&acct.messages_by_type("wxid_bob", 1, false).unwrap()),
+            texts(
+                &acct
+                    .messages_by_type("wxid_bob", 1, Order::NewestFirst)
+                    .unwrap()
+            ),
             ["fourth", "third", "hello"]
         );
         assert!(acct
-            .messages_by_type("wxid_bob", 999, false)
+            .messages_by_type("wxid_bob", 999, Order::NewestFirst)
             .unwrap()
             .is_empty());
         // local_id 1 exists in both shards: the newest shard first
@@ -144,11 +153,19 @@ mod tests {
             ],
         );
         assert_eq!(
-            texts(&acct.messages_by_type("wxid_bob", 1, true).unwrap()),
+            texts(
+                &acct
+                    .messages_by_type("wxid_bob", 1, Order::OldestFirst)
+                    .unwrap()
+            ),
             ["0:2", "0:1", "1:1", "0:3"]
         );
         assert_eq!(
-            texts(&acct.messages_by_type("wxid_bob", 1, false).unwrap()),
+            texts(
+                &acct
+                    .messages_by_type("wxid_bob", 1, Order::NewestFirst)
+                    .unwrap()
+            ),
             ["0:3", "0:1", "1:1", "0:2"]
         );
     }

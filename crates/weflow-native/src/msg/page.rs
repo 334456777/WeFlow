@@ -397,8 +397,8 @@ mod tests {
     use super::*;
     use crate::db::hex;
     use crate::fixture::TestDir;
-    use crate::msg::table_name_for;
     use crate::msg::tests::{keyed_account, texts, T0};
+    use crate::msg::{table_name_for, Order};
     use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
     use crate::sqlcipher::PageCipher;
     use rusqlite::{params, Connection};
@@ -645,7 +645,7 @@ mod tests {
             }
             let every = acct.newest_rows(&tables, 0, 0).unwrap();
             proptest::prop_assert_eq!(every.len(), shards.iter().map(Vec::len).sum::<usize>());
-            let cursor = acct.open_message_cursor("wxid_bob", batch, false, 0, 0, false).unwrap();
+            let cursor = acct.open_message_cursor("wxid_bob", batch, Order::NewestFirst, 0, 0, Columns::All).unwrap();
             let mut read = Vec::new();
             loop {
                 let (rows, more) = acct.fetch_message_batch(cursor).unwrap();

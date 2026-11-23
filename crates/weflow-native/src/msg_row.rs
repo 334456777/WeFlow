@@ -12,7 +12,8 @@ use crate::msg::{shard_of, MsgPos, MsgTable};
 
 /// Which columns of a message row a query reads; the others come back empty.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Columns {
+pub enum Columns {
+    /// Every column.
     All,
     /// All but `source`, which exports do not use.
     NoSource,
