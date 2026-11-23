@@ -88,13 +88,13 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
 
     let mut size = 0i32;
     // SAFETY: `size` is a live local the SDK writes the decoder's size to.
-    let code = unsafe { SKP_Silk_SDK_Get_Decoder_Size(&mut size) };
+    let code = unsafe { SKP_Silk_SDK_Get_Decoder_Size(&raw mut size) };
     if code != 0 || size <= 0 {
         return Err(SilkError::Sdk(code));
     }
     // u64 backing store keeps the state 8-byte aligned
     let mut state = vec![0u64; (size as usize).div_ceil(8)];
-    let state_ptr = state.as_mut_ptr() as *mut c_void;
+    let state_ptr = state.as_mut_ptr().cast::<c_void>();
     // SAFETY: `state` holds at least the `size` bytes the SDK asked for, 8-byte aligned.
     let code = unsafe { SKP_Silk_SDK_InitDecoder(state_ptr) };
     if code != 0 {
@@ -142,12 +142,12 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
             let code = unsafe {
                 SKP_Silk_SDK_Decode(
                     state_ptr,
-                    &mut ctl,
+                    &raw mut ctl,
                     0,
                     payload.as_ptr(),
                     i32::from(packet_len),
                     scratch.as_mut_ptr(),
-                    &mut n,
+                    &raw mut n,
                 )
             };
             if code != 0 {
@@ -221,9 +221,9 @@ pub mod testenc {
     pub fn encode_tone(rate: i32) -> Vec<u8> {
         let mut size = 0;
         // SAFETY: `size` is a live local the SDK writes the encoder's size to.
-        assert_eq!(unsafe { SKP_Silk_SDK_Get_Encoder_Size(&mut size) }, 0);
+        assert_eq!(unsafe { SKP_Silk_SDK_Get_Encoder_Size(&raw mut size) }, 0);
         let mut state = vec![0u64; (size as usize).div_ceil(8)];
-        let sp = state.as_mut_ptr() as *mut c_void;
+        let sp = state.as_mut_ptr().cast::<c_void>();
         let mut ctl = EncControl {
             api_sample_rate: 0,
             max_internal_sample_rate: 0,
@@ -236,7 +236,7 @@ pub mod testenc {
         };
         // SAFETY: `state` holds at least the `size` bytes the SDK asked for, 8-byte aligned, and `ctl` is a live
         // EncControl.
-        assert_eq!(unsafe { SKP_Silk_SDK_InitEncoder(sp, &mut ctl) }, 0);
+        assert_eq!(unsafe { SKP_Silk_SDK_InitEncoder(sp, &raw mut ctl) }, 0);
         // `InitEncoder` reports the encoder status, so the settings go in afterwards
         ctl = EncControl {
             api_sample_rate: rate,
@@ -251,7 +251,8 @@ pub mod testenc {
         let frame = (rate / 50) as usize;
         let pcm: Vec<i16> = (0..rate as usize)
             .map(|i| {
-                ((i as f64 * 440.0 * std::f64::consts::TAU / rate as f64).sin() * 12000.0) as i16
+                ((i as f64 * 440.0 * std::f64::consts::TAU / f64::from(rate)).sin() * 12000.0)
+                    as i16
             })
             .collect();
         let mut out = b"#!SILK_V3".to_vec();
@@ -264,11 +265,11 @@ pub mod testenc {
                 unsafe {
                     SKP_Silk_SDK_Encode(
                         sp,
-                        &ctl,
+                        &raw const ctl,
                         chunk.as_ptr(),
                         frame as i32,
                         buf.as_mut_ptr(),
-                        &mut n,
+                        &raw mut n,
                     )
                 },
                 0
@@ -331,11 +332,11 @@ mod tests {
                 .map(|b| i16::from_le_bytes([b[0], b[1]]))
                 .collect();
             assert!(
-                (samples.len() as i64 - rate as i64).abs() <= rate as i64 / 10,
+                (samples.len() as i64 - i64::from(rate)).abs() <= i64::from(rate) / 10,
                 "about one second of audio, got {}",
                 samples.len()
             );
-            let rms = (samples.iter().map(|s| (*s as f64).powi(2)).sum::<f64>()
+            let rms = (samples.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>()
                 / samples.len() as f64)
                 .sqrt();
             assert!(

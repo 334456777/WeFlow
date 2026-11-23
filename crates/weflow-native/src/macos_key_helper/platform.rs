@@ -97,7 +97,7 @@ pub(super) fn task_port(pid: u32) -> Result<task_t, String> {
     let mut task = 0;
     // SAFETY: `this_task()` is this process's task port and `task` is a
     // live local that receives the new right.
-    let kr = unsafe { libc::task_for_pid(this_task(), pid as libc::pid_t, &mut task) };
+    let kr = unsafe { libc::task_for_pid(this_task(), pid as libc::pid_t, &raw mut task) };
     if kr != KERN_SUCCESS {
         return Err(format!("task_for_pid({kr}): {}", mach_error(kr)));
     }
@@ -121,7 +121,7 @@ pub(super) fn read_memory(task: task_t, address: u64, size: usize) -> Result<Vec
             address,
             size as mach_vm_size_t,
             buffer.as_mut_ptr() as mach_vm_address_t,
-            &mut read,
+            &raw mut read,
         )
     };
     if kr != KERN_SUCCESS {
@@ -220,7 +220,7 @@ fn wait_status(pid: u32) -> Option<libc::c_int> {
     let mut status = 0;
     loop {
         // SAFETY: `status` is a live local and the options are plain integers.
-        let result = unsafe { libc::waitpid(pid as libc::pid_t, &mut status, libc::WNOHANG) };
+        let result = unsafe { libc::waitpid(pid as libc::pid_t, &raw mut status, libc::WNOHANG) };
         if result == 0 {
             return None;
         }
@@ -248,7 +248,7 @@ fn thread_states(task: task_t) -> Result<Vec<thread_t>, String> {
     let mut count: mach_msg_type_number_t = 0;
     // SAFETY: the out parameters are live locals; on success `task_threads`
     // returns an array of `count` send rights allocated by the kernel.
-    let kr = unsafe { mach2::task::task_threads(task, &mut threads, &mut count) };
+    let kr = unsafe { mach2::task::task_threads(task, &raw mut threads, &raw mut count) };
     if kr != KERN_SUCCESS {
         return Err(format!("task_threads({kr}): {}", mach_error(kr)));
     }
@@ -315,8 +315,8 @@ fn read_state(thread: thread_t) -> Result<arm_thread_state64_t, String> {
         thread_get_state(
             thread,
             ARM_THREAD_STATE64,
-            &mut state as *mut arm_thread_state64_t as *mut u32,
-            &mut count,
+            (&raw mut state).cast::<u32>(),
+            &raw mut count,
         )
     };
     (kr == KERN_SUCCESS)
@@ -331,7 +331,7 @@ fn write_state(thread: thread_t, state: &arm_thread_state64_t) -> Result<(), Str
         thread_set_state(
             thread,
             ARM_THREAD_STATE64,
-            state as *const arm_thread_state64_t as *mut u32,
+            std::ptr::from_ref(state).cast::<u32>().cast_mut(),
             ARM_THREAD_STATE64_COUNT,
         )
     };
@@ -375,8 +375,8 @@ fn read_state(thread: thread_t) -> Result<x86_thread_state64_t, String> {
         thread_get_state(
             thread,
             X86_THREAD_STATE64,
-            &mut state as *mut x86_thread_state64_t as *mut u32,
-            &mut count,
+            (&raw mut state).cast::<u32>(),
+            &raw mut count,
         )
     };
     (kr == KERN_SUCCESS)
@@ -391,7 +391,7 @@ fn write_state(thread: thread_t, state: &x86_thread_state64_t) -> Result<(), Str
         thread_set_state(
             thread,
             X86_THREAD_STATE64,
-            state as *const x86_thread_state64_t as *mut u32,
+            std::ptr::from_ref(state).cast::<u32>().cast_mut(),
             X86_THREAD_STATE64_COUNT,
         )
     };
@@ -862,12 +862,12 @@ fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<
         let kr = unsafe {
             mach_vm_region(
                 task,
-                &mut address,
-                &mut size,
+                &raw mut address,
+                &raw mut size,
                 VM_REGION_BASIC_INFO_64,
-                &mut info as *mut vm_region_basic_info_64 as *mut integer_t,
-                &mut count,
-                &mut object,
+                (&raw mut info).cast::<integer_t>(),
+                &raw mut count,
+                &raw mut object,
             )
         };
         if kr != KERN_SUCCESS || address >= end || size == 0 {
@@ -945,8 +945,8 @@ fn list_modules(task: task_t) -> Result<Vec<module::Module>, String> {
         task_info(
             task,
             TASK_DYLD_INFO,
-            &mut info as *mut task_dyld_info as *mut integer_t,
-            &mut count,
+            (&raw mut info).cast::<integer_t>(),
+            &raw mut count,
         )
     };
     if kr != KERN_SUCCESS || info.all_image_info_addr == 0 {

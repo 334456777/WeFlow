@@ -147,7 +147,7 @@ impl Account {
             CursorKeys::Export => (None, true),
         };
         let tables = self.message_tables(session_id)?;
-        let (begin, end) = (begin.max(0) as i64, end.max(0) as i64);
+        let (begin, end) = (i64::from(begin.max(0)), i64::from(end.max(0)));
         let mut keys: Vec<Key> = Vec::new();
         let mut derived: Vec<bool> = Vec::with_capacity(tables.len());
         for (idx, t) in tables.iter().enumerate() {

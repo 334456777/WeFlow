@@ -604,7 +604,7 @@ async fn command_route(
 ) -> Result<Response, Refused> {
     // `/api/<command path>`: the same command, run in this process (in_process)
     let in_process = segments.first().is_some_and(|s| s == "api");
-    let Some(endpoint) = st.endpoints.get(&segments[in_process as usize..]) else {
+    let Some(endpoint) = st.endpoints.get(&segments[usize::from(in_process)..]) else {
         return Err(error_response(StatusCode::NOT_FOUND, "not_found", "no such command").into());
     };
     let media = in_process && in_process::MEDIA.contains(&endpoint.command_name().as_str());

@@ -128,8 +128,8 @@ fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
         return Err(anyhow!("dat file too small"));
     }
     let payload = &data[0x0f..];
-    let aes_size = read_i32_le(data, 6) as i64;
-    let xor_size = read_i32_le(data, 10) as i64;
+    let aes_size = i64::from(read_i32_le(data, 6));
+    let xor_size = i64::from(read_i32_le(data, 10));
     let remainder = ((aes_size % 16) + 16) % 16;
     let aligned = usize::try_from(aes_size + (16 - remainder))
         .ok()

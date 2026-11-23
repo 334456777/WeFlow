@@ -124,7 +124,7 @@ fn simple_hash(s: &str) -> String {
     let mut h: u64 = 14695981039346656037;
     for b in s.bytes() {
         h = h.wrapping_mul(1099511628211);
-        h ^= b as u64;
+        h ^= u64::from(b);
     }
     format!("{h:016x}")
 }

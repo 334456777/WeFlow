@@ -873,7 +873,7 @@ fn footprint_reports_private_chats_segments_and_mentions() {
 fn extra(fields: &[(u8, &str)]) -> &'static [u8] {
     let mut out = Vec::new();
     for (n, text) in fields {
-        let tag = (*n as u32) << 3 | 2;
+        let tag = u32::from(*n) << 3 | 2;
         if tag >= 0x80 {
             out.extend([(tag & 0x7f) as u8 | 0x80, (tag >> 7) as u8]);
         } else {

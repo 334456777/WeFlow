@@ -344,7 +344,7 @@ pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
             })
             .large_file(
                 fs::metadata(&path)
-                    .map(|m| m.len() >= u32::MAX as u64)
+                    .map(|m| m.len() >= u64::from(u32::MAX))
                     .unwrap_or(false),
             );
         zip.start_file(&name, options)

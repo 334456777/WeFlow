@@ -53,6 +53,14 @@ semicolon_if_nothing_returned = "warn"
 single_char_pattern = "warn"
 uninlined_format_args = "warn"
 unnested_or_patterns = "warn"
+# a widening that cannot lose anything is `From`, which a later change of type turns into an error rather than a
+# silent truncation (#1113)
+cast_lossless = "warn"
+# a pointer to a place is `&raw const`/`&raw mut`, and a pointer cast says its target type with `cast`, not `as`,
+# which also changes constness or casts to an integer without a word (#1113)
+borrow_as_ptr = "warn"
+ptr_as_ptr = "warn"
+ref_as_ptr = "warn"
 
 [workspace.dependencies]
 aes = "0.9"

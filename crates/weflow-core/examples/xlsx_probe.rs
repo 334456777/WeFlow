@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     let mut workbook = Workbook::new();
     let sheet = workbook.add_worksheet_with_constant_memory()?;
     for row in 0..rows {
-        sheet.write_number(row, 0, row as f64)?;
+        sheet.write_number(row, 0, f64::from(row))?;
         sheet.write_string(row, 1, "synthetic fixture")?;
     }
     workbook.save(output)?;

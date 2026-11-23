@@ -48,7 +48,7 @@ fn read(process: HANDLE, address: usize, bytes: &mut [u8]) -> Result<()> {
             address as *const c_void,
             bytes.as_mut_ptr().cast(),
             bytes.len(),
-            &mut count,
+            &raw mut count,
         )
     } == 0
         || count != bytes.len()
@@ -75,7 +75,7 @@ fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
     };
     let mut found = None;
     // SAFETY: `entry` is a MODULEENTRY32W with `dwSize` set and the snapshot handle is open.
-    let mut available = unsafe { Module32FirstW(snapshot.0, &mut entry) } != 0;
+    let mut available = unsafe { Module32FirstW(snapshot.0, &raw mut entry) } != 0;
     while available {
         let length = entry
             .szModule
@@ -87,7 +87,7 @@ fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
             break;
         }
         // SAFETY: as for `Module32FirstW` above: `entry` keeps its `dwSize` and the snapshot is still open.
-        available = unsafe { Module32NextW(snapshot.0, &mut entry) } != 0;
+        available = unsafe { Module32NextW(snapshot.0, &raw mut entry) } != 0;
     }
     found.with_context(|| format!("{name} is not loaded yet"))
 }
@@ -129,7 +129,7 @@ fn locate(pid: u32) -> Result<KeyLocation> {
     let mut machine = 0;
     let mut native_machine = 0;
     // SAFETY: the process handle is open and both out-parameters are live locals.
-    if unsafe { IsWow64Process2(process.0, &mut machine, &mut native_machine) } == 0 {
+    if unsafe { IsWow64Process2(process.0, &raw mut machine, &raw mut native_machine) } == 0 {
         return Err(win_error("IsWow64Process2"));
     }
     // Native AMD64, or AMD64 emulation on an ARM64 host. Never use x64 CONTEXT on ARM64/x86.
@@ -180,7 +180,7 @@ fn file_version(path: &[u16]) -> Result<[u16; 4]> {
     let mut ignored = 0;
     // SAFETY: `path` is the module path Windows filled into MODULEENTRY32W, NUL-terminated, and `ignored` a live
     // local.
-    let size = unsafe { GetFileVersionInfoSizeW(path.as_ptr(), &mut ignored) };
+    let size = unsafe { GetFileVersionInfoSizeW(path.as_ptr(), &raw mut ignored) };
     if size == 0 {
         return Err(win_error("GetFileVersionInfoSizeW"));
     }
@@ -198,9 +198,9 @@ fn file_version(path: &[u16]) -> Result<[u16; 4]> {
     if unsafe {
         VerQueryValueW(
             buffer.as_ptr().cast(),
-            [b'\\' as u16, 0].as_ptr(),
-            &mut value,
-            &mut length,
+            [u16::from(b'\\'), 0].as_ptr(),
+            &raw mut value,
+            &raw mut length,
         )
     } == 0
         || (length as usize) < size_of::<VS_FIXEDFILEINFO>()
@@ -518,7 +518,7 @@ fn context(thread: HANDLE) -> Result<AlignedContext> {
     });
     // SAFETY: `ctx` is a 16-byte aligned CONTEXT (see `AlignedContext`) with `ContextFlags` set, and the caller
     // opened `thread` with THREAD_GET_CONTEXT.
-    if unsafe { GetThreadContext(thread, &mut ctx.0) } == 0 {
+    if unsafe { GetThreadContext(thread, &raw mut ctx.0) } == 0 {
         return Err(win_error("GetThreadContext"));
     }
     Ok(ctx)
@@ -650,7 +650,7 @@ impl Debugger {
             }
             let mut event = DEBUG_EVENT::default();
             // SAFETY: `event` is a live, writable DEBUG_EVENT and this thread is the one that attached.
-            if unsafe { WaitForDebugEvent(&mut event, 50) } == 0 {
+            if unsafe { WaitForDebugEvent(&raw mut event, 50) } == 0 {
                 // SAFETY: reads this thread's last error; takes no arguments.
                 if unsafe { GetLastError() } == ERROR_SEM_TIMEOUT {
                     continue;
@@ -819,7 +819,7 @@ impl Debugger {
             if let Err(e) = thread.restore() {
                 let mut exit = 0;
                 // SAFETY: `thread.handle` is open for as long as `thread` lives and `exit` is a live local.
-                if unsafe { GetExitCodeThread(thread.handle.0, &mut exit) } == 0
+                if unsafe { GetExitCodeThread(thread.handle.0, &raw mut exit) } == 0
                     || exit == STILL_ACTIVE as u32
                 {
                     error.get_or_insert(e);
@@ -856,7 +856,7 @@ impl Debugger {
         while Instant::now() < deadline {
             let mut event = DEBUG_EVENT::default();
             // SAFETY: `event` is a live, writable DEBUG_EVENT and this thread is the one that attached.
-            if unsafe { WaitForDebugEvent(&mut event, 50) } == 0 {
+            if unsafe { WaitForDebugEvent(&raw mut event, 50) } == 0 {
                 // SAFETY: reads this thread's last error; takes no arguments.
                 if unsafe { GetLastError() } == ERROR_SEM_TIMEOUT {
                     continue;
@@ -1077,7 +1077,7 @@ mod tests {
             let mut present = 1;
             assert_ne!(
                 // SAFETY: the process handle is open and `present` is a live local.
-                unsafe { CheckRemoteDebuggerPresent(process.0, &mut present) },
+                unsafe { CheckRemoteDebuggerPresent(process.0, &raw mut present) },
                 0
             );
             assert_eq!(present, 0);

@@ -242,7 +242,8 @@ mod run_tests {
                 MEM_COMMIT | MEM_RESERVE,
                 PAGE_EXECUTE_READWRITE,
             )
-        } as *mut u8;
+        }
+        .cast::<u8>();
         assert!(!page.is_null());
         // a `ret` for the shellcode to jump back to
         // SAFETY: `page` is a 0x1000-byte allocation, so `page + 0x800` is inside it.
@@ -275,7 +276,7 @@ mod run_tests {
         shellcode(std::ptr::null_mut(), object.as_mut_ptr());
         let result = u32::from_le_bytes([object[0xd0], object[0xd1], object[0xd2], object[0xd3]]);
         // SAFETY: the page was allocated above and is not used again.
-        unsafe { VirtualFree(page as *mut _, 0, MEM_RELEASE) };
+        unsafe { VirtualFree(page.cast(), 0, MEM_RELEASE) };
         result
     }
 

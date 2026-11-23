@@ -22,7 +22,7 @@ pub fn may_be_running(pid: u32) -> bool {
     }
     let mut code = 0u32;
     // SAFETY: `handle` is open with the right to query, and `code` is a valid u32 to write
-    let read = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+    let read = unsafe { GetExitCodeProcess(handle, &raw mut code) } != 0;
     // SAFETY: the handle is ours and closed once
     unsafe { CloseHandle(handle) };
     // a process that exited is still opened while another handle to it is open; one that exited with the code
@@ -106,7 +106,7 @@ pub fn processes() -> Vec<Process> {
         ..Default::default()
     };
     // SAFETY: `snapshot` is a valid snapshot handle and `entry` has its size set, as both calls require
-    let mut available = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+    let mut available = unsafe { Process32FirstW(snapshot, &raw mut entry) } != 0;
     while available {
         let length = entry
             .szExeFile
@@ -119,7 +119,7 @@ pub fn processes() -> Vec<Process> {
             parent: entry.th32ParentProcessID,
         });
         // SAFETY: as for Process32FirstW
-        available = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+        available = unsafe { Process32NextW(snapshot, &raw mut entry) } != 0;
     }
     // SAFETY: the handle is ours and closed once
     unsafe { CloseHandle(snapshot) };
@@ -167,7 +167,7 @@ pub fn command_line(pid: u32) -> Option<String> {
                 ProcessCommandLineInformation,
                 buf.as_mut_ptr().cast(),
                 len,
-                &mut needed,
+                &raw mut needed,
             )
         };
         if status != STATUS_INFO_LENGTH_MISMATCH {

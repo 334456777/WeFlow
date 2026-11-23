@@ -193,10 +193,10 @@ fn passwd_entry(uid: u32) -> Option<(PathBuf, u32)> {
     let status = unsafe {
         libc::getpwuid_r(
             uid,
-            &mut entry,
+            &raw mut entry,
             buffer.as_mut_ptr(),
             buffer.len(),
-            &mut result,
+            &raw mut result,
         )
     };
     if status != 0 || result.is_null() || entry.pw_dir.is_null() {
