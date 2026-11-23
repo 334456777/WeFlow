@@ -18,6 +18,7 @@ use crate::message::xml::rx;
 use weflow_native::msg::Order;
 use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::quote::{reply_text, QUOTE};
+use weflow_native::wcdb::Databases;
 
 const CONVERSATION_GAP: i64 = 3600;
 
@@ -525,6 +526,14 @@ impl ServiceHub {
         let year = checked_year(year)?;
         self.emit_progress("annual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
+        // the report reads the conversations, their messages, the Moments and the contacts, in that order
+        wcdb.prefetch(&[
+            Databases::Sessions,
+            Databases::Messages,
+            Databases::Moments,
+            Databases::Contacts,
+        ])
+        .map_err(|e| AppError::native(format!("{e:#}")))?;
         let sessions = self.report_private_sessions(&wcdb, &cleaned);
         if sessions.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
@@ -1343,6 +1352,9 @@ impl ServiceHub {
         let year = checked_year(year)?;
         self.emit_progress("dual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
+        // the report reads the friend's contact, then the messages
+        wcdb.prefetch(&[Databases::Contacts, Databases::Messages])
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let is_all = year == 0;
         let (start, end) = year_range(year);
 
