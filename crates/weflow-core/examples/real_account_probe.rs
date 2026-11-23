@@ -14,6 +14,8 @@ use std::path::Path;
 use std::time::Instant;
 use weflow_core::config::{expand_home, resolve_account_dir, ConfigStore};
 use weflow_native::db::Account;
+use weflow_native::msg::Order;
+use weflow_native::msg_row::Columns;
 
 fn number(row: &Value, field: &str) -> i64 {
     row[field].as_i64().unwrap_or(0)
@@ -53,7 +55,8 @@ fn measure_cursors(
     for case in cases {
         let session = case["session"].as_str().context("case session missing")?;
         let expected = number(&case, "count") as usize;
-        let warm = account.open_message_cursor(session, 2000, true, 0, 0, false)?;
+        let warm =
+            account.open_message_cursor(session, 2000, Order::OldestFirst, 0, 0, Columns::All)?;
         anyhow::ensure!(
             cursor_digest(account, warm)?.0 == expected,
             "warm-up count differs"
@@ -66,15 +69,22 @@ fn measure_cursors(
                     "sender" => account.open_message_cursor_for_senders(
                         session,
                         2000,
-                        true,
+                        Order::OldestFirst,
                         (0, 0),
-                        false,
+                        Columns::All,
                         (
                             &|name| weflow_core::message::transfer::is_same_wxid(name, owner),
                             true,
                         ),
                     )?,
-                    _ => account.open_message_cursor(session, 2000, true, 0, 0, false)?,
+                    _ => account.open_message_cursor(
+                        session,
+                        2000,
+                        Order::OldestFirst,
+                        0,
+                        0,
+                        Columns::All,
+                    )?,
                 };
                 let keys = started.elapsed();
                 let first = Instant::now();
@@ -191,8 +201,14 @@ fn main() -> Result<()> {
                     let time = i32::try_from(number(anomaly, "create_time"))?;
                     let fast = account.open_export_cursor(&session, 2000, time, time)?;
                     let indexed = cursor_digest(&account, fast)?;
-                    let exact =
-                        account.open_message_cursor(&session, 2000, true, time, time, false)?;
+                    let exact = account.open_message_cursor(
+                        &session,
+                        2000,
+                        Order::OldestFirst,
+                        time,
+                        time,
+                        Columns::All,
+                    )?;
                     let exact = cursor_digest(&account, exact)?;
                     bounded_checks.push(
                         json!({"session": session, "time": time, "indexed_count": indexed.0,

@@ -20,8 +20,8 @@ use crate::error::{AppError, AppResult};
 use crate::message::appmsg::app_message_kind;
 use crate::message::{collect_rows, CollectOptions, ExportMsg};
 use weflow_native::media::SessionRow;
-use weflow_native::msg::table_name_for;
-use weflow_native::msg_row::MsgRow;
+use weflow_native::msg::{table_name_for, Order};
+use weflow_native::msg_row::{Columns, MsgRow};
 
 const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 pub(super) const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
@@ -992,7 +992,7 @@ impl ServiceHub {
     pub fn chat_all_images(&self, session_id: &str) -> AppResult<ChatImages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type(session_id, 3, false)
+            .messages_by_type(session_id, 3, Order::NewestFirst)
             .map_err(native)?;
         let msgs = self.normalize_row(rows, session_id);
         let mut images: Vec<(i64, ImageRef)> = msgs
@@ -1031,7 +1031,7 @@ impl ServiceHub {
     pub fn chat_all_voices(&self, session_id: &str) -> AppResult<VoiceMessages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type(session_id, 34, false)
+            .messages_by_type(session_id, 34, Order::NewestFirst)
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
         let mut msgs = self.normalize_row(rows, session_id);
@@ -1403,10 +1403,10 @@ impl ServiceHub {
             .open_message_cursor(
                 session_id,
                 limit,
-                true,
+                Order::OldestFirst,
                 crate::num::saturating_i32(min_time.max(0)),
                 0,
-                false,
+                Columns::All,
             )
             .map_err(|e| AppError::native(format!("{e:#}")))?;
         let fetched = wcdb.fetch_message_batch(cursor);

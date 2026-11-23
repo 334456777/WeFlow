@@ -9,7 +9,7 @@ use anyhow::{anyhow, Context, Result};
 
 use super::SenderFilter;
 use super::KEYS_CHANGED;
-use super::{int, sort_keys, Key, MsgTable};
+use super::{int, sort_keys, Key, MsgTable, Order};
 use crate::db::Account;
 use crate::msg_row::{Columns, MsgRow};
 
@@ -50,7 +50,7 @@ struct MessageCursor {
     /// still to be checked against the rows.
     derived: Vec<bool>,
     range: (i64, i64),
-    ascending: bool,
+    order: Order,
     /// Held while keys are read again from the rows ([`Account::rekey`]): workers whose pages find the same
     /// table's keys wrong at once wait for one scan of it instead of each scanning the whole table.
     rekeying: Arc<Mutex<()>>,
@@ -63,22 +63,23 @@ pub struct Cursors {
 }
 
 impl Account {
-    /// Open a cursor over `[begin, end]` (seconds; `0` = unbounded). Only sort keys are held in memory.
+    /// Open a cursor over `[begin, end]` (seconds; `0` = unbounded) whose pages read `columns`. Only sort keys are
+    /// held in memory.
     pub fn open_message_cursor(
         &self,
         session_id: &str,
         batch: i32,
-        ascending: bool,
+        order: Order,
         begin: i32,
         end: i32,
-        lite: bool,
+        columns: Columns,
     ) -> Result<i64> {
         self.open_cursor(
             session_id,
             batch,
-            ascending,
+            order,
             (begin, end),
-            if lite { Columns::Lite } else { Columns::All },
+            columns,
             CursorKeys::All,
         )
     }
@@ -102,7 +103,7 @@ impl Account {
         self.open_cursor(
             session_id,
             batch,
-            true,
+            Order::OldestFirst,
             (begin, end),
             Columns::NoSource,
             CursorKeys::Export,
@@ -117,17 +118,17 @@ impl Account {
         &self,
         session_id: &str,
         batch: i32,
-        ascending: bool,
+        order: Order,
         range: (i32, i32),
-        lite: bool,
+        columns: Columns,
         senders: SenderFilter<'_>,
     ) -> Result<i64> {
         self.open_cursor(
             session_id,
             batch,
-            ascending,
+            order,
             range,
-            if lite { Columns::Lite } else { Columns::All },
+            columns,
             CursorKeys::Senders(senders),
         )
     }
@@ -136,7 +137,7 @@ impl Account {
         &self,
         session_id: &str,
         batch: i32,
-        ascending: bool,
+        order: Order,
         (begin, end): (i32, i32),
         columns: Columns,
         listed: CursorKeys<'_>,
@@ -187,7 +188,7 @@ impl Account {
             };
             keys.extend(self.table_keys(t, idx, (begin, end), &who)?);
         }
-        sort_keys(&mut keys, ascending);
+        sort_keys(&mut keys, order);
         let mut cursors = self
             .cursors
             .lock()
@@ -204,7 +205,7 @@ impl Account {
                 columns,
                 derived,
                 range: (begin, end),
-                ascending,
+                order,
                 rekeying: Arc::default(),
             },
         );
@@ -292,9 +293,9 @@ impl Account {
             .lock()
             .map_err(|_| anyhow!("rekey lock poisoned"))?;
         // tables another page fixed while this one waited are done
-        let (tables, range, ascending, fix) = self.cursor_field(cursor, |c| {
+        let (tables, range, order, fix) = self.cursor_field(cursor, |c| {
             let fix: Vec<usize> = fix.iter().copied().filter(|&idx| c.derived[idx]).collect();
-            (c.tables.clone(), c.range, c.ascending, fix)
+            (c.tables.clone(), c.range, c.order, fix)
         })?;
         if fix.is_empty() {
             return Ok(());
@@ -345,7 +346,7 @@ impl Account {
             keys.extend(table);
             c.derived[idx] = false;
         }
-        sort_keys(&mut keys, ascending);
+        sort_keys(&mut keys, order);
         let same_pages = c.keys.len() == keys.len()
             && c.keys
                 .iter()
@@ -581,7 +582,7 @@ mod tests {
         .unwrap();
         let acct = Account::new(fixture.db_storage(), &fixture.key_hex()).unwrap();
         let exact = acct
-            .open_message_cursor("wxid_bob", 2, true, 0, 0, false)
+            .open_message_cursor("wxid_bob", 2, Order::OldestFirst, 0, 0, Columns::All)
             .unwrap();
         assert_eq!(
             cursor_state(&acct, exact).0,
@@ -664,7 +665,7 @@ mod tests {
         ] {
             let (b, e) = (begin as i32, end as i32);
             let exact = acct
-                .open_message_cursor("wxid_bob", 2, true, b, e, false)
+                .open_message_cursor("wxid_bob", 2, Order::OldestFirst, b, e, Columns::All)
                 .unwrap();
             let fast = acct.open_export_cursor("wxid_bob", 2, b, e).unwrap();
             let (exact_keys, _) = cursor_state(&acct, exact);
@@ -824,15 +825,15 @@ mod tests {
     fn equal_keys_of_two_databases_come_in_database_order_both_ways() {
         let row = vec![(1, "null".to_string(), (T0 + 5).to_string())];
         let (_dir, acct) = keyed_account("equal-keys", &[row.clone(), row]);
-        for ascending in [false, true] {
+        for order in [Order::NewestFirst, Order::OldestFirst] {
             let cursor = acct
-                .open_message_cursor("wxid_bob", 10, ascending, 0, 0, false)
+                .open_message_cursor("wxid_bob", 10, order, 0, 0, Columns::All)
                 .unwrap();
             let (rows, _) = acct.fetch_message_batch(cursor).unwrap();
             assert_eq!(
                 rows.iter().map(|r| r.shard).collect::<Vec<_>>(),
                 [0, 1],
-                "ascending {ascending}"
+                "{order:?}"
             );
         }
         assert_eq!(
@@ -883,7 +884,7 @@ mod tests {
             ]
         );
         let cursor = acct
-            .open_message_cursor("wxid_bob", 100, false, 0, 0, true)
+            .open_message_cursor("wxid_bob", 100, Order::NewestFirst, 0, 0, Columns::Lite)
             .unwrap();
         let (lite, _) = acct.fetch_message_batch(cursor).unwrap();
         let unpacked: Vec<MsgRow> = rows
@@ -911,7 +912,7 @@ mod tests {
     fn cursor_walks_all_messages_in_order_across_shards() {
         let (_dir, acct) = account("cursor");
         let c = acct
-            .open_message_cursor("wxid_bob", 2, true, 0, 0, false)
+            .open_message_cursor("wxid_bob", 2, Order::OldestFirst, 0, 0, Columns::All)
             .unwrap();
         let mut all = Vec::new();
         let mut batches = 0;
@@ -933,7 +934,7 @@ mod tests {
     fn pages_by_number_match_the_batches_and_leave_the_cursor_alone() {
         let (_dir, acct) = account("cursor-pages");
         let c = acct
-            .open_message_cursor("wxid_bob", 2, true, 0, 0, false)
+            .open_message_cursor("wxid_bob", 2, Order::OldestFirst, 0, 0, Columns::All)
             .unwrap();
         assert_eq!(acct.message_cursor_len(c).unwrap(), (5, 2));
         // out of order, repeated and past the end
@@ -959,7 +960,7 @@ mod tests {
         let (dir, acct) = account("cursor-parallel");
         acct.set_read_connections(3);
         let c = acct
-            .open_message_cursor("wxid_bob", 1, true, 0, 0, false)
+            .open_message_cursor("wxid_bob", 1, Order::OldestFirst, 0, 0, Columns::All)
             .unwrap();
         let expected: Vec<Vec<String>> = (0..5)
             .map(|i| texts(&acct.fetch_message_page(c, i).unwrap()))
@@ -986,7 +987,14 @@ mod tests {
         // [day1, day3] inclusive, newest first, lite rows
         let (begin, end) = ((T0 + DAY) as i32, (T0 + DAY * 3) as i32);
         let c = acct
-            .open_message_cursor("wxid_bob", 10, false, begin, end, true)
+            .open_message_cursor(
+                "wxid_bob",
+                10,
+                Order::NewestFirst,
+                begin,
+                end,
+                Columns::Lite,
+            )
             .unwrap();
         let (rows, more) = acct.fetch_message_batch(c).unwrap();
         assert!(!more);
@@ -1002,7 +1010,14 @@ mod tests {
         let acct = acct.with_my_wxid(Some("wxid_me".into()));
         let read = |ok: &dyn Fn(&str) -> bool, mine: bool| -> Vec<String> {
             let c = acct
-                .open_message_cursor_for_senders("wxid_bob", 100, true, (0, 0), true, (ok, mine))
+                .open_message_cursor_for_senders(
+                    "wxid_bob",
+                    100,
+                    Order::OldestFirst,
+                    (0, 0),
+                    Columns::Lite,
+                    (ok, mine),
+                )
                 .unwrap();
             let (rows, _) = acct.fetch_message_batch(c).unwrap();
             acct.close_message_cursor(c).unwrap();

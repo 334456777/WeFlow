@@ -655,6 +655,8 @@ impl<T> Iterator for PageStream<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use weflow_native::msg::Order;
+    use weflow_native::msg_row::Columns;
 
     #[test]
     fn worker_counts_follow_cpus_pages_and_the_override() {
@@ -731,7 +733,14 @@ mod tests {
                 sender_filter: None,
             };
             let cursor = wcdb
-                .open_message_cursor("wxid_bob", PAGE_SIZE, true, 0, 0, false)
+                .open_message_cursor(
+                    "wxid_bob",
+                    PAGE_SIZE,
+                    Order::OldestFirst,
+                    0,
+                    0,
+                    Columns::All,
+                )
                 .unwrap();
             let as_is: &WithFinisher<'_, Vec<ExportMsg>> = &|body| body(&mut |msgs| msgs);
             // 16 CPUs: two workers read, six sleep until the consumer would need them. The consumer is slower than
@@ -811,7 +820,14 @@ mod tests {
         // then the export is checked again, up to five times
         for _ in 0..5 {
             let cursor = wcdb
-                .open_message_cursor("wxid_bob", PAGE_SIZE, true, 0, 0, false)
+                .open_message_cursor(
+                    "wxid_bob",
+                    PAGE_SIZE,
+                    Order::OldestFirst,
+                    0,
+                    0,
+                    Columns::All,
+                )
                 .unwrap();
             let before = wcdb.stale_reruns();
             let got = read_cursor(&wcdb, cursor, &req, &opts, (16, 2), as_is, |pages| {

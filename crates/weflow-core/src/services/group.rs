@@ -16,7 +16,8 @@ use crate::contract::{
 use crate::export_msg::{csv_cell, write_csv};
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
-use weflow_native::msg_row::MsgRow;
+use weflow_native::msg::Order;
+use weflow_native::msg_row::{Columns, MsgRow};
 
 const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 
@@ -948,7 +949,7 @@ impl ServiceHub {
         chatroom_id: &str,
         member: &str,
         batch: i32,
-        ascending: bool,
+        order: Order,
         (start, end): (i64, i64),
     ) -> AppResult<i64> {
         let norm = |v: i64| {
@@ -966,18 +967,18 @@ impl ServiceHub {
         match wcdb.open_message_cursor_for_senders(
             chatroom_id,
             batch,
-            ascending,
+            order,
             (b, e),
-            true,
+            Columns::Lite,
             (&ok, mine),
         ) {
             Ok(c) if c != 0 => Ok(c),
             _ => self.wrap_native(wcdb.open_message_cursor_for_senders(
                 chatroom_id,
                 batch,
-                ascending,
+                order,
                 (b, e),
-                false,
+                Columns::All,
                 (&ok, mine),
             )),
         }
@@ -995,7 +996,14 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let (chatroom_id, member) = (chatroom_id.trim(), member.trim());
         let my_wxid = self.my_wxid_cleaned();
-        let cursor = self.member_cursor(&wcdb, chatroom_id, member, 10000, true, (start, end))?;
+        let cursor = self.member_cursor(
+            &wcdb,
+            chatroom_id,
+            member,
+            10000,
+            Order::OldestFirst,
+            (start, end),
+        )?;
 
         let mut match_cache: HashMap<String, bool> = HashMap::new();
         let mut total = 0i64;
@@ -1149,7 +1157,14 @@ impl ServiceHub {
     ) -> AppResult<Vec<chat_msg::ChatMessage>> {
         let my_wxid = self.my_wxid_cleaned();
         let table_name = weflow_native::msg::table_name_for(chatroom_id);
-        let cursor = self.member_cursor(wcdb, chatroom_id, member, 800, true, (start, end))?;
+        let cursor = self.member_cursor(
+            wcdb,
+            chatroom_id,
+            member,
+            800,
+            Order::OldestFirst,
+            (start, end),
+        )?;
         let mut out = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();
         let matches = |s: &str, cache: &mut HashMap<String, bool>| -> bool {
@@ -1222,7 +1237,7 @@ impl ServiceHub {
             chatroom_id,
             member,
             batch_size,
-            false,
+            Order::NewestFirst,
             (start.max(0), end.max(0)),
         )?;
         let table_name = weflow_native::msg::table_name_for(chatroom_id);

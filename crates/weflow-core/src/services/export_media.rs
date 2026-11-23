@@ -12,6 +12,7 @@ use crate::api::{self, ApiExportedMedia, ApiMediaOptions};
 use crate::chat_msg::{self, ChatMessage};
 use crate::message::xml::rx;
 use crate::sync::MutexExt;
+use weflow_native::msg::Order;
 
 impl ServiceHub {
     /// The cached fetch of a sticker by CDN URL.
@@ -808,7 +809,7 @@ impl ServiceHub {
                 }
                 let mut seen: HashSet<(i64, i64)> = HashSet::new();
                 for &code in codes {
-                    let Ok(rows) = wcdb.messages_by_type(sid, code, false) else {
+                    let Ok(rows) = wcdb.messages_by_type(sid, code, Order::NewestFirst) else {
                         continue;
                     };
                     for m in chat_msg::map_msg_rows(rows, sid, &my) {

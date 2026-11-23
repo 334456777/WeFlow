@@ -6,11 +6,17 @@
 )]
 use std::time::Instant;
 use weflow_native::db::Account;
+use weflow_native::msg::Order;
+use weflow_native::msg_row::Columns;
 
 fn main() -> anyhow::Result<()> {
     let mut a = std::env::args().skip(1);
     let (dir, keyf, sid) = (a.next().unwrap(), a.next().unwrap(), a.next().unwrap());
-    let lite = a.next().is_none_or(|v| v != "0");
+    let columns = if a.next().is_none_or(|v| v != "0") {
+        Columns::Lite
+    } else {
+        Columns::All
+    };
     let my_wxid = a.next();
     let acct = Account::new(
         format!("{dir}/db_storage"),
@@ -19,7 +25,7 @@ fn main() -> anyhow::Result<()> {
     .with_my_wxid(my_wxid);
     let t = Instant::now();
     acct.test_connection()?;
-    let cursor = acct.open_message_cursor(&sid, 10_000, true, 0, 0, lite)?;
+    let cursor = acct.open_message_cursor(&sid, 10_000, Order::OldestFirst, 0, 0, columns)?;
     println!("open cursor: {:.2}s", t.elapsed().as_secs_f64());
     let (mut rows, mut bytes) = (0usize, 0usize);
     let t = Instant::now();

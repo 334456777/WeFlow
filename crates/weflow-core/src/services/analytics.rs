@@ -9,6 +9,8 @@ use serde_json::{json, Map, Value};
 use super::*;
 use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
 use crate::sync::MutexExt;
+use weflow_native::msg::Order;
+use weflow_native::msg_row::Columns;
 
 /// Aggregates being counted right now, by what they count. A request for one of them waits for that count and gets
 /// its result rather than counting the same messages again beside it. A finished count is dropped at once, so a later
@@ -294,10 +296,10 @@ impl ServiceHub {
             let Ok(cursor) = wcdb.open_message_cursor(
                 session_id,
                 500,
-                true,
+                Order::OldestFirst,
                 crate::num::saturating_i32(begin.max(0)),
                 crate::num::saturating_i32(end.max(0)),
-                true,
+                Columns::Lite,
             ) else {
                 continue;
             };

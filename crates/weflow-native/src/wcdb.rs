@@ -11,7 +11,8 @@ use serde_json::Value;
 
 use crate::contact::distinct_usernames;
 use crate::db::Account;
-use crate::msg_row::MsgRow;
+use crate::msg::Order;
+use crate::msg_row::{Columns, MsgRow};
 
 /// The handle of one account's databases that the service layer calls; closed until [`Wcdb::open`].
 #[derive(Debug, Default)]
@@ -190,10 +191,10 @@ impl Wcdb {
         &self,
         session_id: &str,
         local_type: i64,
-        ascending: bool,
+        order: Order,
     ) -> Result<Vec<MsgRow>> {
         self.account()?
-            .messages_by_type(session_id, local_type, ascending)
+            .messages_by_type(session_id, local_type, order)
     }
 
     /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
@@ -219,13 +220,13 @@ impl Wcdb {
         &self,
         session_id: &str,
         batch_size: i32,
-        ascending: bool,
+        order: Order,
         begin: i32,
         end: i32,
-        lite: bool,
+        columns: Columns,
     ) -> Result<i64> {
         self.account()?
-            .open_message_cursor(session_id, batch_size, ascending, begin, end, lite)
+            .open_message_cursor(session_id, batch_size, order, begin, end, columns)
     }
 
     /// The cursor of an export (see [`Account::open_export_cursor`]).
@@ -245,14 +246,13 @@ impl Wcdb {
         &self,
         session_id: &str,
         batch_size: i32,
-        ascending: bool,
+        order: Order,
         range: (i32, i32),
-        lite: bool,
+        columns: Columns,
         senders: crate::msg::SenderFilter<'_>,
     ) -> Result<i64> {
-        self.account()?.open_message_cursor_for_senders(
-            session_id, batch_size, ascending, range, lite, senders,
-        )
+        self.account()?
+            .open_message_cursor_for_senders(session_id, batch_size, order, range, columns, senders)
     }
 
     /// Returns the next batch of rows and whether more remain.

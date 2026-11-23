@@ -39,6 +39,8 @@ use weflow_core::export_msg::{Exporter, SessionInfo, Settings};
 use weflow_core::message::{collect_rows, CollectOptions, ExportMsg};
 use weflow_core::services::{MessageExportRequest, ServiceHub};
 use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, RoomSpec, SessionSpec, T0};
+use weflow_native::msg::Order;
+use weflow_native::msg_row::Columns;
 use weflow_native::msg_row::MsgRow;
 use weflow_native::wcdb::Wcdb;
 
@@ -258,7 +260,8 @@ fn request(format: &str) -> MessageExportRequest {
 
 /// Every page of the conversation's cursor over `[begin, end]` (`0` = unbounded), in order.
 fn read_pages(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<Vec<Vec<MsgRow>>> {
-    let cursor = wcdb.open_message_cursor(ROOM, BATCH, true, begin, end, false)?;
+    let cursor =
+        wcdb.open_message_cursor(ROOM, BATCH, Order::OldestFirst, begin, end, Columns::All)?;
     let pages = fetch_all(wcdb, cursor);
     let _ = wcdb.close_message_cursor(cursor);
     pages
@@ -267,7 +270,8 @@ fn read_pages(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<Vec<Vec<MsgRo
 /// Rows of the conversation's cursor over `[begin, end]`, each page dropped as soon as it is read (what a
 /// streaming reader costs, without holding the pages).
 fn count_rows(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<usize> {
-    let cursor = wcdb.open_message_cursor(ROOM, BATCH, true, begin, end, false)?;
+    let cursor =
+        wcdb.open_message_cursor(ROOM, BATCH, Order::OldestFirst, begin, end, Columns::All)?;
     let mut rows = 0;
     let result = loop {
         match wcdb.fetch_message_batch(cursor) {
@@ -347,12 +351,14 @@ fn keys(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
                 "sender" => wcdb.open_message_cursor_for_senders(
                     ROOM,
                     BATCH,
-                    true,
+                    Order::OldestFirst,
                     (0, 0),
-                    false,
+                    Columns::All,
                     (&|n| n == "wxid_m0", false),
                 )?,
-                _ => wcdb.open_message_cursor(ROOM, BATCH, true, 0, 0, false)?,
+                _ => {
+                    wcdb.open_message_cursor(ROOM, BATCH, Order::OldestFirst, 0, 0, Columns::All)?
+                }
             };
             let key_time = started.elapsed();
             let mut fetch_time = std::time::Duration::ZERO;
@@ -433,7 +439,7 @@ fn stages(root: &Path, wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
     };
     for run in 1..=args.runs.min(2) {
         let cursor = timed(&format!("reader: open cursor (key scan) #{run}"), || {
-            wcdb.open_message_cursor(ROOM, BATCH, true, 0, 0, false)
+            wcdb.open_message_cursor(ROOM, BATCH, Order::OldestFirst, 0, 0, Columns::All)
         })?;
         let pages = timed(&format!("reader: fetch every batch #{run}"), || {
             fetch_all(wcdb, cursor)
