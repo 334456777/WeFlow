@@ -1,6 +1,6 @@
 ---
 name: weflow-issues
-description: 在 WeFlow 仓库建 issue、写 issue 与 PR 的正文和评论、加标签、建立依赖和 Development 关联、关闭 issue，以及在 GitHub Project「WeFlow」看板上添加条目、修改 Status 和 Priority 的做法和坑。建或关 issue、给 issue 或 PR 加标签与关联、更新看板、在 GitHub 上发评论时使用。
+description: 在 WeFlow 仓库建 issue、写 issue 与 PR 的正文和评论、加标签、建立依赖和 Development 关联、关闭 issue，以及在 GitHub Project「WeFlow」看板上添加条目、修改 Status 和 Priority、归档已关闭的旧条目的做法和坑。建或关 issue、给 issue 或 PR 加标签与关联、更新或清理看板、在 GitHub 上发评论时使用。
 ---
 
 # Issue、标签与看板
@@ -50,6 +50,47 @@ description: 在 WeFlow 仓库建 issue、写 issue 与 PR 的正文和评论、
   | Status | `PVTSSF_lAHOCbIY6c4Bl33Lzhki_ws` | Backlog `d2a1912c`、Todo `c764d01b`、In Progress `5c390812`、In Review `15922e75`、Blocked `55065b91`、Done `0ab8fcb6`、Not Planned `8bd982a2` |
   | Priority | `PVTSSF_lAHOCbIY6c4Bl33LzhkjBqw` | P0 `4a76cddd`、P1 `298728dd`、P2 `85f548b7`、P3 `ba910511` |
 
-- `gh project item-list` 的开销很大，需要时只调用一次，结果重复使用。阶段性收尾时用一次 `gh project item-list 3 --owner 334456777 --limit 600 --format json` 对照 issue 和 PR 的开关状态，以 GitHub 上的状态为准修正看板。
+- `gh project item-list` 的开销很大，需要时只调用一次，结果重复使用。超出 `--limit` 的条目（最近加入的那些）被直接截掉，不报错：用 `-q '{total: .totalCount, n: (.items | length)}'` 核对两者相等。阶段性收尾时用一次 `gh project item-list 3 --owner 334456777 --limit 1000 --format json` 对照 issue 和 PR 的开关状态，以 GitHub 上的状态为准修正看板。
+- `item-list` 里没有的 issue 或 PR 可能是已归档的，不一定是漏加：先按下面的[归档旧条目](#归档旧条目)查它的 `projectItems`，已归档的不再 `item-add`，否则会把它恢复。
 - 开始做某个 issue 时，把它和它的父 issue 一起设为 `In Progress`。
 - 重写 Status 字段的选项会清空所有条目的 Status，选项的 id 也会变：改选项后重新查 id，并给每个条目重新设置。
+
+## 归档旧条目
+
+清理看板时，把关闭满 14 天、Status 为 `Done` 或 `Not Planned` 的条目归档，其余的不动。归档的条目仍属于看板，在 Project 的 Archived items 里可以查看和恢复，但 `item-list`、GraphQL 的 `ProjectV2.items` 和它们的 `totalCount` 都不包含它们。
+
+- `item-list` 的输出没有关闭时间，用 GraphQL 分页列出条目：每页最多 100 个，`hasNextPage` 为真时把 `endCursor` 传给下一页（`gh api graphql -F query=@<查询文件> -F cursor=<endCursor>`）。还开着的 issue 和 PR 的 `closedAt` 为空。
+
+  ```graphql
+  query($cursor: String) {
+    node(id: "PVT_kwHOCbIY6c4Bl33L") {
+      ... on ProjectV2 {
+        items(first: 100, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+            content { ... on Issue { number closedAt } ... on PullRequest { number closedAt } }
+          }
+        }
+      }
+    }
+  }
+  ```
+
+- 归档用 `archiveProjectV2Item`，一个请求里用别名放多个条目，每批 25 个、批之间停几秒：
+
+  ```sh
+  gh api graphql -f query='mutation {
+    a0: archiveProjectV2Item(input: {projectId: "PVT_kwHOCbIY6c4Bl33L", itemId: "<条目 id>"}) { item { isArchived } }
+    a1: archiveProjectV2Item(input: {projectId: "PVT_kwHOCbIY6c4Bl33L", itemId: "<条目 id>"}) { item { isArchived } }
+  }'
+  ```
+
+- 恢复用 `unarchiveProjectV2Item`，参数相同。对已归档的 issue 或 PR 再 `item-add` 也会恢复它，条目 id 和 Status 不变：只想查条目 id 或是否已归档时不用 `item-add`，查 issue 或 PR 的 `projectItems`（默认包含已归档的条目）：
+
+  ```sh
+  gh api graphql -f query='{ repository(owner: "334456777", name: "WeFlow") { issueOrPullRequest(number: <n>) {
+    ... on Issue { projectItems(first: 5) { nodes { id isArchived project { number } } } }
+    ... on PullRequest { projectItems(first: 5) { nodes { id isArchived project { number } } } } } } }'
+  ```
