@@ -27,6 +27,8 @@ const SALT_LEN: usize = 16;
 const IV_LEN: usize = 16;
 const HMAC_LEN: usize = 64;
 pub(crate) const RESERVE: usize = IV_LEN + HMAC_LEN;
+/// The bytes of a page (other than page 1) its HMAC covers before the page number: the body and the IV.
+const SIGNED: usize = PAGE_SIZE - RESERVE + IV_LEN;
 /// PBKDF2 rounds from the raw key to a page key; the macOS x86_64 DTrace probe
 /// recognizes the raw key's derivation by it.
 pub(crate) const KDF_ITER: u32 = 256_000;
@@ -136,32 +138,21 @@ impl PageCipher {
     }
 
     /// [`Self::verify`] of each of `pages` (a page number and its encrypted bytes), four at once where the CPU can
-    /// ([`sha512x4`]): the error is the first failing page's.
+    /// ([`sha512x4`]): the error is the first failing page's. Two or three pages left over are hashed four at once
+    /// too, the last of them again in the lanes that are left: that costs no more than four, and less than two or
+    /// three one by one.
     pub(crate) fn verify_each(&self, pages: &[(u32, &[u8])]) -> Result<()> {
-        let signed = PAGE_SIZE - RESERVE + IV_LEN;
-        let mut rest = pages;
-        while let Some((four, after)) = rest.split_first_chunk::<{ sha512x4::LANES }>() {
-            rest = after;
-            // page 1 signs less (its salt is not signed), and every lane hashes the same length
-            let tags = four
-                .iter()
-                .all(|(pgno, page)| *pgno != 1 && page.len() == PAGE_SIZE)
-                .then(|| {
-                    let numbers = four.map(|(pgno, _)| pgno.to_le_bytes());
-                    sha512x4::hmac4(
-                        &self.mac_states,
-                        four.map(|(_, page)| &page[..signed]),
-                        std::array::from_fn(|l| &numbers[l][..]),
-                    )
-                })
-                .flatten();
+        for group in pages.chunks(sha512x4::LANES) {
+            let four: [(u32, &[u8]); sha512x4::LANES] =
+                std::array::from_fn(|l| group[l.min(group.len() - 1)]);
+            let tags = (group.len() > 1).then(|| self.tags4(&four)).flatten();
             match tags {
                 Some(tags) => {
-                    for ((pgno, page), tag) in four.iter().zip(&tags) {
+                    for ((pgno, page), tag) in group.iter().zip(&tags) {
                         // every byte compared, as `verify` does
                         let differ = tag
                             .iter()
-                            .zip(&page[signed..])
+                            .zip(&page[SIGNED..])
                             .fold(0u8, |d, (a, b)| d | (a ^ b));
                         if differ != 0 {
                             return Err(hmac_failed(*pgno));
@@ -169,16 +160,30 @@ impl PageCipher {
                     }
                 }
                 None => {
-                    for (pgno, page) in four {
+                    for (pgno, page) in group {
                         self.verify(*pgno, page)?;
                     }
                 }
             }
         }
-        for (pgno, page) in rest {
-            self.verify(*pgno, page)?;
-        }
         Ok(())
+    }
+
+    /// The HMACs of four pages computed at once, `None` where the CPU cannot ([`sha512x4::hmac4`]) or for page 1 and
+    /// pages of another size (page 1 signs less, its salt is not signed, and every lane hashes the same length).
+    fn tags4(&self, four: &[(u32, &[u8]); sha512x4::LANES]) -> Option<[[u8; HMAC_LEN]; 4]> {
+        if !four
+            .iter()
+            .all(|(pgno, page)| *pgno != 1 && page.len() == PAGE_SIZE)
+        {
+            return None;
+        }
+        let numbers = four.map(|(pgno, _)| pgno.to_le_bytes());
+        sha512x4::hmac4(
+            &self.mac_states,
+            four.map(|(_, page)| &page[..SIGNED]),
+            std::array::from_fn(|l| &numbers[l][..]),
+        )
     }
 
     /// Verify and decrypt one encrypted page into `out` (`PAGE_SIZE` bytes).
@@ -191,13 +196,23 @@ impl PageCipher {
             out.fill(0);
             return Ok(());
         }
+        self.verify(pgno, page)?;
+        self.decrypt_verified_page(pgno, page, out)
+    }
+
+    /// [`Self::decrypt_page`] of a written page (not all zeros) whose HMAC was checked already ([`Self::verify`],
+    /// [`Self::verify_each`]): only decrypted.
+    pub(crate) fn decrypt_verified_page(
+        &self,
+        pgno: u32,
+        page: &[u8],
+        out: &mut [u8],
+    ) -> Result<()> {
         let start = if pgno == 1 { SALT_LEN } else { 0 };
         let body_end = PAGE_SIZE - RESERVE;
         let Some(iv) = page.get(body_end..).and_then(<[u8]>::first_chunk::<IV_LEN>) else {
             bail!("page {pgno} is shorter than {PAGE_SIZE} bytes");
         };
-        self.verify(pgno, page)?;
-
         out.fill(0);
         if pgno == 1 {
             out[..SALT_LEN].copy_from_slice(SQLITE_MAGIC);

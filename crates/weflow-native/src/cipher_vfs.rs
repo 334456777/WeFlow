@@ -18,13 +18,14 @@ use std::fs::{self, File};
 use std::ops::ControlFlow;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 use anyhow::{anyhow, Context, Result};
 use rusqlite::{ffi, Connection, OpenFlags};
 
+use crate::sha512x4;
 use crate::sqlcipher::{self, PageCipher, PAGE_SIZE};
 
 const VFS_NAME: &CStr = c"weflow-cipher";
@@ -34,6 +35,10 @@ const NAME_PREFIX: &str = "weflow-cipher:";
 const CHUNK_PAGES: u32 = 16;
 /// Raw chunks kept per open file (`CHUNKS_KEPT * CHUNK_PAGES * 4 KiB` = 2 MiB).
 const CHUNKS_KEPT: usize = 32;
+/// Pages of a chunk read in order whose HMACs are checked at once ([`CipherFile::check_chunk_page`]): as many as
+/// [`sha512x4`] hashes at once.
+#[expect(clippy::cast_possible_truncation, reason = "four")]
+const CHECKED_TOGETHER: u32 = sha512x4::LANES as u32;
 
 /// Positional read of exactly `buf.len()` bytes.
 fn read_at(file: &File, buf: &mut [u8], offset: u64) -> std::io::Result<()> {
@@ -217,16 +222,49 @@ pub struct CipherFile {
 enum RawPage<'a> {
     /// Its copy in the WAL.
     Wal(&'a [u8]),
-    /// In a chunk of the main file, from this offset.
-    Chunk(Arc<[u8]>, usize),
+    /// The `i`th page of a chunk of the main file.
+    Chunk(Arc<Chunk>, usize),
 }
 
 impl RawPage<'_> {
     fn bytes(&self) -> &[u8] {
         match self {
             Self::Wal(bytes) => bytes,
-            Self::Chunk(chunk, at) => &chunk[*at..*at + PAGE_SIZE],
+            Self::Chunk(chunk, i) => chunk.page(*i),
         }
+    }
+}
+
+/// Pages read from the main file at once ([`CHUNK_PAGES`], fewer at its end), still encrypted, and which of them
+/// have had their HMAC checked: the bytes do not change once read, so each page is checked once while the chunk is
+/// kept.
+struct Chunk {
+    bytes: Box<[u8]>,
+    /// Bit `i` set once page `i` was checked.
+    checked: AtomicU16,
+}
+
+impl Chunk {
+    fn new(bytes: Box<[u8]>) -> Self {
+        Self {
+            bytes,
+            checked: AtomicU16::new(0),
+        }
+    }
+
+    /// The encrypted bytes of its `i`th page.
+    fn page(&self, i: usize) -> &[u8] {
+        &self.bytes[i * PAGE_SIZE..(i + 1) * PAGE_SIZE]
+    }
+
+    fn is_checked(&self, i: usize) -> bool {
+        self.checked.load(Ordering::Relaxed) & (1 << i) != 0
+    }
+
+    /// Notes that the `i`th page's HMAC matched. Relaxed is enough: the bytes were in place before the chunk was
+    /// shared, and the bit says nothing about other memory.
+    fn mark_checked(&self, i: usize) {
+        self.checked.fetch_or(1 << i, Ordering::Relaxed);
     }
 }
 
@@ -242,14 +280,14 @@ enum WalAtOpen {
 /// oldest first.
 #[derive(Default)]
 struct ChunkCache {
-    chunks: HashMap<u32, Arc<[u8]>>,
+    chunks: HashMap<u32, Arc<Chunk>>,
     order: VecDeque<u32>,
 }
 
 impl ChunkCache {
     /// Keep chunk `idx`, dropping the oldest beyond [`CHUNKS_KEPT`]. Threads that missed the same chunk at once each
     /// read it and keep it: the later copy replaces the earlier one in its place.
-    fn keep(&mut self, idx: u32, chunk: Arc<[u8]>) {
+    fn keep(&mut self, idx: u32, chunk: Arc<Chunk>) {
         if self.chunks.insert(idx, chunk).is_none() {
             self.order.push_back(idx);
         }
@@ -435,8 +473,9 @@ impl CipherFile {
         ffi::SQLITE_IOERR_READ
     }
 
-    /// Raw (encrypted) chunk holding `pgno`, read from disk and checked against the guard when not cached.
-    fn chunk(&self, pgno: u32) -> std::result::Result<(Arc<[u8]>, u32), c_int> {
+    /// Raw (encrypted) chunk holding `pgno`, read from disk and checked against the guard when not cached, and the
+    /// number of its first page.
+    fn chunk(&self, pgno: u32) -> std::result::Result<(Arc<Chunk>, u32), c_int> {
         let idx = (pgno - 1) / CHUNK_PAGES;
         let first = idx * CHUNK_PAGES + 1;
         if let Some(c) = self
@@ -459,7 +498,7 @@ impl CipherFile {
                 self.path.display()
             )));
         }
-        let chunk: Arc<[u8]> = buf.into();
+        let chunk = Arc::new(Chunk::new(buf.into()));
         if let Ok(mut cache) = self.chunks.lock() {
             cache.keep(idx, chunk.clone());
         }
@@ -474,20 +513,18 @@ impl CipherFile {
         pgno: u32,
         f: impl FnOnce(&[u8]) -> T,
     ) -> Result<Option<T>> {
-        let read = |enc: &[u8]| -> Result<Option<T>> {
+        let failed = |e: anyhow::Error| {
+            let why = format!("{}: {e}", self.path.display());
+            self.fail(why.clone());
+            anyhow!(why)
+        };
+        if let Some(enc) = self.wal_pages.get(&pgno) {
             if enc.iter().all(|b| *b == 0) {
                 return Ok(None);
             }
-            if let Err(e) = self.cipher.verify(pgno, enc) {
-                let why = format!("{}: {e}", self.path.display());
-                self.fail(why.clone());
-                return Err(anyhow!(why));
-            }
+            self.cipher.verify(pgno, enc).map_err(failed)?;
             self.pages_decrypted.fetch_add(1, Ordering::Relaxed);
-            Ok(Some(f(enc)))
-        };
-        if let Some(enc) = self.wal_pages.get(&pgno) {
-            return read(enc);
+            return Ok(Some(f(enc)));
         }
         if pgno == 0 || pgno > self.main_pages {
             return Ok(None);
@@ -495,8 +532,51 @@ impl CipherFile {
         let (chunk, first) = self
             .chunk(pgno)
             .map_err(|_| anyhow!(self.read_error().unwrap_or_else(|| "read failed".into())))?;
-        let i = (pgno - first) as usize * PAGE_SIZE;
-        read(&chunk[i..i + PAGE_SIZE])
+        let enc = chunk.page((pgno - first) as usize);
+        if enc.iter().all(|b| *b == 0) {
+            return Ok(None);
+        }
+        self.check_chunk_page(&chunk, first, pgno).map_err(failed)?;
+        self.pages_decrypted.fetch_add(1, Ordering::Relaxed);
+        Ok(Some(f(enc)))
+    }
+
+    /// Checks the HMAC of page `pgno`, a written one, in `chunk` (whose first page is page `first`), unless it was
+    /// checked before. When a page next to it was checked already, the pages look read in order, as a table scan
+    /// reads its leaves: the next pages of the chunk in that direction, up to four with this one, are checked
+    /// together with it ([`PageCipher::verify_each`]), for the reads to come. Otherwise it is checked alone: a lookup
+    /// that reads one page of the chunk would waste the others. The error is this page's; a neighbour that fails is
+    /// checked again when it is read.
+    fn check_chunk_page(&self, chunk: &Chunk, first: u32, pgno: u32) -> Result<()> {
+        let at = |p: u32| (p - first) as usize;
+        if chunk.is_checked(at(pgno)) {
+            return Ok(());
+        }
+        // pages of the chunk: `first..last`, at most `CHUNK_PAGES`
+        let last = first + CHUNK_PAGES.min(self.main_pages + 1 - first);
+        let checked = |p: u32| (first..last).contains(&p) && chunk.is_checked(at(p));
+        let group = if pgno > first && checked(pgno - 1) {
+            pgno..(pgno + CHECKED_TOGETHER).min(last)
+        } else if checked(pgno + 1) {
+            (pgno + 1).saturating_sub(CHECKED_TOGETHER).max(first)..pgno + 1
+        } else {
+            pgno..pgno + 1
+        };
+        let pages: Vec<(u32, &[u8])> = group
+            .filter(|&p| {
+                p == pgno || (!chunk.is_checked(at(p)) && chunk.page(at(p)).iter().any(|b| *b != 0))
+            })
+            .map(|p| (p, chunk.page(at(p))))
+            .collect();
+        if pages.len() > 1 && self.cipher.verify_each(&pages).is_ok() {
+            for (p, _) in &pages {
+                chunk.mark_checked(at(*p));
+            }
+            return Ok(());
+        }
+        self.cipher.verify(pgno, chunk.page(at(pgno)))?;
+        chunk.mark_checked(at(pgno));
+        Ok(())
     }
 
     /// [`Self::with_checked_page`] for each of `pgnos` in turn, their HMACs checked together first (four at a time
@@ -518,31 +598,42 @@ impl CipherFile {
                 let (chunk, first) = self.chunk(pgno).map_err(|_| {
                     anyhow!(self.read_error().unwrap_or_else(|| "read failed".into()))
                 })?;
-                Some(RawPage::Chunk(chunk, (pgno - first) as usize * PAGE_SIZE))
+                Some(RawPage::Chunk(chunk, (pgno - first) as usize))
             };
             // a page that was never written is all zeros, and has no HMAC
             held.push((pgno, raw.filter(|r| r.bytes().iter().any(|b| *b != 0))));
         }
-        let written: Vec<(u32, &[u8])> = held
+        let checked_before =
+            |raw: &RawPage<'_>| matches!(raw, RawPage::Chunk(c, i) if c.is_checked(*i));
+        let unchecked: Vec<(u32, &[u8])> = held
             .iter()
-            .filter_map(|(pgno, raw)| Some((*pgno, raw.as_ref()?.bytes())))
+            .filter_map(|(pgno, raw)| raw.as_ref().map(|r| (*pgno, r)))
+            .filter(|(_, raw)| !checked_before(raw))
+            .map(|(pgno, raw)| (pgno, raw.bytes()))
             .collect();
-        let together = self.cipher.verify_each(&written).is_ok();
+        let together = self.cipher.verify_each(&unchecked).is_ok();
+        let written = held.iter().filter(|(_, raw)| raw.is_some()).count();
         if together {
             self.pages_decrypted
-                .fetch_add(written.len() as u64, Ordering::Relaxed);
+                .fetch_add(written as u64, Ordering::Relaxed);
         }
         for (pgno, raw) in &held {
-            let raw = raw.as_ref().map(RawPage::bytes);
-            if let (false, Some(enc)) = (together, raw) {
-                if let Err(e) = self.cipher.verify(*pgno, enc) {
-                    let why = format!("{}: {e}", self.path.display());
-                    self.fail(why.clone());
-                    return Err(anyhow!(why));
+            if let Some(raw) = raw {
+                if !together {
+                    if !checked_before(raw) {
+                        if let Err(e) = self.cipher.verify(*pgno, raw.bytes()) {
+                            let why = format!("{}: {e}", self.path.display());
+                            self.fail(why.clone());
+                            return Err(anyhow!(why));
+                        }
+                    }
+                    self.pages_decrypted.fetch_add(1, Ordering::Relaxed);
                 }
-                self.pages_decrypted.fetch_add(1, Ordering::Relaxed);
+                if let RawPage::Chunk(chunk, i) = raw {
+                    chunk.mark_checked(*i);
+                }
             }
-            if let ControlFlow::Break(b) = f(*pgno, raw) {
+            if let ControlFlow::Break(b) = f(*pgno, raw.as_ref().map(RawPage::bytes)) {
                 return Ok(ControlFlow::Break(b));
             }
         }
@@ -578,9 +669,15 @@ impl CipherFile {
             return Ok(());
         } else {
             let (chunk, first) = self.chunk(pgno)?;
-            let i = (pgno - first) as usize * PAGE_SIZE;
-            self.cipher
-                .decrypt_page(pgno, &chunk[i..i + PAGE_SIZE], out)
+            let enc = chunk.page((pgno - first) as usize);
+            if enc.iter().all(|b| *b == 0) {
+                // never written: stored as zeros, and without an HMAC
+                out.fill(0);
+                Ok(())
+            } else {
+                self.check_chunk_page(&chunk, first, pgno)
+                    .and_then(|()| self.cipher.decrypt_verified_page(pgno, enc, out))
+            }
         };
         self.pages_decrypted.fetch_add(1, Ordering::Relaxed);
         // A torn page (written while we read it) fails its HMAC: treat it like any other change.
@@ -980,7 +1077,7 @@ mod tests {
 
     #[test]
     fn a_chunk_kept_twice_is_listed_once() {
-        let chunk = |n: u8| -> Arc<[u8]> { vec![n; 4].into() };
+        let chunk = |n: u8| Arc::new(Chunk::new(vec![n; 4].into()));
         let mut cache = ChunkCache::default();
         // two threads missed chunk 0 at once
         cache.keep(0, chunk(0));
@@ -991,7 +1088,7 @@ mod tests {
         assert_eq!(cache.chunks.len(), CHUNKS_KEPT);
         assert_eq!(cache.order.len(), CHUNKS_KEPT);
         assert_eq!(
-            cache.chunks.get(&0).map(|c| c[0]),
+            cache.chunks.get(&0).map(|c| c.bytes[0]),
             Some(1),
             "the later copy"
         );
@@ -1211,6 +1308,61 @@ mod tests {
             "{:?}",
             cf.read_error()
         );
+    }
+
+    #[test]
+    fn pages_read_in_order_are_checked_a_few_at_once_and_each_still_fails_alone() {
+        let dir = temp_dir("in-order");
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        let path = dir.join("a.db");
+        let clean = encrypt_db(&big("f"), &cipher);
+        assert!(clean.len() / PAGE_SIZE > 64);
+        // page 21, the fifth of the second chunk (17..=32), damaged
+        let bad = 21u32;
+        let mut enc = clean.clone();
+        enc[(bad as usize - 1) * PAGE_SIZE + 100] ^= 0xff;
+        fs::write(&path, &enc).unwrap();
+        let cf = CipherFile::open(&path, &KEY, None).unwrap();
+        let mut out = vec![0u8; PAGE_SIZE];
+        let mut want = vec![0u8; PAGE_SIZE];
+        let mut read = |pgno: u32| {
+            let at = (pgno as usize - 1) * PAGE_SIZE;
+            cipher
+                .decrypt_page(pgno, &clean[at..at + PAGE_SIZE], &mut want)
+                .unwrap();
+            cf.page(pgno, &mut out)
+                .map(|()| assert_eq!(out, want, "page {pgno}"))
+        };
+        let checked = |pgno: u32| {
+            let (chunk, first) = cf.chunk(pgno).unwrap();
+            chunk.is_checked((pgno - first) as usize)
+        };
+
+        // in order: the first of a chunk alone, then four at once
+        for pgno in 2..=8 {
+            read(pgno).unwrap();
+        }
+        assert!((2..=10).all(checked), "2 alone, then 3..=6, 7..=10");
+        assert!(!checked(11));
+        // up to the damaged page: the groups that hold it fail, so the pages before it are checked one by one
+        for pgno in 9..bad {
+            read(pgno).unwrap();
+        }
+        assert!(!checked(bad) && !checked(bad + 1));
+        let err = read(bad).unwrap_err().to_string();
+        assert!(err.contains(&format!("page {bad}")), "{err}");
+        assert!(cf.is_stale(), "as any torn page");
+        // the pages after it read as before
+        for pgno in bad + 1..=bad + 4 {
+            read(pgno).unwrap();
+        }
+
+        // a lookup reads one page of a chunk: only it is checked
+        read(40).unwrap();
+        assert!(checked(40) && !checked(39) && !checked(41));
+        // backwards from there: four at once, below it
+        read(39).unwrap();
+        assert!((36..=40).all(checked) && !checked(35));
     }
 
     #[test]
