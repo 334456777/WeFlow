@@ -568,8 +568,12 @@ async fn an_export_caches_only_the_images_it_converted_from_wxgf() {
 }
 
 /// The same image (md5) shown by two messages: the older one, from a month whose folder has no file, and the newer
-/// one, whose month has it. The threads of an export reach them in either order.
-fn shared_image_world(tag: &str) -> (TestDir, weflow_core::services::ServiceHub, Vec<u8>) {
+/// one, whose month has it as `<md5><rendition>.dat` (`_h` the original, `_t` the thumbnail). The threads of an export
+/// reach them in either order.
+fn shared_image_world(
+    tag: &str,
+    rendition: &str,
+) -> (TestDir, weflow_core::services::ServiceHub, Vec<u8>) {
     use weflow_native::fixture::{MsgSpec, SessionSpec, DAY, T0};
     let md5 = "aabbccddeeff00112233445566778899";
     let (root, hub, fixture) = common::custom_hub_with(
@@ -611,7 +615,7 @@ fn shared_image_world(tag: &str) -> (TestDir, weflow_core::services::ServiceHub,
     std::fs::create_dir_all(&img_dir).unwrap();
     let plain = jpeg(3000, 11);
     std::fs::write(
-        img_dir.join(format!("{md5}_h.dat")),
+        img_dir.join(format!("{md5}{rendition}.dat")),
         encrypt_v2(&plain, KEY.as_bytes().try_into().unwrap(), 0x5a),
     )
     .unwrap();
@@ -620,9 +624,11 @@ fn shared_image_world(tag: &str) -> (TestDir, weflow_core::services::ServiceHub,
 
 #[tokio::test]
 async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order() {
-    // the order the two messages are looked at in is up to the threads: run it a few times
-    for round in 0..5 {
-        let (root, hub, plain) = shared_image_world(&format!("img-shared-{round}"));
+    // the order the two messages are looked at in is up to the threads: run it a few times; the thumbnail found for
+    // one message is still the image of the other, whose folder has nothing
+    for (round, rendition) in (0..5).flat_map(|round| [(round, "_h"), (round, "_t")]) {
+        let (root, hub, plain) =
+            shared_image_world(&format!("img-shared{rendition}-{round}"), rendition);
         let r = serde_json::to_value(
             hub.export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
                 .await
@@ -632,7 +638,7 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
         assert_eq!(
             (r["exported"].as_i64(), r["missing"].as_i64()),
             (Some(2), Some(0)),
-            "round {round}: {r}"
+            "round {round}, {rendition}: {r}"
         );
         let files = r["files"].as_array().unwrap();
         assert_eq!(files[0]["path"], files[1]["path"], "one file for both");
@@ -640,8 +646,14 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
             std::fs::read(files[0]["path"].as_str().unwrap()).unwrap(),
             plain
         );
+        let thumbnail = rendition == "_t";
+        assert_eq!(
+            (files[0]["isThumb"].as_bool(), files[1]["isThumb"].as_bool()),
+            (Some(thumbnail), Some(thumbnail))
+        );
 
-        let (root, hub, _) = shared_image_world(&format!("img-shared-msgs-{round}"));
+        let (root, hub, _) =
+            shared_image_world(&format!("img-shared{rendition}-msgs-{round}"), rendition);
         let opts = weflow_core::api::ApiMediaOptions {
             enabled: true,
             images: true,
@@ -661,7 +673,7 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
                 r["media"]["missing"].as_i64()
             ),
             (Some(2), Some(0)),
-            "round {round}: {r}"
+            "round {round}, {rendition}: {r}"
         );
     }
 }

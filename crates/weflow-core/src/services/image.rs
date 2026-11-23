@@ -1066,6 +1066,7 @@ impl ServiceHub {
             return None;
         }
         let dir = account_dir.to_string_lossy().to_string();
+        let mut thumbnail_found_before = None;
         if !skip_resolved_cache {
             let mut candidates: Vec<String> = bases.clone();
             for extra in [
@@ -1086,8 +1087,10 @@ impl ServiceHub {
                 if !allow_thumbnail && !img::is_hd_dat_path(&cached) {
                     continue;
                 }
-                // a thumbnail is what was on disk then: the full image may have been downloaded since (#858)
+                // a thumbnail is what was on disk then: the full image may have been downloaded since (#858), so the
+                // folders are looked at again first
                 if Rendition::of(&cached) == Rendition::Thumbnail {
+                    thumbnail_found_before.get_or_insert(cached);
                     continue;
                 }
                 return Some(cached);
@@ -1120,7 +1123,9 @@ impl ServiceHub {
             }
             return Some(selected);
         }
-        None
+        // nothing in this message's folders: the thumbnail found before for the same image (through another message,
+        // whose folder holds it) is still the image
+        thumbnail_found_before
     }
 
     /// The image decrypted from `dat_path` (whose cache folder is `month`) that the cache holds, when it is usable.
