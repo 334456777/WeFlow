@@ -1090,7 +1090,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "heic-rs"
 version = "0.1.4"
-source = "git+https://github.com/334456777/heic-rs?rev=575a455437278659a067b7361e9f3d85197950c4#575a455437278659a067b7361e9f3d85197950c4"
+source = "git+https://github.com/334456777/heic-rs?rev=a93d683f56147ef5dcd316eef0dd01433fb04043#a93d683f56147ef5dcd316eef0dd01433fb04043"
 
 [[package]]
 name = "hmac"
