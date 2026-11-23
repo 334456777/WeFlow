@@ -23,6 +23,8 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 ## 推送前
 
 - 改了 Rust：对改过的 crate 运行 `cargo fmt --all -- --check` 和 `cargo clippy -p <crate> --all-targets -- -D warnings`。`cargo check` 不报 clippy 的警告，例如删掉函数后留下的孤立文档注释（`empty_line_after_doc_comments`）。完整的 `make ci` 由 CI 运行，本地只在升级工具链时运行。
+  - 格式检查放在最后一次编辑之后、提交之前：clippy 通过后又改了几行，CI 的 fmt-check 照样失败。
+  - 改了文档注释里的链接（`` [`名字`] ``）或可见性时，再运行 `make rustdoc`：clippy 不检查文档链接，链接指向的项不存在或不可见时 rustdoc 的警告在 CI 里是错误。
 - 平台相关的代码或测试，或改了公开函数的签名：见 [weflow-cross-platform](../weflow-cross-platform/SKILL.md)。
 - 改了契约类型、它们的文档注释或路由：见 [weflow-contract](../weflow-contract/SKILL.md)。改了 HTML 导出模板：见 [weflow-html-template](../weflow-html-template/SKILL.md)。
 - 改了 `web/`：在 `web/` 下运行 `bun run check`。

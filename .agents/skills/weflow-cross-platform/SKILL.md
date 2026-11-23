@@ -14,7 +14,9 @@ CI 在三个平台上的分工见 Wiki [发布与 CI#工作流](https://github.c
 - 改了公开函数的签名或返回类型时，先 `grep -rln '#!\[cfg(' crates` 找出只在部分平台编译的文件，再在对应的平台上运行 `cargo clippy -p weflow-core -p weflow-cli --all-targets -- -D warnings`。
 - 依赖 `cfg!(windows)`、路径分隔符或符号链接的测试：`\` 在 Unix 上是普通的文件名字符，在 Windows 上通过的测试在 Linux 和 macOS 上可能失败。推送前在另一个平台上运行受影响的测试（如 `cargo test -p weflow-core --lib backup`）。
 - 只给某个平台的测试用的 `use` 写进那个测试函数里，不放在文件顶部，否则另一个平台会报未使用的 import。
-- macOS 专属的代码在别的平台上编译不了，以 CI 的结果为准。
+- macOS 专属的代码在别的平台上编译不了，以 CI 的结果为准。CI 的 macOS 是 ARM64：只在 Intel Mac 编译的代码（`cfg(all(target_os = "macos", target_arch = "x86_64"))`，如 `macos_key_helper/dtrace.rs`）CI 也不编译，改它时逐行对照要过的 lint 读一遍。
+- 开启新的 lint 时，`cargo clippy --fix` 只改本机编译到的代码：先 `grep -rln 'target_os = "macos"' crates` 找出 macOS 专属的文件和片段，按新规则读一遍再推送，否则 macOS 的 CI 才报出来。
+- 参数只在某个平台或架构的分支里用到时，其他平台会报未使用的参数：用 `#[cfg_attr(not(<条件>), expect(unused_variables, reason = "..."))]`，参照 `services/key.rs` 的 `scan_image_memory`。
 
 ## Windows 上用 WSL
 
