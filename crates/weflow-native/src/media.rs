@@ -461,6 +461,13 @@ impl Account {
         if needle.is_empty() {
             return Ok(Vec::new());
         }
+        // The search reads the conversation list, every message database and the index. Opened here at once, their
+        // slow key derivations run side by side instead of one after another as the search reaches each (#1100);
+        // the ones already open cost nothing.
+        let mut dbs = vec![self.session_db(), self.db_path("message/message_fts.db")];
+        dbs.extend(self.message_dbs());
+        dbs.retain(|p| p.is_file());
+        self.prefetch(&dbs);
         let sessions: Vec<String> = match session_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => vec![s.to_string()],
             None => crate::msg::session_usernames(self)?,
