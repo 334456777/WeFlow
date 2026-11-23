@@ -21,7 +21,6 @@ futures.workspace = true
 heic-rs.workspace = true
 rust_h265.workspace = true
 indexmap.workspace = true
-jpeg-encoder.workspace = true
 md-5.workspace = true
 memchr.workspace = true
 regex.workspace = true
@@ -64,6 +63,8 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 [dev-dependencies]
 # tests/webui_e2e.rs serves WebUI packages from a registry of its own
 axum.workspace = true
+# the files src/jpeg.rs writes are compared with its own, and tests make JPEGs with it
+jpeg-encoder.workspace = true
 proptest.workspace = true
 # the probes under examples/ read WeChat's compressed message text
 zstd.workspace = true

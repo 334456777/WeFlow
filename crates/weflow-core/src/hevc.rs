@@ -10,6 +10,8 @@
 //! range-extension coding tools it does not implement are left to a second decoder, `rust_h265`. An inter-predicted
 //! first picture, or damaged data, is an [`Unsupported`], and the image is not converted.
 
+use crate::jpeg;
+
 /// JPEG quality: as close to the source as ffmpeg's `-q:v 2` (measured on real WXGF images; the files are about
 /// a quarter larger).
 const JPEG_QUALITY: u8 = 92;
@@ -262,32 +264,43 @@ impl Samples<'_> {
         }
     }
 
-    /// Appends `width` samples of the row starting at `start` to `out`, each column `c` taken from `c >> x` and
-    /// brought to 8 bits by `to8`.
-    fn push_row(
+    /// The 8 × 8 samples from column `x`, row `y` of a plane of `width` × `height` samples whose rows are `stride`
+    /// apart, brought to 8 bits by `to8`, less 128, into `out` (see [`jpeg::Plane::block`]: columns and rows past
+    /// the plane repeat its last one).
+    fn block(
         self,
-        start: usize,
-        width: usize,
-        x: u32,
-        out: &mut Vec<u8>,
-        to8: impl Fn(u16) -> u8,
+        (stride, width, height): (usize, usize, usize),
+        (x, y): (usize, usize),
+        to8: &To8,
+        out: &mut [i16; 64],
     ) {
-        fn push<T: Copy + Into<u16>>(
-            row: &[T],
-            width: usize,
-            x: u32,
-            out: &mut Vec<u8>,
-            to8: impl Fn(u16) -> u8,
+        fn fill<T: Copy + Into<u16>>(
+            s: &[T],
+            (stride, width, height): (usize, usize, usize),
+            (x, y): (usize, usize),
+            to8: &To8,
+            out: &mut [i16; 64],
         ) {
-            if x == 0 {
-                out.extend(row[..width].iter().map(|&v| to8(v.into())));
+            let level = |v: T| i16::from(to8.get(v.into())) - 128;
+            if x + 8 <= width && y + 8 <= height {
+                for (r, row) in out.as_chunks_mut::<8>().0.iter_mut().enumerate() {
+                    let at = (y + r) * stride + x;
+                    for (o, &v) in row.iter_mut().zip(&s[at..at + 8]) {
+                        *o = level(v);
+                    }
+                }
             } else {
-                out.extend((0..width).map(|c| to8(row[c >> x].into())));
+                for (r, row) in out.as_chunks_mut::<8>().0.iter_mut().enumerate() {
+                    let at = (y + r).min(height - 1) * stride;
+                    for (c, o) in row.iter_mut().enumerate() {
+                        *o = level(s[at + (x + c).min(width - 1)]);
+                    }
+                }
             }
         }
         match self {
-            Self::U8(s) => push(&s[start..], width, x, out, to8),
-            Self::U16(s) => push(&s[start..], width, x, out, to8),
+            Self::U8(s) => fill(s, (stride, width, height), (x, y), to8, out),
+            Self::U16(s) => fill(s, (stride, width, height), (x, y), to8, out),
         }
     }
 }
@@ -398,12 +411,23 @@ impl<'a> Picture<'a> {
     }
 }
 
-/// A picture handed to the JPEG encoder row by row, straight from its planes (an interleaved copy of the whole
-/// picture would cost three bytes a pixel on every media thread), its samples brought to the 8 bits a JPEG has.
-struct Planes<'a> {
-    picture: &'a Picture<'a>,
-    luma: To8,
-    chroma: To8,
+/// One plane of a picture as the JPEG encoder reads it, block by block straight from the decoder's samples (a copy
+/// of the whole picture would cost three bytes a pixel on every media thread), brought to the 8 bits a JPEG has.
+struct PlaneOf<'a> {
+    samples: Samples<'a>,
+    /// `(stride, width, height)`.
+    shape: (usize, usize, usize),
+    to8: &'a To8,
+}
+
+impl jpeg::Plane for PlaneOf<'_> {
+    fn size(&self) -> (usize, usize) {
+        (self.shape.1, self.shape.2)
+    }
+
+    fn block(&self, x: usize, y: usize, out: &mut [i16; 64]) {
+        self.samples.block(self.shape, (x, y), self.to8, out);
+    }
 }
 
 /// [`to_8_bits`] of every value a sample of a plane can have, looked up rather than worked out for each of the
@@ -456,65 +480,41 @@ fn to_8_bits(v: u16, shift: u32, full_range: bool, (offset, range, centre): (i32
     (scaled + centre).clamp(0, 255) as u8
 }
 
-impl jpeg_encoder::ImageBuffer for Planes<'_> {
-    fn get_jpeg_color_type(&self) -> jpeg_encoder::JpegColorType {
-        if self.picture.layout == Layout::Mono {
-            jpeg_encoder::JpegColorType::Luma
-        } else {
-            jpeg_encoder::JpegColorType::Ycbcr
-        }
-    }
-
-    fn width(&self) -> u16 {
-        self.picture.width
-    }
-
-    fn height(&self) -> u16 {
-        self.picture.height
-    }
-
-    fn fill_buffers(&self, y: u16, buffers: &mut [Vec<u8>; 4]) {
-        let p = self.picture;
-        let (r, w) = (usize::from(y), usize::from(p.width));
-        let luma = |v| self.luma.get(v);
-        let chroma = |v| self.chroma.get(v);
-        p.y.push_row(r * p.y_stride, w, 0, &mut buffers[0], luma);
-        let Layout::Subsampled { x, y } = p.layout else {
-            return;
-        };
-        let at = (r >> y) * p.c_stride;
-        let [_, cb_out, cr_out, _] = buffers;
-        p.cb.push_row(at, w, x, cb_out, chroma);
-        p.cr.push_row(at, w, x, cr_out, chroma);
-    }
-}
-
 /// `picture` as a JPEG, its chroma kept at the resolution the picture has it.
 fn encode(picture: &Picture<'_>, signal: Signal) -> Result<Vec<u8>, Unsupported> {
-    let mut out = Vec::new();
-    let mut encoder = jpeg_encoder::Encoder::new(&mut out, JPEG_QUALITY);
-    match picture.layout {
-        Layout::Mono => {}
-        Layout::Subsampled { x: 1, y: 1 } => {
-            encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_2_2)
-        }
-        Layout::Subsampled { x: 1, .. } => {
-            encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_2_1)
-        }
-        Layout::Subsampled { .. } => {
-            encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_1_1)
-        }
-    }
     let full = signal.full_range;
-    let planes = Planes {
-        picture,
-        luma: To8::new(picture.luma_shift, full, LUMA_RANGE),
-        chroma: To8::new(picture.chroma_shift, full, CHROMA_RANGE),
+    let (luma_to8, chroma_to8) = (
+        To8::new(picture.luma_shift, full, LUMA_RANGE),
+        To8::new(picture.chroma_shift, full, CHROMA_RANGE),
+    );
+    let (w, h) = (usize::from(picture.width), usize::from(picture.height));
+    let luma = PlaneOf {
+        samples: picture.y,
+        shape: (picture.y_stride, w, h),
+        to8: &luma_to8,
     };
-    encoder
-        .encode_image(planes)
-        .map_err(|_| Unsupported::Jpeg)?;
-    Ok(out)
+    let chroma_plane = |samples, (cw, ch)| PlaneOf {
+        samples,
+        shape: (picture.c_stride, cw, ch),
+        to8: &chroma_to8,
+    };
+    let jpeg = match picture.layout {
+        Layout::Mono => jpeg::encode(&luma, None, JPEG_QUALITY),
+        Layout::Subsampled { x, y } => {
+            let size = picture.layout.chroma_size(w, h);
+            let (cb, cr) = (
+                chroma_plane(picture.cb, size),
+                chroma_plane(picture.cr, size),
+            );
+            let chroma = jpeg::Chroma {
+                cb: &cb,
+                cr: &cr,
+                factors: (1 << x, 1 << y),
+            };
+            jpeg::encode(&luma, Some(chroma), JPEG_QUALITY)
+        }
+    };
+    jpeg.ok_or(Unsupported::Jpeg)
 }
 
 /// Reads an RBSP (emulation prevention bytes removed) bit by bit.
