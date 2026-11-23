@@ -61,7 +61,7 @@ impl AppContext {
 }
 
 /// WeFlow's config file (`config list`): the profiles and the settings shared by all of them.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ConfigStore {
     /// The profile the commands read; `default` in a new file.
@@ -74,6 +74,44 @@ pub struct ConfigStore {
     pub profiles: BTreeMap<String, ProfileConfig>,
     /// The file's other top-level keys, kept as they are.
     pub extra: BTreeMap<String, Value>,
+}
+
+/// The profiles as [`ProfileConfig`] shows them, and of the other keys only their names.
+impl std::fmt::Debug for ConfigStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            current_profile,
+            lang,
+            serve,
+            profiles,
+            extra,
+        } = self;
+        f.debug_struct("ConfigStore")
+            .field("current_profile", current_profile)
+            .field("lang", lang)
+            .field("serve", serve)
+            .field("profiles", profiles)
+            .field("extra", &KeyNames(extra))
+            .finish()
+    }
+}
+
+/// Whether a key or token is set, never its value, for `Debug`.
+struct SetOrNot<'a, T>(&'a Option<T>);
+
+impl<T> std::fmt::Debug for SetOrNot<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() { "Some(..)" } else { "None" })
+    }
+}
+
+/// The names of keys kept as they are, for `Debug`: their values may be secrets too.
+struct KeyNames<'a>(&'a BTreeMap<String, Value>);
+
+impl std::fmt::Debug for KeyNames<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(self.0.keys()).finish()
+    }
 }
 
 /// Options of `weflow serve` saved in the config file (#406), each used when the command line does not give it; the
@@ -177,7 +215,7 @@ impl ServeSettings {
 }
 
 /// One profile of the config file: an account and its settings.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ProfileConfig {
     /// WeChat's data directory (`db_path`).
@@ -210,6 +248,45 @@ pub struct ProfileConfig {
     pub ai_insight_enabled: Option<bool>,
     /// The profile's other keys (those the WebUI keeps, such as `auto_download_whitelist`), kept as they are.
     pub extra: BTreeMap<String, Value>,
+}
+
+/// The settings, each key and token only as set or not, and of the other keys only their names.
+impl std::fmt::Debug for ProfileConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // every field named: a new one does not compile until it is shown or hidden here
+        let Self {
+            db_path,
+            decrypt_key,
+            wxid,
+            image_xor_key,
+            image_aes_key,
+            cache_path,
+            http_api_token,
+            ai_model_api_format,
+            ai_model_api_base_url,
+            ai_model_api_key,
+            ai_model_api_model,
+            ai_model_api_max_tokens,
+            ai_insight_enabled,
+            extra,
+        } = self;
+        f.debug_struct("ProfileConfig")
+            .field("db_path", db_path)
+            .field("decrypt_key", &SetOrNot(decrypt_key))
+            .field("wxid", wxid)
+            .field("image_xor_key", &SetOrNot(image_xor_key))
+            .field("image_aes_key", &SetOrNot(image_aes_key))
+            .field("cache_path", cache_path)
+            .field("http_api_token", &SetOrNot(http_api_token))
+            .field("ai_model_api_format", ai_model_api_format)
+            .field("ai_model_api_base_url", ai_model_api_base_url)
+            .field("ai_model_api_key", &SetOrNot(ai_model_api_key))
+            .field("ai_model_api_model", ai_model_api_model)
+            .field("ai_model_api_max_tokens", ai_model_api_max_tokens)
+            .field("ai_insight_enabled", ai_insight_enabled)
+            .field("extra", &KeyNames(extra))
+            .finish()
+    }
 }
 
 impl Default for ConfigStore {
@@ -1176,6 +1253,46 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn debug_shows_whether_keys_are_set_but_never_their_values() {
+        let profile = ProfileConfig {
+            db_path: Some("data-dir".into()),
+            decrypt_key: Some("db-key-secret".into()),
+            image_xor_key: Some(173),
+            image_aes_key: Some("aes-key-secret".into()),
+            http_api_token: Some("token-secret".into()),
+            ai_model_api_key: Some("model-key-secret".into()),
+            extra: BTreeMap::from([("kept".to_string(), json!("extra-secret"))]),
+            ..ProfileConfig::default()
+        };
+        let mut store = ConfigStore::default();
+        store.profiles.insert("default".into(), profile);
+        store
+            .extra
+            .insert("other".into(), json!({ "inner": "top-secret" }));
+        let shown = format!("{store:?}");
+        for secret in [
+            "db-key-secret",
+            "173",
+            "aes-key-secret",
+            "token-secret",
+            "model-key-secret",
+            "extra-secret",
+            "top-secret",
+        ] {
+            assert!(!shown.contains(secret), "{secret} in {shown}");
+        }
+        for visible in [
+            "data-dir",
+            "decrypt_key: Some(..)",
+            "wxid: None",
+            "\"kept\"",
+            "\"other\"",
+        ] {
+            assert!(shown.contains(visible), "{visible} not in {shown}");
+        }
+    }
 
     #[test]
     fn resolves_account_dir_with_wechat_suffix() {

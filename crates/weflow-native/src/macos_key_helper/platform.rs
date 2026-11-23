@@ -447,6 +447,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// A target task with the database-key location.
+#[derive(Debug)]
 pub struct Hook {
     pid: u32,
     task: task_t,

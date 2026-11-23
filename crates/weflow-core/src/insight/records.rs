@@ -219,6 +219,17 @@ pub struct RecordStore {
     records: Vec<InsightRecord>,
 }
 
+/// The file and how many records it holds, not the records.
+impl std::fmt::Debug for RecordStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RecordStore")
+            .field("path", &self.path)
+            .field("scope", &self.scope)
+            .field("records", &self.records.len())
+            .finish()
+    }
+}
+
 fn start_of_today_ms() -> i64 {
     let n = Local::now();
     Local
@@ -229,6 +240,7 @@ fn start_of_today_ms() -> i64 {
 }
 
 /// What a new insight record says and about whom; [`RecordStore::add`] fills in the id, account, time and read flag.
+#[derive(Debug)]
 pub struct NewRecord<'a> {
     /// The conversation.
     pub session_id: &'a str,

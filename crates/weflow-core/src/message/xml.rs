@@ -128,6 +128,15 @@ pub struct MsgXml<'a> {
     display: std::cell::OnceCell<Option<QuotedDisplay>>,
 }
 
+/// The length of the content rather than the message.
+impl std::fmt::Debug for MsgXml<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MsgXml")
+            .field("content_len", &self.content.len())
+            .finish_non_exhaustive()
+    }
+}
+
 impl<'a> MsgXml<'a> {
     pub fn new(content: &'a str) -> Self {
         Self {

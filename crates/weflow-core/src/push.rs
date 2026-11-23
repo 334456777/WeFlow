@@ -238,6 +238,16 @@ pub struct PushEngine {
     baseline_ready: bool,
 }
 
+/// How much it tracks; the hub holds the config and its keys.
+impl std::fmt::Debug for PushEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PushEngine")
+            .field("sessions", &self.baseline.len())
+            .field("baseline_ready", &self.baseline_ready)
+            .finish_non_exhaustive()
+    }
+}
+
 /// The `file:` URL of an avatar given as a base64 `data:image/…` URL, written to `dir` under a name taken from its
 /// hash (kept when it is there already); `None` when it is no such URL or cannot be written.
 fn avatar_file_url(dir: &std::path::Path, data_url: &str) -> Option<String> {
@@ -1161,6 +1171,15 @@ struct PushPayload<'a> {
 pub struct PushBroker {
     inner: std::sync::Mutex<BrokerInner>,
     tx: broadcast::Sender<(u64, std::sync::Arc<String>)>,
+}
+
+/// How many listen; the buffer holds the pushed messages.
+impl std::fmt::Debug for PushBroker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PushBroker")
+            .field("receivers", &self.tx.receiver_count())
+            .finish_non_exhaustive()
+    }
 }
 
 struct BrokerInner {

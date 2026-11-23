@@ -107,6 +107,7 @@ fn remote_ntdll_symbol(pid: u32, name: &[u8]) -> Result<usize> {
 }
 
 /// Read-only inspection of the candidate and client version, without debugger attachment.
+#[derive(Debug)]
 pub struct KeyLocation {
     /// Where the hook stops, in the WeChat process.
     pub address: usize,
@@ -368,6 +369,15 @@ pub struct Hook {
     _interrupt: InterruptGuard,
     /// The version of the hooked `Weixin.dll`, `a.b.c.d`.
     pub version: String,
+}
+
+/// The version only: the output is where the key arrives.
+impl std::fmt::Debug for Hook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hook")
+            .field("version", &self.version)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Hook {

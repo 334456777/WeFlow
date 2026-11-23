@@ -403,6 +403,16 @@ pub struct Registry {
     token: tokio::sync::Mutex<Option<String>>,
 }
 
+/// Where it reads from, without the token.
+impl std::fmt::Debug for Registry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Registry")
+            .field("base", &self.base)
+            .field("repository", &self.repository)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Registry {
     /// The repository `repository` of the registry at `base`.
     ///

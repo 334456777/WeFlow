@@ -17,6 +17,9 @@ license = "Unlicense"
 [workspace.lints.rust]
 # a type that borrows shows it, `Formatter<'_>` rather than `Formatter` (#1113)
 elided_lifetimes_in_paths = "warn"
+# every public type can be printed with `{:?}`; one that holds a key or a secret writes its `Debug` by hand and leaves
+# them out (#1113)
+missing_debug_implementations = "warn"
 # every public item, and every crate root (tests, examples and build scripts too), has a doc comment (#915)
 missing_docs = "warn"
 # the proofs of `cargo kani` (#501)

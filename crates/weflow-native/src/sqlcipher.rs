@@ -77,6 +77,13 @@ pub struct PageCipher {
     aes: Aes256,
 }
 
+/// Nothing but the name: every field is a key or keyed with one.
+impl std::fmt::Debug for PageCipher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PageCipher").finish_non_exhaustive()
+    }
+}
+
 impl PageCipher {
     /// The keys of a file with `salt`, derived from the database key `raw_key` (PBKDF2-HMAC-SHA512, 256 000
     /// rounds: slow on purpose).

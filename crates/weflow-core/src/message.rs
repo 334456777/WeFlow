@@ -585,6 +585,7 @@ fn format_plain_export_content(
 // ─────────────────────────── row → ExportMsg ───────────────────────────
 
 /// Which rows [`collect_rows`] takes, and whose they are.
+#[derive(Debug)]
 pub struct CollectOptions<'a> {
     /// The conversation the rows are of.
     pub session_id: &'a str,

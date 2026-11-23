@@ -53,6 +53,15 @@ pub struct FakeModel {
     shared: Arc<Shared>,
 }
 
+/// Where it listens.
+impl std::fmt::Debug for FakeModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FakeModel")
+            .field("addr", &self.addr)
+            .finish_non_exhaustive()
+    }
+}
+
 impl FakeModel {
     /// Start on a free port of 127.0.0.1, taking [`KEY`].
     ///

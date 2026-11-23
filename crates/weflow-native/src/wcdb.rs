@@ -14,7 +14,7 @@ use crate::db::Account;
 use crate::msg_row::MsgRow;
 
 /// The handle of one account's databases that the service layer calls; closed until [`Wcdb::open`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Wcdb {
     native: Option<Account>,
 }

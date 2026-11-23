@@ -218,6 +218,19 @@ pub struct CipherFile {
     pages_decrypted: AtomicU64,
 }
 
+/// The file and its size: the pages are decrypted data and the cipher is keys.
+impl std::fmt::Debug for CipherFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CipherFile")
+            .field("path", &self.path)
+            .field("main_pages", &self.main_pages)
+            .field("total_pages", &self.total_pages)
+            .field("wal_pages", &self.wal_pages.len())
+            .field("stale", &self.stale.load(Ordering::Relaxed))
+            .finish_non_exhaustive()
+    }
+}
+
 /// The encrypted bytes of a page as a snapshot holds them ([`CipherFile::with_checked_pages`]).
 enum RawPage<'a> {
     /// Its copy in the WAL.

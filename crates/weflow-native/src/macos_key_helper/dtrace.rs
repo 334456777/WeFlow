@@ -22,6 +22,7 @@ const KEY_PREFIX: &str = "WEFLOWKEY:";
 const KEY_LEN: usize = 32;
 
 /// A DTrace process that watches WeChat for the database-key call.
+#[derive(Debug)]
 pub struct DTraceHook {
     child: Child,
     stdout: Option<std::process::ChildStdout>,

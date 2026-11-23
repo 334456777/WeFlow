@@ -26,6 +26,17 @@ pub struct DecryptResult {
     pub is_wxgf: bool,
 }
 
+/// The size of the bytes rather than the bytes.
+impl std::fmt::Debug for DecryptResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DecryptResult")
+            .field("bytes", &self.data.len())
+            .field("ext", &self.ext)
+            .field("is_wxgf", &self.is_wxgf)
+            .finish()
+    }
+}
+
 /// The format version of a `.dat` file by its header: 1 or 2, or 0 for a file without one.
 pub fn detect_dat_version(data: &[u8]) -> u8 {
     if data.len() < 6 {
