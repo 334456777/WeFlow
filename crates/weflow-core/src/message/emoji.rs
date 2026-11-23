@@ -12,9 +12,9 @@ pub(super) fn normalize_md5(value: &str) -> Option<String> {
 }
 
 pub(super) fn extract_loose_hex_md5(content: &str) -> Option<String> {
-    if content.is_empty() {
-        return None;
-    }
+    // Both patterns below end in 32 hex digits in a row: without such a run, as in most of the messages this is the
+    // last resort for, neither matches, and one pass over the bytes tells so instead of a search for each keyword.
+    let first = first_hex32(content)?;
     // `(?i)(?:emoji|sticker|md5)[^a-fA-F0-9]{0,32}([a-fA-F0-9]{32})`: the leftmost keyword that has one
     let keyed = ["emoji", "sticker", "md5"]
         .into_iter()
@@ -26,7 +26,7 @@ pub(super) fn extract_loose_hex_md5(content: &str) -> Option<String> {
     if let Some((_, hex)) = keyed {
         return normalize_md5(hex);
     }
-    first_hex32(content).and_then(normalize_md5)
+    normalize_md5(first)
 }
 
 /// Whether `n` hex digits start at `i`.
@@ -47,7 +47,34 @@ fn hex32_after_gap(s: &str, i: usize) -> Option<&str> {
 }
 
 /// `([a-fA-F0-9]{32})`: the first 32 hex digits in a row.
+///
+/// A run of 32 covers two multiples of 16 next to each other, so only every 16th byte is looked at until two such
+/// bytes in a row are hex digits; then the run around them is measured. Runs end before the next pair is looked at,
+/// so the first run long enough is the first one in the text.
 fn first_hex32(s: &str) -> Option<&str> {
+    const STEP: usize = 16;
+    let h = s.as_bytes();
+    let hex = |i: usize| h.get(i).is_some_and(u8::is_ascii_hexdigit);
+    let mut at = 0;
+    while at + STEP < h.len() {
+        if !(hex(at) && hex(at + STEP)) {
+            at += STEP;
+            continue;
+        }
+        let start = (0..at).rev().take_while(|&i| hex(i)).last().unwrap_or(at);
+        let end = (at..h.len()).find(|&i| !hex(i)).unwrap_or(h.len());
+        if end - start >= 32 {
+            return Some(&s[start..start + 32]);
+        }
+        // the next pair to look at starts past this run
+        at = end.next_multiple_of(STEP);
+    }
+    None
+}
+
+/// [`first_hex32`] a byte at a time.
+#[cfg(test)]
+fn first_hex32_each(s: &str) -> Option<&str> {
     let mut run = 0;
     for (i, b) in s.bytes().enumerate() {
         run = if b.is_ascii_hexdigit() { run + 1 } else { 0 };
@@ -171,6 +198,36 @@ pub(super) fn appmsg_emoticon_md5_in(x: &MsgXml<'_>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Text of hex runs of every length around 32, other ASCII and multi-byte characters: the sampled search finds
+    /// the run the search a byte at a time finds.
+    #[test]
+    fn the_first_32_hex_digits_are_found_however_the_text_is_searched() {
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
+        const OTHER: &[&str] = &["x", "<", " ", "中", "-", "g", "G", "/"];
+        let mut rng = StdRng::seed_from_u64(1098);
+        let mut found = 0;
+        for _ in 0..20_000 {
+            let mut s = String::new();
+            for _ in 0..rng.random_range(0..12) {
+                if rng.random_range(0..3) == 0 {
+                    for _ in 0..rng.random_range(1..40) {
+                        s.push(char::from(
+                            b"0123456789abcdefABCDEF"[rng.random_range(0..22)],
+                        ));
+                    }
+                } else {
+                    for _ in 0..rng.random_range(1..20) {
+                        s.push_str(OTHER[rng.random_range(0..OTHER.len())]);
+                    }
+                }
+            }
+            let want = first_hex32_each(&s);
+            assert_eq!(first_hex32(&s), want, "{s:?}");
+            found += usize::from(want.is_some());
+        }
+        assert!(found >= 2000, "{found}");
+    }
 
     #[test]
     fn emoji_text_carries_the_caption() {
