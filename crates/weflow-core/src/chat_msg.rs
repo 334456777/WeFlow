@@ -253,12 +253,33 @@ fn parse_type49(content: &str) -> String {
     .into()
 }
 
+/// What a quote (local type 244813135921) says: the `<appmsg>` title of its XML with its entities decoded, empty when
+/// it has none. This is the quote's [`ChatMessage::parsed_content`], which shows `[引用消息]` for an empty one.
+pub(crate) fn quote_reply_text(content: &str) -> String {
+    // only the title is decoded: decoding the whole XML first copies all of it, and an escaped `</title>` in the
+    // text would end the title there
+    let title = extract_xml_value(content, "title");
+    if title.is_empty() && crate::xml::tag_inner(content, "title").is_none() {
+        // XML escaped as a whole, or no title at all
+        return extract_xml_value(&clean_utf16(&decode_entities(content)), "title");
+    }
+    clean_utf16(&decode_entities(&title)).trim().to_string()
+}
+
 /// The line the chat window shows for any message
 /// ([`ChatMessage::parsed_content`]), `sender` the message's ([`ChatMessage::sender_username`]). The exports word
 /// theirs in [`crate::message::parse_message_content`].
 fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
     if content.is_empty() {
         return message_type_label(local_type).into();
+    }
+    if local_type == 244813135921 {
+        let t = quote_reply_text(content);
+        return if t.is_empty() {
+            "[引用消息]".into()
+        } else {
+            t
+        };
     }
     let content = clean_utf16(&decode_entities(content));
     let xml_type = extract_xml_value(&content, "type");
@@ -281,14 +302,6 @@ fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> Strin
         49 => parse_type49(&content),
         50 => parse_voip_message(&content),
         10000 => system_message_text(&content),
-        244813135921 => {
-            let t = extract_xml_value(&content, "title");
-            if t.is_empty() {
-                "[引用消息]".into()
-            } else {
-                t
-            }
-        }
         266287972401 => clean_pat_message(&content),
         81604378673 => "[聊天记录]".into(),
         8594229559345 => "[红包]".into(),
@@ -1334,6 +1347,39 @@ mod tests {
             parsed_content("<msg><location label=\"Bund\"/></msg>", 48, None),
             "[位置] Bund"
         );
+    }
+
+    #[test]
+    fn a_quote_shows_what_it_says() {
+        let quote = |title: &str| {
+            format!(
+                "wxid_bob:\n<msg><appmsg><title>{title}</title><type>57</type>\
+                 <refermsg><type>1</type><content>hi</content></refermsg></appmsg></msg>"
+            )
+        };
+        for (title, said) in [
+            ("好的 &amp; 收到", "好的 & 收到"),
+            ("<![CDATA[好的]]>", "好的"),
+            // a reply that writes a tag is that text, not the end of the title
+            ("写 &lt;/title&gt; 就行", "写 </title> 就行"),
+        ] {
+            assert_eq!(quote_reply_text(&quote(title)), said, "{title}");
+            assert_eq!(
+                parsed_content(&quote(title), 244813135921, Some("wxid_bob")),
+                said,
+                "{title}"
+            );
+        }
+        // XML escaped as a whole
+        assert_eq!(
+            quote_reply_text("&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;好的&lt;/title&gt;&lt;/appmsg&gt;&lt;/msg&gt;"),
+            "好的"
+        );
+        let untitled =
+            "<msg><appmsg><type>57</type><refermsg><content>hi</content></refermsg></appmsg></msg>";
+        assert_eq!(quote_reply_text(untitled), "");
+        assert_eq!(parsed_content(untitled, 244813135921, None), "[引用消息]");
+        assert_eq!(quote_reply_text(&quote("")), "");
     }
 
     #[test]
