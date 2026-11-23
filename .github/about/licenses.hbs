@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFlow: third-party licenses</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; color: #222; background: #fff; }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.3rem; margin-top: 2.5rem; }
+  h3 { font-size: 1.1rem; margin-top: 2rem; }
+  pre { white-space: pre-wrap; background: #f5f5f5; padding: 1rem; border-radius: 6px; font-size: 13px; }
+  ul.crates { columns: 2; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #ddd; background: #161616; }
+    pre { background: #222; }
+    a { color: #8ab4f8; }
+  }
+</style>
+</head>
+<body>
+<h1>Third-party licenses</h1>
+<p>WeFlow is built from the work of others. Their copyright notices and licenses follow.</p>
+
+<h2>Code that is not a crate's own</h2>
+<ul>
+  <li><strong>The Independent JPEG Group.</strong> This software is based in part on the work of the Independent JPEG Group: the integer DCT of the JPEG files WXGF images are converted to follows its <code>jfdctint.c</code>.</li>
+  <li><strong>Skype SILK SDK</strong> 1.0.9, which decodes voice messages: <a href="silk.txt">silk.txt</a>.</li>
+  <li><strong>SQLite</strong>, built in by the <code>libsqlite3-sys</code> crate: in the public domain.</li>
+  <li><strong>Zstandard</strong>, built in by the <code>zstd-sys</code> crate: <a href="zstd.txt">zstd.txt</a>.</li>
+  <li><strong>bzip2</strong>, built in by the <code>bzip2-sys</code> crate: <a href="bzip2.txt">bzip2.txt</a>.</li>
+  <li><strong>XZ Utils</strong> (liblzma), built in by the <code>lzma-sys</code> crate: <a href="xz.txt">xz.txt</a>.</li>
+  <li><strong>mimalloc</strong>, built in by the <code>libmimalloc-sys</code> crate: <a href="mimalloc.txt">mimalloc.txt</a>.</li>
+</ul>
+
+<h2>Crates</h2>
+<p>The licenses, and the crates under each:</p>
+<ul>
+{{#each overview}}
+  <li><a href="#{{id}}">{{name}}</a> ({{count}})</li>
+{{/each}}
+</ul>
+
+{{#each licenses}}
+<h3 id="{{id}}">{{name}}</h3>
+<ul class="crates">
+{{#each used_by}}
+  <li><a href="{{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}}">{{crate.name}} {{crate.version}}</a></li>
+{{/each}}
+</ul>
+<pre>{{text}}</pre>
+{{/each}}
+</body>
+</html>

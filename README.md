@@ -156,6 +156,8 @@ The Developer has made every effort to ensure the legitimacy and safety of the P
 ## 6. Intellectual property
 The intellectual property rights of the WeFlow project belong to its developer, [hicccc77](https://github.com/hicccc77). The Project is protected by copyright law, international copyright treaties, and other intellectual property laws and treaties. Users may download and use the Project provided that they comply with this statement and the relevant laws and regulations.
 
+The Project is built in part on the work of others: this software is based in part on the work of the Independent JPEG Group. The licenses of the libraries and other code built into the program are in the `licenses` folder of each release package (`THIRD-PARTY-LICENSES.html`).
+
 ## 7. Final interpretation
 The right of final interpretation of the Project belongs to its developer, [hicccc77](https://github.com/hicccc77). The Developer reserves the right to change or update this disclaimer at any time without notice.
 </div>

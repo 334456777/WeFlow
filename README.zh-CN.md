@@ -156,6 +156,8 @@ WeFlow Rust CLI 以**只读**方式打开数据库，不会修改微信数据库
 ## 6. 知识产权声明
 WeFlow项目的知识产权归[hicccc77](https://github.com/hicccc77)开发者所有。本项目受到著作权法和国际著作权条约以及其他知识产权法律和条约的保护。用户在遵守本声明及相关法律法规的前提下，可以下载和使用本项目。
 
+本项目部分基于他人的成果：本软件部分基于 Independent JPEG Group 的工作（this software is based in part on the work of the Independent JPEG Group）。程序中所含的库和其他代码的许可证，见各发布包的 `licenses` 文件夹（`THIRD-PARTY-LICENSES.html`）。
+
 ## 7. 最终解释权
 关于本项目的最终解释权归[hicccc77](https://github.com/hicccc77)开发者所有。开发者保留随时更改或更新本免责声明的权利，恕不另行通知。
 </div>
