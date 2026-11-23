@@ -401,27 +401,32 @@ mod tests {
                 (pgno, encrypt_page(&cipher, pgno, &plain, [pgno as u8; 16]))
             })
             .collect();
-        let refs: Vec<(u32, &[u8])> = pages.iter().map(|(p, b)| (*p, b.as_slice())).collect();
-        cipher.verify_each(&refs).unwrap();
-        // a page damaged in each place of a group of four, and in the pages left over
-        for bad in 0..refs.len() {
-            let mut damaged = pages[bad].1.clone();
-            damaged[100] ^= 1;
-            let mut with = refs.clone();
-            with[bad].1 = &damaged;
-            let err = cipher.verify_each(&with).unwrap_err().to_string();
-            assert!(
-                err.contains(&format!("page {}", refs[bad].0)),
-                "damaged page {bad}: {err}"
-            );
-            assert_eq!(
-                err,
-                cipher
-                    .verify(refs[bad].0, &damaged)
-                    .unwrap_err()
-                    .to_string()
-            );
+        let all: Vec<(u32, &[u8])> = pages.iter().map(|(p, b)| (*p, b.as_slice())).collect();
+        // every number of pages: groups of four, and one, two or three left over (two or three hashed as four)
+        for n in 0..=all.len() {
+            let refs = &all[..n];
+            cipher.verify_each(refs).unwrap();
+            // a page damaged in each place
+            for bad in 0..n {
+                let mut damaged = pages[bad].1.clone();
+                damaged[100] ^= 1;
+                let mut with = refs.to_vec();
+                with[bad].1 = &damaged;
+                let err = cipher.verify_each(&with).unwrap_err().to_string();
+                assert!(
+                    err.contains(&format!("page {}", refs[bad].0)),
+                    "{n} pages, damaged page {bad}: {err}"
+                );
+                assert_eq!(
+                    err,
+                    cipher
+                        .verify(refs[bad].0, &damaged)
+                        .unwrap_err()
+                        .to_string()
+                );
+            }
         }
+        let refs = all;
         // a page checked as another page number fails too
         let mut swapped = refs.clone();
         swapped[1].0 = 99;
