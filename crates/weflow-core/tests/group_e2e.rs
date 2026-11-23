@@ -135,6 +135,81 @@ fn member_analytics_and_exports() {
     assert_eq!(page["messages"][0]["senderUsername"], "wxid_bob");
 }
 
+/// A reply's phrase and emojis are those of what it says, its title, and not of its XML, whose `<![CDATA[…]]>` is no
+/// emoji (#1092).
+#[test]
+fn a_replys_phrase_and_emojis_come_from_its_text_not_its_xml() {
+    use weflow_native::fixture::{ContactSpec, MsgSpec, RoomSpec, SessionSpec, T0};
+    const REPLY: i64 = 244_813_135_921;
+    let reply = concat!(
+        "wxid_bob:\n<?xml version=\"1.0\"?><msg><appmsg appid=\"\" sdkver=\"0\">",
+        "<title>好的[微笑]</title><des /><type>57</type>",
+        "<appattach><cdnthumbaeskey><![CDATA[]]></cdnthumbaeskey></appattach>",
+        "<refermsg><type>1</type><svrid>1001</svrid><fromusr>room1@chatroom</fromusr>",
+        "<chatusr>wxid_me</chatusr><displayname>Me</displayname><content>明天见</content>",
+        "<msgsource>&lt;msgsource&gt;&lt;silence&gt;&lt;![CDATA[0]]&gt;&lt;/silence&gt;&lt;/msgsource&gt;</msgsource>",
+        "</refermsg></appmsg><fromusername>wxid_bob</fromusername>",
+        "<appinfo><version>1</version><appname><![CDATA[null]]></appname></appinfo></msg>",
+    );
+    let (_root, hub, _f) = common::custom_hub("group-reply-emoji", |f| {
+        f.contact_db(
+            &[
+                ContactSpec::new("wxid_me", 1, "Me"),
+                ContactSpec::new("wxid_bob", 1, "Bob"),
+                ContactSpec::new("room1@chatroom", 2, "Room"),
+            ],
+            &[RoomSpec {
+                username: "room1@chatroom",
+                owner: "wxid_bob",
+                members: &[("wxid_me", ""), ("wxid_bob", "")],
+            }],
+        );
+        f.session_db(&[SessionSpec {
+            username: "room1@chatroom",
+            summary: "",
+            last_timestamp: T0 + 20,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        f.message_shard(
+            0,
+            &[(
+                "room1@chatroom",
+                vec![
+                    MsgSpec::text(1, "wxid_me", T0, "明天见"),
+                    MsgSpec::text(2, "wxid_bob", T0 + 10, reply).of_type(REPLY),
+                    // a bracket with a space or markup in it is no emoji
+                    MsgSpec::text(
+                        3,
+                        "wxid_bob",
+                        T0 + 20,
+                        "wxid_bob:\n[微笑][微笑] [这个 链接] [<b>]",
+                    ),
+                ],
+            )],
+        );
+    });
+    let bob = serde_json::to_value(
+        hub.group_member_analytics("room1@chatroom", "wxid_bob", 0, 0)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(bob["statistics"]["textMessages"], 2, "{bob}");
+    assert_eq!(
+        bob["commonEmojis"],
+        serde_json::json!([{ "emoji": "[微笑]", "count": 3 }]),
+        "the reply's emoji counts, the CDATA of its XML does not"
+    );
+    let phrases: Vec<&str> = bob["commonPhrases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["phrase"].as_str().unwrap())
+        .collect();
+    assert!(phrases.contains(&"好的[微笑]"), "{phrases:?}");
+    assert!(!phrases.iter().any(|p| p.contains('<')), "{phrases:?}");
+}
+
 /// A page of a member's messages holds 1 to 100 of them: any other `limit` is a usage error (#1067).
 #[test]
 fn a_member_messages_limit_outside_1_to_100_is_a_usage_error() {

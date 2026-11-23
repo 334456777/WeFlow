@@ -1,5 +1,6 @@
 //! Group analytics: members panel, rankings, activity, media mix, per-member analytics and exports.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
@@ -36,6 +37,10 @@ struct MemberContact {
 
 /// The `<sender>:` line WeChat puts before the text of a message someone else sent to a group.
 const SENDER_LINE: &str = r"(?i)^\s*([a-zA-Z0-9_@-]{4,}):\s*(?:\r?\n|<br\s*/?>)";
+
+/// A WeChat emoji as a text writes it, `[微笑]`: a short name in brackets with no bracket, markup or white space in
+/// it, so neither a CDATA section (`<![CDATA[0]]>`) nor a bracketed remark is one.
+const TEXT_EMOJI: &str = r"\[[^\[\]<>\s]{1,12}\]";
 
 fn pick_str(row: &Value, keys: &[&str]) -> String {
     for k in keys {
@@ -1047,16 +1052,21 @@ impl ServiceHub {
                     total += 1;
                     if msg_type == 1 || msg_type == 244813135921 {
                         text += 1;
-                        if !content.is_empty() {
-                            let t = content.trim().to_string();
-                            if !t.is_empty() && t.chars().count() <= 20 {
-                                let e = phrases.entry(t.clone()).or_insert(0);
+                        // a quote's content is the XML of its appmsg: what it says is its title (#1092)
+                        let said: Cow<'_, str> = if msg_type == 1 {
+                            Cow::Borrowed(content.trim())
+                        } else {
+                            Cow::Owned(chat_msg::quote_reply_text(content))
+                        };
+                        if !said.is_empty() {
+                            if said.chars().count() <= 20 {
+                                let e = phrases.entry(said.to_string()).or_insert(0);
                                 if *e == 0 {
-                                    phrase_order.push(t.clone());
+                                    phrase_order.push(said.to_string());
                                 }
                                 *e += 1;
                             }
-                            for m in rx(r"\[.*?\]").find_iter(&t) {
+                            for m in rx(TEXT_EMOJI).find_iter(&said) {
                                 let e = emojis.entry(m.as_str().to_string()).or_insert(0);
                                 if *e == 0 {
                                     emoji_order.push(m.as_str().to_string());
