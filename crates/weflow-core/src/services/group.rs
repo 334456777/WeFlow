@@ -1056,7 +1056,7 @@ impl ServiceHub {
                         let said: Cow<'_, str> = if msg_type == 1 {
                             Cow::Borrowed(content.trim())
                         } else {
-                            Cow::Owned(chat_msg::quote_reply_text(content))
+                            Cow::Owned(weflow_native::quote::reply_text(content))
                         };
                         if !said.is_empty() {
                             if said.chars().count() <= 20 {
