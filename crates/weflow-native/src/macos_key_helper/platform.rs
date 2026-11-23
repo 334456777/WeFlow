@@ -259,7 +259,7 @@ fn thread_states(task: task_t) -> Result<Vec<thread_t>, String> {
         libc::vm_deallocate(
             this_task(),
             threads as libc::vm_address_t,
-            count as usize * std::mem::size_of::<thread_t>(),
+            count as usize * size_of::<thread_t>(),
         );
     }
     Ok(ports)
@@ -702,9 +702,8 @@ impl Hook {
         let threads = thread_states(self.task)?;
         let mut result = Hit::Unrelated;
         for thread in &threads {
-            let mut state = match read_state(*thread) {
-                Ok(state) => state,
-                Err(_) => continue,
+            let Ok(mut state) = read_state(*thread) else {
+                continue;
             };
             let pc = instruction_pointer(&state);
             if !is_breakpoint_pc(pc, self.target) {
