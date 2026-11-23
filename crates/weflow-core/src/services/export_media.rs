@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+use super::image::Since;
 use super::*;
 use crate::api::{self, ApiExportedMedia, ApiMediaOptions};
 use crate::chat_msg::{self, ChatMessage};
@@ -411,6 +412,8 @@ impl ServiceHub {
             put_media(&to, (kind, sub), file_name, source, thumbnail)
         };
         if msg.local_type == 3 && opts.images {
+            // the folders and indexes the images are looked up in are checked once for the whole export
+            let since = run.map_or_else(Since::now, |r| r.since);
             let payload = crate::services::ImagePayload {
                 session_id: Some(talker.to_string()),
                 image_md5: msg.image_md5.clone().filter(|m| !m.is_empty()),
@@ -420,23 +423,32 @@ impl ServiceHub {
                 prefer_file_path: true,
                 ..Default::default()
             };
-            let mut path = self.image_decrypt(&payload).local_path;
-            if path.is_none() {
-                path = self
-                    .image_resolve_cache(&crate::services::ImagePayload {
-                        force: false,
-                        ..payload
-                    })
-                    .local_path;
-            }
-            let path = path?;
+            let decrypted = self.image_decrypt_data(&payload, since);
+            let (path, data) = match decrypted.result.local_path {
+                Some(path) => (path, decrypted.data),
+                None => {
+                    let cached = self.image_resolve_cache_since(
+                        &crate::services::ImagePayload {
+                            force: false,
+                            ..payload
+                        },
+                        since,
+                    );
+                    (cached.local_path?, None)
+                }
+            };
             let thumbnail = !path.starts_with("data:") && crate::image::is_thumbnail_path(&path);
-            let bytes = if let Some(rest) = path.strip_prefix("data:") {
-                use base64::Engine;
-                let b64 = rest.split_once(";base64,")?.1;
-                base64::engine::general_purpose::STANDARD.decode(b64).ok()?
-            } else {
-                std::fs::read(&path).ok()?
+            let bytes = match data {
+                // decrypted just now: the cache file holds the same bytes
+                Some(data) => data,
+                None => match path.strip_prefix("data:") {
+                    Some(rest) => {
+                        use base64::Engine;
+                        let b64 = rest.split_once(";base64,")?.1;
+                        base64::engine::general_purpose::STANDARD.decode(b64).ok()?
+                    }
+                    None => std::fs::read(&path).ok()?,
+                },
             };
             let ext = api_detect_image_ext(&bytes);
             let base = api::sanitize_file_name(
@@ -521,7 +533,15 @@ type MediaRank = (bool, u64);
 /// file, and the media threads export them side by side: whichever gets there first, the HD rendition replaces a
 /// thumbnail, so the export does not depend on the threads' order (issue #52).
 #[derive(Default)]
-pub(super) struct ExportedFiles(std::sync::Mutex<HashMap<PathBuf, MediaRank>>);
+pub(super) struct ExportedFiles(std::sync::Mutex<Written>);
+
+/// What [`ExportedFiles`] holds.
+#[derive(Default)]
+struct Written {
+    ranks: HashMap<PathBuf, MediaRank>,
+    /// The folders the export made: no earlier export left a file in them.
+    made: HashSet<PathBuf>,
+}
 
 /// What the messages of one media export share while their media are copied side by side.
 struct ExportRun {
@@ -529,6 +549,8 @@ struct ExportRun {
     files: ExportedFiles,
     /// WeChat's video folder, listed at most once for the whole export (`None` without an account folder).
     videos: Option<crate::video::VideoFolder>,
+    /// From when the folders the images are looked up in are taken as they were (issue #1099).
+    since: Since,
 }
 
 impl ExportRun {
@@ -537,6 +559,7 @@ impl ExportRun {
         Self {
             files: ExportedFiles::default(),
             videos: hub.video_folder(),
+            since: Since::now(),
         }
     }
 }
@@ -569,7 +592,7 @@ fn put_media(
     let full = file_name
         .split('/')
         .fold(session_dir.join(sub), |path, part| path.join(part));
-    std::fs::create_dir_all(full.parent()?).ok()?;
+    let dir = full.parent()?;
     let size = match source {
         MediaSource::Bytes([]) => return None,
         MediaSource::Bytes(b) => b.len() as u64,
@@ -582,6 +605,7 @@ fn put_media(
     };
     match to.written {
         None => {
+            std::fs::create_dir_all(dir).ok()?;
             if !full.exists() {
                 write().ok()?;
             }
@@ -593,18 +617,29 @@ fn put_media(
                 .0
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let keep = match files.get(&full) {
+            let keep = match files.ranks.get(&full) {
                 Some(have) => *have >= rank,
+                // a folder this export made holds no file of an earlier one
+                None if files.made.contains(dir) => false,
                 // left by an earlier export into the same folder: kept
                 None if full.exists() => {
-                    files.insert(full.clone(), (true, u64::MAX));
+                    files.ranks.insert(full.clone(), (true, u64::MAX));
                     true
                 }
                 None => false,
             };
             if !keep {
-                write().ok()?;
-                files.insert(full.clone(), rank);
+                // the folder is made when the first write into it finds it missing
+                match write() {
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        if make_dir(dir).ok()? {
+                            files.made.insert(dir.to_path_buf());
+                        }
+                        write().ok()?;
+                    }
+                    done => done.ok()?,
+                }
+                files.ranks.insert(full.clone(), rank);
             }
         }
     }
@@ -615,6 +650,24 @@ fn put_media(
         relative_path: format!("{safe_talker}/{sub}/{file_name}"),
         thumbnail: false,
     })
+}
+
+/// Makes the folder `dir` and those above it; whether `dir` was missing (it was there when the answer is `false`).
+fn make_dir(dir: &Path) -> std::io::Result<bool> {
+    let made = |result: std::io::Result<()>| match result {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(e),
+    };
+    match std::fs::create_dir(dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(parent) = dir.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            made(std::fs::create_dir(dir))
+        }
+        result => made(result),
+    }
 }
 
 /// Where the media of the export written to `out` go, `<out dir>/media/<out name>`, and the same folder as the page
@@ -933,6 +986,15 @@ mod tests {
                 b"a larger full image"
             );
         }
+    }
+
+    #[test]
+    fn a_folder_is_made_with_those_above_it_and_says_whether_it_was_missing() {
+        let dir = media_dir("make-dir");
+        let deep = dir.join("a").join("b");
+        assert!(make_dir(&deep).unwrap());
+        assert!(deep.is_dir());
+        assert!(!make_dir(&deep).unwrap(), "already there");
     }
 
     #[test]

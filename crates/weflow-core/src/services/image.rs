@@ -357,6 +357,20 @@ pub struct ImageResult {
     pub is_thumb: Option<bool>,
 }
 
+/// A message image as [`ServiceHub::image_decrypt_data`] finds it.
+pub(super) struct DecryptedImage {
+    /// The answer of [`ServiceHub::image_decrypt`].
+    pub(super) result: ImageResult,
+    /// The image's bytes, when they were decrypted just now (not when the cache already held the image).
+    pub(super) data: Option<Vec<u8>>,
+}
+
+impl From<ImageResult> for DecryptedImage {
+    fn from(result: ImageResult) -> Self {
+        Self { result, data: None }
+    }
+}
+
 /// What `image resolve-batch` answers: one result per payload, in their order.
 #[derive(Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 pub struct ImageBatch {
@@ -1419,9 +1433,15 @@ impl ServiceHub {
 
     /// [`Self::image_decrypt`] that takes on trust what was checked for `since`.
     pub(super) fn image_decrypt_since(&self, p: &ImagePayload, since: Since) -> ImageResult {
+        self.image_decrypt_data(p, since).result
+    }
+
+    /// [`Self::image_decrypt_since`], with the image's bytes when it was decrypted just now: an export writes them
+    /// rather than read the cache file back.
+    pub(super) fn image_decrypt_data(&self, p: &ImagePayload, since: Since) -> DecryptedImage {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
-            return ImageResult::no_identifier();
+            return ImageResult::no_identifier().into();
         };
         if p.force {
             for key in &keys {
@@ -1443,7 +1463,8 @@ impl ServiceHub {
                     return ImageResult::ok(
                         local_path_for_payload(&cached, p.prefer_file_path),
                         None,
-                    );
+                    )
+                    .into();
                 }
             }
         } else if let Some(cached) = self.image_state_get(&cache_key) {
@@ -1459,7 +1480,8 @@ impl ServiceHub {
                         p.prefer_file_path,
                     ),
                     None,
-                );
+                )
+                .into();
             }
             self.image_state_remove(&cache_key);
         }
@@ -1471,9 +1493,9 @@ impl ServiceHub {
         p: &ImagePayload,
         cache_key: &str,
         since: Since,
-    ) -> ImageResult {
+    ) -> DecryptedImage {
         let Ok(account_dir) = self.account_dir_since(since) else {
-            return ImageResult::fail("no account or database path configured", "not_found");
+            return ImageResult::fail("no account or database path configured", "not_found").into();
         };
         let allow_fallback = p.allow_cache_index != Some(false);
         let search = |allow_thumbnail: bool| {
@@ -1501,7 +1523,8 @@ impl ServiceHub {
                 )
             } else {
                 ImageResult::fail("image file not found", "not_found")
-            };
+            }
+            .into();
         };
 
         if !Path::new(&dat)
@@ -1518,7 +1541,8 @@ impl ServiceHub {
             return ImageResult::ok(
                 local_path_for_payload(&dat, p.prefer_file_path),
                 Some(img::is_thumbnail_path(&dat)),
-            );
+            )
+            .into();
         }
 
         let prefer_hd = p.force && Rendition::of(&dat) == Rendition::Hd;
@@ -1538,13 +1562,14 @@ impl ServiceHub {
                 return ImageResult::ok(
                     local_path_for_payload(&existing, p.prefer_file_path),
                     Some(img::is_thumbnail_path(&existing)),
-                );
+                )
+                .into();
             }
         }
 
         let (xor_key, aes_key) = self.image_keys();
         let Some(xor_key) = xor_key else {
-            return ImageResult::fail("image decrypt key is not configured", "not_found");
+            return ImageResult::fail("image decrypt key is not configured", "not_found").into();
         };
         let decrypted =
             match crate::decrypt::decrypt_file(Path::new(&dat), xor_key, aes_key.as_ref()) {
@@ -1554,6 +1579,7 @@ impl ServiceHub {
                         format!("native decrypt failed, check the image keys: {}", e.message),
                         "not_found",
                     )
+                    .into()
                 }
             };
         let (data, wxgf_failure) = img::unwrap_wxgf(decrypted.data);
@@ -1563,7 +1589,8 @@ impl ServiceHub {
                 failure_kind: Some(UNSUPPORTED_IMAGE),
                 is_thumb: Some(img::is_thumbnail_path(&dat)),
                 ..Default::default()
-            };
+            }
+            .into();
         }
         let Some(ext) = img::detect_image_extension(&data) else {
             return ImageResult {
@@ -1571,7 +1598,8 @@ impl ServiceHub {
                 failure_kind: Some("decrypt_failed"),
                 is_thumb: Some(img::is_thumbnail_path(&dat)),
                 ..Default::default()
-            };
+            }
+            .into();
         };
         let output = img::cache_output_path(
             &self.image_cache_root(),
@@ -1582,7 +1610,7 @@ impl ServiceHub {
         );
         // renamed into place: an export's other media threads may read this cache file as soon as it exists
         if let Err(e) = self.write_cache_file(&output, &data) {
-            return ImageResult::fail(e.to_string(), "not_found");
+            return ImageResult::fail(e.to_string(), "not_found").into();
         }
         let out = output.to_string_lossy().to_string();
         self.remove_duplicate_cache_candidates(&dat, &month, p.session_id.as_deref(), &out, since);
@@ -1604,7 +1632,10 @@ impl ServiceHub {
                 })
                 .unwrap_or_else(|| file_path_to_url(&out))
         };
-        ImageResult::ok(local, Some(img::is_thumbnail_path(&dat)))
+        DecryptedImage {
+            result: ImageResult::ok(local, Some(img::is_thumbnail_path(&dat))),
+            data: Some(data),
+        }
     }
 
     /// One result row per payload (duplicates are resolved once), the folders checked once for the whole batch.
@@ -2019,6 +2050,28 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(sorted, expected);
         assert_eq!(listing.dirs, vec!["sub".to_string()]);
+    }
+
+    #[test]
+    fn a_listing_tells_a_file_it_lists_from_one_it_does_not() {
+        let dir = listing_dir("file");
+        std::fs::write(dir.join("a.dat"), b"abc").unwrap();
+        let listing = DirListing::read(&dir).unwrap();
+        let listed = listing.file("a.dat").expect("listed");
+        if cfg!(windows) {
+            assert_eq!(listed.map(|m| m.len), Some(3), "Windows lists the size");
+        } else {
+            assert!(listed.is_none(), "asked of the disk elsewhere");
+        }
+        assert!(listing.file("b.dat").is_none());
+        assert!(listing.file("sub").is_none(), "a folder is not a file");
+        assert!(
+            listing
+                .file("A.DAT")
+                .expect("listed in another case")
+                .is_none(),
+            "another case may be another file: asked of the disk"
+        );
     }
 
     #[test]
