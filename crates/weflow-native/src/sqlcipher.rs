@@ -69,16 +69,14 @@ impl PageCipher {
     /// The keys of a file with `salt`, derived from the database key `raw_key` (PBKDF2-HMAC-SHA512, 256 000
     /// rounds: slow on purpose).
     pub fn derive(raw_key: &[u8; 32], salt: &[u8]) -> Self {
-        let mut enc_key = [0u8; 32];
-        pbkdf2::pbkdf2_hmac::<Sha512>(raw_key, salt, KDF_ITER, &mut enc_key);
+        let enc_key = crate::kdf::pbkdf2_hmac_sha512(raw_key, salt, KDF_ITER);
         Self::from_enc_key(enc_key, salt)
     }
 
     /// The keys of a database whose page key, the slow part of [`Self::derive`], is known.
     fn from_enc_key(enc_key: [u8; 32], salt: &[u8]) -> Self {
         let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3a).collect();
-        let mut mac_key = [0u8; 32];
-        pbkdf2::pbkdf2_hmac::<Sha512>(&enc_key, &mac_salt, 2, &mut mac_key);
+        let mac_key = crate::kdf::pbkdf2_hmac_sha512(&enc_key, &mac_salt, 2);
         #[expect(clippy::expect_used, reason = "HMAC accepts a key of any length")]
         let mac =
             <HmacSha512 as KeyInit>::new_from_slice(&mac_key).expect("hmac accepts any key length");
