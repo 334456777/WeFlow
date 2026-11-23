@@ -41,7 +41,7 @@ fn sql_int(v: rusqlite::types::ValueRef<'_>) -> i64 {
 fn local_quarters(
     conn: &rusqlite::Connection,
     quarters: &BTreeSet<i64>,
-) -> Result<std::collections::HashMap<i64, (i64, i64, String)>> {
+) -> Result<HashMap<i64, (i64, i64, String)>> {
     let list = serde_json::to_string(&quarters.iter().collect::<Vec<_>>())?;
     let local_q = |expr: &str| local(expr).replace("create_time", "value * 900");
     let sql = format!(
@@ -52,7 +52,7 @@ fn local_quarters(
     );
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query([list])?;
-    let mut out = std::collections::HashMap::with_capacity(quarters.len());
+    let mut out = HashMap::with_capacity(quarters.len());
     while let Some(r) = rows.next()? {
         let text = |i: usize| -> Result<String> {
             Ok(r.get_ref(i)?.as_str_or_null()?.unwrap_or("").to_string())
@@ -176,7 +176,7 @@ fn sender_names(conn: &rusqlite::Connection) -> Result<HashMap<i64, String>> {
 }
 
 /// Sender row ids in the list [`Account::my_ids`] gives.
-pub(crate) fn id_set(list: &str) -> std::collections::HashSet<i64> {
+pub(crate) fn id_set(list: &str) -> HashSet<i64> {
     list.split(',')
         .filter_map(|v| v.trim().parse().ok())
         .collect()
@@ -465,7 +465,7 @@ impl Account {
         let scanned = self.scan_messages(
             t,
             range,
-            std::collections::HashMap::<QuarterKey, Tally>::new,
+            HashMap::<QuarterKey, Tally>::new,
             |groups, m| {
                 let side = m.sender.is_some_and(|id| ids.contains(&id));
                 let g = groups.entry((m.kind, m.time / 900, side)).or_insert(Tally {
@@ -478,8 +478,7 @@ impl Account {
                 g.last = g.last.max(m.time);
             },
             |conn, parts| {
-                let mut groups: std::collections::HashMap<QuarterKey, Tally> =
-                    std::collections::HashMap::new();
+                let mut groups: HashMap<QuarterKey, Tally> = HashMap::new();
                 for (&key, tally) in parts.iter().flatten() {
                     let g = groups.entry(key).or_insert(Tally {
                         count: 0,
@@ -787,13 +786,12 @@ impl Account {
         let scanned = self.scan_messages(
             t,
             range,
-            std::collections::HashMap::<(Option<i64>, i64, i64), i64>::new,
+            HashMap::<(Option<i64>, i64, i64), i64>::new,
             |counts, m| {
                 *counts.entry((m.sender, m.kind, m.time / 900)).or_default() += 1;
             },
             |conn, parts| {
-                let mut counts: std::collections::HashMap<(Option<i64>, i64, i64), i64> =
-                    std::collections::HashMap::new();
+                let mut counts: HashMap<(Option<i64>, i64, i64), i64> = HashMap::new();
                 for (&key, &n) in parts.iter().flatten() {
                     *counts.entry(key).or_default() += n;
                 }

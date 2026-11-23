@@ -81,7 +81,7 @@ fn lookup_id(
     session: &str,
     id: i64,
     at: Option<i64>,
-) -> serde_json::Value {
+) -> Value {
     let row = hub.chat_message_by_id(session, id, at).unwrap();
     serde_json::json!(hub.message_lookup(row, session))
 }
@@ -90,11 +90,7 @@ fn lookup_id(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"
 )]
-fn lookup_server_id(
-    hub: &weflow_core::services::ServiceHub,
-    session: &str,
-    id: &str,
-) -> serde_json::Value {
+fn lookup_server_id(hub: &weflow_core::services::ServiceHub, session: &str, id: &str) -> Value {
     let row = hub.chat_message_by_server_id(session, id).unwrap();
     serde_json::json!(hub.message_lookup(row, session))
 }

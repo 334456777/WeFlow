@@ -5,12 +5,11 @@ use serde_json::Value;
 pub fn row_field<'a>(row: &'a Value, keys: &[&str]) -> Option<&'a Value> {
     let obj = row.as_object()?;
     for key in keys {
-        if let Some(v) = obj.get(*key) {
-            match v {
-                Value::Null => continue,
-                Value::String(s) if s.is_empty() => continue,
-                _ => return Some(v),
-            }
+        // a null or empty value is passed over for the next key
+        match obj.get(*key) {
+            None | Some(Value::Null) => {}
+            Some(Value::String(s)) if s.is_empty() => {}
+            Some(v) => return Some(v),
         }
     }
     None

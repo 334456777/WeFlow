@@ -94,10 +94,7 @@ pub(super) fn api_args(cmd: &Command) -> impl Iterator<Item = &clap::Arg> {
         // clap's own `--help` and `--version`, not an argument named `version` (`web use <VERSION>`)
         let built_in = matches!(
             a.get_action(),
-            clap::ArgAction::Help
-                | clap::ArgAction::HelpShort
-                | clap::ArgAction::HelpLong
-                | clap::ArgAction::Version
+            ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
         );
         !a.is_global_set() && !a.is_hide_set() && !built_in
     })

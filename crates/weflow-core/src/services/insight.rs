@@ -134,7 +134,7 @@ fn start_of_day() -> i64 {
         .unwrap_or(0)
 }
 
-fn cfg_str(cfg: &crate::config::ConfigStore, profile: &str, key: &str) -> String {
+fn cfg_str(cfg: &ConfigStore, profile: &str, key: &str) -> String {
     match cfg.get_key(Some(profile), key) {
         Value::String(s) => s.trim().to_string(),
         Value::Number(n) => n.to_string(),
@@ -143,7 +143,7 @@ fn cfg_str(cfg: &crate::config::ConfigStore, profile: &str, key: &str) -> String
 }
 
 impl ServiceHub {
-    fn insight_cfg(&self) -> crate::config::ConfigStore {
+    fn insight_cfg(&self) -> ConfigStore {
         self.fresh_config()
     }
 
@@ -265,7 +265,7 @@ impl ServiceHub {
                         Local
                             .timestamp_millis_opt(*t)
                             .single()
-                            .map(|d| format!("{:02}:{:02}", d.hour(), chrono::Timelike::minute(&d)))
+                            .map(|d| format!("{:02}:{:02}", d.hour(), Timelike::minute(&d)))
                             .unwrap_or_default()
                     })
                     .collect();
@@ -521,7 +521,7 @@ impl ServiceHub {
         {
             let st = self.insight_state.lock_or_panic();
             if let (false, Some((s, at))) = (force, &st.session_cache) {
-                if at.elapsed() < std::time::Duration::from_secs(15 * 60) {
+                if at.elapsed() < Duration::from_secs(15 * 60) {
                     return s.clone();
                 }
             }
@@ -529,7 +529,7 @@ impl ServiceHub {
         match self.chat_sessions_list() {
             Ok(list) => {
                 self.insight_state.lock_or_panic().session_cache =
-                    Some((list.clone(), std::time::Instant::now()));
+                    Some((list.clone(), Instant::now()));
                 list
             }
             Err(_) => self
@@ -591,7 +591,7 @@ impl ServiceHub {
         } else {
             5
         };
-        let Ok(posts) = self.sns_timeline_query(&super::sns::SnsTimelineQuery {
+        let Ok(posts) = self.sns_timeline_query(&SnsTimelineQuery {
             limit: crate::num::saturating_i32(count),
             offset: 0,
             usernames: vec![session_id.to_string()],
@@ -931,13 +931,10 @@ impl ServiceHub {
         if let Some(missing) = model_api_missing(&self.model_api()) {
             return Err(AppError::runtime(missing));
         }
-        let sessions = match self.chat_sessions_list() {
-            Ok(s) => s,
-            Err(_) => {
-                return Err(AppError::runtime(
-                    tr("Database connection failed. Please finish the setup on the \"Database connection\" page first", "数据库连接失败，请先在\"数据库连接\"页完成配置"),
-                ))
-            }
+        let Ok(sessions) = self.chat_sessions_list() else {
+            return Err(AppError::runtime(
+                tr("Database connection failed. Please finish the setup on the \"Database connection\" page first", "数据库连接失败，请先在\"数据库连接\"页完成配置"),
+            ));
         };
         if sessions.is_empty() {
             return Err(AppError::runtime(tr(

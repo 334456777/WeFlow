@@ -124,7 +124,7 @@ pub(super) struct FileMeta {
 }
 
 /// The file an app message carries ([`FileMeta`]), read from its [`MsgXml`].
-pub(super) fn extract_file_app_message_meta_in(x: &MsgXml) -> Option<FileMeta> {
+pub(super) fn extract_file_app_message_meta_in(x: &MsgXml<'_>) -> Option<FileMeta> {
     let normalized = x.once();
     if normalized.is_empty() || (!normalized.contains("<appmsg") && !normalized.contains("<msg>")) {
         return None;

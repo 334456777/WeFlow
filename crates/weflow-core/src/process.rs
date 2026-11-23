@@ -102,7 +102,7 @@ pub fn processes() -> Vec<Process> {
         reason = "the struct is a few hundred bytes"
     )]
     let mut entry = PROCESSENTRY32W {
-        dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+        dwSize: size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()
     };
     // SAFETY: `snapshot` is a valid snapshot handle and `entry` has its size set, as both calls require

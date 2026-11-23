@@ -17,7 +17,7 @@ const SHEET_ROWS: u32 = 1_048_576;
 /// Rows above the messages of every sheet: the conversation's details, then the column headers.
 const HEAD_ROWS: u32 = 4;
 
-impl<'a, 'n> Exporter<'a, 'n> {
+impl Exporter<'_, '_> {
     // ─────────────────────────────────── Excel ───────────────────────────────────
 
     /// A sheet with more rows than this is written in constant-memory mode (no hyperlinks, rows go to disk).

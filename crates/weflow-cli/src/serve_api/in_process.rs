@@ -777,7 +777,7 @@ mod tests {
         const RUNS: u32 = 2000;
         let endpoints = super::super::Endpoints::new();
         let ep = endpoints.0.get("chat messages").unwrap();
-        let mut params = super::super::Params::new();
+        let mut params = Params::new();
         for (k, v) in [
             ("session-id", "wxid_bob"),
             ("limit", "50"),

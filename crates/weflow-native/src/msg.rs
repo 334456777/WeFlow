@@ -160,9 +160,9 @@ pub enum PageFrom {
 /// The sort key of a row (see [`MsgPos`]) from its cells `sort_seq`, `create_time` and `local_id`; `None` when one is not an integer, but for a
 /// null `sort_seq`, which is one without, as a zero.
 fn typed_row_key(
-    sort_seq: rusqlite::types::ValueRef,
-    create_time: rusqlite::types::ValueRef,
-    local_id: rusqlite::types::ValueRef,
+    sort_seq: rusqlite::types::ValueRef<'_>,
+    create_time: rusqlite::types::ValueRef<'_>,
+    local_id: rusqlite::types::ValueRef<'_>,
 ) -> Option<(i64, i64, i64)> {
     use rusqlite::types::ValueRef;
     let (ValueRef::Integer(create), ValueRef::Integer(local_id)) = (create_time, local_id) else {

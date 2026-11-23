@@ -95,7 +95,7 @@ fn build(data: &Path, args: &Args) -> Result<Fixture> {
     let friends: Vec<&'static str> = (0..args.sessions)
         .map(|k| leak(format!("wxid_f{k}")))
         .collect();
-    let mut contacts: Vec<ContactSpec> = friends
+    let mut contacts: Vec<ContactSpec<'_>> = friends
         .iter()
         .enumerate()
         .map(|(k, u)| ContactSpec::new(u, 1, leak(format!("好友{k}"))))
@@ -161,7 +161,7 @@ fn build(data: &Path, args: &Args) -> Result<Fixture> {
         f.message_shard(shard as u32, &convs);
     }
     // WeChat's own index of the group, which has not caught up with its newest messages
-    let indexed: Vec<FtsSpec> = (1..=args.messages - UNINDEXED)
+    let indexed: Vec<FtsSpec<'_>> = (1..=args.messages - UNINDEXED)
         .filter(|i| i % IMAGE_EVERY != 0)
         .map(|i| {
             let m = group_message(i, &members);
@@ -177,7 +177,7 @@ fn build(data: &Path, args: &Args) -> Result<Fixture> {
         .collect();
     f.message_fts_db(&[indexed]);
     // the friends' moments, newest first by tid as WeChat keeps them
-    let posts: Vec<SnsPostSpec> = (0..SNS_POSTS)
+    let posts: Vec<SnsPostSpec<'_>> = (0..SNS_POSTS)
         .map(|k| SnsPostSpec {
             tid: SNS_POSTS - k,
             user: friends[k as usize % friends.len()],

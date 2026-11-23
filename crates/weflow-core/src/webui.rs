@@ -286,7 +286,7 @@ impl WebStore {
         self.open_lock(&self.lock_path(version))
     }
 
-    fn open_lock(&self, path: &std::path::Path) -> AppResult<std::fs::File> {
+    fn open_lock(&self, path: &Path) -> AppResult<std::fs::File> {
         std::fs::create_dir_all(&self.root)
             .and_then(|()| {
                 std::fs::OpenOptions::new()

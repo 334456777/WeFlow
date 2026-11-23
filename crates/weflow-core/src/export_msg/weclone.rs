@@ -14,7 +14,7 @@ use super::csv::{create_csv, write_csv};
 use super::format::csv_cell;
 use super::{chrome, Exporter};
 
-impl<'a, 'n> Exporter<'a, 'n> {
+impl Exporter<'_, '_> {
     /// WeClone: a header, then one row per message (quote replies left out), numbered as written.
     pub(super) fn stream_weclone(
         &mut self,

@@ -49,7 +49,7 @@ pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> 
 /// voice message, a video, a sticker or a location has none of them: when it replies to a message, only the fields of
 /// what it quotes.
 pub fn extract_arkme_app_message_meta_in(
-    x: &MsgXml,
+    x: &MsgXml<'_>,
     local_type: i64,
 ) -> Option<Map<String, Value>> {
     if is_non_app_type(local_type) {
@@ -61,7 +61,7 @@ pub fn extract_arkme_app_message_meta_in(
 /// [`extract_arkme_app_message_meta_in`] of a quote, a link, or a reply that is an image, a voice message, a video,
 /// a sticker or a location; `None` for every other message, whose fields are not read.
 pub fn quote_or_link_app_message_meta_in(
-    x: &MsgXml,
+    x: &MsgXml<'_>,
     local_type: i64,
 ) -> Option<Map<String, Value>> {
     if is_non_app_type(local_type) {
@@ -97,7 +97,7 @@ pub(crate) fn is_non_app_type(local_type: i64) -> bool {
 
 /// The meta of a message of [`is_non_app_type`] that replies to a message (an image answering one, say): only the
 /// fields of what its `<refermsg>` quotes, as an app message's quote has them; `None` for one that replies to none.
-fn reply_quote_fields(x: &MsgXml) -> Option<Map<String, Value>> {
+fn reply_quote_fields(x: &MsgXml<'_>) -> Option<Map<String, Value>> {
     // `refermsg` survives normalizing (see normalized_may_contain): without it, there is no `<refermsg>` to read
     if !x.content().contains("refermsg") || !x.once().contains("<refermsg>") {
         return None;
@@ -115,7 +115,7 @@ fn put(meta: &mut Map<String, Value>, key: &str, value: String) {
 }
 
 /// Puts what `x` quotes in `meta`: `quotedContent`, `quotedSender`, `quotedType` and `quotedSvrid`, those it has.
-fn put_quote(meta: &mut Map<String, Value>, x: &MsgXml) {
+fn put_quote(meta: &mut Map<String, Value>, x: &MsgXml<'_>) {
     let q = x.quote_twice().clone();
     put(meta, "quotedContent", q.content.unwrap_or_default());
     put(meta, "quotedSender", q.sender.unwrap_or_default());
@@ -125,7 +125,7 @@ fn put_quote(meta: &mut Map<String, Value>, x: &MsgXml) {
 
 /// The first part of [`extract_arkme_app_message_meta_in`] for an app message; `None` when the message has no
 /// app-message meta at all, as one of [`is_non_app_type`] has none.
-fn classify_app_message(x: &MsgXml, local_type: i64) -> Option<AppMessageClass> {
+fn classify_app_message(x: &MsgXml<'_>, local_type: i64) -> Option<AppMessageClass> {
     if x.content().is_empty() || is_non_app_type(local_type) {
         return None;
     }
@@ -184,7 +184,7 @@ fn classify_app_message(x: &MsgXml, local_type: i64) -> Option<AppMessageClass> 
 fn app_message_fields(
     class: AppMessageClass,
     local_type: i64,
-    x: &MsgXml,
+    x: &MsgXml<'_>,
 ) -> Option<Map<String, Value>> {
     let AppMessageClass {
         n,

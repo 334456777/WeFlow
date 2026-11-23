@@ -405,11 +405,17 @@ impl Exporter<'_, '_> {
     }
 
     /// The fields of a message of a kind its local type names.
-    fn fill_kind(&mut self, mut m: PageMsg, kind: Kind, msg: &ExportMsg, x: &MsgXml) -> PageMsg {
+    fn fill_kind(
+        &mut self,
+        mut m: PageMsg,
+        kind: Kind,
+        msg: &ExportMsg,
+        x: &MsgXml<'_>,
+    ) -> PageMsg {
         m.k = kind as u8;
         match kind {
             Kind::Voice => {
-                m.d = crate::chat_msg::parse_voice_duration_seconds(&msg.content).or(Some(1))
+                m.d = crate::chat_msg::parse_voice_duration_seconds(&msg.content).or(Some(1));
             }
             Kind::Video => {
                 if m.d.is_none() {
@@ -453,7 +459,7 @@ impl Exporter<'_, '_> {
     }
 
     /// An app message (or anything else), by the kind its XML names.
-    fn app_msg(&mut self, mut m: PageMsg, msg: &ExportMsg, x: &MsgXml) -> PageMsg {
+    fn app_msg(&mut self, mut m: PageMsg, msg: &ExportMsg, x: &MsgXml<'_>) -> PageMsg {
         let Some(meta) = extract_arkme_app_message_meta_in(x, msg.local_type) else {
             m.k = Kind::Text as u8;
             m.x = Some(self.html_message_text(msg, x));
@@ -530,7 +536,7 @@ impl Exporter<'_, '_> {
                 m.f = meta_str(&meta, "finderNickname").or_else(|| tag("nickname"));
             }
             Kind::Announcement => {
-                m.x = tag("textannouncement").or_else(|| meta_str(&meta, "appMsgDesc"))
+                m.x = tag("textannouncement").or_else(|| meta_str(&meta, "appMsgDesc"));
             }
             Kind::Link => {
                 m.ti = meta_str(&meta, "linkTitle").or(title);
@@ -553,7 +559,7 @@ impl Exporter<'_, '_> {
 
 /// A quote (app type 57) of a system message, which the quote reading leaves out: the quoted text is the system
 /// message's readable line.
-fn quote_of_system(x: &MsgXml) -> Option<QuotedDisplay> {
+fn quote_of_system(x: &MsgXml<'_>) -> Option<QuotedDisplay> {
     if x.app_type_twice() != "57" {
         return None;
     }

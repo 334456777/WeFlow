@@ -70,7 +70,7 @@ fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
         reason = "the struct is about a kilobyte"
     )]
     let mut entry = MODULEENTRY32W {
-        dwSize: std::mem::size_of::<MODULEENTRY32W>() as u32,
+        dwSize: size_of::<MODULEENTRY32W>() as u32,
         ..Default::default()
     };
     let mut found = None;
@@ -203,7 +203,7 @@ fn file_version(path: &[u16]) -> Result<[u16; 4]> {
             &mut length,
         )
     } == 0
-        || (length as usize) < std::mem::size_of::<VS_FIXEDFILEINFO>()
+        || (length as usize) < size_of::<VS_FIXEDFILEINFO>()
         || value.is_null()
     {
         bail!("invalid WeChat version resource");

@@ -190,7 +190,7 @@ fn message(i: i64) -> (i64, String, bool) {
 fn build(root: &Path, args: &Args) -> Fixture {
     let f = Fixture::new(root, OWNER);
     let members: Vec<&'static str> = (0..SENDERS).map(|k| leak(format!("wxid_m{k}"))).collect();
-    let mut contacts: Vec<ContactSpec> = members
+    let mut contacts: Vec<ContactSpec<'_>> = members
         .iter()
         .map(|m| ContactSpec::new(m, 1, leak(format!("昵称{m}"))))
         .collect();

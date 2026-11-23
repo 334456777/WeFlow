@@ -466,7 +466,7 @@ impl ServiceHub {
         // resolve names / avatars from the contact tables
         let names: Vec<String> = sessions.iter().map(|s| s.username.clone()).collect();
         let book = self.contact_book(wcdb, &names);
-        for s in sessions.iter_mut() {
+        for s in &mut sessions {
             if let Some(c) = book.get(&s.username) {
                 if s.display_name == s.username {
                     if let Some(n) = c.display_name.clone().filter(|n| !n.is_empty()) {

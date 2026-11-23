@@ -606,7 +606,7 @@ mod tests {
         for bad in [
             format!("{MD5}.jpg"),
             "other.dat".to_string(),
-            format!("{}f.txt", MD5),
+            format!("{MD5}f.txt"),
         ] {
             assert!(!is_hardlink_candidate_name(&bad, MD5), "{bad}");
         }

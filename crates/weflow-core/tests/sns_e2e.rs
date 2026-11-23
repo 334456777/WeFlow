@@ -456,7 +456,7 @@ fn comments_and_likes_show_decoded_entities_in_the_timeline_and_every_export() {
 fn export_posts_with_times(tag: &str, times: &[(i64, i64)]) -> Vec<String> {
     use weflow_native::fixture::SnsPostSpec;
     let (root, hub, _f) = common::custom_hub(tag, |f| {
-        let specs: Vec<SnsPostSpec> = times
+        let specs: Vec<SnsPostSpec<'_>> = times
             .iter()
             .map(|&(tid, create_time)| SnsPostSpec {
                 tid,
@@ -534,8 +534,8 @@ fn names_in(dir: &Path) -> Vec<String> {
 /// A hub over an account whose Moments are `posts` and whose contacts are `contacts`.
 fn moments_hub(
     tag: &str,
-    posts: &[weflow_native::fixture::SnsPostSpec],
-    contacts: &[weflow_native::fixture::ContactSpec],
+    posts: &[weflow_native::fixture::SnsPostSpec<'_>],
+    contacts: &[weflow_native::fixture::ContactSpec<'_>],
 ) -> (
     weflow_native::fixture::TestDir,
     weflow_core::services::ServiceHub,

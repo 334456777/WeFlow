@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn parses_pay_xml() {
-        let xml = r#"<xml><title>Payment</title><des>¥100</des><display_name>Shop</display_name><pub_time>1700000000</pub_time></xml>"#;
+        let xml = r"<xml><title>Payment</title><des>¥100</des><display_name>Shop</display_name><pub_time>1700000000</pub_time></xml>";
         let result = json!(parse_pay_xml(xml).unwrap());
         assert_eq!(result["title"], "Payment");
         assert_eq!(result["description"], "¥100");
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn parses_biz_content_list() {
-        let xml = r#"<content_list><item><title>A1</title><url>http://a1</url><cover>http://img</cover></item><item><title>A2</title><url>http://a2</url></item></content_list>"#;
+        let xml = r"<content_list><item><title>A1</title><url>http://a1</url><cover>http://img</cover></item><item><title>A2</title><url>http://a2</url></item></content_list>";
         let result = json!(parse_biz_content_list(xml));
         assert_eq!(result.as_array().unwrap().len(), 2);
         assert_eq!(result[0]["title"], "A1");

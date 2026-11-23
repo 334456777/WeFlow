@@ -286,7 +286,7 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<SnsComment> {
             _ => None,
         })
         .collect();
-    for c in items.iter_mut() {
+    for c in &mut items {
         if c.ref_nickname.as_deref().is_none_or(str::is_empty) && !c.ref_comment_id.is_empty() {
             if let Some(ru) = c.ref_username.as_deref().filter(|u| !u.is_empty()) {
                 c.ref_nickname = user_map.get(ru).cloned();

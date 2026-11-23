@@ -10,7 +10,7 @@ use crate::message::*;
 
 use super::{write_bytes, Exporter};
 
-impl<'a, 'n> Exporter<'a, 'n> {
+impl Exporter<'_, '_> {
     /// One message of the TXT export: `<time> '<sender>'`, the text, a blank line.
     /// Appends the TXT entry of `msg` to `out`.
     pub(super) fn write_txt_entry(&mut self, msg: &ExportMsg, out: &mut Vec<u8>) {

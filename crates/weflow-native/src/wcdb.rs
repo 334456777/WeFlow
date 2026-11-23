@@ -78,7 +78,7 @@ impl Wcdb {
     pub fn session_salt(&self) -> Option<[u8; 16]> {
         use std::io::Read;
         let mut salt = [0u8; 16];
-        std::fs::File::open(self.account().ok()?.session_db())
+        fs::File::open(self.account().ok()?.session_db())
             .ok()?
             .read_exact(&mut salt)
             .ok()?;
@@ -547,19 +547,17 @@ impl Wcdb {
     }
 
     /// Where WeChat's media index puts the images, by message md5 (see `Account::image_hardlink_index`).
-    pub fn image_hardlink_index(
-        &self,
-    ) -> Result<std::collections::HashMap<String, Vec<std::path::PathBuf>>> {
+    pub fn image_hardlink_index(&self) -> Result<std::collections::HashMap<String, Vec<PathBuf>>> {
         self.account()?.image_hardlink_index()
     }
 
     /// Where WeChat's media index puts the video of a message md5 (see `Account::video_hardlinks`).
-    pub fn video_hardlinks(&self, md5: &str) -> Result<Vec<std::path::PathBuf>> {
+    pub fn video_hardlinks(&self, md5: &str) -> Result<Vec<PathBuf>> {
         self.account()?.video_hardlinks(md5)
     }
 
     /// Where WeChat's media index puts the file of a message md5 (see `Account::file_hardlinks`).
-    pub fn file_hardlinks(&self, md5: &str) -> Result<Vec<std::path::PathBuf>> {
+    pub fn file_hardlinks(&self, md5: &str) -> Result<Vec<PathBuf>> {
         self.account()?.file_hardlinks(md5)
     }
 

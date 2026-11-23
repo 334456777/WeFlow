@@ -248,14 +248,14 @@ mod imp {
             K32EnumProcessModules(
                 process,
                 modules.as_mut_ptr(),
-                u32::try_from(std::mem::size_of_val(&modules)).unwrap_or(u32::MAX),
+                u32::try_from(size_of_val(&modules)).unwrap_or(u32::MAX),
                 &mut needed,
             )
         };
         if ok == 0 {
             return None;
         }
-        let count = (needed as usize / std::mem::size_of::<HMODULE>()).min(modules.len());
+        let count = (needed as usize / size_of::<HMODULE>()).min(modules.len());
         for &module in &modules[..count] {
             let mut name = [0u16; 260];
             // SAFETY: `name` is a buffer of 260 wide characters.
@@ -281,7 +281,7 @@ mod imp {
                     process,
                     module,
                     &mut info,
-                    u32::try_from(std::mem::size_of::<MODULEINFO>()).unwrap_or(u32::MAX),
+                    u32::try_from(size_of::<MODULEINFO>()).unwrap_or(u32::MAX),
                 )
             };
             if ok == 0 {
@@ -306,7 +306,7 @@ mod imp {
                     process,
                     address as *const c_void,
                     &mut info,
-                    std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
+                    size_of::<MEMORY_BASIC_INFORMATION>(),
                 )
             };
             if written == 0 {

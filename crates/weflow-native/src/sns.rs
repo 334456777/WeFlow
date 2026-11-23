@@ -522,7 +522,7 @@ mod tests {
             r#" 键key="5" key="6""#,
             r#" key=5 key="6""#,
             r#" key="&amp;""#,
-            r#" md5"#,
+            r" md5",
             "",
         ];
         for name in ["url", "thumb", "contentDesc", "id"] {

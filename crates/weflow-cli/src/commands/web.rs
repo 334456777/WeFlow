@@ -158,7 +158,7 @@ pub(super) async fn serve_webui(
                 "downloading the WebUI",
                 usize::try_from(done).unwrap_or(usize::MAX),
                 usize::try_from(total).unwrap_or(usize::MAX),
-            )
+            );
         };
         let meta =
             weflow_core::webui::install(&store, &registry, version, web_backend(), &progress)
@@ -203,7 +203,7 @@ pub(crate) async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppRes
             "downloading the WebUI",
             usize::try_from(done).unwrap_or(usize::MAX),
             usize::try_from(total).unwrap_or(usize::MAX),
-        )
+        );
     };
     match &command.command {
         WebSubcommand::Info => Ok(json!(WebInfo {

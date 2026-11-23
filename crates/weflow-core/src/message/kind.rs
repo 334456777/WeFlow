@@ -3,7 +3,7 @@
 use super::xml::{extract_app_message_type, normalize_app_message_content, MsgXml};
 
 /// The export's type code of a message: its local type, or for an app message the kind its [`MsgXml`] names.
-pub fn convert_message_type_in(local_type: i64, x: &MsgXml) -> i64 {
+pub fn convert_message_type_in(local_type: i64, x: &MsgXml<'_>) -> i64 {
     let normalized = x.once();
     if x.readable_system_twice(local_type) {
         return 80;
@@ -47,7 +47,7 @@ pub fn convert_message_type_in(local_type: i64, x: &MsgXml) -> i64 {
 }
 
 /// The type name of a message: its local type's, or for an app message the name of the kind its [`MsgXml`] names.
-pub fn message_type_name_in(local_type: i64, x: &MsgXml) -> &'static str {
+pub fn message_type_name_in(local_type: i64, x: &MsgXml<'_>) -> &'static str {
     {
         if !x.content().is_empty() {
             if x.readable_system_twice(local_type) {

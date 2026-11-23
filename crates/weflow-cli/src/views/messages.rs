@@ -197,12 +197,10 @@ impl<'a> Log<'a> {
         for (n, line) in wrapped.iter().enumerate() {
             let shown = if notice {
                 Text::styled(Role::Muted, line.as_str())
+            } else if n == 0 {
+                with_kind(line)
             } else {
-                if n == 0 {
-                    with_kind(line)
-                } else {
-                    Text::plain(line.as_str())
-                }
+                Text::plain(line.as_str())
             };
             let lead = if n == 0 {
                 format!("{clock}  {who}")

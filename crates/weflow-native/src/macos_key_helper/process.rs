@@ -100,8 +100,7 @@ fn all_pids() -> Vec<libc::pid_t> {
     if counted < 0 {
         return Vec::new();
     }
-    let Ok(buffer_bytes) = libc::c_int::try_from(capacity * std::mem::size_of::<libc::pid_t>())
-    else {
+    let Ok(buffer_bytes) = libc::c_int::try_from(capacity * size_of::<libc::pid_t>()) else {
         return Vec::new();
     };
     let mut pids: Vec<libc::pid_t> = vec![0; capacity];

@@ -191,7 +191,7 @@ impl Push {
                         None => break,
                     },
                     _ = heartbeat.tick() => yield Ok(server.beat()),
-                    _ = listening.stopping() => {
+                    () = listening.stopping() => {
                         yield Ok(status::bye());
                         break;
                     }

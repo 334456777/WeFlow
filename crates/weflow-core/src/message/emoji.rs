@@ -158,7 +158,7 @@ pub fn format_emoji_semantic_text(caption: Option<&str>) -> String {
 }
 
 /// The md5 (`<emoticonmd5>`) of a sticker sent as an app message of type 8, which looks up the sticker's caption.
-pub(super) fn appmsg_emoticon_md5_in(x: &MsgXml) -> Option<String> {
+pub(super) fn appmsg_emoticon_md5_in(x: &MsgXml<'_>) -> Option<String> {
     // the tag is matched ASCII case-insensitively; see normalized_may_contain for why `content` can rule it out
     crate::xml::find_ci(x.content(), 0, "emoticonmd5")?;
     if x.app_type_twice() != "8" {

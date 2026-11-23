@@ -101,7 +101,7 @@ impl ServiceHub {
                     "检测到微信，pid {pid}。请在登录窗口点击「进入微信」。",
                 )
                 .replace("{pid}", &pid.to_string()),
-            )
+            );
         };
         // the macOS hook is tried again once at most: more tries can set off the system's protection (#806)
         let mut tried_again = false;

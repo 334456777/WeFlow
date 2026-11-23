@@ -15,7 +15,7 @@ use super::names::{resolve_group_nickname, Profile};
 use super::spool::{SenderTally, Spool};
 use super::Exporter;
 
-impl<'a, 'n> Exporter<'a, 'n> {
+impl Exporter<'_, '_> {
     /// [`ark_group_members_of`](Self::ark_group_members_of) the senders of `msgs`.
     #[cfg(test)]
     pub(super) fn ark_group_members(&mut self, msgs: &[ExportMsg]) -> Vec<ArkGroupMember> {

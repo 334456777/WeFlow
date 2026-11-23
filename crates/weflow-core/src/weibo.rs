@@ -227,12 +227,11 @@ async fn fetch_mobile_timeline(uid: &str) -> Result<Vec<Value>, String> {
         MOBILE_USER_AGENT,
     )
     .await?;
-    let cards = match (
+    let (Some(1), Some(cards)) = (
         v.get("ok").and_then(Value::as_i64),
         v.pointer("/data/cards").and_then(Value::as_array),
-    ) {
-        (Some(1), Some(c)) => c,
-        _ => return Err("failed to load the Weibo timeline, try again later".into()),
+    ) else {
+        return Err("failed to load the Weibo timeline, try again later".into());
     };
     let mut rows = Vec::new();
     for card in cards {
