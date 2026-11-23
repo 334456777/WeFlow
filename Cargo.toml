@@ -122,10 +122,11 @@ opt-level = 2
 lto = "thin"
 codegen-units = 1
 
-# heic-rs 0.1.4 with its 4:2:2 and 4:4:4 intra decoding fixed (tbraun96/heic-rs#15, #559): back to crates.io
-# once a release has the fix
+# heic-rs 0.1.4 with its 4:2:2 and 4:4:4 intra decoding fixed (tbraun96/heic-rs#15, #559) and the availability of
+# a block's neighbours worked out once per block (branch perf/hevc-intra-neighbours, #1103): back to crates.io once
+# a release has both
 [patch.crates-io]
-heic-rs = { git = "https://github.com/334456777/heic-rs", rev = "575a455437278659a067b7361e9f3d85197950c4" }
+heic-rs = { git = "https://github.com/334456777/heic-rs", rev = "a93d683f56147ef5dcd316eef0dd01433fb04043" }
 # sha2 0.11.1 whose SHA-512 AVX2 backend, picked at run time, also enables BMI1/BMI2 (RustCrypto/hashes#940, #535):
 # back to crates.io once a release has it
 sha2 = { git = "https://github.com/334456777/hashes", rev = "e717feec478ba9f18a0942bf7bc73194284a3eb7" }
