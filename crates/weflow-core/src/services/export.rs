@@ -7,6 +7,7 @@ use serde_json::Value;
 use super::{export_stream, ServiceHub};
 use crate::config::clean_account_dir_name;
 use crate::error::{AppError, AppResult};
+use weflow_native::wcdb::Databases;
 
 impl ServiceHub {
     /// Export a conversation's messages in one of WeFlow's desktop app's formats
@@ -126,6 +127,9 @@ impl ServiceHub {
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
+        // the export names its senders from the contacts and reads the messages
+        wcdb.prefetch(&[Databases::Contacts, Databases::Messages])
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let opts = CollectOptions {
             session_id: &req.session_id,
             my_wxid: &my_wxid,
@@ -153,6 +157,9 @@ impl ServiceHub {
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
+        // the export names its senders from the contacts and reads the messages
+        wcdb.prefetch(&[Databases::Contacts, Databases::Messages])
+            .map_err(|e| AppError::native(format!("{e:#}")))?;
         let opts = CollectOptions {
             session_id: &req.session_id,
             my_wxid: &my_wxid,

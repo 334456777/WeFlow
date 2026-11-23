@@ -16,6 +16,7 @@ use crate::contract::{
 use crate::isaac64;
 use crate::sns::{self, CachedContact, SavedMedia};
 use crate::sync::MutexExt;
+use weflow_native::wcdb::Databases;
 
 const EXPORT_STATS_TTL: Duration = Duration::from_secs(5 * 60);
 const USER_COUNTS_TTL: Duration = Duration::from_secs(5 * 60);
@@ -1001,6 +1002,9 @@ impl ServiceHub {
         // sharing a second or without a time. A post arriving mid-export shifts the later
         // pages by one, which repeats a post rather than skipping one: the row id drops it.
         let wcdb = self.open_wcdb()?;
+        // the export reads the posts, then the names and avatars of their authors from the contacts
+        wcdb.prefetch(&[Databases::Moments, Databases::Contacts])
+            .map_err(err_native)?;
         let mut posts: Vec<SnsPost> = Vec::new();
         let mut loaded = std::collections::HashSet::new();
         let page = 50;
