@@ -160,11 +160,9 @@ fn sanitize_dir_name(s: &str) -> String {
     }
 }
 
-/// `YYYY-MM` of the file's mtime (or now).
-fn time_dir(path: &Path) -> String {
-    let dt = std::fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
+/// The cache folder of a `.dat` file modified at `modified`: `YYYY-MM` of that time in local time, else of now.
+pub fn month_folder(modified: Option<std::time::SystemTime>) -> String {
+    let dt = modified
         .map(chrono::DateTime::<Local>::from)
         .unwrap_or_else(Local::now);
     format!("{}-{:02}", dt.year(), dt.month())
@@ -253,10 +251,11 @@ pub fn is_img_scoped_dat_path(path: &str) -> bool {
 const CACHE_EXTENSIONS: [&str; 5] = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
 
 /// Where the image decrypted from `dat_path` is kept in the cache `root`:
-/// `<conversation>/<month>/<md5><variant suffix><ext>`.
+/// `<conversation>/<month>/<md5><variant suffix><ext>`, `month` being the `.dat` file's [`month_folder`].
 pub fn cache_output_path(
     root: &Path,
     dat_path: &str,
+    month: &str,
     ext: &str,
     session_id: Option<&str>,
 ) -> PathBuf {
@@ -265,7 +264,7 @@ pub fn cache_output_path(
     let normalized = normalize_dat_base(&base);
     let suffix = cache_variant_suffix_from_dat(dat_path);
     root.join(sanitize_dir_name(session_id.unwrap_or("unknown")))
-        .join(time_dir(Path::new(dat_path)))
+        .join(month)
         .join(format!("{normalized}{suffix}{ext}"))
 }
 
@@ -274,6 +273,7 @@ pub fn cache_output_path(
 pub fn cache_output_candidates(
     root: &Path,
     dat_path: &str,
+    month: &str,
     session_id: Option<&str>,
     prefer_hd: bool,
 ) -> Vec<PathBuf> {
@@ -284,7 +284,7 @@ pub fn cache_output_candidates(
     let suffixes = suffix_search_order(&primary, prefer_hd);
     let current = root
         .join(sanitize_dir_name(session_id.unwrap_or("unknown")))
-        .join(time_dir(Path::new(dat_path)));
+        .join(month);
     let legacy = root.join(&normalized);
     let mut out = Vec::new();
     for dir in [&current, &legacy] {
@@ -652,6 +652,7 @@ mod tests {
         let c = cache_output_candidates(
             root,
             &format!("/nonexistent/{MD5}_h.dat"),
+            "2024-05",
             Some("wxid:bob"),
             true,
         );
@@ -659,7 +660,11 @@ mod tests {
             c[0].file_name().unwrap().to_string_lossy(),
             format!("{MD5}_hd.jpg")
         );
-        assert!(c[0].starts_with("/cache/Images/wxid_bob"), "{:?}", c[0]);
+        assert!(
+            c[0].starts_with("/cache/Images/wxid_bob/2024-05"),
+            "{:?}",
+            c[0]
+        );
         assert!(c
             .iter()
             .any(|p| p == &root.join(MD5).join(format!("{MD5}_hd.webp"))));
@@ -667,11 +672,12 @@ mod tests {
         let out = cache_output_path(
             root,
             &format!("/nonexistent/{MD5}_t.dat"),
+            "2024-05",
             ".png",
             Some("a/b"),
         );
         let out = out.to_string_lossy().replace('\\', "/");
-        assert!(out.contains("/a_b/"));
+        assert!(out.contains("/a_b/2024-05/"));
         assert!(out.ends_with(&format!("{MD5}_t.png")));
     }
 

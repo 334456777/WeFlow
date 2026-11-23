@@ -6,9 +6,10 @@
 //! background "better quality available" check, have no counterpart in a CLI, so they are
 //! left out.
 use std::collections::{HashMap, HashSet};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use base64::Engine;
 use serde_json::{json, Value};
@@ -21,11 +22,43 @@ use crate::sync::MutexExt;
 pub struct ImageState {
     resolved: HashMap<String, String>,
     /// Listings of the `Img` folders searched for `.dat` files (see [`ServiceHub::dir_listing`]).
-    dir_listings: HashMap<PathBuf, Arc<DirListing>>,
+    dir_listings: HashMap<PathBuf, Listed>,
     /// Names in the folders of the decrypted-image cache (see [`ServiceHub::possibly_cached`]).
     cache_dirs: HashMap<PathBuf, CacheDirNames>,
     /// WeChat's media index of images (see [`ServiceHub::linked_image_index`]).
     linked_images: Option<LinkedImages>,
+    /// The account folder, and when it was last found on disk (see [`ServiceHub::account_dir_since`]).
+    account_dir: Option<(PathBuf, Instant)>,
+    /// `Images` in the cache folder (see [`ServiceHub::image_cache_root`]).
+    cache_root: Option<PathBuf>,
+}
+
+/// What a lookup takes on trust: what was checked against the disk at or after this instant (a folder's listing,
+/// WeChat's media index, the account folder, a folder of the image cache) is used without checking it again.
+///
+/// Each check is a system call, and on Windows a system call that opens a file costs tens of microseconds: an
+/// export with images made some fifty per image (issue #1099). A lookup ([`ServiceHub::image_decrypt`]) checks each
+/// at most once, from the instant it starts; an export checks each once for all its images, from the instant it
+/// starts, so the folders are taken as they were then.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Since(Instant);
+
+impl Since {
+    /// What is checked from now on.
+    pub(super) fn now() -> Self {
+        Self(Instant::now())
+    }
+
+    /// Whether a check made at `checked` can be taken on trust.
+    fn covers(self, checked: Instant) -> bool {
+        checked >= self.0
+    }
+}
+
+/// A listing of a folder (`None` when there was no such folder) and when it was last found current.
+struct Listed {
+    listing: Option<Arc<DirListing>>,
+    checked: Instant,
 }
 
 /// The image rows of WeChat's media index (`hardlink.db`), read whole, and the state of its database files when
@@ -34,6 +67,24 @@ struct LinkedImages {
     account_dir: PathBuf,
     stamp: [Option<(Option<SystemTime>, u64)>; 2],
     by_md5: Arc<HashMap<String, Vec<PathBuf>>>,
+    /// When `stamp` was last found current.
+    checked: Instant,
+}
+
+/// The size and modification time of a file.
+#[derive(Clone, Copy, Debug)]
+struct FileMeta {
+    len: u64,
+    modified: Option<SystemTime>,
+}
+
+impl FileMeta {
+    fn of(m: &std::fs::Metadata) -> Self {
+        Self {
+            len: m.len(),
+            modified: m.modified().ok(),
+        }
+    }
 }
 
 /// `failureKind` of a WXGF image the built-in decoder cannot convert.
@@ -55,6 +106,8 @@ pub(super) struct DirListing {
     listed_at: SystemTime,
     /// File names in the order the system listed them.
     files: Vec<String>,
+    /// The size and time of each of `files` where listing the folder gave them without a call per file (Windows).
+    meta: Vec<Option<FileMeta>>,
     /// (trimmed lower-case name, index into `files`), sorted, to find the names starting with a prefix.
     keys: Vec<(String, usize)>,
     /// Subfolder names, in listing order.
@@ -65,7 +118,7 @@ impl DirListing {
     fn read(dir: &Path) -> Option<Self> {
         let modified = std::fs::metadata(dir).and_then(|m| m.modified()).ok();
         let listed_at = SystemTime::now();
-        let (mut files, mut dirs) = (Vec::new(), Vec::new());
+        let (mut files, mut meta, mut dirs) = (Vec::new(), Vec::new(), Vec::new());
         for entry in std::fs::read_dir(dir).ok()?.filter_map(Result::ok) {
             let Ok(kind) = entry.file_type() else {
                 continue;
@@ -73,6 +126,14 @@ impl DirListing {
             let name = entry.file_name().to_string_lossy().to_string();
             if kind.is_file() {
                 files.push(name);
+                // Windows lists each file with its size and times; elsewhere they would cost a call per file, more
+                // than the few files a lookup asks about
+                meta.push(
+                    cfg!(windows)
+                        .then(|| entry.metadata().ok())
+                        .flatten()
+                        .map(|m| FileMeta::of(&m)),
+                );
             } else if kind.is_dir() {
                 dirs.push(name);
             }
@@ -87,9 +148,29 @@ impl DirListing {
             modified,
             listed_at,
             files,
+            meta,
             keys,
             dirs,
         })
+    }
+
+    /// What the listing says of the file `name`: `None` when it lists no file of that name in any case, else its size
+    /// and time when it lists that very name with them (a name listed in another case only may be another file, on a
+    /// file system that tells cases apart).
+    fn file(&self, name: &str) -> Option<Option<FileMeta>> {
+        let key = name.trim().to_lowercase();
+        let start = self
+            .keys
+            .partition_point(|(k, _)| k.as_str() < key.as_str());
+        let mut same = self.keys[start..]
+            .iter()
+            .take_while(|(k, _)| *k == key)
+            .peekable();
+        same.peek()?;
+        Some(
+            same.find(|(_, i)| self.files[*i] == name)
+                .and_then(|(_, i)| self.meta[*i]),
+        )
     }
 
     /// Whether `dir` still has these entries: not modified since it was listed, and listed well after its change.
@@ -124,8 +205,11 @@ impl DirListing {
 /// and the folder is read again when its modification time shows a change made otherwise. A name that is no longer
 /// on disk only costs the check of that one path; a missing name costs a decrypt that was not needed.
 struct CacheDirNames {
-    modified: SystemTime,
+    /// The folder's modification time; `None` when there was no such folder.
+    modified: Option<SystemTime>,
     names: HashSet<String>,
+    /// When `modified` was last found current.
+    checked: Instant,
 }
 
 /// What [`ServiceHub::index_cache_dir`] found.
@@ -344,10 +428,6 @@ fn unsupported_image_message(create_time: Option<i64>, reason: crate::hevc::Unsu
     }
 }
 
-fn file_size(p: &str) -> u64 {
-    std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)
-}
-
 fn file_mtime_ms(p: &str) -> u128 {
     std::fs::metadata(p)
         .and_then(|m| m.modified())
@@ -355,23 +435,6 @@ fn file_mtime_ms(p: &str) -> u128 {
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_millis())
         .unwrap_or(0)
-}
-
-/// The largest of `paths`: biggest file, then newest, then name.
-fn pick_largest(paths: &[String]) -> Option<String> {
-    let mut list: Vec<String> = Vec::new();
-    for p in paths {
-        if !p.is_empty() && !list.contains(p) {
-            list.push(p.clone());
-        }
-    }
-    list.sort_by(|a, b| {
-        file_size(b)
-            .cmp(&file_size(a))
-            .then(file_mtime_ms(b).cmp(&file_mtime_ms(a)))
-            .then(a.cmp(b))
-    });
-    list.into_iter().next()
 }
 
 fn file_path_to_url(path: &str) -> String {
@@ -519,11 +582,34 @@ impl ServiceHub {
         }
     }
 
-    /// The folder of the decrypted images, `Images` in the cache folder, made when it is missing.
+    /// [`Self::account_dir_only`], found on disk at most once for `since`.
+    fn account_dir_since(&self, since: Since) -> AppResult<PathBuf> {
+        if let Some((dir, checked)) = &self.image_state.lock_or_panic().account_dir {
+            if since.covers(*checked) {
+                return Ok(dir.clone());
+            }
+        }
+        let checked = Instant::now();
+        let dir = self.account_dir_only()?;
+        self.image_state.lock_or_panic().account_dir = Some((dir.clone(), checked));
+        Ok(dir)
+    }
+
+    /// The folder of the decrypted images, `Images` in the cache folder. It is made when a decrypted image is first
+    /// written into it ([`Self::make_image_cache_dir`]).
     pub fn image_cache_root(&self) -> PathBuf {
+        if let Some(root) = &self.image_state.lock_or_panic().cache_root {
+            return root.clone();
+        }
         let root = self.cache_base().join("Images");
-        let _ = std::fs::create_dir_all(&root);
+        self.image_state.lock_or_panic().cache_root = Some(root.clone());
         root
+    }
+
+    /// Makes `dir`, a folder of the image cache, and the cache folder above it as [`Self::cache_base`] makes it.
+    fn make_image_cache_dir(&self, dir: &Path) -> io::Result<()> {
+        self.cache_base();
+        std::fs::create_dir_all(dir)
     }
 
     fn image_keys(&self) -> (Option<u8>, Option<[u8; 16]>) {
@@ -604,6 +690,7 @@ impl ServiceHub {
         base_md5: &str,
         session_id: Option<&str>,
         create_time: Option<i64>,
+        since: Since,
     ) -> Vec<String> {
         let session = session_id.unwrap_or("").trim();
         let month = img::year_month_from_create_time(create_time);
@@ -611,7 +698,7 @@ impl ServiceHub {
             return Vec::new();
         }
         // the month's folder in the first of the conversation's folders that has one
-        let Some(root) = img::session_dirs_for_storage(session)
+        let Some((root, listing)) = img::session_dirs_for_storage(session)
             .into_iter()
             .map(|session_dir| {
                 account_dir
@@ -621,31 +708,29 @@ impl ServiceHub {
                     .join(&month)
                     .join("Img")
             })
-            .find(|root| root.is_dir())
+            .find_map(|root| self.dir_listing(&root, since).map(|l| (root, l)))
         else {
             return Vec::new();
         };
         let mut out: Vec<String> = Vec::new();
         let mut budget = 240i32;
-        let mut stack: Vec<(PathBuf, u32)> = vec![(root, 0)];
-        while let Some((dir, depth)) = stack.pop() {
+        let mut stack: Vec<(PathBuf, u32, Option<Arc<DirListing>>)> =
+            vec![(root, 0, Some(listing))];
+        while let Some((dir, depth, listed)) = stack.pop() {
             if budget <= 0 {
                 break;
             }
             budget -= 1;
-            let Some(listing) = self.dir_listing(&dir) else {
+            let Some(listing) = listed.or_else(|| self.dir_listing(&dir, since)) else {
                 continue;
             };
             // every candidate name, lower-cased, starts with `base_md5` (`normalize_dat_base` only drops suffixes),
-            // so only those names are checked
+            // so only those names are checked; the listing was found current for `since`, so they are on disk
             for name in listing.files_starting_with(base_md5) {
                 if img::is_hardlink_candidate_name(name, base_md5) {
-                    let full = dir.join(name);
-                    if full.exists() {
-                        let s = full.to_string_lossy().to_string();
-                        if !out.contains(&s) {
-                            out.push(s);
-                        }
+                    let s = dir.join(name).to_string_lossy().to_string();
+                    if !out.contains(&s) {
+                        out.push(s);
                     }
                 }
             }
@@ -656,36 +741,100 @@ impl ServiceHub {
                 if name.is_empty() || name.starts_with('.') {
                     continue;
                 }
-                stack.push((dir.join(name), depth + 1));
+                stack.push((dir.join(name), depth + 1, None));
             }
         }
         out
     }
 
-    /// The entries of `dir`, read again only when it changed since it was last read.
-    fn dir_listing(&self, dir: &Path) -> Option<Arc<DirListing>> {
+    /// The entries of `dir` (`None` when there is no such folder), read again only when it changed since it was last
+    /// read, and checked for that at most once for `since`.
+    fn dir_listing(&self, dir: &Path, since: Since) -> Option<Arc<DirListing>> {
         let cached = self
             .image_state
             .lock_or_panic()
             .dir_listings
             .get(dir)
-            .cloned();
-        if let Some(listing) = cached.filter(|l| l.current(dir)) {
-            return Some(listing);
+            .map(|l| (l.listing.clone(), l.checked));
+        let checked = Instant::now();
+        match cached {
+            Some((listing, at)) if since.covers(at) => return listing,
+            Some((Some(listing), _)) if listing.current(dir) => {
+                if let Some(entry) = self.image_state.lock_or_panic().dir_listings.get_mut(dir) {
+                    if entry
+                        .listing
+                        .as_ref()
+                        .is_some_and(|l| Arc::ptr_eq(l, &listing))
+                    {
+                        entry.checked = checked;
+                    }
+                }
+                return Some(listing);
+            }
+            _ => {}
         }
         // read without holding the lock: the export's media threads search side by side
-        let Some(listing) = DirListing::read(dir).map(Arc::new) else {
-            self.image_state.lock_or_panic().dir_listings.remove(dir);
-            return None;
-        };
+        let listing = DirListing::read(dir).map(Arc::new);
         let mut state = self.image_state.lock_or_panic();
         if state.dir_listings.len() >= MAX_DIR_LISTINGS {
             state.dir_listings.clear();
         }
-        state
-            .dir_listings
-            .insert(dir.to_path_buf(), listing.clone());
-        Some(listing)
+        state.dir_listings.insert(
+            dir.to_path_buf(),
+            Listed {
+                listing: listing.clone(),
+                checked,
+            },
+        );
+        listing
+    }
+
+    /// The size and time of the file `path`, `None` when it is not on disk: from the listing of its folder when that
+    /// was found current for `since` (a file it does not list is not there), else from the disk.
+    fn file_meta(&self, path: &Path, since: Since) -> Option<FileMeta> {
+        let listed = path.parent().and_then(|dir| {
+            self.image_state
+                .lock_or_panic()
+                .dir_listings
+                .get(dir)
+                .filter(|l| since.covers(l.checked))
+                .map(|l| l.listing.clone())
+        });
+        if let (Some(listing), Some(name)) = (listed, path.file_name()) {
+            // no such folder, or a name it does not list: not on disk
+            if let Some(meta) = listing?.file(&name.to_string_lossy())? {
+                return Some(meta);
+            }
+        }
+        std::fs::metadata(path)
+            .ok()
+            .filter(std::fs::Metadata::is_file)
+            .map(|m| FileMeta::of(&m))
+    }
+
+    /// The cache folder of the image decrypted from `dat` ([`img::month_folder`]).
+    fn dat_month(&self, dat: &str, since: Since) -> String {
+        img::month_folder(
+            self.file_meta(Path::new(dat), since)
+                .and_then(|m| m.modified),
+        )
+    }
+
+    /// The largest of `paths`: biggest file, then newest, then name.
+    fn pick_largest(&self, paths: &[String], since: Since) -> Option<String> {
+        let mut list: Vec<(u64, u128, &String)> = Vec::new();
+        for p in paths {
+            if !p.is_empty() && !list.iter().any(|(_, _, q)| *q == p) {
+                let meta = self.file_meta(Path::new(p), since);
+                let modified_ms = meta
+                    .and_then(|m| m.modified)
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_millis());
+                list.push((meta.map_or(0, |m| m.len), modified_ms, p));
+            }
+        }
+        list.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)).then(a.2.cmp(b.2)));
+        list.first().map(|(_, _, p)| (*p).clone())
     }
 
     /// The best `.dat` of the image `base_md5`: what the folders of its conversation hold
@@ -699,6 +848,7 @@ impl ServiceHub {
         session_id: Option<&str>,
         create_time: Option<i64>,
         allow_thumbnail: bool,
+        since: Since,
     ) -> Option<String> {
         let listed = self.select_listed_dat(
             account_dir,
@@ -706,6 +856,7 @@ impl ServiceHub {
             session_id,
             create_time,
             allow_thumbnail,
+            since,
         );
         if listed
             .as_deref()
@@ -713,7 +864,7 @@ impl ServiceHub {
         {
             return listed;
         }
-        let linked = self.select_linked_dat(account_dir, base_md5, allow_thumbnail);
+        let linked = self.select_linked_dat(account_dir, base_md5, allow_thumbnail, since);
         match (listed, linked) {
             (Some(listed), Some(linked)) if Rendition::of(&linked) < Rendition::of(&listed) => {
                 Some(linked)
@@ -729,8 +880,9 @@ impl ServiceHub {
         account_dir: &Path,
         base_md5: &str,
         allow_thumbnail: bool,
+        since: Since,
     ) -> Option<String> {
-        self.linked_dats(account_dir, base_md5)
+        self.linked_dats(account_dir, base_md5, since)
             .into_iter()
             .filter(|p| allow_thumbnail || Rendition::of(p) == Rendition::Hd)
             // the first of equals: the index lists the newest first
@@ -739,23 +891,41 @@ impl ServiceHub {
 
     /// The `.dat` files of `base_md5` that WeChat's media index (`hardlink.db`) lists and that are on disk, newest
     /// first.
-    fn linked_dats(&self, account_dir: &Path, base_md5: &str) -> Vec<String> {
+    fn linked_dats(&self, account_dir: &Path, base_md5: &str, since: Since) -> Vec<String> {
         if !img::looks_like_md5(base_md5) {
             return Vec::new();
         }
-        let index = self.linked_image_index(account_dir);
+        let index = self.linked_image_index(account_dir, since);
         index
             .get(base_md5)
             .into_iter()
             .flatten()
-            .map(|rel| account_dir.join(rel).to_string_lossy().into_owned())
-            .filter(|p| p.to_lowercase().ends_with(".dat") && Path::new(p).is_file())
+            .map(|rel| account_dir.join(rel))
+            .filter(|p| {
+                p.to_string_lossy().to_lowercase().ends_with(".dat")
+                    && self.file_meta(p, since).is_some()
+            })
+            .map(|p| p.to_string_lossy().into_owned())
             .collect()
     }
 
-    /// WeChat's media index of images by md5, read again only when its database changed since it was last read.
-    /// Without the database key it cannot be read, and is empty.
-    fn linked_image_index(&self, account_dir: &Path) -> Arc<HashMap<String, Vec<PathBuf>>> {
+    /// WeChat's media index of images by md5, read again only when its database changed since it was last read,
+    /// which is checked at most once for `since`. Without the database key it cannot be read, and is empty.
+    fn linked_image_index(
+        &self,
+        account_dir: &Path,
+        since: Since,
+    ) -> Arc<HashMap<String, Vec<PathBuf>>> {
+        if let Some(cached) = self
+            .image_state
+            .lock_or_panic()
+            .linked_images
+            .as_ref()
+            .filter(|c| c.account_dir == account_dir && since.covers(c.checked))
+        {
+            return cached.by_md5.clone();
+        }
+        let checked = Instant::now();
         let db = account_dir.join("db_storage/hardlink/hardlink.db");
         let stamp = [db.clone(), db.with_extension("db-wal")].map(|path| {
             std::fs::metadata(path)
@@ -766,9 +936,10 @@ impl ServiceHub {
             .image_state
             .lock_or_panic()
             .linked_images
-            .as_ref()
+            .as_mut()
             .filter(|c| c.account_dir == account_dir && c.stamp == stamp)
         {
+            cached.checked = checked;
             return cached.by_md5.clone();
         }
         // read without holding the lock, as the folders are
@@ -782,6 +953,7 @@ impl ServiceHub {
             account_dir: account_dir.to_path_buf(),
             stamp,
             by_md5: by_md5.clone(),
+            checked,
         });
         by_md5
     }
@@ -794,11 +966,12 @@ impl ServiceHub {
         session_id: Option<&str>,
         create_time: Option<i64>,
         allow_thumbnail: bool,
+        since: Since,
     ) -> Option<String> {
         let candidates: Vec<String> = self
-            .collect_dat_candidates(account_dir, base_md5, session_id, create_time)
+            .collect_dat_candidates(account_dir, base_md5, session_id, create_time, since)
             .into_iter()
-            .filter(|p| Path::new(p).exists() && p.to_lowercase().ends_with(".dat"))
+            .filter(|p| p.to_lowercase().ends_with(".dat"))
             .collect();
         if candidates.is_empty() {
             return None;
@@ -813,14 +986,17 @@ impl ServiceHub {
             .filter(|p| img::is_hd_dat_path(p))
             .cloned()
             .collect();
-        if let Some(p) = pick_largest(&hd) {
+        if let Some(p) = self.pick_largest(&hd, since) {
             return Some(p);
         }
         if !allow_thumbnail {
             return None;
         }
         let sel = |list: &[String], f: &dyn Fn(&str) -> bool| {
-            pick_largest(&list.iter().filter(|p| f(p)).cloned().collect::<Vec<_>>())
+            self.pick_largest(
+                &list.iter().filter(|p| f(p)).cloned().collect::<Vec<_>>(),
+                since,
+            )
         };
         let is_base = |p: &str| img::is_base_dat_path(p, base_md5);
         let is_t = |p: &str| img::is_t_variant_dat(p);
@@ -835,6 +1011,7 @@ impl ServiceHub {
         account_dir: &Path,
         p: &ImagePayload,
         search: DatSearch,
+        since: Since,
     ) -> Option<String> {
         let DatSearch {
             allow_thumbnail,
@@ -866,7 +1043,7 @@ impl ServiceHub {
                 let Some(cached) = self.image_state_get(&format!("{dir}|{key}")) else {
                     continue;
                 };
-                if !Path::new(&cached).exists() {
+                if self.file_meta(Path::new(&cached), since).is_none() {
                     continue;
                 }
                 if !allow_thumbnail && !img::is_hd_dat_path(&cached) {
@@ -880,9 +1057,14 @@ impl ServiceHub {
             }
         }
         for base in &bases {
-            let Some(selected) =
-                self.select_best_dat(account_dir, base, session_id, create_time, allow_thumbnail)
-            else {
+            let Some(selected) = self.select_best_dat(
+                account_dir,
+                base,
+                session_id,
+                create_time,
+                allow_thumbnail,
+                since,
+            ) else {
                 continue;
             };
             self.cache_dat_path(account_dir, base, &selected);
@@ -904,29 +1086,33 @@ impl ServiceHub {
         None
     }
 
+    /// The image decrypted from `dat_path` (whose cache folder is `month`) that the cache holds, when it is usable.
     fn find_cached_output(
         &self,
         dat_path: &str,
+        month: &str,
         session_id: Option<&str>,
         prefer_hd: bool,
+        since: Since,
     ) -> Option<String> {
         let root = self.image_cache_root();
-        self.possibly_cached(img::cache_output_candidates(
-            &root, dat_path, session_id, prefer_hd,
-        ))
+        self.possibly_cached(
+            img::cache_output_candidates(&root, dat_path, month, session_id, prefer_hd),
+            since,
+        )
         .into_iter()
-        .filter(|c| c.exists())
         .map(|c| c.to_string_lossy().to_string())
+        // a file that is not there is not usable either
         .find(|c| self.usable_image_cache_file(c))
     }
 
     /// The `candidates` whose folder lists their name, in order: those that may exist. Costs one metadata call per
-    /// folder instead of one per path; the paths returned still have to be checked.
-    fn possibly_cached(&self, candidates: Vec<PathBuf>) -> Vec<PathBuf> {
+    /// folder, at most once for `since`, instead of one per path; the paths returned still have to be checked.
+    fn possibly_cached(&self, candidates: Vec<PathBuf>, since: Since) -> Vec<PathBuf> {
         let mut dirs: HashMap<&Path, CacheDir> = HashMap::new();
         for dir in candidates.iter().filter_map(|c| c.parent()) {
             if !dirs.contains_key(dir) {
-                dirs.insert(dir, self.index_cache_dir(dir));
+                dirs.insert(dir, self.index_cache_dir(dir, since));
             }
         }
         let state = self.image_state.lock_or_panic();
@@ -953,19 +1139,47 @@ impl ServiceHub {
             .collect()
     }
 
-    /// Brings the names of the cache folder `dir` up to date.
-    fn index_cache_dir(&self, dir: &Path) -> CacheDir {
+    /// Brings the names of the cache folder `dir` up to date, checking it at most once for `since`.
+    fn index_cache_dir(&self, dir: &Path, since: Since) -> CacheDir {
+        if let Some(index) = self
+            .image_state
+            .lock_or_panic()
+            .cache_dirs
+            .get(dir)
+            .filter(|index| since.covers(index.checked))
+        {
+            return match index.modified {
+                Some(_) => CacheDir::Indexed,
+                None => CacheDir::Missing,
+            };
+        }
+        let checked = Instant::now();
         let Some(modified) = modified_time(dir) else {
-            self.image_state.lock_or_panic().cache_dirs.remove(dir);
+            let mut state = self.image_state.lock_or_panic();
+            if state.cache_dirs.len() >= MAX_DIR_LISTINGS && !state.cache_dirs.contains_key(dir) {
+                state.cache_dirs.clear();
+            }
+            state.cache_dirs.insert(
+                dir.to_path_buf(),
+                CacheDirNames {
+                    modified: None,
+                    names: HashSet::new(),
+                    checked,
+                },
+            );
             return CacheDir::Missing;
         };
         {
-            let state = self.image_state.lock_or_panic();
-            let recorded = state.cache_dirs.get(dir).map(|index| index.modified);
-            // a file this process renamed into the folder in between is recorded under the lock (`write_cache_file`)
-            if recorded.is_some() && (recorded == Some(modified) || recorded == modified_time(dir))
-            {
-                return CacheDir::Indexed;
+            let mut state = self.image_state.lock_or_panic();
+            if let Some(index) = state.cache_dirs.get_mut(dir) {
+                // a file this process renamed into the folder in between is recorded under the lock
+                // (`write_cache_file`)
+                if index.modified.is_some()
+                    && (index.modified == Some(modified) || index.modified == modified_time(dir))
+                {
+                    index.checked = checked;
+                    return CacheDir::Indexed;
+                }
             }
         }
         // read without holding the lock. The time was taken first: a file written meanwhile changes it again, so the
@@ -985,32 +1199,48 @@ impl ServiceHub {
             .cache_dirs
             .entry(dir.to_path_buf())
             .or_insert_with(|| CacheDirNames {
-                modified,
+                modified: Some(modified),
                 names: HashSet::new(),
+                checked,
             });
         // added to the names already known, so a file another thread noted in between is not dropped
         index.names.extend(names);
-        index.modified = modified;
+        index.modified = Some(modified);
+        index.checked = checked;
         CacheDir::Indexed
     }
 
     /// Writes a decrypted image into the cache like [`write_atomically`], and adds it to its folder's names. The
     /// temporary file is written in `<cache>/Images/.partial`, and the rename is recorded under the lock: otherwise
-    /// the other media threads would see the folder change while it is written and read all its names again.
-    fn write_cache_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    /// the other media threads would see the folder change while it is written and read all its names again. The
+    /// folders are made when the write finds one missing.
+    fn write_cache_file(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         let (Some(dir), Some(name)) = (path.parent(), lower_file_name(path)) else {
             return write_atomically(path, bytes);
         };
         let partial = self.image_cache_root().join(".partial");
-        std::fs::create_dir_all(&partial)?;
+        let in_folder = |folder: &Path, op: &dyn Fn() -> io::Result<()>| match op() {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                self.make_image_cache_dir(folder)?;
+                op()
+            }
+            done => done,
+        };
         let tmp = temporary_sibling(&partial.join(&name));
-        let written = std::fs::write(&tmp, bytes).and_then(|()| {
+        let written = in_folder(&partial, &|| std::fs::write(&tmp, bytes)).and_then(|()| {
             let mut state = self.image_state.lock_or_panic();
-            std::fs::rename(&tmp, path)?;
+            in_folder(dir, &|| std::fs::rename(&tmp, path))?;
             let modified = modified_time(dir);
-            if let (Some(index), Some(modified)) = (state.cache_dirs.get_mut(dir), modified) {
-                index.names.insert(name);
-                index.modified = modified;
+            match (state.cache_dirs.get_mut(dir), modified) {
+                // a folder known to be missing may have been made and filled by another process since
+                (Some(index), _) if index.modified.is_none() => {
+                    state.cache_dirs.remove(dir);
+                }
+                (Some(index), Some(modified)) => {
+                    index.names.insert(name);
+                    index.modified = Some(modified);
+                }
+                _ => {}
             }
             Ok(())
         });
@@ -1023,37 +1253,41 @@ impl ServiceHub {
     fn remove_duplicate_cache_candidates(
         &self,
         dat_path: &str,
+        month: &str,
         session_id: Option<&str>,
         keep: &str,
+        since: Since,
     ) {
         let root = self.image_cache_root();
         let mut all: Vec<PathBuf> =
-            img::cache_output_candidates(&root, dat_path, session_id, false);
+            img::cache_output_candidates(&root, dat_path, month, session_id, false);
         all.extend(img::cache_output_candidates(
-            &root, dat_path, session_id, true,
+            &root, dat_path, month, session_id, true,
         ));
         let mut seen = HashSet::new();
         all.retain(|c| seen.insert(c.clone()));
-        for c in self.possibly_cached(all) {
+        for c in self.possibly_cached(all, since) {
             let s = c.to_string_lossy().to_string();
-            if s == keep || !c.exists() || !img::is_image_file(&s) {
+            if s == keep || !img::is_image_file(&s) {
                 continue;
             }
+            // a file that is not there stays not there
             let _ = std::fs::remove_file(&c);
         }
     }
 
-    /// Swaps a cached thumbnail for the HD rendition when one exists.
+    /// Swaps `cached`, a usable cached thumbnail, for the HD rendition when one exists.
     fn try_promote_thumbnail(
         &self,
         p: &ImagePayload,
         cache_key: &str,
         cached: &str,
+        since: Since,
     ) -> Option<String> {
-        if !Path::new(cached).exists() || !img::is_image_file(cached) || img::is_hd_path(cached) {
+        if !img::is_image_file(cached) || img::is_hd_path(cached) {
             return None;
         }
-        let account_dir = self.account_dir_only().ok()?;
+        let account_dir = self.account_dir_since(since).ok()?;
         let hd_dat = self.resolve_dat_path(
             &account_dir,
             p,
@@ -1062,17 +1296,19 @@ impl ServiceHub {
                 skip_resolved_cache: true,
                 allow_dat_name_fallback: false,
             },
+            since,
         )?;
         let remove_old = |keep: &str| {
             if cached != keep && Path::new(cached).exists() && !img::is_hd_path(cached) {
                 let _ = std::fs::remove_file(cached);
             }
         };
-        if let Some(existing) = self.find_cached_output(&hd_dat, p.session_id.as_deref(), true) {
-            if Path::new(&existing).exists()
-                && img::is_image_file(&existing)
-                && img::is_hd_path(&existing)
-            {
+        let month = self.dat_month(&hd_dat, since);
+        if let Some(existing) =
+            self.find_cached_output(&hd_dat, &month, p.session_id.as_deref(), true, since)
+        {
+            // a usable file of the cache, so one on disk
+            if img::is_image_file(&existing) && img::is_hd_path(&existing) {
                 self.cache_resolved_paths(
                     cache_key,
                     p.image_md5.as_deref(),
@@ -1083,11 +1319,14 @@ impl ServiceHub {
                 return Some(existing);
             }
         }
-        let upgraded = self.image_decrypt(&ImagePayload {
-            prefer_file_path: true,
-            force: true,
-            ..p.clone()
-        });
+        let upgraded = self.image_decrypt_since(
+            &ImagePayload {
+                prefer_file_path: true,
+                force: true,
+                ..p.clone()
+            },
+            since,
+        );
         if !upgraded.is_ok() {
             return None;
         }
@@ -1110,6 +1349,11 @@ impl ServiceHub {
 
     /// Answers from the cache only; never decrypts a missing file.
     pub fn image_resolve_cache(&self, p: &ImagePayload) -> ImageResult {
+        self.image_resolve_cache_since(p, Since::now())
+    }
+
+    /// [`Self::image_resolve_cache`] that takes on trust what was checked for `since`.
+    pub(super) fn image_resolve_cache_since(&self, p: &ImagePayload, since: Since) -> ImageResult {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
             return ImageResult::no_identifier();
@@ -1122,19 +1366,19 @@ impl ServiceHub {
             let Some(cached) = self.image_state_get(key) else {
                 continue;
             };
-            if Path::new(&cached).exists() && self.usable_image_cache_file(&cached) {
-                let upgraded = if !img::is_hd_path(&cached) {
-                    self.try_promote_thumbnail(p, key, &cached)
-                } else {
-                    None
-                };
-                return finish(upgraded.as_deref().unwrap_or(&cached));
-            }
+            // a file that is not there is not usable either
             if !self.usable_image_cache_file(&cached) {
                 self.image_state_remove(key);
+                continue;
             }
+            let upgraded = if !img::is_hd_path(&cached) {
+                self.try_promote_thumbnail(p, key, &cached, since)
+            } else {
+                None
+            };
+            return finish(upgraded.as_deref().unwrap_or(&cached));
         }
-        if let Ok(account_dir) = self.account_dir_only() {
+        if let Ok(account_dir) = self.account_dir_since(since) {
             if let Some(dat) = self.resolve_dat_path(
                 &account_dir,
                 p,
@@ -1143,12 +1387,14 @@ impl ServiceHub {
                     skip_resolved_cache: false,
                     allow_dat_name_fallback: p.allow_cache_index != Some(false),
                 },
+                since,
             ) {
+                let month = self.dat_month(&dat, since);
                 if let Some(existing) =
-                    self.find_cached_output(&dat, p.session_id.as_deref(), false)
+                    self.find_cached_output(&dat, &month, p.session_id.as_deref(), false, since)
                 {
                     let upgraded = if !img::is_hd_path(&existing) {
-                        self.try_promote_thumbnail(p, &cache_key, &existing)
+                        self.try_promote_thumbnail(p, &cache_key, &existing, since)
                     } else {
                         None
                     };
@@ -1168,6 +1414,11 @@ impl ServiceHub {
 
     /// Decrypts a message image into the cache, or finds it there (`image decrypt`).
     pub fn image_decrypt(&self, p: &ImagePayload) -> ImageResult {
+        self.image_decrypt_since(p, Since::now())
+    }
+
+    /// [`Self::image_decrypt`] that takes on trust what was checked for `since`.
+    pub(super) fn image_decrypt_since(&self, p: &ImagePayload, since: Since) -> ImageResult {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
             return ImageResult::no_identifier();
@@ -1177,10 +1428,12 @@ impl ServiceHub {
                 let Some(cached) = self.image_state_get(key) else {
                     continue;
                 };
-                if Path::new(&cached).exists()
-                    && self.usable_image_cache_file(&cached)
-                    && img::is_hd_path(&cached)
-                {
+                // a file that is not there is not usable either
+                if !self.usable_image_cache_file(&cached) {
+                    self.image_state_remove(key);
+                    continue;
+                }
+                if img::is_hd_path(&cached) {
                     self.cache_resolved_paths(
                         &cache_key,
                         p.image_md5.as_deref(),
@@ -1192,14 +1445,11 @@ impl ServiceHub {
                         None,
                     );
                 }
-                if !self.usable_image_cache_file(&cached) {
-                    self.image_state_remove(key);
-                }
             }
         } else if let Some(cached) = self.image_state_get(&cache_key) {
-            if Path::new(&cached).exists() && self.usable_image_cache_file(&cached) {
+            if self.usable_image_cache_file(&cached) {
                 let upgraded = if !img::is_hd_path(&cached) {
-                    self.try_promote_thumbnail(p, &cache_key, &cached)
+                    self.try_promote_thumbnail(p, &cache_key, &cached, since)
                 } else {
                     None
                 };
@@ -1211,49 +1461,37 @@ impl ServiceHub {
                     None,
                 );
             }
-            if !self.usable_image_cache_file(&cached) {
-                self.image_state_remove(&cache_key);
-            }
+            self.image_state_remove(&cache_key);
         }
-        self.image_decrypt_internal(p, &cache_key)
+        self.image_decrypt_internal(p, &cache_key, since)
     }
 
-    fn image_decrypt_internal(&self, p: &ImagePayload, cache_key: &str) -> ImageResult {
-        let Ok(account_dir) = self.account_dir_only() else {
+    fn image_decrypt_internal(
+        &self,
+        p: &ImagePayload,
+        cache_key: &str,
+        since: Since,
+    ) -> ImageResult {
+        let Ok(account_dir) = self.account_dir_since(since) else {
             return ImageResult::fail("no account or database path configured", "not_found");
         };
         let allow_fallback = p.allow_cache_index != Some(false);
-        let dat = if p.force {
-            match self.resolve_dat_path(
-                &account_dir,
-                p,
-                DatSearch {
-                    allow_thumbnail: false,
-                    skip_resolved_cache: false,
-                    allow_dat_name_fallback: allow_fallback,
-                },
-            ) {
-                Some(d) => Some(d),
-                None => self.resolve_dat_path(
-                    &account_dir,
-                    p,
-                    DatSearch {
-                        allow_thumbnail: true,
-                        skip_resolved_cache: false,
-                        allow_dat_name_fallback: allow_fallback,
-                    },
-                ),
-            }
-        } else {
+        let search = |allow_thumbnail: bool| {
             self.resolve_dat_path(
                 &account_dir,
                 p,
                 DatSearch {
-                    allow_thumbnail: true,
+                    allow_thumbnail,
                     skip_resolved_cache: false,
                     allow_dat_name_fallback: allow_fallback,
                 },
+                since,
             )
+        };
+        let dat = if p.force {
+            search(false).or_else(|| search(true))
+        } else {
+            search(true)
         };
         let Some(dat) = dat else {
             return if p.force {
@@ -1284,7 +1522,10 @@ impl ServiceHub {
         }
 
         let prefer_hd = p.force && Rendition::of(&dat) == Rendition::Hd;
-        if let Some(existing) = self.find_cached_output(&dat, p.session_id.as_deref(), prefer_hd) {
+        let month = self.dat_month(&dat, since);
+        if let Some(existing) =
+            self.find_cached_output(&dat, &month, p.session_id.as_deref(), prefer_hd, since)
+        {
             // a cached output decrypted from a lesser rendition than `dat` (a thumbnail cached before WeChat
             // downloaded the image, #858) is replaced by decrypting `dat`
             if Rendition::of_cached(&existing) <= Rendition::of(&dat) {
@@ -1332,19 +1573,19 @@ impl ServiceHub {
                 ..Default::default()
             };
         };
-        let output =
-            img::cache_output_path(&self.image_cache_root(), &dat, ext, p.session_id.as_deref());
-        if let Some(parent) = output.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                return ImageResult::fail(e.to_string(), "not_found");
-            }
-        }
+        let output = img::cache_output_path(
+            &self.image_cache_root(),
+            &dat,
+            &month,
+            ext,
+            p.session_id.as_deref(),
+        );
         // renamed into place: an export's other media threads may read this cache file as soon as it exists
         if let Err(e) = self.write_cache_file(&output, &data) {
             return ImageResult::fail(e.to_string(), "not_found");
         }
         let out = output.to_string_lossy().to_string();
-        self.remove_duplicate_cache_candidates(&dat, p.session_id.as_deref(), &out);
+        self.remove_duplicate_cache_candidates(&dat, &month, p.session_id.as_deref(), &out, since);
         self.cache_resolved_paths(
             cache_key,
             p.image_md5.as_deref(),
@@ -1366,8 +1607,9 @@ impl ServiceHub {
         ImageResult::ok(local, Some(img::is_thumbnail_path(&dat)))
     }
 
-    /// One result row per payload (duplicates are resolved once).
+    /// One result row per payload (duplicates are resolved once), the folders checked once for the whole batch.
     pub fn image_resolve_cache_batch(&self, payloads: &[ImagePayload]) -> ImageBatch {
+        let since = Since::now();
         let mut memo: HashMap<String, ImageResult> = HashMap::new();
         let rows: Vec<ImageResult> = payloads
             .iter()
@@ -1385,7 +1627,7 @@ impl ServiceHub {
                     p.prefer_file_path
                 );
                 memo.entry(key)
-                    .or_insert_with(|| self.image_resolve_cache(p))
+                    .or_insert_with(|| self.image_resolve_cache_since(p, since))
                     .clone()
             })
             .collect();
@@ -1492,17 +1734,18 @@ impl ServiceHub {
     /// The `.dat` files of each rendition of `p`'s image, chosen as [`Self::select_best_dat`] chooses among them:
     /// what the folders hold, and a rendition they lack where WeChat's media index puts one (#651).
     fn dat_files(&self, p: &ImagePayload) -> Option<DatFiles> {
-        let account_dir = self.account_dir_only().ok()?;
+        let since = Since::now();
+        let account_dir = self.account_dir_since(since).ok()?;
         let bases = lookup_bases(
             p.image_md5.as_deref(),
             p.image_dat_name.as_deref(),
             p.allow_cache_index != Some(false),
         );
         let mut files = self
-            .listed_dat_files(&account_dir, p, &bases)
+            .listed_dat_files(&account_dir, p, &bases, since)
             .unwrap_or_default();
         for base in &bases {
-            for linked in self.linked_dats(&account_dir, base) {
+            for linked in self.linked_dats(&account_dir, base, since) {
                 let slot = match Rendition::of(&linked) {
                     Rendition::Hd => &mut files.hd,
                     Rendition::Original => &mut files.base,
@@ -1521,12 +1764,19 @@ impl ServiceHub {
         account_dir: &Path,
         p: &ImagePayload,
         bases: &[String],
+        since: Since,
     ) -> Option<DatFiles> {
         for base in bases {
             let candidates: Vec<String> = self
-                .collect_dat_candidates(account_dir, base, p.session_id.as_deref(), p.create_time)
+                .collect_dat_candidates(
+                    account_dir,
+                    base,
+                    p.session_id.as_deref(),
+                    p.create_time,
+                    since,
+                )
                 .into_iter()
-                .filter(|c| Path::new(c).exists() && c.to_lowercase().ends_with(".dat"))
+                .filter(|c| c.to_lowercase().ends_with(".dat"))
                 .collect();
             if candidates.is_empty() {
                 continue;
@@ -1537,7 +1787,10 @@ impl ServiceHub {
                 .cloned()
                 .collect();
             let of = |list: &[String], f: &dyn Fn(&str) -> bool| {
-                pick_largest(&list.iter().filter(|c| f(c)).cloned().collect::<Vec<_>>())
+                self.pick_largest(
+                    &list.iter().filter(|c| f(c)).cloned().collect::<Vec<_>>(),
+                    since,
+                )
             };
             let is_base = |c: &str| img::is_base_dat_path(c, base);
             let is_t = |c: &str| img::is_t_variant_dat(c);
@@ -1577,7 +1830,8 @@ impl ServiceHub {
 
     /// The `_t.dat` beside the image file of `p`, decrypted, when it is an image a page can show.
     fn thumbnail_bytes(&self, p: &ImagePayload) -> Option<Vec<u8>> {
-        let account_dir = self.account_dir_only().ok()?;
+        let since = Since::now();
+        let account_dir = self.account_dir_since(since).ok()?;
         let dat = self.resolve_dat_path(
             &account_dir,
             p,
@@ -1586,6 +1840,7 @@ impl ServiceHub {
                 skip_resolved_cache: false,
                 allow_dat_name_fallback: p.allow_cache_index != Some(false),
             },
+            since,
         )?;
         let path = Path::new(&dat);
         let thumb = if img::is_t_variant_dat(&dat) {
@@ -1594,9 +1849,7 @@ impl ServiceHub {
             let base = img::normalize_dat_base(&path.file_name()?.to_string_lossy());
             path.with_file_name(format!("{base}_t.dat"))
         };
-        if !thumb.is_file() {
-            return None;
-        }
+        self.file_meta(&thumb, since)?;
         let (xor_key, aes_key) = self.image_keys();
         let decrypted = crate::decrypt::decrypt_file(&thumb, xor_key?, aes_key.as_ref()).ok()?;
         let (data, _) = img::unwrap_wxgf(decrypted.data);
