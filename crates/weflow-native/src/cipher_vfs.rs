@@ -490,7 +490,11 @@ impl CipherFile {
         }
         let count = CHUNK_PAGES.min(self.main_pages + 1 - first);
         let mut buf = vec![0u8; count as usize * PAGE_SIZE];
-        if let Err(e) = read_at(&self.file, &mut buf, (first as u64 - 1) * PAGE_SIZE as u64) {
+        if let Err(e) = read_at(
+            &self.file,
+            &mut buf,
+            (u64::from(first) - 1) * PAGE_SIZE as u64,
+        ) {
             return Err(self.fail(format!("cannot read {}: {e}", self.path.display())));
         }
         // The pages are in memory now; if no checkpoint moved past our snapshot until this moment, they are ours.
@@ -715,7 +719,7 @@ impl CipherFile {
     }
 
     fn size(&self) -> u64 {
-        self.total_pages as u64 * PAGE_SIZE as u64
+        u64::from(self.total_pages) * PAGE_SIZE as u64
     }
 }
 
@@ -865,7 +869,7 @@ unsafe extern "C" fn x_open(
         // SAFETY: `szOsFile` is at least a `VfsFile`, whose `sqlite3_file` comes first
         unsafe {
             (*f).file = Arc::into_raw(cf);
-            (*f).base.pMethods = &IO_METHODS;
+            (*f).base.pMethods = &raw const IO_METHODS;
         }
         if !out_flags.is_null() {
             // SAFETY: SQLite's out-parameter, not null
@@ -1102,7 +1106,7 @@ mod tests {
         let refs: Vec<&str> = values.iter().map(String::as_str).collect();
         let enc = encrypt_db(&plain_db(&refs), &cipher);
         let pages = (enc.len() / PAGE_SIZE) as u64;
-        assert!(pages > 2 * CHUNK_PAGES as u64);
+        assert!(pages > 2 * u64::from(CHUNK_PAGES));
         let path = dir.join("a.db");
         fs::write(&path, &enc).unwrap();
         let (cf, conn) = open(&path);

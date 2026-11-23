@@ -671,7 +671,7 @@ pub mod testutil {
                 conn.handle(),
                 c"main".as_ptr(),
                 38,
-                (&mut reserve as *mut std::os::raw::c_int).cast(),
+                (&raw mut reserve).cast(),
             )
         };
         assert_eq!(rc, 0);

@@ -284,7 +284,7 @@ impl Canvas {
     /// `text` centred on `cy`, white on a dark outline, `scale` pixels a dot.
     fn text(&mut self, text: &str, cy: i64, scale: i64) {
         let width = text.chars().count() as i64 * 6 * scale - scale;
-        let x0 = (self.w as i64 - width) / 2;
+        let x0 = (i64::from(self.w) - width) / 2;
         let y0 = cy - 7 * scale / 2;
         for (color, grow) in [([20, 20, 30], scale.max(2) / 2), ([255, 255, 255], 0)] {
             for (k, c) in text.chars().enumerate() {
@@ -332,7 +332,11 @@ fn picture(w: u32, h: u32, hue: f64, label: &str) -> Vec<u8> {
         rgb: vec![0; (w * h * 3) as usize],
     };
     let (top, bottom) = (hsl(hue, 0.55, 0.32), hsl(hue + 30.0, 0.8, 0.72));
-    let (sun_x, sun_y, sun_r) = (w as f64 * 0.68, h as f64 * 0.4, w.min(h) as f64 * 0.09);
+    let (sun_x, sun_y, sun_r) = (
+        f64::from(w) * 0.68,
+        f64::from(h) * 0.4,
+        f64::from(w.min(h)) * 0.09,
+    );
     // each hill's ridge per column and its colour, worked out once: the loop below runs for every pixel
     let hills: Vec<(Vec<u32>, [u8; 3])> = [(0.62, 0.40), (0.74, 0.27), (0.86, 0.15)]
         .iter()
@@ -340,9 +344,10 @@ fn picture(w: u32, h: u32, hue: f64, label: &str) -> Vec<u8> {
         .map(|(k, (base, light))| {
             let ridge = (0..w)
                 .map(|x| {
-                    (h as f64 * base
-                        + (x as f64 / w as f64 * 9.0 + k as f64 * 2.1).sin() * h as f64 * 0.035)
-                        as u32
+                    (f64::from(h) * base
+                        + (f64::from(x) / f64::from(w) * 9.0 + k as f64 * 2.1).sin()
+                            * f64::from(h)
+                            * 0.035) as u32
                 })
                 .collect();
             (ridge, hsl(hue, 0.3, *light))
@@ -350,10 +355,11 @@ fn picture(w: u32, h: u32, hue: f64, label: &str) -> Vec<u8> {
         .collect();
     let r2 = sun_r * sun_r;
     for y in 0..h {
-        let t = y as f64 / h as f64;
-        let sky: [u8; 3] =
-            std::array::from_fn(|i| (top[i] as f64 + (bottom[i] as f64 - top[i] as f64) * t) as u8);
-        let dy2 = (y as f64 - sun_y).powi(2);
+        let t = f64::from(y) / f64::from(h);
+        let sky: [u8; 3] = std::array::from_fn(|i| {
+            (f64::from(top[i]) + (f64::from(bottom[i]) - f64::from(top[i])) * t) as u8
+        });
+        let dy2 = (f64::from(y) - sun_y).powi(2);
         let row = &mut c.rgb[(y * w * 3) as usize..((y + 1) * w * 3) as usize];
         for (x, px) in row.as_chunks_mut::<3>().0.iter_mut().enumerate() {
             let mut color = if dy2 <= r2 && (x as f64 - sun_x).powi(2) + dy2 < r2 {
@@ -369,11 +375,11 @@ fn picture(w: u32, h: u32, hue: f64, label: &str) -> Vec<u8> {
             *px = color;
         }
     }
-    let scale = (w.min(h) as i64 / 60).max(1);
-    c.text(label, h as i64 / 2 - 5 * scale, scale);
+    let scale = (i64::from(w.min(h)) / 60).max(1);
+    c.text(label, i64::from(h) / 2 - 5 * scale, scale);
     c.text(
         &format!("{w}x{h}"),
-        h as i64 / 2 + 6 * scale,
+        i64::from(h) / 2 + 6 * scale,
         (scale * 2 / 3).max(1),
     );
     let mut out = Vec::new();
@@ -386,9 +392,9 @@ fn picture(w: u32, h: u32, hue: f64, label: &str) -> Vec<u8> {
 /// `w`×`h` with the longest side `side`.
 fn size(aspect: f64, side: u32) -> (u32, u32) {
     if aspect >= 1.0 {
-        (side, ((side as f64 / aspect).round() as u32).max(1))
+        (side, ((f64::from(side) / aspect).round() as u32).max(1))
     } else {
-        (((side as f64 * aspect).round() as u32).max(1), side)
+        (((f64::from(side) * aspect).round() as u32).max(1), side)
     }
 }
 

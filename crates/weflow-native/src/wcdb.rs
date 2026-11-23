@@ -303,8 +303,11 @@ impl Wcdb {
         begin: i32,
         end: i32,
     ) -> Result<Value> {
-        self.account()?
-            .aggregate_stats(&distinct_usernames(session_ids), begin as i64, end as i64)
+        self.account()?.aggregate_stats(
+            &distinct_usernames(session_ids),
+            i64::from(begin),
+            i64::from(end),
+        )
     }
 
     /// The totals the annual report starts from, of `session_ids` between `begin` and `end` (see
@@ -317,8 +320,8 @@ impl Wcdb {
     ) -> Result<Value> {
         self.account()?.annual_report_stats(
             &distinct_usernames(session_ids),
-            begin as i64,
-            end as i64,
+            i64::from(begin),
+            i64::from(end),
         )
     }
 
@@ -386,14 +389,14 @@ impl Wcdb {
     /// [`Account::session_totals`]).
     pub fn session_totals(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
         self.account()?
-            .session_totals(session_ids, begin as i64, end as i64)
+            .session_totals(session_ids, i64::from(begin), i64::from(end))
     }
 
     /// A group's statistics between `begin` and `end`: messages by sender, by hour and by type (see
     /// [`Account::group_stats`]).
     pub fn group_stats(&self, chatroom_id: &str, begin: i32, end: i32) -> Result<Value> {
         self.account()?
-            .group_stats(chatroom_id, begin as i64, end as i64)
+            .group_stats(chatroom_id, i64::from(begin), i64::from(end))
     }
 
     /// The local years, newest first, in which any of `session_ids` has messages (see
@@ -406,7 +409,7 @@ impl Wcdb {
     /// [`Account::dual_report_stats`]).
     pub fn dual_report_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
         self.account()?
-            .dual_report_stats(session_id, begin as i64, end as i64)
+            .dual_report_stats(session_id, i64::from(begin), i64::from(end))
     }
 
     /// The footprint over the range and conversations `options` gives (see [`Account::footprint_stats`]).
@@ -437,7 +440,8 @@ impl Wcdb {
     /// The owner's Moments between `begin` and `end`: posts and their types, who liked them most and whose posts the
     /// owner liked most (see [`Account::sns_annual_stats`]).
     pub fn sns_annual_stats(&self, begin: i32, end: i32) -> Result<Value> {
-        self.account()?.sns_annual_stats(begin as i64, end as i64)
+        self.account()?
+            .sns_annual_stats(i64::from(begin), i64::from(end))
     }
 
     /// Who has Moments posts, the one who posted last first (see [`Account::sns_usernames`]).
@@ -539,10 +543,10 @@ impl Wcdb {
     ) -> Result<Value> {
         self.account()?.annual_report_extras(
             &distinct_usernames(session_ids),
-            begin as i64,
-            end as i64,
-            peak_begin as i64,
-            peak_end as i64,
+            i64::from(begin),
+            i64::from(end),
+            i64::from(peak_begin),
+            i64::from(peak_end),
         )
     }
 
@@ -580,8 +584,8 @@ impl Wcdb {
         candidates: &[impl AsRef<str>],
     ) -> Result<String> {
         self.account()?.voice_data(
-            create_time as i64,
-            local_id as i64,
+            i64::from(create_time),
+            i64::from(local_id),
             svr_id,
             &distinct_usernames(candidates),
         )

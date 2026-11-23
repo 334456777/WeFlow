@@ -42,7 +42,7 @@ fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
     out.extend_from_slice(&1u16.to_le_bytes());
     out.extend_from_slice(&channels.to_le_bytes());
     out.extend_from_slice(&sample_rate.to_le_bytes());
-    out.extend_from_slice(&(sample_rate * channels as u32 * 2).to_le_bytes());
+    out.extend_from_slice(&(sample_rate * u32::from(channels) * 2).to_le_bytes());
     out.extend_from_slice(&(channels * 2).to_le_bytes());
     out.extend_from_slice(&16u16.to_le_bytes());
     out.extend_from_slice(b"data");

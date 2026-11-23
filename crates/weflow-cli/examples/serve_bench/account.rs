@@ -77,7 +77,7 @@ pub(crate) fn session_specs(args: &Args, pushed: Option<usize>) -> Vec<SessionSp
             } else {
                 last - (k as i64 + 1) * 600
             },
-            unread: new as i64,
+            unread: i64::from(new),
             last_msg_type: 1,
         }
     }));

@@ -47,12 +47,12 @@ fn scan(
         let kr = unsafe {
             mach_vm_region(
                 task,
-                &mut address,
-                &mut size,
+                &raw mut address,
+                &raw mut size,
                 VM_REGION_BASIC_INFO_64,
-                &mut info as *mut vm_region_basic_info_64 as *mut integer_t,
-                &mut count,
-                &mut object,
+                (&raw mut info).cast::<integer_t>(),
+                &raw mut count,
+                &raw mut object,
             )
         };
         if kr != KERN_SUCCESS || size == 0 {

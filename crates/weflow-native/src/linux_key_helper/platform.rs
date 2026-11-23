@@ -72,7 +72,7 @@ fn waitpid_now(tid: libc::pid_t) -> io::Result<Option<libc::c_int>> {
         let mut status = 0;
         // SAFETY: `status` is a live local and `tid` and the options are plain
         // integers.
-        let result = unsafe { libc::waitpid(tid, &mut status, libc::__WALL | libc::WNOHANG) };
+        let result = unsafe { libc::waitpid(tid, &raw mut status, libc::__WALL | libc::WNOHANG) };
         if result == 0 {
             return Ok(None);
         }
@@ -548,7 +548,7 @@ fn get_regs(tid: libc::pid_t) -> io::Result<libc::user_regs_struct> {
         libc::PTRACE_GETREGS,
         tid,
         0,
-        &mut regs as *mut libc::user_regs_struct as usize,
+        (&raw mut regs).expose_provenance(),
     )?;
     Ok(regs)
 }
@@ -561,7 +561,7 @@ fn event_message(tid: libc::pid_t) -> io::Result<libc::pid_t> {
         libc::PTRACE_GETEVENTMSG,
         tid,
         0,
-        &mut message as *mut u64 as usize,
+        (&raw mut message).expose_provenance(),
     )?;
     libc::pid_t::try_from(message).map_err(|_| io::Error::other("invalid thread id"))
 }

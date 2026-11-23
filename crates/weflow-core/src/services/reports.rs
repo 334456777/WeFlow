@@ -506,7 +506,7 @@ impl ServiceHub {
             }
         }
         Ok(crate::contract::ReportYears {
-            years: Self::normalize_years(years.into_iter().map(|y| y as i64)),
+            years: Self::normalize_years(years.into_iter().map(i64::from)),
             strategy: strategy.into(),
         })
     }

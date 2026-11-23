@@ -254,10 +254,10 @@ mod tests {
             let at = table_offset + index * SECTION_HEADER;
             put_u32(&mut bytes, at, header[0]);
             put_u32(&mut bytes, at + 4, if index == 3 { 3 } else { 1 });
-            put_u64(&mut bytes, at + 8, header[1] as u64);
-            put_u64(&mut bytes, at + 16, header[2] as u64);
-            put_u64(&mut bytes, at + 24, header[3] as u64);
-            put_u64(&mut bytes, at + 32, header[4] as u64);
+            put_u64(&mut bytes, at + 8, u64::from(header[1]));
+            put_u64(&mut bytes, at + 16, u64::from(header[2]));
+            put_u64(&mut bytes, at + 24, u64::from(header[3]));
+            put_u64(&mut bytes, at + 32, u64::from(header[4]));
         }
         bytes
     }

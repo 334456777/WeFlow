@@ -116,9 +116,9 @@ mod imp {
                 WriteProcessMemory(
                     process,
                     remote,
-                    code.as_ptr() as *const c_void,
+                    code.as_ptr().cast::<c_void>(),
                     code.len(),
-                    &mut written,
+                    &raw mut written,
                 )
             };
             if ok == 0 {
@@ -138,9 +138,9 @@ mod imp {
                 WriteProcessMemory(
                     process,
                     (remote as usize + shellcode::WHITELIST_OFFSET) as *const c_void,
-                    whitelist.as_ptr() as *const c_void,
+                    whitelist.as_ptr().cast::<c_void>(),
                     whitelist.len(),
-                    &mut written,
+                    &raw mut written,
                 )
             };
             if ok == 0 {
@@ -157,7 +157,7 @@ mod imp {
                     target as *const c_void,
                     PATCH_LEN,
                     PAGE_EXECUTE_READWRITE,
-                    &mut old,
+                    &raw mut old,
                 )
             };
             if ok == 0 {
@@ -172,13 +172,21 @@ mod imp {
                 WriteProcessMemory(
                     process,
                     target as *const c_void,
-                    jump.as_ptr() as *const c_void,
+                    jump.as_ptr().cast::<c_void>(),
                     PATCH_LEN,
-                    &mut written,
+                    &raw mut written,
                 )
             };
             // SAFETY: restoring the protection the function had; `old` was filled in above.
-            unsafe { VirtualProtectEx(process, target as *const c_void, PATCH_LEN, old, &mut old) };
+            unsafe {
+                VirtualProtectEx(
+                    process,
+                    target as *const c_void,
+                    PATCH_LEN,
+                    old,
+                    &raw mut old,
+                )
+            };
             if ok == 0 {
                 // SAFETY: `remote` was allocated above and is not used again.
                 unsafe { VirtualFreeEx(process, remote, 0, MEM_RELEASE) };
@@ -211,9 +219,9 @@ mod imp {
                     WriteProcessMemory(
                         process,
                         target,
-                        self.original.as_ptr() as *const c_void,
+                        self.original.as_ptr().cast::<c_void>(),
                         PATCH_LEN,
-                        &mut written,
+                        &raw mut written,
                     );
                     FlushInstructionCache(process, target, PATCH_LEN);
                 }
@@ -231,7 +239,7 @@ mod imp {
             ReadProcessMemory(
                 process,
                 address as *const c_void,
-                buf.as_mut_ptr() as *mut c_void,
+                buf.as_mut_ptr().cast::<c_void>(),
                 buf.len(),
                 std::ptr::null_mut(),
             )
@@ -249,7 +257,7 @@ mod imp {
                 process,
                 modules.as_mut_ptr(),
                 u32::try_from(size_of_val(&modules)).unwrap_or(u32::MAX),
-                &mut needed,
+                &raw mut needed,
             )
         };
         if ok == 0 {
@@ -280,7 +288,7 @@ mod imp {
                 K32GetModuleInformation(
                     process,
                     module,
-                    &mut info,
+                    &raw mut info,
                     u32::try_from(size_of::<MODULEINFO>()).unwrap_or(u32::MAX),
                 )
             };
@@ -305,7 +313,7 @@ mod imp {
                 VirtualQueryEx(
                     process,
                     address as *const c_void,
-                    &mut info,
+                    &raw mut info,
                     size_of::<MEMORY_BASIC_INFORMATION>(),
                 )
             };
@@ -328,7 +336,7 @@ mod imp {
                     ReadProcessMemory(
                         process,
                         read_start as *const c_void,
-                        buffer[offset..].as_mut_ptr() as *mut c_void,
+                        buffer[offset..].as_mut_ptr().cast::<c_void>(),
                         len,
                         std::ptr::null_mut(),
                     );
@@ -370,7 +378,7 @@ mod imp {
                 i32::from_le_bytes([module[i + 3], module[i + 4], module[i + 5], module[i + 6]]);
             let target = (base + i as u64)
                 .wrapping_add(7)
-                .wrapping_add(disp as i64 as u64);
+                .wrapping_add(i64::from(disp) as u64);
             if target != string_addr {
                 continue;
             }

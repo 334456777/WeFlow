@@ -171,7 +171,7 @@ fn console_shows_escapes(stream: Stream) -> bool {
     unsafe {
         let handle = GetStdHandle(which);
         let mut mode = 0;
-        GetConsoleMode(handle, &mut mode) != 0
+        GetConsoleMode(handle, &raw mut mode) != 0
             && (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0
                 || SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0)
     }

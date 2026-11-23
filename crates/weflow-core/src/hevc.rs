@@ -853,12 +853,12 @@ mod tests {
             let mut err = 0f64;
             for i in 0..70 * 46 {
                 let (r, g, b) = (
-                    rgb[i * 3] as f64,
-                    rgb[i * 3 + 1] as f64,
-                    rgb[i * 3 + 2] as f64,
+                    f64::from(rgb[i * 3]),
+                    f64::from(rgb[i * 3 + 1]),
+                    f64::from(rgb[i * 3 + 2]),
                 );
                 let shown = 0.299 * r + 0.587 * g + 0.114 * b;
-                let src = yuv[i] as f64;
+                let src = f64::from(yuv[i]);
                 let want = if full {
                     src
                 } else {

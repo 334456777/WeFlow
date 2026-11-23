@@ -50,7 +50,7 @@ fn main() {
         v.sort_by(f64::total_cmp);
         v[v.len() / 2]
     };
-    let mb = pages as f64 * PAGE_SIZE as f64 / 1e6;
+    let mb = f64::from(pages) * PAGE_SIZE as f64 / 1e6;
     let d = median(&mut decrypt);
     println!(
         "key derivation: {:.1} ms (median of {rounds})",
@@ -59,6 +59,6 @@ fn main() {
     println!(
         "page decryption: {:.0} MB/s, {:.2} us/page ({pages} pages, median of {rounds})",
         mb / d,
-        d * 1e6 / pages as f64
+        d * 1e6 / f64::from(pages)
     );
 }
