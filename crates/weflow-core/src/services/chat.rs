@@ -768,6 +768,33 @@ impl ServiceHub {
         out
     }
 
+    /// What the chat window calls each of `usernames` (a conversation's own username among them names the
+    /// conversation): in the group `session_id`, the name a member gave themselves there; else, and in any other
+    /// chat, the remark, else the nickname, else the WeChat ID. A username without a name, or with names that cannot
+    /// be read, is left out.
+    pub fn names_in_chat(
+        &self,
+        session_id: Option<&str>,
+        usernames: &[String],
+    ) -> HashMap<String, String> {
+        use crate::export_msg::names::{build_trusted_group_nicknames, resolve_group_nickname};
+        let Ok(wcdb) = self.open_wcdb() else {
+            return HashMap::new();
+        };
+        let mut names = self.session_display_names(&wcdb, usernames);
+        names.retain(|username, name| username != name);
+        if let Some(group) = session_id.filter(|s| s.ends_with("@chatroom")) {
+            let nicknames = build_trusted_group_nicknames(self.group_nicknames_pub(group));
+            for username in usernames {
+                let nickname = resolve_group_nickname(&nicknames, &[username]);
+                if !nickname.is_empty() {
+                    names.insert(username.clone(), nickname);
+                }
+            }
+        }
+        names
+    }
+
     /// The images / videos / voice / files across sessions, newest first in the chats' order (a
     /// place two conversations share by conversation id), `limit` a page (default 300, at most 2,000). The next page
     /// goes on from the `nextCursor` of this one (issue #178).

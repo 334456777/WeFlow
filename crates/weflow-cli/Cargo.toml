@@ -19,6 +19,8 @@ alloc-stats = []
 base64.workspace = true
 async-stream.workspace = true
 axum.workspace = true
+# the human-readable output shows times in the local time zone (views/when.rs)
+chrono.workspace = true
 clap.workspace = true
 mimalloc.workspace = true
 mime_guess.workspace = true
@@ -34,6 +36,8 @@ tokio = { workspace = true, features = ["process", "io-util", "fs", "sync", "tim
 # `serve` compresses its JSON answers (gzip / br, from `Accept-Encoding`)
 tower-http = { workspace = true, features = ["compression-gzip", "compression-br"] }
 tracing-subscriber.workspace = true
+# the human-readable output fits its lines to the terminal (views/layout.rs)
+terminal_size.workspace = true
 weflow-core = { path = "../weflow-core" }
 
 [dev-dependencies]

@@ -3047,6 +3047,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
+name = "unicode-width"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
+
+[[package]]
 name = "universal-hash"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3257,6 +3263,7 @@ dependencies = [
  "axum",
  "base64",
  "brotli-decompressor 5.0.3",
+ "chrono",
  "clap",
  "flate2",
  "jpeg-encoder",
@@ -3270,6 +3277,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "terminal_size",
  "tokio",
  "tower-http 0.7.1",
  "tracing-subscriber",
@@ -3323,6 +3331,7 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+ "unicode-width",
  "walkdir",
  "weflow-fake-model",
  "weflow-native",

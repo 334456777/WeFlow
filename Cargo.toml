@@ -77,6 +77,8 @@ tower-http = { version = "0.7", default-features = false }
 toml = "1.1"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+# the columns text takes on a terminal (East Asian width, emoji sequences)
+unicode-width = "0.2.3"
 walkdir = "2.5.0"
 zip = "2"
 zstd = "0.14"

@@ -35,6 +35,12 @@ pub(crate) struct Cli {
     /// Emit machine-readable NDJSON progress events on stderr
     #[arg(long, global = true, display_order = GLOBAL_OPTIONS_ORDER + 1)]
     pub(crate) progress: bool,
+    /// Show every field of the answer, as --json has them, instead of the short human-readable view
+    #[arg(long, global = true, display_order = GLOBAL_OPTIONS_ORDER + 2)]
+    pub(crate) verbose: bool,
+    /// Draw bars and rules in the human-readable output with ASCII characters only
+    #[arg(long, global = true, display_order = GLOBAL_OPTIONS_ORDER + 3)]
+    pub(crate) ascii: bool,
     #[command(subcommand)]
     pub(crate) command: Commands,
 }
