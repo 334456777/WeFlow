@@ -953,7 +953,9 @@ mod tests {
     }
 
     unsafe extern "system" fn unrelated_exception(info: *mut EXCEPTION_POINTERS) -> i32 {
-        if (*(*info).ExceptionRecord).ExceptionCode as u32 == 0xe0123456 {
+        // SAFETY: Windows calls a vectored exception handler with the pointers of the exception being handled
+        let code = unsafe { (*(*info).ExceptionRecord).ExceptionCode };
+        if code as u32 == 0xe0123456 {
             println!("FORWARDED");
             EXCEPTION_CONTINUE_EXECUTION
         } else {

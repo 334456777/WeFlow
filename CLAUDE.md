@@ -17,7 +17,8 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 工作区的 lint（根 [`Cargo.toml`](Cargo.toml) 的 `[workspace.lints]`）在本地是警告，在 CI 里是错误，写法见[开发指南-注释与文档](https://github.com/334456777/WeFlow/wiki/开发指南#注释与文档)：
   - 每个公开项都要有 `///`，每个 crate 根都要有 `//!`（`missing_docs`，[#915](https://github.com/334456777/WeFlow/issues/915)）；集成测试、示例和构建脚本各自也是一个 crate
   - `unwrap`、`expect` 只在测试里允许（[`clippy.toml`](clippy.toml)）
-  - 每个 `unsafe` 块前写 `// SAFETY:`
+  - 每个 `unsafe` 块前写 `// SAFETY:`；`unsafe fn` 里的不安全操作也各写在自己的 `unsafe` 块里（`unsafe_op_in_unsafe_fn`）
+  - 放过某条警告用带 `reason` 的 `#[expect]`；警告随平台时有时无、`expect` 会落空时才用带 `reason` 的 `#[allow]`
 - 只在部分平台编译的代码：开头写了 `#![cfg(...)]` 的文件在别的平台上不编译，如 [`insight_e2e.rs`](crates/weflow-core/tests/insight_e2e.rs) 只在 Linux 编译。改了这类文件用到的公开接口，或者测试依赖 `cfg!(windows)`、反斜杠路径、符号链接时，在对应的平台上（Windows 上用 WSL）跑一次相关的 clippy 和测试
 - `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README、skill 和本文件的相对链接和锚点、汉字旁的逗号是否为中文逗号（只报告，不自动修改）、skill 的格式，以及 `AGENTS.md`、`.claude/skills` 是否检出为符号链接
 - [`rust-toolchain.toml`](rust-toolchain.toml) 固定了 Rust 版本（本地与 CI 共用）

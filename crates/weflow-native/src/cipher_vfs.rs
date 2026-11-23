@@ -774,11 +774,17 @@ fn default_vfs(vfs: *mut ffi::sqlite3_vfs) -> *mut ffi::sqlite3_vfs {
 }
 
 /// Our names are not paths; they never reach the default VFS.
+///
+/// # Safety
+///
+/// `name` is null or a NUL-terminated string that stays put while the result is used: SQLite's name of a file,
+/// read during the call that gets it.
 unsafe fn our_name(name: *const c_char) -> Option<&'static str> {
     if name.is_null() {
         return None;
     }
-    CStr::from_ptr(name)
+    // SAFETY: not null, and NUL-terminated as the caller promises
+    unsafe { CStr::from_ptr(name) }
         .to_str()
         .ok()
         .filter(|n| n.starts_with(NAME_PREFIX))
@@ -841,8 +847,10 @@ unsafe extern "C" fn x_open(
     flags: c_int,
     out_flags: *mut c_int,
 ) -> c_int {
-    (*file).pMethods = std::ptr::null();
-    if let Some(n) = our_name(name) {
+    // SAFETY: SQLite hands `xOpen` a `sqlite3_file` of `szOsFile` bytes to fill
+    unsafe { (*file).pMethods = std::ptr::null() };
+    // SAFETY: SQLite's name of the file, or null
+    if let Some(n) = unsafe { our_name(name) } {
         let found = if flags & ffi::SQLITE_OPEN_MAIN_DB != 0 {
             registry().lock().ok().and_then(|r| r.get(n).cloned())
         } else {
@@ -852,19 +860,28 @@ unsafe extern "C" fn x_open(
             return ffi::SQLITE_CANTOPEN;
         };
         let f = file.cast::<VfsFile>();
-        (*f).file = Arc::into_raw(cf);
-        (*f).base.pMethods = &IO_METHODS;
+        // SAFETY: `szOsFile` is at least a `VfsFile`, whose `sqlite3_file` comes first
+        unsafe {
+            (*f).file = Arc::into_raw(cf);
+            (*f).base.pMethods = &IO_METHODS;
+        }
         if !out_flags.is_null() {
-            *out_flags = (flags & !(ffi::SQLITE_OPEN_READWRITE | ffi::SQLITE_OPEN_CREATE))
-                | ffi::SQLITE_OPEN_READONLY;
+            // SAFETY: SQLite's out-parameter, not null
+            unsafe {
+                *out_flags = (flags & !(ffi::SQLITE_OPEN_READWRITE | ffi::SQLITE_OPEN_CREATE))
+                    | ffi::SQLITE_OPEN_READONLY;
+            }
         }
         return ffi::SQLITE_OK;
     }
     // Temporary files (sorting, materialised views) go to the OS VFS.
     let d = default_vfs(vfs);
-    match (*d).xOpen {
-        Some(open) => open(d, name, file, flags, out_flags),
-        None => ffi::SQLITE_CANTOPEN,
+    // SAFETY: the default VFS lives as long as the process; its `xOpen` gets SQLite's arguments as they came
+    unsafe {
+        match (*d).xOpen {
+            Some(open) => open(d, name, file, flags, out_flags),
+            None => ffi::SQLITE_CANTOPEN,
+        }
     }
 }
 
@@ -873,12 +890,16 @@ unsafe extern "C" fn x_delete(
     name: *const c_char,
     sync_dir: c_int,
 ) -> c_int {
-    if our_name(name).is_some() {
+    // SAFETY: SQLite's name of the file
+    if unsafe { our_name(name) }.is_some() {
         return ffi::SQLITE_OK;
     }
     let d = default_vfs(vfs);
-    (*d).xDelete
-        .map_or(ffi::SQLITE_IOERR_DELETE, |f| f(d, name, sync_dir))
+    // SAFETY: the default VFS lives as long as the process; its `xDelete` gets SQLite's arguments as they came
+    unsafe {
+        (*d).xDelete
+            .map_or(ffi::SQLITE_IOERR_DELETE, |f| f(d, name, sync_dir))
+    }
 }
 
 unsafe extern "C" fn x_access(
@@ -887,13 +908,18 @@ unsafe extern "C" fn x_access(
     flags: c_int,
     out: *mut c_int,
 ) -> c_int {
-    if our_name(name).is_some() {
-        *out = 0; // no journal, no WAL: a snapshot is a single immutable file
+    // SAFETY: SQLite's name of the file
+    if unsafe { our_name(name) }.is_some() {
+        // SAFETY: SQLite's out-parameter
+        unsafe { *out = 0 }; // no journal, no WAL: a snapshot is a single immutable file
         return ffi::SQLITE_OK;
     }
     let d = default_vfs(vfs);
-    (*d).xAccess
-        .map_or(ffi::SQLITE_IOERR_ACCESS, |f| f(d, name, flags, out))
+    // SAFETY: the default VFS lives as long as the process; its `xAccess` gets SQLite's arguments as they came
+    unsafe {
+        (*d).xAccess
+            .map_or(ffi::SQLITE_IOERR_ACCESS, |f| f(d, name, flags, out))
+    }
 }
 
 unsafe extern "C" fn x_full_pathname(
@@ -902,18 +928,25 @@ unsafe extern "C" fn x_full_pathname(
     n_out: c_int,
     out: *mut c_char,
 ) -> c_int {
-    if let Some(n) = our_name(name) {
+    // SAFETY: SQLite's name of the file
+    if let Some(n) = unsafe { our_name(name) } {
         let bytes = n.as_bytes();
         if bytes.len() + 1 > n_out.max(0) as usize {
             return ffi::SQLITE_CANTOPEN;
         }
-        std::ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), out, bytes.len());
-        *out.add(bytes.len()) = 0;
+        // SAFETY: `out` has room for `n_out` bytes (SQLite's buffer), and the name and its NUL fit
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), out, bytes.len());
+            *out.add(bytes.len()) = 0;
+        }
         return ffi::SQLITE_OK;
     }
     let d = default_vfs(vfs);
-    (*d).xFullPathname
-        .map_or(ffi::SQLITE_CANTOPEN, |f| f(d, name, n_out, out))
+    // SAFETY: the default VFS lives as long as the process; its `xFullPathname` gets SQLite's arguments as they came
+    unsafe {
+        (*d).xFullPathname
+            .map_or(ffi::SQLITE_CANTOPEN, |f| f(d, name, n_out, out))
+    }
 }
 
 static IO_METHODS: ffi::sqlite3_io_methods = ffi::sqlite3_io_methods {
@@ -938,15 +971,25 @@ static IO_METHODS: ffi::sqlite3_io_methods = ffi::sqlite3_io_methods {
     xUnfetch: None,
 };
 
+/// The snapshot a file opened by [`x_open`] reads.
+///
+/// # Safety
+///
+/// `f` is a file [`x_open`] opened as one of ours and [`io_close`] has not closed: SQLite calls a file's methods only
+/// between the two.
 unsafe fn cipher_file<'a>(f: *mut ffi::sqlite3_file) -> &'a CipherFile {
-    &*(*f.cast::<VfsFile>()).file
+    // SAFETY: `x_open` put a live `Arc<CipherFile>` there, which `io_close` gives back only after the last call
+    unsafe { &*(*f.cast::<VfsFile>()).file }
 }
 
 unsafe extern "C" fn io_close(f: *mut ffi::sqlite3_file) -> c_int {
     let vf = f.cast::<VfsFile>();
-    if !(*vf).file.is_null() {
-        drop(Arc::from_raw((*vf).file));
-        (*vf).file = std::ptr::null();
+    // SAFETY: SQLite closes a file `x_open` opened as ours, once; the `Arc` it holds is given back once and forgotten
+    unsafe {
+        if !(*vf).file.is_null() {
+            drop(Arc::from_raw((*vf).file));
+            (*vf).file = std::ptr::null();
+        }
     }
     ffi::SQLITE_OK
 }
@@ -960,8 +1003,10 @@ unsafe extern "C" fn io_read(
     if amt < 0 || offset < 0 {
         return ffi::SQLITE_IOERR_READ;
     }
-    let cf = cipher_file(f);
-    let out = std::slice::from_raw_parts_mut(buf.cast::<u8>(), amt as usize);
+    // SAFETY: SQLite reads a file of ours, open
+    let cf = unsafe { cipher_file(f) };
+    // SAFETY: SQLite's buffer of `amt` bytes, not negative, for this call only
+    let out = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), amt as usize) };
     catch_unwind(AssertUnwindSafe(|| cf.read(out, offset as u64))).unwrap_or(ffi::SQLITE_IOERR_READ)
 }
 
@@ -986,7 +1031,8 @@ unsafe extern "C" fn io_file_size(
     f: *mut ffi::sqlite3_file,
     size: *mut ffi::sqlite3_int64,
 ) -> c_int {
-    *size = cipher_file(f).size() as ffi::sqlite3_int64;
+    // SAFETY: SQLite asks a file of ours, open, and passes its out-parameter
+    unsafe { *size = cipher_file(f).size() as ffi::sqlite3_int64 };
     ffi::SQLITE_OK
 }
 
@@ -995,7 +1041,8 @@ unsafe extern "C" fn io_lock(_: *mut ffi::sqlite3_file, _: c_int) -> c_int {
 }
 
 unsafe extern "C" fn io_check_reserved_lock(_: *mut ffi::sqlite3_file, out: *mut c_int) -> c_int {
-    *out = 0;
+    // SAFETY: SQLite's out-parameter
+    unsafe { *out = 0 };
     ffi::SQLITE_OK
 }
 

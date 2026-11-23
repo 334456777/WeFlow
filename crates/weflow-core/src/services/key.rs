@@ -212,7 +212,6 @@ impl ServiceHub {
     }
 
     /// The running WeChat clients, main application first (`key processes`, macOS).
-    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     pub fn key_processes(&self) -> AppResult<crate::contract::WeChatProcesses> {
         #[cfg(target_os = "macos")]
         {

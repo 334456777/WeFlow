@@ -256,7 +256,10 @@ fn tables_of(r: &Value, tables: &[(String, crate::msg::MsgTable)]) -> Vec<usize>
 /// table, and time in all. A common word fills a page well before; a word found nowhere loses no more than that.
 /// The hits are the same whatever the budget, only how fast they come.
 const NEWEST_FIRST_ROWS: usize = 2000;
-#[cfg_attr(test, allow(dead_code))]
+#[cfg_attr(
+    test,
+    expect(dead_code, reason = "tests set the budget themselves, without a time")
+)]
 const NEWEST_FIRST_TIME: std::time::Duration = std::time::Duration::from_millis(15);
 
 /// Rows and the time when [`NEWEST_FIRST_ROWS`] reading stops.
@@ -580,7 +583,10 @@ impl Account {
     /// A single conversation is first read from its newest messages, as for a search without an index; with an index,
     /// only as far as a [`Budget`] of rows and time, where a common word fills a page without the index
     /// being read. Older messages come from the index, and those it does not hold yet are scanned.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "what one search asks for, handed down as it came"
+    )]
     fn search_ranked(
         &self,
         index: Option<&FtsIndex>,
@@ -670,7 +676,10 @@ impl Account {
     /// first, at most `budget` of them, and with `unsequenced`, the few without one. Also returns, when the budget
     /// stopped the reading, the `sort_seq` of the first row left unread: rows above it were all read, not all of those
     /// at or below.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "what one search asks for, and where it stands in this table"
+    )]
     fn scan_table(
         &self,
         at: usize,
