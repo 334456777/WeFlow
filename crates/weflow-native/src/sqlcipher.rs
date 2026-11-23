@@ -63,7 +63,10 @@ pub struct PageCipher {
     enc_key: [u8; 32],
     #[cfg_attr(
         not(any(test, feature = "test-fixtures")),
-        expect(dead_code, reason = "only the fixtures encrypt pages, with the raw key")
+        expect(
+            dead_code,
+            reason = "only the fixtures encrypt pages, with the raw key"
+        )
     )]
     mac_key: [u8; 32],
     /// HMAC already keyed with `mac_key`: cloning it per page skips re-hashing the key pads.
