@@ -585,8 +585,18 @@ mod tests {
             1,
             "the snapshot is kept while the file is as it was"
         );
-        // WeChat writes the database in place
+        // WeChat writes the database in place, later: two writes of the same size inside one tick of the file
+        // system's clock look alike, by the path as by the handle, so the time is set past the first one's
         f.session_db(&[session("wxid_bob"), session("wxid_carol")]);
+        let db = acct.db_path("session/session.db");
+        let later =
+            std::fs::metadata(&db).unwrap().modified().unwrap() + std::time::Duration::from_secs(2);
+        std::fs::File::options()
+            .write(true)
+            .open(&db)
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
         assert_eq!(count(), 2);
     }
 
