@@ -18,6 +18,7 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
    ```
 
 3. 在 worktree 里编译 Rust 时，`CARGO_TARGET_DIR` 设为主工作副本 `target/` 下的 `wt-<名>`，原因见 Wiki [开发指南#提交与 Pull Request](https://github.com/334456777/WeFlow/wiki/开发指南#提交与-pull-request)。`bun run dev`、`bun run smoke` 按同一个变量找编译出的 `weflow`。
+   - Windows 上 `target/debug/weflow.exe` 被别的进程占用、链接失败时，换一个 `CARGO_TARGET_DIR`，不加 `--target x86_64-pc-windows-msvc` 绕开：显式给出 `--target` 时，`.cargo/config.toml` 里按目标设的 `rustflags` 不作用于构建脚本和过程宏，所有依赖的哈希都会变，要整套重编。`bun run dev`、`bun run smoke` 运行的是副本，不占用这个文件，占着它的一般是手动启动的 `weflow serve`。
 4. 维护者：开始做某个 issue 时，把它和它的父 issue 在看板上设为 `In Progress`，做法见 [weflow-issues](../weflow-issues/SKILL.md)。
 
 ## 推送前
@@ -73,6 +74,7 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 
 - 精确清理：`cargo sweep --stamp` → 把实际会用到的 profile 都正常编译一次（如 `cargo build`、`cargo build --release`、`cargo test --no-run`）→ `cargo sweep --file`，删除时间戳之后没被用到的产物。
 - 日常清理：`cargo sweep --time 30` 删除 30 天没用过的产物；`cargo sweep --installed` 删除已卸载的工具链编译的产物。
+- 不用 `cargo clean` 腾空间。必须清掉某个 crate 时，`cargo clean -p <crate>` 不带 `--profile` 会删掉它在所有 profile 下的产物，只清 debug 时加 `--profile dev`；限定了 profile，增量编译的缓存也可能很大，同样先加 `--dry-run` 看会删多少。
 
 ## 会关掉 PR 的操作
 

@@ -25,7 +25,8 @@ description: 升级 WeFlow 用到的工具和依赖（Rust 工具链、crate、B
 
 上游合并了补丁、发布了新版本，并且新版本满 3 天之后：
 
-1. 删掉 `[patch.crates-io]` 里的这一项，升级依赖（`cargo update -p <名>`）。
-2. 确认补丁带来的东西仍然在：
+1. 对照 Wiki 的表格看 fork 上有没有不向上游提交的改动（标着「只在 fork 上」的，如 `heic-rs` 的 [#1103](https://github.com/334456777/WeFlow/issues/1103)）。上游的新版本不含这些改动，直接换回 crates.io 会丢掉它们：先问维护者，是把改动提交到上游，还是把 fork rebase 到新版本后继续用 fork。继续用 fork 时跳过第 2 步，只把 `[patch.crates-io]` 里的 `rev` 换成 rebase 后的提交，再做第 3 步的检查。
+2. 删掉 `[patch.crates-io]` 里的这一项，升级依赖（`cargo update -p <名>`）。
+3. 确认补丁带来的东西仍然在：
    - `heic-rs`：`crates/weflow-core/src/hevc.rs` 的 `every_layout_and_bit_depth_decodes_to_ffmpegs_samples` 仍然通过；再在真实账号上用 `wxgf_coverage_probe` 输出的 `decoded_jpegs_sha256` 比对前后，见 [weflow-real-account](../weflow-real-account/SKILL.md)。
    - `sha2`：weflow-native 的测试通过；再用 Linux perf 交替测量 analytics，确认收益仍在，见 [weflow-perf](../weflow-perf/SKILL.md#linux-perf-交替测量)。

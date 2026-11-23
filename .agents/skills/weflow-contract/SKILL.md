@@ -28,3 +28,7 @@ description: 修改命令 API 的契约之后要做的事：重新生成 web/con
 - 每个命令都要描述 `data`，`every_answer_is_described` 的例外只有 `chat contact` 和 `config get`。`left_out_not_null`、`every_answer_is_described`、`contract_snapshot_is_current` 都在 `serve_api/openapi.rs`。
 - 原生层的回复读进契约类型时用 `deny_unknown_fields`，从 `Value` 里 `take` 出来，不 clone。
 - serve 的集成测试：GET 路由不读请求体，参数写进查询串；用 `crates/weflow-cli/tests/serve_api/common.rs` 的 `misfits(&contract, &json!({"$ref": …}), &data)` 对照契约。
+- `web/contract/openapi.json` 只是契约的快照（`serve_api/openapi.rs` 的 `contract_document()`），不是服务实际返回的 `/openapi.json`（`document()`）：快照里的路由不带参数，也没有 `/api/chat/image-data`、`/api/sns/media`、`/api/push/messages` 等路由。判断某条路由在不在、某段代码是不是死代码，不能拿它做依据，要取实际的文档：
+  1. 用一个空目录作 `WEFLOW_HOME`，运行 `weflow --json serve --port 0 --api-token <令牌> --api-only`。
+  2. 从 stderr 的 `server_started` 事件读出 `url`，带 `Authorization: Bearer <令牌>` 取 `<url>/openapi.json`。
+  3. 用完结束这个进程。
