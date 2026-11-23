@@ -97,6 +97,9 @@ pub(crate) fn hmac4(
         // SAFETY: the CPU has AVX2, which `avx2::hmac4` is compiled for
         return Some(unsafe { avx2::hmac4(key, bodies, tails) });
     }
+    // elsewhere the callers hash the messages one by one (on aarch64 with the CPU's SHA-512 instructions)
+    #[cfg(not(target_arch = "x86_64"))]
+    let _ = key;
     None
 }
 
