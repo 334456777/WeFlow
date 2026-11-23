@@ -402,8 +402,46 @@ impl<'a> Picture<'a> {
 /// picture would cost three bytes a pixel on every media thread), its samples brought to the 8 bits a JPEG has.
 struct Planes<'a> {
     picture: &'a Picture<'a>,
-    full_range: bool,
+    luma: To8,
+    chroma: To8,
 }
+
+/// [`to_8_bits`] of every value a sample of a plane can have, looked up rather than worked out for each of the
+/// picture's millions of samples (in the limited range each one is a division).
+struct To8 {
+    table: Vec<u8>,
+    shift: u32,
+    full_range: bool,
+    range: (i32, i32, i32),
+}
+
+impl To8 {
+    /// The table for samples `shift` bits deeper than 8.
+    fn new(shift: u32, full_range: bool, range: (i32, i32, i32)) -> Self {
+        let table = (0..=u16::MAX >> (8 - shift.min(8)))
+            .map(|v| to_8_bits(v, shift, full_range, range))
+            .collect();
+        Self {
+            table,
+            shift,
+            full_range,
+            range,
+        }
+    }
+
+    /// The 8-bit value of sample `v` (worked out for one above the bit depth, which a damaged stream may give).
+    fn get(&self, v: u16) -> u8 {
+        match self.table.get(usize::from(v)) {
+            Some(&b) => b,
+            None => to_8_bits(v, self.shift, self.full_range, self.range),
+        }
+    }
+}
+
+/// The limited range of luma at 8 bits for [`to_8_bits`]: 16 to 16 + 219.
+const LUMA_RANGE: (i32, i32, i32) = (16, 219, 0);
+/// The limited range of chroma at 8 bits for [`to_8_bits`]: 128 ± 112, around 128.
+const CHROMA_RANGE: (i32, i32, i32) = (128, 224, 128);
 
 /// A sample `shift` bits deeper than 8 as an 8-bit full-range one. Full range is rounded to 8 bits. Limited range,
 /// `(offset, range, centre)` at 8 bits (luma 16 to 16 + 219 from 0, chroma 128 ± 112 around 128), is also scaled to
@@ -438,9 +476,8 @@ impl jpeg_encoder::ImageBuffer for Planes<'_> {
     fn fill_buffers(&self, y: u16, buffers: &mut [Vec<u8>; 4]) {
         let p = self.picture;
         let (r, w) = (usize::from(y), usize::from(p.width));
-        let full = self.full_range;
-        let luma = |v| to_8_bits(v, p.luma_shift, full, (16, 219, 0));
-        let chroma = |v| to_8_bits(v, p.chroma_shift, full, (128, 224, 128));
+        let luma = |v| self.luma.get(v);
+        let chroma = |v| self.chroma.get(v);
         p.y.push_row(r * p.y_stride, w, 0, &mut buffers[0], luma);
         let Layout::Subsampled { x, y } = p.layout else {
             return;
@@ -468,9 +505,11 @@ fn encode(picture: &Picture<'_>, signal: Signal) -> Result<Vec<u8>, Unsupported>
             encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_1_1)
         }
     }
+    let full = signal.full_range;
     let planes = Planes {
         picture,
-        full_range: signal.full_range,
+        luma: To8::new(picture.luma_shift, full, LUMA_RANGE),
+        chroma: To8::new(picture.chroma_shift, full, CHROMA_RANGE),
     };
     encoder
         .encode_image(planes)
@@ -766,6 +805,27 @@ mod tests {
                 }
             }
             assert_eq!(planar, yuv);
+        }
+    }
+
+    #[test]
+    fn the_table_of_8_bit_values_is_what_each_sample_works_out_to() {
+        for shift in 0..=8 {
+            for full in [false, true] {
+                for range in [LUMA_RANGE, CHROMA_RANGE] {
+                    let table = To8::new(shift, full, range);
+                    // every value of the bit depth, and some above it
+                    let top = (256u32 << shift).min(1 << 16);
+                    for v in (0..top).chain(top..(top + 300).min(1 << 16)) {
+                        let v = u16::try_from(v).unwrap();
+                        assert_eq!(
+                            table.get(v),
+                            to_8_bits(v, shift, full, range),
+                            "shift {shift}, full {full}, {range:?}, value {v}"
+                        );
+                    }
+                }
+            }
         }
     }
 
