@@ -7,10 +7,8 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::SystemTime;
 
 use anyhow::{anyhow, Context, Result};
 use rusqlite::types::ValueRef;
@@ -30,14 +28,6 @@ const MAX_SNAPSHOTS: usize = 32;
 /// How many times a query runs at most, the first included, while WeChat keeps changing the file under it.
 const STALE_RETRIES: usize = 4;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct FileStamp {
-    db_len: u64,
-    db_mtime: Option<SystemTime>,
-    wal_len: u64,
-    wal_mtime: Option<SystemTime>,
-}
-
 /// A snapshot's connection, and whether its page cache is sized yet.
 struct Conn {
     conn: Connection,
@@ -49,7 +39,6 @@ struct Snapshot {
     conns: Vec<Arc<Mutex<Conn>>>,
     file: Arc<CipherFile>,
     key: [u8; 32],
-    stamp: FileStamp,
     last_used: u64,
 }
 
@@ -105,23 +94,6 @@ pub struct Account {
     read_connections: std::sync::atomic::AtomicUsize,
     /// Queries run again because their snapshot went stale (see [`Account::stale_reruns`]).
     stale_reruns: std::sync::atomic::AtomicUsize,
-}
-
-fn wal_path(db: &Path) -> PathBuf {
-    let mut os = db.as_os_str().to_os_string();
-    os.push("-wal");
-    PathBuf::from(os)
-}
-
-fn stamp_of(db: &Path) -> Result<FileStamp> {
-    let meta = fs::metadata(db).with_context(|| format!("cannot stat {}", db.display()))?;
-    let wal = fs::metadata(wal_path(db)).ok();
-    Ok(FileStamp {
-        db_len: meta.len(),
-        db_mtime: meta.modified().ok(),
-        wal_len: wal.as_ref().map(|m| m.len()).unwrap_or(0),
-        wal_mtime: wal.and_then(|m| m.modified().ok()),
-    })
 }
 
 /// BLOB columns that carry binary payloads (protobuf and friends): always exposed as lowercase hex.
@@ -347,7 +319,6 @@ impl Account {
     }
 
     fn snapshot(&self, path: &Path) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
-        let stamp = stamp_of(path)?;
         let known_cipher = {
             let mut cache = self
                 .cache
@@ -357,7 +328,8 @@ impl Account {
             let tick = cache.tick;
             match cache.entries.get_mut(path) {
                 Some(entry) if entry.key == self.raw_key => {
-                    if entry.stamp == stamp && !entry.file.is_stale() {
+                    // asked through the handles the snapshot holds: the files are not opened again
+                    if entry.file.unchanged() && !entry.file.is_stale() {
                         entry.last_used = tick;
                         let file = entry.file.clone();
                         // a connection nobody else holds; else a new one while the limit allows; else the least busy
@@ -383,8 +355,8 @@ impl Account {
             }
         };
 
-        // Opened without holding the cache lock, so other files can be opened meanwhile. `stamp` was taken
-        // before opening: a change that lands meanwhile makes the next call reopen.
+        // Opened without holding the cache lock, so other files can be opened meanwhile. The files are stamped as the
+        // snapshot opens them: a change that lands meanwhile makes the next call reopen.
         let file = Arc::new(CipherFile::open(path, &self.raw_key, known_cipher)?);
         let conn = cipher_vfs::open_connection(file.clone())?;
         configure_sqlite();
@@ -401,7 +373,6 @@ impl Account {
                 conns: vec![conn.clone()],
                 file: file.clone(),
                 key: self.raw_key,
-                stamp,
                 last_used: tick,
             },
         );
@@ -591,6 +562,42 @@ mod tests {
         let all: Vec<u8> = (0..=255).collect();
         let expected: String = all.iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(super::hex(&all), expected);
+    }
+
+    #[test]
+    fn a_database_written_after_its_snapshot_opened_is_read_anew() {
+        use crate::fixture::{Fixture, SessionSpec, TestDir, T0};
+        let root = TestDir::new("weflow-snapshot-fresh");
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        let session = |username: &'static str| SessionSpec {
+            username,
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        };
+        f.session_db(&[session("wxid_bob")]);
+        let acct = super::Account::new(f.db_storage(), &f.key_hex()).unwrap();
+        let count = || acct.sessions().unwrap().as_array().map_or(0, Vec::len);
+        assert_eq!(count(), 1);
+        assert_eq!(
+            count(),
+            1,
+            "the snapshot is kept while the file is as it was"
+        );
+        // WeChat writes the database in place, later: two writes of the same size inside one tick of the file
+        // system's clock look alike, by the path as by the handle, so the time is set past the first one's
+        f.session_db(&[session("wxid_bob"), session("wxid_carol")]);
+        let db = acct.db_path("session/session.db");
+        let later =
+            std::fs::metadata(&db).unwrap().modified().unwrap() + std::time::Duration::from_secs(2);
+        std::fs::File::options()
+            .write(true)
+            .open(&db)
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+        assert_eq!(count(), 2);
     }
 
     #[test]
