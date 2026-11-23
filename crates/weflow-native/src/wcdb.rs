@@ -23,6 +23,8 @@ pub enum Databases {
     Contacts,
     /// Every message database (`message/message_<n>.db`, `biz_message_<n>.db`).
     Messages,
+    /// The Moments, `sns/sns.db`.
+    Moments,
 }
 
 /// The handle of one account's databases that the service layer calls; closed until [`Wcdb::open`].
@@ -186,6 +188,7 @@ impl Wcdb {
                 Databases::Sessions => paths.push(account.session_db()),
                 Databases::Contacts => paths.push(account.db_path("contact/contact.db")),
                 Databases::Messages => paths.extend(account.message_dbs()),
+                Databases::Moments => paths.push(account.db_path("sns/sns.db")),
             }
         }
         paths.retain(|p| p.is_file());
