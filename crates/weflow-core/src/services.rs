@@ -71,6 +71,15 @@ pub struct ServiceHub {
     insight_state: std::sync::Arc<std::sync::Mutex<insight::InsightState>>,
 }
 
+/// The profile's name: the config holds the keys.
+impl std::fmt::Debug for ServiceHub {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServiceHub")
+            .field("profile_name", &self.profile_name)
+            .finish_non_exhaustive()
+    }
+}
+
 impl ServiceHub {
     /// A hub over the account of the config's current profile.
     pub fn new(ctx: AppContext, config: ConfigStore) -> Self {

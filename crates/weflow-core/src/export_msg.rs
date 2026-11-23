@@ -101,6 +101,7 @@ impl Default for Settings {
 }
 
 /// What writes one conversation's messages in each format: the conversation, the account, and the names it shows.
+#[derive(Debug)]
 pub struct Exporter<'a, 'n> {
     /// The conversation.
     pub session: SessionInfo,

@@ -65,6 +65,15 @@ pub struct NameBook<'a> {
     loader: Loader<'a>,
 }
 
+/// The contacts looked up so far; the loader is a closure.
+impl std::fmt::Debug for NameBook<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NameBook")
+            .field("cache", &self.cache)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<'a> NameBook<'a> {
     /// A book that looks a contact up with `loader` the first time it is asked for.
     pub fn new(loader: impl FnMut(&str) -> Option<ContactInfo> + 'a) -> Self {

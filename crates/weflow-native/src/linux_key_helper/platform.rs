@@ -200,11 +200,13 @@ enum Polled {
     Key(String),
 }
 
+#[derive(Debug)]
 struct Thread {
     stopped: bool,
 }
 
 /// WeChat's threads attached with `ptrace`, each with a hardware breakpoint where the database key is taken.
+#[derive(Debug)]
 pub struct Hook {
     pid: u32,
     target: usize,

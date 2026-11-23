@@ -83,6 +83,7 @@ impl AsRef<Path> for TestDir {
 }
 
 /// One `SessionTable` row for [`Fixture::session_db`].
+#[derive(Debug)]
 pub struct SessionSpec<'a> {
     /// The conversation.
     pub username: &'a str,
@@ -97,7 +98,7 @@ pub struct SessionSpec<'a> {
 }
 
 /// One `contact` row for [`Fixture::contact_db`]; [`ContactSpec::new`] leaves the rest empty.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ContactSpec<'a> {
     /// The wxid.
     pub username: &'a str,
@@ -140,6 +141,7 @@ impl<'a> ContactSpec<'a> {
 }
 
 /// One group for [`Fixture::contact_db`]: its `chat_room` row and its members.
+#[derive(Debug)]
 pub struct RoomSpec<'a> {
     /// The group, `…@chatroom`.
     pub username: &'a str,
@@ -150,7 +152,7 @@ pub struct RoomSpec<'a> {
 }
 
 /// One message row; [`MsgSpec::text`] makes a text message, the `with_*` methods change it.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MsgSpec {
     /// The row's id in its table.
     pub local_id: i64,
@@ -210,7 +212,7 @@ impl MsgSpec {
 }
 
 /// One row of WeChat's full-text index, for [`Fixture::message_fts_db`].
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FtsSpec<'a> {
     /// The text indexed.
     pub text: String,
@@ -227,6 +229,7 @@ pub struct FtsSpec<'a> {
 }
 
 /// One Moments post for [`Fixture::sns_db`].
+#[derive(Debug)]
 pub struct SnsPostSpec<'a> {
     /// Stored as-is (a negative value stands for an unsigned snowflake above `i64::MAX`).
     pub tid: i64,
@@ -274,6 +277,7 @@ impl SnsPostSpec<'_> {
 }
 
 /// One `VoiceInfo` row for [`Fixture::media_db`].
+#[derive(Debug)]
 pub struct VoiceSpec<'a> {
     /// The conversation's username.
     pub chat: &'a str,
@@ -290,6 +294,7 @@ pub struct VoiceSpec<'a> {
 }
 
 /// One own-sticker row for [`Fixture::emoticon_db`].
+#[derive(Debug)]
 pub struct EmoticonSpec {
     /// The sticker's MD5.
     pub md5: &'static str,
@@ -303,7 +308,7 @@ pub struct EmoticonSpec {
 
 /// One row of `hardlink.db`: `kind` 1 = file, 2 = image, 3 = video, 4 = directory entry.
 /// Images live in `<dir1>/<dir2>/Img/`, videos in `<dir1>/`, files in `<dir1>/`.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HardlinkSpec<'a> {
     /// The message's MD5 of the file.
     pub md5: &'a str,
@@ -442,6 +447,7 @@ fn message_table_schema(table: &str) -> String {
 }
 
 /// A synthetic account on disk, whose databases its methods write.
+#[derive(Debug)]
 pub struct Fixture {
     /// The folder the account folder is in.
     pub root: PathBuf,

@@ -96,6 +96,15 @@ pub struct Account {
     stale_reruns: std::sync::atomic::AtomicUsize,
 }
 
+/// Where the databases are, without the key.
+impl std::fmt::Debug for Account {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Account")
+            .field("db_storage", &self.db_storage)
+            .finish_non_exhaustive()
+    }
+}
+
 /// BLOB columns that carry binary payloads (protobuf and friends): always exposed as lowercase hex.
 const HEX_BLOB_COLUMNS: &[&str] = &[
     "packed_info_data",

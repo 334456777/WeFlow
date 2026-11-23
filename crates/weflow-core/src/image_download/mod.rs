@@ -81,6 +81,13 @@ pub struct ImageAutoDownload {
     inner: Arc<Mutex<Inner>>,
 }
 
+/// The name only: the state is the hooked process and its handles.
+impl std::fmt::Debug for ImageAutoDownload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImageAutoDownload").finish_non_exhaustive()
+    }
+}
+
 /// The main WeChat process among `(pid, command line)` of the `Weixin.exe` processes: of those whose command line
 /// names `weixin.exe` (ignoring case), the one with the shortest; the others carry `--type=…` and such.
 #[cfg(any(windows, test))]

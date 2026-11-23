@@ -367,7 +367,7 @@ pub const MESSAGE_EXPORT_FORMATS: &str =
     "json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql";
 
 /// What `export messages` writes of one conversation.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MessageExportRequest {
     /// The conversation: the other party's wxid, or `…@chatroom` for a group.
     pub session_id: String,
