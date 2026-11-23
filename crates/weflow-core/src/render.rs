@@ -176,23 +176,10 @@ fn truncate(text: &str, max: usize) -> Cell {
     }
 }
 
-/// Terminal columns taken by `text` (CJK and emoji count double).
+/// Terminal columns taken by `text`: CJK and emoji count double, a combining mark, a variation selector or a skin
+/// tone joined to an emoji count nothing (Unicode's East Asian width, as `unicode-width` gives it).
 pub fn display_width(text: &str) -> usize {
-    text.chars()
-        .map(|c| match c as u32 {
-            0x1100..=0x115F
-            | 0x2E80..=0xA4CF
-            | 0xAC00..=0xD7A3
-            | 0xF900..=0xFAFF
-            | 0xFE30..=0xFE6F
-            | 0xFF00..=0xFF60
-            | 0xFFE0..=0xFFE6
-            | 0x1F300..=0x1F64F
-            | 0x1F900..=0x1F9FF
-            | 0x20000..=0x3FFFD => 2,
-            _ => 1,
-        })
-        .sum()
+    unicode_width::UnicodeWidthStr::width(text)
 }
 
 /// `shown` (already painted) followed by spaces up to `width` columns, `visible` being its width unpainted.

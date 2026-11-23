@@ -1,7 +1,8 @@
 //! Colours and greys for text on a terminal, chosen from what the terminal says it can show.
 //!
 //! Colour marks the outcome (red for an error, yellow for a warning, green for success) and weight marks the
-//! layers: headings bold, body text in the terminal's own colour, labels and side notes grey. Words carry the
+//! layers: headings bold, body text in the terminal's own colour, labels and side notes grey. A soft teal and a soft
+//! yellow set apart a part of a line (a message's kind, a search's keyword) at the weight of the text. Words carry the
 //! meaning on their own, so text without colour (piped, `NO_COLOR`, a terminal without colours) reads the same.
 
 use std::sync::OnceLock;
@@ -40,6 +41,10 @@ pub enum Role {
     Strong,
     /// Labels, side notes, what is left out: grey.
     Muted,
+    /// What sets a part of a line apart without asking for attention (a message's kind, a bar): a soft teal.
+    Accent,
+    /// What the reader looked for or has not seen yet (a search's keyword, unread messages): a soft yellow.
+    Highlight,
 }
 
 /// Shows text in the colours of one stream.
@@ -87,6 +92,10 @@ impl Paint {
             (_, Role::Strong) => "1",
             (Depth::Basic, Role::Muted) => "90",
             (Depth::Extended, Role::Muted) => "38;5;244",
+            (Depth::Basic, Role::Accent) => "36",
+            (Depth::Extended, Role::Accent) => "38;5;73",
+            (Depth::Basic, Role::Highlight) => "33",
+            (Depth::Extended, Role::Highlight) => "38;5;179",
         };
         if text.is_empty() {
             return String::new();
@@ -252,5 +261,11 @@ mod tests {
         assert_eq!(basic.paint(Role::Muted, ""), "");
         let extended = Paint::new(Depth::Extended);
         assert_eq!(extended.paint(Role::Muted, "x"), "\x1b[38;5;244mx\x1b[0m");
+        assert_eq!(basic.paint(Role::Accent, "x"), "\x1b[36mx\x1b[0m");
+        assert_eq!(
+            extended.paint(Role::Highlight, "x"),
+            "\x1b[38;5;179mx\x1b[0m"
+        );
+        assert_eq!(paint.paint(Role::Highlight, "x"), "x");
     }
 }

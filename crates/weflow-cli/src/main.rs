@@ -18,6 +18,7 @@ mod reads;
 mod serve_api;
 mod stop;
 mod term;
+mod views;
 
 use cli::{Cli, Commands, LangArg};
 use commands::analytics::handle_analytics;
@@ -101,6 +102,8 @@ async fn main() -> ExitCode {
     let Cli {
         json,
         progress,
+        verbose,
+        ascii,
         command,
     } = i18n::parse(launch::args());
     // a command run by `serve` gets the database keys the server already derived on stdin
@@ -122,16 +125,29 @@ async fn main() -> ExitCode {
     };
     weflow_core::output::set_progress_mode(progress);
     let summary = Summary::of(&command);
-    let outcome = run(command, progress).await;
+    let view = if json || verbose {
+        None
+    } else {
+        views::View::of(&command)
+    };
+    let outcome = run(command, progress, view.as_ref()).await;
     // under `sudo`, the config and cache files root wrote go back to the caller (#855)
     weflow_core::sudo_caller::hand_back();
     weflow_core::output::finish_progress();
     if json {
-        let (doc, exit) = json_document(outcome);
+        let (doc, exit) = json_document(outcome.map(|answer| answer.data));
         return answered(weflow_core::output::print(&format!("{doc}\n")), exit);
     }
+    let glyphs = if ascii {
+        views::Glyphs::Ascii
+    } else {
+        views::Glyphs::Unicode
+    };
     match outcome {
-        Ok(value) => answered(print_response(&success(value), summary), 0),
+        Ok(Answer { data, names }) => answered(
+            print_response(&success(data), summary, view.as_ref(), &names, glyphs),
+            0,
+        ),
         Err(err) => {
             print_failure(&err);
             ExitCode::from(exit_status(err.exit_code))
@@ -139,9 +155,29 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> AppResult<Value> {
+/// What a command answered, and the names its view shows for the usernames in it.
+struct Answer {
+    data: Value,
+    names: views::Names,
+}
+
+impl From<Value> for Answer {
+    fn from(data: Value) -> Self {
+        Self {
+            data,
+            names: views::Names::new(),
+        }
+    }
+}
+
+/// Runs `command`; a read shown in `view` is read as the view needs it, and the names it shows are looked up.
+async fn run(
+    command: Commands,
+    progress: weflow_core::output::ProgressMode,
+    view: Option<&views::View>,
+) -> AppResult<Answer> {
     let ctx = AppContext::new(VERSION)?;
-    let mut config =
+    let config =
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(format!("{err:#}")))?;
 
     apply_progress_settings(&config, progress);
@@ -156,10 +192,26 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
         warn_if_open_to_others(&ctx);
     }
 
-    let command = match read_of(command) {
-        Ok(read) => return read.run(&ServiceHub::new(ctx, config)),
-        Err(command) => command,
-    };
+    match read_of(command) {
+        Ok(read) => {
+            let hub = ServiceHub::new(ctx, config);
+            let Some(view) = view else {
+                return read.run(&hub).map(Answer::from);
+            };
+            let data = view.read(read).run(&hub)?;
+            let names = view.names(&hub, &data);
+            Ok(Answer { data, names })
+        }
+        Err(command) => run_command(command, ctx, config).await.map(Answer::from),
+    }
+}
+
+/// Runs a command that is not a read.
+async fn run_command(
+    command: Commands,
+    ctx: AppContext,
+    mut config: ConfigStore,
+) -> AppResult<Value> {
     let command = match command {
         Commands::Config(command) => return handle_config(command, &ctx, &mut config),
         Commands::Lang { lang } => {
@@ -286,10 +338,14 @@ fn answered(written: std::io::Result<()>, code: u8) -> ExitCode {
     ExitCode::from(code)
 }
 
-/// The human-readable output: the payload itself, without the {success, data} envelope.
+/// The human-readable output: the payload itself, without the {success, data} envelope, in the command's own words,
+/// else in its `view` (whose note goes to stderr), else as `weflow_core::render` shows any answer.
 fn print_response(
     response: &weflow_core::output::CliResponse<Value>,
     summary: Option<Summary>,
+    view: Option<&views::View>,
+    names: &views::Names,
+    glyphs: views::Glyphs,
 ) -> std::io::Result<()> {
     #[expect(
         clippy::expect_used,
@@ -299,10 +355,19 @@ fn print_response(
     weflow_core::locale::localize_json(&mut value);
     let data = value.get("data").cloned().unwrap_or(Value::Null);
     let paint = Paint::of(Stream::Stdout);
-    let text = summary
-        .and_then(|summary| key_summary(summary, &data, paint))
-        .unwrap_or_else(|| weflow_core::render::render(&data, paint));
-    weflow_core::output::print(&text)
+    if let Some(text) = summary.and_then(|summary| key_summary(summary, &data, paint)) {
+        return weflow_core::output::print(&text);
+    }
+    let shown = view.and_then(|view| view.render(&data, names, &views::Style::of_run(glyphs)));
+    let Some(shown) = shown else {
+        return weflow_core::output::print(&weflow_core::render::render(&data, paint));
+    };
+    weflow_core::output::print(&shown.body)?;
+    if let Some(note) = shown.note {
+        // a note that cannot be written on stderr leaves the answer whole
+        let _ = weflow_core::output::eprint(&note);
+    }
+    Ok(())
 }
 
 /// The commands whose answer the terminal shows in words of its own, and which words: chosen before the command

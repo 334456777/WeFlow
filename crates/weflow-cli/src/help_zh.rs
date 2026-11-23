@@ -128,6 +128,8 @@ const HELP: &[(&str, &str)] = &[
     ("Decrypt an image into the image cache", "将图片解密到图片缓存"),
     ("Use the HD original when it is on disk; without it a cached thumbnail may be returned. `export media` always uses the original", "磁盘上有高清原图时使用原图；不加时可能返回缓存的缩略图。`export media` 始终使用原图"),
     ("Print JSON for scripts instead of the human-readable output", "输出供脚本使用的 JSON，而不是便于阅读的文本"),
+    ("Show every field of the answer, as --json has them, instead of the short human-readable view", "显示回答的全部字段（与 --json 的字段相同），而不是精简的文本视图"),
+    ("Draw bars and rules in the human-readable output with ASCII characters only", "文本输出里的条形和分隔线只用 ASCII 字符"),
     ("Private chats that can be excluded from analytics", "可从统计中排除的私聊"),
     ("Read and write configuration", "读写配置"),
     ("Read or set the cached \"my message count\" of a group chat", "读取或设置群聊中缓存的“我的消息数”"),
