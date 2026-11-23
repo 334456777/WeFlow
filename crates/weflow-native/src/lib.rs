@@ -19,6 +19,7 @@ pub mod macos_key_helper;
 pub mod media;
 pub mod msg;
 pub mod msg_row;
+pub mod quote;
 pub mod report;
 pub mod sns;
 pub mod sqlcipher;
