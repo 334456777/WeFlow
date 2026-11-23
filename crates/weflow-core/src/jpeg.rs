@@ -5,8 +5,9 @@
 //! scales them, its integer DCT (`jfdctint.c`, after Loeffler, Ligtenberg and Moschytz: this part is based on the
 //! work of the Independent JPEG Group), quantization by a reciprocal, and one interleaved scan. What differs is how
 //! it gets there: each block is read straight from its plane, chroma at the resolution the picture has it, rather
-//! than from rows widened to the luma's width and sampled again; and where the CPU has AVX2, the DCT and the
-//! quantization of a block work on eight lanes at once. The tests compare the files with `jpeg-encoder`'s.
+//! than from rows widened to the luma's width and sampled again; where the CPU has AVX2, the DCT and the
+//! quantization of a block work on eight lanes at once; and on x86_64 the coefficients that are not 0, which the
+//! Huffman coding visits, are found sixteen at a time. The tests compare the files with `jpeg-encoder`'s.
 
 /// The samples of one plane, brought to 8 bits.
 pub(crate) trait Plane {
@@ -347,7 +348,8 @@ impl Writer {
         prev_dc: &mut i16,
     ) {
         let coefficients = dct_quantize(samples, quant);
-        let zz: [i16; 64] = ZIGZAG.map(|i| coefficients[i]);
+        // `& 63` changes no index and lets the compiler drop the bounds checks.
+        let zz: [i16; 64] = ZIGZAG.map(|i| coefficients[i & 63]);
         let diff = zz[0] - *prev_dc;
         *prev_dc = zz[0];
         let (size, bits) = magnitude(diff);
@@ -357,11 +359,7 @@ impl Writer {
             u32::from(len) + u32::from(size),
         );
         // the AC coefficients that are not 0, from the first
-        let mut nonzero = zz
-            .iter()
-            .enumerate()
-            .skip(1)
-            .fold(0u64, |m, (i, &v)| m | u64::from(v != 0) << i);
+        let mut nonzero = nonzero(&zz) & !1;
         let mut last = 0;
         while nonzero != 0 {
             let i = nonzero.trailing_zeros();
@@ -407,6 +405,54 @@ impl Writer {
         self.marker(0xd9);
         self.out
     }
+}
+
+/// Bit `i` set where `zz[i]` is not 0.
+#[cfg(target_arch = "x86_64")]
+fn nonzero(zz: &[i16; 64]) -> u64 {
+    // SAFETY: SSE2 is part of x86_64: every CPU that runs this code has it.
+    unsafe { nonzero_sse2(zz) }
+}
+
+/// [`nonzero`] sixteen coefficients at a time: compared with 0, and their bytes' top bits gathered.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse2")]
+fn nonzero_sse2(zz: &[i16; 64]) -> u64 {
+    use std::arch::x86_64::{
+        _mm_cmpeq_epi16, _mm_loadu_si128, _mm_movemask_epi8, _mm_packs_epi16, _mm_setzero_si128,
+    };
+    let zero = _mm_setzero_si128();
+    let (sixteens, _) = zz.as_chunks::<16>();
+    let mut mask = 0u64;
+    for (k, sixteen) in sixteens.iter().enumerate() {
+        let (low, high) = sixteen.split_at(8);
+        // SAFETY: each half is eight `i16`s, the 16 bytes an unaligned load reads.
+        let (low, high) = unsafe {
+            (
+                _mm_loadu_si128(low.as_ptr().cast()),
+                _mm_loadu_si128(high.as_ptr().cast()),
+            )
+        };
+        // every lane of the comparisons 0 or -1, which the saturating pack keeps
+        let zeros = _mm_packs_epi16(_mm_cmpeq_epi16(low, zero), _mm_cmpeq_epi16(high, zero));
+        let zeros = _mm_movemask_epi8(zeros).cast_unsigned() & 0xffff;
+        mask |= u64::from(!zeros & 0xffff) << (16 * k);
+    }
+    mask
+}
+
+/// Bit `i` set where `zz[i]` is not 0.
+#[cfg(not(target_arch = "x86_64"))]
+fn nonzero(zz: &[i16; 64]) -> u64 {
+    nonzero_each(zz)
+}
+
+/// [`nonzero`] a coefficient at a time.
+#[cfg(any(test, not(target_arch = "x86_64")))]
+fn nonzero_each(zz: &[i16; 64]) -> u64 {
+    zz.iter()
+        .enumerate()
+        .fold(0u64, |m, (i, &v)| m | u64::from(v != 0) << i)
 }
 
 /// The size category of a coefficient and its bits as coded: the low bits of the value, of the value less one when
