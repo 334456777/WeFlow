@@ -1,0 +1,42 @@
+# cargo-about's settings for the list of third-party licenses in each release package (THIRD-PARTY-LICENSES.html,
+# made by release.yml from licenses.hbs, #1111).
+
+# The licenses the crates a release is built from may have. Of a crate offering a choice (`MIT OR Apache-2.0`), the
+# first of these it offers is the one listed.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "BSL-1.0",
+    "0BSD",
+    "CC0-1.0",
+    "MIT-0",
+]
+
+# The targets release.yml builds: a crate only some of them use is listed too.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+
+# what the binary is built from: build scripts' dependencies yes, test and benchmark ones no
+ignore-build-dependencies = false
+ignore-dev-dependencies = true
+
+# the crates of this workspace are WeFlow itself (LICENSE)
+private = { ignore = true }
+
+# crates whose license files cargo-about cannot find on its own; it knows how to read these
+workarounds = ["ring", "rustls"]
