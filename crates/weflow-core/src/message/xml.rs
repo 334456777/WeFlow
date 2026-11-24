@@ -34,18 +34,94 @@ pub fn rx(pattern: &str) -> Rc<Regex> {
     })
 }
 
-pub fn extract_xml_value(xml: &str, tag: &str) -> String {
-    let inner = if tag.is_ascii() {
+/// The raw inside of the first `<tag>` of `xml`, matched case-insensitively.
+fn tag_inside<'x>(xml: &'x str, tag: &str) -> Option<&'x str> {
+    if tag.is_ascii() {
         crate::xml::tag_inner(xml, tag)
     } else {
         let re = rx(&format!(r"(?is)<{0}>(.*?)</{0}>", regex::escape(tag)));
         re.captures(xml)
             .map(|c| c.get(1).map_or("", |m| m.as_str()))
-    };
-    match inner {
-        Some(c) => strip_cdata(c),
-        None => String::new(),
     }
+}
+
+/// The inside of the first `<tag>` of `xml`, trimmed and without its CDATA markers, with its entities as they are.
+/// For a value that is itself XML (a quote's `<content>`, a `<recorditem>`), which its reader decodes; text for
+/// people to read is [`xml_text`].
+pub fn extract_xml_value(xml: &str, tag: &str) -> String {
+    tag_inside(xml, tag).map_or_else(String::new, strip_cdata)
+}
+
+/// The text of the first `<tag>` of `xml`, for people to read (#1199): trimmed, the entities outside CDATA sections
+/// decoded once ([`decode_text_entities`]), the text inside them kept as it is.
+pub(crate) fn xml_text(xml: &str, tag: &str) -> String {
+    let Some(inside) = tag_inside(xml, tag) else {
+        return String::new();
+    };
+    let mut text = String::with_capacity(inside.len());
+    let mut rest = inside;
+    while let Some(open) = rest.find("<![CDATA[") {
+        text.push_str(&decode_text_entities(&rest[..open].replace("]]>", "")));
+        let body = &rest[open + "<![CDATA[".len()..];
+        let (cdata, after) = body.split_once("]]>").unwrap_or((body, ""));
+        text.push_str(cdata);
+        rest = after;
+    }
+    text.push_str(&decode_text_entities(&rest.replace("]]>", "")));
+    text.trim().to_string()
+}
+
+/// The entities of XML text decoded in one pass, so that what one decodes to is never decoded again (`&amp;lt;` is
+/// `&lt;`): those [`crate::xml::decode_entities`] knows, and numeric ones (`&#233;`, `&#xE9;`). Anything else after a
+/// `&` is kept as it is.
+pub(crate) fn decode_text_entities(s: &str) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+    if !s.contains('&') {
+        return Cow::Borrowed(s);
+    }
+    // `&#x10FFFF;` is the longest entity of either kind
+    const LONGEST: usize = 9;
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        let after = &rest[amp + 1..];
+        let end = after.as_bytes()[..after.len().min(LONGEST)]
+            .iter()
+            .position(|&b| b == b';');
+        let decoded = end.and_then(|end| {
+            let name = &after[..end];
+            match name.strip_prefix('#') {
+                Some(number) => match number.strip_prefix(['x', 'X']) {
+                    Some(hex) if hex.bytes().all(|b| b.is_ascii_hexdigit()) => {
+                        u32::from_str_radix(hex, 16).ok()
+                    }
+                    Some(_) => None,
+                    None if number.bytes().all(|b| b.is_ascii_digit()) => number.parse().ok(),
+                    None => None,
+                }
+                .and_then(char::from_u32),
+                // a name it knows comes back as its one character; any other, as it is
+                None => match crate::xml::decode_entities(&rest[amp..amp + end + 2]) {
+                    Cow::Owned(c) if c.chars().count() == 1 => c.chars().next(),
+                    _ => None,
+                },
+            }
+            .map(|c| (c, end))
+        });
+        rest = match decoded {
+            Some((c, end)) => {
+                out.push(c);
+                &after[end + 1..]
+            }
+            None => {
+                out.push('&');
+                after
+            }
+        };
+    }
+    out.push_str(rest);
+    Cow::Owned(out)
 }
 
 /// `c.replace("<![CDATA[", "").replace("]]>", "").trim()`, without copying when there is nothing to remove.
@@ -55,6 +131,11 @@ pub(super) fn strip_cdata(c: &str) -> String {
     replace_cow(replace_cow(Cow::Borrowed(c), "<![CDATA[", ""), "]]>", "")
         .trim()
         .to_string()
+}
+
+/// The attribute `attr` of the first `<tag>` of `xml`, for people to read: its entities decoded once (#1199).
+pub(crate) fn xml_attr_text(xml: &str, tag: &str, attr: &str) -> String {
+    decode_text_entities(&extract_xml_attribute(xml, tag, attr)).into_owned()
 }
 
 pub(super) fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
@@ -237,7 +318,7 @@ impl<'a> MsgXml<'a> {
             .get_or_init(|| {
                 let refer = self.refer_once()?;
                 let info = self.quote_twice();
-                let reply_text = strip_sender_prefix(&extract_xml_value(self.once(), "title"));
+                let reply_text = strip_sender_prefix(&xml_text(self.once(), "title"));
                 let preview = info.content.clone().unwrap_or_else(|| {
                     format_quoted_reference_preview(
                         &extract_xml_value(refer, "content"),
@@ -492,6 +573,42 @@ mod tests {
                 "poiname"
             ),
             "P"
+        );
+    }
+
+    /// Text for people to read has its entities decoded once, outside CDATA sections only (#1199).
+    #[test]
+    fn xml_text_decodes_entities_once_outside_cdata() {
+        for (inside, want) in [
+            ("A &amp; B", "A & B"),
+            ("&amp;amp; &amp;lt;", "&amp; &lt;"),
+            ("Caf&#233; &#xE9;&#XE9;", "Café éé"),
+            ("&lt;b&gt; &quot;q&quot; &apos;", "<b> \"q\" '"),
+            ("&#xZZ; &#; &nbsp; & a;b", "&#xZZ; &#; &nbsp; & a;b"),
+            ("&#1114112; &#55296;", "&#1114112; &#55296;"),
+            (" <![CDATA[ a &amp; b ]]> ", "a &amp; b"),
+            ("x &amp; <![CDATA[&amp;]]> &amp; y", "x & &amp; & y"),
+            ("中&amp;文", "中&文"),
+        ] {
+            let xml = format!("<msg><title>{inside}</title></msg>");
+            assert_eq!(xml_text(&xml, "title"), want, "{inside:?}");
+        }
+        assert_eq!(xml_text("<msg/>", "title"), "");
+        assert_eq!(
+            xml_attr_text(
+                r#"<location label="Caf&#233; &amp; Bar"/>"#,
+                "location",
+                "label"
+            ),
+            "Café & Bar"
+        );
+        // the value of a field that is itself XML keeps its entities, for its reader to decode
+        assert_eq!(
+            extract_xml_value(
+                "<refermsg><content>&lt;msg&gt;</content></refermsg>",
+                "content"
+            ),
+            "&lt;msg&gt;"
         );
     }
 

@@ -5,24 +5,20 @@ use serde_json::{json, Map, Value};
 use super::link::{extract_html_link_card, normalize_http_link_url};
 use super::parse_duration_seconds;
 use super::xml::{
-    extract_xml_attribute, extract_xml_value, normalize_app_message_content, rx, MsgXml,
+    extract_xml_value, normalize_app_message_content, rx, xml_attr_text, xml_text, MsgXml,
 };
 
 fn extract_finder_feed_desc(content: &str) -> String {
-    rx(r"(?is)<finderFeed.*?<desc>(.*?)</desc>")
-        .captures(content)
-        .map(|c| {
-            c[1].replace("<![CDATA[", "")
-                .replace("]]>", "")
-                .trim()
-                .to_string()
-        })
+    rx(r"(?is)<finderFeed.*?<desc>.*?</desc>")
+        .find(content)
+        .map(|m| xml_text(m.as_str(), "desc"))
         .unwrap_or_default()
 }
 
+/// The text of the first of `tags` that `n` has, for people to read ([`xml_text`], #1199).
 fn first_non_empty(n: &str, tags: &[&str]) -> String {
     tags.iter()
-        .map(|t| extract_xml_value(n, t))
+        .map(|t| xml_text(n, t))
         .find(|v| !v.is_empty())
         .unwrap_or_default()
 }
@@ -267,9 +263,9 @@ fn app_message_fields(
         put(&mut meta, "appMsgKind", k.into());
     }
     let desc = first_non_empty(&n, &["des", "desc"]);
-    let app_name = extract_xml_value(&n, "appname");
+    let app_name = xml_text(&n, "appname");
     let source_name = first_non_empty(&n, &["sourcename", "sourcedisplayname"]);
-    let source_user = extract_xml_value(&n, "sourceusername");
+    let source_user = xml_text(&n, "sourceusername");
     let thumb = first_non_empty(
         &n,
         &[
@@ -325,11 +321,7 @@ fn app_message_fields(
             "musicDataUrl",
             first_non_empty(&n, &["dataurl", "lowurl"]),
         );
-        put(
-            &mut meta,
-            "musicAlbumUrl",
-            extract_xml_value(&n, "songalbumurl"),
-        );
+        put(&mut meta, "musicAlbumUrl", xml_text(&n, "songalbumurl"));
         put(
             &mut meta,
             "musicCoverUrl",
@@ -341,11 +333,7 @@ fn app_message_fields(
             first_non_empty(&n, &["singername", "artist", "albumartist"]),
         );
         put(&mut meta, "musicAppName", app_name);
-        put(
-            &mut meta,
-            "musicSourceName",
-            extract_xml_value(&n, "sourcename"),
-        );
+        put(&mut meta, "musicSourceName", xml_text(&n, "sourcename"));
         let dur = first_non_empty(&n, &["playlength", "play_length", "duration"]);
         if let Some(d) = parse_duration_seconds(&dur) {
             meta.insert("musicDuration".into(), json!(d));
@@ -354,7 +342,7 @@ fn app_message_fields(
     if !is_finder {
         return if meta.is_empty() { None } else { Some(meta) };
     }
-    let raw_title = extract_xml_value(&n, "title");
+    let raw_title = xml_text(&n, "title");
     let feed_desc = extract_finder_feed_desc(&n);
     let finder_title = if raw_title.is_empty() || raw_title.contains("不支持") {
         feed_desc
@@ -382,7 +370,7 @@ fn app_message_fields(
         "finderCoverUrl",
         first_non_empty(&n, &["thumbUrl", "coverUrl", "thumburl", "coverurl"]),
     );
-    put(&mut meta, "finderAvatar", extract_xml_value(&n, "avatar"));
+    put(&mut meta, "finderAvatar", xml_text(&n, "avatar"));
     let dur = first_non_empty(&n, &["videoPlayDuration", "duration"]);
     if let Some(d) = parse_duration_seconds(&dur) {
         meta.insert("finderDuration".into(), json!(d));
@@ -416,11 +404,11 @@ pub fn extract_arkme_contact_card_meta(
     }
     let n = normalize_app_message_content(content);
     let read = |attr: &str| {
-        let a = extract_xml_attribute(&n, "msg", attr);
+        let a = xml_attr_text(&n, "msg", attr);
         if !a.is_empty() {
             a
         } else {
-            extract_xml_value(&n, attr)
+            xml_text(&n, attr)
         }
     };
     let first = |attrs: &[&str]| {

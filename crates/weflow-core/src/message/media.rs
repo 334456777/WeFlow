@@ -2,8 +2,8 @@
 
 use super::emoji::{extract_loose_hex_md5, percent_decode};
 use super::xml::{
-    decode_html_entities, extract_xml_attribute, extract_xml_value, last_hex_token,
-    normalize_app_message_content, rx, MsgXml,
+    extract_xml_attribute, extract_xml_value, last_hex_token, normalize_app_message_content, rx,
+    xml_attr_text, xml_text, MsgXml,
 };
 
 pub(super) fn normalize_image_dat_name_token(value: &str) -> Option<String> {
@@ -135,12 +135,12 @@ pub(super) fn extract_file_app_message_meta_in(x: &MsgXml<'_>) -> Option<FileMet
     }
     let first = |keys: &[&str]| {
         keys.iter()
-            .map(|k| extract_xml_value(normalized, k))
+            .map(|k| xml_text(normalized, k))
             .find(|v| !v.is_empty())
             .unwrap_or_default()
     };
     let raw_name = first(&["filename", "title"]);
-    let raw_ext = extract_xml_value(normalized, "fileext");
+    let raw_ext = xml_text(normalized, "fileext");
     let raw_size = first(&["totallen", "datasize", "filesize"]);
     let mut raw_md5 = extract_xml_value(normalized, "md5");
     if raw_md5.is_empty() {
@@ -150,14 +150,8 @@ pub(super) fn extract_file_app_message_meta_in(x: &MsgXml<'_>) -> Option<FileMet
         raw_md5 = extract_loose_hex_md5(normalized).unwrap_or_default();
     }
     let size = raw_size.trim().parse::<i64>().ok().filter(|n| *n > 0);
-    let non_empty = |s: String| {
-        let t = decode_html_entities(&s).trim().to_string();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t)
-        }
-    };
+    // decoded already, by `xml_text` (#1199)
+    let non_empty = |s: String| (!s.is_empty()).then_some(s);
     Some(FileMeta {
         xml_type: Some(xml_type),
         file_name: non_empty(raw_name),
@@ -189,21 +183,21 @@ pub(super) fn extract_location_meta(content: &str, local_type: i64) -> Option<Lo
         extract_xml_attribute(&n, "location", "longitude"),
     );
     let poiname = {
-        let a = extract_xml_attribute(&n, "location", "poiname");
+        let a = xml_attr_text(&n, "location", "poiname");
         if !a.is_empty() {
             a
         } else {
-            let b = extract_xml_value(&n, "poiname");
+            let b = xml_text(&n, "poiname");
             if !b.is_empty() {
                 b
             } else {
-                extract_xml_value(&n, "poiName")
+                xml_text(&n, "poiName")
             }
         }
     };
     let label = pick(
-        extract_xml_attribute(&n, "location", "label"),
-        extract_xml_value(&n, "label"),
+        xml_attr_text(&n, "location", "label"),
+        xml_text(&n, "label"),
     );
     let lat = raw_lat.trim().parse::<f64>().ok().filter(|v| v.is_finite());
     let lng = raw_lng.trim().parse::<f64>().ok().filter(|v| v.is_finite());
@@ -223,13 +217,13 @@ pub(super) fn location_text(content: &str) -> String {
     let n = normalize_app_message_content(content);
     let first = |vals: Vec<String>| vals.into_iter().find(|v| !v.is_empty()).unwrap_or_default();
     let poiname = first(vec![
-        extract_xml_attribute(&n, "location", "poiname"),
-        extract_xml_value(&n, "poiname"),
-        extract_xml_value(&n, "poiName"),
+        xml_attr_text(&n, "location", "poiname"),
+        xml_text(&n, "poiname"),
+        xml_text(&n, "poiName"),
     ]);
     let label = first(vec![
-        extract_xml_attribute(&n, "location", "label"),
-        extract_xml_value(&n, "label"),
+        xml_attr_text(&n, "location", "label"),
+        xml_text(&n, "label"),
     ]);
     let lat = first(vec![
         extract_xml_attribute(&n, "location", "x"),

@@ -1,6 +1,6 @@
 //! Transfers: their text and their two sides.
 
-use super::xml::{extract_xml_value, normalize_app_message_content};
+use super::xml::{extract_xml_value, normalize_app_message_content, xml_text};
 
 /// Whether two identifiers are the same person, by the database layer's rule ([`weflow_native::db::same_identity`]).
 ///
@@ -55,8 +55,8 @@ pub(crate) fn transfer_text(
     sender_wxid: Option<&str>,
 ) -> String {
     let normalized = normalize_app_message_content(content);
-    let feedesc = extract_xml_value(&normalized, "feedesc");
-    let memo = extract_xml_value(&normalized, "pay_memo");
+    let feedesc = xml_text(&normalized, "feedesc");
+    let memo = xml_text(&normalized, "pay_memo");
     let prefix = get_transfer_prefix(&normalized, my_wxid, sender_wxid);
     match (feedesc.is_empty(), memo.is_empty()) {
         (true, _) => prefix.to_string(),

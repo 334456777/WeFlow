@@ -38,7 +38,7 @@ use crate::message::appmsg::extract_arkme_app_message_meta_in;
 use crate::message::forward::RecordKind;
 use crate::message::quote::QuotedDisplay;
 use crate::message::system::clean_system_message;
-use crate::message::xml::{decode_html_entities, extract_xml_value, rx, MsgXml};
+use crate::message::xml::{decode_html_entities, extract_xml_value, rx, xml_text, MsgXml};
 use crate::message::ExportMsg;
 
 const TEMPLATE_ZH: &str = include_str!("template.zh.html");
@@ -342,8 +342,13 @@ impl Exporter<'_, '_> {
         {
             m.u = -1;
             m.k = Kind::System as u8;
-            // a pat's line keeps the entities of its XML
-            m.x = Some(decode_html_entities(&self.html_message_text(msg, &x)));
+            // a system message's line keeps the entities of its XML; a pat's is decoded already (#1196)
+            let text = self.html_message_text(msg, &x);
+            m.x = Some(if x.app_type_twice() == "62" {
+                text
+            } else {
+                decode_html_entities(&text)
+            });
             return m;
         }
         m.u = self.page_user(state, msg);
@@ -470,7 +475,7 @@ impl Exporter<'_, '_> {
             return m;
         };
         let n = x.once();
-        let tag = |name: &str| opt(extract_xml_value(n, name));
+        let tag = |name: &str| opt(xml_text(n, name));
         let title = tag("title");
         let kind = meta.get("appMsgKind").and_then(Value::as_str).unwrap_or("");
         let app_type = meta.get("appMsgType").and_then(Value::as_str).unwrap_or("");

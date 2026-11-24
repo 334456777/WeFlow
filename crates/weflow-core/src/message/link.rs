@@ -3,7 +3,7 @@
 use super::appmsg::kind_of_app_type;
 use super::xml::{
     extract_app_message_type, extract_xml_value, normalize_app_message_content, rx,
-    strip_sender_prefix,
+    strip_sender_prefix, xml_text,
 };
 
 pub struct LinkCard {
@@ -70,9 +70,9 @@ pub fn extract_html_link_card(content: &str, local_type: i64) -> Option<LinkCard
     .iter()
     .map(|k| normalize_http_link_url(&extract_xml_value(&normalized, k)))
     .find(|u| !u.is_empty())?;
-    let mut title = extract_xml_value(&normalized, "title");
+    let mut title = xml_text(&normalized, "title");
     if title.is_empty() {
-        title = extract_xml_value(&normalized, "des");
+        title = xml_text(&normalized, "des");
     }
     if title.is_empty() {
         title = url.clone();
