@@ -98,19 +98,28 @@ fn push_xml_value(xml: &str, tag: &str) -> String {
         .unwrap_or_default()
 }
 
-fn is_revoke_system_message(m: &ChatMessage) -> bool {
-    let content = format!("{}\n{}", m.raw_content, m.parsed_content);
-    if content.contains("revokemsg") || content.contains("<replacemsg") {
-        return true;
-    }
-    if content.contains("撤回了一条消息") || content.contains("尝试撤回此消息") {
-        return true;
-    }
-    (m.local_type == 10000 || m.local_type == 10002) && content.contains("撤回")
+/// Whether `m` is one of WeChat's system notices (base type 10000 or 10002, the type's low 32 bits), the only
+/// messages a revoke notice can be: a text or a reply that merely mentions a revoke is not one (#1146).
+fn is_system_notice(m: &ChatMessage) -> bool {
+    matches!(m.local_type & 0xFFFF_FFFF, 10000 | 10002)
 }
 
+/// Whether `m` is the notice of a revoked message: a system notice whose `<sysmsg>` is a `revokemsg` or carries a
+/// `<replacemsg>`, or whose text says something was revoked.
+fn is_revoke_system_message(m: &ChatMessage) -> bool {
+    if !is_system_notice(m) {
+        return false;
+    }
+    let content = format!("{}\n{}", m.raw_content, m.parsed_content);
+    let revoke_sysmsg = content.contains("<sysmsg")
+        && (content.contains("revokemsg") || content.contains("<replacemsg"));
+    // "撤回了一条消息", "尝试撤回此消息" and the like
+    revoke_sysmsg || content.contains("撤回")
+}
+
+/// Whether `m` is the notice of a message the account itself revoked, which is not pushed.
 fn is_self_revoke(m: &ChatMessage) -> bool {
-    format!("{}\n{}", m.raw_content, m.parsed_content).contains("你撤回")
+    is_system_notice(m) && format!("{}\n{}", m.raw_content, m.parsed_content).contains("你撤回")
 }
 
 fn is_revoke_session_summary(s: &Session) -> bool {
@@ -136,23 +145,17 @@ fn message_id_tokens(m: &ChatMessage) -> HashSet<String> {
     tokens
 }
 
+/// The id of the message the revoke notice `m` names in its XML; `None` when it names none. The notice's own server
+/// id is not one: looking it up would find some other message (#1146).
 fn extract_revoked_message_id(m: &ChatMessage) -> Option<String> {
     let content = if !m.raw_content.is_empty() {
         &m.raw_content
     } else {
         &m.parsed_content
     };
-    let candidates = [
-        push_xml_value(content, "newmsgid"),
-        push_xml_value(content, "msgid"),
-        push_xml_value(content, "oldmsgid"),
-        push_xml_value(content, "svrid"),
-        m.server_id_raw.clone(),
-        m.server_id.to_string(),
-    ];
-    candidates
-        .iter()
-        .map(|c| normalize_id_token(c))
+    ["newmsgid", "msgid", "oldmsgid", "svrid"]
+        .into_iter()
+        .map(|tag| normalize_id_token(&push_xml_value(content, tag)))
         .find(|c| !c.is_empty())
 }
 
@@ -1273,6 +1276,7 @@ impl PushBroker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, SessionSpec, TestDir};
     use weflow_native::msg_row::MsgRow;
 
     fn row(local_id: i64, create_time: i64, local_type: i64, content: &str) -> MsgRow {
@@ -1323,6 +1327,71 @@ mod tests {
     }
 
     #[test]
+    fn only_system_notices_are_revoke_notices() {
+        let quote = "<msg><appmsg><title>刚才谁撤回了一条消息？</title><type>57</type><refermsg><svrid>555</svrid><content>明天几点出发？</content></refermsg></appmsg></msg>";
+        let pasted_xml =
+            r#"<sysmsg type="revokemsg"><revokemsg><newmsgid>555</newmsgid></revokemsg></sysmsg>"#;
+        let texts = msg(vec![
+            row(1, 100, 1, "刚才谁撤回了一条消息？"),
+            row(2, 100, 1, "你撤回了一条消息吗"),
+            row(3, 100, 1, "我看到 revokemsg 了"),
+            row(4, 100, 1, "对方尝试撤回此消息"),
+            row(5, 100, 1, pasted_xml),
+            row(6, 100, 49, quote),
+            row(7, 100, 8_589_934_592_049, quote),
+        ]);
+        for m in &texts {
+            assert!(
+                !is_revoke_system_message(m),
+                "type {} {:?}",
+                m.local_type,
+                m.raw_content
+            );
+            assert!(
+                !is_self_revoke(m),
+                "type {} {:?}",
+                m.local_type,
+                m.raw_content
+            );
+        }
+
+        let notices = msg(vec![
+            row(
+                1,
+                100,
+                10002,
+                r#"<sysmsg type="revokemsg"><revokemsg><newmsgid>555</newmsgid><replacemsg><![CDATA["Bob" 撤回了一条消息]]></replacemsg></revokemsg></sysmsg>"#,
+            ),
+            MsgRow {
+                server_id: Some(556),
+                ..row(2, 100, 10000, "\"Bob\" 撤回了一条消息")
+            },
+            // the high 32 bits of a type are flags: the base type is what counts
+            row(3, 100, (1 << 32) | 10000, "\"Bob\" 撤回了一条消息"),
+            row(4, 100, 10000, "你撤回了一条消息"),
+        ]);
+        for m in &notices {
+            assert!(
+                is_revoke_system_message(m),
+                "type {} {:?}",
+                m.local_type,
+                m.raw_content
+            );
+        }
+        assert_eq!(
+            extract_revoked_message_id(&notices[0]).as_deref(),
+            Some("555")
+        );
+        assert_eq!(
+            extract_revoked_message_id(&notices[1]),
+            None,
+            "a notice naming no message has no revoked id, not its own server id"
+        );
+        assert!(!is_self_revoke(&notices[1]));
+        assert!(is_self_revoke(&notices[3]));
+    }
+
+    #[test]
     fn broker_assigns_ids_and_replays() {
         let b = PushBroker::new();
         let mut rx = b.subscribe();
@@ -1361,7 +1430,7 @@ mod tests {
 
     #[test]
     fn avatar_files_get_a_well_formed_file_url() {
-        let root = weflow_native::fixture::TestDir::new("weflow-push-avatar");
+        let root = TestDir::new("weflow-push-avatar");
         // `#` and `%` are legal in a folder name everywhere; `?` is not on Windows
         let dir = root.path().join("a #b%c");
         let png = "data:image/png;base64,iVBORw0KGgo=";
@@ -1416,6 +1485,117 @@ mod tests {
             &session("@placeholder_foldgroup")
         ));
         assert!(!PushEngine::should_scan_message_backed(None, &session("")));
+    }
+
+    const ME: &str = "wxid_me_ab12";
+    const PEER: &str = "wxid_bob";
+
+    /// An engine over a synthetic account with `messages` from `PEER`, whose session last saw the message at 100:
+    /// the next [`PushEngine::flush`] reads what came after it.
+    fn engine_after_100(root: &TestDir, summary: &str, messages: Vec<MsgSpec>) -> PushEngine {
+        let fixture = Fixture::new(&root.path().join("data"), ME);
+        let last = messages.iter().map(|m| m.create_time).max().unwrap_or(0);
+        let unread = messages.iter().filter(|m| m.create_time > 100).count() as i64;
+        fixture.session_db(&[SessionSpec {
+            username: PEER,
+            summary,
+            last_timestamp: last,
+            unread,
+            last_msg_type: messages.last().map_or(1, |m| m.local_type),
+        }]);
+        fixture.contact_db(
+            &[
+                ContactSpec::new(ME, 1, "Me"),
+                ContactSpec::new(PEER, 1, "Bob"),
+            ],
+            &[],
+        );
+        fixture.message_shard(0, &[(PEER, messages)]);
+        let ctx = crate::config::AppContext {
+            home_dir: root.path().join("home"),
+            config_path: root.path().join("home/config.json"),
+            version: "test".into(),
+        };
+        std::fs::create_dir_all(&ctx.home_dir).unwrap();
+        let mut config = crate::config::ConfigStore::default();
+        let profile = config.profiles.get_mut("default").unwrap();
+        profile.db_path = Some(fixture.account_dir.to_string_lossy().to_string());
+        profile.decrypt_key = Some(fixture.key_hex());
+        profile.wxid = Some(ME.into());
+        let mut engine = PushEngine::new(ServiceHub::new(ctx, config));
+        engine.baseline.insert(
+            PEER.into(),
+            Baseline {
+                last_timestamp: 100,
+                unread_count: 0,
+            },
+        );
+        engine.baseline_ready = true;
+        engine
+    }
+
+    fn events(pushed: &[Value]) -> Vec<(&str, &str)> {
+        pushed
+            .iter()
+            .map(|p| {
+                (
+                    p["event"].as_str().unwrap_or(""),
+                    p["content"].as_str().unwrap_or(""),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_text_mentioning_a_revoke_is_pushed_as_a_new_message() {
+        let root = TestDir::new("weflow-push-revoke-text");
+        let mut engine = engine_after_100(
+            &root,
+            "你撤回了一条消息吗",
+            vec![
+                MsgSpec::text(1, PEER, 100, "明天几点出发？"),
+                MsgSpec::text(2, PEER, 101, "刚才谁撤回了一条消息？"),
+                MsgSpec::text(3, PEER, 102, "你撤回了一条消息吗"),
+            ],
+        );
+        let pushed = engine.flush(false);
+        assert_eq!(
+            events(&pushed),
+            [
+                ("message.new", "刚才谁撤回了一条消息？"),
+                ("message.new", "你撤回了一条消息吗"),
+            ]
+        );
+        assert!(
+            engine.recently_revoked.is_empty(),
+            "no message is taken as revoked: {:?}",
+            engine.recently_revoked.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn a_revoke_notice_is_pushed_with_the_revoked_message() {
+        let root = TestDir::new("weflow-push-revoke-notice");
+        let revoked = MsgSpec::text(1, PEER, 100, "明天几点出发？");
+        let notice = MsgSpec::text(
+            2,
+            PEER,
+            101,
+            &format!(
+                r#"<sysmsg type="revokemsg"><revokemsg><newmsgid>{}</newmsgid><replacemsg><![CDATA["Bob" 撤回了一条消息]]></replacemsg></revokemsg></sysmsg>"#,
+                revoked.server_id
+            ),
+        )
+        .of_type(10002);
+        let mut engine = engine_after_100(&root, "\"Bob\" 撤回了一条消息", vec![revoked, notice]);
+        let pushed = engine.flush(false);
+        assert_eq!(
+            events(&pushed),
+            [(
+                "message.revoke",
+                "对方撤回了一条消息，rawid：1001，内容为“明天几点出发？”"
+            )]
+        );
     }
 
     #[test]
