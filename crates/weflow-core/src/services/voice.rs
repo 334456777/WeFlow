@@ -154,6 +154,35 @@ impl ServiceHub {
         let local_id = crate::api::js_parse_int(msg_id)
             .ok_or_else(|| AppError::usage("invalid message id"))?;
         let wcdb = self.open_wcdb()?;
+        self.voice_data_of(&wcdb, session_id, local_id, create_time, server_id, sender)
+    }
+
+    /// [`voice_data`](Self::voice_data) with the databases `wcdb` opened already: an export of many voices opens them
+    /// once rather than once a voice.
+    pub(super) fn voice_data_with(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        session_id: &str,
+        msg_id: &str,
+        create_time: Option<i64>,
+        server_id: Option<&str>,
+        sender: Option<&str>,
+    ) -> AppResult<Vec<u8>> {
+        let local_id = crate::api::js_parse_int(msg_id)
+            .ok_or_else(|| AppError::usage("invalid message id"))?;
+        self.voice_data_of(wcdb, session_id, local_id, create_time, server_id, sender)
+    }
+
+    /// [`voice_data`](Self::voice_data) of the message `local_id`, read through `wcdb`.
+    fn voice_data_of(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        session_id: &str,
+        local_id: i64,
+        create_time: Option<i64>,
+        server_id: Option<&str>,
+        sender: Option<&str>,
+    ) -> AppResult<Vec<u8>> {
         let mut create_time = create_time.filter(|t| *t != 0);
         let mut sender: Option<String> = sender.filter(|s| !s.is_empty()).map(str::to_string);
         let mut server = server_id.and_then(unsigned_token).unwrap_or_default();
@@ -161,7 +190,7 @@ impl ServiceHub {
         if !strong {
             // several message databases may hold the local id: the create time, then the voice type, pick one
             if let Ok(Some(row)) =
-                chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(34))
+                chat::message_by_local_id(wcdb, session_id, local_id, create_time, Some(34))
             {
                 // the lookup prefers a voice only among several messages of the id: the one it found is the
                 // message asked for, of whatever kind
@@ -199,7 +228,7 @@ impl ServiceHub {
         let candidates = self.voice_candidates(session_id, sender.as_deref());
         let silk = self
             .voice_silk_from_media_db(
-                &wcdb,
+                wcdb,
                 session_id,
                 create_time,
                 local_id,

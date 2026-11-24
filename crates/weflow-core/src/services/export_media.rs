@@ -484,15 +484,17 @@ impl ServiceHub {
                 msg.server_id_raw.clone()
             };
             let server = if server == "0" { None } else { Some(server) };
-            let wav = self
-                .voice_data(
-                    talker,
-                    &msg.local_id.to_string(),
-                    Some(msg.create_time).filter(|t| *t != 0),
-                    server.as_deref(),
-                    None,
-                )
-                .ok()?;
+            let (msg_id, time) = (
+                msg.local_id.to_string(),
+                Some(msg.create_time).filter(|t| *t != 0),
+            );
+            let wav = match run.and_then(|run| run.wcdb(self)) {
+                Some(wcdb) => {
+                    self.voice_data_with(wcdb, talker, &msg_id, time, server.as_deref(), None)
+                }
+                None => self.voice_data(talker, &msg_id, time, server.as_deref(), None),
+            }
+            .ok()?;
             return put(
                 "voice",
                 "voices",
@@ -557,6 +559,9 @@ struct ExportRun {
     videos: Option<crate::video::VideoFolder>,
     /// From when the folders the images are looked up in are taken as they were (issue #1099).
     since: Since,
+    /// The databases, opened when the first voice asks, once for the whole export (`None` when they do not open: each
+    /// voice then tries itself, as on its own).
+    wcdb: std::sync::OnceLock<Option<weflow_native::wcdb::Wcdb>>,
 }
 
 impl ExportRun {
@@ -566,7 +571,13 @@ impl ExportRun {
             files: ExportedFiles::default(),
             videos: hub.video_folder(),
             since: Since::now(),
+            wcdb: std::sync::OnceLock::new(),
         }
+    }
+
+    /// The databases of `hub`'s account, opened by the first caller.
+    fn wcdb(&self, hub: &ServiceHub) -> Option<&weflow_native::wcdb::Wcdb> {
+        self.wcdb.get_or_init(|| hub.open_wcdb().ok()).as_ref()
     }
 }
 
