@@ -8211,7 +8211,7 @@
           {
             "type": "string",
             "const": "web",
-            "description": "The WebUI versions downloaded; `serve` downloads the one it needs again."
+            "description": "The WebUI versions downloaded, but the ones a running `weflow serve` shows."
           }
         ],
         "description": "A part of WeFlow's cache that is listed and cleared on its own."
