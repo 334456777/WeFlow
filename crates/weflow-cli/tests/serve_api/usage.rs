@@ -492,6 +492,70 @@ fn a_backup_goes_into_a_folder_and_not_under_another_extension() {
     }
 }
 
+/// The group exports write `.csv` or `.xlsx` only: another extension or none is a usage error from the command line
+/// and from the API, and no file is written (#1136).
+#[test]
+fn a_group_export_to_another_kind_of_file_is_a_usage_error() {
+    let root = temp_root("usage-group-export");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let said = "is neither a .csv nor an .xlsx file";
+    for name in ["m.txt", "m.json", "m"] {
+        let out = root.join(name);
+        let path = out.to_str().unwrap();
+        let reply = server.call(
+            "POST",
+            "/group/export-members",
+            &serde_json::json!({ "chatroom-id": "room1@chatroom", "out": out }).to_string(),
+        );
+        refused(&reply, said, &format!("POST /group/export-members {name}"));
+        let reply = server.call(
+            "POST",
+            "/group/export-member-messages",
+            &serde_json::json!({ "chatroom-id": "room1@chatroom", "username": "wxid_bob", "out": out })
+                .to_string(),
+        );
+        refused(
+            &reply,
+            said,
+            &format!("POST /group/export-member-messages {name}"),
+        );
+        refused_on_the_command_line(
+            &home,
+            &["group", "export-members", "room1@chatroom", path],
+            said,
+        );
+        refused_on_the_command_line(
+            &home,
+            &[
+                "group",
+                "export-member-messages",
+                "room1@chatroom",
+                "wxid_bob",
+                path,
+            ],
+            said,
+        );
+        assert!(!out.exists(), "{name}");
+    }
+    // the extensions in capitals are the formats
+    for name in ["m.CSV", "m.XLSX"] {
+        let out = root.join(name);
+        let (exit, stdout, stderr) = run_cli(
+            &home,
+            &[
+                "--json",
+                "group",
+                "export-members",
+                "room1@chatroom",
+                out.to_str().unwrap(),
+            ],
+        );
+        assert_eq!(exit, 0, "{name}: {stdout}{stderr}");
+        assert!(out.is_file(), "{name}");
+    }
+}
+
 /// A negative report year written after `--year` is a number to clap, not an option of its own, so the range of the
 /// year refuses it (#1066) as it refuses the `--year=-5` spelling.
 #[test]

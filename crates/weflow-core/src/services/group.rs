@@ -268,6 +268,33 @@ fn format_unix_time(ts: i64) -> String {
     }
 }
 
+/// The kind of file a group's export of members or of a member's messages is, by the extension of its name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MemberTable {
+    Csv,
+    Xlsx,
+}
+
+impl MemberTable {
+    /// The kind `out` names: `.csv` or `.xlsx`, in any case.
+    ///
+    /// # Errors
+    /// A usage error for any other extension and for none (#1136): told before the databases are read.
+    fn of(out: &Path) -> AppResult<Self> {
+        let ext = out.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext.eq_ignore_ascii_case("csv") {
+            Ok(Self::Csv)
+        } else if ext.eq_ignore_ascii_case("xlsx") {
+            Ok(Self::Xlsx)
+        } else {
+            Err(AppError::usage(format!(
+                "{} is neither a .csv nor an .xlsx file; use one of those extensions",
+                out.display()
+            )))
+        }
+    }
+}
+
 fn worksheet_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -1321,7 +1348,11 @@ impl ServiceHub {
         })
     }
 
-    /// Writes a member's messages in a group as CSV or XLSX depending on the extension.
+    /// Writes a member's messages in a group as CSV or XLSX depending on the extension; a text longer than a cell
+    /// holds is cut (see [`crate::export::CELL_CHARS`]).
+    ///
+    /// # Errors
+    /// A usage error when `out` is not a `.csv` or `.xlsx` file, before anything is read.
     pub fn group_export_member_messages(
         &self,
         chatroom_id: &str,
@@ -1337,6 +1368,7 @@ impl ServiceHub {
         if member.is_empty() {
             return Err(AppError::usage("member id must not be empty"));
         }
+        let table = MemberTable::of(out)?;
         let wcdb = self.open_wcdb()?;
         let export_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let (names, _) =
@@ -1399,11 +1431,6 @@ impl ServiceHub {
                 AppError::runtime(format!("failed to create {}: {e}", parent.display()))
             })?;
         }
-        let ext = out
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
         let meta = [
             "导出工具",
             "WeFlow",
@@ -1414,7 +1441,7 @@ impl ServiceHub {
             "导出时间",
             &export_time,
         ];
-        if ext == "csv" {
+        if table == MemberTable::Csv {
             let mut rows: Vec<Vec<String>> = vec![
                 vec!["会话信息".into()],
                 [
@@ -1501,7 +1528,7 @@ impl ServiceHub {
             for ((row, n), r) in (5u32..).zip(1u32..).zip(records.iter()) {
                 ws.write_number_with_format(row, 0, n, &wrap).map_err(x)?;
                 for (c, cell) in (0u16..).zip(r.iter()).take(5).skip(1) {
-                    ws.write_with_format(row, c, cell.as_str(), &wrap)
+                    ws.write_string_with_format(row, c, crate::export::fit_cell(cell), &wrap)
                         .map_err(x)?;
                 }
             }
@@ -1514,8 +1541,12 @@ impl ServiceHub {
         })
     }
 
-    /// Writes a group's members to `out` (`group export-members`).
+    /// Writes a group's members to `out` (`group export-members`), as CSV or XLSX depending on the extension.
+    ///
+    /// # Errors
+    /// A usage error when `out` is not a `.csv` or `.xlsx` file, before anything is read.
     pub fn group_export_members(&self, chatroom_id: &str, out: &Path) -> AppResult<GroupExported> {
+        let table = MemberTable::of(out)?;
         let wcdb = self.open_wcdb()?;
         let export_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let (names, _) = self.names_and_avatars(&wcdb, &[chatroom_id.to_string()]);
@@ -1611,11 +1642,6 @@ impl ServiceHub {
                 AppError::runtime(format!("failed to create {}: {e}", parent.display()))
             })?;
         }
-        let ext = out
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
         let meta = [
             "导出工具",
             "WeFlow",
@@ -1627,7 +1653,7 @@ impl ServiceHub {
             &export_time,
         ];
         let header = ["微信昵称", "微信备注", "群昵称", "wxid", "微信号"];
-        if ext == "csv" {
+        if table == MemberTable::Csv {
             let mut all: Vec<Vec<String>> = vec![
                 vec!["会话信息".into()],
                 [
@@ -1689,7 +1715,7 @@ impl ServiceHub {
             }
             for (row, r) in (4u32..).zip(rows.iter()) {
                 for (c, cell) in (0u16..).zip(r.iter()).take(5) {
-                    ws.write_with_format(row, c, cell.as_str(), &wrap)
+                    ws.write_string_with_format(row, c, crate::export::fit_cell(cell), &wrap)
                         .map_err(x)?;
                 }
             }

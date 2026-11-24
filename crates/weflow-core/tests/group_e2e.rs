@@ -135,6 +135,103 @@ fn member_analytics_and_exports() {
     assert_eq!(page["messages"][0]["senderUsername"], "wxid_bob");
 }
 
+/// The group exports write `.csv` or `.xlsx`, in any case, and refuse any other name before they read anything (#1136).
+#[test]
+fn group_exports_take_a_csv_or_xlsx_name_only() {
+    let (root, hub) = common::mock_hub("group-export-names");
+    for name in ["members.txt", "members.json", "members", "members.csv.bak"] {
+        let out = root.join(name);
+        let err = hub
+            .group_export_members("room1@chatroom", &out)
+            .unwrap_err();
+        assert_eq!(
+            (err.code.as_str(), err.exit_code),
+            ("invalid_arguments", 2),
+            "{name}: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("is neither a .csv nor an .xlsx file"),
+            "{name}: {}",
+            err.message
+        );
+        let err = hub
+            .group_export_member_messages("room1@chatroom", "wxid_bob", &out, 0, 0)
+            .unwrap_err();
+        assert_eq!(err.code, "invalid_arguments", "{name}: {}", err.message);
+        assert!(!out.exists(), "{name}");
+    }
+    for name in ["members.CSV", "members.XLSX"] {
+        let out = root.join(name);
+        assert_eq!(
+            hub.group_export_members("room1@chatroom", &out)
+                .unwrap()
+                .count,
+            3
+        );
+        assert!(out.is_file(), "{name}");
+    }
+    // the case of the extension picks the format as the lower case does
+    let csv = std::fs::read(root.join("members.CSV")).unwrap();
+    assert_eq!(
+        csv[..3],
+        [0xEF, 0xBB, 0xBF],
+        "a CSV after its byte order mark"
+    );
+    let xlsx = std::fs::read(root.join("members.XLSX")).unwrap();
+    assert_eq!(xlsx[..4], *b"PK\x03\x04", "a workbook is a zip");
+}
+
+/// A message longer than a cell of a workbook holds (the XML of a forwarded chat, say) is cut to 32 000 characters
+/// in a member's messages written as `.xlsx`, rather than failing the whole export (#1136).
+#[test]
+fn a_member_message_longer_than_a_cell_is_cut_in_the_workbook() {
+    use weflow_native::fixture::{ContactSpec, MsgSpec, RoomSpec, SessionSpec, T0};
+    let long = format!("wxid_bob:\n{}", "x".repeat(40_000));
+    let (root, hub, _) = common::custom_hub("group-export-long", |f| {
+        f.contact_db(
+            &[
+                ContactSpec::new("wxid_me", 1, "Me Nick"),
+                ContactSpec::new("wxid_bob", 1, "Bob"),
+                ContactSpec::new("room1@chatroom", 2, "Project Room"),
+            ],
+            &[RoomSpec {
+                username: "room1@chatroom",
+                owner: "wxid_bob",
+                members: &[("wxid_me", ""), ("wxid_bob", "")],
+            }],
+        );
+        f.session_db(&[SessionSpec {
+            username: "room1@chatroom",
+            summary: "forwarded",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        f.message_shard(
+            0,
+            &[(
+                "room1@chatroom",
+                vec![MsgSpec::text(1, "wxid_bob", T0, &long)],
+            )],
+        );
+    });
+    let out = root.join("bob.xlsx");
+    let res = hub
+        .group_export_member_messages("room1@chatroom", "wxid_bob", &out, 0, 0)
+        .unwrap();
+    assert_eq!(res.count, 1);
+    let mut book = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+    let mut strings = String::new();
+    std::io::Read::read_to_string(
+        &mut book.by_name("xl/sharedStrings.xml").unwrap(),
+        &mut strings,
+    )
+    .unwrap();
+    let longest = strings.split(|c| c != 'x').map(str::len).max().unwrap_or(0);
+    assert_eq!(longest, 32_000, "the message is cut to 32 000 characters");
+}
+
 /// A reply's phrase and emojis are those of what it says, its title, and not of its XML, whose `<![CDATA[…]]>` is no
 /// emoji (#1092).
 #[test]
