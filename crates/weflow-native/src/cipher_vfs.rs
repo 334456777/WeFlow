@@ -26,6 +26,7 @@ use anyhow::{anyhow, Context, Result};
 use rusqlite::{ffi, Connection, OpenFlags};
 
 use crate::sha512x4;
+use crate::shared_file::SharedFile;
 use crate::sqlcipher::{self, PageCipher, PAGE_SIZE};
 
 const VFS_NAME: &CStr = c"weflow-cipher";
@@ -122,62 +123,102 @@ struct MainStamp {
 }
 
 fn main_stamp(file: &File) -> Option<MainStamp> {
-    let m = file.metadata().ok()?;
-    Some(MainStamp {
-        len: m.len(),
-        mtime: m.modified().ok(),
-    })
+    held(file).map(|h| h.stamp)
 }
 
 /// [`main_stamp`] of a file a snapshot keeps open by its handle, `None` once the file is deleted (#1153). SQLite
 /// deletes the WAL and the wal-index as its last connection closes and makes new ones at the same paths as the next
 /// opens, and the handle keeps seeing the deleted file, whose size and time never change again.
 fn held_stamp(file: &File) -> Option<MainStamp> {
+    held(file).filter(|h| !h.deleted).map(|h| h.stamp)
+}
+
+/// What the handle of a file says of it: its size and time, and whether it has been deleted.
+struct Held {
+    stamp: MainStamp,
+    /// The file has no name left, or on Windows is to lose it once its handles close.
+    deleted: bool,
+}
+
+/// [`Held`] of the file `file` is open on, from its metadata.
+#[cfg(not(windows))]
+fn held(file: &File) -> Option<Held> {
     let m = file.metadata().ok()?;
-    if deleted(&m, file) {
-        return None;
-    }
-    Some(MainStamp {
-        len: m.len(),
-        mtime: m.modified().ok(),
+    #[cfg(unix)]
+    let deleted = std::os::unix::fs::MetadataExt::nlink(&m) == 0;
+    // files are not deleted under a handle on other systems that WeFlow runs on
+    #[cfg(not(unix))]
+    let deleted = false;
+    Some(Held {
+        stamp: MainStamp {
+            len: m.len(),
+            mtime: m.modified().ok(),
+        },
+        deleted,
     })
 }
 
-/// Whether the file of `file`, whose metadata is `m`, has no name left: it has been deleted.
-#[cfg(unix)]
-fn deleted(m: &fs::Metadata, _file: &File) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    m.nlink() == 0
-}
-
-/// Whether the file of `file` has been deleted, or is to be once its handles close: Windows does not give the link
-/// count in `fs::Metadata`, so the handle is asked, which opens nothing.
+/// [`Held`] of the file `file` is open on, from two queries of the handle: its times, and its size and links.
+/// `File::metadata` asks the volume for its serial number besides, a request that goes down to the file system; the
+/// size and time of a database are asked after every chunk read from it (#1105).
 #[cfg(windows)]
-fn deleted(_m: &fs::Metadata, file: &File) -> bool {
+fn held(file: &File) -> Option<Held> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
-        FileStandardInfo, GetFileInformationByHandleEx, FILE_STANDARD_INFO,
+        FileBasicInfo, FileStandardInfo, GetFileInformationByHandleEx, FILE_BASIC_INFO,
+        FILE_STANDARD_INFO,
     };
-    let mut info = FILE_STANDARD_INFO::default();
-    #[expect(clippy::cast_possible_truncation, reason = "a struct of 24 bytes")]
-    let size = size_of::<FILE_STANDARD_INFO>() as u32;
-    // SAFETY: the handle is open for as long as `file` is borrowed, and `info` is a writable `FILE_STANDARD_INFO` of
-    // `size` bytes, the structure `FileStandardInfo` fills.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "structures of 40 and 24 bytes"
+    )]
+    let (basic_size, standard_size) = (
+        size_of::<FILE_BASIC_INFO>() as u32,
+        size_of::<FILE_STANDARD_INFO>() as u32,
+    );
+    let mut basic = FILE_BASIC_INFO::default();
+    let mut standard = FILE_STANDARD_INFO::default();
+    let handle = file.as_raw_handle();
+    // SAFETY: the handle is open for as long as `file` is borrowed, and each buffer is a writable structure of the
+    // size given, the one its class fills
     let ok = unsafe {
-        GetFileInformationByHandleEx(
-            file.as_raw_handle(),
-            FileStandardInfo,
-            (&raw mut info).cast(),
-            size,
-        )
+        GetFileInformationByHandleEx(handle, FileBasicInfo, (&raw mut basic).cast(), basic_size)
+            != 0
+            && GetFileInformationByHandleEx(
+                handle,
+                FileStandardInfo,
+                (&raw mut standard).cast(),
+                standard_size,
+            ) != 0
     };
-    ok != 0 && (info.DeletePending || info.NumberOfLinks == 0)
+    if !ok {
+        return None;
+    }
+    Some(Held {
+        stamp: MainStamp {
+            len: u64::try_from(standard.EndOfFile).ok()?,
+            mtime: file_time(basic.LastWriteTime),
+        },
+        deleted: standard.DeletePending || standard.NumberOfLinks == 0,
+    })
 }
 
-/// Files are not deleted under a handle on other systems that WeFlow runs on.
-#[cfg(not(any(unix, windows)))]
-fn deleted(_m: &fs::Metadata, _file: &File) -> bool {
-    false
+/// A Windows file time, 100-nanosecond intervals since 1601, as a `SystemTime`; `None` for 0, a time the file
+/// system does not keep.
+#[cfg(windows)]
+fn file_time(intervals: i64) -> Option<SystemTime> {
+    /// 1970-01-01 in 100-nanosecond intervals since 1601-01-01.
+    const UNIX_EPOCH_INTERVALS: i64 = 116_444_736_000_000_000;
+    if intervals == 0 {
+        return None;
+    }
+    let since = intervals.checked_sub(UNIX_EPOCH_INTERVALS)?;
+    let span = std::time::Duration::from_nanos(since.unsigned_abs().checked_mul(100)?);
+    if since >= 0 {
+        SystemTime::UNIX_EPOCH.checked_add(span)
+    } else {
+        SystemTime::UNIX_EPOCH.checked_sub(span)
+    }
 }
 
 /// Decides whether pages read from the main file still belong to the snapshot.
@@ -202,7 +243,7 @@ impl ChangeGuard {
         // a wal-index deleted under the handle is no longer the one WeChat keeps up to date (#1153)
         if slot
             .as_ref()
-            .is_none_or(|file| file.metadata().is_ok_and(|m| deleted(&m, file)))
+            .is_none_or(|file| held(file).is_some_and(|h| h.deleted))
         {
             *slot = File::open(&self.shm_path).ok();
         }
@@ -256,7 +297,8 @@ impl ChangeGuard {
 /// One consistent, read-only view of an encrypted database file, decrypted page by page.
 pub struct CipherFile {
     path: PathBuf,
-    file: File,
+    /// The main file, read by the threads of every connection to the snapshot.
+    file: SharedFile,
     cipher: Arc<PageCipher>,
     main_pages: u32,
     total_pages: u32,
@@ -339,7 +381,7 @@ impl Chunk {
 /// A snapshot's WAL as it was when the snapshot was opened.
 enum WalAtOpen {
     /// Open, and its size and time then.
-    Held(File, Option<MainStamp>),
+    Held(SharedFile, Option<MainStamp>),
     /// There was none at this path.
     Missing(PathBuf),
 }
@@ -469,7 +511,7 @@ impl CipherFile {
             }
             return Ok(Self {
                 path: path.to_path_buf(),
-                file,
+                file: SharedFile::new(file),
                 cipher: c,
                 main_pages: u32::try_from(len / PAGE_SIZE as u64).with_context(|| {
                     format!("{} has more pages than SQLite can number", path.display())
@@ -478,7 +520,7 @@ impl CipherFile {
                 page1: page1.into_boxed_slice(),
                 wal_pages,
                 wal: match wal_file {
-                    Some(file) => WalAtOpen::Held(file, wal_stamp_at_open),
+                    Some(file) => WalAtOpen::Held(SharedFile::new(file), wal_stamp_at_open),
                     None => WalAtOpen::Missing(wal_path),
                 },
                 chunks: Mutex::default(),
@@ -499,9 +541,9 @@ impl CipherFile {
     /// for its size costs tens of microseconds, and a snapshot is checked before every read); a WAL there was not
     /// then is looked for by its name. A WAL deleted since is changed, as a new one may be at its path (#1153).
     pub fn unchanged(&self) -> bool {
-        main_stamp(&self.file) == self.guard.stamp_at_open
+        self.file.with(main_stamp) == self.guard.stamp_at_open
             && match &self.wal {
-                WalAtOpen::Held(file, stamp) => stamp.is_some() && held_stamp(file) == *stamp,
+                WalAtOpen::Held(file, stamp) => stamp.is_some() && file.with(held_stamp) == *stamp,
                 WalAtOpen::Missing(path) => fs::metadata(path).is_err(),
             }
     }
@@ -521,7 +563,9 @@ impl CipherFile {
     /// read reported (a schema made of half-written pages decrypts fine and only SQLite finds it malformed), where a
     /// needless rerun is cheap; on every read it would rerun whenever WeChat checkpoints frames we already hold.
     pub fn changed_since_open(&self) -> bool {
-        !self.guard.consistent(&self.file) || main_stamp(&self.file) != self.guard.stamp_at_open
+        self.file.with(|file| {
+            !self.guard.consistent(file) || main_stamp(file) != self.guard.stamp_at_open
+        })
     }
 
     /// The first read error, for reporting when retries do not help.
@@ -558,15 +602,16 @@ impl CipherFile {
         }
         let count = CHUNK_PAGES.min(self.main_pages + 1 - first);
         let mut buf = vec![0u8; count as usize * PAGE_SIZE];
-        if let Err(e) = read_at(
-            &self.file,
-            &mut buf,
-            (u64::from(first) - 1) * PAGE_SIZE as u64,
-        ) {
-            return Err(self.fail(format!("cannot read {}: {e}", self.path.display())));
-        }
-        // The pages are in memory now; if no checkpoint moved past our snapshot until this moment, they are ours.
-        if !self.guard.consistent_read(&self.file) {
+        let at = (u64::from(first) - 1) * PAGE_SIZE as u64;
+        // The pages are in memory once read; if no checkpoint moved past our snapshot until that moment, they are ours.
+        let read = self
+            .file
+            .with(|file| read_at(file, &mut buf, at).map(|()| self.guard.consistent_read(file)));
+        let consistent = match read {
+            Ok(consistent) => consistent,
+            Err(e) => return Err(self.fail(format!("cannot read {}: {e}", self.path.display()))),
+        };
+        if !consistent {
             return Err(self.fail(format!(
                 "{} changed while it was being read",
                 self.path.display()
