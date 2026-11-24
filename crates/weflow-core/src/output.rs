@@ -330,6 +330,7 @@ fn render_bar(
     let frac = (current as f64 / total as f64).clamp(0.0, 1.0);
     #[expect(
         clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
         reason = "`frac` is in [0, 1], so both fit"
     )]
     let (filled, percent) = (
@@ -398,7 +399,8 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
             drop(st);
             #[expect(
                 clippy::cast_possible_truncation,
-                reason = "a percentage; `as` saturates should `current` pass `total`"
+                clippy::cast_sign_loss,
+                reason = "a percentage, not negative; `as` saturates should `current` pass `total`"
             )]
             let percent = if total > 0 {
                 ((current as f64 / total as f64) * 100.0) as u8
@@ -444,7 +446,8 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
             let elapsed = now.duration_since(st.stage_started).as_secs();
             #[expect(
                 clippy::cast_possible_truncation,
-                reason = "seconds left; `as` saturates"
+                clippy::cast_sign_loss,
+                reason = "seconds left, not negative; `as` saturates"
             )]
             let eta = st
                 .rate

@@ -561,10 +561,6 @@ pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<crate::hevc::Unsupported>) 
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "test values are known to fit, or are meant to wrap"
-)]
 mod tests {
     use super::*;
 
@@ -751,7 +747,7 @@ mod tests {
     #[test]
     fn corrupted_jpegs_are_mostly_zero() {
         let mut good = vec![0xff, 0xd8, 0xff, 0xe0];
-        good.extend((0..6000).map(|i| (i % 251 + 1) as u8));
+        good.extend((0..6000).map(|i| u8::try_from(i % 251 + 1).unwrap()));
         assert!(!is_likely_corrupted_jpeg(&good));
         let mut bad = vec![0xff, 0xd8, 0xff, 0xe0];
         bad.extend(vec![0u8; 6000]);

@@ -289,8 +289,8 @@ mod tests {
             cipher.extend_from_slice(&block);
         }
         let mut out = sig.to_vec();
-        out.extend_from_slice(&(aes_len as i32).to_le_bytes());
-        out.extend_from_slice(&(xor_len as i32).to_le_bytes());
+        out.extend_from_slice(&i32::try_from(aes_len).unwrap().to_le_bytes());
+        out.extend_from_slice(&i32::try_from(xor_len).unwrap().to_le_bytes());
         out.push(0x01);
         out.extend(cipher);
         out.extend_from_slice(raw_part);

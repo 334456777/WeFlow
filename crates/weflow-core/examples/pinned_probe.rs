@@ -143,9 +143,11 @@ fn main() -> Result<()> {
         bits(flags.values().copied())
     );
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs() as i64;
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs(),
+    )?;
     println!("place kind     hash      status     flag          hidden sort>last sort>now");
     for (place, row) in sessions.iter().enumerate() {
         let status = int(row, "status");

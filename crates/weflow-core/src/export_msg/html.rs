@@ -254,7 +254,10 @@ impl Exporter<'_, '_> {
         } else {
             "private"
         };
-        let me = state.user_ix.get("").map_or(-1, |&i| i as i64);
+        let me = state
+            .user_ix
+            .get("")
+            .map_or(-1, |&i| crate::num::count_i64(i));
         w.write_all(b"{\"v\":1,\"lang\":")?;
         write_script_json(w, &lang)?;
         w.write_all(b",\"title\":")?;
@@ -275,7 +278,7 @@ impl Exporter<'_, '_> {
     fn page_user(&mut self, state: &mut PageState, msg: &ExportMsg) -> i64 {
         let key = user_key(self, msg);
         if let Some(&i) = state.user_ix.get(key) {
-            return i as i64;
+            return crate::num::count_i64(i);
         }
         let key = key.to_string();
         let name = if self.session.is_group {
@@ -307,7 +310,7 @@ impl Exporter<'_, '_> {
         let i = state.users.len();
         state.users.push((name, avatar));
         state.user_ix.insert(key, i);
-        i as i64
+        crate::num::count_i64(i)
     }
 
     /// One message of the page's data; `index` is the number of messages before it.

@@ -450,7 +450,7 @@ impl ServiceHub {
                         .iter()
                         .filter(|m| m.create_time >= latest && m.is_send != Some(1))
                         .collect();
-                    unread = fresh.len() as i64;
+                    unread = crate::num::count_i64(fresh.len());
                     latest_msg = fresh.last().map(|m| (*m).clone());
                 }
             }

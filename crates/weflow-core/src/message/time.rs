@@ -62,7 +62,7 @@ pub(super) fn parse_compact_datetime(raw: &str) -> i64 {
         return 0;
     }
     let num = |a: usize, b: usize| raw[a..b].parse::<u32>().unwrap_or(0);
-    let year = num(0, 4) as i32;
+    let year = num(0, 4).cast_signed();
     let month = num(4, 6);
     let day = num(6, 8);
     let hour = if raw.len() >= 12 { num(8, 10) } else { 0 };

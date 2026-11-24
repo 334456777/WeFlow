@@ -599,7 +599,7 @@ impl ServiceHub {
                             }
                         }
                     }
-                    group_mutual.insert(gid.clone(), friend_members.len() as i64);
+                    group_mutual.insert(gid.clone(), crate::num::count_i64(friend_members.len()));
                     for sid in touched {
                         *private_mutual.entry(sid).or_insert(0) += 1;
                     }
@@ -934,7 +934,7 @@ impl ServiceHub {
                         from,
                         (q.begin, q.end),
                         floor.unwrap_or(0),
-                        want as i64,
+                        crate::num::count_i64(want),
                     )
                     .map_err(native)?;
                 let (count, end) = (rows.len(), rows.last().map(MsgRow::pos));
@@ -1119,7 +1119,7 @@ impl ServiceHub {
             });
         }
         Ok(MediaStream {
-            next_offset: offset as usize + items.len(),
+            next_offset: usize::try_from(offset).unwrap_or(0) + items.len(),
             items,
             has_more,
         })

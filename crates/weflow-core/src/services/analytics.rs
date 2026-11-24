@@ -503,7 +503,7 @@ impl ServiceHub {
         let other = (total - text - image - voice - video - emoji).max(0);
         // the days with a message, which the aggregate counts one by one (WeFlow's desktop app guesses 20 a month,
         // #307)
-        let active_days = d["daily"].as_object().map_or(0, |m| m.len()) as i64;
+        let active_days = crate::num::count_i64(d["daily"].as_object().map_or(0, |m| m.len()));
         let opt = |v: i64| (v != 0).then_some(v);
         Ok(OverallStatistics {
             total_messages: total,

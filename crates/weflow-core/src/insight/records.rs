@@ -468,7 +468,8 @@ impl RecordStore {
         contacts.sort_by_key(|a| std::cmp::Reverse(a.3));
         let keyword = f.keyword.trim().to_lowercase();
         let offset = usize::try_from(f.offset.unwrap_or(0)).unwrap_or(0);
-        let limit = f.limit.filter(|l| *l != 0).unwrap_or(100).clamp(1, 200) as usize;
+        let limit = usize::try_from(f.limit.filter(|l| *l != 0).unwrap_or(100).clamp(1, 200))
+            .unwrap_or(100);
         let mut filtered: Vec<&InsightRecord> = all
             .iter()
             .copied()

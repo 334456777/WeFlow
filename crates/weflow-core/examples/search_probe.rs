@@ -6,10 +6,6 @@
     clippy::unwrap_used,
     reason = "probe code reports failure by panicking"
 )]
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "probe and benchmark data are small values that fit"
-)]
 
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -732,7 +728,7 @@ fn main() -> Result<()> {
     let mut found = 0;
     for _ in 0..4 {
         let t = Instant::now();
-        let page = account.search_messages(&keyword, Some(&big), PAGE as i32, 0, 0, 0)?;
+        let page = account.search_messages(&keyword, Some(&big), i32::try_from(PAGE)?, 0, 0, 0)?;
         times.push(ms(t));
         found = page.len();
     }
@@ -842,9 +838,10 @@ fn main() -> Result<()> {
                 bounds[0]["lo"].as_i64().unwrap_or(0),
                 bounds[0]["hi"].as_i64().unwrap_or(0),
             );
-            let step = (hi - lo) / parts as i64 + 1;
+            let parts = i64::try_from(parts)?;
+            let step = (hi - lo) / parts + 1;
             let found: Vec<usize> = std::thread::scope(|s| {
-                let all: Vec<_> = (0..parts as i64)
+                let all: Vec<_> = (0..parts)
                     .map(|p| {
                         let (account, keyword) = (&account, &keyword);
                         s.spawn(move || {
