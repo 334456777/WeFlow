@@ -1814,6 +1814,57 @@ mod tests {
         assert_eq!(m.location_label.as_deref(), Some("Bund"));
     }
 
+    /// The text a reply quotes is escaped twice inside its `<refermsg>`, a line break as `&#x0A;` or `&#10;` escaped
+    /// once more: the chat window, the exports' text and Arkme all show it decoded, the line break as a space, and a
+    /// literal `&amp;` the person typed decoded no further (#1212).
+    #[test]
+    fn a_quoted_text_with_line_breaks_reads_the_same_everywhere() {
+        use crate::message::appmsg::extract_arkme_app_message_meta_in;
+        use crate::message::xml::MsgXml;
+
+        // as WeChat keeps a quote: the quoted message's own msgsource, escaped, beside its text
+        let reply = |quoted: &str| {
+            format!(
+                "<msg><appmsg><title>好的</title><type>57</type><refermsg><type>1</type><svrid>7</svrid>\
+                 <displayname>Bob</displayname><content>{quoted}</content>\
+                 <msgsource>&lt;msgsource&gt;&lt;/msgsource&gt;</msgsource></refermsg></appmsg></msg>"
+            )
+        };
+        for (quoted, text) in [
+            ("第一行&amp;#x0A;第二行", "第一行 第二行"),
+            ("a&amp;#10;b", "a b"),
+            ("R&amp;amp;amp;D", "R&amp;D"),
+            // as the quotes on a real account that keep them escaped once more still: a line break and a space
+            (
+                "第一行&amp;amp;#x0A;第二行&amp;amp;#x20;三",
+                "第一行 第二行 三",
+            ),
+            // a line break kept as it is, as most quotes do
+            ("第一行\n第二行", "第一行 第二行"),
+        ] {
+            let xml = reply(quoted);
+            let row = MsgRow {
+                local_type: QUOTE,
+                content: xml.clone(),
+                ..MsgRow::default()
+            };
+            let m = map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0);
+            assert_eq!(m.quoted_content.as_deref(), Some(text), "{quoted}");
+            assert_eq!(
+                crate::message::parse_message_content(&xml, QUOTE, None, None, None).as_deref(),
+                Some(format!("好的[引用 Bob：{text}]").as_str()),
+                "{quoted}"
+            );
+            let meta =
+                extract_arkme_app_message_meta_in(&MsgXml::new(&xml), QUOTE).unwrap_or_default();
+            assert_eq!(
+                meta.get("quotedContent").and_then(|v| v.as_str()),
+                Some(text),
+                "{quoted}"
+            );
+        }
+    }
+
     /// The fields of a link, a file, a contact card and a location are text for people to read, in the chat window,
     /// the exports' text and Arkme alike: their entities decoded once (`&amp;amp;` is `&amp;`), the text of a CDATA
     /// section kept as it is, whether the app message is kept as `local_type` 49 or as `(<type> << 32) | 49` (#1199).
