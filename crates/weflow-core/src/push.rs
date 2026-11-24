@@ -271,7 +271,7 @@ fn avatar_file_url(dir: &std::path::Path, data_url: &str) -> Option<String> {
     std::fs::create_dir_all(dir).ok()?;
     let path = dir.join(format!("avatar_{hash}.{ext}"));
     if !path.exists() {
-        std::fs::write(&path, &bytes).ok()?;
+        crate::fs_atomic::write_atomically(&path, &bytes).ok()?;
     }
     Some(crate::video::path_to_file_url(&path))
 }

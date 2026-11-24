@@ -213,7 +213,7 @@ impl ServiceHub {
             })?;
         let wav = Self::silk_to_wav(&silk)?;
         if std::fs::create_dir_all(self.voice_cache_dir()).is_ok() {
-            let _ = std::fs::write(&cache_file, &wav);
+            let _ = crate::fs_atomic::write_atomically(&cache_file, &wav);
         }
         Ok(wav)
     }
@@ -322,7 +322,11 @@ impl ServiceHub {
                     continue;
                 };
                 if std::fs::create_dir_all(&dir).is_ok()
-                    && std::fs::write(dir.join(format!("{}.wav", chunk[idx].0)), &wav).is_ok()
+                    && crate::fs_atomic::write_atomically(
+                        &dir.join(format!("{}.wav", chunk[idx].0)),
+                        &wav,
+                    )
+                    .is_ok()
                 {
                     prepared += 1;
                 }

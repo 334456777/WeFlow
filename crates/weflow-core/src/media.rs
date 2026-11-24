@@ -104,7 +104,7 @@ async fn fetch_emoji(
     let ext =
         crate::image::ImageFormat::of(&bytes).map_or(".bin", crate::image::ImageFormat::extension);
     let out_path = cache_dir.join(format!("{}{}", meta.md5, ext));
-    fs::write(&out_path, &bytes).ok()?;
+    crate::fs_atomic::write_atomically(&out_path, &bytes).ok()?;
     Some(crate::contract::EmojiFile {
         md5: meta.md5.clone(),
         cached: false,

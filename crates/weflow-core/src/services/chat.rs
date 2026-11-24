@@ -702,7 +702,7 @@ impl ServiceHub {
         }
         let bytes = serde_json::to_vec_pretty(&Value::Object(hints))
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;
-        fs::write(&path, bytes)
+        crate::fs_atomic::write_atomically(&path, &bytes)
             .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
         // the hints read from the home folder's cache are in the cache folder's file now
         if let Some(legacy) = self.legacy_hint_path() {

@@ -19,6 +19,7 @@ pub mod decrypt;
 pub mod error;
 pub mod export;
 pub mod export_msg;
+mod fs_atomic;
 pub mod hevc;
 pub mod http_client;
 pub mod image;
