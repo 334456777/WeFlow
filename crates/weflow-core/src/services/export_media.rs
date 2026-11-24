@@ -10,6 +10,7 @@ use super::image::{CacheWrites, Since};
 use super::*;
 use crate::api::{self, ApiExportedMedia, ApiMediaOptions};
 use crate::chat_msg::{self, ChatMessage};
+use crate::fs_atomic::{copy_atomically, write_atomically};
 use crate::message::xml::rx;
 use crate::sync::MutexExt;
 use weflow_native::msg::Order;

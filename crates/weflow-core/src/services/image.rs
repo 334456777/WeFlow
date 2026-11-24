@@ -15,6 +15,7 @@ use base64::Engine;
 use serde_json::{json, Value};
 
 use super::*;
+use crate::fs_atomic::{temporary_sibling, write_atomically};
 use crate::image::{self as img};
 use crate::sync::MutexExt;
 
