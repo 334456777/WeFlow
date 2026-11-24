@@ -187,6 +187,48 @@ fn every_message_is_read_back_with_the_ones_in_the_wal() {
 }
 
 #[test]
+fn the_official_accounts_have_messages_and_wechat_pay_its_notices() {
+    let root = common::temp_dir("bench-official");
+    let data = root.join("data");
+    let made = bench::build(
+        &data,
+        &BenchSpec {
+            media: false,
+            ..small(4)
+        },
+    )
+    .unwrap();
+    let hub = common::hub_for_account(
+        &root,
+        &bench::account_dir(&data),
+        &hex(&KEY),
+        bench::ACCOUNT_DIR,
+        |_| {},
+    );
+    let official: Vec<&Value> = made["conversations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["kind"] == "official")
+        .collect();
+    let listed = hub.biz_accounts().unwrap()["accounts"]
+        .as_array()
+        .unwrap()
+        .len();
+    assert_eq!(listed, official.len());
+    for c in &official {
+        let name = c["username"].as_str().unwrap();
+        let read = hub.biz_messages(name, 0, 0).unwrap().messages.len();
+        assert!(read > 0, "{name}");
+        assert_eq!(read as u64, c["messages"].as_u64().unwrap(), "{name}");
+    }
+    let pay = hub.biz_pay_records(0, 0).unwrap().records;
+    assert!(!pay.is_empty());
+    assert!(pay.iter().any(|r| r.method.is_some() && r.status.is_some()));
+    assert!(pay.iter().any(|r| r.method.is_none()));
+}
+
+#[test]
 fn the_pictures_decrypt_and_the_wxgf_ones_decode() {
     let root = common::temp_dir("bench-images");
     let data = root.join("data");

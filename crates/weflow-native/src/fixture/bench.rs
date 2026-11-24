@@ -7,8 +7,9 @@
 //! The structure is the one WeChat writes: every database with a salt of its own, so each one opened derives its
 //! page key (#1127); several `message_N.db` whose local ids start again in each database and
 //! whose time ranges overlap, the newest messages of each database still in its WAL, a few `sort_seq` out of step
-//! (#133) or missing, app messages of every common kind as XML compressed with zstd, and the picture, video, voice
-//! and file folders with their `hardlink.db` rows. Pictures are V2 `.dat` files holding a JPEG, PNG or WXGF of the
+//! (#133) or missing, app messages of every common kind as XML compressed with zstd, the messages of the official
+//! accounts and the WeChat Pay account's notices in `biz_message_0.db` (#1068), and the picture, video, voice and
+//! file folders with their `hardlink.db` rows. Pictures are V2 `.dat` files holding a JPEG, PNG or WXGF of the
 //! real sizes; the JPEGs are headers and padding, not pictures.
 //!
 //! [`build`] draws everything from [`BenchSpec::seed`] with its own generator ([`Rng`]), so one seed gives the same
@@ -35,6 +36,7 @@ use crate::sqlcipher::testutil::{encrypt_db, encrypt_wal, plain_connection, plai
 
 mod files;
 mod messages;
+mod official;
 mod profile;
 mod rng;
 mod words;
@@ -168,17 +170,17 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
     let mut fts: Vec<Vec<FtsSpec<'_>>> = (0..FTS_TABLES).map(|_| Vec::new()).collect();
     let mut sessions = Vec::new();
     let mut manifest_conversations = Vec::new();
+    let official = official::write(&f, &world, &rng.fork(5))?;
+    for (local_type, n) in &official.by_type {
+        *by_type.entry(*local_type).or_default() += n;
+    }
     for (ci, c) in world.conversations.iter().enumerate() {
         let mut rng = rng.fork(1000 + ci as u64);
         if c.kind == Kind::Official {
-            sessions.push((
-                ci,
-                c.times[0],
-                49,
-                format!("{}：{}", c.name, world.words.text_plain(&mut rng, 12)),
-            ));
+            let (messages, newest) = &official.newest[&ci];
+            sessions.push((ci, newest.time, newest.local_type, newest.summary.clone()));
             manifest_conversations
-                .push(json!({"username": c.username, "kind": c.kind.name(), "messages": 0}));
+                .push(json!({"username": c.username, "kind": c.kind.name(), "messages": messages}));
             continue;
         }
         let table = table_name_for(&c.username);

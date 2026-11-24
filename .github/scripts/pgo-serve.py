@@ -31,8 +31,6 @@ SKIPPED = {
 # Routes that answer nothing on the synthetic account, which has nothing for them to find.
 EMPTY_OK = {
     "/api/analytics/excluded",  # nobody is excluded from the statistics
-    "/api/biz/messages",  # no pushes of official accounts
-    "/api/biz/pay-records",  # no WeChat Pay notices
 }
 # How many sessions `chat counts` and `chat statuses` are asked about at once, as a page of the session list does.
 SESSIONS = 30

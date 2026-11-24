@@ -47,7 +47,9 @@ export WEFLOW_HOME=$HOME_DIR WEFLOW_LANG=en
 manifest="$WORK/account/manifest.json"
 GROUP=$(sed -n 's/.*"username": *"\([^"]*@chatroom\)".*/\1/p' "$manifest" | head -n 1)
 FRIEND=$(sed -n 's/.*"username": *"\([^"@]*\)".*/\1/p' "$manifest" | head -n 1)
-test -n "$GROUP" && test -n "$FRIEND"
+# an official account other than WeChat Pay: every one has messages (#1068)
+BIZ=$(sed -n 's/.*"username": *"\(gh_[^"]*\)".*/\1/p' "$manifest" | grep -vx gh_3dfda90e39d6 | head -n 1)
+test -n "$GROUP" && test -n "$FRIEND" && test -n "$BIZ"
 
 # Nothing here goes to the network: no `--media` with emoji, no Moments media or HTML (avatars), no AI. A failed run
 # only leaves its code out of the profile: the build goes on.
@@ -93,6 +95,8 @@ run report dual generate --friend "$FRIEND"
 run sns timeline
 run sns export --format json --out "$OUT/sns"
 run biz accounts
+run biz messages "$BIZ" --limit 0
+run biz pay-records --limit 0
 "$PYTHON" .github/scripts/pgo-serve.py "$WEFLOW" "$GROUP" "$FRIEND" || echo "::warning::PGO serve training failed"
 
 "$PROFDATA" merge -o "$WORK/weflow.profdata" "$RAW"
