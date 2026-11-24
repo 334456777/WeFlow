@@ -39,6 +39,59 @@ struct AppMessageClass {
     kind: Option<&'static str>,
 }
 
+/// The kind an app message's own `<type>` gives it (`finder`, `music`, `quote`, …), the same for the chat window,
+/// the exports and the text of both (#1165); `None` for a type that does not say, whose kind
+/// [`kind_by_keywords`] guesses.
+pub(crate) fn kind_of_app_type(xml_type: &str) -> Option<&'static str> {
+    Some(match xml_type {
+        "51" => "finder",
+        "2001" => "red-packet",
+        "3" => "music",
+        "33" | "36" => "miniapp",
+        "6" => "file",
+        "19" => "chat-record",
+        "2000" => "transfer",
+        "87" => "announcement",
+        "57" => "quote",
+        "53" => "solitaire",
+        "5" | "49" => "link",
+        _ => return None,
+    })
+}
+
+/// An app message's XML without the messages it quotes: a reply's `<refermsg>` holds the quoted message's XML, whose
+/// words say what the quoted message is, not the reply.
+pub(crate) fn without_quoted(xml: &str) -> std::borrow::Cow<'_, str> {
+    crate::xml::remove_blocks(xml, "<refermsg", "</refermsg>")
+}
+
+/// The kind an app message whose `<type>` says nothing looks like by its own XML (`own`, [`without_quoted`]): a
+/// Channels video by its finder fields, a red packet by the address WeChat opens it with, a song by a non-empty
+/// `<musicurl>` or `<playurl>`. `<dataurl>` is no sign of a song, as links and files have it too, often empty.
+pub(crate) fn kind_by_keywords(own: &str) -> Option<&'static str> {
+    let lower = own.to_ascii_lowercase();
+    if lower.contains("<finder")
+        || lower.contains("finderusername")
+        || lower.contains("finderobjectid")
+    {
+        return Some("finder");
+    }
+    if extract_xml_value(own, "nativeurl")
+        .trim()
+        .to_ascii_lowercase()
+        .starts_with("wxpay://c2cbizmessagehandler/hongbao")
+    {
+        return Some("red-packet");
+    }
+    if ["musicurl", "playurl"]
+        .iter()
+        .any(|tag| !extract_xml_value(own, tag).trim().is_empty())
+    {
+        return Some("music");
+    }
+    None
+}
+
 /// `appMsgKind` of [`extract_arkme_app_message_meta_in`], without reading the other fields; `None` for an image, a
 /// voice message, a video, a sticker and a location, which are not app messages.
 pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> {
@@ -132,45 +185,24 @@ fn classify_app_message(x: &MsgXml<'_>, local_type: i64) -> Option<AppMessageCla
     let n = x.once().to_string();
     let looks_app = local_type == 49 || local_type == 244813135921 || n.contains("<appmsg");
     let has_refer = n.contains("<refermsg>");
+    let replies = has_refer || local_type == 244813135921;
     let xml_type = x.app_type_twice().to_string();
-    let is_finder = xml_type == "51"
-        || n.contains("<finder")
-        || n.contains("finderusername")
-        || n.contains("finderobjectid");
-    let is_music = xml_type == "3"
-        || n.contains("<musicurl")
-        || n.contains("<playurl>")
-        || n.contains("<dataurl>");
+    // the message's own `<type>` first; the words of its own XML only when the type says nothing (#1165)
+    let kind = match kind_of_app_type(&xml_type) {
+        Some("link") if replies => Some("quote"),
+        Some(kind) => Some(kind),
+        None => match kind_by_keywords(&without_quoted(&n)) {
+            Some(kind) => Some(kind),
+            None if replies => Some("quote"),
+            None if looks_app => Some("card"),
+            None => None,
+        },
+    };
+    let is_finder = kind == Some("finder");
+    let is_music = kind == Some("music");
     if !looks_app && !is_finder && !has_refer {
         return None;
     }
-    let kind: Option<&str> = if is_finder {
-        Some("finder")
-    } else if xml_type == "2001" {
-        Some("red-packet")
-    } else if is_music {
-        Some("music")
-    } else if xml_type == "33" || xml_type == "36" {
-        Some("miniapp")
-    } else if xml_type == "6" {
-        Some("file")
-    } else if xml_type == "19" {
-        Some("chat-record")
-    } else if xml_type == "2000" {
-        Some("transfer")
-    } else if xml_type == "87" {
-        Some("announcement")
-    } else if xml_type == "57" || has_refer || local_type == 244813135921 {
-        Some("quote")
-    } else if xml_type == "53" {
-        Some("solitaire")
-    } else if xml_type == "5" || xml_type == "49" {
-        Some("link")
-    } else if looks_app {
-        Some("card")
-    } else {
-        None
-    };
     Some(AppMessageClass {
         n,
         xml_type,

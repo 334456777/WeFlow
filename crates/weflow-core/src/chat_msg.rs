@@ -13,6 +13,7 @@ use weflow_native::msg_row::MsgRow;
 use weflow_native::quote::{reply_text, QUOTE};
 
 use crate::api::js_parse_int;
+use crate::message::appmsg::{kind_by_keywords, kind_of_app_type, without_quoted};
 use crate::message::emoji::percent_decode;
 use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message};
@@ -170,21 +171,18 @@ fn location_label_of(content: &str) -> String {
     ])
 }
 
-/// `parseType49`: the display string for appmsg content.
+/// `parseType49`: the display string for appmsg content. Its kind is the one its own `<type>` gives it, as the
+/// chat window's `appMsgKind` and the exports have it; the words of its XML only count when the type says nothing,
+/// and never those of the message a reply quotes (#1165).
 fn parse_type49(content: &str) -> String {
     let title = extract_xml_value(content, "title");
     let ty = app_xml_type(content);
-    let normalized = content.to_lowercase();
-    let location_label = location_label_of(content);
-    let is_finder = ty == "51"
-        || normalized.contains("<finder")
-        || normalized.contains("finderusername")
-        || normalized.contains("finderobjectid");
-    let is_red_packet = ty == "2001" || normalized.contains("hongbao");
-    let is_music = ty == "3"
-        || normalized.contains("<musicurl>")
-        || normalized.contains("<playurl>")
-        || normalized.contains("<dataurl>");
+    let own = without_quoted(content);
+    let location_label = location_label_of(&own);
+    let kind = kind_of_app_type(&ty).or_else(|| kind_by_keywords(&own));
+    let is_finder = kind == Some("finder");
+    let is_red_packet = kind == Some("red-packet");
+    let is_music = kind == Some("music");
 
     if ty == "87" {
         let t = extract_xml_value(content, "textannouncement");
@@ -478,16 +476,19 @@ fn parse_type49_message(content: &str) -> Type49Info {
     ]);
     let music_url = first_non_empty(&[ev("musicurl"), ev("playurl"), ev("songalbumurl")]);
     let data_url = first_non_empty(&[ev("dataurl"), ev("lowurl")]);
-    let location_label = location_label_of(content);
+    // the place of the message itself, not of one a reply quotes (#1165)
+    let location_label = location_label_of(&without_quoted(content));
     let finder_username = first_non_empty(&[
         ev("finderusername"),
         ev("finder_username"),
         ev("finderuser"),
     ]);
     let finder_nickname = first_non_empty(&[ev("findernickname"), ev("finder_nickname")]);
-    let is_finder = xml_type == "51";
-    let is_red_packet = xml_type == "2001";
-    let is_music = xml_type == "3";
+    // the same table as the exports' (#1165)
+    let typed = kind_of_app_type(&xml_type);
+    let is_finder = typed == Some("finder");
+    let is_red_packet = typed == Some("red-packet");
+    let is_music = typed == Some("music");
     let is_location = !location_label.is_empty();
 
     r.xml_type = Some(xml_type.clone());
@@ -556,24 +557,12 @@ fn parse_type49_message(content: &str) -> Type49Info {
         "gift"
     } else if is_location {
         "location"
-    } else if is_music {
-        "music"
-    } else if xml_type == "33" || xml_type == "36" {
-        "miniapp"
-    } else if xml_type == "6" {
-        "file"
-    } else if xml_type == "19" {
-        "chat-record"
-    } else if xml_type == "2000" {
-        "transfer"
-    } else if xml_type == "87" {
-        "announcement"
-    } else if xml_type == "57" {
+    } else if typed == Some("quote") {
         (r.quoted_content, r.quoted_sender) = quote_of(content);
         "quote"
-    } else if xml_type == "53" {
-        "solitaire"
-    } else if (xml_type == "5" || xml_type == "49")
+    } else if let Some(kind) = typed.filter(|k| *k != "link") {
+        kind
+    } else if typed == Some("link")
         && (source_username.starts_with("gh_")
             || app_name.contains("公众号")
             || !source_name.is_empty())
@@ -1300,6 +1289,181 @@ mod tests {
             "a &lt;b&gt;"
         );
         assert_eq!(parsed_content("a &lt;b&gt;", 1, None), "a <b>");
+    }
+
+    /// `xml` escaped once, as WeChat puts a quoted message's XML in a reply's `<refermsg><content>`.
+    fn escaped(xml: &str) -> String {
+        xml.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    }
+
+    /// A reply saying 好看 to `quoted`, of `<type>` 57.
+    fn reply_to(quoted: &str) -> String {
+        format!(
+            "<msg><appmsg appid=\"\" sdkver=\"0\"><title>好看</title><type>57</type><refermsg><type>49</type>\
+             <svrid>7</svrid><fromusr>wxid_b</fromusr><displayname>B</displayname><content>{}</content>\
+             </refermsg></appmsg></msg>",
+            escaped(quoted)
+        )
+    }
+
+    const FINDER: &str = "<msg><appmsg><title>一段视频</title><type>51</type><finderFeed>\
+        <finderusername>v2_x@finder</finderusername><nickname>频道</nickname><desc>描述</desc></finderFeed>\
+        </appmsg></msg>";
+    const MUSIC: &str = "<msg><appmsg><title>一首歌</title><type>3</type><url>https://m</url>\
+        <musicurl>https://m</musicurl><dataurl>https://m.mp3</dataurl><playurl>https://m.mp3</playurl></appmsg></msg>";
+    const DATAURL_LINK: &str =
+        "<msg><appmsg><title>一篇文章</title><type>5</type><url>https://a</url>\
+        <dataurl>https://a</dataurl></appmsg></msg>";
+    const RED_PACKET: &str = "<msg><appmsg><title>恭喜发财</title><type>2001</type><wcpayinfo>\
+        <nativeurl>wxpay://c2cbizmessagehandler/hongbao/receivehongbao?x=1</nativeurl></wcpayinfo></appmsg></msg>";
+    const LOCATION: &str =
+        "<msg><location x=\"31.2\" y=\"121.4\" label=\"外滩\" poiname=\"外滩\"/></msg>";
+
+    /// The kind of an app message is the one its own `<type>` gives it, wherever it is read: the words of its XML do
+    /// not make a link a song or a red packet, and those of the message a reply quotes do not make the reply one
+    /// (#1165).
+    #[test]
+    fn an_app_message_is_of_the_kind_its_type_says() {
+        let link = |extra: &str| {
+            format!(
+                "<msg><appmsg><title>一篇文章</title><type>5</type><url>https://a</url>{extra}</appmsg></msg>"
+            )
+        };
+        let hongbao_title = "<msg><appmsg><title>抢 HongBao 的攻略</title><type>5</type>\
+            <url>https://a</url></appmsg></msg>";
+        // a link: the chat window's text, the exports' text and both kinds agree
+        for (xml, text) in [
+            (hongbao_title.to_string(), "[链接] 抢 HongBao 的攻略"),
+            (link("<dataurl>https://a</dataurl>"), "[链接] 一篇文章"),
+            (link("<dataurl></dataurl>"), "[链接] 一篇文章"),
+        ] {
+            assert_eq!(parsed_content(&xml, 49, None), text, "{xml}");
+            assert_eq!(
+                crate::message::parse_message_content(&xml, 49, None, None, None).as_deref(),
+                Some(text),
+                "{xml}"
+            );
+            assert_eq!(
+                crate::message::appmsg::app_message_kind(&xml, 49),
+                Some("link"),
+                "{xml}"
+            );
+            assert_eq!(
+                parse_type49_message(&xml).app_msg_kind.as_deref(),
+                Some("link"),
+                "{xml}"
+            );
+        }
+        // a reply, kept as either local type, to a Channels video, a song, a link with a `<dataurl>`, a red packet
+        // and a place
+        for quoted in [FINDER, MUSIC, DATAURL_LINK, RED_PACKET, LOCATION] {
+            let xml = reply_to(quoted);
+            for local_type in [49, QUOTE] {
+                assert_eq!(parsed_content(&xml, local_type, None), "好看", "{quoted}");
+                let kind = crate::message::appmsg::app_message_kind(&xml, local_type);
+                assert_eq!(kind, Some("quote"), "{quoted} as {local_type}");
+                let meta = crate::message::appmsg::extract_arkme_app_message_meta_in(
+                    &crate::message::xml::MsgXml::new(&xml),
+                    local_type,
+                )
+                .unwrap();
+                assert!(meta.contains_key("quotedSender"), "{quoted}: {meta:?}");
+                assert!(
+                    !meta.contains_key("finderTitle") && !meta.contains_key("musicTitle"),
+                    "{quoted}: {meta:?}"
+                );
+            }
+            assert_eq!(
+                parse_type49_message(&xml).app_msg_kind.as_deref(),
+                Some("quote"),
+                "{quoted}"
+            );
+        }
+        // the messages themselves are still what they are
+        for (xml, kind, text) in [
+            (FINDER, "finder", "[视频号] 一段视频"),
+            (MUSIC, "music", "[音乐] 一首歌"),
+            (RED_PACKET, "red-packet", "[红包] 恭喜发财"),
+        ] {
+            assert_eq!(parsed_content(xml, 49, None), text);
+            assert_eq!(
+                crate::message::appmsg::app_message_kind(xml, 49),
+                Some(kind)
+            );
+            assert_eq!(
+                parse_type49_message(xml).app_msg_kind.as_deref(),
+                Some(kind)
+            );
+        }
+    }
+
+    /// Whatever a reply quotes, and whatever the type of an app message, its kind is the one of its `<type>`, the same
+    /// for the chat window and the exports (#1165): every type of the table, against every kind of quoted message.
+    #[test]
+    fn the_quoted_message_never_decides_the_kind() {
+        let quoted = [
+            FINDER,
+            MUSIC,
+            DATAURL_LINK,
+            RED_PACKET,
+            LOCATION,
+            "抢 hongbao 的 <dataurl></dataurl> 文字",
+        ];
+        for ty in [
+            "51", "2001", "3", "33", "36", "6", "19", "2000", "87", "57", "53", "5", "49",
+        ] {
+            let by_type = kind_of_app_type(ty).unwrap();
+            for q in quoted {
+                let xml = format!(
+                    "<msg><appmsg><title>T</title><type>{ty}</type><url>https://a</url><refermsg><type>49</type>\
+                     <svrid>7</svrid><content>{}</content></refermsg></appmsg></msg>",
+                    escaped(q)
+                );
+                // a link with a quote in it is read as the quote
+                let arkme = if by_type == "link" { "quote" } else { by_type };
+                assert_eq!(
+                    crate::message::appmsg::app_message_kind(&xml, 49),
+                    Some(arkme),
+                    "<type> {ty} quoting {q}"
+                );
+                let window = parse_type49_message(&xml).app_msg_kind.unwrap();
+                assert!(
+                    window == by_type || (by_type == "link" && window == "official-link"),
+                    "<type> {ty} quoting {q}: {window}"
+                );
+            }
+        }
+    }
+
+    /// A message whose `<type>` says nothing is told by the words of its own XML only: a non-empty `<musicurl>`, not
+    /// a `<dataurl>`; a red packet's address, not `hongbao` in its text (#1165).
+    #[test]
+    fn a_message_without_a_type_is_told_by_its_own_words() {
+        let app = |inner: &str| format!("<msg><appmsg><title>T</title>{inner}</appmsg></msg>");
+        for (inner, kind) in [
+            ("<musicurl>https://m</musicurl>", Some("music")),
+            ("<musicurl></musicurl><dataurl>https://m</dataurl>", Some("card")),
+            ("<des>抢 hongbao</des>", Some("card")),
+            (
+                "<wcpayinfo><nativeurl>wxpay://c2cbizmessagehandler/hongbao/x</nativeurl></wcpayinfo>",
+                Some("red-packet"),
+            ),
+            ("<finderusername>v2_x@finder</finderusername>", Some("finder")),
+        ] {
+            let xml = app(inner);
+            assert_eq!(
+                crate::message::appmsg::app_message_kind(&xml, 49),
+                kind,
+                "{inner}"
+            );
+        }
+        // the words of what it quotes do not count
+        for quoted in [FINDER, MUSIC, RED_PACKET] {
+            let own = format!("<appmsg><title>好看</title><refermsg><content>{quoted}</content></refermsg></appmsg>");
+            assert_eq!(kind_by_keywords(&without_quoted(&own)), None, "{quoted}");
+        }
     }
 
     #[test]
