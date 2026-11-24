@@ -58,6 +58,22 @@ describe('AI settings', () => {
     expect(screen.getByRole('alert').textContent).toBe('HTTP 401 from the model API');
   });
 
+  it('keeps what it saved without the spaces around it, so nothing is left to save (#1156)', async () => {
+    const calls = serve((_method, url) => settings({ ai_model_api_model: 'm1' })(url));
+    render(<AiSetting profile={PROFILE} engine={false} onSaved={() => {}} onServe={() => {}} />);
+    await act(async () => {});
+    const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
+    fireEvent.change(screen.getByLabelText('模型'), { target: { value: ' m2 ' } });
+    fireEvent.click(button('保存'));
+    await act(async () => {});
+    expect(calls.filter(c => c.method === 'PUT').map(c => c.body)).toEqual([{ key: 'ai_model_api_model', value: 'm2' }]);
+    expect((screen.getByLabelText('模型') as HTMLInputElement).value).toBe('m2');
+    expect(button('保存').disabled).toBe(true);
+    expect(button('测试连接').disabled).toBe(false);
+    expect(button('获取模型列表').disabled).toBe(false);
+    expect(document.body.textContent).not.toContain('有未保存的修改。');
+  });
+
   it('shows where a question goes in each format, and saves the format chosen', async () => {
     const calls = serve((_method, url) => settings({ ai_model_api_base_url: '', ai_model_api_model: 'm1' })(url));
     render(<AiSetting profile={PROFILE} engine={false} onSaved={() => {}} onServe={() => {}} />);
