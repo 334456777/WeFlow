@@ -13,8 +13,8 @@ Prints the environment key, for the commit message, and writes to `--summary` wh
 the viewer and, for each commit, the `BENCH-<anchor>-<commit>` reference to its comparison with the anchor. When the
 request asked for exactly two commits and the environment holds both, they are a base and a head: the summary adds the
 reference and the viewer's address of their comparison, and `--outputs` gets `key`, `url`, `base` and `head` (full
-SHAs), `base_name` and the request's `release_tag`, for the release notes. Both files are replaced on every call: the
-workflow calls it again when its push lost a race with another one.
+SHAs), `base_name` and the request's `release_tag` and `pr`, for the release notes and the comment on the PR. Both files
+are replaced on every call: the workflow calls it again when its push lost a race with another one.
 """
 
 import argparse
@@ -105,7 +105,7 @@ def main():
         url = f"{viewer}&base={link_name(base)}&head={link_name(head)}"
         lines.append(f"- base 对 head：`BENCH-{base['sha'][:10]}-{head['sha'][:10]}`，查看页：{url}")
         outputs = {"key": key, "url": url, "base": base["sha"], "head": head["sha"], "base_name": base["ref"],
-                   "release_tag": run["request"].get("release_tag", "")}
+                   "release_tag": run["request"].get("release_tag", ""), "pr": run["request"].get("pr") or ""}
     if run.get("next"):
         waiting = sum(1 for c in run["commits"] if c.get("postponed"))
         lines.append(f"- {waiting} 个提交留在队列里，下一个夜间时段再测")

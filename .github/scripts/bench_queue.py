@@ -21,9 +21,9 @@ the queue is ever cancelled or replaced, as runs waiting in a concurrency group 
     stays the commit it was when asked for); when it is night already, the measure job takes the queue at once
     (`mode=drain`), else a night's run does (`mode=none`)
   - a night's run first puts into the queue the PRs labeled `bench` merged since it last looked, each measured before
-    and after it ([`queue_bench_prs`]); the queue's `labeled` holds the PRs it looked at already, so that each is
-    queued once. One started on another branch than the default one leaves the queue alone (`mode=none`): the queue is
-    the default branch's
+    and after it ([`queue_bench_prs`]), with the PR's number (`pr`), under which the publish job comments the
+    comparison; the queue's `labeled` holds the PRs it looked at already, so that each is queued once. One started
+    on another branch than the default one leaves the queue alone (`mode=none`): the queue is the default branch's
   - a night's run during the night: `mode=drain` when the queue holds a request; with an empty queue, only on
     Friday nights ([`calibration_night`]), so that the runner looks whether the calibration of #605 changed the
     profile: a new profile is a new environment, and bench-commits.py `--backfill` measures it first on
@@ -200,8 +200,10 @@ def save_queue(pages, queue):
         json.dump(queue, f, ensure_ascii=False, indent=1)
 
 
-def new_request(request_id, commits, options, force=False, release_tag=""):
-    """A request of the queue, of `commits` as resolve_commits gives them, asked for by this run of the workflow."""
+def new_request(request_id, commits, options, force=False, release_tag="", pr=None):
+    """A request of the queue, of `commits` as resolve_commits gives them, asked for by this run of the workflow; `pr`
+    is the number of the PR labeled `bench` it measures before and after, under which bench.yml comments the
+    comparison."""
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
     run_id = os.environ.get("GITHUB_RUN_ID", "0")
     return {
@@ -215,6 +217,7 @@ def new_request(request_id, commits, options, force=False, release_tag=""):
         **options,
         "force": force,
         "release_tag": release_tag,
+        "pr": pr,
     }
 
 
@@ -260,7 +263,7 @@ def queue_bench_prs(queue):
         if sha in queued:
             said.append(f"- #{number} 与 #{queued[sha]} 是同一个合并提交，不另外排队")
         else:
-            request = new_request(f"pr-{number}", resolve_commits(pr_commits(number, sha)), dict(OPTIONS))
+            request = new_request(f"pr-{number}", resolve_commits(pr_commits(number, sha)), dict(OPTIONS), pr=number)
             queue["requests"].append(request)
             queued[sha] = number
             said.append(f"- 新合并的 `bench` 标签 PR 排入夜间队列，第 {len(queue['requests'])} 位：{names(request)}")
