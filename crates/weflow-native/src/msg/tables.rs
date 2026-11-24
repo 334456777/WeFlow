@@ -154,7 +154,10 @@ impl Account {
 
     /// Newest-first page of messages across all shards.
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Vec<MsgRow>> {
-        let (offset, limit) = (offset.max(0) as usize, limit.max(0) as usize);
+        let (offset, limit) = (
+            usize::try_from(offset).unwrap_or(0),
+            usize::try_from(limit).unwrap_or(0),
+        );
         let tables = self.message_tables(session_id)?;
         if offset > 0 {
             // A page deep into a long conversation: reading every row before it costs what the offset does (issue

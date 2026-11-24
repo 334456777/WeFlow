@@ -117,7 +117,12 @@ fn detach(tid: libc::pid_t) -> io::Result<()> {
 }
 
 fn continue_thread(tid: libc::pid_t, signal: libc::c_int) -> io::Result<()> {
-    ptrace(libc::PTRACE_CONT, tid, 0, signal as usize)
+    ptrace(
+        libc::PTRACE_CONT,
+        tid,
+        0,
+        usize::try_from(signal).unwrap_or(0),
+    )
 }
 
 fn attach(tid: libc::pid_t, target: usize) -> io::Result<()> {

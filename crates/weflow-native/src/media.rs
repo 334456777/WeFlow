@@ -480,8 +480,11 @@ impl Account {
                 .replace('_', "\\_")
         );
         let (offset, limit) = (
-            offset.max(0) as usize,
-            if limit > 0 { limit as usize } else { 50 },
+            usize::try_from(offset).unwrap_or(0),
+            usize::try_from(limit)
+                .ok()
+                .filter(|&limit| limit > 0)
+                .unwrap_or(50),
         );
         let want = offset + limit;
         let mut tables = Vec::new();
@@ -1052,6 +1055,8 @@ impl Account {
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
     reason = "test values are known to fit, or are meant to wrap"
 )]
 mod tests {
@@ -1081,10 +1086,10 @@ mod tests {
             x = x
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
-            ((x >> 33) % m) as i64
+            i64::try_from((x >> 33) % m).unwrap()
         };
         for round in 0..200 {
-            let rows: Vec<Value> = (0..next(60) as usize)
+            let rows: Vec<Value> = (0..usize::try_from(next(60)).unwrap())
                 .map(|i| json!({ "sort_seq": next(4) * 1000, "create_time": next(3), "local_id": next(3), "i": i }))
                 .collect();
             let mut sorted = rows.clone();

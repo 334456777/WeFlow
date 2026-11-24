@@ -120,8 +120,6 @@ pub(super) fn read_memory_partial(pid: u32, address: usize, bytes: &mut [u8]) ->
     // SAFETY: both iovecs describe live buffers of their own length; the
     // kernel either fills `bytes` or reports an error.
     let read = unsafe { libc::process_vm_readv(pid, &raw const local, 1, &raw const remote, 1, 0) };
-    if read < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(read as usize)
+    // a negative count is a failure, its cause in errno
+    usize::try_from(read).map_err(|_| io::Error::last_os_error())
 }

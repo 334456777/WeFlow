@@ -876,6 +876,7 @@ fn register_vfs() -> Result<()> {
         let d = &*default;
         #[expect(
             clippy::cast_possible_truncation,
+            clippy::cast_possible_wrap,
             reason = "the file struct is a few dozen bytes"
         )]
         let vfs = Box::new(ffi::sqlite3_vfs {
@@ -1005,7 +1006,7 @@ unsafe extern "C" fn x_full_pathname(
     // SAFETY: SQLite's name of the file
     if let Some(n) = unsafe { our_name(name) } {
         let bytes = n.as_bytes();
-        if bytes.len() + 1 > n_out.max(0) as usize {
+        if bytes.len() + 1 > usize::try_from(n_out).unwrap_or(0) {
             return ffi::SQLITE_CANTOPEN;
         }
         // SAFETY: `out` has room for `n_out` bytes (SQLite's buffer), and the name and its NUL fit
@@ -1080,8 +1081,11 @@ unsafe extern "C" fn io_read(
     // SAFETY: SQLite reads a file of ours, open
     let cf = unsafe { cipher_file(f) };
     // SAFETY: SQLite's buffer of `amt` bytes, not negative, for this call only
-    let out = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), amt as usize) };
-    catch_unwind(AssertUnwindSafe(|| cf.read(out, offset as u64))).unwrap_or(ffi::SQLITE_IOERR_READ)
+    let out = unsafe {
+        std::slice::from_raw_parts_mut(buf.cast::<u8>(), usize::try_from(amt).unwrap_or(0))
+    };
+    catch_unwind(AssertUnwindSafe(|| cf.read(out, offset.cast_unsigned())))
+        .unwrap_or(ffi::SQLITE_IOERR_READ)
 }
 
 unsafe extern "C" fn io_write(
@@ -1106,7 +1110,10 @@ unsafe extern "C" fn io_file_size(
     size: *mut ffi::sqlite3_int64,
 ) -> c_int {
     // SAFETY: SQLite asks a file of ours, open, and passes its out-parameter
-    unsafe { *size = cipher_file(f).size() as ffi::sqlite3_int64 };
+    unsafe {
+        let len = cipher_file(f).size();
+        *size = ffi::sqlite3_int64::try_from(len).unwrap_or(ffi::sqlite3_int64::MAX);
+    }
     ffi::SQLITE_OK
 }
 
@@ -1124,7 +1131,11 @@ unsafe extern "C" fn io_file_control(_: *mut ffi::sqlite3_file, _: c_int, _: *mu
     ffi::SQLITE_NOTFOUND
 }
 
-#[expect(clippy::cast_possible_truncation, reason = "PAGE_SIZE is 4096")]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "PAGE_SIZE is 4096"
+)]
 unsafe extern "C" fn io_sector_size(_: *mut ffi::sqlite3_file) -> c_int {
     PAGE_SIZE as c_int
 }

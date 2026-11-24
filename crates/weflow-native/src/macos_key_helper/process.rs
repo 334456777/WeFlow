@@ -16,7 +16,7 @@ pub struct WeChatProcess {
 }
 
 fn path_of(pid: libc::pid_t) -> Option<String> {
-    let mut buffer = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    let mut buffer = vec![0u8; usize::try_from(libc::PROC_PIDPATHINFO_MAXSIZE).unwrap_or(4096)];
     // SAFETY: `buffer` is writable for the length passed; `proc_pidpath`
     // copies a NUL-terminated path and returns its length.
     let length = unsafe {
@@ -26,13 +26,9 @@ fn path_of(pid: libc::pid_t) -> Option<String> {
             libc::c_uint::try_from(buffer.len()).unwrap_or(u32::MAX),
         )
     };
-    if length <= 0 {
-        return None;
-    }
-    let end = buffer
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(length as usize);
+    // the length, or 0 or less for a process it cannot name
+    let length = usize::try_from(length).ok().filter(|&length| length > 0)?;
+    let end = buffer.iter().position(|byte| *byte == 0).unwrap_or(length);
     Some(String::from_utf8_lossy(&buffer[..end]).into_owned())
 }
 
@@ -47,13 +43,9 @@ fn name_of(pid: libc::pid_t) -> Option<String> {
             libc::c_uint::try_from(buffer.len()).unwrap_or(u32::MAX),
         )
     };
-    if length <= 0 {
-        return None;
-    }
-    let end = buffer
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(length as usize);
+    // the length, or 0 or less for a process it cannot name
+    let length = usize::try_from(length).ok().filter(|&length| length > 0)?;
+    let end = buffer.iter().position(|byte| *byte == 0).unwrap_or(length);
     Some(String::from_utf8_lossy(&buffer[..end]).into_owned())
 }
 

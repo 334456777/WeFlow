@@ -370,7 +370,11 @@ mod tests {
     fn four_pages_hash_as_one_by_one() {
         let key = [0x5au8; 32];
         let pages: Vec<Vec<u8>> = (0..4u8)
-            .map(|p| (0..4032).map(|i| (i as u8).wrapping_mul(p + 3)).collect())
+            .map(|p| {
+                (0..4032)
+                    .map(|i| u8::try_from(i % 256).unwrap().wrapping_mul(p + 3))
+                    .collect()
+            })
             .collect();
         let numbers: Vec<[u8; 4]> = (2..6u32).map(u32::to_le_bytes).collect();
         let bodies = std::array::from_fn(|l| pages[l].as_slice());

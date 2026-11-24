@@ -341,7 +341,7 @@ fn leaf_rows(
                     }
                     let bytes = page.bytes(at, at + size)?;
                     // big-endian two's complement of `size` bytes, sign-extended
-                    let mut v = i64::from(bytes[0] as i8);
+                    let mut v = i64::from(bytes[0].cast_signed());
                     for &b in &bytes[1..] {
                         v = (v << 8) | i64::from(b);
                     }
