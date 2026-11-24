@@ -9,7 +9,7 @@ use weflow_native::msg_row::MsgRow;
 
 pub(crate) mod appmsg;
 pub mod emoji;
-mod forward;
+pub(crate) mod forward;
 pub(crate) mod kind;
 pub(crate) mod link;
 pub(crate) mod media;
@@ -46,8 +46,8 @@ use xml::{
 /// A message of a forwarded chat record (`<recorditem>`'s `<dataitem>`).
 #[derive(Clone, Debug, Default)]
 pub struct ForwardRecord {
-    /// Its `datatype`: 3 image, 34 voice, 43 video, 47 sticker, 8 or 49 file, 17 a chat record of its own…; 0 when
-    /// it gives none.
+    /// Its `datatype`, in the record's own numbers (1 text, 2 image, 3 voice, 4 video, 5 link, 8 file, 17 a chat
+    /// record of its own, 19 mini program, 37 sticker…, read by `RecordKind`); 0 when it gives none.
     pub datatype: i64,
     /// The name of who sent it.
     pub sourcename: String,
