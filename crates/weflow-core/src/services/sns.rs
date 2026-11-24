@@ -13,6 +13,7 @@ use crate::contract::{
     SnsComment, SnsEmojiSaved, SnsExported, SnsPost, SnsResourceHeaders, SnsResourceProbe,
     SnsStats, UserPosts,
 };
+use crate::fs_atomic::{copy_atomically, write_atomically};
 use crate::isaac64;
 use crate::sns::{self, CachedContact, SavedMedia};
 use crate::sync::MutexExt;
@@ -144,8 +145,8 @@ fn save_fetched(dir: &Path, stem: &str, fetched: SnsMediaFetch, is_video: bool) 
     );
     let path = dir.join(&name);
     let written = match (fetched.data, fetched.cache_path) {
-        (Some(data), _) => std::fs::write(path, data).is_ok(),
-        (None, Some(cached)) => std::fs::copy(cached, path).is_ok(),
+        (Some(data), _) => write_atomically(&path, &data).is_ok(),
+        (None, Some(cached)) => copy_atomically(&cached, &path).is_ok(),
         (None, None) => false,
     };
     written.then_some(name)
@@ -751,7 +752,7 @@ impl ServiceHub {
             if let Some(k) = key {
                 isaac64::xor_in_place(&mut raw, k, Some(VIDEO_HEADER_BYTES));
             }
-            std::fs::write(&cache_path, &raw).map_err(|e| {
+            write_atomically(&cache_path, &raw).map_err(|e| {
                 AppError::runtime(format!("failed to write {}: {e}", cache_path.display()))
             })?;
             // a video's cover, encrypted with the video's key, is an image once decrypted
@@ -783,7 +784,7 @@ impl ServiceHub {
                 "image decryption failed: unrecognized image format",
             ));
         }
-        let _ = std::fs::write(&cache_path, &decoded);
+        let _ = write_atomically(&cache_path, &decoded);
         let ct = sns::detect_image_mime(&decoded, &header_ct);
         Ok(SnsMediaFetch {
             data: Some(decoded),
@@ -891,7 +892,7 @@ impl ServiceHub {
             ".bin"
         };
         let path = dir.join(format!("{cache_key}{ext}"));
-        std::fs::write(&path, &bytes).ok()?;
+        write_atomically(&path, &bytes).ok()?;
         Some(path)
     }
 
@@ -926,7 +927,7 @@ impl ServiceHub {
                 ".gif"
             };
             let p = dir.join(format!("{cache_key}{ext}"));
-            std::fs::write(&p, buf).ok().map(|()| p)
+            write_atomically(&p, buf).ok().map(|()| p)
         };
 
         if let (Some(enc_url), Some(key)) = (encrypt_url, aes_key) {
@@ -938,7 +939,7 @@ impl ServiceHub {
                     if sns::is_valid_image_buffer(&enc) {
                         let p =
                             dir.join(format!("{cache_key}{}", sns::image_ext_from_buffer(&enc)));
-                        if std::fs::write(&p, &enc).is_ok() {
+                        if write_atomically(&p, &enc).is_ok() {
                             let _ = std::fs::remove_file(&enc_path);
                             return Ok(SnsEmojiSaved::at(p));
                         }

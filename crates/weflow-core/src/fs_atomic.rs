@@ -57,4 +57,23 @@ mod tests {
         names.sort();
         assert_eq!(names, ["a.jpg", "b.jpg", "src.bin"]);
     }
+
+    #[test]
+    fn a_write_that_cannot_be_renamed_into_place_leaves_nothing_behind() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-atomic-rename");
+        // a folder where the file goes: the temporary file is written, then renaming it over the folder fails
+        let path = dir.join("a.wav");
+        std::fs::create_dir(&path).unwrap();
+        assert!(super::write_atomically(&path, b"RIFF....WAVE").is_err());
+        let src = dir.join("src.mp4");
+        std::fs::write(&src, b"video").unwrap();
+        assert!(super::copy_atomically(&src, &path).is_err());
+        assert!(path.is_dir(), "the folder is left as it was");
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["a.wav", "src.mp4"], "no temporary file is left");
+    }
 }

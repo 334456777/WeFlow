@@ -69,7 +69,7 @@ impl ServiceHub {
             e => e.to_string(),
         };
         let path = dir.join(format!("{key}{ext}"));
-        std::fs::write(&path, &bytes)
+        write_atomically(&path, &bytes)
             .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
         Ok(path)
     }
