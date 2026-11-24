@@ -440,6 +440,15 @@ impl RecordStore {
         Ok(record)
     }
 
+    /// When the account's newest record about `session_id` written for `trigger_reason` was written, in Unix
+    /// milliseconds; none when there is no such record.
+    pub fn last_written(&self, session_id: &str, trigger_reason: &str) -> Option<i64> {
+        self.scoped()
+            .filter(|r| r.session_id == session_id && r.trigger_reason == trigger_reason)
+            .map(|r| r.created_at)
+            .max()
+    }
+
     /// A page of the account's records that `f` matches, the newest first, with the counts over all of them.
     pub fn list(&self, f: &RecordFilters) -> crate::contract::InsightRecords {
         let all: Vec<&InsightRecord> = self.scoped().collect();
