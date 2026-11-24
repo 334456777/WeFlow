@@ -85,9 +85,17 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
         await setInsightSessions(sessions, savedSessions);
         setSavedSessions(sessions);
       }
-      setSaved({ ...form, key: '' });
+      // the values as the server keeps them, without the spaces around them (#1156)
+      const kept: AiForm = { ...form, key: '' };
+      for (const k of AI_KEYS) kept[k] = form[k].trim();
+      setSaved(kept);
       // what was typed while it saved stays, as a change still to save
-      setForm(now => now && { ...now, key: now.key === form.key ? '' : now.key });
+      setForm(now => {
+        if (!now) return now;
+        const next: AiForm = { ...now, key: now.key === form.key ? '' : now.key };
+        for (const k of AI_KEYS) if (now[k] === form[k]) next[k] = kept[k];
+        return next;
+      });
       setNote({ text: t('已保存。') });
       setTest(null);
       onSaved();
