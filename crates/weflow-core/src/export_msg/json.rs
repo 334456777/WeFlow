@@ -92,7 +92,7 @@ impl Exporter<'_, '_> {
         profiles: &mut HashMap<String, Profile>,
     ) -> JsonMessage<'m> {
         let source = crate::xml::tag_element(&msg.content, "msgsource").unwrap_or("");
-        let x = MsgXml::new(&msg.content);
+        let x = MsgXml::of_export(msg);
         let content = match msg.media.as_ref().filter(|_| msg.local_type != 47) {
             Some(m) => m.relative_path.clone(),
             None => self.message_text_in(msg, &x),

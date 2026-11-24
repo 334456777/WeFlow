@@ -15,7 +15,7 @@ impl Exporter<'_, '_> {
     /// Appends the TXT entry of `msg` to `out`.
     pub(super) fn write_txt_entry(&mut self, msg: &ExportMsg, out: &mut Vec<u8>) {
         use std::io::Write;
-        let (content, _) = self.plain_row_content(msg, &MsgXml::new(&msg.content));
+        let (content, _) = self.plain_row_content(msg, &MsgXml::of_export(msg));
         let sender = self.sender_fields(msg);
         // writing to a Vec cannot fail
         let _ = write!(

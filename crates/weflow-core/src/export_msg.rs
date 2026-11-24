@@ -350,7 +350,7 @@ impl Exporter<'_, '_> {
     /// wrapped in `[系统: …]`, and a sticker, a voice and an image are `[表情]`, `[语音消息]` and `[图片]` (without the
     /// path of a media file).
     fn message_text(&mut self, msg: &ExportMsg) -> String {
-        self.message_text_in(msg, &MsgXml::new(&msg.content))
+        self.message_text_in(msg, &MsgXml::of_export(msg))
     }
 
     /// [`message_text`](Self::message_text) given the message's [`MsgXml`].
@@ -1286,9 +1286,11 @@ mod tests {
             )
         };
         let html = with_exporter(false, |ex, msgs| {
+            // as reading them gives them: the type with the content
             let mut plain = msgs[3].clone();
             plain.content = song("");
-            let mut playable = msgs[3].clone();
+            plain.xml_type = Some("76".into());
+            let mut playable = plain.clone();
             playable.content = song("<musicurl>https://m/play</musicurl>");
             ex.render_html(&[plain, playable])
         });

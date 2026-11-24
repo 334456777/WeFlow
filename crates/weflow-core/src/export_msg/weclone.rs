@@ -152,7 +152,7 @@ impl Exporter<'_, '_> {
 
 /// A quote reply, which WeClone leaves out. An image or a video whose XML carries a `<refermsg>` is not one.
 fn is_text_quote(msg: &ExportMsg) -> bool {
-    is_text_quote_message_in(msg.local_type, &MsgXml::new(&msg.content))
+    is_text_quote_message_in(msg.local_type, &MsgXml::of_export(msg))
 }
 
 #[cfg(test)]
