@@ -1,0 +1,30 @@
+name: wif-debug
+
+# Temporary probe: runs claude-code-action on this pull request with the federation inputs of claude.yml and the
+# full output shown, to read the error that claude.yml hides.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  action:
+    if: github.head_ref == 'ci/claude-wif-debug2'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_federation_rule_id: fdrl_01MUAcbVShc6TpAHiffiLoPD
+          anthropic_organization_id: 00abe4ae-1b8f-4b20-8ab2-5946465ffe93
+          anthropic_service_account_id: svac_018bofy5DpvXgSb8qRUy2RjW
+          anthropic_workspace_id: wrkspc_011ii9ALAWEiSCdyioVNUTkM
+          prompt: Reply with the single word ok. Do not use any tools.
+          claude_args: --model opus --max-turns 1
+          show_full_output: true
