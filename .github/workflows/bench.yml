@@ -349,7 +349,7 @@ jobs:
                 "$dir/compare/highlights.md"
             fi
             if [ -n "$pr" ]; then
-              bash main/.github/scripts/pr-bench-comment.sh "$pr" "$(get base)" "$(get head)" "$url" \
+              bash main/.github/scripts/pr-bench-comment.sh "$pr" "$(get base)" "$(get head)" \
                 "$dir/compare/highlights.md"
             fi
           done
