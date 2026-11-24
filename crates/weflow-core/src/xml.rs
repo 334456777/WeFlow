@@ -58,8 +58,108 @@ pub fn find_ci(hay: &str, from: usize, needle: &str) -> Option<usize> {
     None
 }
 
+/// The longest tag [`find_tag`] builds a `<tag>` of on the stack; a longer one is searched for by [`find_tag_each`].
+const TAG_MAX: usize = 61;
+
 /// First `<tag>` (or `</tag>` when `closing`) at or after `from`, ASCII case-insensitive: `(start, end)` byte range.
+///
+/// The `<` and `>` of such a tag are a fixed distance apart and have no case, so a SIMD search for that pair of bytes
+/// ([`pair_find`]) skips the text between candidates, rather than stopping at every `<`.
 fn find_tag(h: &[u8], from: usize, tag: &[u8], closing: bool) -> Option<(usize, usize)> {
+    if tag.len() > TAG_MAX {
+        return find_tag_each(h, from, tag, closing);
+    }
+    let mut buf = [0u8; TAG_MAX + 3];
+    let name = 1 + usize::from(closing);
+    let n = name + tag.len() + 1;
+    buf[0] = b'<';
+    buf[1] = b'/';
+    buf[name..n - 1].copy_from_slice(tag);
+    buf[n - 1] = b'>';
+    let p = from + pair_find(h.get(from..)?, &buf[..n])?;
+    Some((p, p + n))
+}
+
+/// The first `needle` in `hay`, ASCII case-insensitive; `needle` starts with `<` and ends with `>`, bytes without case.
+///
+/// memchr's packed pair searcher finds where those two bytes are as far apart as in `needle`, a vector of text at a
+/// time (AVX2 or else SSE2 on x86-64, NEON on aarch64), and each such place is compared in full. Text too short for
+/// the vectors, and other architectures, are searched by [`find_each`], which gives the same answer.
+fn pair_find(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    // the vectors need some text past the last byte of the needle; for less, a plain search is as quick
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    if hay.len() >= needle.len() + 32 {
+        use memchr::arch::all::packedpair::Pair;
+        let pair = u8::try_from(needle.len() - 1)
+            .ok()
+            .and_then(|last| Pair::with_indices(needle, 0, last));
+        if let Some(pair) = pair {
+            #[cfg(target_arch = "x86_64")]
+            {
+                use memchr::arch::x86_64::{avx2, sse2};
+                if let Some(f) = avx2::packedpair::Finder::with_pair(needle, pair) {
+                    return pair_candidates(hay, needle, f.min_haystack_len(), |h| {
+                        f.find_prefilter(h)
+                    });
+                }
+                if let Some(f) = sse2::packedpair::Finder::with_pair(needle, pair) {
+                    return pair_candidates(hay, needle, f.min_haystack_len(), |h| {
+                        f.find_prefilter(h)
+                    });
+                }
+            }
+            #[cfg(target_arch = "aarch64")]
+            if let Some(f) =
+                memchr::arch::aarch64::neon::packedpair::Finder::with_pair(needle, pair)
+            {
+                return pair_candidates(hay, needle, f.min_haystack_len(), |h| f.find_prefilter(h));
+            }
+        }
+    }
+    find_each(hay, needle)
+}
+
+/// The first `needle` in `hay`, ASCII case-insensitive, from the places `prefilter` gives: the first place in a text
+/// of at least `min_len` bytes where the needle could start, or `None` when there is none.
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+fn pair_candidates(
+    hay: &[u8],
+    needle: &[u8],
+    min_len: usize,
+    prefilter: impl Fn(&[u8]) -> Option<usize>,
+) -> Option<usize> {
+    let mut at = 0;
+    while hay.len() - at >= min_len {
+        let c = at + prefilter(&hay[at..])?;
+        if hay
+            .get(c..c + needle.len())
+            .is_some_and(|w| w.eq_ignore_ascii_case(needle))
+        {
+            return Some(c);
+        }
+        at = c + 1;
+    }
+    find_each(&hay[at..], needle).map(|p| at + p)
+}
+
+/// The first `needle` in `hay`, ASCII case-insensitive, by stopping at each occurrence of its first byte.
+fn find_each(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    let first = *needle.first()?;
+    let mut i = 0;
+    loop {
+        let p = i + memchr::memchr(first, hay.get(i..)?)?;
+        if hay
+            .get(p..p + needle.len())
+            .is_some_and(|w| w.eq_ignore_ascii_case(needle))
+        {
+            return Some(p);
+        }
+        i = p + 1;
+    }
+}
+
+/// [`find_tag`] by stopping at every `<`: for a tag longer than [`TAG_MAX`], and to check [`find_tag`] against.
+fn find_tag_each(h: &[u8], from: usize, tag: &[u8], closing: bool) -> Option<(usize, usize)> {
     let mut i = from;
     while i <= h.len() {
         let p = i + memchr::memchr(b'<', &h[i..])?;
@@ -430,6 +530,89 @@ pub use weflow_native::entities::decode_entities;
 mod tests {
     use super::*;
     use regex::Regex;
+
+    /// Text of tags, open and closing, of a few names in both cases and lengths, with attributes or without, broken
+    /// ones (`<` with no `>`, `<<`, `</>`), runs of hex digits, white space and multi-byte characters: long enough for
+    /// the vector search, with candidates (a `<` and a `>` as far apart as in a tag) that are not the tag.
+    fn tag_soup() -> impl proptest::strategy::Strategy<Value = String> {
+        use proptest::prelude::*;
+        const PIECES: &[&str] = &[
+            "<",
+            ">",
+            "/",
+            "</",
+            "<a>",
+            "</a>",
+            "<A>",
+            "</A>",
+            "<ab>",
+            "</ab>",
+            "<aB>",
+            "<b_c>",
+            "</b_c>",
+            "<ac>",
+            "</ac>",
+            "<a x=\"1\">",
+            "<a/>",
+            "<a >",
+            "</a >",
+            "<<a>",
+            "</>",
+            "<>",
+            "<title>",
+            "</TITLE>",
+            "<titlf>",
+            "a",
+            "b",
+            "_",
+            " ",
+            "\n",
+            "中",
+            "]]>",
+            "<![CDATA[",
+            "0123456789abcdef",
+            "https://x.invalid/?k=v&j=w",
+        ];
+        prop::collection::vec(prop::sample::select(PIECES), 0..400).prop_map(|p| p.concat())
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(512))]
+
+        /// For any text, tag and start, the vector search finds the tag the search stopping at every `<` finds.
+        #[test]
+        fn any_tag_is_found_where_stopping_at_every_bracket_finds_it(
+            xml in tag_soup(),
+            tag in proptest::sample::select(&["a", "A", "ab", "AB", "ac", "b_c", "b", "title", "Title", "", "x"][..]),
+            closing in proptest::bool::ANY,
+            from in 0usize..2000,
+        ) {
+            let h = xml.as_bytes();
+            proptest::prop_assert_eq!(
+                find_tag(h, from, tag.as_bytes(), closing),
+                find_tag_each(h, from, tag.as_bytes(), closing)
+            );
+        }
+    }
+
+    /// A tag longer than fits on the stack, and tags at the very end of a long text, where the vectors stop.
+    #[test]
+    fn long_tags_and_tags_at_the_end_are_found() {
+        let long = "t".repeat(TAG_MAX + 1);
+        let xml = format!("{}<{long}>x</{long}>", " ".repeat(100));
+        assert_eq!(tag_inner(&xml, &long), Some("x"));
+        for pad in 0..80 {
+            let xml = format!("{}<a>{}</a>", "<b>".repeat(pad), "y".repeat(pad));
+            let h = xml.as_bytes();
+            for closing in [false, true] {
+                assert_eq!(
+                    find_tag(h, 0, b"a", closing),
+                    find_tag_each(h, 0, b"a", closing),
+                    "{pad}"
+                );
+            }
+        }
+    }
 
     /// An element holding others of its name is one element, ending at its own closing tag (#1174); a
     /// self-closing one inside does not go deeper; closing tags that do not balance end it at the first, as
