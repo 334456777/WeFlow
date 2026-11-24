@@ -429,6 +429,69 @@ fn an_image_without_md5_or_dat_name_is_a_usage_error() {
     assert_eq!(reply.status, 404, "POST /image/decrypt: {}", reply.body);
 }
 
+/// `backup create` refuses an `--out` that names another kind of file than a zip before it reads the account, and
+/// writes a backup into a folder it is given under a name of its own, which it answers with (#1134).
+#[test]
+fn a_backup_goes_into_a_folder_and_not_under_another_extension() {
+    let root = temp_root("usage-backup");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let said = "a backup is a zip: give --out a folder or a .zip file";
+
+    let txt = root.join("backup.txt");
+    let reply = server.call(
+        "POST",
+        "/backup/create",
+        &serde_json::json!({ "out": txt }).to_string(),
+    );
+    refused(&reply, said, "POST /backup/create backup.txt");
+    refused_on_the_command_line(
+        &home,
+        &["backup", "create", "--out", txt.to_str().unwrap()],
+        said,
+    );
+    assert!(!txt.exists());
+
+    // a folder that is there, from the command line and from the API
+    let folder = root.join("backups.d");
+    std::fs::create_dir(&folder).unwrap();
+    let written_into = |out: &Value, how: &str| {
+        let out = std::path::PathBuf::from(out.as_str().unwrap_or_else(|| panic!("{how}: {out}")));
+        assert_eq!(out.parent(), Some(folder.as_path()), "{how}: {out:?}");
+        let name = out.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            name.starts_with("weflow-backup-") && name.ends_with(".zip"),
+            "{how}: {name}"
+        );
+        assert!(out.is_file(), "{how}: {out:?}");
+    };
+    let (exit, stdout, stderr) = run_cli(
+        &home,
+        &[
+            "--json",
+            "backup",
+            "create",
+            "--out",
+            folder.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(exit, 0, "{stdout}{stderr}");
+    let doc: Value = serde_json::from_str(&stdout).unwrap();
+    written_into(&doc["data"]["out"], "command line");
+    let reply = server.call(
+        "POST",
+        "/backup/create",
+        &serde_json::json!({ "out": folder }).to_string(),
+    );
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    written_into(&reply.json()["data"]["out"], "POST /backup/create");
+    // nothing but the backups is left in the folder
+    for entry in std::fs::read_dir(&folder).unwrap() {
+        let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+        assert!(name.ends_with(".zip"), "{name}");
+    }
+}
+
 /// A negative report year written after `--year` is a number to clap, not an option of its own, so the range of the
 /// year refuses it (#1066) as it refuses the `--year=-5` spelling.
 #[test]

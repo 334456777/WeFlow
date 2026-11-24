@@ -278,6 +278,7 @@ const HELP: &[(&str, &str)] = &[
     ("JSON payload {range_label, summary, private_segments, mention_groups}, in the keys of `insight footprint`", "JSON 载荷 {range_label, summary, private_segments, mention_groups}，键名与 `insight footprint` 相同"),
     ("Run the AI insight engine", "运行 AI 洞察引擎"),
     ("Create a backup of the current account", "为当前账号创建备份"),
+    ("Output: a .zip file, or a folder to write weflow-backup-YYYYMMDD-HHMMSS.zip into", "输出位置：.zip 文件，或一个文件夹（在其中写入 weflow-backup-YYYYMMDD-HHMMSS.zip）"),
     ("Also back up the images WeChat keeps in msg/attach", "同时备份微信保存在 msg/attach 的图片"),
     ("Also back up the videos WeChat keeps in msg/video", "同时备份微信保存在 msg/video 的视频"),
     ("Also back up the files sent and received, kept in msg/file", "同时备份收发的文件，即 msg/file"),

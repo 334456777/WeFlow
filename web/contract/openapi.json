@@ -10161,7 +10161,7 @@
         "properties": {
           "out": {
             "type": "string",
-            "description": "The backup file."
+            "description": "The backup file written: the `.zip` file given as `out`, or the `weflow-backup-YYYYMMDD-HHMMSS.zip` written into\nthe folder given."
           },
           "entries": {
             "type": "integer",
