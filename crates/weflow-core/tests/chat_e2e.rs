@@ -906,3 +906,13 @@ fn an_unknown_media_type_is_a_usage_error() {
         hub.chat_media_stream(None, kind, 0, 0, 10, 0).unwrap();
     }
 }
+
+/// A negative offset reads the first page, as the database layer takes it, and the next page follows that one.
+#[test]
+fn a_negative_media_stream_offset_is_the_first_page() {
+    let (_root, hub) = common::mock_hub("c-media-offset");
+    let first = hub.chat_media_stream(None, "all", 0, 0, 10, 0).unwrap();
+    let negative = hub.chat_media_stream(None, "all", 0, 0, 10, -5).unwrap();
+    assert_eq!(negative.items.len(), first.items.len());
+    assert_eq!(negative.next_offset, first.next_offset);
+}
