@@ -443,7 +443,14 @@ fn parse_record_time(value: &str) -> Option<i64> {
     let c = rx(r"(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})").captures(value)?;
     let g = |i: usize| c[i].parse::<u32>().ok();
     Local
-        .with_ymd_and_hms(g(1)? as i32, g(2)?, g(3)?, g(4)?, g(5)?, g(6)?)
+        .with_ymd_and_hms(
+            i32::try_from(g(1)?).ok()?,
+            g(2)?,
+            g(3)?,
+            g(4)?,
+            g(5)?,
+            g(6)?,
+        )
         .single()
         .map(|d| d.timestamp())
 }

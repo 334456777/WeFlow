@@ -721,7 +721,7 @@ mod avx2 {
                     )
                 };
                 let v = pair[k];
-                let q = _mm256_srai_epi32::<{ RECIPROCAL_BITS as i32 }>(_mm256_mullo_epi32(
+                let q = _mm256_srai_epi32::<{ RECIPROCAL_BITS.cast_signed() }>(_mm256_mullo_epi32(
                     _mm256_add_epi32(_mm256_abs_epi32(v), correction),
                     reciprocal,
                 ));

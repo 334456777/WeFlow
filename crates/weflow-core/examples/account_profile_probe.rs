@@ -10,6 +10,7 @@
 //! profile's hash are printed. The parts the account says nothing of keep the default profile's values.
 #![expect(
     clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
     reason = "probe and benchmark data are small values that fit"
 )]
 
@@ -136,7 +137,8 @@ struct Text {
 
 impl Text {
     fn add(&mut self, text: &str) {
-        self.lengths.push(text.chars().count() as i64);
+        self.lengths
+            .push(i64::try_from(text.chars().count()).unwrap_or(i64::MAX));
         self.emoji += u64::from(text.chars().any(is_emoji));
         self.bracket_emoji += u64::from(
             text.match_indices('[')
@@ -265,7 +267,7 @@ fn read_table(
             m.content_bytes
                 .entry(kind)
                 .or_default()
-                .push(bytes.len() as i64);
+                .push(i64::try_from(bytes.len()).unwrap_or(i64::MAX));
             if kind == 1 {
                 let text = String::from_utf8_lossy(&bytes);
                 m.text.add(if group { group_text(&text) } else { &text });
@@ -321,7 +323,10 @@ fn conversations(account: &Account) -> Result<Value> {
         if c.times.is_empty() {
             continue;
         }
-        by_kind.entry(kind).or_default().push(c.times.len() as i64);
+        by_kind
+            .entry(kind)
+            .or_default()
+            .push(i64::try_from(c.times.len()).unwrap_or(i64::MAX));
         if c.ranges.len() > 1 {
             multi_shard += 1;
             multi_shard_messages += c.times.len() as u64;
@@ -479,7 +484,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn size(path: &Path) -> i64 {
-    std::fs::metadata(path).map_or(0, |m| m.len() as i64)
+    std::fs::metadata(path).map_or(0, |m| i64::try_from(m.len()).unwrap_or(i64::MAX))
 }
 
 fn media(account_dir: &Path, xor: u8, aes: Option<[u8; 16]>) -> Value {

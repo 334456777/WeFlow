@@ -34,8 +34,8 @@ fn encrypt_v2(plain: &[u8], key: &[u8; 16], xor: u8) -> Vec<u8> {
     padded.extend(std::iter::repeat_n(pad as u8, pad));
     let mut enc = ecb::Encryptor::<aes::Aes128>::new(key.into());
     let mut out = vec![0x07, 0x08, 0x56, 0x32, 0x08, 0x07];
-    out.extend_from_slice(&(aes_len as i32).to_le_bytes());
-    out.extend_from_slice(&(xor_len as i32).to_le_bytes());
+    out.extend_from_slice(&i32::try_from(aes_len).unwrap().to_le_bytes());
+    out.extend_from_slice(&i32::try_from(xor_len).unwrap().to_le_bytes());
     out.push(1);
     for chunk in padded.chunks(16) {
         let mut b = Array::try_from(chunk).unwrap();

@@ -4,10 +4,6 @@
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"
 )]
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "test values are known to fit, or are meant to wrap"
-)]
 
 mod common;
 
@@ -576,7 +572,7 @@ fn pages_from_a_cursor_follow_the_offset_order() {
     for at in [1, 4, 8, 11, 15] {
         assert_eq!(
             places(&page(5, 0, Some(&cursor_of(&all, at - 1)), None)),
-            places(&page(5, at as i32, None, None)),
+            places(&page(5, i32::try_from(at).unwrap(), None, None)),
             "after row {at}"
         );
     }

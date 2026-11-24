@@ -378,7 +378,7 @@ mod imp {
                 i32::from_le_bytes([module[i + 3], module[i + 4], module[i + 5], module[i + 6]]);
             let target = (base + i as u64)
                 .wrapping_add(7)
-                .wrapping_add(i64::from(disp) as u64);
+                .wrapping_add(i64::from(disp).cast_unsigned());
             if target != string_addr {
                 continue;
             }

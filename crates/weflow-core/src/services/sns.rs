@@ -489,7 +489,11 @@ impl ServiceHub {
                 users.insert(u);
             }
         })?;
-        Ok((total, users.len() as i64, my_wxid.map(|_| mine)))
+        Ok((
+            total,
+            crate::num::count_i64(users.len()),
+            my_wxid.map(|_| mine),
+        ))
     }
 
     /// The Moments' numbers: returns `{totalPosts, totalFriends, myPosts}`. With
@@ -1801,7 +1805,7 @@ impl ServiceHub {
         let records = crate::biz::parse_pay_records(&notices);
         Ok(crate::contract::PayRecords {
             records,
-            has_more: limit > 0 && read >= limit as usize,
+            has_more: usize::try_from(limit).is_ok_and(|limit| limit > 0 && read >= limit),
         })
     }
 }

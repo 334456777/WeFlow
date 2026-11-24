@@ -1205,7 +1205,7 @@ impl ServiceHub {
             }
         } else if year == current_year {
             let month_start = |back: i32| {
-                let total = now.year() * 12 + now.month0() as i32 - back;
+                let total = now.year() * 12 + now.month0().cast_signed() - back;
                 local_ts(
                     total.div_euclid(12),
                     (total.rem_euclid(12) + 1) as u32,

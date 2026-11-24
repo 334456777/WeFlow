@@ -122,7 +122,10 @@ pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateS
             let aes_len = i32::from_le_bytes([a0, a1, a2, a3]);
             let xor_len = i32::from_le_bytes([x0, x1, x2, x3]);
             let aligned = (i64::from(aes_len) / 16 + 1) * 16;
-            if aes_len < 16 || xor_len < 0 || metadata.len() < 15 + aligned as u64 + xor_len as u64
+            if aes_len < 16
+                || xor_len < 0
+                || metadata.len()
+                    < 15 + aligned.cast_unsigned() + u64::from(xor_len.cast_unsigned())
             {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,

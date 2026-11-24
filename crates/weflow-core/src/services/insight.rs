@@ -790,7 +790,8 @@ impl ServiceHub {
             .unwrap_or(0.0);
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "a message count from settings; `as` saturates"
+            clippy::cast_sign_loss,
+            reason = "a message count from settings, at least 1; `as` saturates"
         )]
         let context_count = if ctx_raw >= 1.0 { ctx_raw as usize } else { 40 };
         let name = self.insight_display_name(session_id, display_name).await;

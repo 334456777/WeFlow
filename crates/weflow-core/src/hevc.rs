@@ -501,11 +501,11 @@ const CHROMA_RANGE: (i32, i32, i32) = (128, 224, 128);
 fn to_8_bits(v: u16, shift: u32, full_range: bool, (offset, range, centre): (i32, i32, i32)) -> u8 {
     let v = i32::from(v);
     if full_range {
-        return ((v + ((1 << shift) >> 1)) >> shift).clamp(0, 255) as u8;
+        return u8::try_from(((v + ((1 << shift) >> 1)) >> shift).clamp(0, 255)).unwrap_or(u8::MAX);
     }
     let range = range << shift;
     let scaled = ((v - (offset << shift)) * 255 + range / 2).div_euclid(range);
-    (scaled + centre).clamp(0, 255) as u8
+    u8::try_from((scaled + centre).clamp(0, 255)).unwrap_or(u8::MAX)
 }
 
 /// `picture` as a JPEG, its chroma kept at the resolution the picture has it.

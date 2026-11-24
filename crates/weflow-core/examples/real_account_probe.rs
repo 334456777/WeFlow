@@ -2,10 +2,6 @@
 //! Usage: `real_account_probe <isolated config.json> <private inventory.json>`
 //! The inventory contains conversation identifiers and dates and must remain private. Stdout contains only
 //! aggregate counts. No key, identifier, message content or local account path is printed.
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "probe and benchmark data are small values that fit"
-)]
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
@@ -54,7 +50,7 @@ fn measure_cursors(
     let mut samples = Vec::new();
     for case in cases {
         let session = case["session"].as_str().context("case session missing")?;
-        let expected = number(&case, "count") as usize;
+        let expected = usize::try_from(number(&case, "count"))?;
         let warm =
             account.open_message_cursor(session, 2000, Order::OldestFirst, 0, 0, Columns::All)?;
         anyhow::ensure!(

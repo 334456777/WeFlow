@@ -18,6 +18,13 @@ where
         .unwrap_or(if v < T::default() { i32::MIN } else { i32::MAX })
 }
 
+/// `n`, a count or a length, as the `i64` the database layer and the contract use: saturating at `i64::MAX`, which
+/// no count reaches.
+#[must_use]
+pub fn count_i64(n: usize) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
 /// `f` truncated toward zero, saturating at the `i64` bounds; NaN becomes 0.
 ///
 /// Round first (`f.floor()`, `f.round()`) when that is the rounding wanted.
@@ -33,6 +40,13 @@ pub fn saturating_i64(f: f64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn counts_saturate_into_i64() {
+        assert_eq!(count_i64(0), 0);
+        assert_eq!(count_i64(1 << 20), 1 << 20);
+        assert_eq!(count_i64(usize::MAX), i64::MAX);
+    }
 
     #[test]
     fn integers_saturate_into_i32() {

@@ -129,6 +129,10 @@ fn leak(s: String) -> &'static str {
 }
 
 /// (`local_type`, content, stored compressed) of the `i`-th synthetic message.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "`i` counts up from 0 and `r` is masked to 16 bits"
+)]
 fn message(i: i64) -> (i64, String, bool) {
     let r = (i.wrapping_mul(2_654_435_761) >> 7) & 0xffff;
     let words: Vec<char> =
@@ -189,6 +193,10 @@ fn message(i: i64) -> (i64, String, bool) {
     }
 }
 
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "message and shard numbers count up from 0"
+)]
 fn build(root: &Path, args: &Args) -> Fixture {
     let f = Fixture::new(root, OWNER);
     let members: Vec<&'static str> = (0..SENDERS).map(|k| leak(format!("wxid_m{k}"))).collect();
@@ -329,7 +337,7 @@ fn full(root: &Path, fixture: &Fixture, args: &Args) -> anyhow::Result<()> {
             )
         })?;
         anyhow::ensure!(
-            result.count as i64 == args.messages,
+            i64::try_from(result.count)? == args.messages,
             "exported {} messages, expected {}",
             result.count,
             args.messages
@@ -340,7 +348,7 @@ fn full(root: &Path, fixture: &Fixture, args: &Args) -> anyhow::Result<()> {
 
 fn keys(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
     // Open the encrypted snapshots and read every row before measuring; key derivation is excluded.
-    anyhow::ensure!(count_rows(wcdb, 0, 0)? == args.messages as usize);
+    anyhow::ensure!(count_rows(wcdb, 0, 0)? == usize::try_from(args.messages)?);
     let mut reference = None;
     let mut sender_reference = None;
     for kind in ["exact", "export", "sender"] {
@@ -405,7 +413,7 @@ fn keys(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
                 "{kind} rows changed"
             );
             if kind == "exact" {
-                anyhow::ensure!(count == args.messages as usize);
+                anyhow::ensure!(count == usize::try_from(args.messages)?);
                 let selected = (
                     sender_count,
                     weflow_native::db::hex(&sender_digest.finalize()),
@@ -453,7 +461,7 @@ fn stages(root: &Path, wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
                 .collect()
         });
         anyhow::ensure!(
-            msgs.len() as i64 == args.messages,
+            i64::try_from(msgs.len())? == args.messages,
             "parsed {} messages",
             msgs.len()
         );
@@ -536,7 +544,7 @@ fn parallel_read(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
                 })
             })
         })?;
-        anyhow::ensure!(rows as i64 == args.messages, "read {rows} rows");
+        anyhow::ensure!(i64::try_from(rows)? == args.messages, "read {rows} rows");
     }
     Ok(())
 }

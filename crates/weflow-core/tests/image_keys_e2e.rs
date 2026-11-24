@@ -4,10 +4,6 @@
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"
 )]
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "test values are known to fit, or are meant to wrap"
-)]
 
 mod common;
 
@@ -24,7 +20,9 @@ use weflow_core::keys::{derive_image_keys, scan_templates};
 
 fn jpeg() -> Vec<u8> {
     let mut output = Vec::new();
-    let pixels: Vec<u8> = (0..32 * 32 * 3).map(|n| (n * 17 % 256) as u8).collect();
+    let pixels: Vec<u8> = (0..32 * 32 * 3)
+        .map(|n| u8::try_from(n * 17 % 256).unwrap())
+        .collect();
     jpeg_encoder::Encoder::new(&mut output, 90)
         .encode(&pixels, 32, 32, jpeg_encoder::ColorType::Rgb)
         .unwrap();
@@ -36,7 +34,7 @@ fn encrypt(plain: &[u8], code: u32, identity: &str, xor_len: usize) -> Vec<u8> {
     let cipher = aes::Aes128::new_from_slice(aes.as_bytes()).unwrap();
     let mut output = vec![7, 8, 0x56, 0x32, 8, 7];
     output.extend_from_slice(&16i32.to_le_bytes());
-    output.extend_from_slice(&(xor_len as i32).to_le_bytes());
+    output.extend_from_slice(&i32::try_from(xor_len).unwrap().to_le_bytes());
     output.push(1);
     let mut block = Array::try_from(&plain[..16]).unwrap();
     cipher.encrypt_block(&mut block);

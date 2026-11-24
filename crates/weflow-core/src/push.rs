@@ -593,10 +593,12 @@ impl PushEngine {
             candidates.push(m);
         }
 
-        let future_incoming = candidates
-            .iter()
-            .filter(|m| previous.is_none() || m.create_time > prev_ts || seen_primed)
-            .count() as i64;
+        let future_incoming = crate::num::count_i64(
+            candidates
+                .iter()
+                .filter(|m| previous.is_none() || m.create_time > prev_ts || seen_primed)
+                .count(),
+        );
         let allowance = if previous.is_some() && !seen_primed {
             usize::try_from(expected_incoming - future_incoming).unwrap_or(0)
         } else {
@@ -1503,7 +1505,8 @@ mod tests {
     fn engine_after_100(root: &TestDir, summary: &str, messages: Vec<MsgSpec>) -> PushEngine {
         let fixture = Fixture::new(&root.path().join("data"), ME);
         let last = messages.iter().map(|m| m.create_time).max().unwrap_or(0);
-        let unread = messages.iter().filter(|m| m.create_time > 100).count() as i64;
+        let unread =
+            i64::try_from(messages.iter().filter(|m| m.create_time > 100).count()).unwrap();
         fixture.session_db(&[SessionSpec {
             username: PEER,
             summary,

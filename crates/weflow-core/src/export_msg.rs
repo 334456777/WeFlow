@@ -93,7 +93,7 @@ impl Default for Settings {
             excel_compact: false,
             exported_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
+                .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
                 .unwrap_or(0),
             avatars: HashMap::new(),
         }
@@ -1057,8 +1057,8 @@ mod tests {
                 .enumerate()
             {
                 all.push(ExportMsg {
-                    local_id: 9000 + i as i64,
-                    create_time: 1_700_000_900 + i as i64,
+                    local_id: 9000 + i64::try_from(i).unwrap(),
+                    create_time: 1_700_000_900 + i64::try_from(i).unwrap(),
                     local_type: 49,
                     sender_username: if i == 1 { "wxid_me" } else { "wxid_bob" }.into(),
                     chat_record_list: Some(
@@ -1334,8 +1334,8 @@ mod tests {
             let template = msgs[1].clone();
             let mut many = (0..=Exporter::EXCEL_BIG).map(|i| {
                 let mut m = template.clone();
-                m.local_id = i as i64;
-                m.create_time = 1_700_000_000 + i as i64;
+                m.local_id = i64::try_from(i).unwrap();
+                m.create_time = 1_700_000_000 + i64::try_from(i).unwrap();
                 m
             });
             ex.write_streamed("excel", &big, &mut many).unwrap()
@@ -1442,7 +1442,7 @@ mod tests {
                 .filter(|l| l["_type"] == "message")
                 .collect();
             for (i, (text, server_id, is_send)) in messages.iter().enumerate() {
-                let time = first + (i as i64 + 1) * 60;
+                let time = first + (i64::try_from(i).unwrap() + 1) * 60;
                 let platform = (*server_id > 0).then(|| server_id.to_string());
                 let sender = if *is_send { "wxid_me" } else { "wxid_bob" };
                 let j = &json["messages"][i];
