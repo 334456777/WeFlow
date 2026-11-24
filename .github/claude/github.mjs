@@ -1,22 +1,30 @@
 // The GitHub side of the @claude answers: the request the triggering event carries, who may ask, the thread read
-// for the prompt, the 👀 reaction and the reply. REST calls use the job's GITHUB_TOKEN (GH_TOKEN). With
-// CLAUDE_DRY_RUN=1 the reaction and the reply are printed instead of posted, for trying the script outside Actions.
+// for the prompt, the 👀 reaction and the reply. Reads use the job's read-only GITHUB_TOKEN (GH_TOKEN), which Claude
+// Code's gh commands get as well; the reaction and the reply use a token of the weflow-bot GitHub App, so they come
+// from weflow-bot[bot]. With CLAUDE_DRY_RUN=1 the reaction and the reply are printed instead of posted, for trying
+// the script outside Actions.
 import { execFileSync } from 'node:child_process';
+import { createSign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const API = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const REPO = process.env.GITHUB_REPOSITORY;
 const DRY_RUN = process.env.CLAUDE_DRY_RUN === '1';
+// taken out of the environment at once: Claude Code inherits the environment
+const BOT_KEY = process.env.WEFLOW_BOT_PRIVATE_KEY;
+delete process.env.WEFLOW_BOT_PRIVATE_KEY;
+// the weflow-bot token, which only this module holds
+let botToken;
 
 /** The run's page on GitHub, linked from every reply. */
 export const runUrl = `${process.env.GITHUB_SERVER_URL ?? 'https://github.com'}/${REPO}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
-async function call(method, path, body) {
+async function call(method, path, body, token = process.env.GH_TOKEN) {
   const response = await fetch(path.startsWith('https://') ? path : `${API}${path}`, {
     method,
     headers: {
       Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${process.env.GH_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       'User-Agent': 'weflow-claude',
       'X-GitHub-Api-Version': '2022-11-28',
     },
@@ -106,11 +114,40 @@ export async function canWrite(login) {
   return permission === 'admin' || permission === 'write';
 }
 
+/**
+ * Signs in as the weflow-bot GitHub App, whose client ID is the WEFLOW_BOT_CLIENT_ID variable and private key the
+ * WEFLOW_BOT_PRIVATE_KEY secret: a JWT signed with the key buys a token of the app's installation that can write
+ * issues and pull requests of this repository only.
+ */
+export async function signIn() {
+  if (DRY_RUN) return;
+  const id = process.env.WEFLOW_BOT_CLIENT_ID;
+  if (!id || !BOT_KEY) throw new Error('the WEFLOW_BOT_CLIENT_ID variable or the WEFLOW_BOT_PRIVATE_KEY secret is not set');
+  const part = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  // GitHub takes a JWT that lives 10 minutes at most; issuing it a minute early allows for clock drift
+  const unsigned = `${part({ alg: 'RS256', typ: 'JWT' })}.${part({ iat: now - 60, exp: now + 540, iss: id })}`;
+  const jwt = `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(BOT_KEY, 'base64url')}`;
+  const { data: installation } = await call('GET', `/repos/${REPO}/installation`, undefined, jwt);
+  const { data } = await call(
+    'POST',
+    `/app/installations/${installation.id}/access_tokens`,
+    { repositories: [REPO.split('/')[1]], permissions: { issues: 'write', pull_requests: 'write' } },
+    jwt,
+  );
+  botToken = data.token;
+}
+
+function post(path, body) {
+  if (!botToken) throw new Error('not signed in as weflow-bot');
+  return call('POST', path, body, botToken);
+}
+
 /** Marks what asked with 👀, so the asker sees it was picked up. */
 export async function react(ask) {
   if (!ask.reactOn) return;
   if (DRY_RUN) return console.log(`[dry run] 👀 on ${ask.reactOn}`);
-  await call('POST', ask.reactOn, { content: 'eyes' });
+  await post(ask.reactOn, { content: 'eyes' });
 }
 
 /**
@@ -152,6 +189,6 @@ export async function reply(ask, body) {
     ? [`/repos/${REPO}/pulls/${ask.number}/comments/${ask.reviewRoot}/replies`, `review thread ${ask.reviewRoot}`]
     : [`/repos/${REPO}/issues/${ask.number}/comments`, `#${ask.number}`];
   if (DRY_RUN) return console.log(`[dry run] reply on ${what}:\n${body}`);
-  const { data } = await call('POST', path, { body });
+  const { data } = await post(path, { body });
   console.log(`replied: ${data.html_url}`);
 }

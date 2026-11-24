@@ -10,7 +10,17 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { canWrite, checkoutSha, fetchPrHead, react, readAsk, readThread, reply, runUrl } from './github.mjs';
+import {
+  canWrite,
+  checkoutSha,
+  fetchPrHead,
+  react,
+  readAsk,
+  readThread,
+  reply,
+  runUrl,
+  signIn,
+} from './github.mjs';
 import { instructions, prompt } from './prompt.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
@@ -163,7 +173,8 @@ async function main() {
   const ask = readAsk();
   applyConfig();
   try {
-    if (!(await canWrite(ask.author))) {
+    const [allowed] = await Promise.all([canWrite(ask.author), signIn()]);
+    if (!allowed) {
       console.log(`@${ask.author} can't write to the repository: not answering`);
       return;
     }
@@ -185,7 +196,10 @@ async function main() {
   } catch (err) {
     console.log(`::error::${escape(err.stack ?? String(err))}`);
     const reason = err instanceof Unanswered ? err.reason : '运行出错';
-    await reply(ask, `没有回答（${reason}），详见[运行记录](${runUrl})。`);
+    // without the weflow-bot token, as when signing in failed, there is no one to reply as
+    await reply(ask, `没有回答（${reason}），详见[运行记录](${runUrl})。`).catch((e) =>
+      console.log(`::error::${escape(`no reply: ${e.message}`)}`),
+    );
     process.exitCode = 1;
   }
 }
