@@ -16,8 +16,12 @@ const APP_KINDS: Record<string, MessageKind> = {
   gift: 'money', location: 'location',
 };
 
+/** A pat (拍一拍): the app message of type 62, which the exports keep as a system message too (#1200). */
+const PAT = 62 * 4_294_967_296 + 49;
+
 /** A message's kind, by its type and, for an app message, by its `appMsgKind`; text for one it does not know. */
 export function kindOf(message: ParsedMessage): MessageKind {
+  if (message.localType === PAT) return 'system';
   switch (baseType(message.localType)) {
     case 1: return 'text';
     case 3: return 'image';
