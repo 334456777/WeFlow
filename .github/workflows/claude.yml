@@ -1,11 +1,11 @@
 name: Claude
 
-# Mentioning @claude in an issue, a pull request, a comment or a review runs Claude Code
-# (anthropics/claude-code-action), which answers in the thread as claude[bot] through the Claude GitHub App
-# installed on the repository. The action answers only users with write access to the repository: mentions by
-# anyone else, and by bots, are skipped. It signs in to the Claude API by Workload Identity Federation, exchanging
-# the job's GitHub OIDC token (id-token: write), so no API key is stored; the federation rule in the Claude Console
-# decides which repository's tokens it accepts.
+# Mentioning @claude in an issue, a pull request, a comment or a review gets an answer from Claude Code, run through
+# the Claude Agent SDK by .github/claude and posted by github-actions[bot]. Only users with write access are answered.
+# Claude reads the default branch and the issue or pull request; it cannot run commands, change files or use the web.
+# It answers through the Claude API, signed in by Workload Identity Federation with the job's GitHub OIDC token (the
+# federation rule in the Claude Console decides which repository's tokens it accepts), or through DeepSeek's
+# Anthropic-compatible API when the Claude API ends before doing any work and the DEEPSEEK_API_KEY secret is set.
 on:
   issue_comment:
     types: [created]
@@ -14,34 +14,46 @@ on:
   pull_request_review:
     types: [submitted]
   issues:
-    types: [opened, assigned]
+    types: [opened]
 
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      github.event.sender.type == 'User' && (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      )
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       issues: write
-      # the GitHub OIDC token exchanged for the Claude API and the Claude GitHub App
+      pull-requests: write
+      # the GitHub OIDC token exchanged for the Claude API
       id-token: write
-      # lets Claude read the results of CI
-      actions: read
     steps:
+      # the default branch also for pull request events, whose ref is the pull request's merge commit
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
+          persist-credentials: false
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: oven-sh/setup-bun@v2
         with:
-          anthropic_federation_rule_id: fdrl_01MUAcbVShc6TpAHiffiLoPD
-          anthropic_organization_id: 00abe4ae-1b8f-4b20-8ab2-5946465ffe93
-          anthropic_service_account_id: svac_018bofy5DpvXgSb8qRUy2RjW
-          anthropic_workspace_id: wrkspc_011ii9ALAWEiSCdyioVNUTkM
-          # the alias follows the latest Opus; effort is the model's default
-          claude_args: --model opus
+          bun-version-file: .github/claude/package.json
+
+      - run: bun install --frozen-lockfile
+        working-directory: .github/claude
+
+      - run: bun src/main.ts
+        working-directory: .github/claude
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ANTHROPIC_FEDERATION_RULE_ID: fdrl_01MUAcbVShc6TpAHiffiLoPD
+          ANTHROPIC_ORGANIZATION_ID: 00abe4ae-1b8f-4b20-8ab2-5946465ffe93
+          ANTHROPIC_SERVICE_ACCOUNT_ID: svac_018bofy5DpvXgSb8qRUy2RjW
+          ANTHROPIC_WORKSPACE_ID: wrkspc_011ii9ALAWEiSCdyioVNUTkM
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

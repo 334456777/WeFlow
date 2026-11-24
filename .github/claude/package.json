@@ -1,0 +1,19 @@
+{
+  "name": "weflow-claude",
+  "private": true,
+  "type": "module",
+  "description": "Answers mentions of @claude in issues and pull requests with the Claude Agent SDK (claude.yml)",
+  "license": "Unlicense",
+  "packageManager": "bun@1.4.3",
+  "scripts": {
+    "answer": "bun src/main.ts",
+    "typecheck": "bun --bun tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.330"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.3",
+    "typescript": "7.0.2"
+  }
+}

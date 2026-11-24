@@ -1,0 +1,3 @@
+[install]
+# only releases three days old or more, as in web/bunfig.toml (#371)
+minimumReleaseAge = 259200
