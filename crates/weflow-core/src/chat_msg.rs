@@ -16,7 +16,7 @@ use crate::api::js_parse_int;
 use crate::message::appmsg::{app_type, kind_by_keywords, kind_of_app_type, without_quoted};
 use crate::message::emoji::percent_decode;
 use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
-use crate::message::system::{extract_readable_system_message_text, parse_voip_message};
+use crate::message::system::{extract_readable_system_message_text, parse_voip_message, pat_text};
 use crate::message::transfer::{is_same_wxid, transfer_text};
 use crate::message::xml::{
     extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content, strip_sender_line,
@@ -109,36 +109,6 @@ fn system_message_text(content: &str) -> String {
     }
     let body = strip_sender_prefix(&normalized);
     crate::message::system::clean_system_message(&rx(r"(?i)<\?xml[^?]*\?>").replace_all(&body, ""))
-}
-
-fn clean_pat_message(content: &str) -> String {
-    if content.is_empty() {
-        return "拍一拍".into();
-    }
-    if let Some(c) = rx(r"(?is)<title>(.*?)</title>").captures(content) {
-        let title = c[1]
-            .replace("<![CDATA[", "")
-            .replace("]]>", "")
-            .trim()
-            .to_string();
-        if !title.is_empty() {
-            return title;
-        }
-    }
-    if let Some(c) = rx(r"^(.+?拍了拍.+?)(?:[\r\n]|$|ງ|wxid_)").captures(content) {
-        return c[1].trim().to_string();
-    }
-    let mut cleaned = rx(r"wxid_[a-zA-Z0-9_-]+")
-        .replace_all(content, "")
-        .to_string();
-    cleaned = rx(r"[ງ໐໓ຖiht]+").replace_all(&cleaned, " ").to_string();
-    cleaned = rx(r"\d{6,}").replace_all(&cleaned, "").to_string();
-    cleaned = rx(r"\s+").replace_all(&cleaned, " ").trim().to_string();
-    cleaned = clean_utf16(&cleaned);
-    if cleaned.chars().count() > 1 && !cleaned.contains("xml") {
-        return cleaned;
-    }
-    "拍一拍".into()
 }
 
 // ───────────────────────── type 49 ─────────────────────────
@@ -264,6 +234,10 @@ fn parsed_content(
             t
         };
     }
+    // a pat, worded as in the exports (#1196)
+    if local_type == 266287972401 {
+        return pat_text(content);
+    }
     let content = clean_utf16(&decode_entities(content));
     let xml_type = extract_xml_value(&content, "type");
     let looks_app = content.contains("<appmsg") || content.contains("&lt;appmsg");
@@ -285,7 +259,6 @@ fn parsed_content(
         49 => parse_type49(&content, sender, my_wxid),
         50 => parse_voip_message(&content),
         10000 => system_message_text(&content),
-        266287972401 => clean_pat_message(&content),
         // an app message kept as `(<type> << 32) | 49` reads as one kept as 49 (#1180)
         l if l & 0xFFFF_FFFF == 49 && looks_app => parse_type49(&content, sender, my_wxid),
         81604378673 => "[聊天记录]".into(),
@@ -1418,8 +1391,8 @@ mod tests {
     #[test]
     fn an_app_type_reads_the_same_everywhere() {
         let types = [
-            "3", "76", "4", "5", "49", "6", "8", "19", "24", "33", "36", "51", "53", "57", "87",
-            "2000", "2001",
+            "3", "76", "4", "5", "49", "6", "8", "19", "24", "33", "36", "51", "53", "57", "62",
+            "87", "2000", "2001",
         ];
         for ty in types {
             let row = app_type(ty).unwrap();
@@ -1447,6 +1420,10 @@ mod tests {
                         );
                     }
                     "57" => assert_eq!((chat.as_str(), export.as_str()), ("T", "T"), "{at}"),
+                    // a pat kept as `(62 << 32) | 49` is its title alone, as a system message (#1196)
+                    "62" if local_type == kept_as => {
+                        assert_eq!((chat.as_str(), export.as_str()), ("T", "T"), "{at}");
+                    }
                     "8" | "87" => {
                         assert_eq!((chat.as_str(), export.as_str()), (row.tag, row.tag), "{at}");
                     }

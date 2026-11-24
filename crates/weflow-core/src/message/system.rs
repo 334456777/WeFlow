@@ -4,6 +4,7 @@ use super::xml::{
     extract_xml_value, normalize_app_message_content, normalize_app_message_cow, rx,
     sender_prefix_len, strip_sender_prefix,
 };
+use crate::chat_msg::clean_utf16;
 
 pub(super) struct RevokeInfo {
     pub is_revoke: bool,
@@ -115,6 +116,43 @@ pub fn clean_system_message(content: &str) -> String {
     }
 }
 
+/// The text of a pat (拍一拍, `(62 << 32) | 49`), the same in the chat window and the exports (#1196): its
+/// `<title>`, with the entities of `content`, the message as it is kept, decoded once.
+pub(crate) fn pat_text(content: &str) -> String {
+    clean_pat_message(&clean_utf16(&crate::xml::decode_entities(content)))
+}
+
+/// [`pat_text`] of content whose entities are decoded.
+fn clean_pat_message(content: &str) -> String {
+    if content.is_empty() {
+        return "拍一拍".into();
+    }
+    if let Some(c) = rx(r"(?is)<title>(.*?)</title>").captures(content) {
+        let title = c[1]
+            .replace("<![CDATA[", "")
+            .replace("]]>", "")
+            .trim()
+            .to_string();
+        if !title.is_empty() {
+            return title;
+        }
+    }
+    if let Some(c) = rx(r"^(.+?拍了拍.+?)(?:[\r\n]|$|ງ|wxid_)").captures(content) {
+        return c[1].trim().to_string();
+    }
+    let mut cleaned = rx(r"wxid_[a-zA-Z0-9_-]+")
+        .replace_all(content, "")
+        .to_string();
+    cleaned = rx(r"[ງ໐໓ຖiht]+").replace_all(&cleaned, " ").to_string();
+    cleaned = rx(r"\d{6,}").replace_all(&cleaned, "").to_string();
+    cleaned = rx(r"\s+").replace_all(&cleaned, " ").trim().to_string();
+    cleaned = clean_utf16(&cleaned);
+    if cleaned.chars().count() > 1 && !cleaned.contains("xml") {
+        return cleaned;
+    }
+    "拍一拍".into()
+}
+
 /// The template of a `<sysmsgtemplate>` notice (`"$username$"邀请"$names$"加入了群聊`) with each `$name$` filled from
 /// its `<link name="name">` in `source`: the nicknames of the link's members, joined by its separator. A link without
 /// members is something to click in WeChat (`$revoke$`), and leaves nothing.
@@ -220,6 +258,14 @@ mod tests {
         assert_eq!(parse_voip_message(xml), "[语音通话] 01:23");
         let xml = "<voipmsg><VoIPBubbleMsg><msg><![CDATA[对方无应答]]></msg><room_type>0</room_type></VoIPBubbleMsg></voipmsg>";
         assert_eq!(parse_voip_message(xml), "[视频通话] 对方无应答");
+    }
+
+    /// A pat's title is escaped XML, read decoded once (#1196).
+    #[test]
+    fn a_pat_is_its_title_decoded_once() {
+        let xml = "<msg><appmsg><title>&quot;A&amp;B&quot; 拍了拍 &quot;C&quot;</title><type>62</type></appmsg></msg>";
+        assert_eq!(pat_text(xml), "\"A&B\" 拍了拍 \"C\"");
+        assert_eq!(pat_text(""), "拍一拍");
     }
 
     #[test]
