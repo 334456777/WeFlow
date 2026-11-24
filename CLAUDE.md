@@ -194,10 +194,10 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - worktree 里编译 Rust 时设 `CARGO_TARGET_DIR` 用它自己的 target 目录（主工作副本 `target/` 下的 `wt-<worktree 名>`），不与主工作副本或其他 worktree 共用 `target/debug`（原因见 Wiki「开发指南」的[提交与 Pull Request](https://github.com/334456777/WeFlow/wiki/开发指南#提交与-pull-request)）
 
 ### 第三方代码的许可
-发布包的 `licenses/` 文件夹列出程序所含他人代码的许可（[#1111](https://github.com/334456777/WeFlow/issues/1111)），做法见 Wiki「发布与 CI」的[打包](https://github.com/334456777/WeFlow/wiki/发布与-CI#打包)：
+本仓库以 Unlicense（根目录的 `LICENSE`）发布，取自其他项目的代码沿用原项目的许可：放着别的许可文件的文件夹，里面的代码按那份许可。发布包的 `licenses/` 文件夹列出程序所含他人代码的许可（[#1111](https://github.com/334456777/WeFlow/issues/1111)），做法见 Wiki「发布与 CI」的[打包](https://github.com/334456777/WeFlow/wiki/发布与-CI#打包)：
 - 新增的 crate 依赖由 cargo-about 自动列出；它的许可不在 [`.github/about/about.toml`](.github/about/about.toml) 的 `accepted` 里时发版失败，先确认这个许可允许随二进制分发再加进去
 - 移植、照着重写其他项目的代码或数据（如特征码、偏移量、算法的常量）时：
-  - 对方的许可文件原样放进这些代码所在的文件夹（如 `windows_db_key/LICENSE`），模块的 `//!` 写明来源和许可
+  - 对方的许可文件原样放进这些代码所在的文件夹（如 `windows_db_key/LICENSE`），模块的 `//!` 写明来源和许可，两份 README 知识产权一节的列表里加上这个文件夹
   - cargo-about 跳过本仓库自己的 crate，看不到这份许可：在 [`licenses.hbs`](.github/about/licenses.hbs) 的「Code that is not a crate's own」一节加一项，在 [`third-party-licenses.sh`](.github/scripts/third-party-licenses.sh) 里把它拷成那一项链接的文件
   - 对方的许可有非商业、相同方式共享等限制，或要求声明（如 IJG）时，先告诉维护者
 
