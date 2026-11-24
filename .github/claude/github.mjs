@@ -47,12 +47,13 @@ async function getAll(path) {
  * @property {string | null} reactOn the reactions endpoint of what mentions @claude; reviews and manual runs have none
  * @property {number | null} reviewRoot the top-level review comment of the thread asked in, which the reply goes under
  * @property {number | null} reviewId the review whose body asked
+ * @property {string | null} model the model a manual run names instead of the ANTHROPIC_MODEL variable
  */
 
 /** Reads the request out of the event that started the run. @returns {Ask} */
 export function readAsk() {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-  const ask = { question: null, reactOn: null, reviewRoot: null, reviewId: null };
+  const ask = { question: null, reactOn: null, reviewRoot: null, reviewId: null, model: null };
   switch (process.env.GITHUB_EVENT_NAME) {
     case 'issue_comment':
       return {
@@ -92,6 +93,7 @@ export function readAsk() {
         number: Number(event.inputs.number),
         author: process.env.GITHUB_ACTOR,
         question: event.inputs.prompt,
+        model: event.inputs.model || null,
       };
     default:
       throw new Error(`unexpected event ${process.env.GITHUB_EVENT_NAME}`);

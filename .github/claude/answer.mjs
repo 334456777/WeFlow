@@ -1,8 +1,8 @@
 // Answers a mention of @claude in an issue or a pull request (.github/workflows/claude.yml) with the Claude Agent SDK:
 // 👀 on what asked, Claude Code reads the repository and the thread, and its answer is posted in the same place,
-// ending with the model and a link to this run. The endpoint, model and effort come from the ANTHROPIC_* and
-// CLAUDE_CODE_* variables the workflow sets. Tool calls outside the read-only rules are denied and logged as warnings.
-// A run that can't answer replies 没有回答 and fails.
+// ending with the model and a link to this run. The endpoint, model and effort come from the repository's Actions
+// variables (see applyConfig). Tool calls outside the read-only rules are denied and logged as warnings. A run that
+// can't answer replies 没有回答 and fails.
 //
 // The script installs the SDK itself (`npm ci`), while it reacts and reads the thread: the Claude Code binary the
 // SDK brings is a few hundred MB, and a failed install still gets its reply.
@@ -27,6 +27,24 @@ const GH_READS = ['issue view', 'issue list', 'pr view', 'pr diff', 'pr checks',
 const ALLOWED = [...GH_READS, 'search', 'release view', 'release list'].map((command) => `Bash(gh ${command} *)`);
 // Tools whose every call canUseTool allows: none of them writes. Every other call that would ask is denied.
 const OPEN = new Set(['WebFetch', 'WebSearch', 'Agent', 'Skill', 'TodoWrite']);
+
+/**
+ * Turns the repository's Actions variables, which claude.yml passes as JSON in CLAUDE_VARS, into environment variables
+ * of the same name for Claude Code (ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, CLAUDE_CODE_EFFORT_LEVEL, …), so that they
+ * change without editing a file. A variable doesn't override what the workflow or the runner set. The API key secrets
+ * the repository doesn't have arrive empty and are dropped: Claude Code would take an empty value as set.
+ */
+function applyConfig(ask) {
+  for (const name of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']) {
+    if (!process.env[name]) delete process.env[name];
+  }
+  const vars = JSON.parse(process.env.CLAUDE_VARS || '{}');
+  delete process.env.CLAUDE_VARS;
+  for (const [name, value] of Object.entries(vars)) {
+    if (!(name in process.env)) process.env[name] = value;
+  }
+  if (ask.model) process.env.ANTHROPIC_MODEL = ask.model;
+}
 
 /** A run that ends without an answer; `reason` goes into the reply. */
 class Unanswered extends Error {
@@ -141,6 +159,7 @@ function withFooter(text, model) {
 
 async function main() {
   const ask = readAsk();
+  applyConfig(ask);
   try {
     if (!(await canWrite(ask.author))) {
       console.log(`@${ask.author} can't write to the repository: not answering`);
@@ -150,9 +169,8 @@ async function main() {
     // awaited below; this only keeps a failure before then from being an unhandled rejection
     installed.catch(() => {});
     await react(ask).catch((err) => console.log(`::warning::${escape(`no 👀: ${err.message}`)}`));
-    // ANTHROPIC_AUTH_TOKEN for DeepSeek (a Bearer token), ANTHROPIC_API_KEY for the Claude API
-    if (!process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
-      throw new Unanswered('没有设置 API Key', 'neither ANTHROPIC_AUTH_TOKEN nor ANTHROPIC_API_KEY is set');
+    if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+      throw new Unanswered('没有设置 API Key', 'neither the ANTHROPIC_API_KEY nor the ANTHROPIC_AUTH_TOKEN secret is set');
     }
     const thread = await readThread(ask);
     if (thread.pr) fetchPrHead(thread.pr);

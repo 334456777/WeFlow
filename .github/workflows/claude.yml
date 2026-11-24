@@ -5,9 +5,11 @@ name: Claude
 # github-actions[bot] (see that script). Only users who can write to the repository are answered; the job doesn't
 # start for anyone else, nor for bots.
 #
-# The model is DeepSeek Flash through DeepSeek's Anthropic-compatible API, set up as DeepSeek's guide for Claude Code
-# gives it (https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code); the API key is the
-# DEEPSEEK_API_KEY secret. A run by hand asks about an issue or pull request by its number and can name another model.
+# The endpoint, model and effort are set without editing this file: every Actions variable of the repository reaches
+# Claude Code as an environment variable of the same name (ANTHROPIC_BASE_URL, ANTHROPIC_MODEL,
+# CLAUDE_CODE_EFFORT_LEVEL, …), and the API key is the ANTHROPIC_API_KEY secret (ANTHROPIC_AUTH_TOKEN for a Bearer
+# token). The values in use and how to change provider are on the Wiki page 发布与 CI. A run by hand asks about an
+# issue or pull request by its number and can name another model.
 #
 # Review comments and reviews on a fork's pull request run without secrets and with a read-only token, so they are
 # skipped: ask in the pull request's conversation instead.
@@ -29,7 +31,7 @@ on:
         description: Question
         required: true
       model:
-        description: Model (default deepseek-flash[1m])
+        description: Model (default the ANTHROPIC_MODEL variable)
         required: false
 
 permissions: {}
@@ -68,18 +70,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
-          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DEEPSEEK_API_KEY }}
-          ANTHROPIC_MODEL: ${{ inputs.model || 'deepseek-flash[1m]' }}
-          ANTHROPIC_DEFAULT_OPUS_MODEL: deepseek-flash[1m]
-          ANTHROPIC_DEFAULT_SONNET_MODEL: deepseek-flash[1m]
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-flash
-          CLAUDE_CODE_SUBAGENT_MODEL: deepseek-flash
-          CLAUDE_CODE_EFFORT_LEVEL: max
-          CLAUDE_CODE_AUTO_COMPACT_WINDOW: 786432
-          # rides out a short outage; with the default, a rejected key takes about 4 minutes to fail
-          CLAUDE_CODE_MAX_RETRIES: 5
-          # the commands Claude runs don't see the API key (GitHub tokens stay, for gh)
+          # all the repository's variables, which answer.mjs sets for Claude Code
+          CLAUDE_VARS: ${{ toJSON(vars) }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          # Fixed here rather than in variables, which can't override them: the commands Claude runs don't see the
+          # API key (GitHub tokens stay, for gh), and Claude Code sends nothing but the model requests.
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: 1
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1
           CLAUDE_CODE_DISABLE_AUTO_MEMORY: 1
