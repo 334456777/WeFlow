@@ -32,15 +32,31 @@ pub(crate) fn export_path(out: &Path, default_name: &str) -> PathBuf {
 ///
 /// A usage error when `out` has another extension: a zip is not written under the name of a text, a page or a table.
 pub(crate) fn zip_target(out: &Path, default_name: &str) -> AppResult<PathBuf> {
-    if out
-        .extension()
-        .is_some_and(|ext| !ext.eq_ignore_ascii_case("zip"))
-    {
-        return Err(AppError::usage(
-            "--zip writes a zip: give --out a folder or a .zip file",
-        ));
+    zip_in(out, default_name)
+        .ok_or_else(|| AppError::usage("--zip writes a zip: give --out a folder or a .zip file"))
+}
+
+/// The file `backup create` writes (#1134): `default_name` in `out` when `out` is a folder, one that is there already
+/// or a name without an extension; `out` itself when it names a `.zip` file.
+///
+/// # Errors
+///
+/// A usage error when `out` names a file with another extension: a backup is a zip.
+pub(crate) fn backup_target(out: &Path, default_name: &str) -> AppResult<PathBuf> {
+    if out.is_dir() {
+        return Ok(out.join(default_name));
     }
-    Ok(export_path(out, default_name))
+    zip_in(out, default_name)
+        .ok_or_else(|| AppError::usage("a backup is a zip: give --out a folder or a .zip file"))
+}
+
+/// `out` when it names a `.zip` file, `default_name` in the folder `out` when it has no extension; `None` when it has
+/// another one.
+fn zip_in(out: &Path, default_name: &str) -> Option<PathBuf> {
+    let other = out
+        .extension()
+        .is_some_and(|ext| !ext.eq_ignore_ascii_case("zip"));
+    (!other).then(|| export_path(out, default_name))
 }
 
 /// The folder `path` goes into, made when it is not there: the writers of xlsx, HTML and SQL do not make it.
@@ -176,6 +192,34 @@ mod tests {
         ] {
             let err = zip_target(Path::new(out), "chat.zip").unwrap_err();
             assert_eq!((err.code.as_str(), err.exit_code), ("invalid_arguments", 2));
+        }
+    }
+
+    /// A backup goes into a folder that is there, whatever its name, as into a name without an extension (#1134).
+    #[test]
+    fn a_backup_goes_to_a_zip_file_or_into_a_folder() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-backup-target");
+        let dotted = dir.join("backups.2025");
+        std::fs::create_dir(&dotted).unwrap();
+        let named = dir.join("old.zip");
+        std::fs::create_dir(&named).unwrap();
+        for (out, want) in [
+            (dir.to_path_buf(), dir.join("b.zip")),
+            (dotted.clone(), dotted.join("b.zip")),
+            (named.clone(), named.join("b.zip")),
+            (dir.join("new"), dir.join("new").join("b.zip")),
+            (dir.join("a.zip"), dir.join("a.zip")),
+            (dir.join("A.ZIP"), dir.join("A.ZIP")),
+        ] {
+            assert_eq!(backup_target(&out, "b.zip").unwrap(), want, "{out:?}");
+        }
+        for out in ["backup.txt", "out/backup.json", "out/b.zip.bak"] {
+            let err = backup_target(&dir.join(out), "b.zip").unwrap_err();
+            assert_eq!(
+                (err.code.as_str(), err.exit_code),
+                ("invalid_arguments", 2),
+                "{out}"
+            );
         }
     }
 }

@@ -176,7 +176,8 @@ pub struct WeChatProcess {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupCreated {
-    /// The backup file.
+    /// The backup file written: the `.zip` file given as `out`, or the `weflow-backup-YYYYMMDD-HHMMSS.zip` written into
+    /// the folder given.
     pub out: PathBuf,
     /// The files in it.
     pub entries: usize,

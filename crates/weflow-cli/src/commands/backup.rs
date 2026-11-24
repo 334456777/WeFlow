@@ -18,7 +18,7 @@ pub(crate) struct BackupCommand {
 enum BackupSubcommand {
     /// Create a backup of the current account
     Create {
-        /// Output file
+        /// Output: a .zip file, or a folder to write weflow-backup-YYYYMMDD-HHMMSS.zip into
         #[arg(long)]
         out: PathBuf,
         /// Also back up the images WeChat keeps in msg/attach
@@ -58,13 +58,20 @@ pub(crate) fn handle_backup(command: &BackupCommand, hub: &ServiceHub) -> AppRes
             files,
             emojis,
         } => {
+            // checked before anything is read: a backup of the media takes minutes
+            let default_name = format!(
+                "weflow-backup-{}.zip",
+                chrono::Local::now().format("%Y%m%d-%H%M%S")
+            );
+            let out = crate::files::backup_target(out, &default_name)?;
+            crate::files::make_parent(&out)?;
             let options = weflow_core::backup::BackupOptions {
                 images: *images,
                 videos: *videos,
                 files: *files,
                 emojis: *emojis,
             };
-            Ok(json!(hub.backup_create(out, &options)?))
+            Ok(json!(hub.backup_create(&out, &options)?))
         }
         BackupSubcommand::Inspect { path } => Ok(json!(hub.backup_inspect(path)?)),
         BackupSubcommand::Restore { path, out } => {

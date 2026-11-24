@@ -2268,7 +2268,10 @@ export interface SnsImageInline {
 
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
-  /** The backup file. */
+  /**
+   * The backup file written: the `.zip` file given as `out`, or the `weflow-backup-YYYYMMDD-HHMMSS.zip` written into
+   * the folder given.
+   */
   out: string;
   /** The files in it. */
   entries: number;
