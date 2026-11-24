@@ -47,6 +47,24 @@ pub(super) fn get_transfer_prefix(
     "[转账]"
 }
 
+/// A transfer's text, the same in the exports and the chat window (#1185): its side ([`get_transfer_prefix`]), then
+/// the amount (`<feedesc>`) and the note (`<pay_memo>`); only the side when there is no amount.
+pub(crate) fn transfer_text(
+    content: &str,
+    my_wxid: Option<&str>,
+    sender_wxid: Option<&str>,
+) -> String {
+    let normalized = normalize_app_message_content(content);
+    let feedesc = extract_xml_value(&normalized, "feedesc");
+    let memo = extract_xml_value(&normalized, "pay_memo");
+    let prefix = get_transfer_prefix(&normalized, my_wxid, sender_wxid);
+    match (feedesc.is_empty(), memo.is_empty()) {
+        (true, _) => prefix.to_string(),
+        (false, true) => format!("{prefix} {feedesc}"),
+        (false, false) => format!("{prefix} {feedesc} {memo}"),
+    }
+}
+
 /// Whether an export's text of a message is a transfer's: it starts with `[转账]` or `[转账收款]`.
 pub fn is_transfer_export_content(content: &str) -> bool {
     content.starts_with("[转账]") || content.starts_with("[转账收款]")

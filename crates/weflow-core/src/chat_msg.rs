@@ -17,7 +17,7 @@ use crate::message::appmsg::{app_type, kind_by_keywords, kind_of_app_type, witho
 use crate::message::emoji::percent_decode;
 use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message};
-use crate::message::transfer::is_same_wxid;
+use crate::message::transfer::{is_same_wxid, transfer_text};
 use crate::message::xml::{
     extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content, strip_sender_line,
     strip_sender_prefix,
@@ -173,8 +173,9 @@ fn location_label_of(content: &str) -> String {
 
 /// `parseType49`: the display string for appmsg content. Its kind is the one its own `<type>` gives it, as the
 /// chat window's `appMsgKind` and the exports have it; the words of its XML only count when the type says nothing,
-/// and never those of the message a reply quotes (#1165).
-fn parse_type49(content: &str) -> String {
+/// and never those of the message a reply quotes (#1165). `sender` and `my_wxid` tell a transfer's side, as in the
+/// exports (#1185).
+fn parse_type49(content: &str, sender: Option<&str>, my_wxid: Option<&str>) -> String {
     let title = extract_xml_value(content, "title");
     let ty = app_xml_type(content);
     let own = without_quoted(content);
@@ -191,6 +192,9 @@ fn parse_type49(content: &str) -> String {
         } else {
             format!("[群公告] {t}")
         };
+    }
+    if ty == "2000" {
+        return transfer_text(content, my_wxid, sender);
     }
     if is_finder {
         return if title.is_empty() {
@@ -241,9 +245,14 @@ fn parse_type49(content: &str) -> String {
 }
 
 /// The line the chat window shows for any message
-/// ([`ChatMessage::parsed_content`]), `sender` the message's ([`ChatMessage::sender_username`]). The exports word
-/// theirs in [`crate::message::parse_message_content`].
-fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
+/// ([`ChatMessage::parsed_content`]), `sender` the message's ([`ChatMessage::sender_username`]) and `my_wxid` the
+/// account's. The exports word theirs in [`crate::message::parse_message_content`].
+fn parsed_content(
+    content: &str,
+    local_type: i64,
+    sender: Option<&str>,
+    my_wxid: Option<&str>,
+) -> String {
     if content.is_empty() {
         return message_type_label(local_type).into();
     }
@@ -273,12 +282,12 @@ fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> Strin
                 format!("[位置] {label}")
             }
         }
-        49 => parse_type49(&content),
+        49 => parse_type49(&content, sender, my_wxid),
         50 => parse_voip_message(&content),
         10000 => system_message_text(&content),
         266287972401 => clean_pat_message(&content),
         // an app message kept as `(<type> << 32) | 49` reads as one kept as 49 (#1180)
-        l if l & 0xFFFF_FFFF == 49 && looks_app => parse_type49(&content),
+        l if l & 0xFFFF_FFFF == 49 && looks_app => parse_type49(&content, sender, my_wxid),
         81604378673 => "[聊天记录]".into(),
         8594229559345 => "[红包]".into(),
         8589934592049 => "[转账]".into(),
@@ -300,7 +309,7 @@ fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> Strin
                 };
             }
             if looks_app {
-                return parse_type49(&content);
+                return parse_type49(&content, sender, my_wxid);
             }
             let generic = extract_xml_value(&content, "title");
             if !generic.is_empty() && generic.chars().count() < 100 {
@@ -1249,7 +1258,12 @@ fn chat_message(
             m.quoted_sender = t.quoted_sender;
         }
     }
-    m.parsed_content = parsed_content(&content, local_type, m.sender_username.as_deref());
+    m.parsed_content = parsed_content(
+        &content,
+        local_type,
+        m.sender_username.as_deref(),
+        Some(my_wxid),
+    );
     m.raw_content = content;
     m.message_key = build_message_key(
         m.local_id,
@@ -1266,6 +1280,11 @@ fn chat_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The chat window's text of a message, read without the account's wxid.
+    fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
+        super::parsed_content(content, local_type, sender, None)
+    }
 
     #[test]
     fn the_sender_is_read_from_the_prefix_of_a_group_message() {
@@ -1415,8 +1434,12 @@ mod tests {
                     crate::message::parse_message_content(&xml, local_type, None, None, None)
                         .unwrap();
                 match ty {
-                    // a transfer's direction, a forwarded record's items and a note's body are the exports' own
-                    "2000" | "19" => {}
+                    // a forwarded record's items are the exports' own
+                    "19" => {}
+                    // a transfer without an amount is its side alone
+                    "2000" => {
+                        assert_eq!((chat.as_str(), export.as_str()), (row.tag, row.tag), "{at}");
+                    }
                     "24" => {
                         assert!(
                             chat.starts_with(row.tag) && export.starts_with(row.tag),
@@ -1452,6 +1475,47 @@ mod tests {
                 assert_eq!(
                     crate::message::kind::convert_message_type_in(local_type, &x),
                     row.chatlab,
+                    "{at}"
+                );
+            }
+        }
+    }
+
+    /// A transfer reads the same in the chat window and the exports, kept either way, from either side: its side,
+    /// amount and note, never its title (#1185).
+    #[test]
+    fn a_transfer_reads_the_same_in_the_chat_and_the_exports() {
+        let transfer = |subtype: &str, memo: &str| {
+            format!(
+                "<msg><appmsg><title>转账</title><type>2000</type><wcpayinfo><paysubtype>{subtype}</paysubtype>\
+                 <feedesc>￥12.34</feedesc><pay_memo>{memo}</pay_memo>\
+                 <payer_username>wxid_payer</payer_username><receiver_username>wxid_receiver</receiver_username>\
+                 </wcpayinfo></appmsg></msg>"
+            )
+        };
+        let cases = [
+            // the subtype tells the side
+            ("1", "", None, None, "[转账] ￥12.34"),
+            ("3", "饭钱", None, None, "[转账收款] ￥12.34 饭钱"),
+            // without it, the sender does, then the account
+            ("", "", Some("wxid_payer"), None, "[转账收款] ￥12.34"),
+            ("", "", Some("wxid_receiver"), None, "[转账] ￥12.34"),
+            ("", "", None, Some("wxid_payer"), "[转账收款] ￥12.34"),
+            ("", "", None, Some("wxid_receiver"), "[转账] ￥12.34"),
+        ];
+        for (subtype, memo, sender, me, text) in cases {
+            let xml = transfer(subtype, memo);
+            for local_type in [49, (2000 << 32) | 49] {
+                let at = format!("{subtype:?} {sender:?} {me:?} as {local_type}");
+                assert_eq!(
+                    super::parsed_content(&xml, local_type, sender, me),
+                    text,
+                    "{at}"
+                );
+                assert_eq!(
+                    crate::message::parse_message_content(&xml, local_type, me, sender, None)
+                        .as_deref(),
+                    Some(text),
                     "{at}"
                 );
             }
