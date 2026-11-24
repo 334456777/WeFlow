@@ -36,6 +36,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("--media avatar puts the avatars on the HTML page; use --format html", "--media avatar 把头像放在 HTML 页面上；请使用 --format html"),
     ("--zip writes a zip: give --out a folder or a .zip file", "--zip 写出的是 zip：--out 请给文件夹或 .zip 文件"),
     ("a backup is a zip: give --out a folder or a .zip file", "备份是 zip 文件：--out 请给文件夹或 .zip 文件"),
+    ("{} is neither a .csv nor an .xlsx file; use one of those extensions", "{} 既不是 .csv 也不是 .xlsx 文件；请改用其中一种扩展名"),
     ("move the backup to {}: {}", "把备份移到 {} 失败：{}"),
     ("unsupported media type: {}; use image, voice, video, emoji, file or all", "不支持的媒体类型：{}；请使用 image、voice、video、emoji、file 或 all"),
     ("--start {} is after --end {}", "--start {0} 晚于 --end {1}"),

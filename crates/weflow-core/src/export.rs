@@ -247,6 +247,18 @@ impl SqlType {
     }
 }
 
+/// Most characters WeFlow writes in a cell of a workbook. Excel holds 32 767 and the writer refuses a longer string,
+/// failing the whole workbook, so a longer text (the XML of a forwarded chat, for one) is cut to this many.
+pub(crate) const CELL_CHARS: usize = 32_000;
+
+/// `text` as it goes into a cell of a workbook: its first [`CELL_CHARS`] characters.
+pub(crate) fn fit_cell(text: &str) -> std::borrow::Cow<'_, str> {
+    match text.char_indices().nth(CELL_CHARS) {
+        Some((end, _)) => std::borrow::Cow::Owned(text[..end].to_string()),
+        None => std::borrow::Cow::Borrowed(text),
+    }
+}
+
 /// A table as a worksheet: the bold header, then a line for each row.
 pub fn export_table_excel(
     headers: &[impl AsRef<str>],
@@ -264,9 +276,9 @@ pub fn export_table_excel(
             let (r, col) = (u32::try_from(r + 1)?, u16::try_from(col)?);
             match value {
                 Value::Number(n) => worksheet.write_number(r, col, n.as_f64().unwrap_or(0.0))?,
-                Value::String(s) => worksheet.write_string(r, col, s)?,
+                Value::String(s) => worksheet.write_string(r, col, fit_cell(s))?,
                 Value::Null => worksheet,
-                other => worksheet.write_string(r, col, other.to_string())?,
+                other => worksheet.write_string(r, col, fit_cell(&other.to_string()))?,
             };
         }
     }
@@ -359,6 +371,27 @@ pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A text a cell holds is kept as it is; a longer one is cut to its first [`CELL_CHARS`] characters, counted as
+    /// characters and not bytes (#1136).
+    #[test]
+    fn a_text_longer_than_a_cell_is_cut() {
+        assert!(matches!(
+            fit_cell("short"),
+            std::borrow::Cow::Borrowed("short")
+        ));
+        let full = "字".repeat(CELL_CHARS);
+        assert_eq!(fit_cell(&full), full.as_str());
+        let long = format!("{full}多出来的");
+        let cut = fit_cell(&long);
+        assert_eq!(cut.chars().count(), CELL_CHARS);
+        assert_eq!(cut, full.as_str());
+        // a table with such a text is still written
+        let dir = weflow_native::fixture::TestDir::new("weflow-table-long-cell");
+        let out = dir.join("t.xlsx");
+        export_table_excel(&["a"], &[vec![Value::String(long)]], &out).unwrap();
+        assert!(out.is_file());
+    }
 
     #[test]
     fn sql_escapes() {

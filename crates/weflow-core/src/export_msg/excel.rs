@@ -198,8 +198,7 @@ impl Exporter<'_, '_> {
                 }
             }
             if !wrote_link {
-                let clipped: String = content.chars().take(32000).collect();
-                ws.write_string(row, content_col, clipped)?;
+                ws.write_string(row, content_col, crate::export::fit_cell(&content))?;
             }
         }
         // Built in memory, then written: rust_xlsxwriter panics (an unwrap) when writing a constant-memory sheet to
