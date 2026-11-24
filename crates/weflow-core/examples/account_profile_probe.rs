@@ -29,6 +29,8 @@ use weflow_native::msg::{table_name_for, MsgTable};
 const TZ: i64 = 8 * 3600;
 /// Image files decrypted to see what they hold, at most.
 const DAT_SAMPLES: usize = 1500;
+/// The WeChat Pay account, whose notices `biz pay-records` reads.
+const WECHAT_PAY: &str = "gh_3dfda90e39d6";
 /// Groups with fewer messages say little about who speaks.
 const GROUP_MIN_MESSAGES: usize = 200;
 const TEXT_BUCKETS: &[i64] = &[0, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 5000];
@@ -284,6 +286,20 @@ fn read_table(
     })
 }
 
+/// The conversation of each message table, by the table's name: a table is named after its conversation, and every
+/// conversation appears in some shard's `Name2Id`.
+fn session_names(account: &Account, shards: &[PathBuf]) -> Result<HashMap<String, String>> {
+    let mut session_of = HashMap::new();
+    for db in shards {
+        for row in account.query(db, "select user_name from Name2Id", &[])? {
+            if let Some(name) = row["user_name"].as_str() {
+                session_of.insert(table_name_for(name), name.to_string());
+            }
+        }
+    }
+    Ok(session_of)
+}
+
 fn conversations(account: &Account) -> Result<Value> {
     let shards = account.message_dbs();
     let shard_of: HashMap<PathBuf, usize> = shards
@@ -291,15 +307,7 @@ fn conversations(account: &Account) -> Result<Value> {
         .enumerate()
         .map(|(i, p)| (p.clone(), i))
         .collect();
-    // A table is named after its conversation; every conversation appears in some shard's Name2Id.
-    let mut session_of: HashMap<String, String> = HashMap::new();
-    for db in &shards {
-        for row in account.query(db, "select user_name from Name2Id", &[])? {
-            if let Some(name) = row["user_name"].as_str() {
-                session_of.insert(table_name_for(name), name.to_string());
-            }
-        }
-    }
+    let session_of = session_names(account, &shards)?;
     let mut m = Messages::default();
     let mut by_kind: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
     let (mut multi_shard, mut overlapping, mut duplicated_ids, mut multi_shard_messages) =
@@ -396,6 +404,110 @@ fn conversations(account: &Account) -> Result<Value> {
             "top1_share_permille": quantiles(groups.iter().map(|g| (g["top1_share"].as_f64().unwrap_or(0.0) * 1000.0) as i64).collect()),
             "top10pct_share_permille": quantiles(groups.iter().map(|g| (g["top10pct_share"].as_f64().unwrap_or(0.0) * 1000.0) as i64).collect()),
         },
+    }))
+}
+
+/// The first `<type>` of an app message, the kind of card it is (5 for a link or an official account's push).
+fn appmsg_type(xml: &str) -> Option<i64> {
+    let start = xml.find("<type>")? + "<type>".len();
+    let end = start + xml[start..].find("</type>")?;
+    xml[start..end].trim().parse().ok()
+}
+
+/// What official accounts send (#1068): how many accounts have messages, how many each, which databases hold them,
+/// their types and sizes, the articles per push; the WeChat Pay account's notices apart, by the parts
+/// `biz pay-records` reads.
+fn official(account: &Account) -> Result<Value> {
+    let shards = account.message_dbs();
+    let session_of = session_names(account, &shards)?;
+    let mut per_account = Vec::new();
+    let (mut types, mut appmsg_types, mut storage, mut in_db) = (
+        BTreeMap::new(),
+        BTreeMap::new(),
+        BTreeMap::new(),
+        BTreeMap::<&str, u64>::new(),
+    );
+    let mut bytes: BTreeMap<i64, Vec<i64>> = BTreeMap::new();
+    let (mut items, mut with_list) = (Vec::new(), 0u64);
+    let mut pay = BTreeMap::<&str, u64>::new();
+    let mut pay_bytes = Vec::new();
+    for (table, parts) in account.message_tables_by_name()? {
+        let name = session_of.get(&table).map_or("", String::as_str);
+        if kind_of(name) != "official" {
+            continue;
+        }
+        let is_pay = name == WECHAT_PAY;
+        let mut n = 0i64;
+        for part in &parts {
+            let biz = part
+                .db
+                .file_name()
+                .is_some_and(|f| f.to_string_lossy().starts_with("biz_message"));
+            account.with_db(&part.db, |conn| {
+                let sql = format!("select local_type, message_content from \"{}\"", part.table);
+                let mut stmt = conn.prepare(&sql)?;
+                let mut rows = stmt.query([])?;
+                while let Some(r) = rows.next()? {
+                    let kind: i64 = r.get(0)?;
+                    let (content, stored) = column_bytes(r.get_ref(1)?);
+                    let xml = String::from_utf8_lossy(&content);
+                    let len = i64::try_from(content.len()).unwrap_or(i64::MAX);
+                    n += 1;
+                    *in_db
+                        .entry(if biz { "biz_message" } else { "message" })
+                        .or_default() += 1;
+                    if is_pay {
+                        *pay.entry("messages").or_default() += 1;
+                        for part in [
+                            "title",
+                            "des",
+                            "topline",
+                            "display_name",
+                            "pub_time",
+                            "icon_url",
+                        ] {
+                            if xml.contains(&format!("<{part}>")) {
+                                *pay.entry(part).or_default() += 1;
+                            }
+                        }
+                        pay_bytes.push(len);
+                        continue;
+                    }
+                    *types.entry(kind).or_default() += 1;
+                    *storage.entry(format!("{kind} {stored}")).or_default() += 1;
+                    bytes.entry(kind).or_default().push(len);
+                    // an app message's type carries its kind of card above the low 32 bits
+                    if kind & 0xFFFF_FFFF == 49 {
+                        let sub = appmsg_type(&xml).unwrap_or(-1);
+                        *appmsg_types.entry(sub).or_default() += 1;
+                        if sub == 5 {
+                            items.push(
+                                i64::try_from(xml.matches("<item>").count()).unwrap_or(i64::MAX),
+                            );
+                            with_list += u64::from(xml.contains("<content_list>"));
+                        }
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        if n > 0 && !is_pay {
+            per_account.push(n);
+        }
+    }
+    let pushes = items.len().max(1) as f64;
+    Ok(json!({
+        "sessions": count(account, "session/session.db", "select count(*) as n from SessionTable where username like 'gh\\_%' escape '\\'"),
+        "accounts_with_messages": per_account.len(),
+        "messages_per_account": quantiles(per_account),
+        "messages_in": in_db,
+        "types": shares(&types),
+        "storage_by_type": shares(&storage),
+        "content_bytes_by_type": bytes.into_iter().map(|(k, v)| (k.to_string(), quantiles(v))).collect::<Map<_, _>>(),
+        "appmsg_types": shares(&appmsg_types),
+        "items_per_push": quantiles(items),
+        "with_content_list_share": with_list as f64 / pushes,
+        "wechat_pay": {"with": pay, "content_bytes": quantiles(pay_bytes)},
     }))
 }
 
@@ -612,6 +724,7 @@ fn main() -> Result<()> {
     let aes = profile.image_aes_key.as_deref().and_then(parse_aes_key);
     let profile = json!({
         "conversations": conversations(&account)?,
+        "official": official(&account)?,
         "databases": others(&account)?,
         "media": media(&root, xor, aes),
     });
