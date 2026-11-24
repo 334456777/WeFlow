@@ -10,8 +10,9 @@
 //! profile's hash are printed. The parts the account says nothing of keep the default profile's values.
 #![expect(
     clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    reason = "probe and benchmark data are small values that fit"
+    reason = "probe and benchmark data are small values that fit (an `f64` holds them exactly)"
 )]
 
 use std::collections::{BTreeMap, HashMap, HashSet};

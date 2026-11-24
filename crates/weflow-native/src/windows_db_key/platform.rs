@@ -255,7 +255,7 @@ struct Output {
 }
 
 /// Counts only; never stores or exposes register values, pointers or key material.
-#[derive(Debug, Default, Clone, serde::Serialize)]
+#[derive(Debug, Default, Clone, Copy, serde::Serialize)]
 pub struct CaptureDiagnostics {
     /// Times the hook stopped WeChat.
     pub breakpoint_hits: u64,
@@ -466,7 +466,6 @@ impl Hook {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .diagnostics
-            .clone()
     }
 
     /// Stops the debugger and waits for it to restore WeChat's debug registers and detach; dropping the hook does

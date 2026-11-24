@@ -50,6 +50,7 @@ fn main() {
         v.sort_by(f64::total_cmp);
         v[v.len() / 2]
     };
+    #[expect(clippy::cast_precision_loss, reason = "a page is 4096 bytes")]
     let mb = f64::from(pages) * PAGE_SIZE as f64 / 1e6;
     let d = median(&mut decrypt);
     println!(

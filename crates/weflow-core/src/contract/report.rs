@@ -376,7 +376,7 @@ pub struct DualStats {
 /// Conversations opened by me, or by them.
 ///
 /// A conversation starts with the first message after an hour without any.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DualInitiative {
     /// The conversations I opened.
@@ -388,7 +388,7 @@ pub struct DualInitiative {
 /// How fast I answer the friend, in seconds.
 ///
 /// An answer is my message after theirs in the same conversation, within a day.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DualResponse {
     /// The mean, rounded.
