@@ -28,7 +28,11 @@ const FREQUENCY: [u8; 256] = {
 
 /// Byte offset of the first ASCII case-insensitive occurrence of the ASCII `needle` in `hay[from..]`.
 pub fn find_ci(hay: &str, from: usize, needle: &str) -> Option<usize> {
-    let (h, n) = (hay.as_bytes(), needle.as_bytes());
+    find_ci_bytes(hay.as_bytes(), from, needle.as_bytes())
+}
+
+/// [`find_ci`] on bytes.
+fn find_ci_bytes(h: &[u8], from: usize, n: &[u8]) -> Option<usize> {
     if n.is_empty() {
         return (from <= h.len()).then_some(from);
     }
@@ -255,7 +259,21 @@ pub fn find_all_ci<'a>(
 }
 
 /// Byte offset of the next `<` followed by `name` (ASCII case-insensitive) at or after `from`.
+///
+/// `<name` is searched for by its rarest byte ([`find_ci`]), which skips the text between the places that byte is,
+/// rather than stopping at every `<`.
 fn find_open(h: &[u8], from: usize, name: &[u8]) -> Option<usize> {
+    if name.len() > TAG_MAX {
+        return find_open_each(h, from, name);
+    }
+    let mut buf = [0u8; TAG_MAX + 1];
+    buf[0] = b'<';
+    buf[1..=name.len()].copy_from_slice(name);
+    find_ci_bytes(h, from, &buf[..=name.len()])
+}
+
+/// [`find_open`] by stopping at every `<`: for a name longer than [`TAG_MAX`], and to check [`find_open`] against.
+fn find_open_each(h: &[u8], from: usize, name: &[u8]) -> Option<usize> {
     let mut i = from;
     loop {
         let p = i + memchr::memchr(b'<', h.get(i..)?)?;
@@ -591,6 +609,21 @@ mod tests {
             proptest::prop_assert_eq!(
                 find_tag(h, from, tag.as_bytes(), closing),
                 find_tag_each(h, from, tag.as_bytes(), closing)
+            );
+        }
+
+        /// For any text, name and start, `<name` searched for by its rarest byte is found where stopping at every `<`
+        /// finds it.
+        #[test]
+        fn any_open_tag_is_found_where_stopping_at_every_bracket_finds_it(
+            xml in tag_soup(),
+            name in proptest::sample::select(&["a", "A", "ab", "AB", "ac", "b_c", "b", "title", "Title", "", "x", "/a"][..]),
+            from in 0usize..2000,
+        ) {
+            let h = xml.as_bytes();
+            proptest::prop_assert_eq!(
+                find_open(h, from, name.as_bytes()),
+                find_open_each(h, from, name.as_bytes())
             );
         }
     }
