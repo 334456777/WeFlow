@@ -1,8 +1,9 @@
 //! Quoted replies: what they quote, its preview and who sent it.
 
 use super::xml::{
-    decode_html_entities, extract_app_message_type, extract_xml_value, looks_like_wxid,
-    normalize_app_message_content, sanitize_quoted_content, strip_sender_prefix, MsgXml,
+    decode_html_entities, decode_text_entities, extract_app_message_type, extract_xml_value,
+    looks_like_wxid, normalize_app_message_content, sanitize_quoted_content, strip_sender_prefix,
+    MsgXml,
 };
 use super::{format_plain_export_content, PlainOpts};
 
@@ -74,15 +75,50 @@ fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
     String::new()
 }
 
+/// `text` with the numeric references of white space (line breaks, tabs, spaces) as spaces. A quoted text is mostly
+/// escaped once, as any XML text; some keep their line breaks and spaces as `&#x0A;`, `&#x20;` escaped once more, which
+/// are left after the quote is decoded (#1212). The preview turns white space into single spaces anyway.
+fn white_space_references_as_spaces(text: &str) -> std::borrow::Cow<'_, str> {
+    const REFERENCES: [&str; 8] = [
+        "&#x0a;", "&#10;", "&#x0d;", "&#13;", "&#x09;", "&#9;", "&#x20;", "&#32;",
+    ];
+    if !text.contains("&#") {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("&#") {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at..];
+        match REFERENCES.iter().find(|r| {
+            tail.get(..r.len())
+                .is_some_and(|h| h.eq_ignore_ascii_case(r))
+        }) {
+            Some(r) => {
+                out.push(' ');
+                rest = &tail[r.len()..];
+            }
+            None => {
+                out.push_str("&#");
+                rest = &tail[2..];
+            }
+        }
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
+}
+
 /// The quoted text of a `<refermsg>` block: the part the reply picked when it names one, else all of it.
 pub(crate) fn extract_preferred_quoted_text(refer_xml: &str) -> String {
     if refer_xml.is_empty() {
         return String::new();
     }
-    let mut sources = vec![decode_html_entities(refer_xml)];
+    // the quoted text is escaped once more inside the block: numeric entities too, such as the `&#x0A;` WeChat writes
+    // for a line break (#1212)
+    let mut sources = vec![decode_text_entities(refer_xml).into_owned()];
     let raw_msgsource = extract_xml_value(refer_xml, "msgsource");
     if !raw_msgsource.is_empty() {
-        let decoded = decode_html_entities(&raw_msgsource);
+        let decoded = decode_text_entities(&raw_msgsource).into_owned();
         if !decoded.is_empty() {
             sources.push(decoded);
         }
@@ -92,7 +128,8 @@ pub(crate) fn extract_preferred_quoted_text(refer_xml: &str) -> String {
     } else {
         sources[0].clone()
     };
-    let full = sanitize_quoted_content(&extract_xml_value(&first, "content"));
+    let quoted = |text: &str| sanitize_quoted_content(&white_space_references_as_spaces(text));
+    let full = quoted(&extract_xml_value(&first, "content"));
     let partial = extract_partial_quoted_text(&first, &full);
     if !partial.is_empty() {
         return partial;
@@ -112,7 +149,7 @@ pub(crate) fn extract_preferred_quoted_text(refer_xml: &str) -> String {
     ];
     for source in &sources {
         for tag in tags {
-            let v = sanitize_quoted_content(&extract_xml_value(source, tag));
+            let v = quoted(&extract_xml_value(source, tag));
             if !v.is_empty() {
                 return v;
             }
