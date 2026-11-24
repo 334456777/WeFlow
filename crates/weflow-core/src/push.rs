@@ -111,10 +111,11 @@ fn is_revoke_system_message(m: &ChatMessage) -> bool {
         return false;
     }
     let content = format!("{}\n{}", m.raw_content, m.parsed_content);
-    let revoke_sysmsg = content.contains("<sysmsg")
-        && (content.contains("revokemsg") || content.contains("<replacemsg"));
+    // the database may keep a revoke without its `<sysmsg>` shell, and WeChat in English says "… recalled a message",
+    // so the element is what tells it
+    let revoke_element = content.contains("<revokemsg") || content.contains("<replacemsg");
     // "撤回了一条消息", "尝试撤回此消息" and the like
-    revoke_sysmsg || content.contains("撤回")
+    revoke_element || content.contains("撤回")
 }
 
 /// Whether `m` is the notice of a message the account itself revoked, which is not pushed.
@@ -1369,6 +1370,13 @@ mod tests {
             // the high 32 bits of a type are flags: the base type is what counts
             row(3, 100, (1 << 32) | 10000, "\"Bob\" 撤回了一条消息"),
             row(4, 100, 10000, "你撤回了一条消息"),
+            // without the `<sysmsg>` shell, in English
+            row(
+                5,
+                100,
+                10002,
+                r#"<revokemsg><content>"Bob" recalled a message</content><revoketime>0</revoketime></revokemsg>"#,
+            ),
         ]);
         for m in &notices {
             assert!(
