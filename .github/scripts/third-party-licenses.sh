@@ -34,6 +34,8 @@ copy() {
 }
 cp crates/weflow-silk/vendor/LICENSE-SKYPE.txt "$OUT/silk.txt"
 cp crates/weflow-native/src/windows_db_key/LICENSE "$OUT/wx_key.txt"
+# linux_key_helper/LICENSE is the same file
+cp crates/weflow-native/src/macos_key_helper/LICENSE "$OUT/weflow-desktop.txt"
 copy zstd-sys 'zstd/LICENSE' zstd.txt
 copy bzip2-sys 'bzip2-*/LICENSE' bzip2.txt
 copy lzma-sys 'xz-*/COPYING' xz.txt

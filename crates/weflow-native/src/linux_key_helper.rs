@@ -1,5 +1,8 @@
 //! The Rust rewrite of WeFlow's Linux key helper, in PR #796.
 //!
+//! The helper, `xkey_helper_linux`, came with the WeFlow desktop app (`hicccc77/WeFlow`, CC BY-NC-SA 4.0: the
+//! `LICENSE` in this folder).
+//!
 //! `db_scan` and `db_hook` locate and capture the database key for `key db`;
 //! `image_mem` backs `key image-mem`. The command-line compatibility layer is
 //! in `cli`.
