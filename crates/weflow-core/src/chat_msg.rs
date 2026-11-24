@@ -253,11 +253,14 @@ fn parsed_content(
     if local_type == 266287972401 {
         return pat_text(content);
     }
+    // a text is kept as it was typed, not escaped: `&lt;` in it is what was typed, as the exports have it (#1208)
+    if local_type == 1 {
+        return strip_sender_line(&clean_utf16(content), sender);
+    }
     let content = clean_utf16(&decode_entities(content));
     let xml_type = extract_xml_value(&content, "type");
     let looks_app = content.contains("<appmsg") || content.contains("&lt;appmsg");
     match local_type {
-        1 => strip_sender_line(&content, sender),
         3 => "[图片]".into(),
         34 => "[语音消息]".into(),
         42 => "[名片]".into(),
@@ -1286,13 +1289,24 @@ mod tests {
         assert_eq!(extract_sender_from_content("wxid_abcd:hello"), None);
     }
 
+    /// WeChat keeps a text as it was typed, not escaped: what looks like an entity in it is what was typed, and the
+    /// chat window shows it as the exports write it (#1208).
     #[test]
-    fn a_text_message_is_decoded_once() {
-        assert_eq!(
-            parsed_content("a &amp;lt;b&amp;gt;", 1, None),
-            "a &lt;b&gt;"
-        );
-        assert_eq!(parsed_content("a &lt;b&gt;", 1, None), "a <b>");
+    fn a_text_message_is_shown_as_it_was_typed() {
+        for (content, sender, text) in [
+            ("a &amp;lt;b&amp;gt;", None, "a &amp;lt;b&amp;gt;"),
+            ("a &lt;b&gt;", None, "a &lt;b&gt;"),
+            ("1 < 2 && x > 0", None, "1 < 2 && x > 0"),
+            ("<b>粗</b> & Tom's", None, "<b>粗</b> & Tom's"),
+            ("wxid_bob:\nR&D &amp; QA", Some("wxid_bob"), "R&D &amp; QA"),
+        ] {
+            assert_eq!(parsed_content(content, 1, sender), text, "{content:?}");
+            assert_eq!(
+                crate::message::parse_message_content(content, 1, None, sender, None).as_deref(),
+                Some(text),
+                "{content:?}"
+            );
+        }
     }
 
     /// `xml` escaped once, as WeChat puts a quoted message's XML in a reply's `<refermsg><content>`.
