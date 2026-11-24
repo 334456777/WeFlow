@@ -137,10 +137,11 @@ codegen-units = 1
 # heic-rs 0.1.4 with its 4:2:2 and 4:4:4 intra decoding fixed (tbraun96/heic-rs#15, #559) and the fork's speed-ups
 # (branch perf/hevc-decode-speed, #1103): the availability of a block's neighbours worked out once per block, a CABAC
 # decision without a branch, the coefficients' non-zero rectangle taken from residual coding, the inverse transform on
-# 16-bit values, the luma deblocking filter on SSE2 and deblocking one strip of rows at a time. The speed-ups are only
-# in the fork: a crates.io release with the fix would drop them
+# 16-bit values, the luma deblocking filter on SSE2, deblocking one strip of rows at a time, the decoded planes handed
+# over as the frame without a copy, and the reference samples gathered in place. The speed-ups are only in the fork: a
+# crates.io release with the fix would drop them
 [patch.crates-io]
-heic-rs = { git = "https://github.com/334456777/heic-rs", rev = "eb0c4799386ace5157a3415f6c32838b17850525" }
+heic-rs = { git = "https://github.com/334456777/heic-rs", rev = "ea533996610641500e9cd038b5b55bc4a915abf3" }
 # sha2 0.11.1 whose SHA-512 AVX2 backend, picked at run time, also enables BMI1/BMI2 (RustCrypto/hashes#940, #535):
 # back to crates.io once a release has it
 sha2 = { git = "https://github.com/334456777/hashes", rev = "e717feec478ba9f18a0942bf7bc73194284a3eb7" }
