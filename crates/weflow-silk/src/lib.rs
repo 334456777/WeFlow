@@ -89,11 +89,12 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
     let mut size = 0i32;
     // SAFETY: `size` is a live local the SDK writes the decoder's size to.
     let code = unsafe { SKP_Silk_SDK_Get_Decoder_Size(&raw mut size) };
-    if code != 0 || size <= 0 {
+    let size = usize::try_from(size).unwrap_or(0);
+    if code != 0 || size == 0 {
         return Err(SilkError::Sdk(code));
     }
     // u64 backing store keeps the state 8-byte aligned
-    let mut state = vec![0u64; (size as usize).div_ceil(8)];
+    let mut state = vec![0u64; size.div_ceil(8)];
     let state_ptr = state.as_mut_ptr().cast::<c_void>();
     // SAFETY: `state` holds at least the `size` bytes the SDK asked for, 8-byte aligned.
     let code = unsafe { SKP_Silk_SDK_InitDecoder(state_ptr) };
@@ -119,10 +120,9 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
         if packet_len == -1 {
             break;
         }
-        if packet_len < 0 {
+        let Ok(len) = usize::try_from(packet_len) else {
             return Err(SilkError::InvalidPacketLength);
-        }
-        let len = packet_len as usize;
+        };
         if len > MAX_PAYLOAD {
             return Err(SilkError::PayloadTooLarge);
         }
@@ -153,7 +153,7 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
             if code != 0 {
                 return Err(SilkError::Sdk(code));
             }
-            for s in &scratch[..n.max(0) as usize] {
+            for s in &scratch[..usize::try_from(n).unwrap_or(0)] {
                 out.extend_from_slice(&s.to_le_bytes());
             }
             frames += 1;
@@ -169,7 +169,9 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
 #[cfg(any(test, feature = "test-encoder"))]
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "a one-second test tone: frame sizes and samples are small"
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "a one-second test tone: frame sizes and samples are small and not negative"
 )]
 pub mod testenc {
     use std::ffi::c_void;
@@ -332,7 +334,8 @@ mod tests {
                 .map(|b| i16::from_le_bytes([b[0], b[1]]))
                 .collect();
             assert!(
-                (samples.len() as i64 - i64::from(rate)).abs() <= i64::from(rate) / 10,
+                (i64::try_from(samples.len()).unwrap() - i64::from(rate)).abs()
+                    <= i64::from(rate) / 10,
                 "about one second of audio, got {}",
                 samples.len()
             );

@@ -59,6 +59,10 @@ unnested_or_patterns = "warn"
 # a widening that cannot lose anything is `From`, which a later change of type turns into an error rather than a
 # silent truncation (#1113)
 cast_lossless = "warn"
+# between signed and unsigned, a value that fits is converted with `try_from` or `cast_signed`/`cast_unsigned`, which
+# say whether it may fail or is meant to keep its bits, rather than `as`, which wraps without a word (#1113)
+cast_possible_wrap = "warn"
+cast_sign_loss = "warn"
 # a pointer to a place is `&raw const`/`&raw mut`, and a pointer cast says its target type with `cast`, not `as`,
 # which also changes constness or casts to an integer without a word (#1113)
 borrow_as_ptr = "warn"
