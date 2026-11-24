@@ -129,6 +129,57 @@ fn main_stamp(file: &File) -> Option<MainStamp> {
     })
 }
 
+/// [`main_stamp`] of a file a snapshot keeps open by its handle, `None` once the file is deleted (#1153). SQLite
+/// deletes the WAL and the wal-index as its last connection closes and makes new ones at the same paths as the next
+/// opens, and the handle keeps seeing the deleted file, whose size and time never change again.
+fn held_stamp(file: &File) -> Option<MainStamp> {
+    let m = file.metadata().ok()?;
+    if deleted(&m, file) {
+        return None;
+    }
+    Some(MainStamp {
+        len: m.len(),
+        mtime: m.modified().ok(),
+    })
+}
+
+/// Whether the file of `file`, whose metadata is `m`, has no name left: it has been deleted.
+#[cfg(unix)]
+fn deleted(m: &fs::Metadata, _file: &File) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    m.nlink() == 0
+}
+
+/// Whether the file of `file` has been deleted, or is to be once its handles close: Windows does not give the link
+/// count in `fs::Metadata`, so the handle is asked, which opens nothing.
+#[cfg(windows)]
+fn deleted(_m: &fs::Metadata, file: &File) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FileStandardInfo, GetFileInformationByHandleEx, FILE_STANDARD_INFO,
+    };
+    let mut info = FILE_STANDARD_INFO::default();
+    #[expect(clippy::cast_possible_truncation, reason = "a struct of 24 bytes")]
+    let size = size_of::<FILE_STANDARD_INFO>() as u32;
+    // SAFETY: the handle is open for as long as `file` is borrowed, and `info` is a writable `FILE_STANDARD_INFO` of
+    // `size` bytes, the structure `FileStandardInfo` fills.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileStandardInfo,
+            (&raw mut info).cast(),
+            size,
+        )
+    };
+    ok != 0 && (info.DeletePending || info.NumberOfLinks == 0)
+}
+
+/// Files are not deleted under a handle on other systems that WeFlow runs on.
+#[cfg(not(any(unix, windows)))]
+fn deleted(_m: &fs::Metadata, _file: &File) -> bool {
+    false
+}
+
 /// Decides whether pages read from the main file still belong to the snapshot.
 ///
 /// A checkpoint sets `nBackfillAttempted` before it writes any page and `nBackfill` after, and a new WAL generation
@@ -148,7 +199,11 @@ struct ChangeGuard {
 impl ChangeGuard {
     fn read_shm(&self) -> Option<ShmState> {
         let mut slot = self.shm.lock().ok()?;
-        if slot.is_none() {
+        // a wal-index deleted under the handle is no longer the one WeChat keeps up to date (#1153)
+        if slot
+            .as_ref()
+            .is_none_or(|file| file.metadata().is_ok_and(|m| deleted(&m, file)))
+        {
             *slot = File::open(&self.shm_path).ok();
         }
         let file = slot.as_ref()?;
@@ -339,7 +394,7 @@ impl CipherFile {
                     .and_then(|()| ShmState::parse(&b))
             });
             let wal_file = File::open(&wal_path).ok();
-            let wal_stamp_at_open = wal_file.as_ref().and_then(main_stamp);
+            let wal_stamp_at_open = wal_file.as_ref().and_then(held_stamp);
             let wal = wal_file.as_ref().and_then(|mut f| {
                 let mut bytes = Vec::new();
                 std::io::Read::read_to_end(&mut f, &mut bytes)
@@ -442,11 +497,11 @@ impl CipherFile {
     /// modification times: one that changed means WeChat wrote since, and a fresh snapshot shows it. They are asked
     /// through the handles the snapshot holds, which is a call that opens nothing (on Windows, opening a file to ask
     /// for its size costs tens of microseconds, and a snapshot is checked before every read); a WAL there was not
-    /// then is looked for by its name.
+    /// then is looked for by its name. A WAL deleted since is changed, as a new one may be at its path (#1153).
     pub fn unchanged(&self) -> bool {
         main_stamp(&self.file) == self.guard.stamp_at_open
             && match &self.wal {
-                WalAtOpen::Held(file, stamp) => main_stamp(file) == *stamp,
+                WalAtOpen::Held(file, stamp) => stamp.is_some() && held_stamp(file) == *stamp,
                 WalAtOpen::Missing(path) => fs::metadata(path).is_err(),
             }
     }
@@ -1333,6 +1388,56 @@ mod tests {
         let (cf, conn) = open(&path);
         assert_eq!(rows(&conn).len(), 2000);
         assert!(!cf.is_stale());
+    }
+
+    /// WeChat closing deletes the WAL and the wal-index, and opening again makes new ones at their paths: the handle
+    /// the snapshot holds sees the deleted WAL, of the size and time it had, but the snapshot is no longer the
+    /// database's newest (#1153). The new WAL has the old one's size, so only its being another file tells.
+    #[test]
+    fn a_wal_made_again_at_its_path_is_a_change() {
+        let dir = temp_dir("wal-again");
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        let path = dir.join("a.db");
+        let plain = big("f");
+        fs::write(&path, encrypt_db(&plain, &cipher)).unwrap();
+        fs::write(sibling(&path, "-wal"), wal_page_1(&cipher, &plain, (1, 2))).unwrap();
+        fs::write(sibling(&path, "-shm"), shm((1, 2), 1, 1)).unwrap();
+        let (cf, _conn) = open(&path);
+        assert!(cf.unchanged());
+
+        fs::remove_file(sibling(&path, "-wal")).unwrap();
+        fs::remove_file(sibling(&path, "-shm")).unwrap();
+        // a WAL deleted and not made again: the database is the main file, as it was; one more snapshot is opened
+        assert!(!cf.unchanged());
+
+        let again = wal_page_1(&cipher, &plain, (3, 4));
+        fs::write(sibling(&path, "-wal"), &again).unwrap();
+        fs::write(sibling(&path, "-shm"), shm((3, 4), 0, 0)).unwrap();
+        assert!(!cf.unchanged());
+        // the snapshot opened next holds the new WAL and sees no change
+        let (cf, _conn) = open(&path);
+        assert!(cf.unchanged());
+    }
+
+    /// The wal-index made again at its path is the one read after a main-file read, not the deleted one the snapshot
+    /// held: the deleted one still describes the snapshot's WAL, while WeChat checkpoints the new WAL into the main
+    /// file (#1153).
+    #[test]
+    fn a_wal_index_made_again_at_its_path_is_the_one_read() {
+        let dir = temp_dir("shm-again");
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        let path = dir.join("a.db");
+        let plain = big("g");
+        fs::write(&path, encrypt_db(&plain, &cipher)).unwrap();
+        fs::write(sibling(&path, "-wal"), wal_page_1(&cipher, &plain, (1, 2))).unwrap();
+        fs::write(sibling(&path, "-shm"), shm((1, 2), 1, 1)).unwrap();
+        let (cf, conn) = open(&path);
+        fs::remove_file(sibling(&path, "-shm")).unwrap();
+        fs::write(sibling(&path, "-shm"), shm((3, 4), 2, 2)).unwrap();
+        assert!(conn
+            .query_row("select count(v) from t", [], |r| r.get::<_, i64>(0))
+            .is_err());
+        assert!(cf.is_stale());
     }
 
     #[test]
