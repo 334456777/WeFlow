@@ -474,7 +474,8 @@ fn parse_type49_message(content: &str) -> Type49Info {
         ev("coverurl"),
         ev("thumb_url"),
     ]);
-    let music_url = first_non_empty(&[ev("musicurl"), ev("playurl"), ev("songalbumurl")]);
+    // a song's own address only: `<songalbumurl>` is its cover, kept as `musicAlbumUrl` (#1170)
+    let music_url = first_non_empty(&[ev("musicurl"), ev("playurl")]);
     let data_url = first_non_empty(&[ev("dataurl"), ev("lowurl")]);
     // the place of the message itself, not of one a reply quotes (#1165)
     let location_label = location_label_of(&without_quoted(content));
@@ -1524,6 +1525,29 @@ mod tests {
                 Some("https://m/c.jpg"),
                 "{ty}"
             );
+            // the address of the song is never its cover (#1170): it has none of its own to play, so it is the
+            // file, and the exports have none
+            assert_eq!(window.app_msg_music_url, None, "{ty}");
+            assert_eq!(window.music_url.as_deref(), Some("https://m/a.mp3"), "{ty}");
+            let meta = crate::message::appmsg::extract_arkme_app_message_meta_in(
+                &crate::message::xml::MsgXml::new(&xml),
+                49,
+            )
+            .unwrap();
+            assert!(!meta.contains_key("musicUrl"), "{ty}: {meta:?}");
+            assert_eq!(meta["musicDataUrl"], "https://m/a.mp3", "{ty}");
+            assert_eq!(meta["musicAlbumUrl"], "https://m/c.jpg", "{ty}");
+            // one that has its own address to play is linked to it everywhere
+            let playable = xml.replace("</url>", "</url><musicurl>https://m/play</musicurl>");
+            let window = parse_type49_message(&playable);
+            assert_eq!(window.app_msg_music_url.as_deref(), Some("https://m/play"));
+            assert_eq!(window.music_url.as_deref(), Some("https://m/play"));
+            let meta = crate::message::appmsg::extract_arkme_app_message_meta_in(
+                &crate::message::xml::MsgXml::new(&playable),
+                49,
+            )
+            .unwrap();
+            assert_eq!(meta["musicUrl"], "https://m/play", "{ty}");
         }
     }
 

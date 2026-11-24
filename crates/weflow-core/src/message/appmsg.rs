@@ -283,7 +283,8 @@ fn app_message_fields(
         put(
             &mut meta,
             "musicUrl",
-            first_non_empty(&n, &["musicurl", "playurl", "songalbumurl"]),
+            // not `<songalbumurl>`, the cover, which is `musicAlbumUrl` (#1170)
+            first_non_empty(&n, &["musicurl", "playurl"]),
         );
         put(
             &mut meta,
