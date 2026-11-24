@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use weflow_core::error::{AppError, AppResult};
-use weflow_core::export_msg::{csv_cell, write_csv};
+use weflow_core::export_msg::{csv_cell, csv_text_cell, write_csv};
 
 pub(crate) fn write_json_file(path: &Path, value: &Value) -> AppResult<()> {
     if let Some(parent) = path.parent() {
@@ -124,10 +124,8 @@ pub(crate) fn write_csv_file(path: &Path, value: &Value) -> AppResult<()> {
                             .map(|value| {
                                 value
                                     .as_str()
-                                    .map(ToString::to_string)
-                                    .unwrap_or_else(|| value.to_string())
+                                    .map_or_else(|| csv_cell(&value.to_string()), csv_text_cell)
                             })
-                            .map(|value| csv_cell(&value))
                             .unwrap_or_default()
                     })
                     .collect::<Vec<_>>()
@@ -166,6 +164,30 @@ mod tests {
         );
         assert!(
             lines[1].contains("老鲍") && lines[2].contains("\"a, b\""),
+            "{text}"
+        );
+    }
+
+    /// A string that starts like a formula gets a `'` in front; a number keeps its sign (#1219).
+    #[test]
+    fn a_list_csv_writes_formula_like_text_as_text() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-list-csv-formula");
+        let out = dir.join("sessions.csv");
+        let list = json!([{ "name": "-_-", "count": -1, "pinned": true }]);
+        write_csv_file(&out, &list).unwrap();
+        let text = std::fs::read_to_string(&out).unwrap();
+        let lines: Vec<Vec<&str>> = text
+            .trim_start_matches('\u{feff}')
+            .lines()
+            .map(|line| line.split(',').collect())
+            .collect();
+        let cell = |key: &str| {
+            let at = lines[0].iter().position(|h| *h == key).unwrap();
+            lines[1][at]
+        };
+        assert_eq!(
+            [cell("name"), cell("count"), cell("pinned")],
+            ["'-_-", "-1", "true"],
             "{text}"
         );
     }
