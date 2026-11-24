@@ -10,7 +10,8 @@
 //! (#133) or missing, app messages of every common kind as XML compressed with zstd, the messages of the official
 //! accounts and the WeChat Pay account's notices in `biz_message_0.db` (#1068), and the picture, video, voice and
 //! file folders with their `hardlink.db` rows. Pictures are V2 `.dat` files holding a JPEG, PNG or WXGF of the
-//! real sizes; the JPEGs are headers and padding, not pictures.
+//! real sizes; the JPEGs are headers and padding, not pictures, and the WXGF ones whole HEVC pictures of the sizes a
+//! real account's are (#1221).
 //!
 //! [`build`] draws everything from [`BenchSpec::seed`] with its own generator ([`Rng`]), so one seed gives the same
 //! bytes on every machine and with every dependency version.

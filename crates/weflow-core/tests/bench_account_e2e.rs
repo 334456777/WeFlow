@@ -235,6 +235,7 @@ fn the_pictures_decrypt_and_the_wxgf_ones_decode() {
     bench::build(&data, &small(5)).unwrap();
     let aes = parse_aes_key(bench::IMAGE_AES_KEY).unwrap();
     let mut formats: BTreeMap<String, usize> = BTreeMap::new();
+    let mut largest_jpeg = 0;
     for (path, bytes) in files(&bench::account_dir(&data).join("msg/attach")) {
         assert_eq!(
             path.extension().and_then(|e| e.to_str()),
@@ -248,6 +249,7 @@ fn the_pictures_decrypt_and_the_wxgf_ones_decode() {
                 .iter()
                 .find_map(|(_, stream)| weflow_core::hevc::to_jpeg(stream));
             assert!(decoded.is_some(), "{} does not decode", path.display());
+            largest_jpeg = largest_jpeg.max(decoded.map_or(0, |j| j.len()));
         }
         *formats.entry(plain.ext).or_default() += 1;
     }
@@ -255,4 +257,6 @@ fn the_pictures_decrypt_and_the_wxgf_ones_decode() {
         assert!(formats.get(ext).is_some_and(|n| *n > 0), "{formats:?}");
     }
     assert_eq!(formats.len(), 3, "{formats:?}");
+    // whole pictures, as a real account's are (#1221)
+    assert!(largest_jpeg > 100_000, "{largest_jpeg} bytes");
 }

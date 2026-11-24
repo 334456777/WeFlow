@@ -99,12 +99,28 @@ pub(super) fn png(rng: &mut Rng, len: usize) -> Vec<u8> {
     out
 }
 
-/// A WXGF picture the built-in decoder reads (a small HEVC frame), padded to `len` bytes with filler NAL units.
+/// The HEVC frames of the WXGF pictures, smallest first: whole pictures of the sizes a real account's WXGF pictures
+/// have for their file size (`testdata/bench_wxgf`, #1221), so that converting them costs what it costs there.
+const WXGF_FRAMES: [&[u8]; 6] = [
+    include_bytes!("../../../testdata/bench_wxgf/wxgf_800x480.hevc"),
+    include_bytes!("../../../testdata/bench_wxgf/wxgf_672x1200.hevc"),
+    include_bytes!("../../../testdata/bench_wxgf/wxgf_1600x900.hevc"),
+    include_bytes!("../../../testdata/bench_wxgf/wxgf_1920x1080.hevc"),
+    include_bytes!("../../../testdata/bench_wxgf/wxgf_2048x1152.hevc"),
+    include_bytes!("../../../testdata/bench_wxgf/wxgf_1152x2048.hevc"),
+];
+
+/// A WXGF picture the built-in decoder reads: the largest of [`WXGF_FRAMES`] that fits in `len` bytes (the smallest
+/// when none does), padded to `len` with filler NAL units.
 pub(super) fn wxgf(len: usize) -> Vec<u8> {
-    const HEVC: &[u8] = include_bytes!("../../../../weflow-core/testdata/wxgf/full_range.hevc");
-    let mut out = b"wxgf".to_vec();
-    out.extend([0x24, 0x01, 0x00, 0x46, 0x00, 0x2e]);
-    out.extend(HEVC);
+    const HEADER: [u8; 10] = *b"wxgf\x24\x01\x00\x46\x00\x2e";
+    let frame = WXGF_FRAMES
+        .iter()
+        .rev()
+        .find(|f| HEADER.len() + f.len() <= len)
+        .unwrap_or(&WXGF_FRAMES[0]);
+    let mut out = HEADER.to_vec();
+    out.extend_from_slice(frame);
     while out.len() + 6 < len {
         // filler data (NAL type 38): 0xFF bytes up to the stop bit
         let n = (len - out.len() - 6).min(60_000);
