@@ -39,7 +39,7 @@ pub(super) struct Newest {
     pub(super) summary: String,
 }
 
-/// What [`write`] wrote: per conversation (by its index) its messages and its newest one, and the messages by type.
+/// What [`write()`] wrote: per conversation (by its index) its messages and its newest one, and the messages by type.
 #[derive(Default)]
 pub(super) struct Written {
     pub(super) newest: HashMap<usize, (usize, Newest)>,
