@@ -384,12 +384,20 @@ pub fn detect_image_extension(b: &[u8]) -> Option<&'static str> {
 
 // ───────────────────────── JPEG sanity ─────────────────────────
 
+/// How many bytes of `data` are zero, counted 255 at a time in a `u8`: the compiler turns that into vector compares
+/// and adds, where a count of the whole a byte at a time stays one byte a step. Cached images are read whole for it.
+fn count_zeros(data: &[u8]) -> usize {
+    data.chunks(255)
+        .map(|chunk| usize::from(chunk.iter().fold(0u8, |n, &b| n + u8::from(b == 0))))
+        .sum()
+}
+
 /// Whether a JPEG is likely corrupt: an encoder that was fed garbage emits an almost all-zero scan.
 pub fn is_likely_corrupted_jpeg(data: &[u8]) -> bool {
     if data.len() < 4096 {
         return false;
     }
-    let zero_ratio = data.iter().filter(|b| **b == 0).count() as f64 / data.len() as f64;
+    let zero_ratio = count_zeros(data) as f64 / data.len() as f64;
     if zero_ratio >= 0.985 {
         return true;
     }
@@ -421,7 +429,7 @@ pub fn is_likely_corrupted_jpeg(data: &[u8]) -> bool {
     if scan.len() < 1024 {
         return zero_ratio >= 0.95;
     }
-    scan.iter().filter(|b| **b == 0).count() as f64 / scan.len() as f64 >= 0.985
+    count_zeros(scan) as f64 / scan.len() as f64 >= 0.985
 }
 
 // ───────────────────────── WXGF ─────────────────────────
@@ -756,6 +764,27 @@ mod tests {
             !is_likely_corrupted_jpeg(&bad[..100]),
             "small files are never flagged"
         );
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(256))]
+
+        /// For any bytes, mostly zero or hardly any, of any length around the 255 of a step, the zeros counted a step
+        /// at a time are those counted one by one.
+        #[test]
+        fn any_bytes_have_the_zeros_counted_one_by_one(
+            data in proptest::collection::vec(
+                proptest::prop_oneof![
+                    3 => proptest::strategy::Just(0u8),
+                    1 => proptest::num::u8::ANY,
+                ],
+                0..2000,
+            ),
+            dense in proptest::bool::ANY,
+        ) {
+            let data: Vec<u8> = if dense { data } else { data.iter().map(|b| b.wrapping_add(1)).collect() };
+            proptest::prop_assert_eq!(count_zeros(&data), data.iter().filter(|&&b| b == 0).count());
+        }
     }
 
     #[test]
