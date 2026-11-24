@@ -7,6 +7,8 @@
 )]
 #![expect(
     clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
     reason = "test values are known to fit, or are meant to wrap"
 )]
 

@@ -18,7 +18,9 @@
 )]
 #![expect(
     clippy::cast_possible_truncation,
-    reason = "probe and benchmark data are small values that fit"
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "probe and benchmark data are small values that fit, and none is negative"
 )]
 
 use std::path::{Path, PathBuf};
