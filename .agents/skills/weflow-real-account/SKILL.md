@@ -46,7 +46,10 @@ WEFLOW_HOME=target/real-verify/home weflow --json chat sessions
    ```
 
 3. 预期的差异：导出文件名里的时间戳、用法提示里的程序名。
-4. 导出逐字节比较时，xlsx 先抹掉 sharedStrings 和流式 inlineStr 两处的导出时间。
+4. 导出逐字节比较时，先抹掉导出时间：
+   - xlsx 在 sharedStrings 和流式 inlineStr 两处。
+   - JSON、HTML 里是 Unix 秒数。同一个二进制紧挨着跑两次常落在同一秒内，看不出它会变；按比较期间的起止时间，把落在这段时间里的 10 位（秒）和 13 位（毫秒）数字换掉再比。
+   - 一条命令导出多种格式时，`json` 与 `arkme-json` 都写 `.json`，不能放在一起，命令会以参数错误退出：先核对每条导出的退出码，再比较文件。
 5. 消息读取的游标另有探针 `real_account_probe`，用法见上面的 Wiki 一节。
 
 ## 调研表结构

@@ -1,6 +1,6 @@
 ---
 name: weflow-perf
-description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两种账号、新旧二进制的对比（单独的 target 目录、旧新旧三轮、--compare 的假阳性、hyperfine 的坑）、Linux perf 交替测量与热点定位、内存优化要同时报告磁盘读写，以及 bench 标签、在 runner 上试跑 bench.yml、装 runner 和校准基准账号。做性能优化、比较改动前后的速度或内存、改基准脚本或 bench.yml、维护基准的 runner 时使用。
+description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两种账号、新旧二进制的对比（单独的 target 目录、旧新旧三轮、--compare 的假阳性、hyperfine 的坑）、Linux perf 交替测量与热点定位（对照组、让其他任务暂停）、导出的墙钟（输出写到固态盘、先弄清在等什么）、内存优化要同时报告磁盘读写，以及 bench 标签、在 runner 上试跑 bench.yml、装 runner 和校准基准账号。做性能优化、比较改动前后的速度或内存、改基准脚本或 bench.yml、维护基准的 runner 时使用。
 ---
 
 # 性能测量
@@ -32,11 +32,18 @@ serve_bench 每次都同时测合成账号和真实账号：合成账号检查�
 ## Linux perf 交替测量
 
 - 分支和 `main` 用同样的配置（帧指针加 line-tables）编译，各用自己的 target 目录；在基准账号最大的会话上交替各跑 7 次导出，报告 `instructions:u`、`cycles:u`、`task-clock` 的中位数。先跑完 `main` 再跑分支会差好几个百分点，必须交替。
-- 看 `cycles:u`，不看指令数：SIMD 的改动可能让指令数增加而速度更快。
+- 快慢看 `cycles:u`：SIMD 的改动可能让指令数增加而速度更快。指令数不受其他进程影响，一起报告，用来分辨周期数的变化是不是噪声。
+- 把基线复制一份、换个名字，与基线和分支一起测，作为对照：几个二进制每轮各跑一次，顺序逐轮轮换。对照与基线的差距就是这次测量的噪声，收益要明显超过它才算数。
+- 同一台机器上有编译、测试等其他工作时，`cycles:u` 的波动大到能掩盖 1%～2% 的收益。测量前先让其他会话和任务暂停，并记下每一轮期间其他进程用掉的 CPU。在机器繁忙时判为「在噪声内」的改动，安静时重测可能就在噪声之外（[#1232](https://github.com/334456777/WeFlow/pull/1232)）。
 - 标准库的 `str::contains` 对短串已有 SIMD 的快速路径，比每次新建查找器的 `memchr::memmem` 快；`str::find`、`rfind` 逐字节搜索，换成 memmem 有效。
 - `perf report --children` 的 self 列对内联函数不可信：动手改之前，用 `perf script -F ip,sym` 按叶子帧计数，或用 `--no-inline` 的调用链复核。
 - `perf script -F srcline` 只给文件名，不带目录，按「最近的 weflow 函数名 @ 行号」汇总才分得清。
 - Windows 上在 WSL 里测，见 [weflow-cross-platform](../weflow-cross-platform/SKILL.md#windows-上用-wsl)。
+
+## 导出的墙钟
+
+- 输出写到固态盘。写很多文件的导出（带媒体时上万个）写到机械硬盘时，墙钟由盘的写速度决定：CPU 上的改动看不出差别，写入排队这类并发问题也被掩盖（[#1231](https://github.com/334456777/WeFlow/pull/1231)）。
+- 墙钟远大于 CPU 时间时，先弄清进程在等什么：边导出边每隔几百毫秒采样一次它的线程数、正在运行的线程数和累计的 CPU 时间（Windows 上是 `Get-Process` 的 `Threads`、`TotalProcessorTime`）。CPU 长时间几乎不涨、只有一个线程在内核里等待，是在等盘；几个线程里每时刻只有一个在跑，是在等锁。
 
 ## 内存与磁盘读写
 
