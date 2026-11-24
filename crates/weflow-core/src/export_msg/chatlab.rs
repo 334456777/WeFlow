@@ -81,7 +81,7 @@ impl Exporter<'_, '_> {
                 ..Default::default()
             }
         };
-        let x = MsgXml::new(&msg.content);
+        let x = MsgXml::of_export(msg);
         let content = match msg.media.as_ref().filter(|_| msg.local_type == 3) {
             Some(media) => media.relative_path.clone(),
             None => self.message_text_with(msg, &x, Some(LinkStyle::Markdown), false),

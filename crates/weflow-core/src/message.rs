@@ -844,6 +844,54 @@ mod tests {
         assert_eq!(filtered.len(), 1);
     }
 
+    /// The `<appmsg>` type an export takes from reading a message is the one its XML gives, for app messages plain
+    /// and escaped, quoting another message with a type of its own, with a pat, without a type, and for text that
+    /// only mentions `<appmsg>`.
+    #[test]
+    fn the_app_type_read_is_the_one_worked_out_again() {
+        let contents = [
+            (49, "<msg><appmsg><title>a</title><type>5</type></appmsg></msg>"),
+            (49, "&lt;msg&gt;&lt;appmsg&gt;&lt;type&gt;6&lt;/type&gt;&lt;md5&gt;x&lt;/md5&gt;&lt;/appmsg&gt;&lt;/msg&gt;"),
+            (49, "<msg><appmsg><title>b</title><refermsg><type>3</type></refermsg><type>57</type></appmsg></msg>"),
+            (49, "<msg><appmsg><patmsg><type>1</type></patmsg><type>62</type></appmsg></msg>"),
+            (49, "<msg><appmsg><title>c</title></appmsg></msg>"),
+            (49, "<msg><appmsg><type>19</type><recorditem>x</recorditem></appmsg></msg>"),
+            (1, "a text about <appmsg> and <type>5</type>"),
+            (1, "plain"),
+        ];
+        let rows = contents
+            .iter()
+            .zip(1i64..)
+            .map(|(&(local_type, content), local_id)| MsgRow {
+                local_id,
+                create_time: Some(1_700_000_000 + local_id),
+                local_type,
+                content: content.into(),
+                ..MsgRow::default()
+            })
+            .collect();
+        let msgs = collect_rows(
+            rows,
+            &CollectOptions {
+                session_id: "wxid_b",
+                my_wxid: "wxid_me",
+                start: None,
+                end: None,
+                sender_filter: None,
+            },
+        );
+        assert_eq!(msgs.len(), contents.len());
+        assert!(msgs.iter().filter(|m| m.xml_type.is_some()).count() >= 5);
+        for m in &msgs {
+            assert_eq!(
+                MsgXml::of_export(m).app_type_twice(),
+                MsgXml::new(&m.content).app_type_twice(),
+                "{}",
+                m.content
+            );
+        }
+    }
+
     #[test]
     fn timestamps() {
         assert_eq!(

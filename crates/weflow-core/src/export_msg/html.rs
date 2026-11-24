@@ -315,7 +315,7 @@ impl Exporter<'_, '_> {
 
     /// One message of the page's data; `index` is the number of messages before it.
     fn page_msg(&mut self, state: &mut PageState, msg: &ExportMsg, index: usize) -> PageMsg {
-        let x = MsgXml::new(&msg.content);
+        let x = MsgXml::of_export(msg);
         let mut m = PageMsg {
             t: msg.create_time,
             ..Default::default()

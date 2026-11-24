@@ -148,7 +148,7 @@ impl Exporter<'_, '_> {
                 ws = top.add_sheet(&mut workbook, i / per_sheet, big)?;
             }
             let row = HEAD_ROWS + u32::try_from(i % per_sheet)?;
-            let x = MsgXml::new(&msg.content);
+            let x = MsgXml::of_export(msg);
             let (content, has_quote) = self.plain_row_content(msg, &x);
             let s = self.sender_fields(msg);
             let type_name = message_type_name_in(msg.local_type, &x);

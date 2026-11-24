@@ -151,6 +151,20 @@ impl<'a> MsgXml<'a> {
         }
     }
 
+    /// The XML of a message read for export: its `<appmsg>` type is the one reading it worked out
+    /// ([`ExportMsg::xml_type`](super::ExportMsg::xml_type), set only when not empty), rather than worked out again
+    /// for each format and each function that asks.
+    pub fn of_export(msg: &'a super::ExportMsg) -> Self {
+        Self {
+            app_type_twice: msg
+                .xml_type
+                .clone()
+                .map(std::cell::OnceCell::from)
+                .unwrap_or_default(),
+            ..Self::new(&msg.content)
+        }
+    }
+
     pub fn content(&self) -> &'a str {
         self.content
     }

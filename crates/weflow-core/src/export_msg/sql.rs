@@ -19,7 +19,7 @@ impl Exporter<'_, '_> {
     /// Appends the SQL `INSERT` of `msg` to `out`.
     pub(super) fn write_sql_insert(&mut self, msg: &ExportMsg, out: &mut Vec<u8>) {
         use std::io::Write;
-        let x = MsgXml::new(&msg.content);
+        let x = MsgXml::of_export(msg);
         let (content, _) = self.plain_row_content(msg, &x);
         // writing to a Vec cannot fail
         let _ = writeln!(
