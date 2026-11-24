@@ -187,17 +187,19 @@ pub(super) fn sns_users(data: &Value, names: &Names, style: &Style) -> Option<Sh
         i64::try_from(shown.len()).unwrap_or(0),
         "person posts",
         "people post",
-        "位好友发过朋友圈",
+        // the account itself among them: not all of them are friends (#1158)
+        "人发过朋友圈",
     )];
     Some(Shown::of(lines, note(&parts, style)))
 }
 
-/// `sns stats`: the posts on Moments, how many people posted them, and how many are mine.
+/// `sns stats`: the posts on Moments, how many people posted them (the account itself among them), and how many are
+/// mine.
 pub(super) fn sns_stats(data: &Value, style: &Style) -> Option<Shown> {
     data.get("totalPosts")?;
     let line = match style.lang {
         weflow_core::locale::Lang::Zh => format!(
-            "{}  动态 {} 条 · {} 位好友发过 · 其中你发了 {} 条",
+            "{}  动态 {} 条 · {} 人发过 · 其中你发了 {} 条",
             style.paint.paint(Role::Strong, "朋友圈"),
             digits(number(data, "totalPosts")),
             digits(number(data, "totalFriends")),
@@ -259,5 +261,24 @@ mod tests {
             .collect();
         let shown = sns_users(&data, &names, &style(Lang::En, 12)).unwrap();
         assert_eq!(shown.body, "阿甲  Bob\nc\n");
+    }
+
+    /// The people who posted include the account itself, so they are not called friends (#1158).
+    #[test]
+    fn moments_stats_count_people_not_friends() {
+        let data = json!({ "totalPosts": 5, "totalFriends": 3, "myPosts": 2 });
+        let zh = sns_stats(&data, &style(Lang::Zh, 80)).unwrap();
+        assert!(
+            zh.body.contains("动态 5 条 · 3 人发过 · 其中你发了 2 条"),
+            "{}",
+            zh.body
+        );
+        assert!(!zh.body.contains("好友"), "{}", zh.body);
+        let en = sns_stats(&data, &style(Lang::En, 80)).unwrap();
+        assert!(
+            en.body.contains("5 posts · by 3 people · 2 of them mine"),
+            "{}",
+            en.body
+        );
     }
 }
