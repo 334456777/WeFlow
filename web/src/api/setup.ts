@@ -2,6 +2,7 @@
 // directory and its accounts, saving settings, and testing that the database opens. The keys are fetched by
 // `key db --save` / `key image --save`, which store them on the server: they never reach the page.
 import { call, get } from './client';
+import { commandName, type Job } from './jobs';
 import { t } from '../i18n';
 import type * as Contract from './contract.gen';
 
@@ -37,6 +38,13 @@ export const testDatabase = (signal?: AbortSignal) => get<Partial<Contract.DbCon
 
 /** `key image --save` (Windows, Linux and macOS): the image keys from WeChat's cache, saved on the server. */
 export const saveImageKeys = () => call<Contract.ImageKeys>('POST', 'key/image', { save: true });
+
+/** The key a job saves in the current profile: `db` for `key db --save`, `image` for `key image --save`, else null. */
+export function savedKey(job: Pick<Job, 'command'>): 'db' | 'image' | null {
+  if (!job.command.includes('--save')) return null;
+  const name = commandName(job.command);
+  return name === 'key db' ? 'db' : name === 'key image' ? 'image' : null;
+}
 
 /** A database key as `config set decrypt_key` takes it: 64 hexadecimal digits. */
 export const isDatabaseKey = (value: string) => /^[0-9a-fA-F]{64}$/.test(value.trim());

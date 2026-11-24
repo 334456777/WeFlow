@@ -88,7 +88,7 @@ export function App() {
   const scope = useScope(backend);
   const jobs = useJobs(usable, scope);
   // the account setup (#216): it opens by itself when a tab finds the account not set up, and from the settings
-  const profiles = useProfiles(usable, scope);
+  const profiles = useProfiles(usable, scope, jobs.jobs);
   const profile = profiles.profiles ? currentProfile(profiles.profiles) : undefined;
   const [setupOpen, setSetupOpen] = useState(false);
   useEffect(() => {

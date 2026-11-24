@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from '#test';
 import type { Job, ProfileSummary } from '../api/contract.gen';
 import type { Params, SampleAnswer } from '../api/client';
+import { savedKey } from '../api/setup';
 import { server } from './server';
 
 // The sample server keeps what changes for as long as the page (here, the test run) is open, and other test files use
@@ -109,6 +110,23 @@ describe('the sample server (#896)', () => {
     ask('DELETE', 'jobs/' + done.id);
     expect(server.answer('GET', 'jobs/' + done.id, {}, false)).toMatchObject({ failed: { status: 404 } });
     expect(ask<Job[]>('GET', 'jobs').filter(j => [first.id, second.id, key.id].includes(j.id)).map(j => j.status)).toEqual(['succeeded', 'cancelled']);
+  });
+
+  it('saves the database key once its job has succeeded, as a job the page knows by its command (#1138)', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 7_200_000 });
+    const t0 = Date.now();
+    ask('PUT', 'config/set', { key: 'current_profile', value: 'keyed-by-job' });
+    const keyed = () => ask<ProfileSummary[]>('GET', 'api/config/profiles').find(p => p.current)!.decryptKey;
+    expect(keyed()).toBe(false);
+    const job = start('key/db', { save: true });
+    expect(savedKey(job)).toBe('db');
+    at(t0 + 1000);
+    expect(ask<Job>('GET', 'jobs/' + job.id).status).toBe('running');
+    expect(keyed()).toBe(false);
+    at(t0 + 10_000);
+    expect(ask<Job>('GET', 'jobs/' + job.id)).toMatchObject({ status: 'succeeded', result: { success: true, data: { saved: ['decrypt_key'] } } });
+    expect(keyed()).toBe(true);
+    ask('PUT', 'config/set', { key: 'current_profile', value: 'default' });
   });
 
   it('refuses the page\'s versions, which need a server', () => {
