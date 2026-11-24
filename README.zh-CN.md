@@ -154,15 +154,10 @@ WeFlow Rust CLI 以**只读**方式打开数据库，不会修改微信数据库
 开发者已尽最大努力确保本项目的正当性及安全性，但不对用户使用本项目可能引起的任何形式的直接或间接损失承担责任。包括但不限于由于使用本项目而导致的任何数据丢失、设备损坏、法律诉讼等。
 
 ## 6. 知识产权声明
-WeFlow项目的知识产权归[hicccc77](https://github.com/hicccc77)开发者所有。本项目受到著作权法和国际著作权条约以及其他知识产权法律和条约的保护。用户在遵守本声明及相关法律法规的前提下，可以下载和使用本项目。
-
 本项目以 [Unlicense](LICENSE) 发布。取自其他项目的代码沿用原项目的许可，许可文件放在代码所在的文件夹：
 - `crates/weflow-native/src/windows_db_key/`：[MIT](crates/weflow-native/src/windows_db_key/LICENSE)，来自 [wx_key](https://github.com/ycccccccy/wx_key)
 - `crates/weflow-native/src/macos_key_helper/`、`crates/weflow-native/src/linux_key_helper/`：[CC BY-NC-SA 4.0](crates/weflow-native/src/macos_key_helper/LICENSE)，来自 [WeFlow 桌面版](https://github.com/hicccc77/WeFlow)
 - `crates/weflow-silk/vendor/`：[Skype SILK SDK 的许可](crates/weflow-silk/vendor/LICENSE-SKYPE.txt)
 
 本项目部分基于他人的成果：本软件部分基于 Independent JPEG Group 的工作（this software is based in part on the work of the Independent JPEG Group）。程序中所含的库和其他代码的许可证，见各发布包的 `licenses` 文件夹（`THIRD-PARTY-LICENSES.html`）。
-
-## 7. 最终解释权
-关于本项目的最终解释权归[hicccc77](https://github.com/hicccc77)开发者所有。开发者保留随时更改或更新本免责声明的权利，恕不另行通知。
 </div>
