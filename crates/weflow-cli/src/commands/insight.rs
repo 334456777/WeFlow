@@ -95,11 +95,18 @@ fn insight_filters(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> weflow_core::insight::RecordFilters {
+    // `--start` and `--end` are Unix seconds and the records' times milliseconds (#1157): `--end` takes the whole of
+    // its second; 0 or none is no limit
+    let millis = |seconds: Option<i64>, within: i64| {
+        seconds
+            .filter(|s| *s > 0)
+            .map_or(0, |s| s.saturating_mul(1000).saturating_add(within))
+    };
     weflow_core::insight::RecordFilters {
         keyword: keyword.unwrap_or_default(),
         session_id: session.unwrap_or_default(),
-        start_time: start.unwrap_or(0),
-        end_time: end.unwrap_or(0),
+        start_time: millis(start, 0),
+        end_time: millis(end, 999),
         limit,
         offset,
     }
