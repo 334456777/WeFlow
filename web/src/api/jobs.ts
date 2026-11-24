@@ -51,13 +51,19 @@ export const jobFileUrl = (id: string) => mediaAddress('jobs/' + encodeURICompon
 /** The address of the job's server-sent events; the token goes in the address, as `EventSource` sends no header. */
 export const jobEventsUrl = (id: string) => apiUrl('jobs/' + encodeURIComponent(id) + '/events', { access_token: token() });
 
+/** The words of a job's command line that are not flags, `weflow` left out: `export`, `messages`, then the values. */
+const wordsOf = (command: readonly string[]) => command.slice(1).filter(word => !word.startsWith('-'));
+
+/** The command a job runs, by its first two words: `export messages`, `key db`. */
+export const commandName = (command: readonly string[]) => wordsOf(command).slice(0, 2).join(' ');
+
 /**
  * What a job does, in words: 「导出聊天记录」 for `export messages`, … With `names` (conversations by id), the
  * conversation it names: 「导出聊天记录 · 林沐」.
  */
 export function describeCommand(command: string[], names?: ReadonlyMap<string, string>): string {
-  const words = command.slice(1).filter(word => !word.startsWith('-'));
-  const name = words.slice(0, 2).join(' ');
+  const words = wordsOf(command);
+  const name = commandName(command);
   const known = COMMANDS[name] ?? COMMANDS[words[0]];
   const what = known ? t(known) : name;
   const about = names && command.find(word => names.has(word));

@@ -9,7 +9,7 @@ import { ApiError, sampling } from '../api/client';
 import { isFinished, jobEventsUrl } from '../api/jobs';
 import { onPresence, present } from '../api/presence';
 import {
-  detectDirs, findAccounts, isDatabaseKey, saveImageKeys, setConfig, testDatabase,
+  detectDirs, findAccounts, isDatabaseKey, saveImageKeys, savedKey, setConfig, testDatabase,
   type Account, type Profile,
 } from '../api/setup';
 import { SteadyLabel } from '../Chip';
@@ -144,29 +144,40 @@ function phaseText(phase: KeyPhase | null): string {
   }
 }
 
-/** Step 2: `key db --save` as a job, or a key typed in and saved with `config set decrypt_key`. */
+/**
+ * Step 2: `key db --save` as a job, or a key typed in and saved with `config set decrypt_key`. The job is looked for
+ * in the shared list, as the step is left and the setup closed while it runs (#1138); `useProfiles` reads the
+ * profile again once it has saved the key.
+ */
 function KeyStep({ profile, jobs, onSaved, onNext }: { profile: Profile | undefined; jobs: JobsState; onSaved(): void; onNext(): void }) {
-  const [jobId, setJobId] = useState<string | null>(null);
   const [typed, setTyped] = useState('');
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
-  const job = findJob(jobs, jobId);
-  const phase = useKeyPhase(job && !isFinished(job.status) ? job.id : null);
-  const running = Boolean(job && !isFinished(job.status));
+  const [starting, setStarting] = useState(false);
+  // the one that runs first, should another tab have queued one more
+  const job = jobs.jobs.filter(j => savedKey(j) === 'db' && !isFinished(j.status)).at(-1);
+  const running = Boolean(job);
+  const phase = useKeyPhase(job?.id ?? null);
+  // the job seen running, to say how it ended
+  const [watched, setWatched] = useState<string | null>(null);
+  useEffect(() => { if (job) setWatched(job.id); }, [job?.id]);
+  const ended = findJob(jobs, watched);
 
   useEffect(() => {
-    if (!job || !isFinished(job.status)) return;
-    if (job.status === 'succeeded') { setNote({ text: t('已获取数据库密钥，保存在服务端的当前档案里。') }); onSaved(); }
-    else if (job.status === 'failed') setNote({ text: (job.result?.error?.message || t('获取密钥失败。')) + ' ' + t('可以重试，或者手动填写密钥。'), error: true });
+    if (!ended || !isFinished(ended.status)) return;
+    if (ended.status === 'succeeded') setNote({ text: t('已获取数据库密钥，保存在服务端的当前档案里。') });
+    else if (ended.status === 'failed') setNote({ text: (ended.result?.error?.message || t('获取密钥失败。')) + ' ' + t('可以重试，或者手动填写密钥。'), error: true });
     else setNote({ text: t('已取消。') });
-    setJobId(null);
-  }, [job?.status]);
+    setWatched(id => (id === ended.id ? null : id));
+  }, [ended?.status]);
 
   const start = async () => {
     setNote(null);
-    try { setJobId((await runJob(t('获取数据库密钥'), 'POST', 'key/db', { save: true }, false)).id); }
+    setStarting(true);
+    try { setWatched((await runJob(t('获取数据库密钥'), 'POST', 'key/db', { save: true }, false)).id); }
     catch (problem) { setNote({ text: reason(problem, t('没有开始，请重试。')), error: true }); }
+    finally { setStarting(false); }
   };
-  const cancel = () => { if (jobId) removeJob(jobId).catch(() => setNote({ text: t('取消失败，请重试。'), error: true })); };
+  const cancel = () => { if (job) removeJob(job.id).catch(() => setNote({ text: t('取消失败，请重试。'), error: true })); };
   const saveTyped = async (event: FormEvent) => {
     event.preventDefault();
     try {
@@ -188,7 +199,7 @@ function KeyStep({ profile, jobs, onSaved, onNext }: { profile: Profile | undefi
         <button type="button" className="secondary-button" onClick={cancel}>{t('取消')}</button>
       </div>
       : <div className="setup-actions start">
-        <button type="button" className="primary-button" onClick={start}><Key size={16} />{profile?.decryptKey ? t('重新获取') : t('获取数据库密钥')}</button>
+        <button type="button" className="primary-button" disabled={starting} onClick={start}><Key size={16} />{profile?.decryptKey ? t('重新获取') : t('获取数据库密钥')}</button>
       </div>}
     {note && <Note error={note.error}>{note.text}</Note>}
     <details className="setup-manual">
