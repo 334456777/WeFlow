@@ -35,7 +35,7 @@ use system::{
     is_readable_system_message, parse_voip_message,
 };
 use time::{normalize_timestamp_seconds, parse_compact_datetime};
-use transfer::{get_transfer_prefix, is_same_wxid};
+use transfer::{get_transfer_prefix, is_same_wxid, transfer_text};
 use xml::{
     decode_html_entities, extract_app_message_type, extract_xml_value,
     normalize_app_message_content, rx, strip_sender_line, strip_sender_prefix, MsgXml,
@@ -339,16 +339,7 @@ fn app_message_text(
         }
     };
     Some(match ty {
-        "2000" => {
-            let feedesc = extract_xml_value(normalized, "feedesc");
-            let memo = extract_xml_value(normalized, "pay_memo");
-            let prefix = get_transfer_prefix(normalized, my_wxid, sender_wxid);
-            match (feedesc.is_empty(), memo.is_empty()) {
-                (true, _) => prefix.to_string(),
-                (false, true) => format!("{prefix} {feedesc}"),
-                (false, false) => format!("{prefix} {feedesc} {memo}"),
-            }
-        }
+        "2000" => transfer_text(normalized, my_wxid, sender_wxid),
         "8" => row.tag.into(),
         "24" => note_text(normalized, &title),
         "87" => with_title(&extract_xml_value(normalized, "textannouncement")),
