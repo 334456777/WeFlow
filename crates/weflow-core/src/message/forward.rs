@@ -1,7 +1,7 @@
 //! Chat histories forwarded as one message: their records and their text.
 
 use super::xml::{
-    decode_html_entities, decode_html_entities_cow, extract_app_message_type, extract_xml_value,
+    decode_html_entities_cow, decode_text_entities, extract_app_message_type, extract_xml_value,
     normalize_app_message_content, normalize_app_message_cow, rx, strip_cdata,
 };
 use super::ForwardRecord;
@@ -149,21 +149,23 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<Item> {
         .or_else(|| Some(extract_xml_value(body, "datatype")).filter(|s| !s.is_empty()))
         .unwrap_or_else(|| "0".into());
     let datatype = datatype_raw.parse::<i64>().unwrap_or(0);
-    let sourcename = decode_html_entities(&extract_xml_value(body, "sourcename"));
+    // numeric entities (`&#x0A;`) too, in the same one pass (#1199)
+    let text = |s: &str| decode_text_entities(s).into_owned();
+    let sourcename = text(&extract_xml_value(body, "sourcename"));
     let sourcetime = extract_xml_value(body, "sourcetime");
     let mut datadesc = extract_xml_value(body, "datadesc");
     if datadesc.is_empty() {
         datadesc = extract_xml_value(body, "content");
     }
-    let datadesc = decode_html_entities(&datadesc);
-    let datatitle = decode_html_entities(&extract_xml_value(body, "datatitle"));
+    let datadesc = text(&datadesc);
+    let datatitle = text(&extract_xml_value(body, "datatitle"));
     let nested_list = if datatype == 17 && !nested_xml.is_empty() {
         Some(parse_forward_records(&nested_xml)).filter(|l| !l.is_empty())
     } else {
         None
     };
     let pick = |a: String, b: &str| if !a.is_empty() { a } else { b.to_string() };
-    let chat_record_title = decode_html_entities(&pick(
+    let chat_record_title = text(&pick(
         if nested_xml.is_empty() {
             String::new()
         } else {
@@ -171,7 +173,7 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<Item> {
         },
         &datatitle,
     ));
-    let chat_record_desc = decode_html_entities(&pick(
+    let chat_record_desc = text(&pick(
         if nested_xml.is_empty() {
             String::new()
         } else {
@@ -285,6 +287,14 @@ mod tests {
         let text = format_forward_chat_record_content(xml);
         assert_eq!(text, "[转发的聊天记录]群聊的聊天记录\nBob: hello");
         assert_eq!(convert_message_type_in(49, &MsgXml::new(xml)), 7);
+        // an item's text has its numeric entities decoded too, in the same one pass (#1199)
+        let escaped = xml
+            .replace(">Bob<", ">B&amp;b<")
+            .replace(">hello<", ">a&#x0A;b &amp;amp;<");
+        assert_eq!(
+            format_forward_chat_record_content(&escaped),
+            "[转发的聊天记录]群聊的聊天记录\nB&b: a\nb &amp;"
+        );
     }
 
     /// A nested record as WeChat keeps it: its XML as it is inside the item's `<recordxml>`, within the outer

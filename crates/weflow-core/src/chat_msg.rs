@@ -19,8 +19,8 @@ use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message, pat_text};
 use crate::message::transfer::{is_same_wxid, transfer_text};
 use crate::message::xml::{
-    extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content, strip_sender_line,
-    strip_sender_prefix,
+    decode_text_entities, extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content,
+    strip_sender_line, strip_sender_prefix, xml_text,
 };
 use crate::xml::decode_entities;
 
@@ -56,6 +56,11 @@ fn xml_attr(xml: &str, tag: &str, attr: &str) -> String {
     re.captures(xml)
         .map(|c| c[1].to_string())
         .unwrap_or_default()
+}
+
+/// [`xml_attr`] for people to read: its entities decoded once (#1199).
+fn attr_text(xml: &str, tag: &str, attr: &str) -> String {
+    decode_text_entities(&xml_attr(xml, tag, attr)).into_owned()
 }
 
 fn first_non_empty(values: &[String]) -> String {
@@ -132,12 +137,22 @@ fn app_xml_type(content: &str) -> String {
     xml_type
 }
 
+/// The place a location names, read from content whose entities are decoded already.
 fn location_label_of(content: &str) -> String {
+    location_label_by(
+        |a| xml_attr(content, "location", a),
+        |t| extract_xml_value(content, t),
+    )
+}
+
+/// The place a location names: the `label`, else the `poiname`, of its `<location>` (read by `attr`) or as an element
+/// (read by `text`).
+fn location_label_by(attr: impl Fn(&str) -> String, text: impl Fn(&str) -> String) -> String {
     first_non_empty(&[
-        xml_attr(content, "location", "label"),
-        xml_attr(content, "location", "poiname"),
-        extract_xml_value(content, "label"),
-        extract_xml_value(content, "poiname"),
+        attr("label"),
+        attr("poiname"),
+        text("label"),
+        text("poiname"),
     ])
 }
 
@@ -432,7 +447,8 @@ fn parse_type49_message(content: &str) -> Type49Info {
     if xml_type.is_empty() {
         return r;
     }
-    let ev = |t: &str| extract_xml_value(content, t);
+    // the fields are text for people to read, with their entities decoded (#1199)
+    let ev = |t: &str| xml_text(content, t);
     let title = ev("title");
     let url = ev("url");
     let desc = first_non_empty(&[ev("des"), ev("description")]);
@@ -450,7 +466,9 @@ fn parse_type49_message(content: &str) -> Type49Info {
     let music_url = first_non_empty(&[ev("musicurl"), ev("playurl")]);
     let data_url = first_non_empty(&[ev("dataurl"), ev("lowurl")]);
     // the place of the message itself, not of one a reply quotes (#1165)
-    let location_label = location_label_of(&without_quoted(content));
+    let own = without_quoted(content);
+    let location_label =
+        location_label_by(|a| attr_text(&own, "location", a), |t| xml_text(&own, t));
     let finder_username = first_non_empty(&[
         ev("finderusername"),
         ev("finder_username"),
@@ -506,10 +524,10 @@ fn parse_type49_message(content: &str) -> Type49Info {
         r.location_lat = parse_js_float(&lat);
         r.location_lng = parse_js_float(&lng);
         r.location_poiname = opt(first_non_empty(&[
-            xml_attr(content, "location", "poiname"),
+            attr_text(content, "location", "poiname"),
             location_label,
         ]));
-        r.location_label = opt(xml_attr(content, "location", "label"));
+        r.location_label = opt(attr_text(content, "location", "label"));
     }
     if is_music {
         r.music_album_url = opt(ev("songalbumurl"));
@@ -1141,10 +1159,10 @@ fn chat_message(
         m.quoted_content = parse_media_quote(&content);
     } else if local_type == 42 && !content.is_empty() {
         m.card_username = opt(xml_attr(&content, "msg", "username"));
-        m.card_nickname = opt(xml_attr(&content, "msg", "nickname"));
+        m.card_nickname = opt(attr_text(&content, "msg", "nickname"));
         m.card_avatar_url = opt(first_non_empty(&[
-            xml_attr(&content, "msg", "bigheadimgurl"),
-            xml_attr(&content, "msg", "smallheadimgurl"),
+            attr_text(&content, "msg", "bigheadimgurl"),
+            attr_text(&content, "msg", "smallheadimgurl"),
         ]));
     } else if local_type == 48 && !content.is_empty() {
         let lat = first_non_empty(&[
@@ -1158,12 +1176,12 @@ fn chat_message(
         m.location_lat = parse_js_float(&lat);
         m.location_lng = parse_js_float(&lng);
         m.location_label = opt(first_non_empty(&[
-            xml_attr(&content, "location", "label"),
-            extract_xml_value(&content, "label"),
+            attr_text(&content, "location", "label"),
+            xml_text(&content, "label"),
         ]));
         m.location_poiname = opt(first_non_empty(&[
-            xml_attr(&content, "location", "poiname"),
-            extract_xml_value(&content, "poiname"),
+            attr_text(&content, "location", "poiname"),
+            xml_text(&content, "poiname"),
         ]));
     } else if app_message {
         let t = parse_type49_message(&content);
@@ -1782,6 +1800,110 @@ mod tests {
         assert_eq!(m.location_label.as_deref(), Some("Bund"));
     }
 
+    /// The fields of a link, a file, a contact card and a location are text for people to read, in the chat window,
+    /// the exports' text and Arkme alike: their entities decoded once (`&amp;amp;` is `&amp;`), the text of a CDATA
+    /// section kept as it is, whether the app message is kept as `local_type` 49 or as `(<type> << 32) | 49` (#1199).
+    #[test]
+    fn the_fields_of_a_message_have_their_entities_decoded_once() {
+        use crate::message::appmsg::extract_arkme_app_message_meta_in;
+        use crate::message::xml::MsgXml;
+
+        let read = |local_type, content: &str| {
+            let row = MsgRow {
+                local_type,
+                content: content.into(),
+                ..MsgRow::default()
+            };
+            map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0)
+        };
+        let export = |local_type, content: &str| {
+            crate::message::parse_message_content(content, local_type, None, None, None)
+                .unwrap_or_default()
+        };
+        let arkme = |local_type, content: &str| {
+            let meta = extract_arkme_app_message_meta_in(&MsgXml::new(content), local_type)
+                .unwrap_or_default();
+            move |key: &str| meta.get(key).and_then(|v| v.as_str()).map(str::to_owned)
+        };
+
+        let link =
+            "<msg><appmsg><title>A &amp; B</title><des>&lt;C &amp;amp; D</des><type>5</type>\
+                    <url>https://mp.example/s?__biz=X&amp;mid=1</url>\
+                    <thumburl>https://t.example/a?x=1&amp;y=2</thumburl></appmsg></msg>";
+        let cdata = "<msg><appmsg><title><![CDATA[a &amp; b]]></title><type>5</type>\
+                     <url>https://a.example/</url></appmsg></msg>";
+        let file = "<msg><appmsg><title>a&amp;b&#233;.pdf</title><type>6</type>\
+                    <appattach><totallen>3</totallen></appattach></appmsg></msg>";
+        for (ty, local_types) in [("5", [49, (5 << 32) | 49]), ("6", [49, (6 << 32) | 49])] {
+            for local_type in local_types {
+                let at = format!("<type> {ty} as {local_type}");
+                if ty == "6" {
+                    let m = read(local_type, file);
+                    assert_eq!(m.file_name(), Some("a&bé.pdf"), "{at}");
+                    assert_eq!(export(local_type, file), "[文件] a&bé.pdf", "{at}");
+                    continue;
+                }
+                let m = read(local_type, link);
+                let t = m.t49.as_deref().unwrap();
+                assert_eq!(t.link_title.as_deref(), Some("A & B"), "{at}");
+                assert_eq!(
+                    t.link_url.as_deref(),
+                    Some("https://mp.example/s?__biz=X&mid=1"),
+                    "{at}"
+                );
+                assert_eq!(
+                    t.link_thumb.as_deref(),
+                    Some("https://t.example/a?x=1&y=2"),
+                    "{at}"
+                );
+                assert_eq!(t.app_msg_desc.as_deref(), Some("<C &amp; D"), "{at}");
+                assert_eq!(export(local_type, link), "[链接] A & B", "{at}");
+                let field = arkme(local_type, link);
+                assert_eq!(field("linkTitle").as_deref(), Some("A & B"), "{at}");
+                assert_eq!(field("appMsgDesc").as_deref(), Some("<C &amp; D"), "{at}");
+                assert_eq!(
+                    field("linkThumb").as_deref(),
+                    Some("https://t.example/a?x=1&y=2"),
+                    "{at}"
+                );
+                assert_eq!(
+                    field("linkUrl").as_deref(),
+                    Some("https://mp.example/s?__biz=X&mid=1"),
+                    "{at}"
+                );
+                // a CDATA section is text as it is
+                let m = read(local_type, cdata);
+                assert_eq!(m.link_title(), Some("a &amp; b"), "{at}");
+                assert_eq!(export(local_type, cdata), "[链接] a &amp; b", "{at}");
+            }
+        }
+
+        let card = r#"<msg username="wxid_c" nickname="C &amp; D" bigheadimgurl="https://h.example/a?x=1&amp;y=2"/>"#;
+        let m = read(42, card);
+        assert_eq!(m.card_nickname.as_deref(), Some("C & D"));
+        assert_eq!(
+            m.card_avatar_url.as_deref(),
+            Some("https://h.example/a?x=1&y=2")
+        );
+        let card_meta =
+            crate::message::appmsg::extract_arkme_contact_card_meta(card, 42).unwrap_or_default();
+        assert_eq!(
+            card_meta
+                .get("contactCardNickname")
+                .and_then(|v| v.as_str()),
+            Some("C & D")
+        );
+
+        let location = r#"<msg><location x="1" y="2" label="Caf&#233; &amp; Bar" poiname="P &lt;1&gt;"/></msg>"#;
+        let m = read(48, location);
+        assert_eq!(m.location_label.as_deref(), Some("Café & Bar"));
+        assert_eq!(m.location_poiname.as_deref(), Some("P <1>"));
+        let text = export(48, location);
+        assert!(
+            text.contains("P <1>") && text.contains("Café & Bar") && !text.contains("&amp;"),
+            "{text}"
+        );
+    }
     #[test]
     fn a_text_message_loses_only_the_line_naming_its_sender() {
         // as the chat model reads a row: a private message whose first line is `PS:` keeps it, a group message

@@ -7,7 +7,7 @@ use anyhow::Result;
 use crate::message::kind::weclone_type_name;
 use crate::message::quote::is_text_quote_message_in;
 use crate::message::time::format_iso_timestamp;
-use crate::message::xml::{extract_xml_value, MsgXml};
+use crate::message::xml::{xml_text, MsgXml};
 use crate::message::*;
 
 use super::csv::{create_csv, write_csv};
@@ -103,9 +103,9 @@ impl Exporter<'_, '_> {
             "image" => msg.image_dat_name.clone().unwrap_or_default(),
             "sticker" => msg.emoji_cdn_url.clone().unwrap_or_default(),
             "file" => {
-                let f = extract_xml_value(&msg.content, "filename");
+                let f = xml_text(&msg.content, "filename");
                 if f.is_empty() {
-                    extract_xml_value(&msg.content, "title")
+                    xml_text(&msg.content, "title")
                 } else {
                     f
                 }

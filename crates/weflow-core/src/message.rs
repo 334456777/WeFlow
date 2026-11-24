@@ -38,7 +38,7 @@ use time::{normalize_timestamp_seconds, parse_compact_datetime};
 use transfer::{get_transfer_prefix, is_same_wxid, transfer_text};
 use xml::{
     decode_html_entities, extract_app_message_type, extract_xml_value,
-    normalize_app_message_content, rx, strip_sender_line, strip_sender_prefix, MsgXml,
+    normalize_app_message_content, rx, strip_sender_line, strip_sender_prefix, xml_text, MsgXml,
 };
 
 // ───────────────────────────── message struct ─────────────────────────────
@@ -222,9 +222,7 @@ fn note_text(normalized: &str, title: &str) -> String {
     } else if !title.is_empty() {
         title.to_string()
     } else {
-        decode_numeric_entities(&extract_xml_value(normalized, "des"))
-            .trim()
-            .to_string()
+        xml_text(normalized, "des")
     };
     if body.is_empty() {
         "[笔记]".into()
@@ -282,7 +280,7 @@ pub fn parse_message_content_in(
         244813135921 => match x.quoted_display() {
             Some(d) => Some(build_quoted_reply_text(d)),
             None => {
-                let t = extract_xml_value(content, "title");
+                let t = xml_text(content, "title");
                 Some(if t.is_empty() {
                     "[引用消息]".into()
                 } else {
@@ -294,7 +292,7 @@ pub fn parse_message_content_in(
         // WeChat 4 does) or not: the same text either way (#1180)
         l if l & 0xFFFF_FFFF == 49 => Some(
             app_message_text(x, my_wxid, sender_wxid).unwrap_or_else(|| {
-                let title = extract_xml_value(normalized, "title");
+                let title = xml_text(normalized, "title");
                 if title.is_empty() {
                     "[消息]".into()
                 } else {
@@ -307,7 +305,7 @@ pub fn parse_message_content_in(
                 if let Some(text) = app_message_text(x, my_wxid, sender_wxid) {
                     return Some(text);
                 }
-                let title = extract_xml_value(content, "title");
+                let title = xml_text(content, "title");
                 if !title.is_empty() {
                     return Some(title);
                 }
@@ -332,7 +330,7 @@ fn app_message_text(
     let normalized = x.once();
     let ty = x.app_type_twice();
     let row = appmsg::app_type(ty)?;
-    let title = extract_xml_value(normalized, "title");
+    let title = xml_text(normalized, "title");
     let with_title = |title: &str| {
         if title.is_empty() {
             row.tag.to_string()
@@ -344,9 +342,9 @@ fn app_message_text(
         "2000" => transfer_text(normalized, my_wxid, sender_wxid),
         "8" => row.tag.into(),
         "24" => note_text(normalized, &title),
-        "87" => with_title(&extract_xml_value(normalized, "textannouncement")),
+        "87" => with_title(&xml_text(normalized, "textannouncement")),
         "3" | "76" => {
-            let song = extract_xml_value(normalized, "songname");
+            let song = xml_text(normalized, "songname");
             with_title(if song.is_empty() { &title } else { &song })
         }
         "19" => format_forward_chat_record_content(normalized),
@@ -396,7 +394,7 @@ fn format_plain_export_content(
             let n = normalize_app_message_content(content);
             let nick = ["nickname", "displayname", "name"]
                 .iter()
-                .map(|k| extract_xml_value(&n, k))
+                .map(|k| xml_text(&n, k))
                 .find(|v| !v.is_empty())
                 .unwrap_or_default();
             return if nick.is_empty() {
@@ -428,11 +426,11 @@ fn format_plain_export_content(
     if local_type == 49 || is_app {
         let sub: i64 = extract_app_message_type(&normalized).parse().unwrap_or(0);
         let title = {
-            let t = extract_xml_value(&normalized, "title");
+            let t = xml_text(&normalized, "title");
             if !t.is_empty() {
                 t
             } else {
-                extract_xml_value(&normalized, "appname")
+                xml_text(&normalized, "appname")
             }
         };
         if sub == 8 {
@@ -442,7 +440,7 @@ fn format_plain_export_content(
             return note_text(&normalized, &title);
         }
         if sub == 87 {
-            let t = extract_xml_value(&normalized, "textannouncement");
+            let t = xml_text(&normalized, "textannouncement");
             return if t.is_empty() {
                 "[群公告]".into()
             } else {
@@ -450,8 +448,8 @@ fn format_plain_export_content(
             };
         }
         if sub == 2000 || title.contains("转账") || normalized.contains("transfer") {
-            let feedesc = extract_xml_value(&normalized, "feedesc");
-            let memo = extract_xml_value(&normalized, "pay_memo");
+            let feedesc = xml_text(&normalized, "feedesc");
+            let memo = xml_text(&normalized, "pay_memo");
             let prefix = get_transfer_prefix(&normalized, my_wxid, sender_wxid);
             if !feedesc.is_empty() {
                 return if memo.is_empty() {
@@ -480,7 +478,7 @@ fn format_plain_export_content(
             || normalized.contains("<musicurl")
             || normalized.contains("<songname")
         {
-            let song = extract_xml_value(&normalized, "songname");
+            let song = xml_text(&normalized, "songname");
             let name = if !song.is_empty() {
                 song
             } else if !title.is_empty() {
@@ -491,7 +489,7 @@ fn format_plain_export_content(
             return format!("[音乐]{name}");
         }
         if sub == 6 {
-            let f = extract_xml_value(&normalized, "filename");
+            let f = xml_text(&normalized, "filename");
             let name = if !f.is_empty() {
                 f
             } else if !title.is_empty() {
@@ -515,7 +513,7 @@ fn format_plain_export_content(
             return format_forward_chat_record_content(&normalized);
         }
         if sub == 33 || sub == 36 {
-            let a = extract_xml_value(&normalized, "appname");
+            let a = xml_text(&normalized, "appname");
             let name = if !a.is_empty() {
                 a
             } else if !title.is_empty() {
