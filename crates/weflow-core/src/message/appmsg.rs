@@ -151,7 +151,7 @@ pub fn quote_or_link_app_message_meta_in(
         return reply_quote_fields(x);
     }
     let content = x.content();
-    // A quote has a `<refermsg>`, the quote's local type or `<type>` 57, a link `<type>` 5 or 49. Those words
+    // A quote has a `<refermsg>`, the quote's local type or `<type>` 57, a link a `<type>` (4, 5, 49). Those words
     // survive normalizing (see normalized_may_contain), and cutting `<refermsg>` and `<patmsg>` blocks out of
     // the `<appmsg>` can join text into a `<type>` only where those words are: without any of the three, the
     // message is neither.
@@ -295,7 +295,10 @@ fn app_message_fields(
             .map(|c| c.url.clone())
             .filter(|u| !u.is_empty())
             .unwrap_or_else(|| {
-                normalize_http_link_url(&first_non_empty(&n, &["shareurl", "shorturl", "dataurl"]))
+                normalize_http_link_url(&first_non_empty(
+                    &n,
+                    &["url", "shareurl", "shorturl", "dataurl"],
+                ))
             });
         if let Some(c) = &card {
             put(&mut meta, "linkTitle", c.title.clone());
