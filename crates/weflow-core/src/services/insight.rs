@@ -243,7 +243,10 @@ impl ServiceHub {
     }
 
     /// Removes the account's insight records that `f` matches (`insight clear`; see [`RecordStore::clear`]).
-    pub fn insight_clear_records(&self, f: &RecordFilters) -> InsightCleared {
+    ///
+    /// # Errors
+    /// As [`RecordStore::clear`].
+    pub fn insight_clear_records(&self, f: &RecordFilters) -> AppResult<InsightCleared> {
         self.record_store().clear(f)
     }
 
@@ -837,8 +840,9 @@ impl ServiceHub {
             duration_ms: duration,
             created_at: ins::now_millis(),
         };
-        let record =
-            self.record_store_add(session_id, &name, avatar, reason.as_str(), &insight, log);
+        let record = self
+            .record_store_add(session_id, &name, avatar, reason.as_str(), &insight, log)
+            .map_err(AppError::into_message)?;
         if c.get_key(Some(p), "ai_insight_telegram_enabled") == Value::Bool(true) {
             let token = cfg_str(&c, p, "ai_insight_telegram_token");
             let chat_ids = cfg_str(&c, p, "ai_insight_telegram_chat_ids");
@@ -883,7 +887,7 @@ impl ServiceHub {
         reason: &str,
         insight: &str,
         log: ins::InsightRecordLog,
-    ) -> ins::InsightRecord {
+    ) -> AppResult<ins::InsightRecord> {
         let mut store = self.record_store();
         store.add(
             ins::NewRecord {

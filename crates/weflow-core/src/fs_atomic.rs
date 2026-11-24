@@ -133,4 +133,39 @@ mod tests {
         names.sort();
         assert_eq!(names, ["a.wav", "src.mp4"], "no temporary file is left");
     }
+
+    #[test]
+    fn a_private_write_replaces_the_file_or_leaves_it_as_it_was() {
+        let dir = weflow_native::fixture::TestDir::new("weflow-atomic-private");
+        let path = dir.join("records.json");
+        std::fs::write(&path, b"old").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        super::write_private(&path, b"new").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "the owner's only, whatever the file replaced");
+        }
+        // a folder where the file goes: renaming over it fails, and the folder and the file stay as they were
+        let folder = dir.join("a.json");
+        std::fs::create_dir(&folder).unwrap();
+        assert!(super::write_private(&folder, b"x").is_err());
+        assert!(folder.is_dir());
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            ["a.json", "records.json"],
+            "no temporary file is left"
+        );
+    }
 }
