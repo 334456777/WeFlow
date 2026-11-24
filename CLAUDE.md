@@ -151,7 +151,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 提交信息使用中文和 Conventional Commits 规范：前缀（`type(scope):`）用英文，描述用中文；信息末尾另起一行按此格式署名：`Co-Authored-By: <你的AI名称与模型版本> <noreply@厂商域名>`（例如 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`、`Co-Authored-By: GPT-5 <noreply@openai.com>`），已有署名行时不要重复添加
 - Pull Request 分支名称使用 Conventional Commits 风格的 `<type>/<scope>-<description>` 格式
 - 合并用 merge commit（见 Wiki「发布与 CI」[#合并的条件](https://github.com/334456777/WeFlow/wiki/发布与-CI#合并的条件)）
-- 合并提交的标题由 GitHub 取 PR 的标题加 `(#N)`，所以 PR 标题也以 `type(scope):` 前缀开头（前缀用英文，描述用中文）；PR 描述同样用中文，用户明确要求英文时才用英文
+- 合并提交的标题由 GitHub 取 PR 的标题加 `(#N)`，所以 PR 标题也以 `type(scope):` 前缀开头（前缀用英文，描述用中文）；PR 描述同样用中文，用户明确要求英文时才用英文；标题和描述随 PR 的改动更新，合并或开自动合并前核对一遍，与最终的改动一致
 - 创建 PR 时及时添加 Labels（如果有对应 Development 则添加对应 Development）；PR 关闭关联 Issues 时，在 PR 描述或 commit message 里用 `closed` `fixed` `resolved` 关键词（这几个关键词用英文）
 - 对于需要多个依赖 PR 的开发任务，请使用 `gh stack`
 
@@ -164,7 +164,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - main 已经比发布版高一个版本（升过、还没发布）时，改动并入这个版本，不再提醒升版本，只把改动记进 Wiki「命令-API」[#版本](https://github.com/334456777/WeFlow/wiki/命令-API#版本) 中当前版本的条目；两者相同时才提出要升
 
 ### Issue 与看板
-- GitHub Issues 根据 Labels 分类，筛选和表达状态，根据 Relationships 梳理 Issue 依赖关系（Issue dependencies），创建 Issue 时及时添加 Labels 和 Relationships （如果有对应的 Development 则添加对应 Development）
+- GitHub Issues 根据 Labels 分类，筛选和表达状态，根据 Relationships 梳理 Issue 依赖关系（Issue dependencies），创建 Issue 时及时添加 Labels 和 Relationships （如果有对应的 Development 则添加对应 Development）；标题和正文随需求的变化更新，关闭前核对一遍，准确描述这个 Issue
 - GitHub Issues 会有人类和其他大语言模型（LLM）参与讨论，以下情况记录到本仓库的 GitHub Issues:
   - 被列为计划内的工作
   - 需要多轮确认的bug

@@ -49,7 +49,7 @@ description: WeFlow 一次改动从开分支到合并、清理的步骤：建 wo
 ## 合并（维护者同意后）
 
 - 默认不合并，也不开自动合并：检查跑完后把结果报给维护者，由维护者决定。
-- 维护者同意合并某个 PR 后才合并：检查已经通过就 `gh pr merge <n> --merge`；还在进行就开启自动合并 `gh pr merge <n> --auto --merge`，检查通过后由 GitHub 合并（PR 已经是 `CLEAN` 状态时 `--auto` 会立即合并）。开了自动合并后推送修复不会取消它。
+- 维护者同意合并某个 PR 后才合并，合并前核对标题和正文与最终的改动一致：检查已经通过就 `gh pr merge <n> --merge`；还在进行就开启自动合并 `gh pr merge <n> --auto --merge`，检查通过后由 GitHub 合并（PR 已经是 `CLEAN` 状态时 `--auto` 会立即合并）。开了自动合并后推送修复不会取消它。
 - 同意以一个 PR 为单位：只对维护者点名的那个 PR 有效，不延伸到之后的 PR、同一批的其他 PR 或叠层 PR 的其他层。
 - 例外是修 bug 的智能体的 PR，按 [`.claude/loop.md`](../../../.claude/loop.md) 的「要求」合并：它从 `bug` 标签的 issue 修的直接开自动合并；别的智能体委托它修的，由委托方决定合不合并，委托时可以说明，也可以等它附上修复结果来问。
 - 合并的条件见 Wiki [发布与 CI#合并的条件](https://github.com/334456777/WeFlow/wiki/发布与-CI#合并的条件)。不绕过 ruleset：不用 `--admin`，不直接推送 `main`。
