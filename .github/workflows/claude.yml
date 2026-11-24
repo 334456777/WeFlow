@@ -43,3 +43,5 @@ jobs:
           anthropic_organization_id: 00abe4ae-1b8f-4b20-8ab2-5946465ffe93
           anthropic_service_account_id: svac_018bofy5DpvXgSb8qRUy2RjW
           anthropic_workspace_id: wrkspc_011ii9ALAWEiSCdyioVNUTkM
+          # the alias follows the latest Opus; effort is the model's default
+          claude_args: --model opus
