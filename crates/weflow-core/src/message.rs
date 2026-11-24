@@ -267,13 +267,6 @@ pub fn parse_message_content_in(
     }
     let normalized = x.once();
     let xml_type = x.app_type_twice();
-    let with_title = |prefix: &str, title: &str| {
-        if title.is_empty() {
-            prefix.to_string()
-        } else {
-            format!("{prefix} {title}")
-        }
-    };
     match local_type {
         1 => Some(strip_sender_line(content, sender_wxid)),
         3 => Some("[图片]".into()),
@@ -282,49 +275,6 @@ pub fn parse_message_content_in(
         43 => Some("[视频]".into()),
         47 => Some(format_emoji_semantic_text(emoji_caption)),
         48 => Some(location_text(content)),
-        49 => {
-            let title = extract_xml_value(normalized, "title");
-            let ty = xml_type;
-            let song = extract_xml_value(normalized, "songname");
-            if ty == "2000" {
-                let feedesc = extract_xml_value(normalized, "feedesc");
-                let memo = extract_xml_value(normalized, "pay_memo");
-                let prefix = get_transfer_prefix(normalized, my_wxid, sender_wxid);
-                if !feedesc.is_empty() {
-                    return Some(if memo.is_empty() {
-                        format!("{prefix} {feedesc}")
-                    } else {
-                        format!("{prefix} {feedesc} {memo}")
-                    });
-                }
-                return Some(prefix.to_string());
-            }
-            Some(match ty {
-                "8" => "[表情]".into(),
-                "24" => note_text(normalized, &title),
-                "3" | "76" => {
-                    if !song.is_empty() {
-                        with_title("[音乐]", &song)
-                    } else {
-                        with_title("[音乐]", &title)
-                    }
-                }
-                "6" => with_title("[文件]", &title),
-                "19" => format_forward_chat_record_content(normalized),
-                "33" | "36" => with_title("[小程序]", &title),
-                "57" => match x.quoted_display() {
-                    Some(d) => build_quoted_reply_text(d),
-                    None => {
-                        if title.is_empty() {
-                            "[引用消息]".into()
-                        } else {
-                            title
-                        }
-                    }
-                },
-                _ => with_title("[链接]", &title),
-            })
-        }
         50 => Some(parse_voip_message(content)),
         10000 | 266287972401 => Some(clean_system_message(content)),
         244813135921 => match x.quoted_display() {
@@ -338,64 +288,24 @@ pub fn parse_message_content_in(
                 })
             }
         },
+        // an app message, whether `local_type` keeps its `<type>` in the high bits (`(<type> << 32) | 49`, as
+        // WeChat 4 does) or not: the same text either way (#1180)
+        l if l & 0xFFFF_FFFF == 49 => Some(
+            app_message_text(x, my_wxid, sender_wxid).unwrap_or_else(|| {
+                let title = extract_xml_value(normalized, "title");
+                if title.is_empty() {
+                    "[消息]".into()
+                } else {
+                    title
+                }
+            }),
+        ),
         _ => {
             if !xml_type.is_empty() {
-                let title = extract_xml_value(content, "title");
-                match xml_type {
-                    "8" => return Some("[表情]".into()),
-                    "24" => return Some(note_text(normalized, &title)),
-                    "87" => {
-                        let t = extract_xml_value(content, "textannouncement");
-                        return Some(if t.is_empty() {
-                            "[群公告]".into()
-                        } else {
-                            format!("[群公告] {t}")
-                        });
-                    }
-                    "2000" => {
-                        let feedesc = extract_xml_value(content, "feedesc");
-                        let memo = extract_xml_value(content, "pay_memo");
-                        let prefix = get_transfer_prefix(content, my_wxid, sender_wxid);
-                        if !feedesc.is_empty() {
-                            return Some(if memo.is_empty() {
-                                format!("{prefix} {feedesc}")
-                            } else {
-                                format!("{prefix} {feedesc} {memo}")
-                            });
-                        }
-                        return Some(prefix.to_string());
-                    }
-                    "3" | "76" => return Some(with_title("[音乐]", &title)),
-                    "6" => return Some(with_title("[文件]", &title)),
-                    "19" => return Some(format_forward_chat_record_content(normalized)),
-                    "33" | "36" => return Some(with_title("[小程序]", &title)),
-                    "57" => {
-                        return Some(match x.quoted_display() {
-                            Some(d) => build_quoted_reply_text(d),
-                            None => {
-                                if title.is_empty() {
-                                    "[引用消息]".into()
-                                } else {
-                                    title
-                                }
-                            }
-                        })
-                    }
-                    "53" => {
-                        if title.is_empty() {
-                            return Some("[接龙]".into());
-                        }
-                        let first = title
-                            .lines()
-                            .map(|l| l.trim())
-                            .find(|l| !l.is_empty())
-                            .unwrap_or(&title)
-                            .to_string();
-                        return Some(format!("[接龙] {first}"));
-                    }
-                    "5" | "49" => return Some(with_title("[链接]", &title)),
-                    _ => {}
+                if let Some(text) = app_message_text(x, my_wxid, sender_wxid) {
+                    return Some(text);
                 }
+                let title = extract_xml_value(content, "title");
                 if !title.is_empty() {
                     return Some(title);
                 }
@@ -408,6 +318,59 @@ pub fn parse_message_content_in(
             }
         }
     }
+}
+
+/// The text of an app message by its own `<type>`, with the tag of its row of
+/// [`appmsg::app_type`](crate::message::appmsg::app_type); `None` for a type not in the table.
+fn app_message_text(
+    x: &MsgXml<'_>,
+    my_wxid: Option<&str>,
+    sender_wxid: Option<&str>,
+) -> Option<String> {
+    let normalized = x.once();
+    let ty = x.app_type_twice();
+    let row = appmsg::app_type(ty)?;
+    let title = extract_xml_value(normalized, "title");
+    let with_title = |title: &str| {
+        if title.is_empty() {
+            row.tag.to_string()
+        } else {
+            format!("{} {title}", row.tag)
+        }
+    };
+    Some(match ty {
+        "2000" => {
+            let feedesc = extract_xml_value(normalized, "feedesc");
+            let memo = extract_xml_value(normalized, "pay_memo");
+            let prefix = get_transfer_prefix(normalized, my_wxid, sender_wxid);
+            match (feedesc.is_empty(), memo.is_empty()) {
+                (true, _) => prefix.to_string(),
+                (false, true) => format!("{prefix} {feedesc}"),
+                (false, false) => format!("{prefix} {feedesc} {memo}"),
+            }
+        }
+        "8" => row.tag.into(),
+        "24" => note_text(normalized, &title),
+        "87" => with_title(&extract_xml_value(normalized, "textannouncement")),
+        "3" | "76" => {
+            let song = extract_xml_value(normalized, "songname");
+            with_title(if song.is_empty() { &title } else { &song })
+        }
+        "19" => format_forward_chat_record_content(normalized),
+        "57" => match x.quoted_display() {
+            Some(d) => build_quoted_reply_text(d),
+            None if title.is_empty() => row.tag.into(),
+            None => title,
+        },
+        "53" => with_title(
+            title
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or(&title),
+        ),
+        _ => with_title(&title),
+    })
 }
 
 /// The text of a message for TXT / Excel / HTML.

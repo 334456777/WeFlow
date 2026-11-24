@@ -39,25 +39,54 @@ struct AppMessageClass {
     kind: Option<&'static str>,
 }
 
+/// What an app message's own `<type>` makes it: one row of the one table that the chat window, the exports, the
+/// text of both, the exports' type names and ChatLab read (#1165, #1180).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AppType {
+    /// Its `appMsgKind`; `None` for a type with no kind of its own (a sticker, a note), whose kind
+    /// [`kind_by_keywords`] guesses, as for a type not in the table.
+    pub(crate) kind: Option<&'static str>,
+    /// The tag the text of such a message starts with.
+    pub(crate) tag: &'static str,
+    /// The name of its type in the exports (json, excel, sql).
+    pub(crate) name: &'static str,
+    /// Its ChatLab type.
+    pub(crate) chatlab: i64,
+}
+
+/// The row of `xml_type` (an app message's own `<type>`), or `None` for a type the table does not know.
+pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
+    let row = |kind, tag, name, chatlab| AppType {
+        kind,
+        tag,
+        name,
+        chatlab,
+    };
+    Some(match xml_type {
+        // 76 is the newer music share, with the same fields as 3 (#1167)
+        "3" | "76" => row(Some("music"), "[音乐]", "音乐消息", 7),
+        // 4 is a video's link
+        "4" | "5" | "49" => row(Some("link"), "[链接]", "链接消息", 7),
+        "6" => row(Some("file"), "[文件]", "文件消息", 4),
+        "8" => row(None, "[表情]", "动画表情", 7),
+        "19" => row(Some("chat-record"), "[聊天记录]", "聊天记录", 7),
+        "24" => row(None, "[笔记]", "笔记", 7),
+        "33" | "36" => row(Some("miniapp"), "[小程序]", "小程序消息", 24),
+        "51" => row(Some("finder"), "[视频号]", "视频号消息", 7),
+        "53" => row(Some("solitaire"), "[接龙]", "接龙", 7),
+        "57" => row(Some("quote"), "[引用消息]", "引用消息", 25),
+        "87" => row(Some("announcement"), "[群公告]", "群公告", 7),
+        "2000" => row(Some("transfer"), "[转账]", "转账消息", 99),
+        "2001" => row(Some("red-packet"), "[红包]", "红包消息", 7),
+        _ => return None,
+    })
+}
+
 /// The kind an app message's own `<type>` gives it (`finder`, `music`, `quote`, …), the same for the chat window,
 /// the exports and the text of both (#1165); `None` for a type that does not say, whose kind
 /// [`kind_by_keywords`] guesses.
 pub(crate) fn kind_of_app_type(xml_type: &str) -> Option<&'static str> {
-    Some(match xml_type {
-        "51" => "finder",
-        "2001" => "red-packet",
-        // 76 is the newer music share, with the same fields as 3 (#1167)
-        "3" | "76" => "music",
-        "33" | "36" => "miniapp",
-        "6" => "file",
-        "19" => "chat-record",
-        "2000" => "transfer",
-        "87" => "announcement",
-        "57" => "quote",
-        "53" => "solitaire",
-        "5" | "49" => "link",
-        _ => return None,
-    })
+    app_type(xml_type).and_then(|row| row.kind)
 }
 
 /// An app message's XML without the messages it quotes: a reply's `<refermsg>` holds the quoted message's XML, whose

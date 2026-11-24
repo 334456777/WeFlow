@@ -1,5 +1,6 @@
 //! Message types: WeChat's `local_type` to the export's type numbers and names.
 
+use super::appmsg::app_type;
 use super::xml::{extract_app_message_type, normalize_app_message_content, MsgXml};
 
 /// The export's type code of a message: its local type, or for an app message the kind its [`MsgXml`] names.
@@ -16,20 +17,8 @@ pub fn convert_message_type_in(local_type: i64, x: &MsgXml<'_>) -> i64 {
     // (the TypeScript exporter has the same check).
     let looks_app = local_type == 49 || normalized.contains("<appmsg");
     if looks_app || xml_type.is_some_and(|t| t != 0) {
-        let sub = xml_type.unwrap_or(0);
-        match sub {
-            6 => return 4,
-            19 => return 7,
-            33 | 36 => return 24,
-            57 => return 25,
-            2000 => return 99,
-            5 | 49 => return 7,
-            _ => {
-                if xml_type.is_some_and(|t| t != 0) || looks_app {
-                    return 7;
-                }
-            }
-        }
+        // the row of the app message types (#1180); any other app message is a link
+        return app_type(xml_type_raw).map_or(7, |row| row.chatlab);
     }
     match local_type {
         1 => 0,
@@ -53,16 +42,9 @@ pub fn message_type_name_in(local_type: i64, x: &MsgXml<'_>) -> &'static str {
             if x.readable_system_twice(local_type) {
                 return "系统消息";
             }
-            match x.app_type_twice() {
-                "3" | "76" => return "音乐消息",
-                "87" => return "群公告",
-                "2000" => return "转账消息",
-                "5" => return "链接消息",
-                "6" => return "文件消息",
-                "19" => return "聊天记录",
-                "33" | "36" => return "小程序消息",
-                "57" => return "引用消息",
-                _ => {}
+            // the row of the app message types, whatever `local_type` keeps (#1180)
+            if let Some(row) = app_type(x.app_type_twice()) {
+                return row.name;
             }
         }
     }
