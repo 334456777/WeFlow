@@ -30,7 +30,7 @@ description: 在 WeFlow 仓库建 issue、写 issue 与 PR 的正文和评论、
 
 ## 关闭
 
-- 关之前读代码确认：评论里写的「已实现」要指到真正起作用的那段代码。
+- 关之前核对：评论里写的「已实现」要指到真正起作用的那段代码（读代码确认），标题和正文与最终做完的工作一致。
 - 父 issue 按它自己正文的要求判断，做完就关（`gh issue close <n> --reason completed`），评论写做完了什么、哪些子 issue 继续单独跟踪；不因下面还开着长期的子 issue 而留着它。
 - 以 not planned 关闭的 issue，看板设为 `Not Planned`，不设 `Done`。
 
