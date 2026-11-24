@@ -569,13 +569,13 @@ impl Hook {
                 libc::PT_WRITE_I,
                 self.pid,
                 self.target as *mut libc::c_char,
-                BREAKPOINT as libc::c_int,
+                BREAKPOINT.cast_signed(),
             )
             && !ptrace(
                 libc::PT_WRITE_D,
                 self.pid,
                 self.target as *mut libc::c_char,
-                BREAKPOINT as libc::c_int,
+                BREAKPOINT.cast_signed(),
             )
         {
             return Err(format!(
@@ -593,13 +593,13 @@ impl Hook {
                 libc::PT_WRITE_I,
                 self.pid,
                 self.target as *mut libc::c_char,
-                self.original as libc::c_int,
+                self.original.cast_signed(),
             )
             || ptrace(
                 libc::PT_WRITE_D,
                 self.pid,
                 self.target as *mut libc::c_char,
-                self.original as libc::c_int,
+                self.original.cast_signed(),
             );
         self.patched = !restored;
         if restored {
