@@ -54,6 +54,8 @@ const place = (from: string, locationPoiname: string, locationLabel: string, gap
 });
 const phone = (from: string, text: string, gap = 1): Draft => ({ from, gap, localType: 50, text });
 const notice = (text: string, gap = 1): Draft => ({ from: '', gap, localType: 10000, text });
+/** A pat, an app message of type 62 the server names a card; the chat window draws it as a system line (#1200). */
+const pat = (from: string, text: string, gap = 1): Draft => ({ from, gap, localType: app(62), text, extra: { appMsgKind: 'card' } });
 
 /** A conversation: from `start`, each message `gap` minutes after the one before; a number sets the time again. */
 function thread(session: string, items: (Draft | number)[]): Message[] {
@@ -110,6 +112,7 @@ export const threads = new Map<string, Message[]>([
     notice('"阿远"邀请"宋小满"加入了群聊'),
     say(SONG, '大家好，我主要用 Linux 版微信，可以帮忙测 Linux 这边', 2),
     say(ME, '欢迎！正缺人测 Linux'),
+    pat(SONG, '"宋小满" 拍了拍 "阿远"', 0),
     say(XU, '6.0 的发版清单我列在 issue 里了，大家认领一下', 6),
     link(XU, '6.0 发版清单', '网页界面改版、导出格式补全、macOS 图片密钥、断开后保留记录', REPO + '/issues', 0),
     say(CHEN, 'weflow-native 那部分我来，WAL 解析的 Kani 证明昨晚跑完了', 3),

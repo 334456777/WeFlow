@@ -18,6 +18,10 @@ describe('kindOf', () => {
     ].map(kindOf)).toEqual(['quote', 'file', 'link', 'link', 'finder', 'record', 'money', 'money', 'link', 'text']);
   });
 
+  it('draws a pat as a system line, not a card (#1200)', () => {
+    expect(kindOf(app(62, 'card', { parsedContent: '"A" 拍了拍 "B"' }))).toBe('system');
+  });
+
   it('labels app cards by their source', () => {
     expect(appLabel(app(5, 'official-link', { appMsgSourceName: '设计观察' }))).toBe('设计观察');
     expect(appLabel(app(33, 'miniapp'))).toBe('小程序');
