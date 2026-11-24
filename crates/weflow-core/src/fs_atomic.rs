@@ -1,5 +1,7 @@
-//! Writing files through a temporary file renamed into place, so no reader ever sees one half written.
+//! Writing files through a temporary file renamed into place, so no reader ever sees one half written, and locking
+//! them while they are read, changed and written back.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// A temporary name next to `path`, unique in this process.
@@ -31,6 +33,61 @@ pub(crate) fn copy_atomically(from: &Path, path: &Path) -> std::io::Result<()> {
         let _ = std::fs::remove_file(&tmp);
     }
     copied
+}
+
+/// [`write_atomically`] for a file only its owner may read (#812): the new file is made as
+/// [`crate::private_files::open_options`] makes one, whatever the mode of the file it replaces, and reaches the disk
+/// before it replaces it.
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = temporary_sibling(path);
+    let written = (|| {
+        let mut file = crate::private_files::open_options()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        rename_replacing(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written
+}
+
+/// `fs::rename` over an existing file. On Windows the replace can fail for a moment while another process (a reader,
+/// an antivirus scan) has the old file open, so it is retried briefly there.
+pub(crate) fn rename_replacing(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut attempts = 0;
+    loop {
+        match std::fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(err)
+                if cfg!(windows)
+                    && err.kind() == std::io::ErrorKind::PermissionDenied
+                    && attempts < 20 =>
+            {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+/// An exclusive lock on `<path>.lock`, waited for, so that processes and threads reading `path`, changing it and
+/// writing it back take turns; released when the file returned is dropped. The folder of `path` must be there.
+pub(crate) fn lock_beside(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".lock");
+    let file = crate::private_files::open_options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(PathBuf::from(name))?;
+    file.lock()?;
+    Ok(file)
 }
 
 #[cfg(test)]
