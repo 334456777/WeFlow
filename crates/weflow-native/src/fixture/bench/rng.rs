@@ -1,5 +1,12 @@
 //! Random numbers: the account's own generator and weighted draws.
 
+/// The shortest and the longest run of hex digits in [`Rng::filler`]: a real account's runs of 32 digits and more are
+/// shorter than 256 but for a few (#1194).
+const FILLER_RUNS: (i64, i64) = (32, 200);
+/// What cuts the runs of [`Rng::filler`], as in WeChat's CDN URLs; none needs escaping in XML, so a filler cut
+/// anywhere is still well-formed.
+const FILLER_SEPARATORS: &[&str] = &["/", "_", "-", "?m=", "=", "."];
+
 /// SplitMix64: small, fast, and fixed for good, where a library's generator may change its stream in a new version.
 #[derive(Clone)]
 pub(super) struct Rng(u64);
@@ -73,19 +80,34 @@ impl Rng {
         out
     }
 
-    /// `n` hex digits as XML carries them in URLs and keys: random runs, some of them repeated (the same key or
-    /// parameter twice), which compresses about as well as WeChat's does.
+    /// `n` bytes of the hex XML carries in URLs and keys: random runs, some of them repeated (the same key or
+    /// parameter twice), which compresses about as well as WeChat's does, and cut by a URL's separators every
+    /// [`FILLER_RUNS`] digits, as a real message spreads its length over several keys and parameters (#1194).
     pub(super) fn filler(&mut self, n: usize) -> String {
         let mut out = String::with_capacity(n);
+        let mut digits = 0;
+        let mut run_max = self.between(FILLER_RUNS.0, FILLER_RUNS.1 + 1);
         while out.len() < n {
             let run = (16 + self.below(48)).min(n - out.len());
-            if out.len() >= 64 && self.chance(0.45) {
+            let piece = if out.len() >= 64 && self.chance(0.45) {
                 let from = self.below(out.len() - run.min(out.len()));
-                let copy = out[from..from + run.min(out.len() - from)].to_string();
-                out.push_str(&copy);
+                out[from..from + run.min(out.len() - from)].to_string()
             } else {
-                let hex = self.hex(run);
-                out.push_str(&hex);
+                self.hex(run)
+            };
+            for c in piece.chars() {
+                if !c.is_ascii_hexdigit() {
+                    // a separator copied along with an earlier part
+                    digits = 0;
+                } else if digits == run_max {
+                    out.push_str(self.pick(FILLER_SEPARATORS));
+                    digits = 0;
+                    run_max = self.between(FILLER_RUNS.0, FILLER_RUNS.1 + 1);
+                }
+                if c.is_ascii_hexdigit() {
+                    digits += 1;
+                }
+                out.push(c);
             }
         }
         out.truncate(n);
@@ -131,4 +153,31 @@ pub(super) fn draw_range<T: Copy + Into<f64>>(rng: &mut Rng, ranges: &[(T, T, f6
     let (from, to, _) = ranges[Weighted::new(ranges.iter().map(|r| r.2)).draw(rng)];
     let (from, to): (f64, f64) = (from.into().max(1.0), to.into());
     (from.ln() + rng.unit() * (to.ln() - from.ln())).exp()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_filler_has_the_length_asked_and_no_run_of_hex_longer_than_a_url_holds() {
+        let mut rng = Rng::new(7);
+        for n in [0, 1, 31, 200, 5_000, 50_000] {
+            let fill = rng.filler(n);
+            assert_eq!(fill.len(), n);
+            let longest = fill
+                .split(|c: char| !c.is_ascii_hexdigit())
+                .map(str::len)
+                .max()
+                .unwrap_or(0);
+            assert!(
+                longest <= FILLER_RUNS.1 as usize,
+                "a run of {longest} in {n}"
+            );
+            if n >= 5_000 {
+                assert!(fill.chars().any(|c| !c.is_ascii_hexdigit()));
+            }
+        }
+        assert_eq!(Rng::new(3).filler(4_000), Rng::new(3).filler(4_000));
+    }
 }
