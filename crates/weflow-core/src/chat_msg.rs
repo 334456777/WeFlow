@@ -13,7 +13,7 @@ use weflow_native::msg_row::MsgRow;
 use weflow_native::quote::{reply_text, QUOTE};
 
 use crate::api::js_parse_int;
-use crate::message::appmsg::{kind_by_keywords, kind_of_app_type, without_quoted};
+use crate::message::appmsg::{app_type, kind_by_keywords, kind_of_app_type, without_quoted};
 use crate::message::emoji::percent_decode;
 use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message};
@@ -216,14 +216,15 @@ fn parse_type49(content: &str) -> String {
             format!("[音乐] {title}")
         };
     }
+    // the tag of the type, from the table the exports' text reads too (#1180)
+    let row = app_type(&ty);
+    if ty == "8" {
+        return row.map_or("[表情]", |row| row.tag).into();
+    }
     if !title.is_empty() {
-        return match ty.as_str() {
-            "5" | "49" => format!("[链接] {title}"),
-            "6" => format!("[文件] {title}"),
-            "19" => format!("[聊天记录] {title}"),
-            "33" | "36" => format!("[小程序] {title}"),
-            "57" => title,
-            "53" => {
+        return match (ty.as_str(), row) {
+            ("57", _) => title,
+            ("53", _) => {
                 let first = title
                     .split('\n')
                     .map(|l| l.trim())
@@ -232,24 +233,11 @@ fn parse_type49(content: &str) -> String {
                     .to_string();
                 format!("[接龙] {first}")
             }
-            "2000" => format!("[转账] {title}"),
-            "2001" => format!("[红包] {title}"),
-            _ => title,
+            (_, Some(row)) => format!("{} {title}", row.tag),
+            (_, None) => title,
         };
     }
-    match ty.as_str() {
-        "6" => "[文件]",
-        "19" => "[聊天记录]",
-        "33" | "36" => "[小程序]",
-        "2000" => "[转账]",
-        "2001" => "[红包]",
-        "3" | "76" => "[音乐]",
-        "5" | "49" => "[链接]",
-        "87" => "[群公告]",
-        "53" => "[接龙]",
-        _ => "[消息]",
-    }
-    .into()
+    row.map_or("[消息]", |row| row.tag).into()
 }
 
 /// The line the chat window shows for any message
@@ -289,6 +277,8 @@ fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> Strin
         50 => parse_voip_message(&content),
         10000 => system_message_text(&content),
         266287972401 => clean_pat_message(&content),
+        // an app message kept as `(<type> << 32) | 49` reads as one kept as 49 (#1180)
+        l if l & 0xFFFF_FFFF == 49 && looks_app => parse_type49(&content),
         81604378673 => "[聊天记录]".into(),
         8594229559345 => "[红包]".into(),
         8589934592049 => "[转账]".into(),
@@ -563,12 +553,15 @@ fn parse_type49_message(content: &str) -> Type49Info {
         "quote"
     } else if let Some(kind) = typed.filter(|k| *k != "link") {
         kind
-    } else if typed == Some("link")
+    } else if matches!(xml_type.as_str(), "5" | "49")
         && (source_username.starts_with("gh_")
             || app_name.contains("公众号")
             || !source_name.is_empty())
     {
         "official-link"
+    } else if typed.is_none() && app_type(&xml_type).is_some() {
+        // a type the table knows but gives no kind (a sticker, a note) is a card, as in the exports (#1180)
+        "card"
     } else if !url.is_empty() {
         "link"
     } else {
@@ -1400,6 +1393,71 @@ mod tests {
         }
     }
 
+    /// Every type of the table, kept as `local_type` 49 or as `(<type> << 32) | 49`, has one tag, one kind, one type
+    /// name and one ChatLab type, wherever it is read: the chat window's text and the exports' agree, and so do
+    /// both kinds (#1180).
+    #[test]
+    fn an_app_type_reads_the_same_everywhere() {
+        let types = [
+            "3", "76", "4", "5", "49", "6", "8", "19", "24", "33", "36", "51", "53", "57", "87",
+            "2000", "2001",
+        ];
+        for ty in types {
+            let row = app_type(ty).unwrap();
+            let xml = format!(
+                "<msg><appmsg><title>T</title><type>{ty}</type><url>https://a</url></appmsg></msg>"
+            );
+            let kept_as: i64 = (ty.parse::<i64>().unwrap() << 32) | 49;
+            for local_type in [49, kept_as] {
+                let at = format!("<type> {ty} as {local_type}");
+                let chat = parsed_content(&xml, local_type, None);
+                let export =
+                    crate::message::parse_message_content(&xml, local_type, None, None, None)
+                        .unwrap();
+                match ty {
+                    // a transfer's direction, a forwarded record's items and a note's body are the exports' own
+                    "2000" | "19" => {}
+                    "24" => {
+                        assert!(
+                            chat.starts_with(row.tag) && export.starts_with(row.tag),
+                            "{at}: {chat} / {export}"
+                        );
+                    }
+                    "57" => assert_eq!((chat.as_str(), export.as_str()), ("T", "T"), "{at}"),
+                    "8" | "87" => {
+                        assert_eq!((chat.as_str(), export.as_str()), (row.tag, row.tag), "{at}");
+                    }
+                    _ => {
+                        let tagged = format!("{} T", row.tag);
+                        assert_eq!(
+                            (chat.as_str(), export.as_str()),
+                            (tagged.as_str(), tagged.as_str()),
+                            "{at}"
+                        );
+                    }
+                }
+                let arkme = crate::message::appmsg::app_message_kind(&xml, local_type);
+                assert_eq!(arkme, Some(row.kind.unwrap_or("card")), "{at}");
+                assert_eq!(
+                    parse_type49_message(&xml).app_msg_kind.as_deref(),
+                    arkme,
+                    "{at}"
+                );
+                let x = crate::message::xml::MsgXml::new(&xml);
+                assert_eq!(
+                    crate::message::kind::message_type_name_in(local_type, &x),
+                    row.name,
+                    "{at}"
+                );
+                assert_eq!(
+                    crate::message::kind::convert_message_type_in(local_type, &x),
+                    row.chatlab,
+                    "{at}"
+                );
+            }
+        }
+    }
+
     /// Whatever a reply quotes, and whatever the type of an app message, its kind is the one of its `<type>`, the same
     /// for the chat window and the exports (#1165): every type of the table, against every kind of quoted message.
     #[test]
@@ -1413,7 +1471,8 @@ mod tests {
             "抢 hongbao 的 <dataurl></dataurl> 文字",
         ];
         for ty in [
-            "51", "2001", "3", "76", "33", "36", "6", "19", "2000", "87", "57", "53", "5", "49",
+            "51", "2001", "3", "76", "33", "36", "6", "19", "2000", "87", "57", "53", "4", "5",
+            "49",
         ] {
             let by_type = kind_of_app_type(ty).unwrap();
             for q in quoted {
