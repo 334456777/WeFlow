@@ -84,8 +84,7 @@ fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic:
             let mut next_scan = std::time::Instant::now() + std::time::Duration::from_secs(3 * 60);
             while !stop.load(Ordering::Relaxed) {
                 if hub.insight_enabled() {
-                    let notify =
-                        hub.config_value("ai_insight_notification_enabled") != Value::Bool(false);
+                    let notify = hub.insight_notifies();
                     let mut emit = |r: &weflow_core::insight::InsightRecord| {
                         if notify {
                             print_insight(r);
@@ -93,14 +92,7 @@ fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic:
                     };
                     if std::time::Instant::now() >= next_scan {
                         hub.insight_silence_scan(&mut emit).await;
-                        let hours = hub
-                            .config_value("ai_insight_scan_interval_hours")
-                            .as_f64()
-                            .filter(|h| *h != 0.0)
-                            .unwrap_or(4.0)
-                            .max(0.1);
-                        next_scan = std::time::Instant::now()
-                            + std::time::Duration::from_secs_f64(hours * 3600.0);
+                        next_scan = std::time::Instant::now() + hub.insight_scan_interval();
                     }
                     hub.insight_analyze_activity(&mut emit).await;
                 }

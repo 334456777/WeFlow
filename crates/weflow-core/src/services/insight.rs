@@ -139,6 +139,17 @@ fn start_of_day() -> i64 {
         .unwrap_or(0)
 }
 
+/// The time between two silence scans for the setting `hours`: 4 hours when it is not a number above 0, and at
+/// least 0.1 hours. `config set` takes 0.1 to 168 (#1149); a file written by hand may hold anything else.
+fn scan_interval(hours: &Value) -> Duration {
+    const DEFAULT: Duration = Duration::from_secs(4 * 3600);
+    let hours = hours
+        .as_f64()
+        .filter(|h| *h > 0.0)
+        .map_or(4.0, |h| h.max(0.1));
+    Duration::try_from_secs_f64(hours * 3600.0).unwrap_or(DEFAULT)
+}
+
 fn cfg_str(cfg: &ConfigStore, profile: &str, key: &str) -> String {
     match cfg.get_key(Some(profile), key) {
         Value::String(s) => s.trim().to_string(),
@@ -172,6 +183,25 @@ impl ServiceHub {
         self.insight_cfg()
             .get_key(Some(&self.profile_name), "ai_insight_enabled")
             == Value::Bool(true)
+    }
+
+    /// Whether `serve --insight` prints the insights it writes (`ai_insight_notification_enabled`, on unless it is
+    /// `false`), read from the config file each time like the other insight settings, so a change made while `serve`
+    /// runs counts from its next round.
+    pub fn insight_notifies(&self) -> bool {
+        self.insight_cfg()
+            .get_key(Some(&self.profile_name), "ai_insight_notification_enabled")
+            != Value::Bool(false)
+    }
+
+    /// The time between two silence scans of `serve --insight` (`ai_insight_scan_interval_hours`, 4 hours unless it
+    /// is a number above 0, and at least 0.1 hours), read from the config file each time.
+    pub fn insight_scan_interval(&self) -> Duration {
+        scan_interval(
+            &self
+                .insight_cfg()
+                .get_key(Some(&self.profile_name), "ai_insight_scan_interval_hours"),
+        )
     }
 
     /// Whether the recent messages go to the model with the question (`ai_insight_allow_context`, off by default).
@@ -1004,7 +1034,9 @@ impl ServiceHub {
             .get_key(Some(&self.profile_name), "ai_insight_silence_days")
             .as_f64()
             .unwrap_or(0.0);
-        let days = if days_raw != 0.0 { days_raw } else { 3.0 };
+        // `config set` takes 1 to 365 (#1149); 0 or less in a file written by hand would make every conversation
+        // silent
+        let days = if days_raw > 0.0 { days_raw } else { 3.0 };
         let threshold_ms = days * 86_400_000.0;
         let now = ins::now_millis() as f64;
         let sessions = self.insight_sessions(true);
@@ -1212,6 +1244,25 @@ mod tests {
         assert!(model_api_missing(&api("", "k", "m")).is_none());
         // a service of one's own may take no key
         assert!(model_api_missing(&api("http://127.0.0.1:11434/v1", "", "m")).is_none());
+    }
+
+    /// The scan interval of a file written by hand: a number above 0, at least 0.1 hours; anything else, or a number
+    /// too large for a time, is the default 4 hours (#1149).
+    #[test]
+    fn the_scan_interval_is_a_number_above_0() {
+        let hours = |h: f64| Duration::from_secs_f64(h * 3600.0);
+        for (set, interval) in [
+            (json!(1), hours(1.0)),
+            (json!(0.5), hours(0.5)),
+            (json!(0.01), hours(0.1)),
+            (json!(0), hours(4.0)),
+            (json!(-1), hours(4.0)),
+            (json!("2"), hours(4.0)),
+            (Value::Null, hours(4.0)),
+            (json!(1e300), hours(4.0)),
+        ] {
+            assert_eq!(scan_interval(&set), interval, "{set}");
+        }
     }
 
     #[test]

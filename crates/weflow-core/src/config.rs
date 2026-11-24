@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
 
+mod extra_keys;
 mod legacy_keys;
 pub use legacy_keys::refuse_renamed;
 
@@ -347,13 +348,13 @@ impl ConfigStore {
         })
     }
 
-    /// Gives the values of a profile that `set_key` checks (`no_progress`, `progress_delay_seconds`) the form it
-    /// keeps them in (#1042), for a file written before it did: `no_progress` as `1` or `yes` is `true`. A value the
+    /// Gives the values of a profile that `set_key` checks in its `extra` ([`extra_keys::KEYS`]) the form it keeps
+    /// them in (#1042, #1149), for a file written before it did: `no_progress` as `1` or `yes` is `true`. A value the
     /// key does not take stays as it is.
     fn settle_checked_values(&mut self) {
         let names: Vec<String> = self.profiles.keys().cloned().collect();
         for name in names {
-            for key in CHECKED_EXTRA_KEYS {
+            for (key, _) in extra_keys::KEYS {
                 let Some(value) = self
                     .profiles
                     .get(&name)
@@ -585,15 +586,11 @@ impl ConfigStore {
                 target.ai_model_api_max_tokens = Some(as_int_in(value, &key, 1, u32::MAX)?);
             }
             "ai_insight_enabled" => target.ai_insight_enabled = Some(as_bool(value, &key)?),
-            "no_progress" => {
-                let off = as_bool(value, &key)?;
-                target.extra.insert(key, Value::Bool(off));
-            }
-            "progress_delay_seconds" => {
-                let seconds = as_seconds(value, &key)?;
-                target.extra.insert(key, json!(seconds));
-            }
             other => {
+                let value = match extra_keys::kind_of(other) {
+                    Some(kind) => kind.settle(value, other)?,
+                    None => value,
+                };
                 target.extra.insert(other.to_string(), value);
             }
         }
@@ -972,27 +969,17 @@ fn holds_text(key: &str) -> bool {
             | "lang"
             | "current_profile"
             | "serve_host"
-    )
+    ) || extra_keys::holds_text(key)
 }
 
 /// The keys of the file's own settings and of `serve`'s, besides the profiles' keys.
 const FILE_KEYS: &[&str] = &["lang", "current_profile"];
 
-/// The keys of a profile WeFlow reads beside its fields, kept in `extra`.
-const EXTRA_KEYS: &[&str] = &[
-    "auto_download_whitelist",
-    "no_progress",
-    "progress_delay_seconds",
-];
-
-/// The keys of `EXTRA_KEYS` that `set_key` checks and keeps as one type: a switch, a number of seconds.
-const CHECKED_EXTRA_KEYS: &[&str] = &["no_progress", "progress_delay_seconds"];
-
 /// Whether `key` (without a profile) is one `config set --help` lists.
 fn is_known_key(key: &str) -> bool {
     is_profile_key(key)
         || FILE_KEYS.contains(&key)
-        || EXTRA_KEYS.contains(&key)
+        || extra_keys::is_extra_key(key)
         || key
             .strip_prefix("serve_")
             .is_some_and(|k| ServeSettings::KEYS.contains(&k))
@@ -1034,12 +1021,10 @@ pub fn near_known_key(key: &str) -> Option<String> {
         "ai_insight_enabled",
         "lang",
         "current_profile",
-        "auto_download_whitelist",
-        "no_progress",
-        "progress_delay_seconds",
     ];
     snake
         .iter()
+        .chain(extra_keys::KEYS.iter().map(|(k, _)| k))
         .map(|k| (*k).to_string())
         .chain(serve)
         .map(|k| {
@@ -2118,14 +2103,16 @@ mod tests {
             ("wixd", "wxid"),
             ("progress_delay_second", "progress_delay_seconds"),
             ("decryptKey", "decrypt_key"),
+            // the settings `config set --help` lists since #1149
+            ("aiFootprintEnabled", "ai_footprint_enabled"),
+            ("ai_insight_silense_days", "ai_insight_silence_days"),
         ] {
             assert_eq!(near_known_key(typed).as_deref(), Some(known), "{typed}");
         }
         for typed in [
             "decrypt_key",
             "work.wxid",
-            "aiFootprintEnabled",
-            "aiInsightSilenceDays",
+            "ai_insight_silence_days",
             "messagePushEnabled",
             "name",
             "custom",

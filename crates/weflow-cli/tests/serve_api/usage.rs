@@ -309,6 +309,18 @@ fn a_negative_count_or_time_is_a_usage_error() {
         r#"{"key": "progress_delay_seconds", "value": "-1"}"#,
     );
     refused(&r, "progress_delay_seconds", "PUT /config/set");
+    // and so are the settings of the insights and the push (#1149)
+    for (key, value) in [
+        ("ai_insight_silence_days", "-5"),
+        ("ai_insight_filter_mode", "BLACKLISTX"),
+        ("ai_insight_allow_context", "maybe"),
+        ("message_push_filter_list", "wxid_a"),
+    ] {
+        refused_on_the_command_line(&home, &["config", "set", key, value], key);
+        let body = serde_json::json!({ "key": key, "value": value }).to_string();
+        let r = server.call("PUT", "/config/set", &body);
+        refused(&r, key, &format!("PUT /config/set {key}"));
+    }
 }
 
 /// A page of `group member-messages` holds 1 to 100 messages: a `limit` outside that range, 0 and a negative number
