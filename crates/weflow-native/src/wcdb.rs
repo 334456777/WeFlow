@@ -563,6 +563,12 @@ impl Wcdb {
         self.account()?.message_table_stats(session_id)
     }
 
+    /// [`message_table_stats`](Self::message_table_stats) of each of several conversations, in their order, their
+    /// tables found in one listing of each database (see [`Account::message_table_stats_of`]).
+    pub fn message_table_stats_of(&self, session_ids: &[String]) -> Result<Vec<Result<Value>>> {
+        self.account()?.message_table_stats_of(session_ids)
+    }
+
     /// What the annual report reads besides the totals: the heatmap, the midnight messages, who opened the
     /// conversations, my replies, the peak day, my phrases and the longest streak (see
     /// [`Account::annual_report_extras`]).

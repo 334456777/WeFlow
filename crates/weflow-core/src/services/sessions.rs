@@ -393,13 +393,23 @@ impl ServiceHub {
         }
 
         // applySyntheticUnreadCounts (official accounts have no unread column)
-        for s in sessions
-            .iter_mut()
-            .filter(|s| s.username.trim().starts_with("gh_"))
-        {
+        let is_official = |s: &Session| s.username.trim().starts_with("gh_");
+        let official: Vec<String> = sessions
+            .iter()
+            .filter(|s| is_official(s))
+            .map(|s| s.username.clone())
+            .collect();
+        // the tables of all of them found in one listing of each database, not in a search of every database's
+        // schema for each one; a conversation whose tables cannot be read is left as it is, as is every one when the
+        // databases cannot be listed
+        let stats: Vec<Option<Value>> = match wcdb.message_table_stats_of(&official) {
+            Ok(each) => each.into_iter().map(Result::ok).collect(),
+            Err(_) => vec![None; official.len()],
+        };
+        for (s, stats) in sessions.iter_mut().filter(|s| is_official(s)).zip(stats) {
             let name = s.username.clone();
             let (mut total, mut latest_snapshot) = (0i64, 0i64);
-            if let Ok(Value::Array(tables)) = wcdb.message_table_stats(&name) {
+            if let Some(Value::Array(tables)) = stats {
                 for t in tables {
                     let c = ["count", "message_count", "messageCount"]
                         .iter()

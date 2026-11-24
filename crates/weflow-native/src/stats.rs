@@ -556,8 +556,29 @@ impl Account {
 
     /// One row per shard table of the session: path, table, row count and first/last message time.
     pub fn message_table_stats(&self, session_id: &str) -> Result<Value> {
+        self.tables_stats(&self.message_tables(session_id)?)
+    }
+
+    /// [`message_table_stats`](Self::message_table_stats) of each of `session_ids`, in their order. Their tables are
+    /// found in one listing of every shard's tables (`message_tables_of`) rather than a
+    /// search of each shard's schema for each conversation; the rows of each conversation are a result of their own,
+    /// so one whose table cannot be read leaves the others theirs.
+    ///
+    /// # Errors
+    ///
+    /// A shard whose tables cannot be listed fails the call.
+    pub fn message_table_stats_of(&self, session_ids: &[String]) -> Result<Vec<Result<Value>>> {
+        Ok(self
+            .message_tables_of(session_ids)?
+            .iter()
+            .map(|tables| self.tables_stats(tables))
+            .collect())
+    }
+
+    /// The rows of [`message_table_stats`](Self::message_table_stats) for `tables`.
+    fn tables_stats(&self, tables: &[MsgTable]) -> Result<Value> {
         let mut out = Vec::new();
-        for t in self.message_tables(session_id)? {
+        for t in tables {
             let sql = format!(
                 "select count(*) as n, min(nullif(create_time, 0)) as mn, max(create_time) as mx from \"{}\"",
                 t.table
@@ -1043,6 +1064,20 @@ mod tests {
             )
             .is_err());
         assert_eq!(a.message_table_stats("nobody").unwrap(), json!([]));
+    }
+
+    /// The tables of several conversations found together are those found one conversation at a time, in the order
+    /// asked, a conversation without messages included.
+    #[test]
+    fn table_stats_of_several_conversations_are_each_ones() {
+        let (_dir, a) = account("tables-of");
+        let ids = ["wxid_bob", "nobody", "room1@chatroom", "wxid_bob"].map(String::from);
+        let together = a.message_table_stats_of(&ids).unwrap();
+        assert_eq!(together.len(), ids.len());
+        for (id, stats) in ids.iter().zip(together) {
+            assert_eq!(stats.unwrap(), a.message_table_stats(id).unwrap(), "{id}");
+        }
+        assert!(a.message_table_stats_of(&[]).unwrap().is_empty());
     }
 
     #[test]
