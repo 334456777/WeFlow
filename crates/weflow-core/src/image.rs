@@ -130,21 +130,22 @@ fn cache_variant_suffix_from_dat(dat_path: &str) -> String {
     safe_suffix(&stem[base.len().min(stem.len())..])
 }
 
-fn suffix_search_order(primary: &str, prefer_hd: bool) -> Vec<String> {
-    let fallback = [
+fn suffix_search_order(primary: &str, prefer_hd: bool) -> Vec<&str> {
+    const FALLBACK: [&str; 11] = [
         "_hd", "_thumb", "_t", ".t", "_b", ".b", "_w", ".w", "_c", ".c", "",
     ];
-    let mut ordered: Vec<String> = if prefer_hd {
-        vec!["_hd".into(), primary.into()]
+    let first = if prefer_hd {
+        ["_hd", primary]
     } else {
-        vec![primary.into(), "_hd".into()]
+        [primary, "_hd"]
     };
-    ordered.extend(fallback.iter().map(|s| s.to_string()));
-    let mut seen = std::collections::HashSet::new();
+    let mut ordered = Vec::with_capacity(first.len() + FALLBACK.len());
+    for suffix in first.into_iter().chain(FALLBACK) {
+        if !ordered.contains(&suffix) {
+            ordered.push(suffix);
+        }
+    }
     ordered
-        .into_iter()
-        .filter(|s| seen.insert(s.clone()))
-        .collect()
 }
 
 fn sanitize_dir_name(s: &str) -> String {
@@ -277,29 +278,103 @@ pub fn cache_output_candidates(
     session_id: Option<&str>,
     prefer_hd: bool,
 ) -> Vec<PathBuf> {
-    let lower = file_name_lower(dat_path);
-    let base = lower.strip_suffix(".dat").unwrap_or(&lower).to_string();
-    let normalized = normalize_dat_base(&base);
-    let primary = cache_variant_suffix_from_dat(dat_path);
-    let suffixes = suffix_search_order(&primary, prefer_hd);
-    let current = root
-        .join(sanitize_dir_name(session_id.unwrap_or("unknown")))
-        .join(month);
-    let legacy = root.join(&normalized);
+    let candidates = CacheCandidates::new(root, dat_path, month, session_id, prefer_hd);
     let mut out = Vec::new();
-    for dir in [&current, &legacy] {
-        for suffix in &suffixes {
+    for folder in candidates.folders() {
+        folder.each_name(|name| out.push(folder.path().join(name)));
+    }
+    out
+}
+
+/// [`cache_output_candidates`] as its three folders and the names tried in each, so that a lookup checks a name
+/// against its folder's listing before it makes a path of it: an image tries some 135 names, and few of them exist.
+#[derive(Debug)]
+pub struct CacheCandidates {
+    /// The base name every candidate starts with.
+    normalized: String,
+    /// The variant suffix of the `.dat` file.
+    primary: String,
+    prefer_hd: bool,
+    /// The conversation's month folder, the image's own folder (an older layout) and the root (the oldest).
+    paths: [PathBuf; 3],
+}
+
+/// A folder of [`CacheCandidates`].
+#[derive(Clone, Copy, Debug)]
+pub struct CacheFolder<'a> {
+    of: &'a CacheCandidates,
+    path: &'a Path,
+    /// Whether the names carry every variant suffix in the order searched, rather than the three of the root.
+    variants: bool,
+}
+
+impl CacheCandidates {
+    /// The candidates of the image decrypted from `dat_path`, like [`cache_output_candidates`].
+    pub fn new(
+        root: &Path,
+        dat_path: &str,
+        month: &str,
+        session_id: Option<&str>,
+        prefer_hd: bool,
+    ) -> Self {
+        let lower = file_name_lower(dat_path);
+        let base = lower.strip_suffix(".dat").unwrap_or(&lower);
+        let normalized = normalize_dat_base(base);
+        let current = root
+            .join(sanitize_dir_name(session_id.unwrap_or("unknown")))
+            .join(month);
+        let legacy = root.join(&normalized);
+        Self {
+            primary: cache_variant_suffix_from_dat(dat_path),
+            prefer_hd,
+            paths: [current, legacy, root.to_path_buf()],
+            normalized,
+        }
+    }
+
+    /// The folders, in the order they are tried.
+    pub fn folders(&self) -> [CacheFolder<'_>; 3] {
+        let [current, legacy, root] = &self.paths;
+        [(current, true), (legacy, true), (root, false)].map(|(path, variants)| CacheFolder {
+            of: self,
+            path,
+            variants,
+        })
+    }
+}
+
+impl CacheFolder<'_> {
+    /// The folder.
+    pub fn path(&self) -> &Path {
+        self.path
+    }
+
+    /// Calls `found` with each file name tried in the folder, in order; the candidates are these names joined to
+    /// [`Self::path`]. The names are lower-case, as the cache writes them.
+    pub fn each_name(&self, mut found: impl FnMut(&str)) {
+        let normalized = &self.of.normalized;
+        let mut name = String::with_capacity(normalized.len() + 12);
+        let mut tried = |suffix: &str, ext: &str| {
+            name.clear();
+            name.push_str(normalized);
+            name.push_str(suffix);
+            name.push_str(ext);
+            found(&name);
+        };
+        if self.variants {
+            for suffix in suffix_search_order(&self.of.primary, self.of.prefer_hd) {
+                for ext in CACHE_EXTENSIONS {
+                    tried(suffix, ext);
+                }
+            }
+        } else {
             for ext in CACHE_EXTENSIONS {
-                out.push(dir.join(format!("{normalized}{suffix}{ext}")));
+                for suffix in ["", "_t", "_hd"] {
+                    tried(suffix, ext);
+                }
             }
         }
     }
-    for ext in CACHE_EXTENSIONS {
-        out.push(root.join(format!("{normalized}{ext}")));
-        out.push(root.join(format!("{normalized}_t{ext}")));
-        out.push(root.join(format!("{normalized}_hd{ext}")));
-    }
-    out
 }
 
 /// Whether `path` has the extension of an image the cache keeps (GIF, PNG, JPEG or WebP).
@@ -683,6 +758,108 @@ mod tests {
         let out = out.to_string_lossy().replace('\\', "/");
         assert!(out.contains("/a_b/2024-05/"));
         assert!(out.ends_with(&format!("{MD5}_t.png")));
+    }
+
+    /// The candidates made one path at a time, every suffix list deduplicated through a set.
+    fn cache_output_candidates_each(
+        root: &Path,
+        dat_path: &str,
+        month: &str,
+        session_id: Option<&str>,
+        prefer_hd: bool,
+    ) -> Vec<PathBuf> {
+        let lower = file_name_lower(dat_path);
+        let base = lower.strip_suffix(".dat").unwrap_or(&lower).to_string();
+        let normalized = normalize_dat_base(&base);
+        let primary = cache_variant_suffix_from_dat(dat_path);
+        let mut suffixes: Vec<String> = if prefer_hd {
+            vec!["_hd".into(), primary]
+        } else {
+            vec![primary, "_hd".into()]
+        };
+        suffixes.extend(
+            [
+                "_hd", "_thumb", "_t", ".t", "_b", ".b", "_w", ".w", "_c", ".c", "",
+            ]
+            .map(String::from),
+        );
+        let mut seen = std::collections::HashSet::new();
+        suffixes.retain(|s| seen.insert(s.clone()));
+        let current = root
+            .join(sanitize_dir_name(session_id.unwrap_or("unknown")))
+            .join(month);
+        let legacy = root.join(&normalized);
+        let mut out = Vec::new();
+        for dir in [&current, &legacy] {
+            for suffix in &suffixes {
+                for ext in CACHE_EXTENSIONS {
+                    out.push(dir.join(format!("{normalized}{suffix}{ext}")));
+                }
+            }
+        }
+        for ext in CACHE_EXTENSIONS {
+            out.push(root.join(format!("{normalized}{ext}")));
+            out.push(root.join(format!("{normalized}_t{ext}")));
+            out.push(root.join(format!("{normalized}_hd{ext}")));
+        }
+        out
+    }
+
+    /// `.dat` file names as WeChat writes them and as they may be: an MD5 in any case, a variant suffix or a junk
+    /// one, or none.
+    fn dat_names() -> impl proptest::strategy::Strategy<Value = String> {
+        use proptest::prelude::*;
+        let stem = prop_oneof![
+            Just(MD5.to_string()),
+            Just(MD5.to_uppercase()),
+            "[0-9a-fA-F]{0,40}",
+            "[a-zA-Z0-9_.é-]{0,12}",
+        ];
+        let suffix = prop_oneof![
+            Just(String::new()),
+            proptest::sample::select(vec![
+                "_h", ".h", "_hd", ".hd", "_t", ".t", "_thumb", ".thumb", "_b", "_w", ".c", "_x",
+                "_hd_t", "_W", "-1",
+            ])
+            .prop_map(String::from),
+            "[._-]?[a-zA-Z0-9]{0,3}",
+        ];
+        let ext = prop_oneof![Just(".dat"), Just(".DAT"), Just(""), Just(".jpg")];
+        (stem, suffix, ext).prop_map(|(stem, suffix, ext)| format!("{stem}{suffix}{ext}"))
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(256))]
+
+        /// For any `.dat` file and conversation, the candidates made from the folders and their names are those made
+        /// one path at a time, in the same order, and each name is the lower-case file name of its path.
+        #[test]
+        fn any_dat_file_has_the_candidates_made_one_path_at_a_time(
+            name in dat_names(),
+            session in proptest::option::of("[a-zA-Z0-9_@:/ .-]{0,16}"),
+            prefer_hd in proptest::bool::ANY,
+        ) {
+            let root = Path::new("/cache/Images");
+            let dat = format!("/attach/abc/2024-05/Img/{name}");
+            let session = session.as_deref();
+            proptest::prop_assert_eq!(
+                cache_output_candidates(root, &dat, "2024-05", session, prefer_hd),
+                cache_output_candidates_each(root, &dat, "2024-05", session, prefer_hd)
+            );
+            let candidates = CacheCandidates::new(root, &dat, "2024-05", session, prefer_hd);
+            for folder in candidates.folders() {
+                let mut names = Vec::new();
+                folder.each_name(|n| names.push(n.to_string()));
+                for n in names {
+                    let path = folder.path().join(&n);
+                    proptest::prop_assert_eq!(path.parent(), Some(folder.path()));
+                    proptest::prop_assert_eq!(
+                        path.file_name().map(|f| f.to_string_lossy().to_lowercase()),
+                        Some(n)
+                    );
+                }
+            }
+        }
     }
 
     #[test]
