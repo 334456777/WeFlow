@@ -54,7 +54,7 @@ pub fn message_type_name_in(local_type: i64, x: &MsgXml<'_>) -> &'static str {
                 return "系统消息";
             }
             match x.app_type_twice() {
-                "3" => return "音乐消息",
+                "3" | "76" => return "音乐消息",
                 "87" => return "群公告",
                 "2000" => return "转账消息",
                 "5" => return "链接消息",
