@@ -12,6 +12,8 @@ use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
+use crate::zip_time::{file_zip_time, local_zip_time};
+
 use super::{
     hex_digest, sha256_hex, BackupEntry, BackupManifest, BackupOptions, SkippedFile, EMOJI_FOLDER,
     MANIFEST_NAME,
@@ -233,7 +235,9 @@ fn write_backup(
     let manifest_bytes = serde_json::to_vec_pretty(&manifest).context("serialize manifest")?;
     zip.start_file(
         MANIFEST_NAME,
-        SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+        SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Deflated)
+            .last_modified_time(local_zip_time(SystemTime::now())),
     )
     .context("zip manifest")?;
     zip.write_all(&manifest_bytes)
@@ -290,7 +294,9 @@ fn add_database(
         if let Some(bytes) = wal {
             zip.start_file(
                 wal_name.as_str(),
-                SimpleFileOptions::default().compression_method(item.method),
+                SimpleFileOptions::default()
+                    .compression_method(item.method)
+                    .last_modified_time(file_zip_time(wal_path)),
             )
             .with_context(|| format!("zip start_file {wal_name}"))?;
             zip.write_all(&bytes)
@@ -324,10 +330,16 @@ fn copy_file(
             return Ok(None);
         }
     };
-    let size = source.metadata().map_or(0, |m| m.len());
+    let metadata = source.metadata().ok();
+    let size = metadata.as_ref().map_or(0, fs::Metadata::len);
+    // the file's own time, in local time as a zip keeps it (#1215)
+    let time = metadata
+        .and_then(|m| m.modified().ok())
+        .unwrap_or_else(SystemTime::now);
     let zip_options = SimpleFileOptions::default()
         .compression_method(item.method)
-        .large_file(size >= u64::from(u32::MAX));
+        .large_file(size >= u64::from(u32::MAX))
+        .last_modified_time(local_zip_time(time));
     zip.start_file(item.name.as_str(), zip_options)
         .with_context(|| format!("zip start_file {}", item.name))?;
     match copy_hashing(&mut source, zip).with_context(|| format!("zip write {}", item.name))? {
@@ -648,6 +660,52 @@ mod tests {
             fs::read_dir(&out).unwrap().count(),
             1,
             "only the backup is left beside it"
+        );
+    }
+
+    /// Each file's entry has the file's own time, and the manifest the time of the backup, in local time as a zip
+    /// keeps it, whatever the time zone of the computer (#1215).
+    #[test]
+    fn the_entries_have_the_local_time_of_their_files() {
+        use chrono::Timelike as _;
+        let account = account_with_wal("weflow-backup-time");
+        let out = temp_dir("weflow-backup-time-out");
+        let archive = out.join("b.zip");
+        create_backup(
+            &account,
+            &BackupOptions::default(),
+            None,
+            "1",
+            &archive,
+            &|_, _| {},
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(fs::File::open(&archive).unwrap()).unwrap();
+        let mut entry_time = |name: &str| {
+            let t = zip.by_name(name).unwrap().last_modified().unwrap();
+            chrono::NaiveDate::from_ymd_opt(t.year().into(), t.month().into(), t.day().into())
+                .and_then(|d| d.and_hms_opt(t.hour().into(), t.minute().into(), t.second().into()))
+                .unwrap()
+        };
+        let dir = account.join("db_storage/message");
+        for name in ["message_0.db", "message_0.db-wal"] {
+            let modified: chrono::DateTime<chrono::Local> = fs::metadata(dir.join(name))
+                .unwrap()
+                .modified()
+                .unwrap()
+                .into();
+            let entry = entry_time(&format!("db_storage/message/{name}"));
+            assert_eq!(
+                (entry.date(), entry.hour(), entry.minute()),
+                (modified.date_naive(), modified.hour(), modified.minute()),
+                "{name}"
+            );
+        }
+        let manifest = entry_time(MANIFEST_NAME);
+        let now = chrono::Local::now().naive_local();
+        assert!(
+            (now - manifest).num_seconds().abs() <= 120,
+            "{manifest} against {now}"
         );
     }
 

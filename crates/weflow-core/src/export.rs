@@ -358,7 +358,9 @@ pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
                 fs::metadata(&path)
                     .map(|m| m.len() >= u64::from(u32::MAX))
                     .unwrap_or(false),
-            );
+            )
+            // the file's own time, in local time as a zip keeps it (#1215)
+            .last_modified_time(crate::zip_time::file_zip_time(&path));
         zip.start_file(&name, options)
             .with_context(|| format!("zip {name}"))?;
         let mut file = fs::File::open(&path).with_context(|| format!("open {}", path.display()))?;
@@ -411,6 +413,42 @@ mod tests {
         // not under the folder: named by the whole path
         let elsewhere = Path::new("elsewhere").join("chat.txt");
         assert_eq!(zip_entry_name(&dir, &elsewhere), "elsewhere/chat.txt");
+    }
+
+    /// A zipped file keeps its own time, in local time as a zip keeps it, whatever the time zone of the computer
+    /// (#1215).
+    #[test]
+    fn a_zipped_file_keeps_its_local_time() {
+        use chrono::Timelike as _;
+        let dir = weflow_native::fixture::TestDir::new("weflow-zip-time");
+        let parts = dir.join("parts");
+        fs::create_dir_all(parts.join("media")).unwrap();
+        fs::write(parts.join("chat.txt"), "hi").unwrap();
+        fs::write(parts.join("media").join("1.jpg"), [0xFF, 0xD8]).unwrap();
+        let out = dir.join("chat.zip");
+        zip_folder(&parts, &out).unwrap();
+        let mut zip = zip::ZipArchive::new(fs::File::open(&out).unwrap()).unwrap();
+        for (name, path) in [
+            ("chat.txt", parts.join("chat.txt")),
+            ("media/1.jpg", parts.join("media").join("1.jpg")),
+        ] {
+            let modified: chrono::DateTime<chrono::Local> =
+                fs::metadata(&path).unwrap().modified().unwrap().into();
+            let t = zip.by_name(name).unwrap().last_modified().unwrap();
+            assert_eq!(
+                (
+                    u32::from(t.day()),
+                    u32::from(t.hour()),
+                    u32::from(t.minute())
+                ),
+                (
+                    chrono::Datelike::day(&modified),
+                    modified.hour(),
+                    modified.minute()
+                ),
+                "{name}"
+            );
+        }
     }
 
     #[test]

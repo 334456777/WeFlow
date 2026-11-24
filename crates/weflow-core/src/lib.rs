@@ -51,6 +51,7 @@ pub mod video;
 pub mod webui;
 pub mod weibo;
 pub mod xml;
+mod zip_time;
 
 pub use config::{AppContext, ConfigStore, ProfileConfig};
 pub use error::{AppError, AppResult};
