@@ -10,6 +10,7 @@ use serde::Serialize;
 #[cfg(test)]
 use serde_json::Value;
 
+use crate::message::forward::RecordKind;
 use crate::message::kind::convert_message_type_in;
 use crate::message::link::LinkStyle;
 use crate::message::transfer::is_same_wxid;
@@ -405,20 +406,23 @@ struct ChatlabDocument<'a> {
 fn chatlab_record(rec: &ForwardRecord, fallback_time: i64) -> ChatlabRecord<'_> {
     let timestamp = parse_record_time(&rec.sourcetime).unwrap_or(fallback_time);
     let text = || rec.datadesc.clone().or_else(|| rec.datatitle.clone());
-    let (kind, content) = match rec.datatype {
-        1 => (0, text().unwrap_or_default()),
-        3 => (1, "[图片]".to_string()),
-        8 | 49 => (
+    // the codes are the ones of the messages themselves (`convert_message_type_in`)
+    let record = RecordKind::of(rec.datatype);
+    let tagged = |code: i64| (code, record.tag().to_string());
+    let (kind, content) = match record {
+        RecordKind::Text => (0, text().unwrap_or_default()),
+        RecordKind::Image => tagged(1),
+        RecordKind::Voice => tagged(2),
+        RecordKind::Video => tagged(3),
+        RecordKind::Sticker => tagged(5),
+        RecordKind::File => (
             4,
             rec.datatitle
                 .as_ref()
                 .map(|t| format!("[文件] {t}"))
-                .unwrap_or_else(|| "[文件]".into()),
+                .unwrap_or_else(|| record.tag().into()),
         ),
-        34 => (2, "[语音消息]".to_string()),
-        43 => (3, "[视频]".to_string()),
-        47 => (5, "[表情]".to_string()),
-        _ => (0, text().unwrap_or_else(|| "[消息]".into())),
+        _ => (0, text().unwrap_or_else(|| record.tag().into())),
     };
     let who = if rec.sourcename.is_empty() {
         "unknown"
@@ -450,6 +454,31 @@ mod tests {
     use serde_json::Value;
     use std::fs;
     use weflow_native::fixture::TestDir;
+
+    /// A chat record's item is of the ChatLab type of what its own `datatype` says it is, the same type as such a
+    /// message of its own (#1171).
+    #[test]
+    fn a_record_item_has_the_type_of_its_datatype() {
+        for (datatype, kind, content) in [
+            (1, 0, "收到"),
+            (2, 1, "[图片]"),
+            (3, 2, "[语音消息]"),
+            (4, 3, "[视频]"),
+            (37, 5, "[表情]"),
+            (8, 4, "[文件] 收到"),
+            (34, 0, "收到"),
+        ] {
+            let rec = crate::message::ForwardRecord {
+                datatype,
+                sourcename: "Bob".into(),
+                datadesc: Some("收到".into()),
+                datatitle: Some("收到".into()),
+                ..Default::default()
+            };
+            let r = super::chatlab_record(&rec, 0);
+            assert_eq!((r.kind, r.content.as_str()), (kind, content), "{datatype}");
+        }
+    }
 
     #[test]
     fn chatlab_shape() {

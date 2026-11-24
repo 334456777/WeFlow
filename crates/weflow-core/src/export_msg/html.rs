@@ -35,6 +35,7 @@ use super::spool::Spool;
 use super::{chrome, Exporter};
 use crate::locale;
 use crate::message::appmsg::extract_arkme_app_message_meta_in;
+use crate::message::forward::RecordKind;
 use crate::message::quote::QuotedDisplay;
 use crate::message::system::clean_system_message;
 use crate::message::xml::{decode_html_entities, extract_xml_value, rx, MsgXml};
@@ -595,14 +596,11 @@ pub(super) fn url_path(path: &str) -> String {
 
 /// The tag of a chat history's item that has no text of its own, by its data type.
 fn record_tag(datatype: i64) -> &'static str {
-    match datatype {
-        2 => "[图片]",
-        3 => "[语音]",
-        4 => "[视频]",
-        5 => "[链接]",
-        8 => "[文件]",
-        17 => "[聊天记录]",
-        _ => "",
+    match RecordKind::of(datatype) {
+        // the words the page translates
+        RecordKind::Voice => "[语音]",
+        RecordKind::Text | RecordKind::Other => "",
+        kind => kind.tag(),
     }
 }
 
@@ -776,6 +774,25 @@ fn mp4_info_of(b: &[u8]) -> Option<VideoInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The tags of a chat record's items in the page, by the record's own `datatype` numbers (#1171).
+    #[test]
+    fn a_record_item_is_tagged_by_its_datatype() {
+        for (datatype, tag) in [
+            (1, ""),
+            (2, "[图片]"),
+            (3, "[语音]"),
+            (4, "[视频]"),
+            (5, "[链接]"),
+            (8, "[文件]"),
+            (17, "[聊天记录]"),
+            (19, "[小程序]"),
+            (37, "[表情]"),
+            (34, ""),
+        ] {
+            assert_eq!(record_tag(datatype), tag, "{datatype}");
+        }
+    }
 
     #[test]
     fn media_paths_keep_their_text() {
