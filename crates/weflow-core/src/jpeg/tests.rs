@@ -190,6 +190,12 @@ fn magnitudes_are_the_size_and_the_bits_coded() {
     assert_eq!(magnitude(-2047), (11, 0));
 }
 
+#[test]
+fn the_written_out_zigzag_is_the_table() {
+    let block: [i16; 64] = std::array::from_fn(|i| i16::try_from(i).unwrap());
+    assert_eq!(zigzag(&block), ZIGZAG.map(|i| block[i]));
+}
+
 proptest! {
     #![proptest_config(crate::property_cases(64))]
 

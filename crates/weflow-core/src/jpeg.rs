@@ -89,6 +89,18 @@ const ZIGZAG: [usize; 64] = [
     52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
 ];
 
+/// The coefficients of a block (row by row) in zigzag order. [`ZIGZAG`] written out, an index a constant, so that
+/// each coefficient is one load and one store with no table of indices to read and no loop.
+fn zigzag(c: &[i16; 64]) -> [i16; 64] {
+    macro_rules! gather {
+        ($($i:literal)*) => { [$(c[$i]),*] };
+    }
+    gather!(
+        0 1 8 16 9 2 3 10 17 24 32 25 18 11 4 5 12 19 26 33 40 48 41 34 27 20 13 6 7 14 21 28
+        35 42 49 56 57 50 43 36 29 22 15 23 30 37 44 51 58 59 52 45 38 31 39 46 53 60 61 54 47 55 62 63
+    )
+}
+
 /// The luminance quantization table of Annex K.1, row by row.
 const LUMA_QUANT: [u16; 64] = [
     16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24, 40, 57, 69, 56,
@@ -317,6 +329,7 @@ impl Writer {
     }
 
     /// Appends the last `size` bits of `value` (at most 32) to the scan, a 0 after each `0xff` byte.
+    #[inline]
     fn put(&mut self, value: u32, size: u32) {
         self.pending = self.pending << size | u64::from(value);
         self.bits += size;
@@ -328,12 +341,19 @@ impl Writer {
             if word & !word.wrapping_add(0x0101_0101) & 0x8080_8080 == 0 {
                 self.out.extend(word.to_be_bytes());
             } else {
-                for byte in word.to_be_bytes() {
-                    self.out.push(byte);
-                    if byte == 0xff {
-                        self.out.push(0);
-                    }
-                }
+                self.stuffed(word);
+            }
+        }
+    }
+
+    /// [`Writer::put`]'s 32 bits `word`, of which a byte is `0xff`: each such byte followed by a 0. Kept out of
+    /// `put`, which is in the loop over every coefficient, for the one word in some tens that needs it.
+    #[cold]
+    fn stuffed(&mut self, word: u32) {
+        for byte in word.to_be_bytes() {
+            self.out.push(byte);
+            if byte == 0xff {
+                self.out.push(0);
             }
         }
     }
@@ -347,9 +367,7 @@ impl Writer {
         (dc, ac): &(Huffman, Huffman),
         prev_dc: &mut i16,
     ) {
-        let coefficients = dct_quantize(samples, quant);
-        // `& 63` changes no index and lets the compiler drop the bounds checks.
-        let zz: [i16; 64] = ZIGZAG.map(|i| coefficients[i & 63]);
+        let zz = zigzag(&dct_quantize(samples, quant));
         let diff = zz[0] - *prev_dc;
         *prev_dc = zz[0];
         let (size, bits) = magnitude(diff);
