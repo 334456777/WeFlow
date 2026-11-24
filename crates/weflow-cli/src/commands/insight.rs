@@ -135,7 +135,7 @@ pub(crate) async fn handle_insight(command: InsightCommand, hub: &ServiceHub) ->
             end,
         } => Ok(json!(hub.insight_clear_records(&insight_filters(
             session, None, start, end, None, None
-        )))),
+        ))?)),
         InsightSubcommand::TodayStats => Ok(json!(hub.insight_today_stats())),
         InsightSubcommand::Scan => {
             let mut records = Vec::new();

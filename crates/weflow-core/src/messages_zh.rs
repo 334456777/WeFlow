@@ -25,6 +25,8 @@ const CATALOG: &[(&str, &str)] = &[
     ("failed to create {}: {}", "创建 {} 失败：{}"),
     ("failed to write {}: {}", "写入 {} 失败：{}"),
     ("failed to read {}: {}", "读取 {} 失败：{}"),
+    ("failed to lock {}: {}", "锁定 {} 失败：{}"),
+    ("failed to set aside {}: {}", "把 {} 改名保留失败：{}"),
     ("create {}: {}", "创建 {} 失败：{}"),
     ("messages_json must be a JSON array: {}", "messages_json 必须是 JSON 数组：{}"),
     ("--display-name must be group-nickname, remark or nickname", "--display-name 必须是 group-nickname、remark 或 nickname"),

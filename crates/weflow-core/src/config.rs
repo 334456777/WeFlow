@@ -4,9 +4,7 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -403,27 +401,9 @@ impl ConfigStore {
             crate::private_files::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
-        static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
-        let tmp = path.with_file_name(format!(
-            "{}.{}-{}.tmp",
-            path.file_name().unwrap_or_default().to_string_lossy(),
-            std::process::id(),
-            NEXT_TMP.fetch_add(1, Ordering::Relaxed)
-        ));
-        let written = (|| -> Result<()> {
-            let mut file = crate::private_files::open_options()
-                .write(true)
-                .create_new(true)
-                .open(&tmp)?;
-            file.write_all(&serde_json::to_vec_pretty(self)?)?;
-            file.sync_all()?;
-            drop(file);
-            rename_replacing(&tmp, path)
-        })();
-        if written.is_err() {
-            let _ = fs::remove_file(&tmp);
-        }
-        written.with_context(|| format!("failed to write {}", path.display()))
+        let failed = || format!("failed to write {}", path.display());
+        let bytes = serde_json::to_vec_pretty(self).with_context(failed)?;
+        crate::fs_atomic::write_private(path, &bytes).with_context(failed)
     }
 
     /// Read the saved config, change it with `change` and save it, holding a lock on `<config>.lock` meanwhile, so
@@ -864,39 +844,8 @@ fn lock_config(path: &Path) -> Result<fs::File> {
         crate::private_files::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    let lock_path = path.with_file_name(format!(
-        "{}.lock",
-        path.file_name().unwrap_or_default().to_string_lossy()
-    ));
-    let file = crate::private_files::open_options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_path)
-        .with_context(|| format!("failed to open {}", lock_path.display()))?;
-    file.lock()
-        .with_context(|| format!("failed to lock {}", lock_path.display()))?;
-    Ok(file)
-}
-
-/// `fs::rename` over an existing file. On Windows the replace can fail for a moment while another process (a reader,
-/// an antivirus scan) has the old file open, so it is retried briefly there.
-fn rename_replacing(from: &Path, to: &Path) -> Result<()> {
-    let mut attempts = 0;
-    loop {
-        match fs::rename(from, to) {
-            Ok(()) => return Ok(()),
-            Err(err)
-                if cfg!(windows)
-                    && err.kind() == std::io::ErrorKind::PermissionDenied
-                    && attempts < 20 =>
-            {
-                attempts += 1;
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            Err(err) => return Err(err.into()),
-        }
-    }
+    crate::fs_atomic::lock_beside(path)
+        .with_context(|| format!("failed to lock {}.lock", path.display()))
 }
 
 /// Pointer file in the home folder that remembers the config path chosen with `config set config_path`.

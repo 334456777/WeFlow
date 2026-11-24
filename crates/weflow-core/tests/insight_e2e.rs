@@ -101,7 +101,9 @@ async fn trigger_test_builds_context_and_stores_a_record() {
     );
     assert_eq!(hub.insight_today_stats().len(), 1);
     assert_eq!(
-        hub.insight_clear_records(&RecordFilters::default()).removed,
+        hub.insight_clear_records(&RecordFilters::default())
+            .unwrap()
+            .removed,
         1
     );
 }

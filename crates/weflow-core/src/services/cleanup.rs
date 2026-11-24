@@ -235,8 +235,9 @@ impl ServiceHub {
     }
 
     /// What [`Self::clear_current_account_data`] removes (only what exists): WeFlow's caches of the current account
-    /// (images, voices, stickers, Moments, analytics, group hints, key fingerprints), its insight records, and the
-    /// entries of `export_dirs` named after the account.
+    /// (images, voices, stickers, Moments, analytics, group hints, key fingerprints), its insight records (with the
+    /// copies of its records file set aside when it could not be read), and the entries of `export_dirs` named after
+    /// the account.
     ///
     /// The file of every account's insight records that WeFlow 7.0.0 and earlier wrote is split into the accounts'
     /// files first, which changes no record, so that the account's own file is the one listed.
@@ -276,7 +277,10 @@ impl ServiceHub {
         add(self.ctx.cache_dir().join("verified-keys"));
         let home = &self.ctx.home_dir;
         crate::insight::split_legacy_records(home);
-        add(crate::insight::records_file(home, &self.insight_scope()));
+        let records = crate::insight::records_file(home, &self.insight_scope());
+        let set_aside = crate::insight::set_aside_records_files(&records);
+        add(records);
+        set_aside.into_iter().for_each(&mut add);
         for dir in export_dirs {
             matched_entries(dir, &ids).into_iter().for_each(&mut add);
         }
