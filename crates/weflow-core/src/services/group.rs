@@ -13,7 +13,7 @@ use crate::contract::{
     EmojiCount, GroupChat, GroupExported, GroupHours, GroupMedia, GroupMember, GroupRank,
     MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
-use crate::export_msg::{csv_cell, write_csv};
+use crate::export_msg::{csv_text_cell, write_csv};
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
 use weflow_native::msg::Order;
@@ -1479,7 +1479,12 @@ impl ServiceHub {
             rows.extend(records.iter().map(|r| r.to_vec()));
             let lines: Vec<String> = rows
                 .iter()
-                .map(|r| r.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(","))
+                .map(|r| {
+                    r.iter()
+                        .map(|c| csv_text_cell(c))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
                 .collect();
             write_csv(out, &lines.join("\n")).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         } else {
@@ -1675,7 +1680,12 @@ impl ServiceHub {
             all.extend(rows.iter().map(|r| r.to_vec()));
             let lines: Vec<String> = all
                 .iter()
-                .map(|r| r.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(","))
+                .map(|r| {
+                    r.iter()
+                        .map(|c| csv_text_cell(c))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
                 .collect();
             write_csv(out, &lines.join("\n")).map_err(|e| AppError::runtime(format!("{e:#}")))?;
         } else {

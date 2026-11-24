@@ -163,12 +163,47 @@ pub fn html_escape(value: &str) -> String {
 
 /// A CSV cell (`escapeCsvValue`): in quotes, with its quotes doubled, when it holds a quote, a comma or a line
 /// break; as it is otherwise.
+///
+/// The cell keeps the text exactly, for CSV a program reads (WeClone's). CSV a person opens in a spreadsheet writes
+/// its text with [`csv_text_cell`].
 pub fn csv_cell(value: &str) -> String {
     if value.contains(['"', ',', '\r', '\n']) {
         format!("\"{}\"", value.replace('"', "\"\""))
     } else {
         value.to_string()
     }
+}
+
+/// A CSV cell for text a person opens in a spreadsheet: [`csv_cell`] of the text after a `'` when it starts with `=`,
+/// `+`, `-`, `@`, a tab or a carriage return and is not a number, [`csv_cell`] of the text otherwise.
+///
+/// Excel reads a cell that starts so as a formula even in quotes; after the `'` it shows the text, and numbers such
+/// as `-5` stay numbers (#1219).
+pub fn csv_text_cell(value: &str) -> String {
+    if value.starts_with(['=', '+', '-', '@', '\t', '\r']) && !is_plain_number(value) {
+        csv_cell(&format!("'{value}"))
+    } else {
+        csv_cell(value)
+    }
+}
+
+/// Whether `value` is a decimal number: an optional sign, digits with at most one `.`, and an optional exponent.
+fn is_plain_number(value: &str) -> bool {
+    let all_digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
+    let unsigned = value.strip_prefix(['+', '-']).unwrap_or(value);
+    let (mantissa, exponent) = match unsigned.split_once(['e', 'E']) {
+        Some((mantissa, exponent)) => (mantissa, Some(exponent)),
+        None => (unsigned, None),
+    };
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let exponent_ok = exponent.is_none_or(|e| {
+        let digits = e.strip_prefix(['+', '-']).unwrap_or(e);
+        !digits.is_empty() && all_digits(digits)
+    });
+    !(whole.is_empty() && fraction.is_empty())
+        && all_digits(whole)
+        && all_digits(fraction)
+        && exponent_ok
 }
 
 pub fn sql_escape(value: &str) -> String {
@@ -179,6 +214,39 @@ pub fn sql_escape(value: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Text that Excel would read as a formula gets a `'` in front, and reads back as the same text without it;
+    /// numbers and other text stay as they are (#1219).
+    #[test]
+    fn a_text_cell_that_starts_like_a_formula_gets_an_apostrophe() {
+        for text in [
+            "=1+1",
+            "-_-",
+            "@所有人",
+            "+abc",
+            "\tx",
+            "\r\nx",
+            "-",
+            "+",
+            "-.",
+            "-1.2.3",
+            "-1e",
+            "-inf",
+            "=HYPERLINK(\"http://a\",\"b\")",
+        ] {
+            let cell = csv_text_cell(text);
+            let inner = cell
+                .strip_prefix('"')
+                .and_then(|c| c.strip_suffix('"'))
+                .map_or_else(|| cell.clone(), |c| c.replace("\"\"", "\""));
+            assert_eq!(inner.strip_prefix('\''), Some(text), "{text:?} -> {cell:?}");
+        }
+        for text in [
+            "-5", "+1", "3.14", "-0.5", "-.5", "1e5", "-2E-3", "中文", "", "a=b", "'x", "a, b",
+        ] {
+            assert_eq!(csv_text_cell(text), csv_cell(text), "{text:?}");
+        }
+    }
 
     fn script_json(value: &serde_json::Value) -> String {
         let mut out = Vec::new();
