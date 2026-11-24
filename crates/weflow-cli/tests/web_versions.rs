@@ -612,6 +612,55 @@ fn prune_leaves_the_version_a_server_shows() {
     assert_eq!(server.get("/ui/").0, 200);
 }
 
+/// Clearing the WebUI versions through the server, as the settings page does, leaves the one it shows, picked or not
+/// (#1139).
+#[test]
+fn cache_clear_leaves_the_version_a_server_shows() {
+    let home = temp_root("clear");
+    let version = built_in();
+    let reg = registry(&["0.0.8", &version]);
+    cli(&home, &reg, &["web", "install", &version]);
+    cli(&home, &reg, &["web", "use", "0.0.8"]);
+    let store = home.join("cache").join("web");
+
+    let server = Server::start(&home, &reg, &[]);
+    assert_eq!(server.started["uiVersion"], "0.0.8");
+    let data = |(status, body): (u16, String)| {
+        assert_eq!(status, 200, "{body}");
+        serde_json::from_str::<Value>(&body).unwrap()["data"].clone()
+    };
+    let plan = data(server.send("DELETE", "/cache/clear?web=true&dry-run=true", ""));
+    let planned: Vec<&Value> = plan["paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| &p["path"])
+        .collect();
+    assert_eq!(planned, [&json!(store.join(&version))], "{plan}");
+
+    let cleared = data(server.send("DELETE", "/cache/clear?web=true&yes=true", ""));
+    assert_eq!(
+        cleared["removedPaths"],
+        json!([store.join(&version)]),
+        "{cleared}"
+    );
+    assert_eq!(
+        cleared["warnings"],
+        json!(["WebUI 0.0.8 is shown by a running `weflow serve`; it was kept"])
+    );
+    let (status, body) = server.get("/ui/");
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains("WeFlow 0.0.8"));
+    let info = cli(&home, &reg, &["web", "info"]);
+    assert_eq!(info["picked"], "0.0.8", "{info}");
+    assert_eq!(info["installed"], json!(["0.0.8"]), "{info}");
+    drop(server);
+
+    cli(&home, &reg, &["cache", "clear", "--web", "-y"]);
+    assert_eq!(cli(&home, &reg, &["web", "list"]), json!([]));
+    assert!(cli(&home, &reg, &["web", "info"])["picked"].is_null());
+}
+
 #[test]
 fn a_version_picked_through_the_api_is_shown_at_once() {
     let home = temp_root("live");

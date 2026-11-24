@@ -816,7 +816,7 @@ export const en: Record<string, string> = {
   "旧的运行时": "Old runtime files",
   "旧版本释放的运行时目录和安装的 ffmpeg；当前版本不再创建。": "Runtime directories and ffmpeg builds earlier versions left; the current version creates none.",
   "网页版本": "Page versions",
-  "下载过的网页版本；正在用的版本需要时会重新下载。": "Versions of the page downloaded; the one in use is downloaded again when needed.",
+  "下载过的网页版本；正在显示的版本会保留。": "Versions of the page downloaded; the one being shown is kept.",
   "请填写档案名称。": "Please give the profile a name.",
   "档案名称只能包含文字、数字、- 和 _。": "A profile name may only hold letters, digits, - and _.",
   "已经有这个档案了。": "This profile already exists.",

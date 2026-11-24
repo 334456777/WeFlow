@@ -27,7 +27,7 @@ const HELP: &[(&str, &str)] = &[
     ("Pick the WebUI version `serve` shows; it is downloaded first when needed", "选定 `serve` 显示的网页版本；需要时先下载"),
     ("Download and pick the newest published WebUI version that suits this weflow", "下载并选定已发布的、适用于这个 weflow 的最新网页版本"),
     ("Remove the WebUI versions kept here that are neither picked nor the default one of this weflow, nor shown by a running serve", "删除本机上既没有选定、也不是这个 weflow 的默认版本、也没有被运行中的 serve 显示的网页版本"),
-    ("WebUI versions downloaded by `weflow web` and `serve`; the one `serve` needs is downloaded again", "`weflow web` 和 `serve` 下载的网页版本；`serve` 需要的版本会重新下载"),
+    ("WebUI versions downloaded by `weflow web` and `serve`; the ones running servers show are kept", "`weflow web` 和 `serve` 下载的网页版本；运行中的 serve 正在显示的版本会保留"),
     ("Account directory to search for templates; default: the configured account directory", "用于查找模板的账号目录；默认：已配置的账号目录"),
     ("All image identifiers of a session, md5 and dat name, newest first", "会话的全部图片标识，即 md5 和 dat 名，最新在前"),
     ("All voice messages of a session", "会话的全部语音消息"),

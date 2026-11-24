@@ -77,6 +77,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("--ui-dir {}: no index.html there\nPass the folder of a built WebUI, such as web/dist.", "--ui-dir {}：该目录下没有 index.html\n请指定构建好的网页目录，例如 web/dist。"),
     ("`{}` is not a WebUI version; a version looks like 0.1.0", "`{}` 不是网页的版本号；版本号形如 0.1.0"),
     ("WebUI {} is shown by a running `weflow serve`; stop it first", "网页 {} 正由运行中的 `weflow serve` 显示；请先停止它"),
+    ("WebUI {} is shown by a running `weflow serve`; it was kept", "网页 {} 正由运行中的 `weflow serve` 显示，已保留"),
     ("cannot lock WebUI {}: {}", "无法锁定网页 {}：{}"),
     ("cannot wait for the install of WebUI {}: {}", "无法等待网页 {} 安装完成：{}"),
     ("{} is not WebUI metadata: {}", "{} 不是网页的元数据：{}"),

@@ -29,7 +29,7 @@ pub enum CachePart {
     Keys,
     /// Runtime directories and ffmpeg builds earlier versions left in the home folder.
     Runtime,
-    /// The WebUI versions downloaded; `serve` downloads the one it needs again.
+    /// The WebUI versions downloaded, but the ones a running `weflow serve` shows.
     Web,
 }
 
@@ -135,7 +135,8 @@ fn matched_entries(root: &Path, ids: &[String]) -> Vec<PathBuf> {
 }
 
 impl ServiceHub {
-    /// Files and folders holding `part`, whether they exist or not (unused programs: those that exist).
+    /// Files and folders holding `part`, whether they exist or not (unused programs, and the WebUI versions running
+    /// servers do not show: those that exist).
     pub fn cache_part_paths(&self, part: CachePart) -> Vec<PathBuf> {
         let base = self.cache_base();
         match part {
@@ -152,8 +153,8 @@ impl ServiceHub {
             // fingerprints of keys that worked, so later commands skip the slower check
             CachePart::Keys => vec![self.ctx.cache_dir().join("verified-keys")],
             CachePart::Runtime => self.unused_programs(),
-            // the WebUI versions downloaded (issue #148); `serve` downloads the one it needs again
-            CachePart::Web => vec![self.web_store().root().to_path_buf()],
+            // the WebUI versions downloaded (issue #148), but the ones running servers show (#1139)
+            CachePart::Web => self.web_store().clearable(),
         }
     }
 
@@ -209,6 +210,16 @@ impl ServiceHub {
         let mut freed = 0u64;
         let serve_files = self.serve_files_dir();
         for &part in parts {
+            if part == CachePart::Web {
+                // the versions running servers show stay, as with `web prune` (#1139)
+                let store = self.web_store();
+                let before = disk_usage(store.root()).0;
+                let (gone, failed) = store.clear();
+                removed.extend(gone.iter().map(|p| p.to_string_lossy().into_owned()));
+                warnings.extend(failed);
+                freed += before.saturating_sub(disk_usage(store.root()).0);
+                continue;
+            }
             for path in self.cache_part_paths(part) {
                 let (bytes, _) = disk_usage(&path);
                 if path == serve_files {

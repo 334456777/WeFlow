@@ -23,6 +23,8 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, AppResult};
 
+mod clear;
+
 /// Where the versions are published.
 pub const REGISTRY: &str = "https://ghcr.io";
 const REPOSITORY: &str = "334456777/weflow-web";

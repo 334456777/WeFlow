@@ -70,7 +70,7 @@ pub(crate) struct CacheClearArgs {
     /// Runtime directories earlier versions unpacked, and the ffmpeg builds they installed in ffmpeg/
     #[arg(long)]
     runtime: bool,
-    /// WebUI versions downloaded by `weflow web` and `serve`; the one `serve` needs is downloaded again
+    /// WebUI versions downloaded by `weflow web` and `serve`; the ones running servers show are kept
     #[arg(long)]
     web: bool,
     /// Every part above

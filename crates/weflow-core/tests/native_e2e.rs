@@ -1111,3 +1111,48 @@ fn cache_parts_clear_on_their_own_and_all_together() {
         .iter()
         .all(|e| e["bytes"] == json!(0) && e["files"] == json!(0)));
 }
+
+/// `cache clear --web` leaves the WebUI version a running `weflow serve` holds, and the pick of it, as `web prune`
+/// does (#1139); `cache list` leaves it out of what the part takes.
+#[test]
+fn cache_clear_leaves_the_webui_version_a_server_shows() {
+    use weflow_core::services::CachePart;
+    let (_root, hub) = common::mock_hub("n-cache-web");
+    let store = hub.web_store();
+    for version in ["0.5.0", "0.6.0"] {
+        let dir = store.dir(version);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.html"), b"<!doctype html>").unwrap();
+    }
+    store.choose("0.6.0").unwrap();
+    let hold = store.hold("0.6.0").unwrap();
+
+    let list = json!(hub.cache_list());
+    let web = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["part"] == "web")
+        .unwrap();
+    assert_eq!(web["paths"], json!([store.dir("0.5.0")]), "{web}");
+    assert_eq!((&web["bytes"], &web["files"]), (&json!(15), &json!(1)));
+
+    let r = hub.cache_clear(&[CachePart::Web]);
+    assert_eq!(
+        r.removed_paths,
+        [store.dir("0.5.0").to_string_lossy().into_owned()]
+    );
+    assert_eq!(r.freed_bytes, 15, "{r:?}");
+    assert_eq!(
+        r.warnings,
+        ["WebUI 0.6.0 is shown by a running `weflow serve`; it was kept"]
+    );
+    assert!(store.dir("0.6.0").join("index.html").is_file());
+    assert_eq!(store.chosen().as_deref(), Some("0.6.0"));
+
+    // the server stopped: it goes with its pick
+    drop(hold);
+    let r = hub.cache_clear(&CachePart::ALL);
+    assert!(r.warnings.is_empty(), "{r:?}");
+    assert!(!store.dir("0.6.0").exists() && store.chosen().is_none());
+}
