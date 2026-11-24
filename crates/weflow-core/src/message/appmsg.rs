@@ -46,7 +46,8 @@ pub(crate) fn kind_of_app_type(xml_type: &str) -> Option<&'static str> {
     Some(match xml_type {
         "51" => "finder",
         "2001" => "red-packet",
-        "3" => "music",
+        // 76 is the newer music share, with the same fields as 3 (#1167)
+        "3" | "76" => "music",
         "33" | "36" => "miniapp",
         "6" => "file",
         "19" => "chat-record",

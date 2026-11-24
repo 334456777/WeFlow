@@ -302,7 +302,7 @@ pub fn parse_message_content_in(
             Some(match ty {
                 "8" => "[表情]".into(),
                 "24" => note_text(normalized, &title),
-                "3" => {
+                "3" | "76" => {
                     if !song.is_empty() {
                         with_title("[音乐]", &song)
                     } else {
@@ -365,7 +365,7 @@ pub fn parse_message_content_in(
                         }
                         return Some(prefix.to_string());
                     }
-                    "3" => return Some(with_title("[音乐]", &title)),
+                    "3" | "76" => return Some(with_title("[音乐]", &title)),
                     "6" => return Some(with_title("[文件]", &title)),
                     "19" => return Some(format_forward_chat_record_content(normalized)),
                     "33" | "36" => return Some(with_title("[小程序]", &title)),
@@ -518,7 +518,11 @@ fn format_plain_export_content(
                 None => prefix.to_string(),
             };
         }
-        if sub == 3 || normalized.contains("<musicurl") || normalized.contains("<songname") {
+        if sub == 3
+            || sub == 76
+            || normalized.contains("<musicurl")
+            || normalized.contains("<songname")
+        {
             let song = extract_xml_value(&normalized, "songname");
             let name = if !song.is_empty() {
                 song

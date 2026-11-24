@@ -243,7 +243,7 @@ fn parse_type49(content: &str) -> String {
         "33" | "36" => "[小程序]",
         "2000" => "[转账]",
         "2001" => "[红包]",
-        "3" => "[音乐]",
+        "3" | "76" => "[音乐]",
         "5" | "49" => "[链接]",
         "87" => "[群公告]",
         "53" => "[接龙]",
@@ -1412,7 +1412,7 @@ mod tests {
             "抢 hongbao 的 <dataurl></dataurl> 文字",
         ];
         for ty in [
-            "51", "2001", "3", "33", "36", "6", "19", "2000", "87", "57", "53", "5", "49",
+            "51", "2001", "3", "76", "33", "36", "6", "19", "2000", "87", "57", "53", "5", "49",
         ] {
             let by_type = kind_of_app_type(ty).unwrap();
             for q in quoted {
@@ -1463,6 +1463,67 @@ mod tests {
         for quoted in [FINDER, MUSIC, RED_PACKET] {
             let own = format!("<appmsg><title>好看</title><refermsg><content>{quoted}</content></refermsg></appmsg>");
             assert_eq!(kind_by_keywords(&without_quoted(&own)), None, "{quoted}");
+        }
+        // nor in the chat window's text, for a reply to a Channels video, neither of them with a `<type>`
+        let video = "<msg><appmsg><title>一段视频</title><finderFeed><finderusername>v2_x@finder</finderusername>\
+            </finderFeed></appmsg></msg>";
+        let own = format!(
+            "<msg><appmsg><title>好看</title><refermsg><content>{}</content></refermsg></appmsg></msg>",
+            escaped(video)
+        );
+        assert_eq!(parsed_content(&own, 49, None), "好看");
+    }
+
+    /// A song shared as `<type>` 3 or 76, as WeChat keeps them: a `<musicShareItem>` and a `<dataurl>`, no
+    /// `<musicurl>` or `<songname>`. Both are music in the chat window, in the exports and in the text of each
+    /// (#1167).
+    #[test]
+    fn a_song_is_music_by_either_type() {
+        for ty in ["3", "76"] {
+            let xml = format!(
+                "<msg><appmsg appid=\"wx1\" sdkver=\"0\"><title>一首歌</title><des>歌手</des><type>{ty}</type>\
+                 <url>https://m/page</url><dataurl>https://m/a.mp3</dataurl><songalbumurl>https://m/c.jpg</songalbumurl>\
+                 <musicShareItem><mid>1</mid></musicShareItem></appmsg></msg>"
+            );
+            let kept_as: i64 = ty.parse::<i64>().unwrap() << 32 | 49;
+            for local_type in [49, kept_as] {
+                assert_eq!(
+                    parsed_content(&xml, local_type, None),
+                    "[音乐] 一首歌",
+                    "{ty} as {local_type}"
+                );
+                assert_eq!(
+                    crate::message::parse_message_content(&xml, local_type, None, None, None)
+                        .as_deref(),
+                    Some("[音乐] 一首歌"),
+                    "{ty} as {local_type}"
+                );
+                assert_eq!(
+                    crate::message::appmsg::app_message_kind(&xml, local_type),
+                    Some("music"),
+                    "{ty} as {local_type}"
+                );
+                assert_eq!(
+                    crate::message::kind::message_type_name_in(
+                        local_type,
+                        &crate::message::xml::MsgXml::new(&xml)
+                    ),
+                    "音乐消息",
+                    "{ty} as {local_type}"
+                );
+            }
+            let window = parse_type49_message(&xml);
+            assert_eq!(window.app_msg_kind.as_deref(), Some("music"), "{ty}");
+            assert_eq!(
+                window.app_msg_data_url.as_deref(),
+                Some("https://m/a.mp3"),
+                "{ty}"
+            );
+            assert_eq!(
+                window.music_album_url.as_deref(),
+                Some("https://m/c.jpg"),
+                "{ty}"
+            );
         }
     }
 
