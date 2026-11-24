@@ -5,11 +5,11 @@ name: Claude
 # github-actions[bot] (see that script). Only users who can write to the repository are answered; the job doesn't
 # start for anyone else, nor for bots.
 #
-# The endpoint, model and effort are set without editing this file: every Actions variable of the repository reaches
-# Claude Code as an environment variable of the same name (ANTHROPIC_BASE_URL, ANTHROPIC_MODEL,
-# CLAUDE_CODE_EFFORT_LEVEL, …), and the API key is the ANTHROPIC_API_KEY secret (ANTHROPIC_AUTH_TOKEN for a Bearer
-# token). The values in use and how to change provider are on the Wiki page 发布与 CI. A run by hand asks about an
-# issue or pull request by its number and can name another model.
+# Claude answers with the model alias opus. The endpoint, the models behind the aliases and the effort are set without
+# editing this file: every Actions variable of the repository reaches Claude Code as an environment variable of the
+# same name (ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_OPUS_MODEL, CLAUDE_CODE_EFFORT_LEVEL, …), and the API key is the
+# ANTHROPIC_API_KEY secret (ANTHROPIC_AUTH_TOKEN for a Bearer token). The values in use and how to change provider
+# are on the Wiki page 发布与 CI. A run by hand asks about an issue or pull request by its number and can pick sonnet.
 #
 # Review comments and reviews on a fork's pull request run without secrets and with a read-only token, so they are
 # skipped: ask in the pull request's conversation instead.
@@ -31,8 +31,10 @@ on:
         description: Question
         required: true
       model:
-        description: Model (default the ANTHROPIC_MODEL variable)
-        required: false
+        description: Model alias, resolved by the ANTHROPIC_DEFAULT_<alias>_MODEL variable
+        type: choice
+        options: [opus, sonnet]
+        default: opus
 
 permissions: {}
 

@@ -1,8 +1,9 @@
 // Answers a mention of @claude in an issue or a pull request (.github/workflows/claude.yml) with the Claude Agent SDK:
 // 👀 on what asked, Claude Code reads the repository and the thread, and its answer is posted in the same place,
-// ending with the model and a link to this run. The endpoint, model and effort come from the repository's Actions
-// variables (see applyConfig). Tool calls outside the read-only rules are denied and logged as warnings. A run that
-// can't answer replies 没有回答 and fails.
+// ending with the model and a link to this run. Claude Code runs the alias opus (sonnet when a manual run picks it);
+// the models behind the aliases, the endpoint and the effort come from the repository's Actions variables (see
+// applyConfig). Tool calls outside the read-only rules are denied and logged as warnings. A run that can't answer
+// replies 没有回答 and fails.
 //
 // The script installs the SDK itself (`npm ci`), while it reacts and reads the thread: the Claude Code binary the
 // SDK brings is a few hundred MB, and a failed install still gets its reply.
@@ -18,23 +19,23 @@ const TIMEOUT_MINUTES = 25;
 // GitHub refuses comments longer than 65536 characters.
 const MAX_REPLY = 60_000;
 
-// The tools Claude gets: reading and searching, the shell, the web, subagents and the repository's skills; none
-// that edit files.
-const TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'WebFetch', 'WebSearch', 'Agent', 'Skill', 'TodoWrite'];
+// The tools Claude gets: reading and searching, the shell, the web and the repository's skills; none that edit
+// files, and no subagents.
+const TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'WebFetch', 'WebSearch', 'Skill', 'TodoWrite'];
 // Commands that run without asking, besides reads in the working directory and Claude Code's built-in read-only
 // commands (ls, cat, grep, find, read-only git, …), which need no rule. `gh api` isn't here: it can write.
 const GH_READS = ['issue view', 'issue list', 'pr view', 'pr diff', 'pr checks', 'pr list', 'run view', 'run list'];
 const ALLOWED = [...GH_READS, 'search', 'release view', 'release list'].map((command) => `Bash(gh ${command} *)`);
 // Tools whose every call canUseTool allows: none of them writes. Every other call that would ask is denied.
-const OPEN = new Set(['WebFetch', 'WebSearch', 'Agent', 'Skill', 'TodoWrite']);
+const OPEN = new Set(['WebFetch', 'WebSearch', 'Skill', 'TodoWrite']);
 
 /**
  * Turns the repository's Actions variables, which claude.yml passes as JSON in CLAUDE_VARS, into environment variables
- * of the same name for Claude Code (ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, CLAUDE_CODE_EFFORT_LEVEL, …), so that they
- * change without editing a file. A variable doesn't override what the workflow or the runner set. The API key secrets
- * the repository doesn't have arrive empty and are dropped: Claude Code would take an empty value as set.
+ * of the same name for Claude Code (ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_OPUS_MODEL, CLAUDE_CODE_EFFORT_LEVEL, …), so
+ * that they change without editing a file. A variable doesn't override what the workflow or the runner set. The API
+ * key secrets the repository doesn't have arrive empty and are dropped: Claude Code would take an empty value as set.
  */
-function applyConfig(ask) {
+function applyConfig() {
   for (const name of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']) {
     if (!process.env[name]) delete process.env[name];
   }
@@ -43,7 +44,6 @@ function applyConfig(ask) {
   for (const [name, value] of Object.entries(vars)) {
     if (!(name in process.env)) process.env[name] = value;
   }
-  if (ask.model) process.env.ANTHROPIC_MODEL = ask.model;
 }
 
 /** A run that ends without an answer; `reason` goes into the reply. */
@@ -89,12 +89,14 @@ function logAssistant(message) {
 async function answer(query, ask, thread) {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), TIMEOUT_MINUTES * 60_000);
-  let model = process.env.ANTHROPIC_MODEL ?? '';
+  const alias = ask.model ?? 'opus';
+  let model = alias;
   let result;
   try {
     const messages = query({
       prompt: prompt(ask, thread),
       options: {
+        model: alias,
         cwd: process.env.GITHUB_WORKSPACE,
         // CLAUDE.md and the skills of the default branch
         settingSources: ['project'],
@@ -159,7 +161,7 @@ function withFooter(text, model) {
 
 async function main() {
   const ask = readAsk();
-  applyConfig(ask);
+  applyConfig();
   try {
     if (!(await canWrite(ask.author))) {
       console.log(`@${ask.author} can't write to the repository: not answering`);
