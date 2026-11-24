@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { App } from './App';
+import { LIVE_READ_MS } from './api/live';
 
 afterEach(() => {
   cleanup();
@@ -10,6 +11,7 @@ afterEach(() => {
   localStorage.clear();
   streams.length = 0;
   long = false;
+  joined = false;
 });
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
@@ -18,7 +20,11 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 
 const ACCOUNTS: Record<string, { username: string; displayName: string }[]> = {
   a: [{ username: 'wxid_lin', displayName: '林沐' }, { username: 'wxid_zhou', displayName: '周舟' }],
   b: [{ username: 'wxid_qin', displayName: '秦川' }],
+  g: [{ username: 'team@chatroom', displayName: '设计群' }],
 };
+
+/** Whether 新同学 joined the group of account `g` (and 林沐 renamed themselves in it), after its first page. */
+let joined = false;
 
 let account = 'a';
 let log: string[] = [];
@@ -64,10 +70,21 @@ function answer(url: string): Response {
       return json({ success: true, data: {} });
     case '/api/chat/messages': {
       const session = params.get('session-id') ?? '';
+      if (session === 'team@chatroom') {
+        // 林沐's two messages; once 新同学 joined, theirs after them
+        const said = (localId: number, sender: string) => ({ ...message(session, localId), senderUsername: sender });
+        if (params.has('after')) return json({ success: true, data: joined && params.get('after') !== `${session}.3` ? [said(3, 'wxid_new')] : [] });
+        return json({ success: true, data: [said(2, 'wxid_lin'), said(1, 'wxid_lin')] });
+      }
       const count = long && !params.has('before') ? 50 : 2;
       const from = params.has('before') ? 0 : 50;
       return json({ success: true, data: Array.from({ length: count }, (_, i) => message(session, from + count - i)) });
     }
+    case '/api/group/members':
+      return json({ success: true, data: { members: [
+        { username: 'wxid_lin', displayName: '林沐', groupNickname: joined ? '林林' : '小林' },
+        ...joined ? [{ username: 'wxid_new', displayName: '新同学', groupNickname: '' }] : [],
+      ] } });
     case '/api/chat/contacts':
       return json({ success: true, data: ACCOUNTS[account].map(s => ({ ...s, type: 'friend' })) });
     case '/api/insight/footprint':
@@ -238,6 +255,37 @@ describe('requests of the chat page', () => {
     expect(conversations()).toEqual(['秦川']);
     expect(messages().length).toBeGreaterThan(0);
     expect(messages().every(text => text.startsWith('b 的消息'))).toBe(true);
+  });
+});
+
+describe('requests of an open group (#1148)', () => {
+  const senders = () => Array.from(document.querySelectorAll('.message-pane .message-sender'), name => name.textContent);
+  const members = (requests: string[]) => requests.filter(request => request.startsWith('GET /api/group/members'));
+  const live = (sessionId: string) => streams.find(s => s.url.startsWith('/api/push/messages'))!.emit('message.new', { sessionId });
+
+  it('reads its members again once after a burst of its live messages, keeping the names shown meanwhile', async () => {
+    account = 'g';
+    serve();
+    expect(members(await requestsOf(() => { render(<App />); }))).toEqual(['GET /api/group/members?chatroom-id=team@chatroom']);
+    expect(senders()).toEqual(['小林']);
+
+    const gathered = async () => {
+      log = [];
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, LIVE_READ_MS)); });
+      await act(async () => {});
+      return log;
+    };
+    // a message of another conversation reads nothing for this one
+    await requestsOf(() => live('other@chatroom'));
+    expect(members(await gathered())).toEqual([]);
+
+    // 新同学 joins and speaks, 林沐 renames themselves in the group: the burst reads the members once, after a while
+    joined = true;
+    expect(members(await requestsOf(() => { live('team@chatroom'); live('team@chatroom'); live('team@chatroom'); }))).toEqual([]);
+    // the new message is shown before that: the names known stay meanwhile
+    expect(senders()).toEqual(['小林', 'wxid_new']);
+    expect(members(await gathered())).toEqual(['GET /api/group/members?chatroom-id=team@chatroom']);
+    expect(senders()).toEqual(['林林', '新同学']);
   });
 });
 

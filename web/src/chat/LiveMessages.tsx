@@ -5,7 +5,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { ArrowClockwise, ArrowDown, CircleNotch } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
-import { onLive } from '../api/live';
+import { LIVE_READ_MS, onLive, useGathered, useLive } from '../api/live';
 import { getMembers, type GroupMember } from '../api/messages';
 import { currentScope, onNewScope } from '../api/scope';
 import { Avatar } from '../Avatar';
@@ -74,19 +74,30 @@ export async function loadMembers(chatroomId: string, signal?: AbortSignal): Pro
   return map;
 }
 
-/** Who said what in a group: names and pictures of its members, as `loadMembers` keeps them when the group opens. */
+const NOBODY = new Map<string, Person>();
+
+/**
+ * Who said what in a group: names and pictures of its members, as `loadMembers` keeps them. Read when the group
+ * opens, and again once it had live messages or the stream is back (someone may have joined or renamed themselves in
+ * the group); a burst of messages reads them once, and the names shown stay until the new ones come.
+ */
 function useMembers(chatroomId: string | null): Map<string, Person> {
-  const [people, setPeople] = useState(() => (chatroomId && memberCache.get(chatroomId)) || new Map<string, Person>());
+  const [shown, setShown] = useState(() => ({ id: chatroomId, people: (chatroomId && memberCache.get(chatroomId)) || NOBODY }));
+  const [round, setRound] = useState(0);
+  const refresh = useGathered(() => setRound(n => n + 1), LIVE_READ_MS);
+  useLive(event => {
+    if (chatroomId && (event.type === 'resumed' || (event.type === 'message.new' && event.sessionId === chatroomId))) refresh();
+  });
   useEffect(() => {
-    if (!chatroomId) { setPeople(new Map()); return; }
+    if (!chatroomId) { setShown({ id: null, people: NOBODY }); return; }
     const kept = memberCache.get(chatroomId);
-    if (kept) { setPeople(kept); return; }
+    if (kept) { setShown({ id: chatroomId, people: kept }); return; }
     const controller = new AbortController();
-    setPeople(new Map());
-    loadMembers(chatroomId, controller.signal).then(setPeople, () => { /* names fall back to the ids */ });
+    loadMembers(chatroomId, controller.signal).then(people => setShown({ id: chatroomId, people }), () => { /* names stay, or fall back to the ids */ });
     return () => controller.abort();
-  }, [chatroomId]);
-  return people;
+  }, [chatroomId, round]);
+  // another group's names are not shown while this one's are read
+  return shown.id === chatroomId ? shown.people : NOBODY;
 }
 
 /** The members known for a group, for the names of search hits; empty until its messages were shown. */
