@@ -18,7 +18,7 @@ trap 'rm -rf "$work"' EXIT
   echo "## 性能基准"
   echo
   # outside a code span, where the autolink does not reach
-  echo "合并前后在同一台自托管 Windows x64 机器上、以合成的基准账号分别测得：BENCH-${base:0:10}-${head:0:10}"
+  echo "BENCH-${base:0:10}-${head:0:10}"
   echo
   cat "$highlights"
 } > "$work/comment.md"
