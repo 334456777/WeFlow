@@ -355,7 +355,8 @@ impl ServiceHub {
         // addMissingOfficialSessions
         let existing: HashSet<String> = sessions.iter().map(|s| s.username.clone()).collect();
         let mut existing = existing;
-        if let Ok(Value::Array(contacts)) = wcdb.contacts() {
+        // the contacts that may be one of these kinds, not a row of every contact
+        if let Ok(Value::Array(contacts)) = wcdb.contacts_maybe_special() {
             for row in contacts {
                 let username = first_str(&row, &["username"]).trim().to_string();
                 if username.is_empty() || existing.contains(&username) {
