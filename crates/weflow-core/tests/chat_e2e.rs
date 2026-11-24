@@ -323,6 +323,20 @@ fn voice_messages_decode_from_silk_to_a_cached_wav() {
     let (created, server) = (1_700_000_100_i64, 9_007_199_254_740_993_i64);
     let (_root, hub, _f) = common::custom_hub("voice", |f| {
         f.session_db(&[session("wxid_bob")]);
+        // the voice message itself, whose create time `chat voice-cache` looks up by its local id
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![MsgSpec::text(
+                    5,
+                    "wxid_bob",
+                    created,
+                    "<msg><voicemsg length=\"1000\"/></msg>",
+                )
+                .of_type(34)],
+            )],
+        );
         // a real SILK stream made by the vendored encoder: one second of a 440 Hz tone
         let silk = weflow_silk::testenc::encode_tone(24000);
         f.media_db(
@@ -377,8 +391,27 @@ fn voice_messages_decode_from_silk_to_a_cached_wav() {
         b"cached-wav"
     );
 
-    // the key without a timestamp is what `voice_resolve_cache` looks at
-    assert!(!hub.voice_resolve_cache("wxid_bob", "5").has_cache);
+    // `chat voice-cache` finds the WAV by the message's create time, looked up by its local id when not given (#1203)
+    {
+        use base64::Engine as _;
+        let cached = Some(base64::engine::general_purpose::STANDARD.encode(b"cached-wav"));
+        for create_time in [None, Some(created)] {
+            let hit = hub.voice_resolve_cache("wxid_bob", "5", create_time);
+            assert!(hit.has_cache, "{create_time:?}");
+            assert_eq!(hit.data, cached, "{create_time:?}");
+        }
+        // another time is another message, whose voice was not decoded
+        assert!(
+            !hub.voice_resolve_cache("wxid_bob", "5", Some(created + 1))
+                .has_cache
+        );
+        // a WAV cached under the key without a time is still found
+        let untimed = hub.voice_cache_dir().join("wxid_bob_77.wav");
+        std::fs::write(&untimed, b"old-wav").unwrap();
+        assert!(hub.voice_resolve_cache("wxid_bob", "77", None).has_cache);
+        std::fs::remove_file(&untimed).unwrap();
+        assert!(!hub.voice_resolve_cache("wxid_bob", "77", None).has_cache);
+    }
     assert!(hub.voice_data("wxid_bob", "abc", None, None, None).is_err());
     // a voice that is not in the media database is an error that explains what to do
     let missing = hub
