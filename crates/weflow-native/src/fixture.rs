@@ -11,6 +11,10 @@
     clippy::unwrap_used,
     reason = "test fixtures fail the test by panicking"
 )]
+#![expect(
+    clippy::cast_possible_wrap,
+    reason = "a fixture's rows, ids and counts number in the hundreds"
+)]
 
 use std::path::{Path, PathBuf};
 
@@ -271,7 +275,7 @@ impl SnsPostSpec<'_> {
         format!(
             "<SnsDataItem><TimelineObject><id>{}</id><username>{}</username><createTime>{}</createTime><contentDesc>{}</contentDesc>\
              <ContentObject><type>{}</type><mediaList>{media}</mediaList></ContentObject><like_user_list>{likes}</like_user_list>{extra}</TimelineObject></SnsDataItem>",
-            self.tid as u64, self.user, self.create_time, self.desc, self.kind, extra = self.extra
+            self.tid.cast_unsigned(), self.user, self.create_time, self.desc, self.kind, extra = self.extra
         )
     }
 }

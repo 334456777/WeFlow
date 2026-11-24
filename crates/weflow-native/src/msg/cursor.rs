@@ -201,7 +201,7 @@ impl Account {
                 tables,
                 keys,
                 pos: 0,
-                batch: batch.max(1) as usize,
+                batch: usize::try_from(batch.max(1)).unwrap_or(1),
                 columns,
                 derived,
                 range: (begin, end),

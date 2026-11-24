@@ -14,7 +14,9 @@
 //! bytes on every machine and with every dependency version.
 #![expect(
     clippy::cast_possible_truncation,
-    reason = "the generated counts, sizes and times are small values that fit"
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "the generated counts, sizes and times are small values that fit, and none is negative"
 )]
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};

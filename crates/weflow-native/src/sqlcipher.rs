@@ -669,7 +669,8 @@ pub mod testutil {
         let conn = Connection::open_in_memory().expect("open an in-memory database");
         conn.pragma_update(None, "page_size", 4096)
             .expect("set the page size");
-        let mut reserve: std::os::raw::c_int = RESERVE as _;
+        let mut reserve =
+            std::os::raw::c_int::try_from(RESERVE).expect("the reserve is a few dozen bytes");
         // SQLITE_FCNTL_RESERVE_BYTES = 38; only legal while the database is still empty.
         // SAFETY: the connection is open, `main` is a NUL-terminated literal and `reserve` a live local;
         // SQLITE_FCNTL_RESERVE_BYTES reads and writes one `c_int` through it.
@@ -697,7 +698,7 @@ pub mod testutil {
             for (i, r) in rows.iter().enumerate() {
                 conn.execute(
                     "insert into t values (?1, ?2)",
-                    rusqlite::params![i as i64, r],
+                    rusqlite::params![i64::try_from(i).expect("a row number"), r],
                 )
                 .expect("insert a row");
             }

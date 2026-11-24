@@ -342,7 +342,10 @@ mod tests {
         let msgs: Vec<(i64, i64, i64, i64, &str)> = texts
             .iter()
             .enumerate()
-            .map(|(k, t)| (k as i64 + 1, k as i64 * 373 - 7, 1, 1, t.as_str()))
+            .map(|(k, t)| {
+                let k = i64::try_from(k).unwrap();
+                (k + 1, k * 373 - 7, 1, 1, t.as_str())
+            })
             .collect();
         let cipher = PageCipher::derive(&KEY, &SALT);
         std::fs::write(

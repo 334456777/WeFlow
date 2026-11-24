@@ -62,7 +62,7 @@ impl Account {
         let want = if limit == 0 {
             -1
         } else {
-            (offset + limit) as i64
+            i64::try_from(offset + limit).unwrap_or(i64::MAX)
         };
         let mut firsts: Vec<i64> = Vec::new();
         for t in tables {
@@ -180,7 +180,7 @@ impl Account {
         let want = if limit == 0 {
             -1
         } else {
-            (offset + limit) as i64
+            i64::try_from(offset + limit).unwrap_or(i64::MAX)
         };
         let mut rows: Vec<MsgRow> = Vec::new();
         for t in tables {
@@ -391,6 +391,8 @@ impl Account {
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
     reason = "test values are known to fit, or are meant to wrap"
 )]
 mod tests {

@@ -274,8 +274,8 @@ impl Account {
                         local_id: int(&r, "l"),
                         kind,
                         mine: int(&r, "mine") == 1,
-                        hour: int(&r, "h").clamp(0, 23) as usize,
-                        weekday_mon: ((int(&r, "w") + 6) % 7) as usize,
+                        hour: usize::try_from(int(&r, "h").clamp(0, 23)).unwrap_or(0),
+                        weekday_mon: usize::try_from((int(&r, "w") + 6).rem_euclid(7)).unwrap_or(0),
                         day: text(&r, "d"),
                         day_no: int(&r, "dn"),
                         content: typed_text(kind, text(&r, "c")),
@@ -441,8 +441,8 @@ impl Account {
                     local_id: f.key.2,
                     kind: f.kind,
                     mine: f.mine,
-                    hour: hour.clamp(0, 23) as usize,
-                    weekday_mon: ((weekday + 6) % 7) as usize,
+                    hour: usize::try_from(hour.clamp(0, 23)).unwrap_or(0),
+                    weekday_mon: usize::try_from((weekday + 6).rem_euclid(7)).unwrap_or(0),
                     day,
                     day_no,
                     content: f.text.unwrap_or_default(),
@@ -552,7 +552,7 @@ impl Account {
                 TEXT | QUOTE => {
                     let t = m.content.trim();
                     if m.kind == TEXT {
-                        words += t.chars().count() as i64;
+                        words += i64::try_from(t.chars().count()).unwrap_or(i64::MAX);
                     }
                     if is_phrase(t) {
                         if m.mine {

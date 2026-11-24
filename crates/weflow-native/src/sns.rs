@@ -195,7 +195,7 @@ fn post_type(xml: &str) -> i64 {
 
 /// One timeline row → its post.
 pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> SnsPost {
-    let tid_text = (tid as u64).to_string();
+    let tid_text = tid.cast_unsigned().to_string();
     let id = R_ID
         .captures(xml)
         .map(|c| c[1].to_string())
@@ -320,7 +320,7 @@ impl Account {
         let mut posts: Vec<(i64, u64, String, String)> = self
             .sns_rows(usernames)?
             .into_iter()
-            .map(|(tid, user, xml)| (post_time(&xml), tid as u64, user, xml))
+            .map(|(tid, user, xml)| (post_time(&xml), tid.cast_unsigned(), user, xml))
             .filter(|(t, _, _, xml)| {
                 (start <= 0 || *t >= start)
                     && (end <= 0 || *t <= end)
@@ -335,10 +335,11 @@ impl Account {
         posts.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
         let it = posts
             .into_iter()
-            .skip(offset.max(0) as usize)
-            .map(|(_, tid, user, xml)| parse_post(tid as i64, &user, &xml));
+            .skip(usize::try_from(offset).unwrap_or(0))
+            .map(|(_, tid, user, xml)| parse_post(tid.cast_signed(), &user, &xml));
         Ok(if limit > 0 {
-            it.take(limit as usize).collect()
+            it.take(usize::try_from(limit).unwrap_or(usize::MAX))
+                .collect()
         } else {
             it.collect()
         })
@@ -605,7 +606,7 @@ mod fixture_tests {
                 "bob trip"
             ]
         );
-        assert_eq!(all[0].tid, (-5i64 as u64).to_string());
+        assert_eq!(all[0].tid, (-5i64).cast_unsigned().to_string());
         assert_eq!(
             descs(&a.sns_timeline(2, 1, &[], None, 0, 0).unwrap()),
             ["carol video", "second post"]

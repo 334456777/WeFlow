@@ -130,7 +130,7 @@ pub(super) fn branch_targets(bytes: &[u8], address: u64) -> Vec<u64> {
             continue;
         }
         let immediate = word & 0x03ff_ffff;
-        let offset = i64::from(((immediate as i32) << 6) >> 6);
+        let offset = i64::from((immediate.cast_signed() << 6) >> 6);
         targets.push(address.wrapping_add_signed(offset * 4));
     }
     targets
