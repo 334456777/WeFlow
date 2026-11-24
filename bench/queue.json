@@ -17,7 +17,8 @@
    "load_seconds": "90",
    "only": "",
    "force": false,
-   "release_tag": ""
+   "release_tag": "",
+   "pr": 1109
   }
  ],
  "labeled": [
