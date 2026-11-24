@@ -1348,8 +1348,8 @@ impl ServiceHub {
         })
     }
 
-    /// Writes a member's messages in a group as CSV or XLSX depending on the extension; a text longer than a cell
-    /// holds is cut (see [`crate::export::CELL_CHARS`]).
+    /// Writes a member's messages in a group as CSV or XLSX depending on the extension; in XLSX a text longer than
+    /// 32 000 characters, more than a cell holds, is cut to its first 32 000.
     ///
     /// # Errors
     /// A usage error when `out` is not a `.csv` or `.xlsx` file, before anything is read.
