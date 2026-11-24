@@ -49,7 +49,7 @@ pub fn extract_xml_value(xml: &str, tag: &str) -> String {
 }
 
 /// `c.replace("<![CDATA[", "").replace("]]>", "").trim()`, without copying when there is nothing to remove.
-fn strip_cdata(c: &str) -> String {
+pub(super) fn strip_cdata(c: &str) -> String {
     use crate::xml::replace_cow;
     use std::borrow::Cow;
     replace_cow(replace_cow(Cow::Borrowed(c), "<![CDATA[", ""), "]]>", "")

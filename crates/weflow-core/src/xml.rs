@@ -301,6 +301,92 @@ pub fn elements<'a>(xml: &'a str, name: &'a str) -> impl Iterator<Item = (&'a st
     })
 }
 
+/// Where the next element `name` at or after `from` is: `(start, gt, end, close_end)`, the offsets of its `<`, of the
+/// `>` that ends its open tag, of its closing tag and just after that. Unlike [`elements`], an element holding others
+/// of the same name ends at its own closing tag: each open tag inside goes one deeper (a self-closing one does not),
+/// each closing tag one shallower. An element whose closing tags do not balance ends at the first one after it, as
+/// in [`elements`].
+fn outer_element_at(
+    xml: &str,
+    mut from: usize,
+    tag: &[u8],
+) -> Option<(usize, usize, usize, usize)> {
+    let h = xml.as_bytes();
+    loop {
+        let p = find_open(h, from, tag)?;
+        let after = p + 1 + tag.len();
+        if !word_ends_at(xml, after) {
+            from = p + 1;
+            continue;
+        }
+        let gt = after + memchr::memchr(b'>', &h[after..])?;
+        let mut first_close = None;
+        let mut depth = 1usize;
+        let mut i = gt + 1;
+        while let Some(r) = memchr::memchr(b'<', &h[i..]) {
+            let q = i + r;
+            if is_close_at(h, q, tag) {
+                let close_end = q + 3 + tag.len();
+                first_close.get_or_insert((q, close_end));
+                depth -= 1;
+                if depth == 0 {
+                    return Some((p, gt, q, close_end));
+                }
+                i = close_end;
+            } else if h
+                .get(q + 1..q + 1 + tag.len())
+                .is_some_and(|w| w.eq_ignore_ascii_case(tag))
+                && word_ends_at(xml, q + 1 + tag.len())
+            {
+                let Some(r) = memchr::memchr(b'>', &h[q..]) else {
+                    break;
+                };
+                let inner_gt = q + r;
+                if h[inner_gt - 1] != b'/' {
+                    depth += 1;
+                }
+                i = inner_gt + 1;
+            } else {
+                i = q + 1;
+            }
+        }
+        let (end, close_end) = first_close?;
+        return Some((p, gt, end, close_end));
+    }
+}
+
+/// The attribute text and the body of each outermost element `name`, like [`elements`] except that an element
+/// holding others of the same name (a chat record's `<dataitem>` holding a nested record's, #1174) is one element
+/// with them in its body. `name` must be ASCII and end with a word character.
+pub fn outer_elements<'a>(
+    xml: &'a str,
+    name: &'a str,
+) -> impl Iterator<Item = (&'a str, &'a str)> + 'a {
+    let tag = name.as_bytes();
+    let mut from = 0;
+    std::iter::from_fn(move || {
+        let (start, gt, end, close_end) = outer_element_at(xml, from, tag)?;
+        from = close_end;
+        Some((&xml[start + 1 + tag.len()..gt], &xml[gt + 1..end]))
+    })
+}
+
+/// `xml` without its outermost elements `name`, the elements nested in them included.
+pub fn without_outer_elements<'a>(xml: &'a str, name: &str) -> Cow<'a, str> {
+    let tag = name.as_bytes();
+    let mut kept = String::new();
+    let mut from = 0;
+    while let Some((start, _, _, close_end)) = outer_element_at(xml, from, tag) {
+        kept.push_str(&xml[from..start]);
+        from = close_end;
+    }
+    if from == 0 {
+        return Cow::Borrowed(xml);
+    }
+    kept.push_str(&xml[from..]);
+    Cow::Owned(kept)
+}
+
 /// `(?i)<name\b`: whether an element `name` opens anywhere. `name` must be ASCII and end with a word character.
 pub fn has_open(xml: &str, name: &str) -> bool {
     let h = xml.as_bytes();
@@ -344,6 +430,50 @@ pub use weflow_native::entities::decode_entities;
 mod tests {
     use super::*;
     use regex::Regex;
+
+    /// An element holding others of its name is one element, ending at its own closing tag (#1174); a
+    /// self-closing one inside does not go deeper; closing tags that do not balance end it at the first, as
+    /// [`elements`] does; and with nothing nested, both read the same.
+    #[test]
+    fn outer_elements_keep_the_nested_ones_inside() {
+        let xml =
+            "<l><i a=\"1\">x<r><i a=\"2\">y</i><i a=\"3\"/><I>z</I></r>w</i><i a=\"4\">v</i></l>";
+        let found: Vec<_> = outer_elements(xml, "i").collect();
+        assert_eq!(
+            found,
+            [
+                (" a=\"1\"", "x<r><i a=\"2\">y</i><i a=\"3\"/><I>z</I></r>w"),
+                (" a=\"4\"", "v"),
+            ]
+        );
+        assert_eq!(
+            without_outer_elements(xml, "r"),
+            "<l><i a=\"1\">xw</i><i a=\"4\">v</i></l>"
+        );
+        assert_eq!(without_outer_elements("<l>x</l>", "r"), "<l>x</l>");
+        let unbalanced = "<i>a<i>b</i>c";
+        assert_eq!(
+            outer_elements(unbalanced, "i").collect::<Vec<_>>(),
+            elements(unbalanced, "i").collect::<Vec<_>>()
+        );
+        let nested = "x<title>a<title>b</title>c</title>";
+        assert_eq!(
+            outer_elements(nested, "title").collect::<Vec<_>>(),
+            [("", "a<title>b</title>c")]
+        );
+        for xml in SAMPLES.iter().filter(|x| **x != nested) {
+            assert_eq!(
+                outer_elements(xml, "title").collect::<Vec<_>>(),
+                elements(xml, "title").collect::<Vec<_>>(),
+                "{xml}"
+            );
+        }
+        let flat = "<l><item>a</item><items>no</items><item k='v'>b</item></l>";
+        assert_eq!(
+            outer_elements(flat, "item").collect::<Vec<_>>(),
+            elements(flat, "item").collect::<Vec<_>>()
+        );
+    }
 
     const SAMPLES: &[&str] = &[
         "",
