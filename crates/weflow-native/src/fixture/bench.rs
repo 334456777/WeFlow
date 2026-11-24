@@ -4,7 +4,8 @@
 //! shares of message types, text lengths, hours and gaps between messages, how much of a group a few members say,
 //! which files of a picture are on the computer, and so on. Only those numbers are copied, never a name or a message.
 //!
-//! The structure is the one WeChat writes: several `message_N.db` whose local ids start again in each database and
+//! The structure is the one WeChat writes: every database with a salt of its own, so each one opened derives its
+//! page key (#1127); several `message_N.db` whose local ids start again in each database and
 //! whose time ranges overlap, the newest messages of each database still in its WAL, a few `sort_seq` out of step
 //! (#133) or missing, app messages of every common kind as XML compressed with zstd, and the picture, video, voice
 //! and file folders with their `hardlink.db` rows. Pictures are V2 `.dat` files holding a JPEG, PNG or WXGF of the
@@ -111,7 +112,7 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
         spec.group_messages >= 1,
         "the biggest group needs a message"
     );
-    let f = Fixture::new(root, ACCOUNT_DIR);
+    let f = Fixture::new(root, ACCOUNT_DIR).with_own_salts(spec.seed);
     let rng = Rng::new(spec.seed);
     let world = World::new(&mut rng.fork(1), spec);
     let shard_of = assign_shards(&mut rng.fork(2), &world.conversations, spec.shards);
@@ -340,17 +341,16 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
         }
         shard.conn.execute_batch("commit")?;
         let full = plain_image(&shard.conn);
-        let cipher = &f.cipher;
-        std::fs::write(
-            db_dir.join(format!("message_{k}.db")),
-            encrypt_db(&base, cipher),
-        )?;
-        if base != full {
-            let salt = (0x5eed_0000 | k as u32, (spec.seed as u32) ^ 0x2468_ace0);
-            std::fs::write(
-                db_dir.join(format!("message_{k}.db-wal")),
-                encrypt_wal(cipher, &base, &full, salt),
-            )?;
+        let (db, wal) = f.with_cipher(&format!("message/message_{k}.db"), |cipher| {
+            let wal = (base != full).then(|| {
+                let salt = (0x5eed_0000 | k as u32, (spec.seed as u32) ^ 0x2468_ace0);
+                encrypt_wal(cipher, &base, &full, salt)
+            });
+            (encrypt_db(&base, cipher), wal)
+        });
+        std::fs::write(db_dir.join(format!("message_{k}.db")), db)?;
+        if let Some(wal) = wal {
+            std::fs::write(db_dir.join(format!("message_{k}.db-wal")), wal)?;
         }
     }
 

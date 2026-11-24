@@ -52,6 +52,14 @@ fn a_seed_gives_the_same_bytes_and_another_seed_other_ones() {
     let (fa, fb) = (files(&root.join("a")), files(&root.join("b")));
     assert!(fa.len() > 100, "{} files", fa.len());
     assert!(fa == fb, "the same seed wrote different files");
+    // every database has a salt of its own, so each one opened derives its page key (#1127)
+    let dbs: Vec<&[u8]> = fa
+        .iter()
+        .filter(|(path, _)| path.extension().is_some_and(|e| e == "db"))
+        .map(|(_, bytes)| &bytes[..16])
+        .collect();
+    assert!(dbs.len() > 5, "{} databases", dbs.len());
+    assert_eq!(dbs.iter().collect::<HashSet<_>>().len(), dbs.len());
 
     let c = bench::build(&root.join("c"), &small(8)).unwrap();
     assert_ne!(a["conversations"], c["conversations"]);
