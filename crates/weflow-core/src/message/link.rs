@@ -1,5 +1,6 @@
 //! Link cards: their title, address and text.
 
+use super::appmsg::kind_of_app_type;
 use super::xml::{
     extract_app_message_type, extract_xml_value, normalize_app_message_content, rx,
     strip_sender_prefix,
@@ -50,8 +51,9 @@ pub fn extract_html_link_card(content: &str, local_type: i64) -> Option<LinkCard
     if !is_app {
         return None;
     }
+    // a card for every type the table calls a link (4, 5, 49), as the kind has it (#1191)
     let sub = extract_app_message_type(&normalized);
-    if !sub.is_empty() && sub != "5" && sub != "49" {
+    if !sub.is_empty() && kind_of_app_type(&sub) != Some("link") {
         return None;
     }
     let url = [
@@ -138,5 +140,59 @@ mod tests {
             "https://example.com/x"
         );
         assert_eq!(normalize_http_link_url("javascript:alert(1)"), "");
+    }
+
+    /// Every `<type>` the table calls a link (4, 5, 49) has a card, kept as `local_type` 49 or as
+    /// `(<type> << 32) | 49`: the exports write its address, and Arkme has its title and address. The other types have
+    /// none (#1191).
+    #[test]
+    fn every_link_type_has_a_card() {
+        use super::super::appmsg::extract_arkme_app_message_meta_in;
+        use super::super::xml::MsgXml;
+
+        let types = [
+            "3", "76", "4", "5", "49", "6", "8", "19", "24", "33", "36", "51", "53", "57", "87",
+            "2000", "2001",
+        ];
+        let mut links = 0;
+        for ty in types {
+            let xml = format!(
+                "<msg><appmsg><title>T</title><type>{ty}</type><url>https://a.example/b</url></appmsg></msg>"
+            );
+            let kept_as: i64 = (ty.parse::<i64>().unwrap() << 32) | 49;
+            for local_type in [49, kept_as] {
+                let at = format!("<type> {ty} as {local_type}");
+                let card = extract_html_link_card(&xml, local_type);
+                if kind_of_app_type(ty) != Some("link") {
+                    assert!(card.is_none(), "{at}");
+                    continue;
+                }
+                assert_eq!(
+                    card.map(|c| (c.title, c.url)),
+                    Some(("T".into(), "https://a.example/b".into())),
+                    "{at}"
+                );
+                assert_eq!(
+                    format_link_card_export_text(&xml, local_type, LinkStyle::Markdown).as_deref(),
+                    Some("[T](https://a.example/b)"),
+                    "{at}"
+                );
+                assert_eq!(
+                    format_link_card_export_text(&xml, local_type, LinkStyle::AppendUrl).as_deref(),
+                    Some("[链接] T\nhttps://a.example/b"),
+                    "{at}"
+                );
+                let meta = extract_arkme_app_message_meta_in(&MsgXml::new(&xml), local_type)
+                    .unwrap_or_default();
+                let field = |k: &str| meta.get(k).and_then(|v| v.as_str()).map(str::to_owned);
+                assert_eq!(
+                    (field("linkTitle"), field("linkUrl")),
+                    (Some("T".into()), Some("https://a.example/b".into())),
+                    "{at}"
+                );
+                links += 1;
+            }
+        }
+        assert_eq!(links, 6, "4, 5 and 49, kept either way");
     }
 }
