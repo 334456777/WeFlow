@@ -269,22 +269,28 @@ impl Samples<'_> {
     /// the plane repeat its last one).
     fn block(
         self,
-        (stride, width, height): (usize, usize, usize),
-        (x, y): (usize, usize),
+        shape: (usize, usize, usize),
+        at: (usize, usize),
         to8: &To8,
         out: &mut [i16; 64],
     ) {
-        fn fill<T: Copy + Into<u16>>(
+        /// [`Samples::block`] with `level`, the 8-bit value of a sample less 128.
+        fn fill<T: Copy>(
             s: &[T],
             (stride, width, height): (usize, usize, usize),
             (x, y): (usize, usize),
-            to8: &To8,
             out: &mut [i16; 64],
+            level: impl Fn(T) -> i16,
         ) {
-            let level = |v: T| i16::from(to8.get(v.into())) - 128;
             if x + 8 <= width && y + 8 <= height {
                 for (r, row) in out.as_chunks_mut::<8>().0.iter_mut().enumerate() {
                     let at = (y + r) * stride + x;
+                    // The encoder goes along the picture an MCU after another: each row's samples further on are
+                    // asked for while this block is coded.
+                    prefetch(
+                        s.as_ptr()
+                            .wrapping_add(at + PREFETCH_AHEAD / size_of::<T>()),
+                    );
                     for (o, &v) in row.iter_mut().zip(&s[at..at + 8]) {
                         *o = level(v);
                     }
@@ -298,12 +304,33 @@ impl Samples<'_> {
                 }
             }
         }
-        match self {
-            Self::U8(s) => fill(s, (stride, width, height), (x, y), to8, out),
-            Self::U16(s) => fill(s, (stride, width, height), (x, y), to8, out),
+        // Without a table the compiler works out eight samples of a row at once.
+        match (self, to8) {
+            (Self::U8(s), To8::Same) => fill(s, shape, at, out, |v| i16::from(v) - 128),
+            (Self::U16(s), To8::Same) => fill(s, shape, at, out, To8::same),
+            (Self::U8(s), To8::Table(t)) => fill(s, shape, at, out, |v| To8::look_up(t, v.into())),
+            (Self::U16(s), To8::Table(t)) => fill(s, shape, at, out, |v| To8::look_up(t, v)),
         }
     }
 }
+
+/// How far along a row, in bytes, [`Samples::block`] asks for the samples the next blocks will read: one cache line.
+/// A decoded picture is larger than the cache, and the processor's own prefetching does not keep up with the sixteen
+/// or more rows a 4:2:0 MCU reads at once.
+const PREFETCH_AHEAD: usize = 64;
+
+/// Asks the processor to bring the cache line holding `p` into its caches.
+#[cfg(target_arch = "x86_64")]
+fn prefetch<T>(p: *const T) {
+    use std::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
+    // SAFETY: a prefetch is a hint that reads nothing into the program: it never faults, whatever the address, so `p`
+    // may point past the plane
+    unsafe { _mm_prefetch::<_MM_HINT_T0>(p.cast()) }
+}
+
+/// Elsewhere the processor's own prefetching is left to it.
+#[cfg(not(target_arch = "x86_64"))]
+fn prefetch<T>(_: *const T) {}
 
 /// A decoded picture, whichever decoder gave it, its planes checked to be as large as its geometry needs.
 struct Picture<'a> {
@@ -430,35 +457,36 @@ impl jpeg::Plane for PlaneOf<'_> {
     }
 }
 
-/// [`to_8_bits`] of every value a sample of a plane can have, looked up rather than worked out for each of the
-/// picture's millions of samples (in the limited range each one is a division).
-struct To8 {
-    table: Vec<u8>,
-    shift: u32,
-    full_range: bool,
-    range: (i32, i32, i32),
+/// How the samples of a plane become the levels a JPEG codes: [`to_8_bits`], less 128.
+enum To8 {
+    /// 8-bit samples in the full range: each is its own 8-bit value.
+    Same,
+    /// The level of every value of the bit depth, looked up rather than worked out for each of the picture's
+    /// millions of samples (in the limited range each one is a division). A sample above the bit depth, which only a
+    /// damaged stream gives, works out to 255 like the largest one.
+    Table(Vec<i16>),
 }
 
 impl To8 {
-    /// The table for samples `shift` bits deeper than 8.
+    /// The levels of samples `shift` bits deeper than 8.
     fn new(shift: u32, full_range: bool, range: (i32, i32, i32)) -> Self {
-        let table = (0..=u16::MAX >> (8 - shift.min(8)))
-            .map(|v| to_8_bits(v, shift, full_range, range))
-            .collect();
-        Self {
-            table,
-            shift,
-            full_range,
-            range,
+        if shift == 0 && full_range {
+            return Self::Same;
         }
+        let table = (0..=u16::MAX >> (8 - shift.min(8)))
+            .map(|v| i16::from(to_8_bits(v, shift, full_range, range)) - 128)
+            .collect();
+        Self::Table(table)
     }
 
-    /// The 8-bit value of sample `v` (worked out for one above the bit depth, which a damaged stream may give).
-    fn get(&self, v: u16) -> u8 {
-        match self.table.get(usize::from(v)) {
-            Some(&b) => b,
-            None => to_8_bits(v, self.shift, self.full_range, self.range),
-        }
+    /// The level of an 8-bit full-range sample `v` (that of 255 for one above it, which only a damaged stream gives).
+    fn same(v: u16) -> i16 {
+        i16::from(u8::try_from(v).unwrap_or(u8::MAX)) - 128
+    }
+
+    /// The level of sample `v` in `table`.
+    fn look_up(table: &[i16], v: u16) -> i16 {
+        table.get(usize::from(v)).copied().unwrap_or(127)
     }
 }
 
@@ -808,22 +836,81 @@ mod tests {
         }
     }
 
+    /// The level of sample `v` the way [`to_8_bits`] works it out.
+    fn level_of(v: u16, (shift, full, range): (u32, bool, (i32, i32, i32))) -> i16 {
+        i16::from(to_8_bits(v, shift, full, range)) - 128
+    }
+
+    /// Every bit depth, both ranges, luma and chroma.
+    fn signals() -> impl Iterator<Item = (u32, bool, (i32, i32, i32))> {
+        (0..=8).flat_map(|shift| {
+            [false, true]
+                .into_iter()
+                .flat_map(move |full| [LUMA_RANGE, CHROMA_RANGE].map(|range| (shift, full, range)))
+        })
+    }
+
     #[test]
-    fn the_table_of_8_bit_values_is_what_each_sample_works_out_to() {
-        for shift in 0..=8 {
-            for full in [false, true] {
-                for range in [LUMA_RANGE, CHROMA_RANGE] {
-                    let table = To8::new(shift, full, range);
-                    // every value of the bit depth, and some above it
-                    let top = (256u32 << shift).min(1 << 16);
-                    for v in (0..top).chain(top..(top + 300).min(1 << 16)) {
-                        let v = u16::try_from(v).unwrap();
-                        assert_eq!(
-                            table.get(v),
-                            to_8_bits(v, shift, full, range),
-                            "shift {shift}, full {full}, {range:?}, value {v}"
-                        );
+    fn every_sample_value_becomes_the_level_it_works_out_to() {
+        // all 65,536 values, eight a row: those above the bit depth too, which a damaged stream may give
+        let wide: Vec<u16> = (0..=u16::MAX).collect();
+        let narrow: Vec<u8> = (0..=u8::MAX).collect();
+        for signal in signals() {
+            let to8 = To8::new(signal.0, signal.1, signal.2);
+            for (samples, rows) in [
+                (Samples::U16(&wide), wide.len() / 8),
+                (Samples::U8(&narrow), narrow.len() / 8),
+            ] {
+                let mut out = [0; 64];
+                for y in (0..rows).step_by(8) {
+                    samples.block((8, 8, rows), (0, y), &to8, &mut out);
+                    for (i, &level) in out.iter().enumerate() {
+                        let v = u16::try_from(y * 8 + i).unwrap();
+                        assert_eq!(level, level_of(v, signal), "{signal:?}, value {v}");
                     }
+                }
+            }
+        }
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(256))]
+
+        /// A block anywhere on a plane of any size and stride, inside it or over its edges, is the levels of the
+        /// samples it covers, the plane's last column and row repeated past it.
+        #[test]
+        fn any_block_is_the_levels_of_the_samples_it_covers(
+            (width, height) in (1usize..30, 1usize..30),
+            pad in 0usize..5,
+            (x, y) in (0usize..40, 0usize..40),
+            signal in proptest::sample::select(signals().collect::<Vec<_>>()),
+            seed in proptest::prelude::any::<u64>(),
+            narrow in proptest::prelude::any::<bool>(),
+        ) {
+            use rand::{rngs::StdRng, RngExt, SeedableRng};
+            let mut rng = StdRng::seed_from_u64(seed);
+            let stride = width + pad;
+            let len = stride * (height - 1) + width;
+            // mostly within the bit depth, now and then a sample above it
+            let top = (256u32 << signal.0).min(1 << 16);
+            let wide: Vec<u16> = (0..len)
+                .map(|_| {
+                    let limit = if rng.random_ratio(1, 16) { 1 << 16 } else { top };
+                    u16::try_from(rng.random_range(0..limit)).unwrap()
+                })
+                .collect();
+            let bytes: Vec<u8> = wide.iter().map(|&v| v as u8).collect();
+            let (samples, value): (Samples<'_>, Box<dyn Fn(usize) -> u16>) = if narrow {
+                (Samples::U8(&bytes), Box::new(|i| u16::from(bytes[i])))
+            } else {
+                (Samples::U16(&wide), Box::new(|i| wide[i]))
+            };
+            let mut out = [0; 64];
+            samples.block((stride, width, height), (x, y), &To8::new(signal.0, signal.1, signal.2), &mut out);
+            for r in 0..8 {
+                for c in 0..8 {
+                    let at = (y + r).min(height - 1) * stride + (x + c).min(width - 1);
+                    proptest::prop_assert_eq!(out[r * 8 + c], level_of(value(at), signal), "row {}, column {}", r, c);
                 }
             }
         }
