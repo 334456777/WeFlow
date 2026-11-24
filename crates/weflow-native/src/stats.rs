@@ -560,7 +560,7 @@ impl Account {
     }
 
     /// [`message_table_stats`](Self::message_table_stats) of each of `session_ids`, in their order. Their tables are
-    /// found in one listing of every shard's tables ([`message_tables_of`](Self::message_tables_of)) rather than a
+    /// found in one listing of every shard's tables (`message_tables_of`) rather than a
     /// search of each shard's schema for each conversation; the rows of each conversation are a result of their own,
     /// so one whose table cannot be read leaves the others theirs.
     ///
