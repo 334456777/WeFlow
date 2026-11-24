@@ -75,6 +75,8 @@ pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
         "51" => row(Some("finder"), "[视频号]", "视频号消息", 7),
         "53" => row(Some("solitaire"), "[接龙]", "接龙", 7),
         "57" => row(Some("quote"), "[引用消息]", "引用消息", 25),
+        // a pat, which the exports keep as a system message (#1196)
+        "62" => row(None, "[拍一拍]", "系统消息", 80),
         "87" => row(Some("announcement"), "[群公告]", "群公告", 7),
         "2000" => row(Some("transfer"), "[转账]", "转账消息", 99),
         "2001" => row(Some("red-packet"), "[红包]", "红包消息", 7),

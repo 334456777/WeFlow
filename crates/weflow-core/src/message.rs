@@ -32,7 +32,7 @@ use quote::{build_quoted_reply_text, extract_quoted_reply_display};
 use row::unsigned_token;
 use system::{
     clean_system_message, extract_readable_system_message_text, extract_revoker_info,
-    is_readable_system_message, parse_voip_message,
+    is_readable_system_message, parse_voip_message, pat_text,
 };
 use time::{normalize_timestamp_seconds, parse_compact_datetime};
 use transfer::{get_transfer_prefix, is_same_wxid, transfer_text};
@@ -276,7 +276,9 @@ pub fn parse_message_content_in(
         47 => Some(format_emoji_semantic_text(emoji_caption)),
         48 => Some(location_text(content)),
         50 => Some(parse_voip_message(content)),
-        10000 | 266287972401 => Some(clean_system_message(content)),
+        10000 => Some(clean_system_message(content)),
+        // a pat's `<title>` is escaped XML, as the chat window reads it (#1196)
+        266287972401 => Some(pat_text(content)),
         244813135921 => match x.quoted_display() {
             Some(d) => Some(build_quoted_reply_text(d)),
             None => {
@@ -417,7 +419,8 @@ fn format_plain_export_content(
         47 => return format_emoji_semantic_text(emoji_caption),
         48 => return location_text(content),
         50 => return parse_voip_message(content),
-        10000 | 266287972401 => return clean_system_message(content),
+        10000 => return clean_system_message(content),
+        266287972401 => return pat_text(content),
         _ => {}
     }
     let normalized = normalize_app_message_content(content);

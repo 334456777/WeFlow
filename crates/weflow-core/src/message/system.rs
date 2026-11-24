@@ -116,7 +116,14 @@ pub fn clean_system_message(content: &str) -> String {
     }
 }
 
-pub(crate) fn clean_pat_message(content: &str) -> String {
+/// The text of a pat (拍一拍, `(62 << 32) | 49`), the same in the chat window and the exports (#1196): its
+/// `<title>`, with the entities of `content`, the message as it is kept, decoded once.
+pub(crate) fn pat_text(content: &str) -> String {
+    clean_pat_message(&clean_utf16(&crate::xml::decode_entities(content)))
+}
+
+/// [`pat_text`] of content whose entities are decoded.
+fn clean_pat_message(content: &str) -> String {
     if content.is_empty() {
         return "拍一拍".into();
     }
@@ -251,6 +258,14 @@ mod tests {
         assert_eq!(parse_voip_message(xml), "[语音通话] 01:23");
         let xml = "<voipmsg><VoIPBubbleMsg><msg><![CDATA[对方无应答]]></msg><room_type>0</room_type></VoIPBubbleMsg></voipmsg>";
         assert_eq!(parse_voip_message(xml), "[视频通话] 对方无应答");
+    }
+
+    /// A pat's title is escaped XML, read decoded once (#1196).
+    #[test]
+    fn a_pat_is_its_title_decoded_once() {
+        let xml = "<msg><appmsg><title>&quot;A&amp;B&quot; 拍了拍 &quot;C&quot;</title><type>62</type></appmsg></msg>";
+        assert_eq!(pat_text(xml), "\"A&B\" 拍了拍 \"C\"");
+        assert_eq!(pat_text(""), "拍一拍");
     }
 
     #[test]

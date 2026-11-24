@@ -871,6 +871,8 @@ mod tests {
             row(3, 1700000002, 49, "wxid_bob:\n<msg><appmsg><title>Doc</title><type>5</type><url>https://example.com/x</url></appmsg></msg>", Some("wxid_bob")),
             row(4, 1700000003, 103079215153, "wxid_bob:\n<msg><appmsg><title /><des>预览</des><type>24</type><recorditem><![CDATA[<recordinfo><datalist><dataitem datatype=\"1\"><datadesc>笔记&#x0A;全文</datadesc></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>", Some("wxid_bob")),
             row(5, 1700000004, 244813135921, "wxid_bob:\n<msg><appmsg><title>好的</title><type>57</type><refermsg><type>1</type><displayname>Me</displayname><content>hello</content><svrid>1</svrid></refermsg></appmsg></msg>", Some("wxid_bob")),
+            // a pat, whose title is escaped XML (#1196)
+            row(6, 1700000005, 266287972401, "<msg><appmsg><title>&quot;A&amp;B&quot; 拍了拍 &quot;C&quot;</title><type>62</type></appmsg></msg>", None),
         ];
         let mut msgs = collect_rows(
             rows,
@@ -922,6 +924,7 @@ mod tests {
             "[笔记]\n笔记\n全文".into(),
             "好的[引用 Me：hello]".into(),
             "[表情：打call]".into(),
+            sys("\"A&B\" 拍了拍 \"C\""),
         ] {
             assert!(
                 sql.contains(&want.replace('\'', "''")),
@@ -936,6 +939,10 @@ mod tests {
         );
         assert!(chatlab.contains("\\\"Bob\\\" 撤回了一条消息"), "{chatlab}");
         assert!(!chatlab.contains(&sys("\"Bob\"")), "{chatlab}");
+        assert!(
+            chatlab.contains("\\\"A&B\\\" 拍了拍 \\\"C\\\"") && !chatlab.contains("&quot;"),
+            "{chatlab}"
+        );
         // WeClone: quotes stay out of the training data, the rest is written the same way
         let weclone = ex.render_weclone(&msgs);
         assert!(!weclone.contains("好的"), "{weclone}");
