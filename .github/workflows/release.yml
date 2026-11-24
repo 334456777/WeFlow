@@ -86,7 +86,8 @@ jobs:
           BASE: ${{ inputs.bench_base }}
         run: bash .github/scripts/release-check.sh bench-base "$TAG" "$BASE"
 
-  # What each package carries beside the program (#1111): the licenses of the crates and C libraries it is built from.
+  # What each package carries beside the program (#1111): the licenses of the crates, C libraries and other projects'
+  # code it is built from.
   licenses:
     name: Third-party licenses
     needs: prepare

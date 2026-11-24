@@ -154,10 +154,10 @@ The Project does not collect, store, or transmit any user data; everything runs 
 The Developer has made every effort to ensure the legitimacy and safety of the Project, but accepts no liability for any direct or indirect loss of any kind arising from its use, including but not limited to data loss, device damage, and legal proceedings.
 
 ## 6. Intellectual property
-The intellectual property rights of the WeFlow project belong to its developer, [hicccc77](https://github.com/hicccc77). The Project is protected by copyright law, international copyright treaties, and other intellectual property laws and treaties. Users may download and use the Project provided that they comply with this statement and the relevant laws and regulations.
+The Project is released under the [Unlicense](LICENSE). Code taken from other projects keeps the license of the project it came from, whose license file is in the folder holding the code:
+- `crates/weflow-native/src/windows_db_key/`: [MIT](crates/weflow-native/src/windows_db_key/LICENSE), from [wx_key](https://github.com/ycccccccy/wx_key)
+- `crates/weflow-native/src/macos_key_helper/`, `crates/weflow-native/src/linux_key_helper/`: [CC BY-NC-SA 4.0](crates/weflow-native/src/macos_key_helper/LICENSE), from the [WeFlow desktop app](https://github.com/hicccc77/WeFlow)
+- `crates/weflow-silk/vendor/`: [the Skype SILK SDK license](crates/weflow-silk/vendor/LICENSE-SKYPE.txt)
 
 The Project is built in part on the work of others: this software is based in part on the work of the Independent JPEG Group. The licenses of the libraries and other code built into the program are in the `licenses` folder of each release package (`THIRD-PARTY-LICENSES.html`).
-
-## 7. Final interpretation
-The right of final interpretation of the Project belongs to its developer, [hicccc77](https://github.com/hicccc77). The Developer reserves the right to change or update this disclaimer at any time without notice.
 </div>

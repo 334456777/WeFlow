@@ -1,5 +1,8 @@
 //! The Rust rewrite of macOS `xkey_helper`.
 //!
+//! `xkey_helper`, `libwx_key.dylib` and `image_scan_helper` came with the WeFlow desktop app (`hicccc77/WeFlow`,
+//! CC BY-NC-SA 4.0: the `LICENSE` in this folder).
+//!
 //! On ARM64, `Hook` locates the database-key call by scanning WeChat's code,
 //! attaches to WeChat with `ptrace` and stops it there; on x86_64 the key is
 //! read from WeChat's call to CommonCrypto's `CCKeyDerivationPBKDF` with
