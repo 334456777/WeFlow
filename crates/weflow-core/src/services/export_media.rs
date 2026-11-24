@@ -541,7 +541,11 @@ type MediaRank = (bool, u64);
 /// file, and the media threads export them side by side: whichever gets there first, the HD rendition replaces a
 /// thumbnail, so the export does not depend on the threads' order (issue #52).
 #[derive(Default)]
-pub(super) struct ExportedFiles(std::sync::Mutex<Written>);
+pub(super) struct ExportedFiles {
+    written: std::sync::Mutex<Written>,
+    /// Signalled when a thread is done writing a file, for the threads waiting to write the same one.
+    done: std::sync::Condvar,
+}
 
 /// What [`ExportedFiles`] holds.
 #[derive(Default)]
@@ -549,6 +553,17 @@ struct Written {
     ranks: HashMap<PathBuf, MediaRank>,
     /// The folders the export made: no earlier export left a file in them.
     made: HashSet<PathBuf>,
+    /// The files a thread is writing now. Only the threads that write the same file wait for one another: a file is
+    /// created, written and renamed into place outside the lock, so the threads write different files side by side.
+    writing: HashSet<PathBuf>,
+}
+
+impl ExportedFiles {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Written> {
+        self.written
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 }
 
 /// What the messages of one media export share while their media are copied side by side.
@@ -629,11 +644,15 @@ fn put_media(
         }
         Some(written) => {
             let rank = (!thumbnail, size);
-            // decided and written under the lock, so a better rendition is never overwritten by a worse one
-            let mut files = written
-                .0
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            // decided after the writes of the same file before it are done, so a better rendition is never
+            // overwritten by a worse one
+            let mut files = written.lock();
+            while files.writing.contains(&full) {
+                files = written
+                    .done
+                    .wait(files)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
             let keep = match files.ranks.get(&full) {
                 Some(have) => *have >= rank,
                 // a folder this export made holds no file of an earlier one
@@ -646,17 +665,30 @@ fn put_media(
                 None => false,
             };
             if !keep {
+                files.writing.insert(full.clone());
+                drop(files);
                 // the folder is made when the first write into it finds it missing
-                match write() {
+                let mut made_dir = false;
+                let result = match write() {
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        if make_dir(dir).ok()? {
-                            files.made.insert(dir.to_path_buf());
-                        }
-                        write().ok()?;
+                        make_dir(dir).and_then(|made| {
+                            made_dir = made;
+                            write()
+                        })
                     }
-                    done => done.ok()?,
+                    done => done,
+                };
+                let mut files = written.lock();
+                files.writing.remove(&full);
+                if made_dir {
+                    files.made.insert(dir.to_path_buf());
                 }
-                files.ranks.insert(full.clone(), rank);
+                if result.is_ok() {
+                    files.ranks.insert(full.clone(), rank);
+                }
+                drop(files);
+                written.done.notify_all();
+                result.ok()?;
             }
         }
     }
@@ -1002,6 +1034,54 @@ mod tests {
                 std::fs::read(dir.join("images").join("a.jpg")).unwrap(),
                 b"a larger full image"
             );
+        }
+    }
+
+    #[test]
+    fn threads_writing_the_same_files_at_once_leave_the_best_rendition_of_each() {
+        const THREADS: usize = 8;
+        const FILES: usize = 6;
+        // each thread writes every file once, a rendition of a size no other thread writes; every third a thumbnail
+        let rendition = |thread: usize, file: usize| {
+            let size = 1 + (thread * 7 + file * 3) % THREADS + THREADS * thread;
+            let thumbnail = (thread + file).is_multiple_of(3);
+            (vec![u8::try_from(thread).unwrap(); size], thumbnail)
+        };
+        for round in 0..5 {
+            let dir = media_dir(&format!("threads-{round}"));
+            let written = ExportedFiles::default();
+            let to = MediaTarget {
+                session_dir: &dir,
+                safe_talker: "s",
+                written: Some(&written),
+            };
+            std::thread::scope(|s| {
+                for thread in 0..THREADS {
+                    let (to, rendition) = (&to, &rendition);
+                    s.spawn(move || {
+                        for i in 0..FILES {
+                            // the threads go through the files in different orders
+                            let file = (i + thread) % FILES;
+                            let (bytes, thumbnail) = rendition(thread, file);
+                            let name = format!("{file}/a.jpg");
+                            let source = MediaSource::Bytes(&bytes);
+                            let put = put_media(to, ("image", "images"), name, source, thumbnail);
+                            assert!(put.is_some());
+                        }
+                    });
+                }
+            });
+            for file in 0..FILES {
+                let best = (0..THREADS)
+                    .map(|thread| rendition(thread, file))
+                    .max_by_key(|(bytes, thumbnail)| (!thumbnail, bytes.len()))
+                    .unwrap()
+                    .0;
+                let folder = dir.join("images").join(file.to_string());
+                assert_eq!(std::fs::read(folder.join("a.jpg")).unwrap(), best);
+                let names: Vec<_> = std::fs::read_dir(&folder).unwrap().collect();
+                assert_eq!(names.len(), 1, "no temporary file is left behind");
+            }
         }
     }
 
