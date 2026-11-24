@@ -1152,28 +1152,49 @@ impl ServiceHub {
     /// The `candidates` whose folder lists their name, in order: those that may exist. Costs one metadata call per
     /// folder, at most once for `since`, instead of one per path; the paths returned still have to be checked.
     fn possibly_cached(&self, candidates: Vec<PathBuf>, since: Since) -> Vec<PathBuf> {
-        let mut dirs: HashMap<&Path, CacheDir> = HashMap::new();
-        for dir in candidates.iter().filter_map(|c| c.parent()) {
-            if !dirs.contains_key(dir) {
-                dirs.insert(dir, self.index_cache_dir(dir, since));
-            }
-        }
+        // the few folders of the many candidates, told apart by their bytes: a path's hash walks its components
+        let mut dirs: Vec<(&Path, CacheDir)> = Vec::new();
+        let dir_of: Vec<Option<usize>> = candidates
+            .iter()
+            .map(|c| {
+                let dir = c.parent()?;
+                Some(
+                    match dirs
+                        .iter()
+                        .position(|(d, _)| d.as_os_str() == dir.as_os_str())
+                    {
+                        Some(i) => i,
+                        None => {
+                            dirs.push((dir, self.index_cache_dir(dir, since)));
+                            dirs.len() - 1
+                        }
+                    },
+                )
+            })
+            .collect();
         let state = self.image_state.lock_or_panic();
-        let listed = |c: &PathBuf| {
-            let Some(dir) = c.parent() else {
+        // each folder's names, looked up once; an index dropped since (over `MAX_DIR_LISTINGS`) proves nothing
+        let names: Vec<Option<&HashSet<String>>> = dirs
+            .iter()
+            .map(|(dir, found)| match found {
+                CacheDir::Indexed => state.cache_dirs.get(*dir).map(|index| &index.names),
+                CacheDir::Missing | CacheDir::Unlisted => None,
+            })
+            .collect();
+        let listed = |(c, dir): (&PathBuf, &Option<usize>)| {
+            let Some(i) = *dir else {
                 return true;
             };
-            match dirs.get(dir) {
-                Some(CacheDir::Missing) => false,
-                // an index dropped since (over `MAX_DIR_LISTINGS`) proves nothing
-                Some(CacheDir::Indexed) => match (state.cache_dirs.get(dir), lower_file_name(c)) {
-                    (Some(index), Some(name)) => index.names.contains(&name),
+            match dirs[i].1 {
+                CacheDir::Missing => false,
+                CacheDir::Indexed => match (names[i], lower_file_name(c)) {
+                    (Some(index), Some(name)) => index.contains(&name),
                     _ => true,
                 },
-                _ => true,
+                CacheDir::Unlisted => true,
             }
         };
-        let kept: Vec<bool> = candidates.iter().map(listed).collect();
+        let kept: Vec<bool> = candidates.iter().zip(&dir_of).map(listed).collect();
         drop(state);
         candidates
             .into_iter()
