@@ -1,0 +1,86 @@
+name: Claude
+
+# Mentioning @claude in an issue, a pull request, a comment or a review gets an answer in the same place:
+# .github/claude/answer.mjs runs Claude Code through the Claude Agent SDK, read-only, and replies as
+# github-actions[bot] (see that script). Only users who can write to the repository are answered; the job doesn't
+# start for anyone else, nor for bots.
+#
+# The model is DeepSeek Flash through DeepSeek's Anthropic-compatible API, set up as DeepSeek's guide for Claude Code
+# gives it (https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code); the API key is the
+# DEEPSEEK_API_KEY secret. A run by hand asks about an issue or pull request by its number and can name another model.
+#
+# Review comments and reviews on a fork's pull request run without secrets and with a read-only token, so they are
+# skipped: ask in the pull request's conversation instead.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: Issue or pull request number
+        required: true
+      prompt:
+        description: Question
+        required: true
+      model:
+        description: Model (default deepseek-flash[1m])
+        required: false
+
+permissions: {}
+
+jobs:
+  answer:
+    if: >-
+      github.event_name == 'workflow_dispatch' || (
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+          github.event.comment.author_association || github.event.review.author_association ||
+          github.event.issue.author_association) &&
+        contains(github.event.comment.body || github.event.review.body ||
+          format('{0} {1}', github.event.issue.title, github.event.issue.body), '@claude') &&
+        (github.event.pull_request == null || github.event.pull_request.head.repo.full_name == github.repository)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # reactions and replies
+      issues: write
+      pull-requests: write
+      # gh run view, gh pr checks
+      actions: read
+      checks: read
+      statuses: read
+    steps:
+      # The default branch also for reviews, whose own ref is the pull request's merge commit: CLAUDE.md, the skills
+      # and the script come from main. The token isn't left in .git/config, where Claude could read it.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Answer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DEEPSEEK_API_KEY }}
+          ANTHROPIC_MODEL: ${{ inputs.model || 'deepseek-flash[1m]' }}
+          ANTHROPIC_DEFAULT_OPUS_MODEL: deepseek-flash[1m]
+          ANTHROPIC_DEFAULT_SONNET_MODEL: deepseek-flash[1m]
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-flash
+          CLAUDE_CODE_SUBAGENT_MODEL: deepseek-flash
+          CLAUDE_CODE_EFFORT_LEVEL: max
+          CLAUDE_CODE_AUTO_COMPACT_WINDOW: 786432
+          # rides out a short outage; with the default, a rejected key takes about 4 minutes to fail
+          CLAUDE_CODE_MAX_RETRIES: 5
+          # the commands Claude runs don't see the API key (GitHub tokens stay, for gh)
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: 1
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: 1
+        run: node .github/claude/answer.mjs
