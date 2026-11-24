@@ -4,6 +4,7 @@ use super::xml::{
     extract_xml_value, normalize_app_message_content, normalize_app_message_cow, rx,
     sender_prefix_len, strip_sender_prefix,
 };
+use crate::chat_msg::clean_utf16;
 
 pub(super) struct RevokeInfo {
     pub is_revoke: bool,
@@ -113,6 +114,36 @@ pub fn clean_system_message(content: &str) -> String {
     } else {
         stripped
     }
+}
+
+pub(crate) fn clean_pat_message(content: &str) -> String {
+    if content.is_empty() {
+        return "拍一拍".into();
+    }
+    if let Some(c) = rx(r"(?is)<title>(.*?)</title>").captures(content) {
+        let title = c[1]
+            .replace("<![CDATA[", "")
+            .replace("]]>", "")
+            .trim()
+            .to_string();
+        if !title.is_empty() {
+            return title;
+        }
+    }
+    if let Some(c) = rx(r"^(.+?拍了拍.+?)(?:[\r\n]|$|ງ|wxid_)").captures(content) {
+        return c[1].trim().to_string();
+    }
+    let mut cleaned = rx(r"wxid_[a-zA-Z0-9_-]+")
+        .replace_all(content, "")
+        .to_string();
+    cleaned = rx(r"[ງ໐໓ຖiht]+").replace_all(&cleaned, " ").to_string();
+    cleaned = rx(r"\d{6,}").replace_all(&cleaned, "").to_string();
+    cleaned = rx(r"\s+").replace_all(&cleaned, " ").trim().to_string();
+    cleaned = clean_utf16(&cleaned);
+    if cleaned.chars().count() > 1 && !cleaned.contains("xml") {
+        return cleaned;
+    }
+    "拍一拍".into()
 }
 
 /// The template of a `<sysmsgtemplate>` notice (`"$username$"邀请"$names$"加入了群聊`) with each `$name$` filled from

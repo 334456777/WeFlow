@@ -16,7 +16,9 @@ use crate::api::js_parse_int;
 use crate::message::appmsg::{app_type, kind_by_keywords, kind_of_app_type, without_quoted};
 use crate::message::emoji::percent_decode;
 use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
-use crate::message::system::{extract_readable_system_message_text, parse_voip_message};
+use crate::message::system::{
+    clean_pat_message, extract_readable_system_message_text, parse_voip_message,
+};
 use crate::message::transfer::{is_same_wxid, transfer_text};
 use crate::message::xml::{
     extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content, strip_sender_line,
@@ -109,36 +111,6 @@ fn system_message_text(content: &str) -> String {
     }
     let body = strip_sender_prefix(&normalized);
     crate::message::system::clean_system_message(&rx(r"(?i)<\?xml[^?]*\?>").replace_all(&body, ""))
-}
-
-fn clean_pat_message(content: &str) -> String {
-    if content.is_empty() {
-        return "拍一拍".into();
-    }
-    if let Some(c) = rx(r"(?is)<title>(.*?)</title>").captures(content) {
-        let title = c[1]
-            .replace("<![CDATA[", "")
-            .replace("]]>", "")
-            .trim()
-            .to_string();
-        if !title.is_empty() {
-            return title;
-        }
-    }
-    if let Some(c) = rx(r"^(.+?拍了拍.+?)(?:[\r\n]|$|ງ|wxid_)").captures(content) {
-        return c[1].trim().to_string();
-    }
-    let mut cleaned = rx(r"wxid_[a-zA-Z0-9_-]+")
-        .replace_all(content, "")
-        .to_string();
-    cleaned = rx(r"[ງ໐໓ຖiht]+").replace_all(&cleaned, " ").to_string();
-    cleaned = rx(r"\d{6,}").replace_all(&cleaned, "").to_string();
-    cleaned = rx(r"\s+").replace_all(&cleaned, " ").trim().to_string();
-    cleaned = clean_utf16(&cleaned);
-    if cleaned.chars().count() > 1 && !cleaned.contains("xml") {
-        return cleaned;
-    }
-    "拍一拍".into()
 }
 
 // ───────────────────────── type 49 ─────────────────────────
