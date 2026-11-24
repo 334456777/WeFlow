@@ -253,7 +253,15 @@ async fn run_command(
                 } else {
                     whitelist
                 };
-                svc.start(list).map_err(AppError::runtime)?;
+                if !weflow_core::image_download::supported() {
+                    return Err(AppError::runtime(
+                        "image auto download is only supported on Windows x64",
+                    ));
+                }
+                if let Err(reason) = svc.start(list) {
+                    // why WeChat could not be hooked, as the hook says it
+                    return Err(AppError::runtime(reason));
+                }
                 weflow_core::output::event(
                     json!({ "type": "auto_download_started", "status": svc.status() }),
                 );

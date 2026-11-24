@@ -454,8 +454,30 @@ fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
     }
 }
 
-/// The messages the crates of the workspace give the [`CONSTRUCTORS`].
-fn workspace_messages() -> Vec<Message> {
+/// The places in `source` (the file at `place`) outside its tests that name one of the [`CONSTRUCTORS`] without
+/// calling it, as `.map_err(AppError::usage)` does (#1154): the message is made elsewhere, as a `String` the scan
+/// does not see, so nothing checks that the catalog has its Chinese.
+fn named_without_a_message(place: &str, source: &str) -> Vec<String> {
+    let tokens = without_tests(lex(source));
+    tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (line, token))| {
+            let Token::Word(ty) = token else {
+                return None;
+            };
+            let named = CONSTRUCTORS
+                .iter()
+                .any(|(t, f, _)| t == ty && is_word(tokens.get(i + 3), f))
+                && is_punct(tokens.get(i + 1), ':')
+                && is_punct(tokens.get(i + 2), ':');
+            (named && !is_punct(tokens.get(i + 4), '(')).then(|| format!("{place}:{line}"))
+        })
+        .collect()
+}
+
+/// Each `.rs` file of the crates of the workspace but test files, as its place (`weflow-core/src/x.rs`) and source.
+fn workspace_sources() -> Vec<(String, String)> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut files = Vec::new();
     for krate in ["weflow-cli", "weflow-core", "weflow-native"] {
@@ -463,16 +485,58 @@ fn workspace_messages() -> Vec<Message> {
     }
     files
         .iter()
-        .flat_map(|path| {
+        .map(|path| {
             let source = std::fs::read_to_string(path).unwrap();
             let place = path
                 .strip_prefix(&crates)
                 .unwrap_or(path)
                 .display()
                 .to_string();
-            messages_in(&place.replace('\\', "/"), &source)
+            (place.replace('\\', "/"), source)
         })
         .collect()
+}
+
+/// The messages the crates of the workspace give the [`CONSTRUCTORS`].
+fn workspace_messages() -> Vec<Message> {
+    workspace_sources()
+        .iter()
+        .flat_map(|(place, source)| messages_in(place, source))
+        .collect()
+}
+
+/// A constructor is given its message where the message is made, so that the scan sees it (#1154).
+#[test]
+fn no_constructor_is_handed_a_message_made_elsewhere() {
+    let named: Vec<String> = workspace_sources()
+        .iter()
+        .flat_map(|(place, source)| named_without_a_message(place, source))
+        .collect();
+    assert!(
+        named.is_empty(),
+        "give the constructor the message's literal (`AppError::usage(format!(\"…\"))`) rather than its name, so \
+         that its Chinese is checked: {named:#?}"
+    );
+}
+
+#[test]
+fn finds_a_constructor_named_without_a_message() {
+    let source = r#"
+        fn parse(s: &str) -> AppResult<i64> {
+            s.parse().map_err(AppError::usage)?;
+            let fail = ImageResult::fail;
+            Err(AppError::usage("called"))?;
+            s.parse().map_err(|_| AppError::runtime(format!("called {s}")))
+        }
+        #[cfg(test)]
+        mod tests {
+            fn t() { let _ = x.map_err(AppError::runtime); }
+        }
+    "#;
+    assert_eq!(
+        named_without_a_message("x.rs", source),
+        ["x.rs:3", "x.rs:4"]
+    );
 }
 
 #[test]
