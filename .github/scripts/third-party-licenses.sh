@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The licenses of what a release is built from, for its packages (release.yml, #1111): THIRD-PARTY-LICENSES.html,
-# which cargo-about makes from .github/about/ (every crate and its license text), and the license files of the C
-# libraries built into the program, which the crates that bundle them do not list (their own licenses cover the
-# bindings), named as THIRD-PARTY-LICENSES.html links to them.
+# which cargo-about makes from .github/about/ (every crate and its license text), and the license files it does not
+# see, named as THIRD-PARTY-LICENSES.html links to them: of the code in this workspace's crates that comes from other
+# projects (about.toml leaves these crates out), and of the C libraries built into the program, which the crates that
+# bundle them do not list (their own licenses cover the bindings).
 # Usage: third-party-licenses.sh <out dir>   (cargo-about and jq on PATH; run from the repository's root)
 set -euo pipefail
 OUT=$1
@@ -32,6 +33,7 @@ copy() {
   cp "$file" "$OUT/$3"
 }
 cp crates/weflow-silk/vendor/LICENSE-SKYPE.txt "$OUT/silk.txt"
+cp crates/weflow-native/src/windows_db_key/LICENSE "$OUT/wx_key.txt"
 copy zstd-sys 'zstd/LICENSE' zstd.txt
 copy bzip2-sys 'bzip2-*/LICENSE' bzip2.txt
 copy lzma-sys 'xz-*/COPYING' xz.txt
