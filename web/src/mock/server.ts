@@ -21,7 +21,7 @@ import { pictureUrl, voiceSound } from './media';
 import { postCounts, timeline } from './moments';
 import { pushes } from './official';
 import { payRecords } from './pay';
-import { contactRows, contacts, groups, ME, nameOf, officials, people, person, pinned, sessionName } from './people';
+import { contactRows, contacts, groups, ME, nameOf, officials, person, pinned, sessionName } from './people';
 import { annualReport, dualReport, reportYears } from './reports';
 import { clearCache, health, listCache } from './upkeep';
 
@@ -271,7 +271,8 @@ const routes: Record<string, Route> = {
   },
   'GET api/sns/timeline': snsTimeline,
   'GET api/sns/post-counts': () => postCounts(),
-  'GET api/sns/stats': () => ({ totalPosts: timeline.length, totalFriends: people.filter(p => p.username !== ME).length, myPosts: postCounts()[ME] ?? 0 }),
+  // the people who posted, the account among them, as the server counts them (#1158)
+  'GET api/sns/stats': () => ({ totalPosts: timeline.length, totalFriends: Object.keys(postCounts()).length, myPosts: postCounts()[ME] ?? 0 }),
   'GET api/analytics/overall': () => overall(),
   'GET api/analytics/rankings': params => rankings(number(params, 'limit') ?? 20),
   'GET api/analytics/time': () => timeSpread(),
