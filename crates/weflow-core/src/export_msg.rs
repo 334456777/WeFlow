@@ -1267,6 +1267,33 @@ mod tests {
         assert_eq!(msgs[1]["id"], "111");
     }
 
+    /// A song's card links to the song: to its own address to play when it has one, else to its page, never to
+    /// its cover (#1170).
+    #[test]
+    fn html_song_card_links_to_the_song() {
+        let song = |extra: &str| {
+            format!(
+                "<msg><appmsg><title>一首歌</title><type>76</type><url>https://m/page</url>\
+                 <dataurl>https://m/a.mp3</dataurl><songalbumurl>https://m/c.jpg</songalbumurl>{extra}\
+                 </appmsg></msg>"
+            )
+        };
+        let html = with_exporter(false, |ex, msgs| {
+            let mut plain = msgs[3].clone();
+            plain.content = song("");
+            let mut playable = msgs[3].clone();
+            playable.content = song("<musicurl>https://m/play</musicurl>");
+            ex.render_html(&[plain, playable])
+        });
+        let open = "<script id=\"wf-data\" type=\"application/json\">";
+        let start = html.find(open).unwrap() + open.len();
+        let end = start + html[start..].find("</script>").unwrap();
+        let data: Value = serde_json::from_str(&html[start..end]).unwrap();
+        let msgs = data["msgs"].as_array().unwrap();
+        assert_eq!(msgs[0]["l"], "https://m/page");
+        assert_eq!(msgs[1]["l"], "https://m/play");
+    }
+
     /// Streaming: every format can be written from an iterator; Excel switches to the constant-memory sheet
     /// only once there are more than `EXCEL_BIG` messages.
     #[test]

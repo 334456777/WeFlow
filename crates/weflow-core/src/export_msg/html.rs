@@ -525,7 +525,8 @@ impl Exporter<'_, '_> {
             Kind::Music => {
                 m.ti = meta_str(&meta, "musicTitle").or(title);
                 m.x = meta_str(&meta, "musicSinger").or_else(|| meta_str(&meta, "appMsgDesc"));
-                m.l = meta_str(&meta, "musicUrl");
+                // the song's page when it has no address of its own to play, as WeChat keeps most songs (#1170)
+                m.l = meta_str(&meta, "musicUrl").or_else(|| tag("url"));
             }
             Kind::MiniProgram => {
                 m.ti = title;
