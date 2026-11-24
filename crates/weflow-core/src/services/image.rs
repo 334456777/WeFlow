@@ -1139,14 +1139,39 @@ impl ServiceHub {
         since: Since,
     ) -> Option<String> {
         let root = self.image_cache_root();
-        self.possibly_cached(
-            img::cache_output_candidates(&root, dat_path, month, session_id, prefer_hd),
-            since,
-        )
-        .into_iter()
-        .map(|c| c.to_string_lossy().to_string())
-        // a file that is not there is not usable either
-        .find(|c| self.usable_image_cache_file(c))
+        let candidates = img::CacheCandidates::new(&root, dat_path, month, session_id, prefer_hd);
+        // a folder is checked only when the folders before it hold none of the names: most images are found in the
+        // first, and the image's own folder of the older layout is a different one for each image
+        let found = candidates.folders().into_iter().find_map(|folder| {
+            self.possibly_cached_in(folder, since)
+                .into_iter()
+                .map(|c| c.to_string_lossy().to_string())
+                // a file that is not there is not usable either
+                .find(|c| self.usable_image_cache_file(c))
+        });
+        found
+    }
+
+    /// [`Self::possibly_cached`] of the candidates in one folder, making a path only of the names the folder lists.
+    fn possibly_cached_in(&self, folder: img::CacheFolder<'_>, since: Since) -> Vec<PathBuf> {
+        let dir = folder.path();
+        let found = self.index_cache_dir(dir, since);
+        let mut kept = Vec::new();
+        if found == CacheDir::Missing {
+            return kept;
+        }
+        let state = self.image_state.lock_or_panic();
+        // an index dropped since (over `MAX_DIR_LISTINGS`) proves nothing
+        let names = match found {
+            CacheDir::Indexed => state.cache_dirs.get(dir).map(|index| &index.names),
+            CacheDir::Missing | CacheDir::Unlisted => None,
+        };
+        folder.each_name(|name| {
+            if names.is_none_or(|names| names.contains(name)) {
+                kept.push(dir.join(name));
+            }
+        });
+        kept
     }
 
     /// The `candidates` whose folder lists their name, in order: those that may exist. Costs one metadata call per
