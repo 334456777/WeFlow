@@ -3359,6 +3359,7 @@ dependencies = [
  "libc",
  "mach2",
  "md-5",
+ "memchr",
  "pbkdf2 0.13.0",
  "proptest",
  "regex",
