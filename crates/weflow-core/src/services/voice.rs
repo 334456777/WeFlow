@@ -218,25 +218,42 @@ impl ServiceHub {
         Ok(wav)
     }
 
-    /// The decoded voice of a message from the cache only (`chat voice-cache`); the CLI has
-    /// no long-lived memory, so a hit means a cached WAV for the key without a timestamp exists.
+    /// The decoded voice of a message from the cache only (`chat voice-cache`), nothing decoded: the WAV
+    /// [`voice_data`](Self::voice_data) and [`voice_preload`](Self::voice_preload) wrote under the message's create time
+    /// (`create_time`, else the voice message's own, looked up by its local id), else one under the key without a time
+    /// (#1203).
     pub fn voice_resolve_cache(
         &self,
         session_id: &str,
         msg_id: &str,
+        create_time: Option<i64>,
     ) -> crate::contract::VoiceCache {
-        let file = self
-            .voice_cache_dir()
-            .join(format!("{}.wav", voice_cache_key(session_id, msg_id, None)));
-        match std::fs::read(&file) {
-            Ok(bytes) if !bytes.is_empty() => {
+        let create_time = create_time.filter(|t| *t > 0).or_else(|| {
+            let local_id = crate::api::js_parse_int(msg_id)?;
+            let wcdb = self.open_wcdb().ok()?;
+            let row =
+                chat::message_by_local_id(&wcdb, session_id, local_id, None, Some(34)).ok()??;
+            (row.local_type & 0xFFFF_FFFF == 34)
+                .then_some(row.create_time)
+                .flatten()
+                .filter(|t| *t > 0)
+        });
+        let dir = self.voice_cache_dir();
+        let cached = create_time
+            .map(Some)
+            .into_iter()
+            .chain([None])
+            .map(|t| dir.join(format!("{}.wav", voice_cache_key(session_id, msg_id, t))))
+            .find_map(|file| std::fs::read(file).ok().filter(|b| !b.is_empty()));
+        match cached {
+            Some(bytes) => {
                 use base64::Engine;
                 crate::contract::VoiceCache {
                     has_cache: true,
                     data: Some(base64::engine::general_purpose::STANDARD.encode(bytes)),
                 }
             }
-            _ => crate::contract::VoiceCache {
+            None => crate::contract::VoiceCache {
                 has_cache: false,
                 data: None,
             },

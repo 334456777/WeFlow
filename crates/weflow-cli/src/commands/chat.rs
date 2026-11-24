@@ -263,6 +263,9 @@ pub(crate) enum ChatSubcommand {
         session_id: String,
         /// Local message id
         local_id: String,
+        /// Message create time in seconds: tells apart messages of different message databases that share the local id
+        #[arg(long)]
+        create_time: Option<i64>,
     },
     /// Decode and cache many voice messages
     VoicePreload {
@@ -405,7 +408,12 @@ pub(crate) async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppRe
         ChatSubcommand::VoiceCache {
             session_id,
             local_id,
-        } => Ok(json!(hub.voice_resolve_cache(session_id, local_id))),
+            create_time,
+        } => Ok(json!(hub.voice_resolve_cache(
+            session_id,
+            local_id,
+            *create_time
+        ))),
         ChatSubcommand::VoicePreload {
             session_id,
             messages_json,
