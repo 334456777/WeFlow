@@ -2,7 +2,7 @@
 
 use super::xml::{
     decode_html_entities, decode_html_entities_cow, extract_app_message_type, extract_xml_value,
-    normalize_app_message_content, normalize_app_message_cow, rx,
+    normalize_app_message_content, normalize_app_message_cow, rx, strip_cdata,
 };
 use super::ForwardRecord;
 use std::collections::HashSet;
@@ -123,7 +123,8 @@ fn parse_forward_container(container: &str) -> Vec<Item> {
     // Each form is the same items read once more: the first form that holds any is the one read, never a mix of
     // them. A form decoded further would also show a nested record's escaped items as items of this one.
     for seg in &segments {
-        let items: Vec<Item> = crate::xml::elements(seg, "dataitem")
+        // a nested record kept as it is inside an item's `<recordxml>` is in that item, not items of this one (#1174)
+        let items: Vec<Item> = crate::xml::outer_elements(seg, "dataitem")
             .filter_map(|(attrs, body)| parse_forward_data_item(body, attrs))
             .collect();
         if !items.is_empty() {
@@ -134,6 +135,13 @@ fn parse_forward_container(container: &str) -> Vec<Item> {
 }
 
 fn parse_forward_data_item(body: &str, attrs: &str) -> Option<Item> {
+    let nested_xml = crate::xml::outer_elements(body, "recordxml")
+        .next()
+        .map(|(_, inner)| strip_cdata(inner))
+        .unwrap_or_default();
+    // the item's own fields, not those of the items of a record nested in it (#1174)
+    let body = crate::xml::without_outer_elements(body, "recordxml");
+    let body = body.as_ref();
     let datatype_raw = rx(r#"(?i)datatype\s*=\s*["']?(\d+)["']?"#)
         .captures(attrs)
         .map(|c| c[1].to_string())
@@ -149,7 +157,6 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<Item> {
     }
     let datadesc = decode_html_entities(&datadesc);
     let datatitle = decode_html_entities(&extract_xml_value(body, "datatitle"));
-    let nested_xml = extract_xml_value(body, "recordxml");
     let nested_list = if datatype == 17 && !nested_xml.is_empty() {
         Some(parse_forward_records(&nested_xml)).filter(|l| !l.is_empty())
     } else {
@@ -278,6 +285,55 @@ mod tests {
         let text = format_forward_chat_record_content(xml);
         assert_eq!(text, "[转发的聊天记录]群聊的聊天记录\nBob: hello");
         assert_eq!(convert_message_type_in(49, &MsgXml::new(xml)), 7);
+    }
+
+    /// A nested record as WeChat keeps it: its XML as it is inside the item's `<recordxml>`, within the outer
+    /// record's CDATA section, here two levels deep, and before the item's own fields. Each record keeps its own
+    /// items, and each item its own sender (#1174).
+    #[test]
+    fn a_nested_record_keeps_its_own_items() {
+        let info = |title: &str, items: &str| {
+            format!("<recordxml><recordinfo><title>{title}</title><datalist>{items}</datalist></recordinfo></recordxml>")
+        };
+        let said = |id: &str, who: &str, text: &str| {
+            format!(
+                "<dataitem datatype=\"1\" dataid=\"{id}\"><sourcename>{who}</sourcename><datadesc>{text}</datadesc>\
+                 </dataitem>"
+            )
+        };
+        let deepest = info("最里面", &said("d1", "Dan", "三"));
+        let inner = info(
+            "群聊",
+            &format!(
+                "{}<dataitem datatype=\"17\" dataid=\"i2\">{deepest}<sourcename>Carol</sourcename>\
+                 <datatitle>最里面</datatitle></dataitem>",
+                said("i1", "Carol", "一")
+            ),
+        );
+        let xml = record_of(&[
+            (
+                "datatype=\"1\" dataid=\"o1\"",
+                "<sourcename>Bob</sourcename><datadesc>外面</datadesc>",
+            ),
+            (
+                "datatype=\"17\" dataid=\"o2\"",
+                &format!("{inner}<sourcename>Bob</sourcename><datatitle>群聊</datatitle>"),
+            ),
+        ]);
+        let items = parse_chat_history(&xml).unwrap();
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert_eq!(items[1].sourcename, "Bob");
+        let nested = items[1].chat_record_list.as_deref().unwrap();
+        assert_eq!(nested.len(), 2, "{nested:?}");
+        assert_eq!(nested[1].sourcename, "Carol");
+        assert_eq!(
+            nested[1].chat_record_list.as_deref().map(<[_]>::len),
+            Some(1)
+        );
+        assert_eq!(
+            format_forward_chat_record_content(&xml),
+            "[转发的聊天记录]聊天记录\nBob: 外面\nBob: [转发的聊天记录]群聊\n  Carol: 一\n  Carol: [转发的聊天记录]最里面\n    Dan: 三"
+        );
     }
 
     /// A chat record of `items` (`<dataitem>` attributes and body), inside a CDATA section as WeChat keeps it.
