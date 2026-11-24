@@ -32,11 +32,39 @@ pub fn find_ci(hay: &str, from: usize, needle: &str) -> Option<usize> {
 }
 
 /// [`find_ci`] on bytes.
+///
+/// A needle with two bytes that have no case (`<`, `/`, `>`, digits) is searched for by the first and last of them,
+/// a fixed distance apart ([`pair_search`]); any other by its rarest byte ([`rarest_find`]).
 fn find_ci_bytes(h: &[u8], from: usize, n: &[u8]) -> Option<usize> {
     if n.is_empty() {
         return (from <= h.len()).then_some(from);
     }
     if from > h.len() || h.len() - from < n.len() {
+        return None;
+    }
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    {
+        let caseless = |b: &u8| !b.is_ascii_alphabetic();
+        if let (Some(first), Some(last)) =
+            (n.iter().position(caseless), n.iter().rposition(caseless))
+        {
+            let tail = |hay: &[u8], n: &[u8]| rarest_find(hay, 0, n);
+            let pair = u8::try_from(first).ok().zip(u8::try_from(last).ok());
+            if let Some(found) = pair
+                .filter(|(a, b)| a != b)
+                .and_then(|pair| pair_search(&h[from..], n, pair, tail))
+            {
+                return found.map(|p| from + p);
+            }
+        }
+    }
+    rarest_find(h, from, n)
+}
+
+/// [`find_ci`] by the needle's rarest byte: a search for that byte (both cases) skips to each place the needle could
+/// start. `n` is not empty and `from` is at most `h.len()`.
+fn rarest_find(h: &[u8], from: usize, n: &[u8]) -> Option<usize> {
+    if h.len() - from < n.len() {
         return None;
     }
     // look for the needle's rarest byte; each hit is a candidate start `k` bytes before it
@@ -90,47 +118,78 @@ fn find_tag(h: &[u8], from: usize, tag: &[u8], closing: bool) -> Option<(usize, 
 /// time (AVX2 or else SSE2 on x86-64, NEON on aarch64), and each such place is compared in full. Text too short for
 /// the vectors, and other architectures, are searched by [`find_each`], which gives the same answer.
 fn pair_find(hay: &[u8], needle: &[u8]) -> Option<usize> {
-    // the vectors need some text past the last byte of the needle; for less, a plain search is as quick
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-    if hay.len() >= needle.len() + 32 {
-        use memchr::arch::all::packedpair::Pair;
-        let pair = u8::try_from(needle.len() - 1)
-            .ok()
-            .and_then(|last| Pair::with_indices(needle, 0, last));
-        if let Some(pair) = pair {
-            #[cfg(target_arch = "x86_64")]
-            {
-                use memchr::arch::x86_64::{avx2, sse2};
-                if let Some(f) = avx2::packedpair::Finder::with_pair(needle, pair) {
-                    return pair_candidates(hay, needle, f.min_haystack_len(), |h| {
-                        f.find_prefilter(h)
-                    });
-                }
-                if let Some(f) = sse2::packedpair::Finder::with_pair(needle, pair) {
-                    return pair_candidates(hay, needle, f.min_haystack_len(), |h| {
-                        f.find_prefilter(h)
-                    });
-                }
-            }
-            #[cfg(target_arch = "aarch64")]
-            if let Some(f) =
-                memchr::arch::aarch64::neon::packedpair::Finder::with_pair(needle, pair)
-            {
-                return pair_candidates(hay, needle, f.min_haystack_len(), |h| f.find_prefilter(h));
-            }
-        }
+    if let Some(found) = u8::try_from(needle.len() - 1)
+        .ok()
+        .and_then(|last| pair_search(hay, needle, (0, last), find_each))
+    {
+        return found;
     }
     find_each(hay, needle)
 }
 
+/// The first `needle` in `hay`, ASCII case-insensitive, by a vector search for its bytes at `indices`, which must
+/// have no case; `tail` searches the end of the text the vectors leave. `None` when the text is too short for the
+/// vectors or the CPU has none: the caller searches some other way.
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+fn pair_search(
+    hay: &[u8],
+    needle: &[u8],
+    (i, j): (u8, u8),
+    tail: fn(&[u8], &[u8]) -> Option<usize>,
+) -> Option<Option<usize>> {
+    // the vectors need some text past the last byte of the needle; for less, a plain search is as quick
+    if hay.len() < needle.len() + 32 {
+        return None;
+    }
+    let pair = memchr::arch::all::packedpair::Pair::with_indices(needle, i, j)?;
+    #[cfg(target_arch = "x86_64")]
+    {
+        use memchr::arch::x86_64::{avx2, sse2};
+        if let Some(f) = avx2::packedpair::Finder::with_pair(needle, pair) {
+            let prefilter = |h: &[u8]| f.find_prefilter(h);
+            return Some(pair_candidates(
+                hay,
+                needle,
+                f.min_haystack_len(),
+                prefilter,
+                tail,
+            ));
+        }
+        if let Some(f) = sse2::packedpair::Finder::with_pair(needle, pair) {
+            let prefilter = |h: &[u8]| f.find_prefilter(h);
+            return Some(pair_candidates(
+                hay,
+                needle,
+                f.min_haystack_len(),
+                prefilter,
+                tail,
+            ));
+        }
+    }
+    #[cfg(target_arch = "aarch64")]
+    if let Some(f) = memchr::arch::aarch64::neon::packedpair::Finder::with_pair(needle, pair) {
+        let prefilter = |h: &[u8]| f.find_prefilter(h);
+        return Some(pair_candidates(
+            hay,
+            needle,
+            f.min_haystack_len(),
+            prefilter,
+            tail,
+        ));
+    }
+    None
+}
+
 /// The first `needle` in `hay`, ASCII case-insensitive, from the places `prefilter` gives: the first place in a text
-/// of at least `min_len` bytes where the needle could start, or `None` when there is none.
+/// of at least `min_len` bytes where the needle could start, or `None` when there is none. `tail` searches the rest.
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 fn pair_candidates(
     hay: &[u8],
     needle: &[u8],
     min_len: usize,
     prefilter: impl Fn(&[u8]) -> Option<usize>,
+    tail: fn(&[u8], &[u8]) -> Option<usize>,
 ) -> Option<usize> {
     let mut at = 0;
     while hay.len() - at >= min_len {
@@ -143,7 +202,7 @@ fn pair_candidates(
         }
         at = c + 1;
     }
-    find_each(&hay[at..], needle).map(|p| at + p)
+    tail(&hay[at..], needle).map(|p| at + p)
 }
 
 /// The first `needle` in `hay`, ASCII case-insensitive, by stopping at each occurrence of its first byte.
@@ -610,6 +669,23 @@ mod tests {
                 find_tag(h, from, tag.as_bytes(), closing),
                 find_tag_each(h, from, tag.as_bytes(), closing)
             );
+        }
+
+        /// For any text, needle and start, [`find_ci`] finds the first place a byte-by-byte comparison finds: needles
+        /// with two bytes that have no case (searched for by that pair), one or none (by the rarest byte).
+        #[test]
+        fn any_needle_is_found_where_comparing_at_every_offset_finds_it(
+            xml in tag_soup(),
+            needle in proptest::sample::select(&[
+                "</a>", "</A>", "<title>", "</TITLE>", "<ab>", "</b_c>", "<a x=\"1\">", "a>", "<a", "</", "<>",
+                "0123", "k=v&", "1\">", "x", "TITLE", "?k=", "/a/", "<<a>",
+            ][..]),
+            from in 0usize..2000,
+        ) {
+            let (h, n) = (xml.as_bytes(), needle.as_bytes());
+            let each = (from..=h.len().saturating_sub(n.len()))
+                .find(|&i| h.get(i..i + n.len()).is_some_and(|w| w.eq_ignore_ascii_case(n)));
+            proptest::prop_assert_eq!(find_ci(&xml, from, needle), each);
         }
 
         /// For any text, name and start, `<name` searched for by its rarest byte is found where stopping at every `<`
