@@ -33,7 +33,8 @@ name: Bench
 # another push came first. `night` off measures at once, after whatever the runner is doing, and so does a run started
 # on another branch than the default one: the queue is measured and published by the default branch's workflow, so a
 # trial on a branch with its publish job turned off stays a trial. A night's run first queues each PR labeled `bench`
-# merged since it last looked, before and after it, once (the queue's `labeled` holds the PRs it looked at). It asks
+# merged since it last looked, before and after it, once (the queue's `labeled` holds the PRs it looked at); once both
+# are measured, the publish job comments their comparison under the PR (`.github/scripts/pr-bench-comment.sh`). It asks
 # for the runner only when there is something for it: a request in the queue, or Friday night, after the calibration
 # task of #605 (`.github/bench/calibrate.ps1`) ran: when it changed the profile, the new environment is measured first
 # on the releases and the PRs labeled `bench`, from 23:30, so it has the whole night. A run whose runner is not there
@@ -270,14 +271,16 @@ jobs:
 
   # How the run went on the run's Summary page, written here rather than on the runner, whose network may drop the
   # upload; each request's results into the gh-pages branch with the viewer (bench-publish.py), with two commits the
-  # link to their comparison and, with `release_tag`, the 性能基准 section of that release's notes; the requests
-  # measured out of the queue (bench_queue.py done).
+  # link to their comparison and, with `release_tag`, the 性能基准 section of that release's notes, or for a PR labeled
+  # bench a comment under it; the requests measured out of the queue (bench_queue.py done).
   publish:
     name: publish
     needs: measure
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # the comment under a PR labeled bench measured before and after (pr-bench-comment.sh)
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -327,19 +330,26 @@ jobs:
             done
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # each request with a release tag whose base and head are both held: the few lines of the release notes, and the
-      # comparison's address in them
-      - name: Add the benchmark to the release notes
+      # each request with a release tag or a PR whose base and head are both held: the few lines of the comparison and
+      # its address, in the release notes or in a comment under the PR
+      - name: Add the benchmark to the release notes and the PR
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           for out in $(find results -mindepth 2 -maxdepth 2 -name outputs.txt | sort -V); do
             get() { sed -n "s/^$1=//p" "$out"; }
-            tag=$(get release_tag) url=$(get url)
-            [ -n "$tag" ] && [ -n "$url" ] || continue
+            tag=$(get release_tag) pr=$(get pr) url=$(get url)
+            [ -n "$url" ] && [ -n "$tag$pr" ] || continue
             dir=$(dirname "$out")
             node main/.github/bench/cli.mjs "pages/bench/data/$(get key)/$(get base).json" \
               "pages/bench/data/$(get key)/$(get head).json" --out "$dir/compare"
-            bash main/.github/scripts/release-bench-notes.sh "$tag" "$(get base_name)" "$url" "$dir/compare/highlights.md"
+            if [ -n "$tag" ]; then
+              bash main/.github/scripts/release-bench-notes.sh "$tag" "$(get base_name)" "$url" \
+                "$dir/compare/highlights.md"
+            fi
+            if [ -n "$pr" ]; then
+              bash main/.github/scripts/pr-bench-comment.sh "$pr" "$(get base)" "$(get head)" "$url" \
+                "$dir/compare/highlights.md"
+            fi
           done
