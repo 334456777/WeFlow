@@ -2,7 +2,7 @@
 // 👀 on what asked, Claude Code reads the repository and the thread, and its answer is posted in the same place,
 // ending with the model and a link to this run. The endpoint, model and effort come from the ANTHROPIC_* and
 // CLAUDE_CODE_* variables the workflow sets. Tool calls outside the read-only rules are denied and logged as warnings.
-// A run that can't answer replies 没能回答 and fails.
+// A run that can't answer replies 没有回答 and fails.
 //
 // The script installs the SDK itself (`npm ci`), while it reacts and reads the thread: the Claude Code binary the
 // SDK brings is a few hundred MB, and a failed install still gets its reply.
@@ -150,7 +150,10 @@ async function main() {
     // awaited below; this only keeps a failure before then from being an unhandled rejection
     installed.catch(() => {});
     await react(ask).catch((err) => console.log(`::warning::${escape(`no 👀: ${err.message}`)}`));
-    if (!process.env.ANTHROPIC_AUTH_TOKEN) throw new Unanswered('没有设置 API Key', 'ANTHROPIC_AUTH_TOKEN is empty');
+    // ANTHROPIC_AUTH_TOKEN for DeepSeek (a Bearer token), ANTHROPIC_API_KEY for the Claude API
+    if (!process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
+      throw new Unanswered('没有设置 API Key', 'neither ANTHROPIC_AUTH_TOKEN nor ANTHROPIC_API_KEY is set');
+    }
     const thread = await readThread(ask);
     if (thread.pr) fetchPrHead(thread.pr);
     console.log(`::group::prompt\n${prompt(ask, thread)}\n::endgroup::`);
@@ -162,7 +165,7 @@ async function main() {
   } catch (err) {
     console.log(`::error::${escape(err.stack ?? String(err))}`);
     const reason = err instanceof Unanswered ? err.reason : '运行出错';
-    await reply(ask, `没能回答（${reason}），详见[运行记录](${runUrl})。`);
+    await reply(ask, `没有回答（${reason}），详见[运行记录](${runUrl})。`);
     process.exitCode = 1;
   }
 }
