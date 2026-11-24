@@ -18,6 +18,16 @@ fn hub_with_ai(
     weflow_native::fixture::TestDir,
     weflow_core::services::ServiceHub,
 ) {
+    common::mock_hub_with(tag, ai_settings(fake, format, model, filter))
+}
+
+/// The settings [`hub_with_ai`] gives the profile.
+fn ai_settings(
+    fake: &FakeModel,
+    format: &str,
+    model: &str,
+    filter: &[&str],
+) -> impl FnOnce(&mut weflow_core::config::ProfileConfig) {
     let filter: Vec<serde_json::Value> = filter.iter().map(|s| json!(s)).collect();
     let base = if format == "anthropic" {
         fake.anthropic_base_url()
@@ -25,7 +35,7 @@ fn hub_with_ai(
         fake.openai_base_url()
     };
     let (format, model) = (format.to_string(), model.to_string());
-    common::mock_hub_with(tag, move |p| {
+    move |p| {
         p.ai_model_api_format = Some(format);
         p.ai_model_api_base_url = Some(base);
         p.ai_model_api_key = Some(KEY.into());
@@ -38,7 +48,147 @@ fn hub_with_ai(
         p.extra
             .insert("ai_insight_allow_context".into(), json!(true));
         p.extra.insert("ai_footprint_enabled".into(), json!(true));
-    })
+    }
+}
+
+/// A hub over the standard account in `root`, as a new process would make it: the state of an earlier hub over the
+/// same folder is not shared, only the files.
+fn hub_over(
+    root: &std::path::Path,
+    fixture: &weflow_native::fixture::Fixture,
+    settings: impl FnOnce(&mut weflow_core::config::ProfileConfig),
+) -> weflow_core::services::ServiceHub {
+    common::hub_for_account(
+        root,
+        &fixture.account_dir,
+        &fixture.key_hex(),
+        "wxid_me_ab12",
+        settings,
+    )
+}
+
+/// The messages a conversation had when the engine started are not activity, neither on the first passes nor after a
+/// restart: no model is asked and no insight written (#1140).
+#[tokio::test]
+async fn activity_starts_from_the_messages_there_when_the_engine_starts() {
+    let fake = FakeModel::start().unwrap();
+    let root = common::temp_dir("ins-activity-start");
+    let fixture = weflow_native::fixture::Fixture::standard(&root.join("data"));
+    let filter = ["wxid_bob", "room1@chatroom"];
+    for _ in 0..2 {
+        // a new hub is a restart
+        let hub = hub_over(
+            &root,
+            &fixture,
+            ai_settings(&fake, "openai", "fake-chat", &filter),
+        );
+        for _ in 0..3 {
+            hub.insight_analyze_activity(&mut |_| {}).await;
+        }
+    }
+    assert!(fake.requests().is_empty(), "{:?}", fake.requests());
+    let hub = hub_over(
+        &root,
+        &fixture,
+        ai_settings(&fake, "openai", "fake-chat", &filter),
+    );
+    assert_eq!(hub.insight_list_records(&RecordFilters::default()).total, 0);
+
+    // the same with the conversations the engine picks itself, the recent ones that no blacklist leaves out
+    let hub = hub_over(&root, &fixture, |p| {
+        ai_settings(&fake, "openai", "fake-chat", &[])(p);
+        p.extra
+            .insert("ai_insight_filter_mode".into(), json!("blacklist"));
+    });
+    for _ in 0..3 {
+        hub.insight_analyze_activity(&mut |_| {}).await;
+    }
+    assert!(fake.requests().is_empty(), "{:?}", fake.requests());
+}
+
+/// A message newer than the engine's start is activity once; after a restart the cooldown, read from the records,
+/// keeps it from being written again (#1140).
+#[tokio::test]
+async fn a_new_message_is_activity_once_across_restarts() {
+    use weflow_native::fixture::{ContactSpec, MsgSpec, SessionSpec};
+    let fake = FakeModel::start().unwrap();
+    let root = common::temp_dir("ins-activity-new");
+    let fixture = weflow_native::fixture::Fixture::new(&root.join("data"), "wxid_me_ab12");
+    // after the engine's start, which is now: the clock of the test and of the hub are the same
+    let later = chrono::Utc::now().timestamp() + 600;
+    fixture.contact_db(
+        &[
+            ContactSpec::new("wxid_me", 1, "Me Nick"),
+            ContactSpec::new("wxid_bob", 1, "Bob"),
+        ],
+        &[],
+    );
+    fixture.session_db(&[SessionSpec {
+        username: "wxid_bob",
+        summary: "news",
+        last_timestamp: later,
+        unread: 1,
+        last_msg_type: 1,
+    }]);
+    fixture.message_shard(
+        0,
+        &[(
+            "wxid_bob",
+            vec![
+                MsgSpec::text(1, "wxid_bob", later - 86_400, "yesterday"),
+                MsgSpec::text(2, "wxid_bob", later, "news"),
+            ],
+        )],
+    );
+    let settings = || ai_settings(&fake, "openai", "fake-chat", &["wxid_bob"]);
+
+    let hub = hub_over(&root, &fixture, settings());
+    let mut got = Vec::new();
+    for _ in 0..3 {
+        hub.insight_analyze_activity(&mut |r| got.push(r.clone()))
+            .await;
+    }
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(
+        (got[0].session_id.as_str(), got[0].trigger_reason.as_str()),
+        ("wxid_bob", "activity")
+    );
+    assert_eq!(fake.requests().len(), 1);
+
+    let restarted = hub_over(&root, &fixture, settings());
+    for _ in 0..3 {
+        restarted
+            .insight_analyze_activity(&mut |r| got.push(r.clone()))
+            .await;
+    }
+    assert_eq!(
+        got.len(),
+        1,
+        "the cooldown holds across the restart: {got:?}"
+    );
+    assert_eq!(fake.requests().len(), 1);
+}
+
+/// A silence is told once: a second scan, and a scan after a restart, write nothing more while no message ends it
+/// (#1140).
+#[tokio::test]
+async fn a_silence_is_told_once() {
+    let fake = FakeModel::start().unwrap();
+    let root = common::temp_dir("ins-silence-once");
+    let fixture = weflow_native::fixture::Fixture::standard(&root.join("data"));
+    let settings = || ai_settings(&fake, "openai", "fake-chat", &["wxid_bob"]);
+    let hub = hub_over(&root, &fixture, settings());
+    assert_eq!(hub.insight_silence_scan(&mut |_| {}).await, 1);
+    assert_eq!(hub.insight_silence_scan(&mut |_| {}).await, 0);
+    let restarted = hub_over(&root, &fixture, settings());
+    assert_eq!(restarted.insight_silence_scan(&mut |_| {}).await, 0);
+    assert_eq!(fake.requests().len(), 1);
+    assert_eq!(
+        restarted
+            .insight_list_records(&RecordFilters::default())
+            .total,
+        1
+    );
 }
 
 #[tokio::test]

@@ -35,8 +35,13 @@ const GENERATE_TIMEOUT: Duration = Duration::from_secs(60);
 pub struct InsightState {
     today_triggers: HashMap<String, Vec<i64>>,
     today_date: i64,
+    /// When an activity insight about a conversation was last written or found in the records, Unix milliseconds.
     last_activity: HashMap<String, i64>,
+    /// The newest message seen in a conversation, Unix seconds.
     last_seen: HashMap<String, i64>,
+    /// When the engine first looked for activity, Unix seconds: a conversation it has not seen yet is new only for
+    /// its messages after then, not for those it had when the engine started (#1140).
+    activity_since: Option<i64>,
     session_cache: Option<(Vec<Session>, Instant)>,
 }
 
@@ -985,7 +990,8 @@ impl ServiceHub {
         })
     }
 
-    /// Writes insights about the private chats that have been silent too long; returns how many.
+    /// Writes insights about the private chats that have been silent too long, one a silence: a chat with a silence
+    /// insight written after its last message gets no other until a message ends that silence; returns how many.
     pub async fn insight_silence_scan(
         &self,
         on_insight: &mut dyn FnMut(&ins::InsightRecord),
@@ -1002,6 +1008,7 @@ impl ServiceHub {
         let threshold_ms = days * 86_400_000.0;
         let now = ins::now_millis() as f64;
         let sessions = self.insight_sessions(true);
+        let records = self.record_store();
         let mut generated = 0;
         for s in &sessions {
             if !self.insight_enabled() {
@@ -1017,6 +1024,13 @@ impl ServiceHub {
             }
             let last = s.last_timestamp as f64 * 1000.0;
             if last <= 0.0 || now - last < threshold_ms {
+                continue;
+            }
+            // one insight a silence (#1140): none again until a message ends it and a new one begins
+            if records
+                .last_written(&id, Trigger::Silence.as_str())
+                .is_some_and(|at| at as f64 >= last)
+            {
                 continue;
             }
             let silent = crate::num::saturating_i64(((now - last) / 86_400_000.0).floor());
@@ -1043,6 +1057,10 @@ impl ServiceHub {
     }
 
     /// Writes an insight about a recently active conversation: at most one session per call, honouring the cooldown.
+    ///
+    /// Only messages newer than the engine's first call are activity: what a conversation held when the engine
+    /// started, or when it first came into the list, is not (#1140). The cooldown counts from the newest activity
+    /// insight in the records too, so it holds across restarts.
     pub async fn insight_analyze_activity(&self, on_insight: &mut dyn FnMut(&ins::InsightRecord)) {
         if !self.insight_enabled() {
             return;
@@ -1054,19 +1072,39 @@ impl ServiceHub {
             .unwrap_or(120.0);
         let cooldown_ms = crate::num::saturating_i64(cooldown_min * 60_000.0);
         let now = ins::now_millis();
+        let since = *self
+            .insight_state
+            .lock_or_panic()
+            .activity_since
+            .get_or_insert(now / 1000);
         let (mode, list) = self.insight_filter();
         let cooling = |sid: &str| -> bool {
-            cooldown_ms > 0
-                && cooldown_ms
-                    - (now
-                        - self
-                            .insight_state
-                            .lock_or_panic()
-                            .last_activity
-                            .get(sid)
-                            .copied()
-                            .unwrap_or(0))
-                    > 0
+            let last = self
+                .insight_state
+                .lock_or_panic()
+                .last_activity
+                .get(sid)
+                .copied();
+            cooldown_ms > 0 && last.is_some_and(|at| now - at < cooldown_ms)
+        };
+        // asked only of a conversation with new messages, as the records are read from their file
+        let cooled_by_records = |sid: &str| -> bool {
+            if cooldown_ms <= 0 {
+                return false;
+            }
+            match self
+                .record_store()
+                .last_written(sid, Trigger::Activity.as_str())
+            {
+                Some(at) if now - at < cooldown_ms => {
+                    self.insight_state
+                        .lock_or_panic()
+                        .last_activity
+                        .insert(sid.to_string(), at);
+                    true
+                }
+                _ => false,
+            }
         };
         if mode == "whitelist" {
             for sid in &list {
@@ -1078,11 +1116,18 @@ impl ServiceHub {
                 };
                 let Some(m) = latest.last() else { continue };
                 let ts = m.create_time;
+                let seen = self
+                    .insight_state
+                    .lock_or_panic()
+                    .last_seen
+                    .get(sid)
+                    .copied();
+                // a conversation cooling down keeps its new messages for when the cooldown ends
+                if ts <= seen.unwrap_or(since) || cooled_by_records(sid) {
+                    continue;
+                }
                 {
                     let mut st = self.insight_state.lock_or_panic();
-                    if ts <= st.last_seen.get(sid).copied().unwrap_or(0) {
-                        continue;
-                    }
                     st.last_seen.insert(sid.clone(), ts);
                     st.last_activity.insert(sid.clone(), now);
                 }
@@ -1114,12 +1159,12 @@ impl ServiceHub {
             let ts = s.last_timestamp;
             {
                 let mut st = self.insight_state.lock_or_panic();
-                if ts <= st.last_seen.get(&sid).copied().unwrap_or(0) {
+                if ts <= st.last_seen.get(&sid).copied().unwrap_or(since) {
                     continue;
                 }
                 st.last_seen.insert(sid.clone(), ts);
             }
-            if cooling(&sid) {
+            if cooling(&sid) || cooled_by_records(&sid) {
                 continue;
             }
             self.insight_state
