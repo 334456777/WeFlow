@@ -169,6 +169,18 @@ impl Account {
         )?))
     }
 
+    /// The rows of `contact`, in its order, whose `username` holds `gh_`, or `weixin` or `@openim` in any ASCII case,
+    /// or is not text: every official account, `weixin…` and `@openim` contact, and others the caller tells apart.
+    /// Only these are made into rows, rather than every contact as [`contacts`](Self::contacts) does.
+    pub fn contacts_maybe_special(&self) -> Result<Value> {
+        Ok(Value::Array(self.query(
+            &self.contact_db(),
+            "select * from contact where typeof(username) <> 'text' or instr(username, 'gh_') > 0 \
+             or instr(lower(username), 'weixin') > 0 or instr(lower(username), '@openim') > 0",
+            &[],
+        )?))
+    }
+
     /// Rows for the given usernames; an empty list means every contact.
     pub fn contacts_compact(&self, usernames: &[String]) -> Result<Value> {
         if usernames.is_empty() {
@@ -522,6 +534,44 @@ mod tests {
         std::fs::write(dir.join("contact/contact.db"), encrypt_db(&db, &cipher)).unwrap();
         let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
         (dir, acct)
+    }
+
+    /// The contacts that may be special are those of every contact whose username holds `gh_`, or `weixin` or
+    /// `@openim` in any ASCII case, or is not text, in the table's order.
+    #[test]
+    fn contacts_that_may_be_special_are_found_among_all() {
+        let dir = TestDir::new("weflow-contact-special");
+        std::fs::create_dir_all(dir.join("contact")).unwrap();
+        let db = plain_db_with(|c: &Connection| {
+            c.execute_batch(
+                "create table contact(id integer primary key, username, local_type integer, remark text);
+                 insert into contact(username, local_type) values ('wxid_a', 1), ('gh_news', 1), ('GH_upper', 1),
+                     (' gh_spaced', 1), ('weixin', 1), ('WeiXinTeam', 1), ('a@openim', 5), ('b@kefu.OpenIM', 5),
+                     ('room@chatroom', 2), (null, 0), (42, 1), ('wxid_gh_x', 1),
+                     ('中文weixin', 1), ('filehelper', 1);",
+            )
+            .unwrap();
+        });
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        std::fs::write(dir.join("contact/contact.db"), encrypt_db(&db, &cipher)).unwrap();
+        let a = Account::new(dir.path(), &hex(&KEY)).unwrap();
+        let all = a.contacts().unwrap();
+        let want: Vec<&Value> = all
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| match &r["username"] {
+                Value::String(u) => {
+                    let l = u.to_ascii_lowercase();
+                    u.contains("gh_") || l.contains("weixin") || l.contains("@openim")
+                }
+                _ => true,
+            })
+            .collect();
+        let found = a.contacts_maybe_special().unwrap();
+        assert_eq!(found.as_array().unwrap().iter().collect::<Vec<_>>(), want);
+        // `b@kefu.OpenIM` holds no `@openim`
+        assert_eq!(want.len(), 9, "{want:?}");
     }
 
     fn ids(v: &[&str]) -> Vec<String> {

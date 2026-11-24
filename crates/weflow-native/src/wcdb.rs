@@ -397,6 +397,12 @@ impl Wcdb {
         self.account()?.contacts()
     }
 
+    /// The rows of `contact` that may be official accounts, `weixin…` or `@openim` ones (see
+    /// [`Account::contacts_maybe_special`]).
+    pub fn contacts_maybe_special(&self) -> Result<Value> {
+        self.account()?.contacts_maybe_special()
+    }
+
     /// `{ "private", "group", "official", "former_friend" }`: how many contacts of each kind (see
     /// [`Account::contact_type_counts`]).
     pub fn contact_type_counts(&self) -> Result<Value> {
