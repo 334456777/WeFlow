@@ -34,7 +34,14 @@ pub fn fill(template: &str, vars: &[(&str, String)]) -> String {
 
 // ───────────────────────── Telegram ─────────────────────────
 
-/// Telegram Bot API `sendMessage` (HTML parse mode, 15 s timeout).
+/// The body of a Telegram `sendMessage` request. It has no `parse_mode`, so Telegram
+/// shows the text as it is: an insight saying `<5` or `<b>` is neither refused as a
+/// broken entity nor turned into markup.
+fn telegram_message(chat_id: &str, text: &str) -> Value {
+    json!({ "chat_id": chat_id, "text": text })
+}
+
+/// Telegram Bot API `sendMessage` of plain text (15 s timeout).
 pub async fn send_telegram(token: &str, chat_id: &str, text: &str) -> Result<(), String> {
     let client = crate::http_client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -43,7 +50,7 @@ pub async fn send_telegram(token: &str, chat_id: &str, text: &str) -> Result<(),
     let resp = client
         .post(format!("https://api.telegram.org/bot{token}/sendMessage"))
         .header("Content-Type", "application/json")
-        .body(json!({ "chat_id": chat_id, "text": text, "parse_mode": "HTML" }).to_string())
+        .body(telegram_message(chat_id, text).to_string())
         .send()
         .await
         .map_err(|e| {
@@ -263,6 +270,15 @@ pub fn normalize_session_id_list(v: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_telegram_push_sends_the_text_as_it_is() {
+        let text = "【WeFlow】 见解 · <A&B>\n\n少于 <5 条，<b>粗体</b>，R&D";
+        let body = telegram_message("-100", text);
+        assert_eq!(body["chat_id"], "-100");
+        assert_eq!(body["text"], text);
+        assert!(body.get("parse_mode").is_none(), "{body}");
+    }
 
     #[test]
     fn filters_follow_the_list_mode() {
