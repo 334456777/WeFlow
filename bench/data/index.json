@@ -596,6 +596,62 @@
     }
    },
    "anchor": "6115746c5f6e5124ed7aaf4febc300d5969cead3"
+  },
+  "09a46f86c905": {
+   "machine": {
+    "cpu": "Intel(R) Core(TM) i7-10700F CPU @ 2.90GHz",
+    "cpus": 16,
+    "memory_gib": 64
+   },
+   "method": 2,
+   "account": {
+    "manifest": "080e4882afbc0996",
+    "layout": 5,
+    "seed": 1,
+    "messages": 360576,
+    "conversations": 317,
+    "profile": {
+     "measured": "2026-11-13",
+     "hash": "63d86c09f3855d1e"
+    }
+   },
+   "load": {
+    "seconds": 90,
+    "workers": 4
+   },
+   "results": {
+    "6115746c5f6e5124ed7aaf4febc300d5969cead3": {
+     "refs": [
+      "v5.0.1"
+     ],
+     "version": "weflow 5.0.1 (6115746 2026-11-07 10:53Z)",
+     "measured_at": "2026-11-25T09:42:16+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 218,
+      "p50_pct": 4.6,
+      "p95_pct": 11.6,
+      "max_pct": 14.1,
+      "busy_share": 0.138
+     }
+    },
+    "05efbc36bb572d664478ac00d241d22104b56239": {
+     "refs": [
+      "v6.0.0"
+     ],
+     "version": "weflow 6.0.0 (05efbc3 2026-11-25 07:44Z)",
+     "measured_at": "2026-11-25T10:21:22+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 421,
+      "p50_pct": 4.8,
+      "p95_pct": 11.1,
+      "max_pct": 13.4,
+      "busy_share": 0.119
+     }
+    }
+   },
+   "anchor": "6115746c5f6e5124ed7aaf4febc300d5969cead3"
   }
  }
 }
