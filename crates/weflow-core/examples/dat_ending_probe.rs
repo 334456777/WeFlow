@@ -179,6 +179,22 @@ fn examine(path: &Path, xor_key: u8, aes_key: Option<&[u8; 16]>, tally: &Mutex<T
         t.add(format!("{rendition}/v{version}/{format}/{end}"));
         t.add(format!("zero_tail/{rendition}/{format}/{zeros}"));
     }
+    // a JPEG or PNG the WXGF container is taken to embed: how it ends, and for one cut short whether the HEVC stream
+    // of the same container decodes
+    if let Some(inner) = img::wxgf_embedded_image(&data) {
+        let mut key = format!("wxgf_embedded/{rendition}/{}", ending_name(inner));
+        if ending::is_cut_short(inner) {
+            let decodes = img::wxgf_hevc_candidates(&data)
+                .iter()
+                .any(|(_, stream)| weflow_core::hevc::decode_to_jpeg(stream).is_ok());
+            key.push_str(if decodes {
+                "/hevc_decodes"
+            } else {
+                "/hevc_fails"
+            });
+        }
+        lock().add(key);
+    }
 
     if rendition == "thumb" || format == "other" {
         return;
