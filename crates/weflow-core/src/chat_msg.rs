@@ -118,23 +118,11 @@ fn system_message_text(content: &str) -> String {
 
 // ───────────────────────── type 49 ─────────────────────────
 
+/// An app message's own `<type>`, read as the exports read it (#1241).
 fn app_xml_type(content: &str) -> String {
-    let mut xml_type = String::new();
-    if let Some(c) = rx(r"(?is)<appmsg.*?>(.*?)</appmsg>").captures(content) {
-        let inner = rx(r"(?is)<refermsg.*?</refermsg>")
-            .replace_all(&c[1], "")
-            .to_string();
-        let inner = rx(r"(?is)<patMsg.*?</patMsg>")
-            .replace_all(&inner, "")
-            .to_string();
-        if let Some(t) = rx(r"(?is)<type>(.*?)</type>").captures(&inner) {
-            xml_type = t[1].trim().to_string();
-        }
-    }
-    if xml_type.is_empty() {
-        xml_type = extract_xml_value(content, "type");
-    }
-    xml_type
+    crate::message::xml::MsgXml::new(content)
+        .app_type_twice()
+        .to_string()
 }
 
 /// The place a location names, read from content whose entities are decoded already.
@@ -478,8 +466,9 @@ fn parse_type49_message(content: &str) -> Type49Info {
         ev("finderuser"),
     ]);
     let finder_nickname = first_non_empty(&[ev("findernickname"), ev("finder_nickname")]);
-    // the same table as the exports' (#1165)
-    let typed = kind_of_app_type(&xml_type);
+    // the same table as the exports', and for a type that says nothing the same words of its own XML (#1165, #1241)
+    let typed = kind_of_app_type(&xml_type).or_else(|| kind_by_keywords(&own));
+    let replies = content.contains("<refermsg");
     let is_finder = typed == Some("finder");
     let is_red_packet = typed == Some("red-packet");
     let is_music = typed == Some("music");
@@ -551,7 +540,8 @@ fn parse_type49_message(content: &str) -> Type49Info {
         "gift"
     } else if is_location {
         "location"
-    } else if typed == Some("quote") {
+    } else if typed == Some("quote") || (typed.is_none() && replies) {
+        // a reply whose type gives no kind is a quote, as in the exports (#1241)
         (r.quoted_content, r.quoted_sender) = quote_of(content);
         "quote"
     } else if let Some(kind) = typed.filter(|k| *k != "link") {
@@ -562,8 +552,9 @@ fn parse_type49_message(content: &str) -> Type49Info {
             || !source_name.is_empty())
     {
         "official-link"
-    } else if typed.is_none() && app_type(&xml_type).is_some() {
-        // a type the table knows but gives no kind (a sticker, a note) is a card, as in the exports (#1180)
+    } else if typed.is_none() {
+        // a type that gives no kind, the table's (a sticker, a note) or one it does not know, is a card, as in the
+        // exports (#1180, #1241)
         "card"
     } else if !url.is_empty() {
         "link"
@@ -1567,6 +1558,83 @@ mod tests {
                     "<type> {ty} quoting {q}: {window}"
                 );
             }
+        }
+    }
+
+    /// The chat window and the exports give an app message the same kind as WeChat keeps it (#1241): a `<type>` in
+    /// CDATA, a `<type>` after the whole XML of a quoted file or after a chat record's items, empty finder elements
+    /// of a sticker's or another type's template, a type the table does not know, and a sticker that replies.
+    #[test]
+    fn an_app_message_has_one_kind_however_its_xml_is_written() {
+        let finder_template = "<finderGuarantee><scene><![CDATA[0]]></scene></finderGuarantee>\
+            <finderUsername><![CDATA[]]></finderUsername><finderObjectID><![CDATA[]]></finderObjectID>\
+            <findernamecard><username /></findernamecard>";
+        let quoted_file = escaped("<msg><appmsg><title>a.pdf</title><type>6</type></appmsg></msg>");
+        let cases = [
+            (
+                "<msg><appmsg><title>恭喜发财</title><type><![CDATA[2001]]></type><url>https://a</url></appmsg></msg>"
+                    .to_string(),
+                "2001",
+                "red-packet",
+            ),
+            (
+                format!(
+                    "<msg><appmsg><title>好</title><refermsg><type>49</type><svrid>7</svrid>\
+                     <content>{quoted_file}</content></refermsg><type>57</type></appmsg></msg>"
+                ),
+                "57",
+                "quote",
+            ),
+            (
+                format!(
+                    "<msg><appmsg><title>记录</title><recorditem>{}</recorditem><type>19</type></appmsg></msg>",
+                    escaped("<recordinfo><datalist><dataitem><refermsgitem><type>1</type></refermsgitem>\
+                             </dataitem></datalist></recordinfo>")
+                ),
+                "19",
+                "chat-record",
+            ),
+            (
+                format!("<msg><appmsg><title>T</title><type>8</type>{finder_template}</appmsg></msg>"),
+                "8",
+                "card",
+            ),
+            (
+                format!(
+                    "<msg><appmsg><title>T</title><type>92</type><url>https://a</url>{finder_template}</appmsg></msg>"
+                ),
+                "92",
+                "card",
+            ),
+            (
+                "<msg><appmsg><title>T</title><type>44</type><url>https://a</url></appmsg></msg>".to_string(),
+                "44",
+                "card",
+            ),
+            (
+                "<msg><appmsg><title>直播</title><type>63</type><url>https://a</url>\
+                 <finderUsername>v2_x@finder</finderUsername><finderObjectID>1</finderObjectID></appmsg></msg>"
+                    .to_string(),
+                "63",
+                "finder",
+            ),
+            (
+                "<msg><appmsg><title>T</title><type>8</type><refermsg><type>1</type><svrid>7</svrid>\
+                 <content>hi</content></refermsg></appmsg></msg>"
+                    .to_string(),
+                "8",
+                "quote",
+            ),
+        ];
+        for (xml, ty, kind) in cases {
+            let window = parse_type49_message(&xml);
+            assert_eq!(window.xml_type.as_deref(), Some(ty), "{xml}");
+            assert_eq!(window.app_msg_kind.as_deref(), Some(kind), "{xml}");
+            assert_eq!(
+                crate::message::appmsg::app_message_kind(&xml, 49),
+                Some(kind),
+                "{xml}"
+            );
         }
     }
 
