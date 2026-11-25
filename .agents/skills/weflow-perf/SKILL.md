@@ -1,6 +1,6 @@
 ---
 name: weflow-perf
-description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两种账号、新旧二进制的对比（单独的 target 目录、旧新旧三轮、--compare 的假阳性、hyperfine 的坑）、Linux perf 交替测量与热点定位（对照组、让其他任务暂停）、导出的墙钟（输出写到固态盘、先弄清在等什么）、内存优化要同时报告磁盘读写，以及 bench 标签、在 runner 上试跑 bench.yml、装 runner 和校准基准账号。做性能优化、比较改动前后的速度或内存、改基准脚本或 bench.yml、维护基准的 runner 时使用。
+description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两种账号、新旧二进制的对比（单独的 target 目录、旧新旧三轮、--compare 的假阳性、hyperfine 的坑）、Linux perf 交替测量与热点定位（对照组、让其他任务暂停）、导出的墙钟（输出写到固态盘、先弄清在等什么）、内存优化要同时报告磁盘读写，以及 bench 标签、在 runner 上试跑 bench.yml、删除和重测已发布的结果（连同 runner 的 pending 副本）、装 runner 和校准基准账号。做性能优化、比较改动前后的速度或内存、改基准脚本或 bench.yml、删除或重测基准结果、维护基准的 runner 时使用。
 ---
 
 # 性能测量
@@ -57,6 +57,11 @@ serve_bench 每次都同时测合成账号和真实账号：合成账号检查�
 - 按阶段推进的优化，每做完一阶段跑一次再决定下一阶段；中途只想确认几项时用 `only` 和较少的 `runs`。
 - 在 runner 上试跑而不发布结果：在临时分支上给 `bench.yml` 的 `publish` job 加 `if: false`，然后 `gh workflow run bench.yml --ref <分支> -f commits=<提交> -f force=true`，结果从 `bench-results` artifact 取，用完删除分支。从默认分支以外的分支发起的请求不进夜间队列，立即测量。
 - `force` 会覆盖 `gh-pages` 上已有的结果，触发前说明；已有结果的提交不加 `force` 会被跳过。
+- 删除 `gh-pages` 上的测量结果（`bench/data/<环境>/` 下的文件，以及 `bench/data/index.json` 里的条目）时，runner 目录下 `pending/<环境>/<提交>/` 里的副本也要一起删掉。`bench-commits.py` 的 `load_pending` 只丢掉 `gh-pages` 上已有的结果，留下的副本会在下一次运行时被当成没发布的结果，重新发布出去。
+- 删除结果后要重测，并且重新写入 PR 评论或发布说明时：
+  - 把这些 PR 移出 `queue.json` 的 `labeled`，下一次夜间运行会把它们重新排进队列，请求里带上 PR 号；
+  - 发布说明另外排一个带 `release_tag` 的请求，可以用 `bench_queue.py` 的 `new_request` 生成；
+  - 删掉旧评论和旧的那一节之前，先把它们备份下来。
 - 看对比结果时先看 `quiet`（其他进程占用的 CPU）是否接近：机器忙时的差距不能归因于代码。
 - 改 bench.yml、测量脚本或校准时：
   - 环境键只放真正改变测法的东西；能靠锚点发现的漂移（如操作系统的小版本）记录下来，不进键。测量脚本的改动攒在一起改，用显式的版本号而不是文件的哈希。换环境后补测各个 release，让趋势接得上。
