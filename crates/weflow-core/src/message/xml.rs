@@ -442,12 +442,16 @@ fn app_type_in(content: &str, normalized: &str) -> String {
     if content.is_empty() {
         return String::new();
     }
-    // `(?is)<appmsg.*?>(.*?)</appmsg>`, minus `<refermsg…</refermsg>` and `<patMsg…</patMsg>` blocks, then `<type>`
-    if let Some(c) = crate::xml::element_inner(normalized, "<appmsg", "</appmsg>") {
-        let inner = crate::xml::remove_blocks(c, "<refermsg", "</refermsg>");
-        let inner = crate::xml::remove_blocks(&inner, "<patmsg", "</patmsg>");
-        if let Some(t) = crate::xml::tag_inner(&inner, "type") {
-            return t.trim().to_string();
+    // the message's own XML: a reply's `<refermsg>`, a pat's `<patmsg>` and a chat record's `<recorditem>` hold other
+    // messages with their own `<type>`, and the `</appmsg>` of a quoted one would end the `<appmsg>` early, so they go
+    // before the `<appmsg>` is looked for (#1241)
+    let own = crate::xml::remove_blocks(normalized, "<refermsg", "</refermsg>");
+    let own = crate::xml::remove_blocks(&own, "<patmsg", "</patmsg>");
+    let own = crate::xml::remove_blocks(&own, "<recorditem", "</recorditem>");
+    // `(?is)<appmsg.*?>(.*?)</appmsg>`, then its first `<type>`, also when WeChat writes it as CDATA
+    if let Some(c) = crate::xml::element_inner(&own, "<appmsg", "</appmsg>") {
+        if let Some(t) = crate::xml::tag_inner(c, "type") {
+            return strip_cdata(t);
         }
     }
     if !normalized.contains("<appmsg") && !normalized.contains("<msg>") {
@@ -668,6 +672,39 @@ mod tests {
         assert_eq!(extract_app_message_type(xml), "57");
     }
 
+    /// An app message's type is its own `<type>`, also after a quoted app message's whole XML or a chat record's
+    /// items, and also as CDATA (#1241).
+    #[test]
+    fn the_app_type_is_the_messages_own() {
+        let quoted_file =
+            "&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;a.pdf&lt;/title&gt;&lt;type&gt;6&lt;/type&gt;\
+            &lt;/appmsg&gt;&lt;/msg&gt;";
+        for (xml, ty) in [
+            (
+                format!(
+                    "<msg><appmsg><title>好</title><refermsg><type>49</type><content>{quoted_file}</content>\
+                     </refermsg><type>57</type></appmsg></msg>"
+                ),
+                "57",
+            ),
+            (
+                "<msg><appmsg><title>记录</title><recorditem>&lt;recordinfo&gt;&lt;refermsgitem&gt;\
+                 &lt;type&gt;1&lt;/type&gt;&lt;/refermsgitem&gt;&lt;/recordinfo&gt;</recorditem><type>19</type>\
+                 </appmsg></msg>"
+                    .to_string(),
+                "19",
+            ),
+            (
+                "<msg><appmsg><title>红包</title><type><![CDATA[2001]]></type></appmsg></msg>".to_string(),
+                "2001",
+            ),
+        ] {
+            assert_eq!(extract_app_message_type(&xml), ty, "{xml}");
+            assert_eq!(MsgXml::new(&xml).app_type_twice(), ty, "{xml}");
+            assert_eq!(regex_reference::extract_app_message_type(&xml), ty, "{xml}");
+        }
+    }
+
     /// The regexes the XML scanners replace, kept as the reference they must agree with.
     mod regex_reference {
         use super::super::{last_hex_token, normalize_app_message_content, rx};
@@ -754,11 +791,21 @@ mod tests {
                 return String::new();
             }
             let normalized = normalize_app_message_content(content);
-            if let Some(c) = crate::xml::element_inner(&normalized, "<appmsg", "</appmsg>") {
-                let inner = crate::xml::remove_blocks(c, "<refermsg", "</refermsg>");
-                let inner = crate::xml::remove_blocks(&inner, "<patmsg", "</patmsg>");
-                if let Some(t) = crate::xml::tag_inner(&inner, "type") {
-                    return t.trim().to_string();
+            let mut own = normalized.clone();
+            for block in [
+                r"(?is)<refermsg.*?</refermsg>",
+                r"(?is)<patmsg.*?</patmsg>",
+                r"(?is)<recorditem.*?</recorditem>",
+            ] {
+                own = rx(block).replace_all(&own, "").to_string();
+            }
+            if let Some(c) = rx(r"(?is)<appmsg.*?>(.*?)</appmsg>").captures(&own) {
+                if let Some(t) = rx(r"(?is)<type>(.*?)</type>").captures(&c[1]) {
+                    return t[1]
+                        .replace("<![CDATA[", "")
+                        .replace("]]>", "")
+                        .trim()
+                        .to_string();
                 }
             }
             if !normalized.contains("<appmsg") && !normalized.contains("<msg>") {

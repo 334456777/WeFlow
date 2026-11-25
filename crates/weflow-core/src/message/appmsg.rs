@@ -94,13 +94,17 @@ pub(crate) fn without_quoted(xml: &str) -> std::borrow::Cow<'_, str> {
 }
 
 /// The kind an app message whose `<type>` says nothing looks like by its own XML (`own`, [`without_quoted`]): a
-/// Channels video by its finder fields, a red packet by the address WeChat opens it with, a song by a non-empty
-/// `<musicurl>` or `<playurl>`. `<dataurl>` is no sign of a song, as links and files have it too, often empty.
+/// Channels video by its `<finderFeed>` or a non-empty `<finderUsername>` or `<finderObjectID>`, a red packet by the
+/// address WeChat opens it with, a song by a non-empty `<musicurl>` or `<playurl>`. `<dataurl>` is no sign of a song,
+/// as links and files have it too, often empty; nor are empty finder elements (`<finderGuarantee>`,
+/// `<finderUsername></finderUsername>`) a sign of a video, as the XML of a sticker or a mini program has them too
+/// (#1241).
 pub(crate) fn kind_by_keywords(own: &str) -> Option<&'static str> {
-    let lower = own.to_ascii_lowercase();
-    if lower.contains("<finder")
-        || lower.contains("finderusername")
-        || lower.contains("finderobjectid")
+    // tags match in any case; the content is read as it is, as a lowered `<![cdata[` would be text
+    if crate::xml::find_ci(own, 0, "<finderfeed").is_some()
+        || ["finderusername", "finderobjectid"]
+            .iter()
+            .any(|tag| !extract_xml_value(own, tag).is_empty())
     {
         return Some("finder");
     }
