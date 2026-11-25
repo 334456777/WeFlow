@@ -90,6 +90,12 @@ impl FileMeta {
 
 /// `failureKind` of a WXGF image the built-in decoder cannot convert.
 const UNSUPPORTED_IMAGE: &str = "unsupported_image";
+/// `failureKind` of a `.dat` file that decrypts to no image, or to less than a whole one.
+const DECRYPT_FAILED: &str = "decrypt_failed";
+/// What an image whose file holds less than the whole picture says (#1112), when no lesser rendition of it can be
+/// shown instead.
+const INCOMPLETE_IMAGE: &str =
+    "the image file is incomplete, WeChat may still be downloading it: retry later";
 /// `failureKind` of a payload that names no image, with neither an md5 nor a `.dat` name: a usage error as a
 /// command's answer (#1076).
 const NO_IDENTIFIER: &str = "invalid_arguments";
@@ -376,6 +382,15 @@ impl From<ImageResult> for DecryptedImage {
     }
 }
 
+/// How decrypting one rendition of an image went ([`ServiceHub::decrypt_rendition`]).
+enum Attempt {
+    /// The image, or the answer for it.
+    Done(DecryptedImage),
+    /// The answer for a file that holds less than the whole picture: it stops before the end its header or the
+    /// picture's structure gives, or its WXGF stream is damaged. A lesser rendition is shown instead when there is one.
+    Incomplete(DecryptedImage),
+}
+
 /// An image decrypted just now ([`DecryptedImage::fresh`]).
 pub(super) struct FreshImage {
     /// Its bytes.
@@ -447,6 +462,28 @@ impl ImageResult {
         }
         Err(AppError::runtime(message).with_details(details))
     }
+}
+
+/// The error of an image whose file holds less than the whole picture ([`INCOMPLETE_IMAGE`]).
+fn incomplete_error() -> AppError {
+    AppError::runtime(INCOMPLETE_IMAGE).with_details(json!({ "failureKind": DECRYPT_FAILED }))
+}
+
+/// The bytes of the image [`ServiceHub::image_decrypt`] found, or its failure as an error.
+fn image_bytes(result: ImageResult) -> AppResult<Vec<u8>> {
+    let path = result.local_path.ok_or_else(|| {
+        let err = AppError::runtime(
+            result
+                .error
+                .unwrap_or_else(|| "image decrypt failed".into()),
+        );
+        // what went wrong, as `chat image` says it: `not_found` is a 404 of the command API
+        match result.failure_kind {
+            Some(kind) => err.with_details(json!({ "failureKind": kind })),
+            None => err,
+        }
+    })?;
+    std::fs::read(&path).map_err(|e| AppError::runtime(format!("failed to read {path}: {e}")))
 }
 
 /// What a WXGF image the built-in decoder cannot convert says: the time of its message, when known, so that it can be
@@ -674,7 +711,8 @@ impl ServiceHub {
         self.image_state.lock_or_panic().resolved.remove(key);
     }
 
-    /// Whether a cached image can be used: a recognised extension, present, not empty and not a zeroed-out JPEG.
+    /// Whether a cached image can be used: a recognised extension, present, not empty and not a zeroed-out or
+    /// cut-short JPEG. An unusable JPEG is removed.
     fn usable_image_cache_file(&self, path: &str) -> bool {
         // an empty file is never an image (an older cache may hold one left half written)
         if !img::is_image_file(path) || std::fs::metadata(path).map_or(true, |m| m.len() == 0) {
@@ -686,7 +724,8 @@ impl ServiceHub {
             .unwrap_or_default();
         if ext == "jpg" || ext == "jpeg" {
             if let Ok(data) = std::fs::read(path) {
-                if img::is_likely_corrupted_jpeg(&data) {
+                // a cut-short one: cached by a build that took a file WeChat was still writing for the image (#1112)
+                if img::is_likely_corrupted_jpeg(&data) || img::ending::is_cut_short(&data) {
                     let _ = std::fs::remove_file(path);
                     return false;
                 }
@@ -1607,8 +1646,56 @@ impl ServiceHub {
             }
             .into();
         };
+        let incomplete = match self.decrypt_rendition(p, cache_key, &dat, since, cache) {
+            Attempt::Done(image) => return image,
+            Attempt::Incomplete(answer) => answer,
+        };
+        // a file WeChat is still writing: a lesser rendition, as when the better one is not there yet
+        for lesser in self.lesser_renditions(p, &dat, since) {
+            if let Attempt::Done(image) =
+                self.decrypt_rendition(p, cache_key, &lesser, since, cache)
+            {
+                if image.result.error.is_none() {
+                    return image;
+                }
+            }
+        }
+        incomplete
+    }
 
-        if !Path::new(&dat)
+    /// The `.dat` files of `p`'s image in renditions below `dat`'s, best first ([`Self::dat_files`]).
+    fn lesser_renditions(&self, p: &ImagePayload, dat: &str, since: Since) -> Vec<String> {
+        let rendition = Rendition::of(dat);
+        let files = self.dat_files(p, since).unwrap_or_default();
+        [files.base, files.thumb]
+            .into_iter()
+            .flatten()
+            .filter(|f| Rendition::of(f) > rendition)
+            .collect()
+    }
+
+    /// Decrypts `dat`, a file of `p`'s image, into the cache (as `cache` says), or finds it there.
+    fn decrypt_rendition(
+        &self,
+        p: &ImagePayload,
+        cache_key: &str,
+        dat: &str,
+        since: Since,
+        cache: CacheWrites,
+    ) -> Attempt {
+        let incomplete = || {
+            Attempt::Incomplete(
+                ImageResult {
+                    error: Some(INCOMPLETE_IMAGE.into()),
+                    failure_kind: Some(DECRYPT_FAILED),
+                    is_thumb: Some(img::is_thumbnail_path(dat)),
+                    ..Default::default()
+                }
+                .into(),
+            )
+        };
+        let done = |result: ImageResult| Attempt::Done(result.into());
+        if !Path::new(dat)
             .extension()
             .map(|e| e.to_string_lossy().to_lowercase().contains("dat"))
             .unwrap_or(false)
@@ -1617,75 +1704,83 @@ impl ServiceHub {
                 cache_key,
                 p.image_md5.as_deref(),
                 p.image_dat_name.as_deref(),
-                &dat,
+                dat,
             );
-            return ImageResult::ok(
-                local_path_for_payload(&dat, p.prefer_file_path),
-                Some(img::is_thumbnail_path(&dat)),
-            )
-            .into();
+            return done(ImageResult::ok(
+                local_path_for_payload(dat, p.prefer_file_path),
+                Some(img::is_thumbnail_path(dat)),
+            ));
         }
 
-        let prefer_hd = p.force && Rendition::of(&dat) == Rendition::Hd;
-        let month = self.dat_month(&dat, since);
+        let prefer_hd = p.force && Rendition::of(dat) == Rendition::Hd;
+        let month = self.dat_month(dat, since);
         if let Some(existing) =
-            self.find_cached_output(&dat, &month, p.session_id.as_deref(), prefer_hd, since)
+            self.find_cached_output(dat, &month, p.session_id.as_deref(), prefer_hd, since)
         {
             // a cached output decrypted from a lesser rendition than `dat` (a thumbnail cached before WeChat
             // downloaded the image, #858) is replaced by decrypting `dat`
-            if Rendition::of_cached(&existing) <= Rendition::of(&dat) {
+            if Rendition::of_cached(&existing) <= Rendition::of(dat) {
                 self.cache_resolved_paths(
                     cache_key,
                     p.image_md5.as_deref(),
                     p.image_dat_name.as_deref(),
                     &existing,
                 );
-                return ImageResult::ok(
+                return done(ImageResult::ok(
                     local_path_for_payload(&existing, p.prefer_file_path),
                     Some(img::is_thumbnail_path(&existing)),
-                )
-                .into();
+                ));
             }
         }
 
         let (xor_key, aes_key) = self.image_keys();
         let Some(xor_key) = xor_key else {
-            return ImageResult::fail("image decrypt key is not configured", "not_found").into();
+            return done(ImageResult::fail(
+                "image decrypt key is not configured",
+                "not_found",
+            ));
         };
         let decrypted =
-            match crate::decrypt::decrypt_file(Path::new(&dat), xor_key, aes_key.as_ref()) {
+            match crate::decrypt::decrypt_file(Path::new(dat), xor_key, aes_key.as_ref()) {
                 Ok(r) => r,
+                Err(e) if e.is::<crate::decrypt::CutShort>() => return incomplete(),
                 Err(e) => {
-                    return ImageResult::fail(
-                        format!("native decrypt failed, check the image keys: {}", e.message),
+                    return done(ImageResult::fail(
+                        format!("native decrypt failed, check the image keys: {e:#}"),
                         "not_found",
-                    )
-                    .into()
+                    ))
                 }
             };
         let wxgf = img::is_wxgf(&decrypted.data);
         let (data, wxgf_failure) = img::unwrap_wxgf(decrypted.data);
         if let Some(reason) = wxgf_failure {
-            return ImageResult {
+            let answer = ImageResult {
                 error: Some(unsupported_image_message(p.create_time, reason)),
                 failure_kind: Some(UNSUPPORTED_IMAGE),
-                is_thumb: Some(img::is_thumbnail_path(&dat)),
+                is_thumb: Some(img::is_thumbnail_path(dat)),
                 ..Default::default()
-            }
-            .into();
+            };
+            // a damaged stream may be one WeChat has not finished writing; its message says it is damaged
+            return if reason.is_damaged() {
+                Attempt::Incomplete(answer.into())
+            } else {
+                done(answer)
+            };
         }
         let Some(ext) = img::detect_image_extension(&data) else {
-            return ImageResult {
+            return done(ImageResult {
                 error: Some("decrypted data is not a valid image".into()),
-                failure_kind: Some("decrypt_failed"),
-                is_thumb: Some(img::is_thumbnail_path(&dat)),
+                failure_kind: Some(DECRYPT_FAILED),
+                is_thumb: Some(img::is_thumbnail_path(dat)),
                 ..Default::default()
-            }
-            .into();
+            });
         };
+        if img::ending::is_cut_short(&data) {
+            return incomplete();
+        }
         let output = img::cache_output_path(
             &self.image_cache_root(),
-            &dat,
+            dat,
             &month,
             ext,
             p.session_id.as_deref(),
@@ -1693,16 +1788,16 @@ impl ServiceHub {
         let out = output.to_string_lossy().to_string();
         let thumbnail = img::is_thumbnail_path(&out);
         if !wxgf && cache == CacheWrites::OnlyWxgf {
-            return DecryptedImage {
+            return Attempt::Done(DecryptedImage {
                 result: ImageResult::default(),
                 fresh: Some(FreshImage { data, thumbnail }),
-            };
+            });
         }
         // renamed into place: an export's other media threads may read this cache file as soon as it exists
         if let Err(e) = self.write_cache_file(&output, &data) {
-            return ImageResult::fail(e.to_string(), "not_found").into();
+            return done(ImageResult::fail(e.to_string(), "not_found"));
         }
-        self.remove_duplicate_cache_candidates(&dat, &month, p.session_id.as_deref(), &out, since);
+        self.remove_duplicate_cache_candidates(dat, &month, p.session_id.as_deref(), &out, since);
         self.cache_resolved_paths(
             cache_key,
             p.image_md5.as_deref(),
@@ -1721,10 +1816,10 @@ impl ServiceHub {
                 })
                 .unwrap_or_else(|| file_path_to_url(&out))
         };
-        DecryptedImage {
-            result: ImageResult::ok(local, Some(img::is_thumbnail_path(&dat))),
+        Attempt::Done(DecryptedImage {
+            result: ImageResult::ok(local, Some(img::is_thumbnail_path(dat))),
             fresh: Some(FreshImage { data, thumbnail }),
-        }
+        })
     }
 
     /// One result row per payload (duplicates are resolved once), the folders checked once for the whole batch.
@@ -1797,14 +1892,22 @@ impl ServiceHub {
             }
             ImageVariant::Normal | ImageVariant::Hd => {
                 let payload = self.image_payload_for_message(session_id, msg_id, create_time)?;
-                let files = self.dat_files(&payload).unwrap_or_default();
+                let files = self.dat_files(&payload, Since::now()).unwrap_or_default();
                 let hd_payload = ImagePayload {
                     force: true,
                     ..payload.clone()
                 };
                 match (variant, &files.hd, &files.base) {
-                    // the HD file through the usual path, which keeps the HD rendition in the cache
-                    (ImageVariant::Hd, Some(_), _) => self.image_data_for_payload(&hd_payload),
+                    // the HD file through the usual path, which keeps the HD rendition in the cache; the usual path
+                    // shows a lesser rendition for an HD file WeChat has not finished writing, which this variant
+                    // does not fall back to
+                    (ImageVariant::Hd, Some(_), _) => {
+                        let result = self.image_decrypt(&hd_payload);
+                        match result.local_path.as_deref() {
+                            Some(path) if !img::is_hd_path(path) => Err(incomplete_error()),
+                            _ => image_bytes(result),
+                        }
+                    }
                     (ImageVariant::Hd, None, _) => Err(AppError::not_found(
                         "the HD original of this image is not on this computer: open the image in WeChat and choose View original",
                     )),
@@ -1827,7 +1930,7 @@ impl ServiceHub {
         create_time: Option<i64>,
     ) -> AppResult<crate::contract::ImageInfo> {
         let (payload, content) = self.image_payload_and_content(session_id, msg_id, create_time)?;
-        let files = self.dat_files(&payload).unwrap_or_default();
+        let files = self.dat_files(&payload, Since::now()).unwrap_or_default();
         let attr = |name: &str| -> Option<u64> {
             let re = crate::message::xml::rx(&format!(r#"\s{name}\s*=\s*"(\d+)""#));
             re.captures(&content)?
@@ -1853,8 +1956,7 @@ impl ServiceHub {
 
     /// The `.dat` files of each rendition of `p`'s image, chosen as [`Self::select_best_dat`] chooses among them:
     /// what the folders hold, and a rendition they lack where WeChat's media index puts one (#651).
-    fn dat_files(&self, p: &ImagePayload) -> Option<DatFiles> {
-        let since = Since::now();
+    fn dat_files(&self, p: &ImagePayload, since: Since) -> Option<DatFiles> {
         let account_dir = self.account_dir_since(since).ok()?;
         let bases = lookup_bases(
             p.image_md5.as_deref(),
@@ -1930,10 +2032,13 @@ impl ServiceHub {
             xor_key.ok_or_else(|| AppError::runtime("image decrypt key is not configured"))?;
         let decrypted =
             crate::decrypt::decrypt_file(dat, xor_key, aes_key.as_ref()).map_err(|e| {
-                AppError::runtime(format!(
-                    "native decrypt failed, check the image keys: {}",
-                    e.message
-                ))
+                if e.is::<crate::decrypt::CutShort>() {
+                    incomplete_error()
+                } else {
+                    AppError::runtime(format!(
+                        "native decrypt failed, check the image keys: {e:#}"
+                    ))
+                }
             })?;
         let (data, failure) = img::unwrap_wxgf(decrypted.data);
         if let Some(reason) = failure {
@@ -1944,6 +2049,9 @@ impl ServiceHub {
         }
         if img::detect_image_extension(&data).is_none() {
             return Err(AppError::runtime("decrypted data is not a valid image"));
+        }
+        if img::ending::is_cut_short(&data) {
+            return Err(incomplete_error());
         }
         Ok(data)
     }
@@ -1973,9 +2081,9 @@ impl ServiceHub {
         let (xor_key, aes_key) = self.image_keys();
         let decrypted = crate::decrypt::decrypt_file(&thumb, xor_key?, aes_key.as_ref()).ok()?;
         let (data, _) = img::unwrap_wxgf(decrypted.data);
-        // a WXGF that could not be converted is left to the full path, which says why
+        // a WXGF that could not be converted, or a cut-short picture, is left to the full path, which says why
         let ext = crate::decrypt::detect_image_extension(&data);
-        (ext != ".bin" && ext != ".wxgf").then_some(data)
+        (ext != ".bin" && ext != ".wxgf" && !img::ending::is_cut_short(&data)).then_some(data)
     }
 
     /// What [`Self::image_decrypt`] needs to find the image of a message.
@@ -2032,20 +2140,7 @@ impl ServiceHub {
     }
 
     fn image_data_for_payload(&self, payload: &ImagePayload) -> AppResult<Vec<u8>> {
-        let result = self.image_decrypt(payload);
-        let path = result.local_path.ok_or_else(|| {
-            let err = AppError::runtime(
-                result
-                    .error
-                    .unwrap_or_else(|| "image decrypt failed".into()),
-            );
-            // what went wrong, as `chat image` says it: `not_found` is a 404 of the command API
-            match result.failure_kind {
-                Some(kind) => err.with_details(json!({ "failureKind": kind })),
-                None => err,
-            }
-        })?;
-        std::fs::read(&path).map_err(|e| AppError::runtime(format!("failed to read {path}: {e}")))
+        image_bytes(self.image_decrypt(payload))
     }
 
     /// Forgets what is known about the decrypted-image cache, for when its files are removed.

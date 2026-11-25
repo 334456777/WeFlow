@@ -7,6 +7,8 @@ use chrono::{Datelike, Local, TimeZone};
 use crate::message::xml::rx;
 use crate::num::count_f64;
 
+pub mod ending;
+
 // ───────────────────────── naming ─────────────────────────
 
 /// Whether `s` is 32 hex digits.

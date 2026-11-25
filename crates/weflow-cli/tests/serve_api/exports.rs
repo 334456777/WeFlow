@@ -282,8 +282,10 @@ fn a_messages_zip_names_its_media_folder_inside_the_zip() {
     use std::io::Read;
     use weflow_native::fixture::{DAY, T0};
     let root = temp_root("messages-zip-media");
+    // a stand-in JPEG: SOI, bytes, EOI (without its end it would be taken for one cut short)
     let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
     jpeg.extend((0..3000u32).map(|i| (i as u8).wrapping_mul(7) | 1));
+    jpeg.extend([0xFF, 0xD9]);
     let home = account_home_with(&root, |f| {
         // the image of `wxid_bob`'s message 3, an old-style .dat: the whole file XOR-ed
         let img = f

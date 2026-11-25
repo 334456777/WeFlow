@@ -12,8 +12,10 @@ use super::common::{
 fn media_come_back_as_files_from_the_process() {
     use weflow_native::fixture::{VoiceSpec, DAY, T0};
     let root = temp_root("media");
+    // stand-in JPEGs: SOI, bytes, EOI (without its end one would be taken for one cut short)
     let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
     jpeg.extend((0..3000u32).map(|i| (i as u8).wrapping_mul(7) | 1));
+    jpeg.extend([0xFF, 0xD9]);
     let voice_at = T0 + 500;
     let mut img_dir = PathBuf::new();
     let home = account_home_with(&root, |f| {
@@ -139,7 +141,7 @@ fn media_come_back_as_files_from_the_process() {
     // a thumbnail for a list: WeChat's own `_t.dat` when there is one, else the image
     let thumb = format!("/api/chat/image-data?{query}&variant=thumb");
     assert_eq!(server.call("GET", &thumb, "").bytes, jpeg);
-    let small: Vec<u8> = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3].to_vec();
+    let small: Vec<u8> = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 0xFF, 0xD9].to_vec();
     std::fs::write(
         img_dir.join("aabbccddeeff00112233445566778899_t.dat"),
         small.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
@@ -190,6 +192,7 @@ fn media_come_back_as_files_from_the_process() {
     // once WeChat has downloaded it: `hd` is the original, and `normal` still the image opened
     let mut original = vec![0xFF, 0xD8, 0xFF, 0xE0];
     original.extend((0..6000u32).map(|i| (i as u8).wrapping_mul(13) | 1));
+    original.extend([0xFF, 0xD9]);
     std::fs::write(
         img_dir.join("aabbccddeeff00112233445566778899_h.dat"),
         original.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
@@ -583,6 +586,8 @@ fn images_of_a_username_with_a_folder_like_suffix_are_found() {
             .map(|(i, (session, folder))| {
                 let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
                 jpeg.extend((0..2000u32).map(|n| (n as u8).wrapping_mul(i as u8 + 3) | 1));
+                // EOI: without its end the stand-in would be taken for a JPEG cut short
+                jpeg.extend([0xFF, 0xD9]);
                 (session, folder, md5_hex(session), jpeg)
             })
             .collect();

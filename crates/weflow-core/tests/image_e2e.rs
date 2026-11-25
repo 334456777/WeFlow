@@ -19,10 +19,24 @@ use weflow_native::fixture::TestDir;
 const MD5: &str = "0123456789abcdef0123456789abcdef";
 const KEY: &str = "0123456789abcdef";
 
+/// A stand-in JPEG of `len` bytes: SOI and an APP0 marker, bytes from `seed`, EOI.
 fn jpeg(len: usize, seed: u8) -> Vec<u8> {
     let mut v = vec![0xFF, 0xD8, 0xFF, 0xE0];
-    v.extend((0..len - 4).map(|i| ((i as u8).wrapping_mul(7)).wrapping_add(seed) | 1));
+    v.extend((0..len - 6).map(|i| ((i as u8).wrapping_mul(7)).wrapping_add(seed) | 1));
+    v.extend([0xFF, 0xD9]);
     v
+}
+
+/// A JPEG of `width` × `height` pixels from `seed` that `image::ending` can walk to its end, unlike [`jpeg`].
+fn picture(width: u16, height: u16, seed: u8) -> Vec<u8> {
+    let pixels: Vec<u8> = (0..usize::from(width) * usize::from(height) * 3)
+        .map(|i| (i as u8).wrapping_mul(31) ^ seed)
+        .collect();
+    let mut out = Vec::new();
+    jpeg_encoder::Encoder::new(&mut out, 90)
+        .encode(&pixels, width, height, jpeg_encoder::ColorType::Rgb)
+        .unwrap();
+    out
 }
 
 /// V2 `.dat`: 1 KiB AES-ECB head (PKCS7), raw middle, XOR-ed tail.
@@ -376,6 +390,103 @@ fn reports_missing_files_keys_and_bad_keys() {
     let (_root2, hub2) = common::mock_hub("img-nokeys");
     let r = hub2.image_decrypt(&p);
     assert!(!r.is_ok());
+}
+
+/// The first `keep` bytes of `file`: what is on disk while WeChat is writing it.
+fn cut(file: &[u8], keep: usize) -> &[u8] {
+    &file[..keep]
+}
+
+/// The HD file of an image that WeChat is still writing (#1112): the thumbnail is shown instead, nothing incomplete is
+/// cached, and the finished file replaces the thumbnail.
+#[test]
+fn an_image_wechat_is_still_writing_gives_way_to_its_thumbnail() {
+    let (_root, hub, _account, img_dir) = setup("img-incomplete");
+    let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
+    let full = picture(96, 64, 1);
+    let thumb = picture(24, 16, 2);
+    let full_dat = encrypt_v2(&full, &key, 0x5a);
+    let hd_dat = img_dir.join(format!("{MD5}_h.dat"));
+    let p = ImagePayload {
+        session_id: Some("wxid_bob".into()),
+        image_md5: Some(MD5.into()),
+        create_time: Some(1_700_000_000),
+        prefer_file_path: true,
+        ..Default::default()
+    };
+    let forced = ImagePayload {
+        force: true,
+        ..p.clone()
+    };
+
+    // shorter than the XOR-ed tail the header declares; then cuts the header allows, where the picture stops
+    // before its end and the bytes taken for the tail are the middle's
+    for keep in [15 + 1040 + 50, full_dat.len() / 2, full_dat.len() - 50] {
+        std::fs::write(&hd_dat, cut(&full_dat, keep)).unwrap();
+        for payload in [&p, &forced] {
+            let r = hub.image_decrypt(payload);
+            assert_eq!(
+                (r.failure_kind, r.error.as_deref()),
+                (
+                    Some("decrypt_failed"),
+                    Some("the image file is incomplete, WeChat may still be downloading it: retry later")
+                ),
+                "kept {keep} of {} bytes, force {}",
+                full_dat.len(),
+                payload.force
+            );
+        }
+        assert!(cached_images(&hub).is_empty(), "kept {keep}");
+    }
+
+    std::fs::write(
+        img_dir.join(format!("{MD5}_t.dat")),
+        encrypt_v2(&thumb, &key, 0x5a),
+    )
+    .unwrap();
+    for payload in [&forced, &p] {
+        // the second is answered from the cache, which does not say `isThumb`
+        let path = hub.image_decrypt(payload).local_path.unwrap();
+        assert!(
+            path.ends_with(&format!("{MD5}_t.jpg")),
+            "force {}: {path}",
+            payload.force
+        );
+        assert_eq!(std::fs::read(path).unwrap(), thumb);
+    }
+
+    std::fs::write(&hd_dat, &full_dat).unwrap();
+    let finished = hub.image_decrypt(&p);
+    let path = finished.local_path.unwrap();
+    assert!(path.ends_with(&format!("{MD5}_hd.jpg")), "{path}");
+    assert_eq!(std::fs::read(&path).unwrap(), full);
+}
+
+/// A JPEG cut short in the image cache, as a build that took a file WeChat was still writing cached it, is not used:
+/// the image is decrypted again.
+#[test]
+fn a_cut_short_image_in_the_cache_is_decrypted_again() {
+    let (_root, hub, _account, img_dir) = setup("img-cut-cache");
+    let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
+    let full = picture(96, 64, 3);
+    std::fs::write(
+        img_dir.join(format!("{MD5}_h.dat")),
+        encrypt_v2(&full, &key, 0x5a),
+    )
+    .unwrap();
+    let p = ImagePayload {
+        session_id: Some("wxid_bob".into()),
+        image_md5: Some(MD5.into()),
+        create_time: Some(1_700_000_000),
+        prefer_file_path: true,
+        ..Default::default()
+    };
+    let path = hub.image_decrypt(&p).local_path.unwrap();
+    std::fs::write(&path, cut(&full, full.len() * 2 / 3)).unwrap();
+
+    let again = hub.image_decrypt(&p);
+    assert_eq!(again.local_path.as_deref(), Some(path.as_str()));
+    assert_eq!(std::fs::read(&path).unwrap(), full);
 }
 
 /// Two image messages from 2023-11-14 in `wxid_bob`'s chat, image keys configured; returns the hub and the
@@ -823,6 +934,67 @@ async fn export_media_reports_thumbnail_only_images() {
         "the note explains what thumbOnly means"
     );
     assert_eq!(r["files"][0]["isThumb"], true);
+}
+
+/// An image whose HD file WeChat is still writing (#1112) is exported as its thumbnail, and the HD variant of the
+/// message says the file is incomplete rather than answering with the thumbnail.
+#[tokio::test]
+async fn an_export_takes_the_thumbnail_of_an_image_wechat_is_still_writing() {
+    use weflow_core::services::ImageVariant;
+    let (root, hub, img_dir) = export_world("img-export-incomplete");
+    let md5 = "aabbccddeeff00112233445566778899";
+    let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
+    let full_dat = encrypt_v2(&picture(96, 64, 4), &key, 0x5a);
+    let thumb = picture(24, 16, 5);
+    std::fs::write(
+        img_dir.join(format!("{md5}_h.dat")),
+        cut(&full_dat, full_dat.len() / 2),
+    )
+    .unwrap();
+    std::fs::write(
+        img_dir.join(format!("{md5}_t.dat")),
+        encrypt_v2(&thumb, &key, 0x5a),
+    )
+    .unwrap();
+
+    let r = serde_json::to_value(
+        hub.export_media(
+            Some("wxid_bob"),
+            &root.join("media-incomplete"),
+            "image",
+            None,
+            None,
+        )
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        (r["exported"].as_i64(), r["thumbOnly"].as_i64()),
+        (Some(1), Some(1)),
+        "{r}"
+    );
+    assert_eq!(
+        std::fs::read(r["files"][0]["path"].as_str().unwrap()).unwrap(),
+        thumb
+    );
+
+    let at = Some(weflow_native::fixture::T0);
+    let hd = hub
+        .image_variant_for_message("wxid_bob", "1", at, ImageVariant::Hd)
+        .unwrap_err();
+    assert_eq!(
+        hd.message,
+        "the image file is incomplete, WeChat may still be downloading it: retry later"
+    );
+    assert_eq!(
+        hd.details,
+        Some(serde_json::json!({ "failureKind": "decrypt_failed" }))
+    );
+    let best = hub
+        .image_variant_for_message("wxid_bob", "1", at, ImageVariant::Best)
+        .unwrap();
+    assert_eq!(best, thumb);
 }
 
 /// An image exported and shown (which caches it) while only its thumbnail was on disk, then opened in WeChat: the next
