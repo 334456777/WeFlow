@@ -19,6 +19,25 @@
    "force": false,
    "release_tag": "",
    "pr": 1109
+  },
+  {
+   "id": "release-v7.0.0",
+   "asked_at": "2026-11-25T01:14:21+00:00",
+   "run": "https://github.com/334456777/WeFlow/issues/1223#issuecomment-7137839894",
+   "commits": "v6.0.0=05efbc36bb572d664478ac00d241d22104b56239,v7.0.0=f292b7cf0cf15c29d4bee91bfbf38e00e67c67ec",
+   "pair": [
+    "v6.0.0=05efbc36bb572d664478ac00d241d22104b56239",
+    "v7.0.0=f292b7cf0cf15c29d4bee91bfbf38e00e67c67ec"
+   ],
+   "runs": "5",
+   "seed": "1",
+   "group_messages": "200000",
+   "conversations": "300",
+   "load_seconds": "90",
+   "only": "",
+   "force": false,
+   "release_tag": "v7.0.0",
+   "pr": null
   }
  ],
  "labeled": [
@@ -45,11 +64,6 @@
   630,
   631,
   658,
-  672,
-  675,
-  925,
-  939,
-  1006,
   1109
  ],
  "taken": "2026-11-23"
