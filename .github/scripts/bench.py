@@ -63,7 +63,9 @@ import psutil
 # The version of the way a commit is measured: bump it when what is measured changes (the commands and their options,
 # the load, how serve_bench is run or what it times, the numbers kept), so that results measured differently are
 # never compared. A change that measures the same (a comment, a name in the report) keeps it, and with it the history.
-METHOD = 1
+#   1  the first version (#611)
+#   2  serve_bench starts serve with --api-only, so the server downloads no web page while it is timed (#948)
+METHOD = 2
 # the commit measured and the one every result of its environment is measured next to
 ROLES = ("target", "anchor")
 TOKEN = "bench"
