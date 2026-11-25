@@ -10,8 +10,8 @@ use serde_json::{json, Value};
 
 use super::*;
 use crate::contract::{
-    InsightCleared, InsightMarked, InsightRecords, InsightReply, InsightTodayStat, ModelList,
-    ModelProbe, Session,
+    InsightClearPlan, InsightCleared, InsightMarked, InsightRecords, InsightReply,
+    InsightTodayStat, ModelList, ModelProbe, Session,
 };
 use crate::insight::{self as ins, fill, RecordFilters, RecordStore};
 use crate::locale::tr;
@@ -276,6 +276,15 @@ impl ServiceHub {
     /// As [`RecordStore::mark_read`].
     pub fn insight_mark_record_read(&self, id: &str) -> AppResult<InsightMarked> {
         self.record_store().mark_read(id)
+    }
+
+    /// How many of the account's insight records `insight clear` with `f` would remove: its `--dry-run`, and the
+    /// count it asks about before removing.
+    pub fn insight_clear_plan(&self, f: &RecordFilters) -> InsightClearPlan {
+        InsightClearPlan {
+            dry_run: true,
+            records: self.record_store().clearable(f),
+        }
     }
 
     /// Removes the account's insight records that `f` matches (`insight clear`; see [`RecordStore::clear`]).

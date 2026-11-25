@@ -37,8 +37,9 @@ export async function getInsightLog(id: string, signal?: AbortSignal): Promise<I
 /** `insight mark-read`. */
 export const markInsightRead = (id: string) => call<Contract.InsightMarked>('PUT', 'insight/mark-read', { id });
 
-/** `insight clear`: every record, or one conversation's. */
-export const clearInsights = (session?: string | null) => call<Contract.InsightCleared>('DELETE', 'insight/clear', { session: session || undefined });
+/** `insight clear --yes`: every record, or one conversation's; the page has asked first (`InsightClear`). */
+export const clearInsights = (session?: string | null) =>
+  call<Contract.InsightCleared>('DELETE', 'insight/clear', { session: session || undefined, yes: true });
 
 /** `insight trigger [session]`: one insight now, for that conversation or the first one it may write for. */
 export const triggerInsight = (session?: string | null) =>

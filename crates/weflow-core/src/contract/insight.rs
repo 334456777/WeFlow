@@ -246,6 +246,16 @@ pub struct InsightCleared {
     pub removed: usize,
 }
 
+/// What `insight clear` would remove (`--dry-run`), for a page that asks first.
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightClearPlan {
+    /// Always true.
+    pub dry_run: bool,
+    /// The records it would remove.
+    pub records: usize,
+}
+
 /// What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the
 /// command fails with what happened instead.
 #[derive(Clone, Debug, Serialize, JsonSchema)]

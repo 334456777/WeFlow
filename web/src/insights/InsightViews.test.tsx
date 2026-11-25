@@ -119,7 +119,7 @@ describe('insights', () => {
     expect(urls).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
     await act(async () => {});
-    expect(urls).toEqual(['/insight/clear?session=wxid_a']);
+    expect(urls).toEqual(['/insight/clear?session=wxid_a&yes=true']);
     expect(onDone).toHaveBeenCalled();
     expect(screen.getByText('已删除 1 条。')).toBeTruthy();
   });

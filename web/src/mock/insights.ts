@@ -1,6 +1,6 @@
 // The sample's AI insights: what the insight engine noticed in the chats, about WeFlow and about the account's own life,
 // with how each was written. Read, cleared and written anew in the page while it is open (#896).
-import type { InsightCleared, InsightContact, InsightMarked, InsightRecord, InsightReply, InsightSummary, ModelList } from '../api/contract.gen';
+import type { InsightClearPlan, InsightCleared, InsightContact, InsightMarked, InsightRecord, InsightReply, InsightSummary, ModelList } from '../api/contract.gen';
 import { threads } from './chats';
 import { ago, at, dayOf, NOW } from './clock';
 import { getSetting } from './config';
@@ -79,6 +79,11 @@ export function clearInsights(session: string): InsightCleared {
   const before = written.length;
   for (let i = written.length - 1; i >= 0; i--) if (!session || written[i].session === session) written.splice(i, 1);
   return { removed: before - written.length };
+}
+
+/** `insight clear [session] --dry-run`: how many records `clearInsights` would remove. */
+export function planClearInsights(session: string): InsightClearPlan {
+  return { dryRun: true, records: written.filter(r => !session || r.session === session).length };
 }
 
 let made = 0;

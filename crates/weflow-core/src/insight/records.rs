@@ -310,6 +310,16 @@ pub struct RecordFilters {
     pub offset: Option<i64>,
 }
 
+impl RecordFilters {
+    /// Whether `insight clear` with these filters deletes `r`: its conversation and its time match; the keyword is
+    /// not read.
+    fn clears(&self, r: &InsightRecord) -> bool {
+        (self.session_id.is_empty() || r.session_id == self.session_id)
+            && (self.start_time <= 0 || r.created_at >= self.start_time)
+            && (self.end_time <= 0 || r.created_at <= self.end_time)
+    }
+}
+
 /// The insight records of one account, kept in its file in `insights/` of WeFlow's home folder.
 pub struct RecordStore {
     path: PathBuf,
@@ -546,6 +556,12 @@ impl RecordStore {
         })
     }
 
+    /// How many of the account's records [`clear`](Self::clear) with `f` would remove, as the file held them when
+    /// the store was loaded.
+    pub fn clearable(&self, f: &RecordFilters) -> usize {
+        self.scoped().filter(|r| f.clears(r)).count()
+    }
+
     /// Removes the account's records that the conversation and the times of `f` match, and saves the file.
     ///
     /// # Errors
@@ -554,15 +570,9 @@ impl RecordStore {
         self.update(|store| {
             let mut removed = 0;
             store.records.retain(|r| {
-                if r.account_scope != store.scope
-                    || (!f.session_id.is_empty() && r.session_id != f.session_id)
-                    || (f.start_time > 0 && r.created_at < f.start_time)
-                    || (f.end_time > 0 && r.created_at > f.end_time)
-                {
-                    return true;
-                }
-                removed += 1;
-                false
+                let goes = r.account_scope == store.scope && f.clears(r);
+                removed += usize::from(goes);
+                !goes
             });
             Ok((crate::contract::InsightCleared { removed }, true))
         })
@@ -678,6 +688,58 @@ mod tests {
                 .total,
             1
         );
+    }
+
+    /// What `insight clear --dry-run` counts is what `insight clear` removes (#1243): the conversation and the times
+    /// pick, the keyword is not read, and another account's records never count.
+    #[test]
+    fn what_clear_would_remove_is_what_it_removes() {
+        let filters = [
+            RecordFilters::default(),
+            RecordFilters {
+                session_id: "wxid_a".into(),
+                ..Default::default()
+            },
+            RecordFilters {
+                session_id: "wxid_nobody".into(),
+                ..Default::default()
+            },
+            RecordFilters {
+                keyword: "CALL".into(),
+                ..Default::default()
+            },
+            RecordFilters {
+                start_time: i64::MAX / 2,
+                ..Default::default()
+            },
+            RecordFilters {
+                end_time: 1,
+                ..Default::default()
+            },
+        ];
+        let mut counts = Vec::new();
+        for (i, f) in filters.iter().enumerate() {
+            let home =
+                weflow_native::fixture::TestDir::new(&format!("weflow-insight-clearable-{i}"));
+            let mut mine = RecordStore::load(&home, "wxid:me");
+            add(&mut mine, "wxid_a", "Alice", "be nice");
+            add(&mut mine, "wxid_b", "Bob", "call him");
+            add(&mut mine, "wxid_a", "Alice", "lunch");
+            add(
+                &mut RecordStore::load(&home, "wxid:other"),
+                "wxid_a",
+                "Alice",
+                "hidden",
+            );
+            let would = RecordStore::load(&home, "wxid:me").clearable(f);
+            let removed = RecordStore::load(&home, "wxid:me")
+                .clear(f)
+                .unwrap()
+                .removed;
+            assert_eq!(would, removed, "{f:?}");
+            counts.push(would);
+        }
+        assert_eq!(counts, [3, 2, 0, 3, 0, 0]);
     }
 
     #[test]

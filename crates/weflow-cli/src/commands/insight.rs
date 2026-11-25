@@ -3,6 +3,7 @@
 use clap::{Args, Subcommand};
 
 use crate::numbers::non_negative_i64;
+use crate::term::{ask_yes, can_ask};
 use serde_json::{json, Value};
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::services::ServiceHub;
@@ -55,7 +56,7 @@ pub(crate) enum InsightSubcommand {
         /// Record id
         id: String,
     },
-    /// Delete insight records, all of them or those the filters pick
+    /// Delete insight records, all of them or those the filters pick; shows how many go and asks for y first
     Clear {
         /// Only this conversation
         #[arg(long)]
@@ -66,6 +67,12 @@ pub(crate) enum InsightSubcommand {
         /// Only records up to this time, in Unix seconds
         #[arg(long, value_parser = non_negative_i64(), allow_negative_numbers = true)]
         end: Option<i64>,
+        /// Do not ask before deleting
+        #[arg(short = 'y', long)]
+        yes: bool,
+        /// Only count the records that would be deleted; delete nothing
+        #[arg(long, conflicts_with = "yes")]
+        dry_run: bool,
     },
     /// Today's trigger counts; only meaningful inside a running `serve --insight`
     TodayStats,
@@ -112,6 +119,41 @@ fn insight_filters(
     }
 }
 
+/// Asks on the terminal before `insight clear` deletes `count` records, of the conversation `session` or of all when
+/// it is empty; only `y` or `yes` goes ahead. Without a terminal to ask on, `--yes` is required (#1243).
+fn confirm_clear(count: usize, session: &str) -> AppResult<bool> {
+    use weflow_core::colour::{Paint, Role, Stream};
+    use weflow_core::locale::tr;
+
+    if !can_ask() {
+        return Err(AppError::usage(
+            "this deletes insight records; add --yes to confirm",
+        ));
+    }
+    let heading = if session.is_empty() {
+        tr(
+            "About to delete {n} insight records.",
+            "将要删除 {n} 条见解记录。",
+        )
+    } else {
+        tr(
+            "About to delete {n} insight records of {session}.",
+            "将要删除会话 {session} 的 {n} 条见解记录。",
+        )
+    }
+    .replace("{n}", &count.to_string())
+    .replace("{session}", session);
+    let paint = Paint::of(Stream::Stderr);
+    ask_yes(&format!(
+        "{}\n{}",
+        paint.paint(Role::Strong, &heading),
+        tr(
+            "Delete them? Type y to confirm, anything else cancels: ",
+            "确认删除？输入 y 确认，其他输入取消：",
+        )
+    ))
+}
+
 pub(crate) fn print_insight(r: &weflow_core::insight::InsightRecord) {
     weflow_core::output::event(json!({ "type": "insight", "record": r.summary() }));
 }
@@ -140,9 +182,23 @@ pub(crate) async fn handle_insight(command: InsightCommand, hub: &ServiceHub) ->
             session,
             start,
             end,
-        } => Ok(json!(hub.insight_clear_records(&insight_filters(
-            session, None, start, end, None, None
-        ))?)),
+            yes,
+            dry_run,
+        } => {
+            use weflow_core::contract::{Cancelled, InsightCleared};
+            let filters = insight_filters(session, None, start, end, None, None);
+            let plan = hub.insight_clear_plan(&filters);
+            if dry_run {
+                return Ok(json!(plan));
+            }
+            if plan.records == 0 {
+                return Ok(json!(InsightCleared { removed: 0 }));
+            }
+            if !yes && !confirm_clear(plan.records, &filters.session_id)? {
+                return Ok(json!(Cancelled { cancelled: true }));
+            }
+            Ok(json!(hub.insight_clear_records(&filters)?))
+        }
         InsightSubcommand::TodayStats => Ok(json!(hub.insight_today_stats())),
         InsightSubcommand::Scan => {
             let mut records = Vec::new();
