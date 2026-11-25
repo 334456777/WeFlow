@@ -540,6 +540,11 @@ type MediaRank = (bool, u64);
 /// The files one media export writes, with the rank of what each holds. Messages that share an image share its
 /// file, and the media threads export them side by side: whichever gets there first, the HD rendition replaces a
 /// thumbnail, so the export does not depend on the threads' order (issue #52).
+///
+/// A new file is written in place, without a temporary file renamed into place: on Windows the rename went through
+/// every file system filter again and took about half the time of an export with media. A file cut short when the
+/// process is killed is caught by [`INCOMPLETE`]: each folder holds that marker while the export writes into it, and
+/// dropping this takes the markers out again.
 #[derive(Default)]
 pub(super) struct ExportedFiles {
     written: std::sync::Mutex<Written>,
@@ -551,12 +556,27 @@ pub(super) struct ExportedFiles {
 #[derive(Default)]
 struct Written {
     ranks: HashMap<PathBuf, MediaRank>,
-    /// The folders the export made: no earlier export left a file in them.
-    made: HashSet<PathBuf>,
+    /// The folders written into so far, and what was in each before.
+    folders: HashMap<PathBuf, Folder>,
     /// The files a thread is writing now. Only the threads that write the same file wait for one another: a file is
-    /// created, written and renamed into place outside the lock, so the threads write different files side by side.
+    /// written outside the lock, so the threads write different files side by side.
     writing: HashSet<PathBuf>,
 }
+
+/// What a folder held when the export first wrote into it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Folder {
+    /// The export made it: no earlier export left a file in it.
+    Made,
+    /// An earlier export finished in it: the files it left are kept.
+    Finished,
+    /// An earlier export was stopped while it wrote into it ([`INCOMPLETE`] was there): any file it left may be cut
+    /// short, so each one is written again.
+    Stopped,
+}
+
+/// The marker a media folder holds while an export writes into it (see [`ExportedFiles`]).
+const INCOMPLETE: &str = ".weflow-export-incomplete";
 
 impl ExportedFiles {
     fn lock(&self) -> std::sync::MutexGuard<'_, Written> {
@@ -564,6 +584,56 @@ impl ExportedFiles {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+}
+
+impl Drop for ExportedFiles {
+    /// Takes the markers out of the folders written into: the export finished, or failed after taking out any file it
+    /// cut short.
+    fn drop(&mut self) {
+        for dir in self.lock().folders.keys() {
+            // a marker that is not there any more has nothing to say
+            let _ = std::fs::remove_file(dir.join(INCOMPLETE));
+        }
+    }
+}
+
+/// Makes the folder `dir` ready for an export to write into: there, holding [`INCOMPLETE`]; and what it held before.
+fn open_folder(dir: &Path) -> std::io::Result<Folder> {
+    let made = make_dir(dir)?;
+    let marker = dir.join(INCOMPLETE);
+    let stopped = !made && marker.exists();
+    std::fs::write(&marker, b"")?;
+    Ok(if made {
+        Folder::Made
+    } else if stopped {
+        Folder::Stopped
+    } else {
+        Folder::Finished
+    })
+}
+
+/// Writes `bytes` to `path`, which is not there yet, in place; a file cut short by a failed write is taken out. When
+/// `path` turns out to be there after all, it is replaced through a temporary file ([`write_atomically`]).
+fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            return write_atomically(path, bytes)
+        }
+        Err(e) => return Err(e),
+    };
+    let written = file.write_all(bytes);
+    drop(file);
+    if written.is_err() {
+        // a file that is not there any more needs no taking out
+        let _ = std::fs::remove_file(path);
+    }
+    written
 }
 
 /// What the messages of one media export share while their media are copied side by side.
@@ -653,36 +723,41 @@ fn put_media(
                     .wait(files)
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
             }
-            let keep = match files.ranks.get(&full) {
-                Some(have) => *have >= rank,
-                // a folder this export made holds no file of an earlier one
-                None if files.made.contains(dir) => false,
-                // left by an earlier export into the same folder: kept
-                None if full.exists() => {
-                    files.ranks.insert(full.clone(), (true, u64::MAX));
-                    true
+            // the first file into a folder makes it and marks it (`INCOMPLETE`), under the lock, before any is written
+            let folder = match files.folders.get(dir) {
+                Some(folder) => *folder,
+                None => {
+                    let folder = open_folder(dir).ok()?;
+                    files.folders.insert(dir.to_path_buf(), folder);
+                    folder
                 }
-                None => false,
             };
-            if !keep {
+            // what is there now: `None` for nothing, else whether it is kept
+            let there = match files.ranks.get(&full) {
+                Some(have) => Some(*have >= rank),
+                None => match folder {
+                    // a folder this export made holds no file of an earlier one
+                    Folder::Made => None,
+                    // left by an earlier export into the same folder: kept
+                    Folder::Finished if full.exists() => {
+                        files.ranks.insert(full.clone(), (true, u64::MAX));
+                        Some(true)
+                    }
+                    Folder::Finished => None,
+                    // left by an export that was stopped: written again
+                    Folder::Stopped => Some(false),
+                },
+            };
+            if there != Some(true) {
                 files.writing.insert(full.clone());
                 drop(files);
-                // the folder is made when the first write into it finds it missing
-                let mut made_dir = false;
-                let result = match write() {
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        make_dir(dir).and_then(|made| {
-                            made_dir = made;
-                            write()
-                        })
-                    }
-                    done => done,
+                let result = match (there, &source) {
+                    (None, MediaSource::Bytes(b)) => write_new(&full, b),
+                    // a file that is there is replaced through a temporary file, so it is never seen cut short
+                    _ => write(),
                 };
                 let mut files = written.lock();
                 files.writing.remove(&full);
-                if made_dir {
-                    files.made.insert(dir.to_path_buf());
-                }
                 if result.is_ok() {
                     files.ranks.insert(full.clone(), rank);
                 }
@@ -1071,6 +1146,7 @@ mod tests {
                     });
                 }
             });
+            drop(written);
             for file in 0..FILES {
                 let best = (0..THREADS)
                     .map(|thread| rendition(thread, file))
@@ -1080,9 +1156,58 @@ mod tests {
                 let folder = dir.join("images").join(file.to_string());
                 assert_eq!(std::fs::read(folder.join("a.jpg")).unwrap(), best);
                 let names: Vec<_> = std::fs::read_dir(&folder).unwrap().collect();
-                assert_eq!(names.len(), 1, "no temporary file is left behind");
+                assert_eq!(names.len(), 1, "no temporary file or marker is left behind");
             }
         }
+    }
+
+    #[test]
+    fn a_folder_is_marked_while_written_into_and_a_stopped_export_has_its_files_written_again() {
+        let dir = media_dir("incomplete");
+        let images = dir.join("images");
+        std::fs::create_dir_all(&images).unwrap();
+        std::fs::write(images.join("a.jpg"), b"cut sh").unwrap();
+        // an export that was stopped while writing into the folder left its marker there
+        std::fs::write(images.join(INCOMPLETE), b"").unwrap();
+        let written = ExportedFiles::default();
+        let to = MediaTarget {
+            session_dir: &dir,
+            safe_talker: "s",
+            written: Some(&written),
+        };
+        assert!(put(&to, b"cut short? no: whole", false).is_some());
+        assert_eq!(
+            std::fs::read(images.join("a.jpg")).unwrap(),
+            b"cut short? no: whole",
+            "a file a stopped export left is written again"
+        );
+        // a new folder is marked as well, while the export writes into it
+        let other = MediaTarget {
+            session_dir: &dir.join("other"),
+            safe_talker: "s",
+            written: Some(&written),
+        };
+        assert!(put(&other, b"new", false).is_some());
+        assert!(images.join(INCOMPLETE).exists());
+        assert!(dir.join("other").join("images").join(INCOMPLETE).exists());
+        drop(written);
+        for folder in [images.clone(), dir.join("other").join("images")] {
+            assert!(!folder.join(INCOMPLETE).exists(), "{folder:?}");
+            let names: Vec<_> = std::fs::read_dir(&folder).unwrap().collect();
+            assert_eq!(names.len(), 1, "{folder:?}");
+        }
+        // the next export finds the folder finished: what is there is kept
+        let written = ExportedFiles::default();
+        let to = MediaTarget {
+            session_dir: &dir,
+            safe_talker: "s",
+            written: Some(&written),
+        };
+        assert!(put(&to, b"a later, larger image", false).is_some());
+        assert_eq!(
+            std::fs::read(images.join("a.jpg")).unwrap(),
+            b"cut short? no: whole"
+        );
     }
 
     #[test]
@@ -1111,7 +1236,8 @@ mod tests {
             b"earlier"
         );
         assert!(put(&to, b"", false).is_none());
+        drop(written);
         let names: Vec<_> = std::fs::read_dir(dir.join("images")).unwrap().collect();
-        assert_eq!(names.len(), 1, "no temporary file is left behind");
+        assert_eq!(names.len(), 1, "no temporary file or marker is left behind");
     }
 }
