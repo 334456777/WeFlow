@@ -78,12 +78,13 @@ Linux perf 看不到 Windows 特有的内核开销，例如同步句柄上的文
 - 删除结果后要重测，并且重新写入 PR 评论或发布说明时：
   - 把这些 PR 移出 `queue.json` 的 `labeled`，下一次夜间运行会把它们重新排进队列，请求里带上 PR 号；
   - 发布说明另外排一个带 `release_tag` 的请求，可以用 `bench_queue.py` 的 `new_request` 生成；
-  - 删掉旧评论和旧的那一节之前，先把它们备份下来。
+  - 不等夜间时段时，手动运行并关掉 `night`，填 `pr`（`commits` 填 `#N前=<合并提交>^,#N后=<合并提交>`）或 `release_tag`；测完后队列里同样的请求随之移出，PR 记进 `labeled`；
+  - PR 下的对比每次另发一条评论，旧评论不会被改写；删掉旧评论和旧的那一节之前，先把它们备份下来。
 - 看对比结果时先看 `quiet`（其他进程占用的 CPU）是否接近：机器忙时的差距不能归因于代码。
 - 改 bench.yml、测量脚本或校准时：
   - 环境键只放真正改变测法的东西；能靠锚点发现的漂移（如操作系统的小版本）记录下来，不进键。测量脚本的改动攒在一起改，用显式的版本号而不是文件的哈希。换环境后补测各个 release，让趋势接得上。
   - 只有真正需要那台机器的步骤才放到 runner 上，判断、排队和发布在 GitHub 托管的机器上做；状态存在 `gh-pages` 和 runner 的 `pending/` 里，运行中断不丢数据，下次接着测。
 - 装 runner 或换机器：在管理员终端里运行 `.github/bench/setup-runner.ps1 -Token <令牌> -BenchDir <目录> -Protect <目录>`。令牌用 `gh api -X POST repos/334456777/WeFlow/actions/runners/registration-token -q .token` 取，一小时内有效。runner 的账户不是管理员，读不到用户目录和 `-Protect` 给出的目录；重新运行脚本会更新目录并重新注册。
-- 校准基准账号的 profile：以配置了真实账号的用户（不是 runner 的账户）运行 `.github/bench/calibrate.ps1`，`-Register` 把它设成每六周一次的计划任务，改时间也要重新 `-Register`。读的配置默认是 `weflow` 自己读的那份（跟随 `config set config_path` 选定的文件），计划任务记下的是注册时找到的路径，换了配置文件后也要重新 `-Register`。它只输出是否更换、变化的项数和 profile 的哈希；profile 只存在本机，不提交。profile 换了以后，夜间运行会先在新环境里测最近的三个发布和带 `bench` 标签的 PR，见 Wiki [测试与基准#更换 profile 后的补测](https://github.com/334456777/WeFlow/wiki/测试与基准#更换-profile-后的补测)。
+- 校准基准账号的 profile：以配置了真实账号的用户（不是 runner 的账户）运行 `.github/bench/calibrate.ps1`，`-Register` 把它设成每六周一次的计划任务，改时间也要重新 `-Register`。读的配置默认是 `weflow` 自己读的那份（跟随 `config set config_path` 选定的文件），计划任务记下的是注册时找到的路径，换了配置文件后也要重新 `-Register`。它只输出是否更换、变化的项数和 profile 的哈希；profile 只存在本机，不提交。profile 换了以后，夜间运行会先在新环境里测各主版本最高的正式版、上一个环境之后的正式版和 PR，改写这些正式版的发布说明、在 PR 下另发评论，见 Wiki [测试与基准#更换 profile 后的补测](https://github.com/334456777/WeFlow/wiki/测试与基准#更换-profile-后的补测)。
 - 夜间运行的计划任务：在 runner 所在的电脑上，以 `gh` 已登录的用户（不是 runner 的账户，不用管理员终端）运行 `.github/bench/night.ps1 -Register`，每天日本时间 23:25 发起夜间运行，只在该用户已登录时运行，错过的夜晚不补发。`bench.yml` 没有定时运行，这个计划任务是夜间队列唯一的入口。每次的结果（包括中断它的错误）追加到 `%LOCALAPPDATA%\weflow-bench\night.log`；没有发起时先看这里。任务计划程序里的「上次运行结果」只说明 `pwsh` 有没有启动：`conhost --headless` 不论脚本怎样退出都交回 0。换机器或者 `gh` 换了位置要重新 `-Register`。从分支试跑时，手动运行 `gh workflow run bench.yml --ref <分支> -f commits=`：分支上的夜间运行不碰队列，可以看 `queue` job 是否把它当成夜间运行。见 Wiki [测试与基准#夜间队列](https://github.com/334456777/WeFlow/wiki/测试与基准#夜间队列)。
 - 优化合并后，把试过但没采用的做法评论到对应的 issue，见 [weflow-issues](../weflow-issues/SKILL.md#写正文和评论)。

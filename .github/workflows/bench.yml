@@ -34,11 +34,14 @@ name: Bench
 # on another branch than the default one: the queue is measured and published by the default branch's workflow, so a
 # trial on a branch with its publish job turned off stays a trial. A night's run first queues each PR labeled `bench`
 # merged since it last looked, before and after it, once (the queue's `labeled` holds the PRs it looked at); once both
-# are measured, the publish job comments their comparison under the PR (`.github/scripts/pr-bench-comment.sh`). It asks
-# for the runner only when there is something for it: a request in the queue, or Friday night, after the calibration
-# task of #605 (`.github/bench/calibrate.ps1`) ran: when it changed the profile, the new environment is measured first
-# on the releases and the PRs labeled `bench`, from 23:30, so it has the whole night. A run whose runner is not there
-# leaves the queue as it is for the next night.
+# are measured, the publish job comments their comparison under the PR, a new comment for each comparison
+# (`.github/scripts/pr-bench-comment.sh`); a run asked for by hand does so with `pr`. It asks for the runner only when
+# there is something for it: a request in the queue, or Friday night, after the calibration task of #605
+# (`.github/bench/calibrate.ps1`) ran: when it changed the profile, the new environment is measured first, from 23:30,
+# so it has the whole night (#1254): the newest release of each major version and the releases since the environment
+# before, whose release notes it rewrites, and the PRs the environment before measured last and the PRs labeled `bench`
+# it did not, under which it comments (`.github/scripts/bench_queue.py`'s backfill_requests). A run whose runner is not
+# there leaves the queue as it is for the next night.
 on:
   workflow_dispatch:
     inputs:
@@ -84,6 +87,11 @@ on:
         type: boolean
       release_tag:
         description: "补写某个已发布版本的「性能基准」：填它的 tag，commits 填「上一个版本,这个版本」；留空不改任何 release"
+        required: false
+        default: ""
+        type: string
+      pr:
+        description: "在这个 PR 下评论合并前后的对比：填 PR 号，commits 填「#N前=合并提交^,#N后=合并提交」；队列里同一个 PR 的请求随之移出；留空不评论"
         required: false
         default: ""
         type: string
@@ -192,6 +200,7 @@ jobs:
           ONLY: ${{ inputs.only }}
           FORCE: ${{ inputs.force && '1' || '' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          PR: ${{ inputs.pr }}
           # for the PRs labeled bench merged since the last night's run (bench_queue.py's api)
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

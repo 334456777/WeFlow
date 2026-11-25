@@ -2,7 +2,7 @@
 
 usage: python bench_queue.py plan --pages DIR --event EVENT [--night] --outputs FILE --summary FILE
                                   (env: COMMITS, RUNS, SEED, GROUP_MESSAGES, CONVERSATIONS, LOAD_SECONDS, ONLY,
-                                   FORCE, RELEASE_TAG as bench.yml passes them; GITHUB_RUN_ID and the like)
+                                   FORCE, RELEASE_TAG, PR as bench.yml passes them; GITHUB_RUN_ID and the like)
        python bench_queue.py done --pages DIR --results DIR
 
 Commits are measured at night in Japan ([`NIGHT`]). A run asked for
@@ -27,7 +27,7 @@ the queue is ever cancelled or replaced, as runs waiting in a concurrency group 
   - a night's run during the night: `mode=drain` when the queue holds a request; with an empty queue, only on
     Friday nights ([`calibration_night`]), so that the runner looks whether the calibration of #605 changed the
     profile: a new profile is a new environment, and bench-commits.py `--backfill` measures it first on
-    [`backfill_commits`], from 23:30, the night's whole time. Other nights with an empty queue do not use the runner
+    [`backfill_requests`], from 23:30, the night's whole time. Other nights with an empty queue do not use the runner
     (`mode=none`)
   - one measure job a night takes the queue: the queue's `taken` notes the night ([`night_began`]) a run sent one for
     it, and a later night's run that night does not use the runner, as one that comes after the night does
@@ -39,6 +39,9 @@ workflow calls it again when its push of the queue lost a race with another one.
 `done`, in the publish job: each request the measure job went through (`<results>/<i>/run.json`) leaves the queue when
 it was measured through; one the night was over for stays, with what bench-commits.py says to ask next (`next`);
 those it did not reach stay as they were. A backfill the night was over for, which was in no queue, goes to its front.
+A request measured through outside the queue (at once, or a backfill) takes out the queue's requests that ask for the
+same ([`asks_alike`]): a PR measured by hand with its number, or a release's notes written, is not measured again,
+and the PR joins the queue's `labeled`, so that a night's run does not queue it either.
 """
 
 import argparse
@@ -98,10 +101,10 @@ def is_branch(ref):
                                                              or has(f"refs/remotes/origin/{ref}"))
 
 
-def merged_here(sha):
-    """Whether the commit `sha` is in the history of the checkout's HEAD, which for a night's run is the default
-    branch."""
-    return subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True).returncode == 0
+def merged_here(sha, into="HEAD"):
+    """Whether the commit `sha` is in the history of `into`, by default the checkout's HEAD, which for a night's run is
+    the default branch."""
+    return subprocess.run(["git", "merge-base", "--is-ancestor", sha, into], capture_output=True).returncode == 0
 
 
 def resolve_commits(text):
@@ -170,16 +173,105 @@ def last_merges(count):
     return [(number, sha) for sha, number in reversed(picked.items())]
 
 
-def backfill_commits():
-    """What a new environment is measured on first, so it holds results to compare at once: the three newest releases
-    (no release candidate), then the four merge commits of PRs labeled `bench` that came into the default branch last
-    ([`last_merges`]), each before and after it (`#N前`, `#N后`), the oldest first, so the oldest release becomes the
-    environment's anchor. Run from a checkout of the default branch."""
+STABLE = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
+# a PR an environment holds under its own name, before (`#N前`) or after (`#N后`) it
+PR_SIDE = re.compile(r"#(\d+)(前|后)")
+# the PRs an environment measured again from the environment before it, and when there is none, the merge commits of
+# PRs labeled `bench` it is measured on
+AGAIN = 5
+
+
+def when(stamp):
+    """The time of an ISO 8601 stamp of the API (`...Z`) or of a result (`...+00:00`)."""
+    return datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+
+
+def stable_releases():
+    """[(tag, published_at)] of the published releases that are no release candidate (`vX.Y.Z`), the lowest version
+    first."""
     releases = [r for r in api("/releases?per_page=100")
-                if not r["draft"] and not r["prerelease"] and re.fullmatch(r"v\d+\.\d+\.\d+", r["tag_name"])]
-    items = [r["tag_name"] for r in sorted(releases, key=lambda r: r["published_at"])[-3:]]
-    items += [pr_commits(number, sha) for number, sha in last_merges(4)]
-    return ",".join(items)
+                if not r["draft"] and not r["prerelease"] and STABLE.fullmatch(r["tag_name"])]
+    return sorted(((r["tag_name"], r["published_at"]) for r in releases),
+                  key=lambda t: tuple(int(x) for x in STABLE.fullmatch(t[0]).groups()))
+
+
+def last_measured(env):
+    """The SHA of the commit an environment measured last."""
+    return max(env["results"], key=lambda sha: when(env["results"][sha]["measured_at"]))
+
+
+def previous_env(index, key):
+    """The environment measured in last before `key` (its newest result the newest of all), or None."""
+    envs = [e for k, e in index.get("envs", {}).items() if k != key and e.get("results")]
+    return max(envs, key=lambda e: when(e["results"][last_measured(e)]["measured_at"]), default=None)
+
+
+def names_held(env):
+    """Every name an environment holds a commit by: a tag, `#N前`, the parts of `#564–#568后，#569前`."""
+    return {name for r in env["results"].values() for ref in r.get("refs") or [] for name in ref.split("，")}
+
+
+def prs_held(env):
+    """{PR number: (before, after)} of the PRs an environment holds before and after under their own names; a stack
+    measured under one name (`#531–#536前`) names none of its PRs alone."""
+    sides = {}
+    for sha, r in env["results"].items():
+        for ref in r.get("refs") or []:
+            for name in ref.split("，"):
+                if m := PR_SIDE.fullmatch(name):
+                    sides.setdefault(int(m[1]), {})[m[2]] = sha
+    return {n: (s["前"], s["后"]) for n, s in sides.items() if len(s) == 2}
+
+
+def backfill_requests(index, key, queued=()):
+    """What a new environment `key` is measured on first (#1254), so that it holds results to compare at once, and
+    with the environment measured in before it ([`previous_env`]): [{commits, release_tag, pr}], in this order.
+      - the releases: the newest stable release of each major version, and the stable releases that came after the
+        commit the environment before measured last (not in its history) and that it does not hold, with the stable
+        release before each of them, which its release notes compare with. The environment before's anchor goes first, so that the two
+        environments share their anchor; without it, the newest release does, as the anchor is the first commit
+        measured. The others follow, the lowest version first.
+      - the release notes of those releases, but the ones only measured as the release before another: each compared
+        with the stable release before it (`release_tag`), which rewrites the 性能基准 section of its notes
+      - the AGAIN newest PRs the environment before holds before and after under their own names, measured again
+        under those names, then each PR labeled `bench` whose merge commit came after the commit it measured last and
+        that it does not hold and no request of the queue measures (`queued`, their numbers), before and after it
+        (`#N前`, `#N后`), the oldest merged first; with the PR's number (`pr`), under which the publish job comments
+        the comparison. The PRs of a stack merged together share a merge commit, measured once, for the first of them.
+        Those merged before that commit are left out: the environment before measured them, or the queue does.
+    With no environment before, the releases are the newest of each major version and the PRs the AGAIN merge commits
+    of PRs labeled `bench` that came into the default branch last ([`last_merges`]). Run from a checkout of the
+    default branch, with its tags."""
+    releases = stable_releases()
+    tags = [t for t, _ in releases]
+    before = previous_env(index, key)
+    newest = {}
+    for t in tags:
+        newest[STABLE.fullmatch(t)[1]] = t
+    noted = set(newest.values())
+    if before:
+        last, held = last_measured(before), names_held(before)
+        noted |= {t for t in tags if t not in held and not merged_here(resolve(t), last)}
+    noted = [t for t in tags if t in noted]
+    bases = {t: tags[tags.index(t) - 1] for t in noted if tags.index(t) > 0}
+    measured = [t for t in tags if t in noted or t in bases.values()]
+    anchor = next((t for t in measured if before and resolve(t) == before.get("anchor")), measured[-1])
+    items = [{"commits": ",".join([anchor] + [t for t in measured if t != anchor])}]
+    items += [{"commits": f"{bases[t]},{t}", "release_tag": t} for t in noted if t in bases]
+    if not before:
+        return items + [{"commits": pr_commits(n, sha), "pr": n} for n, sha in last_merges(AGAIN)]
+    prs = prs_held(before)
+    items += [{"commits": f"#{n}前={prs[n][0]},#{n}后={prs[n][1]}", "pr": n} for n in sorted(prs)[-AGAIN:]]
+    seen = set()
+    for pr in merged_bench_prs():
+        n = pr["number"]
+        if n in prs or n in queued:
+            continue
+        sha = merge_commit(n)
+        if sha and merged_here(sha) and not merged_here(sha, last) and sha not in seen:
+            seen.add(sha)
+            items.append({"commits": pr_commits(n, sha), "pr": n})
+    return items
 
 
 def queue_path(pages):
@@ -202,8 +294,8 @@ def save_queue(pages, queue):
 
 def new_request(request_id, commits, options, force=False, release_tag="", pr=None):
     """A request of the queue, of `commits` as resolve_commits gives them, asked for by this run of the workflow; `pr`
-    is the number of the PR labeled `bench` it measures before and after, under which bench.yml comments the
-    comparison."""
+    is the number of the PR it measures before and after (one labeled `bench`, or named by the run's `pr` input), under
+    which bench.yml comments the comparison."""
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
     run_id = os.environ.get("GITHUB_RUN_ID", "0")
     return {
@@ -228,7 +320,11 @@ def request_from_env():
         raise SystemExit("no commits asked for")
     run = f"{os.environ.get('GITHUB_RUN_ID', '0')}-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
     options = {k: (os.environ.get(k.upper()) or default) for k, default in OPTIONS.items()}
-    return new_request(run, commits, options, os.environ.get("FORCE") == "1", os.environ.get("RELEASE_TAG", ""))
+    pr = os.environ.get("PR", "").strip().lstrip("#")
+    if pr and not pr.isdigit():
+        raise SystemExit(f"pr {pr!r} is no PR number")
+    return new_request(run, commits, options, os.environ.get("FORCE") == "1", os.environ.get("RELEASE_TAG", ""),
+                       int(pr) if pr else None)
 
 
 def names(request):
@@ -321,6 +417,23 @@ def plan(args):
     print(out["mode"])
 
 
+def shas(request):
+    """The commits a request asks for, as full SHAs (its `commits` are resolved)."""
+    return {item.rpartition("=")[2] for item in request["commits"].split(",")}
+
+
+def asks_alike(a, b):
+    """Whether two requests ask for the same, with the same options: a comparison commented under the same PR, or
+    written into the same release's notes, or else the same commits."""
+    if any(str(a.get(k, "")) != str(b.get(k, "")) for k in OPTIONS):
+        return False
+    if a.get("pr") or b.get("pr"):
+        return a.get("pr") == b.get("pr")
+    if a.get("release_tag") or b.get("release_tag"):
+        return a.get("release_tag") == b.get("release_tag")
+    return shas(a) == shas(b)
+
+
 def done(args):
     queue = load_queue(args.pages)
     by_id = {r["id"]: r for r in queue["requests"]}
@@ -331,12 +444,20 @@ def done(args):
         with open(file, encoding="utf-8") as f:
             run = json.load(f)
         request = by_id.get(run["request"]["id"])
-        # A run asked to measure at once is not in the queue, and another run may have taken a request out already. A
-        # backfill the night was over for goes first, so the next night carries it on before anything else.
+        # A run asked to measure at once is not in the queue, nor is a backfill, and another run may have taken a
+        # request out already. A backfill the night was over for goes first, so the next night carries it on before
+        # anything else; one measured through, as one measured at once, answers the requests of the queue that ask for
+        # the same, which leave it.
         if request is None:
             if run["request"].get("backfill") and run.get("next"):
                 queue["requests"].insert(0, {**run["request"], "commits": run["next"]["commits"],
                                              "force": run["next"]["force"]})
+            elif not run.get("next"):
+                queue["requests"] = [r for r in queue["requests"] if not asks_alike(r, run["request"])]
+                # a PR measured with its number is looked at: a night's run does not queue it again
+                pr = run["request"].get("pr")
+                if pr and "labeled" in queue and pr not in queue["labeled"]:
+                    queue["labeled"] = sorted(queue["labeled"] + [pr])
             continue
         if run.get("next"):
             request.update(commits=run["next"]["commits"], force=run["next"]["force"])
