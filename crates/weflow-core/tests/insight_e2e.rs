@@ -169,6 +169,82 @@ async fn a_new_message_is_activity_once_across_restarts() {
     assert_eq!(fake.requests().len(), 1);
 }
 
+/// The conversations the engine picks itself, with no list to follow, are people: the file helper and an official
+/// account are newer in the list and silent as long, yet `insight trigger` without a conversation, the silence scan
+/// and the activity scan pass them by (#1249).
+#[tokio::test]
+async fn the_engine_picks_people_itself_not_the_file_helper_or_official_accounts() {
+    use weflow_native::fixture::{ContactSpec, MsgSpec, SessionSpec};
+    let fake = FakeModel::start().unwrap();
+    let root = common::temp_dir("ins-picks-people");
+    let now = chrono::Utc::now().timestamp();
+    let silent = now - 10 * 86_400;
+    // after the engine's start, which is now: the clock of the test and of the hub are the same
+    let later = now + 600;
+    // the file helper first in the list, then the official account, then the person
+    let ids = [("filehelper", 2), ("gh_news", 1), ("wxid_bob", 0)];
+    let account = |root: &std::path::Path, base: i64| {
+        let fixture = weflow_native::fixture::Fixture::new(&root.join("data"), "wxid_me_ab12");
+        fixture.contact_db(
+            &[
+                ContactSpec::new("wxid_me", 1, "Me Nick"),
+                ContactSpec::new("filehelper", 1, "File Transfer"),
+                ContactSpec::new("gh_news", 1, "News"),
+                ContactSpec::new("wxid_bob", 1, "Bob"),
+            ],
+            &[],
+        );
+        let sessions: Vec<SessionSpec<'_>> = ids
+            .iter()
+            .map(|&(id, newer)| SessionSpec {
+                username: id,
+                summary: "hi",
+                last_timestamp: base + newer,
+                unread: 1,
+                last_msg_type: 1,
+            })
+            .collect();
+        fixture.session_db(&sessions);
+        let messages: Vec<_> = ids
+            .iter()
+            .map(|&(id, newer)| (id, vec![MsgSpec::text(1, id, base + newer, "hi")]))
+            .collect();
+        fixture.message_shard(0, &messages);
+        fixture
+    };
+    let blacklist = |p: &mut weflow_core::config::ProfileConfig| {
+        ai_settings(&fake, "openai", "fake-chat", &[])(p);
+        p.extra
+            .insert("ai_insight_filter_mode".into(), json!("blacklist"));
+    };
+
+    let fixture = account(&root, silent);
+    let hub = hub_over(&root, &fixture, blacklist);
+    hub.insight_trigger_test().await.unwrap();
+    assert_eq!(hub.insight_silence_scan(&mut |_| {}).await, 1);
+    let written: Vec<_> = hub
+        .insight_list_records(&RecordFilters::default())
+        .records
+        .into_iter()
+        .map(|r| (r.session_id, r.trigger_reason))
+        .collect();
+    assert_eq!(written.len(), 2, "{written:?}");
+    assert!(
+        written.iter().all(|(id, _)| id == "wxid_bob"),
+        "{written:?}"
+    );
+
+    let root = common::temp_dir("ins-picks-people-activity");
+    let fixture = account(&root, later);
+    let hub = hub_over(&root, &fixture, blacklist);
+    let mut got = Vec::new();
+    for _ in 0..4 {
+        hub.insight_analyze_activity(&mut |r| got.push(r.session_id.clone()))
+            .await;
+    }
+    assert_eq!(got, ["wxid_bob"]);
+}
+
 /// A silence is told once: a second scan, and a scan after a restart, write nothing more while no message ends it
 /// (#1140).
 #[tokio::test]

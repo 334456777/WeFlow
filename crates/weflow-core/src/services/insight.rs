@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use chrono::{Local, TimeZone, Timelike};
 use serde_json::{json, Value};
 
+use super::session_kind::{is_private_session, session_kind, SessionKind};
 use super::*;
 use crate::contract::{
     InsightClearPlan, InsightCleared, InsightMarked, InsightRecords, InsightReply,
@@ -149,6 +150,22 @@ fn scan_interval(hours: &Value) -> Duration {
         .filter(|h| *h > 0.0)
         .map_or(4.0, |h| h.max(0.1));
     Duration::try_from_secs_f64(hours * 3600.0).unwrap_or(DEFAULT)
+}
+
+/// Whether the silence scan and `insight trigger` without a conversation may pick `id` themselves: a chat with
+/// another person, not a group, an official account, the file helper or a system conversation.
+fn picked_as_private(id: &str, own_wxid: &str) -> bool {
+    is_private_session(id, own_wxid) && !id.to_lowercase().contains("placeholder")
+}
+
+/// Whether the activity scan of the blacklist mode may pick `id` itself: a private chat or a group, not an official
+/// account, the file helper, a system conversation or the account's chat with itself. The whitelist mode asks of the
+/// conversations of its list, whatever they are.
+fn picked_for_activity(id: &str, own_wxid: &str) -> bool {
+    matches!(
+        session_kind(id, own_wxid),
+        SessionKind::Private | SessionKind::Group
+    ) && !id.to_lowercase().contains("placeholder")
 }
 
 fn cfg_str(cfg: &ConfigStore, profile: &str, key: &str) -> String {
@@ -992,12 +1009,10 @@ impl ServiceHub {
                 "未找到任何会话，请确认数据库已正确连接",
             )));
         }
+        let own = self.my_wxid_cleaned();
         let Some(session) = sessions.iter().find(|s| {
             let id = s.username.trim();
-            !id.is_empty()
-                && !id.ends_with("@chatroom")
-                && !id.to_lowercase().contains("placeholder")
-                && self.insight_allowed(id)
+            picked_as_private(id, &own) && self.insight_allowed(id)
         }) else {
             return Err(AppError::runtime(
                 tr("No private chat that can be triggered was found\nCheck the allowlist or blocklist mode and the selection list.", "未找到任何可触发的私聊会话\n请检查黑白名单模式与选择列表。"),
@@ -1052,17 +1067,14 @@ impl ServiceHub {
         let now = i64_f64(ins::now_millis());
         let sessions = self.insight_sessions(true);
         let records = self.record_store();
+        let own = self.my_wxid_cleaned();
         let mut generated = 0;
         for s in &sessions {
             if !self.insight_enabled() {
                 return generated;
             }
             let id = s.username.trim().to_string();
-            if id.is_empty()
-                || id.ends_with("@chatroom")
-                || id.to_lowercase().contains("placeholder")
-                || !self.insight_allowed(&id)
-            {
+            if !picked_as_private(&id, &own) || !self.insight_allowed(&id) {
                 continue;
             }
             let last = i64_f64(s.last_timestamp) * 1000.0;
@@ -1187,13 +1199,12 @@ impl ServiceHub {
             return;
         }
         let sessions = self.insight_sessions(false);
+        let own = self.my_wxid_cleaned();
         let candidates: Vec<&Session> = sessions
             .iter()
             .filter(|s| {
                 let id = s.username.trim();
-                !id.is_empty()
-                    && !id.to_lowercase().contains("placeholder")
-                    && self.insight_allowed(id)
+                picked_for_activity(id, &own) && self.insight_allowed(id)
             })
             .take(10)
             .collect();
@@ -1231,6 +1242,25 @@ impl ServiceHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_engine_picks_people_and_never_services() {
+        let own = "wxid_me";
+        for (id, private, activity) in [
+            ("wxid_friend", true, true),
+            ("123@chatroom", false, true),
+            ("filehelper", false, false),
+            ("gh_abc", false, false),
+            ("weixin", false, false),
+            ("abc@openim", false, false),
+            ("wxid_me", false, false),
+            ("@placeholder_foldgroup", false, false),
+            ("", false, false),
+        ] {
+            assert_eq!(picked_as_private(id, own), private, "{id}");
+            assert_eq!(picked_for_activity(id, own), activity, "{id}");
+        }
+    }
 
     #[test]
     fn max_tokens_are_read_and_clamped() {
