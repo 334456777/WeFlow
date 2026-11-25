@@ -299,7 +299,7 @@ pub struct VoiceSpec<'a> {
 }
 
 /// One own-sticker row for [`Fixture::emoticon_db`].
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct EmoticonSpec {
     /// The sticker's MD5.
     pub md5: &'static str,

@@ -86,7 +86,7 @@ pub struct VoiceCache {
 }
 
 /// The voices `chat voice-preload` decoded ahead.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct VoicesPrepared {
     /// The voices decoded or found decoded already.
     pub prepared: usize,
@@ -140,7 +140,7 @@ pub struct VoiceData {
 /// answers its `--json` document for the hook it runs itself (on Windows x64 unless `serve_image_auto_download` is
 /// false); the command run on its own, or through `serve` as a job or with `std`, answers for its own process, which
 /// runs none.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoDownloadStatus {
     /// Whether the hook is in WeChat now.
@@ -152,7 +152,7 @@ pub struct AutoDownloadStatus {
 }
 
 /// What `image auto-download start` answers once stopped (Ctrl+C).
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct AutoDownloadStopped {
     /// Always true.
     pub stopped: bool,

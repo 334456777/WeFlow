@@ -44,7 +44,7 @@ const MAX_INTERNAL_FRAMES: usize = 5;
 const SCRATCH_SAMPLES: i16 = 960 * 2;
 
 /// Why a SILK stream could not be decoded.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SilkError {
     /// The stream does not start with `#!SILK_V3` (after WeChat's optional `0x02` byte).
     InvalidHeader,
@@ -251,9 +251,9 @@ pub mod testenc {
             use_dtx: 0,
         };
         let frame = (rate / 50) as usize;
-        let pcm: Vec<i16> = (0..rate as usize)
+        let pcm: Vec<i16> = (0..rate)
             .map(|i| {
-                ((i as f64 * 440.0 * std::f64::consts::TAU / f64::from(rate)).sin() * 12000.0)
+                ((f64::from(i) * 440.0 * std::f64::consts::TAU / f64::from(rate)).sin() * 12000.0)
                     as i16
             })
             .collect();
@@ -340,8 +340,8 @@ mod tests {
                 samples.len()
             );
             let rms = (samples.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>()
-                / samples.len() as f64)
-                .sqrt();
+                / f64::from(u32::try_from(samples.len()).unwrap()))
+            .sqrt();
             assert!(
                 rms > 4000.0 && rms < 12000.0,
                 "tone energy survives the codec, rms={rms}"

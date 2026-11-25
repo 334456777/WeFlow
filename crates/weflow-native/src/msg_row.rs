@@ -178,7 +178,12 @@ fn bytes_to_text(bytes: &[u8]) -> String {
     }
     let lossy = String::from_utf8_lossy(bytes);
     let replaced = lossy.chars().filter(|c| *c == '\u{FFFD}').count();
-    if (replaced as f64) < lossy.chars().count() as f64 * 0.2 {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "character counts of one message, far below 2^53"
+    )]
+    let mostly_text = (replaced as f64) < lossy.chars().count() as f64 * 0.2;
+    if mostly_text {
         lossy.replace('\u{FFFD}', "")
     } else {
         bytes.iter().map(|b| char::from(*b)).collect()

@@ -18,8 +18,10 @@
 #![expect(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    reason = "the generated counts, sizes and times are small values that fit, and none is negative"
+    reason = "the generated counts, sizes and times are small values that fit (an `f64` holds them exactly), and \
+              none is negative"
 )]
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};

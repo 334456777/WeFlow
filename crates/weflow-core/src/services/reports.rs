@@ -15,6 +15,7 @@ use crate::contract::{
 use crate::message::emoji::percent_decode;
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
+use crate::num::{count_f64, i64_f64};
 use weflow_native::msg::Order;
 use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::quote::{reply_text, QUOTE};
@@ -1045,7 +1046,7 @@ impl ServiceHub {
             Some(MidnightKing {
                 display_name: info(&sid).0,
                 count: max_m,
-                percentage: round1(max_m as f64 / total_midnight as f64 * 100.0),
+                percentage: round1(i64_f64(max_m) / i64_f64(total_midnight) * 100.0),
             })
         } else {
             None
@@ -1070,7 +1071,7 @@ impl ServiceHub {
         let mut best_diff = f64::INFINITY;
         for (sid, sent, recv) in &contact_stats {
             if *sent >= 50 && *recv >= 50 {
-                let ratio = *sent as f64 / *recv as f64;
+                let ratio = i64_f64(*sent) / i64_f64(*recv);
                 let diff = (ratio - 1.0).abs();
                 if diff < best_diff {
                     best_diff = diff;
@@ -1100,7 +1101,7 @@ impl ServiceHub {
         let social = (total_conv > 0).then(|| SocialInitiative {
             initiated_chats: total_init,
             received_chats: total_recv,
-            initiative_rate: round1(total_init as f64 / total_conv as f64 * 100.0),
+            initiative_rate: round1(i64_f64(total_init) / i64_f64(total_conv) * 100.0),
             top_initiated_friend: (top_init > 0).then(|| info(&top_init_sid).0),
             top_initiated_count: (top_init > 0).then_some(top_init),
         });
@@ -1132,7 +1133,7 @@ impl ServiceHub {
             for (sid, times) in &response_times {
                 if times.len() >= 10 {
                     all.extend(times);
-                    let avg = times.iter().sum::<i64>() as f64 / times.len() as f64;
+                    let avg = i64_f64(times.iter().sum::<i64>()) / count_f64(times.len());
                     if avg < fastest {
                         fastest = avg;
                         fastest_id = sid.clone();
@@ -1141,7 +1142,7 @@ impl ServiceHub {
             }
             (!all.is_empty()).then(|| ResponseSpeed {
                 avg_response_time: crate::num::saturating_i64(
-                    (all.iter().sum::<i64>() as f64 / all.len() as f64).round(),
+                    (i64_f64(all.iter().sum::<i64>()) / count_f64(all.len())).round(),
                 ),
                 fastest_friend: info(&fastest_id).0,
                 fastest_time: crate::num::saturating_i64(fastest.round()),
@@ -1593,7 +1594,7 @@ impl ServiceHub {
                 }
                 let c = lookup(own, phrase);
                 let total = c + lookup(other, phrase);
-                if c >= 2 && total > 0 && c as f64 / total as f64 >= 0.75 {
+                if c >= 2 && total > 0 && i64_f64(c) / i64_f64(total) >= 0.75 {
                     v.push((phrase.clone(), c));
                 }
             }

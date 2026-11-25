@@ -17,6 +17,8 @@ license = "Unlicense"
 [workspace.lints.rust]
 # a type that borrows shows it, `Formatter<'_>` rather than `Formatter` (#1113)
 elided_lifetimes_in_paths = "warn"
+# a public type of plain values, a handful of numbers, flags or static strings, is `Copy` (#1113)
+missing_copy_implementations = "warn"
 # every public type can be printed with `{:?}`; one that holds a key or a secret writes its `Debug` by hand and leaves
 # them out (#1113)
 missing_debug_implementations = "warn"
@@ -63,6 +65,9 @@ cast_lossless = "warn"
 # say whether it may fail or is meant to keep its bits, rather than `as`, which wraps without a word (#1113)
 cast_possible_wrap = "warn"
 cast_sign_loss = "warn"
+# an integer as a float goes through `num::count_f64`/`i64_f64` of weflow-core, which say why it is exact, or an
+# `expect` that says so (#1113)
+cast_precision_loss = "warn"
 # a pointer to a place is `&raw const`/`&raw mut`, and a pointer cast says its target type with `cast`, not `as`,
 # which also changes constness or casts to an integer without a word (#1113)
 borrow_as_ptr = "warn"

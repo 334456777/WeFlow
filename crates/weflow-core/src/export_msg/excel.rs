@@ -152,7 +152,7 @@ impl Exporter<'_, '_> {
             let (content, has_quote) = self.plain_row_content(msg, &x);
             let s = self.sender_fields(msg);
             let type_name = message_type_name_in(msg.local_type, &x);
-            ws.write_number(row, 0, (i + 1) as f64)?;
+            ws.write_number(row, 0, crate::num::count_f64(i + 1))?;
             ws.write_string(row, 1, format_timestamp(msg.create_time))?;
             if compact {
                 ws.write_string(row, 2, &s.role)?;

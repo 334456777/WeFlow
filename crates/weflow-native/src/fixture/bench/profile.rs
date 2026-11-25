@@ -93,7 +93,7 @@ pub struct TextProfile {
 }
 
 /// The groups.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GroupProfile {
     /// The share of the conversations that are groups.

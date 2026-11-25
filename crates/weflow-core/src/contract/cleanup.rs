@@ -68,7 +68,7 @@ pub struct PlannedRemoval {
 }
 
 /// A removal the terminal was asked to confirm and was not.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct Cancelled {
     /// Always true.
     pub cancelled: bool,

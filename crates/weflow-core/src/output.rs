@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::colour::{Paint, Role, Stream};
 use crate::error::ErrorPayload;
+use crate::num::count_f64;
 use crate::sync::MutexExt;
 
 /// The JSON answer of a command: `{ "success": true, "data": … }` or `{ "success": false, "error": … }`.
@@ -327,14 +328,14 @@ fn render_bar(
             format_duration(elapsed_secs)
         );
     }
-    let frac = (current as f64 / total as f64).clamp(0.0, 1.0);
+    let frac = (count_f64(current) / count_f64(total)).clamp(0.0, 1.0);
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "`frac` is in [0, 1], so both fit"
     )]
     let (filled, percent) = (
-        (frac * width as f64).round() as usize,
+        (frac * count_f64(width)).round() as usize,
         (frac * 100.0) as u32,
     );
     let bar: String = "█".repeat(filled) + &"░".repeat(width.saturating_sub(filled));
@@ -403,7 +404,7 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
                 reason = "a percentage, not negative; `as` saturates should `current` pass `total`"
             )]
             let percent = if total > 0 {
-                ((current as f64 / total as f64) * 100.0) as u8
+                ((count_f64(current) / count_f64(total)) * 100.0) as u8
             } else {
                 0
             };
@@ -422,7 +423,7 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
             // smoothed rate (exponential average over ~1 s samples) so `remaining` does not jump around
             match st.rate_sample {
                 Some((t, c)) if now.duration_since(t).as_millis() >= 1000 && current >= c => {
-                    let inst = (current - c) as f64 / now.duration_since(t).as_secs_f64();
+                    let inst = count_f64(current - c) / now.duration_since(t).as_secs_f64();
                     st.rate = Some(st.rate.map_or(inst, |r| r * 0.8 + inst * 0.2));
                     st.rate_sample = Some((now, current));
                 }
@@ -452,7 +453,7 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
             let eta = st
                 .rate
                 .filter(|r| *r > 0.0 && total > current)
-                .map(|r| ((total - current) as f64 / r).round() as u64);
+                .map(|r| (count_f64(total - current) / r).round() as u64);
             let tick = (now.duration_since(st.started).as_millis() / 200) as usize;
             let cols = terminal_columns();
             let line = fit_line(

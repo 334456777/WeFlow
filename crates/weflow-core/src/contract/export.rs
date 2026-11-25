@@ -125,7 +125,7 @@ pub struct ExportWritten {
 }
 
 /// What `group export-members` or `export-member-messages` wrote.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct GroupExported {
     /// The members, or the messages, written.
     pub count: usize,
@@ -151,7 +151,7 @@ pub struct ExportStats {
 }
 
 /// One conversation's messages by type, within the range asked for, and its relations.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionExportStats {
     /// All the messages.

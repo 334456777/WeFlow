@@ -34,7 +34,7 @@ impl Footprint {
 }
 
 /// The counts of the footprint.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintSummary {
     /// The people who wrote to me.
@@ -140,7 +140,7 @@ pub struct MentionGroup {
 }
 
 /// How the footprint was read.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintDiagnostics {
     /// Whether a list was cut at its limit.
@@ -240,7 +240,7 @@ pub struct InsightMarked {
 }
 
 /// What `insight clear` answers.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct InsightCleared {
     /// The records removed.
     pub removed: usize,

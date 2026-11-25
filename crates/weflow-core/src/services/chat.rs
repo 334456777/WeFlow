@@ -529,8 +529,8 @@ impl ServiceHub {
             Databases::Contacts,
         ])
         .map_err(|e| AppError::native(format!("{e:#}")))?;
-        let begin = crate::message::time::normalize_timestamp_seconds(begin as f64);
-        let end = crate::message::time::normalize_timestamp_seconds(end as f64);
+        let begin = crate::message::time::normalize_timestamp_seconds(crate::num::i64_f64(begin));
+        let end = crate::message::time::normalize_timestamp_seconds(crate::num::i64_f64(end));
         let options = json!({
             "begin": begin,
             "end": end,

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use chrono::{Datelike, Local, TimeZone};
 
 use crate::message::xml::rx;
+use crate::num::count_f64;
 
 // ───────────────────────── naming ─────────────────────────
 
@@ -174,7 +175,11 @@ pub fn year_month_from_create_time(create_time: Option<i64>) -> String {
     let Some(raw) = create_time.filter(|t| *t > 0) else {
         return String::new();
     };
-    let ms = if raw as f64 > 1e12 { raw } else { raw * 1000 };
+    let ms = if raw > 1_000_000_000_000 {
+        raw
+    } else {
+        raw * 1000
+    };
     match Local.timestamp_millis_opt(ms).single() {
         Some(d) => format!("{}-{:02}", d.year(), d.month()),
         None => String::new(),
@@ -472,7 +477,7 @@ pub fn is_likely_corrupted_jpeg(data: &[u8]) -> bool {
     if data.len() < 4096 {
         return false;
     }
-    let zero_ratio = count_zeros(data) as f64 / data.len() as f64;
+    let zero_ratio = count_f64(count_zeros(data)) / count_f64(data.len());
     if zero_ratio >= 0.985 {
         return true;
     }
@@ -504,7 +509,7 @@ pub fn is_likely_corrupted_jpeg(data: &[u8]) -> bool {
     if scan.len() < 1024 {
         return zero_ratio >= 0.95;
     }
-    count_zeros(scan) as f64 / scan.len() as f64 >= 0.985
+    count_f64(count_zeros(scan)) / count_f64(scan.len()) >= 0.985
 }
 
 // ───────────────────────── WXGF ─────────────────────────

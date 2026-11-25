@@ -505,10 +505,12 @@ impl Account {
                 json!({ "initiated": e.initiated, "received": e.received }),
             );
             if e.replies >= MIN_REPLIES {
-                response.insert(
-                    (*sid).clone(),
-                    json!({ "count": e.replies, "avg": e.reply_seconds as f64 / e.replies as f64 }),
-                );
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "seconds and a count of replies, far below 2^53"
+                )]
+                let avg = e.reply_seconds as f64 / e.replies as f64;
+                response.insert((*sid).clone(), json!({ "count": e.replies, "avg": avg }));
             }
             if e.in_peak > 0 {
                 peak.insert((*sid).clone(), json!(e.in_peak));
@@ -620,7 +622,9 @@ impl Account {
             let sum: i64 = responses.iter().sum();
             #[expect(
                 clippy::cast_possible_truncation,
-                reason = "the rounded mean of `i64` values; float-to-integer `as` saturates"
+                clippy::cast_precision_loss,
+                reason = "the rounded mean of `i64` values, sums of seconds far below 2^53; float-to-integer `as` \
+                          saturates"
             )]
             let avg = (sum as f64 / responses.len() as f64).round() as i64;
             out["response"] = json!({
@@ -825,10 +829,19 @@ impl Account {
             .iter()
             .filter(|s| int(s, "outgoing_count") > 0)
             .count();
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "counts of conversations, far below 2^53"
+        )]
+        let reply_rate = if inbound > 0 {
+            replied as f64 / inbound as f64
+        } else {
+            0.0
+        };
         Ok(json!({
             "summary": {
                 "private_inbound_people": inbound, "private_replied_people": replied, "private_outbound_people": outbound,
-                "private_reply_rate": if inbound > 0 { replied as f64 / inbound as f64 } else { 0.0 },
+                "private_reply_rate": reply_rate,
                 "mention_count": mentions.len(), "mention_group_count": mention_groups.len()
             },
             "private_sessions": sessions, "private_segments": segments, "mentions": mentions,

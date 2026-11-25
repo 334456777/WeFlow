@@ -16,6 +16,7 @@ use crate::contract::{
 use crate::insight::{self as ins, fill, RecordFilters, RecordStore};
 use crate::locale::tr;
 use crate::model_api::{ModelApi, Prompt};
+use crate::num::i64_f64;
 use crate::sync::MutexExt;
 
 /// The most tokens of one answer when `ai_model_api_max_tokens` is not set: room for a short answer and for the
@@ -1039,7 +1040,7 @@ impl ServiceHub {
         // silent
         let days = if days_raw > 0.0 { days_raw } else { 3.0 };
         let threshold_ms = days * 86_400_000.0;
-        let now = ins::now_millis() as f64;
+        let now = i64_f64(ins::now_millis());
         let sessions = self.insight_sessions(true);
         let records = self.record_store();
         let mut generated = 0;
@@ -1055,14 +1056,14 @@ impl ServiceHub {
             {
                 continue;
             }
-            let last = s.last_timestamp as f64 * 1000.0;
+            let last = i64_f64(s.last_timestamp) * 1000.0;
             if last <= 0.0 || now - last < threshold_ms {
                 continue;
             }
             // one insight a silence (#1140): none again until a message ends it and a new one begins
             if records
                 .last_written(&id, Trigger::Silence.as_str())
-                .is_some_and(|at| at as f64 >= last)
+                .is_some_and(|at| i64_f64(at) >= last)
             {
                 continue;
             }

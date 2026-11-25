@@ -810,16 +810,13 @@ fn locate(pid: u32, task: task_t) -> Result<u64, String> {
     let modules = list_modules(task)?;
     let selected = match module::select(&modules) {
         module::Choice::WechatDylib(module) => {
-            tracing::debug!(
-                "Selected wechat.dylib, size={:.1}MB",
-                module.size as f64 / (1024.0 * 1024.0)
-            );
+            tracing::debug!("Selected wechat.dylib, size={:.1}MB", mib(module.size));
             module
         }
         module::Choice::Main(module) => {
             tracing::debug!(
                 "Selected main WeChat binary, size={:.1}MB",
-                module.size as f64 / (1024.0 * 1024.0)
+                mib(module.size)
             );
             module
         }
@@ -841,6 +838,15 @@ fn locate(pid: u32, task: task_t) -> Result<u64, String> {
         selected.size
     );
     scan_module(task, &selected, known_rva)
+}
+
+/// `bytes` in MiB, for the log.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a module's size, far below 2^53 bytes"
+)]
+fn mib(bytes: u64) -> f64 {
+    bytes as f64 / (1024.0 * 1024.0)
 }
 
 fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<u64, String> {

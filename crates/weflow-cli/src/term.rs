@@ -29,6 +29,10 @@ pub(crate) fn ask_yes(question: &str) -> AppResult<bool> {
 /// `1536` → `1.5 KB`: binary units, one decimal below 10.
 pub(crate) fn format_bytes(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "shown to a tenth of its unit at most, where the nearest `f64` makes no difference"
+    )]
     let mut value = bytes as f64;
     let mut unit = 0;
     while value >= 1024.0 && unit < UNITS.len() - 1 {

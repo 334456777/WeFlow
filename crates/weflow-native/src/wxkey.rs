@@ -9,7 +9,7 @@ use anyhow::Result;
     target_os = "macos",
     all(target_os = "linux", target_arch = "x86_64")
 )))]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct WxKey;
 
 #[cfg(not(any(
@@ -44,7 +44,7 @@ impl WxKey {
 
 /// Database-key extraction on Windows: a hook in the WeChat process catches the key when the user logs in.
 #[cfg(windows)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct WxKey;
 
 #[cfg(windows)]
@@ -134,7 +134,7 @@ impl WxKey {
 
 /// Database-key extraction on Linux x64: `ptrace` stops WeChat where it takes the key.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct WxKey;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -191,7 +191,7 @@ fn db_key_error(message: String) -> DbKeyError {
 
 /// Database-key extraction on macOS: DTrace on x86_64, `ptrace` at the key's sink on ARM64.
 #[cfg(target_os = "macos")]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct WxKey;
 
 #[cfg(target_os = "macos")]
