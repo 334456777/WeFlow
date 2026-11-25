@@ -8,7 +8,9 @@ use md5::{Digest, Md5};
 use rusqlite::{params, Connection};
 
 use super::files::{encrypt_dat, jpeg, month, mp4, png, silk, wxgf};
-use super::profile::Profile;
+use super::profile::{app, Profile};
+use super::quote::refermsg;
+use super::record::items as record_items;
 use super::rng::{Rng, Weighted};
 use super::words::{esc, sized, FILE_EXTENSIONS, PHRASES, TOPICS};
 use super::world::{Kind, World};
@@ -47,13 +49,18 @@ impl Written {
     }
 }
 
-/// An earlier message a reply can quote.
+/// An earlier message a reply can quote ([`super::quote`]).
 pub(super) struct Recent {
     pub(super) server_id: i64,
     pub(super) sender: usize,
     pub(super) local_type: i64,
     pub(super) time: i64,
-    pub(super) content: String,
+    /// Its words, or its summary.
+    pub(super) plain: String,
+    /// The XML a quote of it holds ([`Made::quoted_as`]), empty for a text.
+    pub(super) xml: String,
+    /// Its `msgsource`, empty when it has none.
+    pub(super) source: String,
 }
 
 /// One message as it is stored.
@@ -87,6 +94,9 @@ pub(super) struct Made {
     pub(super) summary: String,
     /// The member a group text mentions.
     pub(super) mention: Option<usize>,
+    /// The XML a reply quoting it holds, when that is not `content`: a reply is quoted without its padding and
+    /// without the XML of what it quotes in turn.
+    pub(super) quoted_as: Option<String>,
 }
 
 impl World {
@@ -125,6 +135,7 @@ impl<'a> Writer<'a> {
             indexed: None,
             summary: summary.to_string(),
             mention: None,
+            quoted_as: None,
         };
         Ok(match local_type {
             1 => {
@@ -140,6 +151,7 @@ impl<'a> Writer<'a> {
                     summary: text.clone(),
                     content: text,
                     mention,
+                    quoted_as: None,
                 }
             }
             3 => made(self.image(rng, &c.username, time, target)?, "[图片]"),
@@ -276,36 +288,17 @@ impl<'a> Writer<'a> {
         let mut title = words.message(rng);
         let mut indexed = None;
         let mut summary = String::new();
+        let mut target = target;
+        // a reply is quoted as a short XML: its `inner` without the XML of what it quotes, and no padding
+        let mut quoted_inner = None;
         let inner = match sub {
             57 => {
                 indexed = Some(title.clone());
                 summary.clone_from(&title);
-                let quoted = recent
-                    .get(rng.below(recent.len()))
-                    .map(|r| {
-                        (
-                            r.local_type,
-                            r.server_id,
-                            world.user(r.sender).to_string(),
-                            world.nick(r.sender).to_string(),
-                            r.content.clone(),
-                            r.time,
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        (1, 1, from.to_string(), String::new(), String::new(), time)
-                    });
-                format!(
-                    "\t\t<refermsg>\n\t\t\t<type>{}</type>\n\t\t\t<svrid>{}</svrid>\n\t\t\t<fromusr>{}</fromusr>\n\t\t\t<chatusr>{}</chatusr>\n\
-                     \t\t\t<displayname>{}</displayname>\n\t\t\t<content>{}</content>\n\t\t\t<createtime>{}</createtime>\n\t\t</refermsg>\n",
-                    quoted.0 & 0xFFFF_FFFF,
-                    quoted.1,
-                    c.username,
-                    quoted.2,
-                    esc(&quoted.3),
-                    esc(&quoted.4),
-                    quoted.5
-                )
+                let refer = refermsg(rng, world, &c.username, from, time, recent);
+                target = rng.spread(refer.sizes(self.profile.content_bytes(app(sub))));
+                quoted_inner = Some(refer.when_quoted);
+                refer.stored
             }
             5 | 4 => {
                 summary = format!("[链接] {title}");
@@ -356,21 +349,7 @@ impl<'a> Writer<'a> {
                     words.text_plain(rng, 6)
                 };
                 summary = format!("[聊天记录] {title}");
-                let n = rng.spread((10.0, 40.0, 200.0)).max(2.0) as usize;
-                let items: String = (0..n)
-                    .map(|_| {
-                        let who = c.members[rng.below(c.members.len())];
-                        format!(
-                            "<dataitem datatype=\"1\" dataid=\"{}\"><datadesc>{}</datadesc><sourcename>{}</sourcename>\
-                             <sourcetime>{}</sourcetime><sourceheadurl>https://wx.qlogo.invalid/{}</sourceheadurl></dataitem>",
-                            rng.hex(32),
-                            esc(&words.message(rng)),
-                            esc(world.nick(who)),
-                            time - rng.between(60, 30 * DAY),
-                            rng.hex(40)
-                        )
-                    })
-                    .collect();
+                let (items, n) = record_items(rng, world, conv, time);
                 format!(
                     "\t\t<recorditem><![CDATA[<recordinfo><title>{}</title><desc>{}</desc><datalist count=\"{n}\">{items}</datalist></recordinfo>]]></recorditem>\n",
                     esc(&title),
@@ -469,19 +448,22 @@ impl<'a> Writer<'a> {
         };
         let des = esc(&words.text_between(rng, 0, 40));
         let title = esc(&title);
-        let content = sized(rng, target, |fill| {
+        let xml = |inner: &str, fill: &str| {
             format!(
                 "<?xml version=\"1.0\"?>\n<msg>\n\t<appmsg appid=\"\" sdkver=\"0\">\n\t\t<title>{title}</title>\n\t\t<des>{des}</des>\n\
                  \t\t<type>{sub}</type>\n\t\t<showtype>0</showtype>\n{inner}\t\t<thumburl>{fill}</thumburl>\n\t</appmsg>\n\
                  \t<fromusername>{from}</fromusername>\n\t<scene>0</scene>\n\t<appinfo>\n\t\t<version>1</version>\n\t\t<appname></appname>\n\
                  \t</appinfo>\n\t<commenturl></commenturl>\n</msg>\n"
             )
-        });
+        };
+        let content = sized(rng, target, |fill| xml(&inner, fill));
+        let quoted_as = quoted_inner.map(|inner| xml(&inner, ""));
         Ok(Made {
             content,
             indexed,
             summary,
             mention: None,
+            quoted_as,
         })
     }
 
