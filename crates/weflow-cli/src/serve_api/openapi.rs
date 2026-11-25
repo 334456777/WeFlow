@@ -731,7 +731,17 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("insight records", of(generator.subschema_for::<InsightRecords>()));
         data.insert("insight today-stats", of(generator.subschema_for::<Vec<InsightTodayStat>>()));
         data.insert("insight mark-read", of(generator.subschema_for::<InsightMarked>()));
-        data.insert("insight clear", of(generator.subschema_for::<InsightCleared>()));
+        data.insert(
+            "insight clear",
+            json!({
+                "description": "What was removed; with `dry-run`, what would be",
+                "anyOf": [
+                    of(generator.subschema_for::<InsightCleared>()),
+                    of(generator.subschema_for::<weflow_core::contract::InsightClearPlan>()),
+                    of(generator.subschema_for::<weflow_core::contract::Cancelled>()),
+                ],
+            }),
+        );
         data.insert("insight scan", of(generator.subschema_for::<InsightScan>()));
         data.insert("insight models", of(generator.subschema_for::<ModelList>()));
         for command in ["insight test", "insight trigger", "insight footprint-summary"] {

@@ -15,7 +15,7 @@ import {
   setSetting, testDatabase, unsetSetting,
 } from './config';
 import { footprint, footprintSummary } from './footprint';
-import { clearInsights, insightRecord, insightRecords, markRead, sampleModels, testModel, triggerInsight } from './insights';
+import { clearInsights, insightRecord, insightRecords, markRead, planClearInsights, sampleModels, testModel, triggerInsight } from './insights';
 import { dropJob, getJob, jobFileUrl, listJobs, startJob, type Effect } from './jobs';
 import { pictureUrl, voiceSound } from './media';
 import { postCounts, timeline } from './moments';
@@ -294,7 +294,7 @@ const routes: Record<string, Route> = {
   'GET insight/records': params => insightRecords(text(params, 'keyword'), text(params, 'session'), number(params, 'offset') ?? 0, number(params, 'limit') ?? 50),
   'GET api/insight/get': params => insightRecord(text(params, 'id')) ?? new Failure(404, 'not_found', '未找到该见解记录'),
   'PUT insight/mark-read': params => markRead(text(params, 'id')) ?? new Failure(404, 'not_found', '未找到该见解记录'),
-  'DELETE insight/clear': params => clearInsights(text(params, 'session')),
+  'DELETE insight/clear': params => (flag(params, 'dry-run') ? planClearInsights : clearInsights)(text(params, 'session')),
   'POST insight/trigger': params => {
     const reply = triggerInsight(text(params, 'session-id'));
     return 'problem' in reply ? new Failure(500, 'runtime_error', reply.problem) : reply;

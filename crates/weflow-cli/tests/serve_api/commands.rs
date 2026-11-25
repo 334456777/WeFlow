@@ -2,7 +2,7 @@
 //! the keys the server hands over.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use serde_json::{json, Value};
@@ -196,7 +196,7 @@ fn a_report_year_outside_1970_to_2100_is_refused() {
 }
 
 /// The names of the profiles `config profiles` lists.
-fn profile_names(home: &std::path::Path) -> Vec<String> {
+fn profile_names(home: &Path) -> Vec<String> {
     let (exit, stdout, stderr) = run_cli(home, &["--json", "config", "profiles"]);
     assert_eq!(exit, 0, "{stderr}");
     let doc: Value = serde_json::from_str(&stdout).unwrap();
@@ -659,29 +659,47 @@ fn the_moments_export_reads_its_format_in_any_case() {
     assert_eq!(file.extension().and_then(|e| e.to_str()), Some("json"));
 }
 
+/// The current time in Unix seconds.
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+/// Writes the test account's insight records file in `home`: one record of `wxid_bob` a `(id, seconds, millis)`.
+fn write_insight_records(home: &Path, records: &[(&str, i64, i64)]) {
+    let records: Vec<_> = records
+        .iter()
+        .map(
+            |&(id, seconds, millis)| weflow_core::insight::InsightRecord {
+                id: id.into(),
+                account_scope: "wxid:wxid_me".into(),
+                created_at: seconds * 1000 + millis,
+                session_id: "wxid_bob".into(),
+                trigger_reason: "activity".into(),
+                insight: id.into(),
+                ..Default::default()
+            },
+        )
+        .collect();
+    std::fs::create_dir_all(home.join("insights")).unwrap();
+    std::fs::write(
+        home.join("insights/wxid_me.json"),
+        json!({ "version": 1, "records": records }).to_string(),
+    )
+    .unwrap();
+}
+
 /// `--start` and `--end` of `insight records` and `insight clear` are Unix seconds, the records' times milliseconds
 /// (#1157): a day ahead lists and removes nothing, and `--end` takes the whole of its second.
 #[test]
 fn the_insight_records_are_picked_by_seconds() {
     let root = temp_root("insight-seconds");
     let home = account_home(&root);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = unix_now();
     let day = 86_400;
-    let record = |id: &str, seconds: i64, millis: i64| weflow_core::insight::InsightRecord {
-        id: id.into(),
-        account_scope: "wxid:wxid_me".into(),
-        created_at: seconds * 1000 + millis,
-        session_id: "wxid_bob".into(),
-        trigger_reason: "activity".into(),
-        insight: id.into(),
-        ..Default::default()
-    };
-    let records = json!({ "version": 1, "records": [record("now", now, 500), record("old", now - 2 * day, 0)] });
-    std::fs::create_dir_all(home.join("insights")).unwrap();
-    std::fs::write(home.join("insights/wxid_me.json"), records.to_string()).unwrap();
+    write_insight_records(&home, &[("now", now, 500), ("old", now - 2 * day, 0)]);
     let server = start(&home, &["--api-token", TOKEN]);
     let total = |query: &str| {
         let r = server.call("GET", &format!("/insight/records{query}"), "");
@@ -699,7 +717,35 @@ fn the_insight_records_are_picked_by_seconds() {
         assert_eq!(r.status, 200, "{body}: {}", r.body);
         r.json()["data"]["removed"].as_i64().unwrap()
     };
-    assert_eq!(removed(json!({ "start": now + day })), 0);
-    assert_eq!(removed(json!({ "end": now - day })), 1);
+    assert_eq!(removed(json!({ "start": now + day, "yes": true })), 0);
+    assert_eq!(removed(json!({ "end": now - day, "yes": true })), 1);
     assert_eq!(total(""), 1);
+}
+
+/// `insight clear` asks before it deletes (#1243): a server has no terminal to ask on, so without `yes` it refuses
+/// with a usage error, `dry-run` counts and deletes nothing, and nothing to delete needs no `yes`.
+#[test]
+fn insight_clear_wants_yes() {
+    let root = temp_root("insight-clear-yes");
+    let home = account_home(&root);
+    let now = unix_now();
+    write_insight_records(&home, &[("a", now, 0), ("b", now - 60, 0)]);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let clear = |body: Value| server.call("DELETE", "/insight/clear", &body.to_string());
+
+    let refused = clear(json!({}));
+    assert_eq!(refused.status, 400, "{}", refused.body);
+    assert!(refused.body.contains("--yes"), "{}", refused.body);
+
+    let plan = clear(json!({ "dry-run": true }));
+    assert_eq!(plan.status, 200, "{}", plan.body);
+    assert_eq!(plan.json()["data"], json!({ "dryRun": true, "records": 2 }));
+
+    let nothing = clear(json!({ "session": "wxid_nobody" }));
+    assert_eq!(nothing.status, 200, "{}", nothing.body);
+    assert_eq!(nothing.json()["data"]["removed"], 0);
+
+    let done = clear(json!({ "yes": true }));
+    assert_eq!(done.status, 200, "{}", done.body);
+    assert_eq!(done.json()["data"]["removed"], 2);
 }

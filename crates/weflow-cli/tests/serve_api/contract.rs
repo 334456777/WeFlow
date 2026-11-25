@@ -719,6 +719,11 @@ fn insight_answers_fit_the_contract() {
             json!({ "$ref": "#/components/schemas/InsightCleared" }),
         ),
         (
+            "DELETE",
+            "/insight/clear?dry-run=true",
+            json!({ "$ref": "#/components/schemas/InsightClearPlan" }),
+        ),
+        (
             "POST",
             "/insight/scan",
             json!({ "$ref": "#/components/schemas/InsightScan" }),

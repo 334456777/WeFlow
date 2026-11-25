@@ -16,6 +16,7 @@ const CATALOG: &[(&str, &str)] = &[
     // CLI
     ("this removes files; add --yes to confirm", "此操作会删除文件；请加上 --yes 确认"),
     ("this removes a profile; add --yes to confirm", "此操作会删除档案；请加上 --yes 确认"),
+    ("this deletes insight records; add --yes to confirm", "此操作会删除洞察记录；请加上 --yes 确认"),
     ("choose what to clear: {}\n`weflow cache list` shows each part.", "请选择要清理的部分：{}\n`weflow cache list` 可查看各部分。"),
     ("failed to read the answer: {}", "读取输入失败：{}"),
     ("payloads_json must be a JSON array: {}", "payloads_json 必须是 JSON 数组：{}"),

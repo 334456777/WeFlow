@@ -2939,7 +2939,18 @@
                       "const": true
                     },
                     "data": {
-                      "$ref": "#/components/schemas/InsightCleared"
+                      "description": "What was removed; with `dry-run`, what would be",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/InsightCleared"
+                        },
+                        {
+                          "$ref": "#/components/schemas/InsightClearPlan"
+                        },
+                        {
+                          "$ref": "#/components/schemas/Cancelled"
+                        }
+                      ]
                     }
                   }
                 }
@@ -11235,6 +11246,26 @@
           "removed"
         ],
         "description": "What `insight clear` answers."
+      },
+      "InsightClearPlan": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "records": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The records it would remove."
+          }
+        },
+        "required": [
+          "dryRun",
+          "records"
+        ],
+        "description": "What `insight clear` would remove (`--dry-run`), for a page that asks first."
       },
       "InsightScan": {
         "type": "object",

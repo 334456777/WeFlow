@@ -2689,6 +2689,14 @@ export interface InsightCleared {
   removed: number;
 }
 
+/** What `insight clear` would remove (`--dry-run`), for a page that asks first. */
+export interface InsightClearPlan {
+  /** Always true. */
+  dryRun: boolean;
+  /** The records it would remove. */
+  records: number;
+}
+
 /** What `insight scan` answers: the insights the silence scan wrote. */
 export interface InsightScan {
   /** How many it wrote. */
@@ -2886,7 +2894,8 @@ export interface Answers {
   "image decrypt": ImageResult;
   "image resolve-batch": ImageBatch;
   "image resolve-cache": ImageResult;
-  "insight clear": InsightCleared;
+  /** What was removed; with `dry-run`, what would be */
+  "insight clear": InsightCleared | InsightClearPlan | Cancelled;
   "insight footprint": Footprint;
   "insight footprint-summary": InsightReply;
   "insight get": InsightLookup;
