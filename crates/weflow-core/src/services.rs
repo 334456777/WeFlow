@@ -26,6 +26,7 @@ pub use insight::Trigger as InsightTrigger;
 mod key;
 mod media;
 mod reports;
+mod session_kind;
 mod sessions;
 mod sns;
 mod voice;

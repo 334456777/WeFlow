@@ -6,6 +6,7 @@ use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
+use super::session_kind::is_private_session;
 use super::*;
 use crate::contract::{
     ActivityHeatmap, AnnualReport, AnnualSnsStats, CoreFriend, DualMessage, DualReport, DualStats,
@@ -90,44 +91,6 @@ fn year_range_in<Tz: TimeZone>(tz: &Tz, year: i32) -> (i64, i64) {
             .map_or(0, |t| t.timestamp())
     };
     (at(1, 1, 0, 0, 0).max(1), at(12, 31, 23, 59, 59))
-}
-
-fn is_report_private_session(username: &str, cleaned_wxid: &str) -> bool {
-    if username.is_empty()
-        || username.contains("@chatroom")
-        || username == "filehelper"
-        || username.starts_with("gh_")
-    {
-        return false;
-    }
-    if username.to_lowercase() == cleaned_wxid.to_lowercase() || username.to_lowercase() == "weixin"
-    {
-        return false;
-    }
-    for prefix in [
-        "qqmail",
-        "fmessage",
-        "medianote",
-        "floatbottle",
-        "newsapp",
-        "brandsessionholder",
-        "brandservicesessionholder",
-        "notifymessage",
-        "opencustomerservicemsg",
-        "notification_messages",
-        "userexperience_alarm",
-        "helper_folders",
-        "placeholder_foldgroup",
-        "@helper_folders",
-        "@placeholder_foldgroup",
-    ] {
-        if username.starts_with(prefix) || username == prefix {
-            return false;
-        }
-    }
-    !(username.contains("@kefu.openim")
-        || username.contains("@openim")
-        || username.contains("service_"))
 }
 
 fn ymd(d: chrono::DateTime<Local>) -> String {
@@ -394,7 +357,7 @@ impl ServiceHub {
                     .unwrap_or("")
                     .to_string()
             })
-            .filter(|u| is_report_private_session(u, cleaned))
+            .filter(|u| is_private_session(u, cleaned))
             .collect()
     }
 
