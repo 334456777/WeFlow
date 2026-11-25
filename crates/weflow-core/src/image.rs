@@ -7,6 +7,8 @@ use chrono::{Datelike, Local, TimeZone};
 use crate::message::xml::rx;
 use crate::num::count_f64;
 
+pub mod ending;
+
 // ───────────────────────── naming ─────────────────────────
 
 /// Whether `s` is 32 hex digits.
@@ -621,11 +623,15 @@ pub fn is_wxgf(buf: &[u8]) -> bool {
 /// When the data is still an undecoded WXGF blob, the second value says why the built-in decoder ([`crate::hevc`])
 /// could not convert it (`None`: it is an image, or was not WXGF). The candidates are tried in order; the reason
 /// given is the first one's, the stream the others are cut from.
+///
+/// An embedded JPEG or PNG ([`wxgf_embedded_image`]) is used only when it holds a whole picture: its signature
+/// bytes also turn up by chance in the HEVC data (3 of some 6,000 WXGF images of a real account, #1112), and what
+/// follows them is no picture.
 pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<crate::hevc::Unsupported>) {
     if !is_wxgf(&buf) {
         return (buf, None);
     }
-    if let Some(inner) = wxgf_embedded_image(&buf) {
+    if let Some(inner) = wxgf_embedded_image(&buf).filter(|inner| !ending::is_cut_short(inner)) {
         return (inner.to_vec(), None);
     }
     let candidates = wxgf_hevc_candidates(&buf);
@@ -973,7 +979,8 @@ mod tests {
     fn wxgf_with_an_embedded_jpeg_is_unwrapped_as_it_is() {
         let mut blob = b"wxgf".to_vec();
         blob.extend([1u8; 20]);
-        blob.extend([0xff, 0xd8, 0xff, 0xe0, 9, 9, 9, 9, 9, 9, 9, 9]);
+        // SOI, an APP0 segment of two bytes, EOI
+        blob.extend([0xff, 0xd8, 0xff, 0xe0, 0, 4, 9, 9, 0xff, 0xd9]);
         blob.extend([7u8; 32]);
         let (out, failure) = unwrap_wxgf(blob);
         assert_eq!(failure, None);
@@ -981,6 +988,27 @@ mod tests {
         let (plain, failure) = unwrap_wxgf(vec![1, 2, 3]);
         assert_eq!(plain, vec![1, 2, 3]);
         assert_eq!(failure, None);
+    }
+
+    #[test]
+    fn a_jpeg_signature_in_the_hevc_data_is_not_an_embedded_picture() {
+        let mut blob = b"wxgf".to_vec();
+        blob.extend([0x24u8, 0x01, 0x00, 0x46, 0x00, 0x2e]);
+        // `FF D8 FF` by chance before the stream, with no picture after it
+        blob.extend([0xff, 0xd8, 0xff, 0x11, 0x22, 0x33]);
+        blob.extend(include_bytes!("../testdata/wxgf/full_range.hevc"));
+        let (jpg, failure) = unwrap_wxgf(blob);
+        assert_eq!(failure, None);
+        assert_eq!(
+            ending::of(&jpg),
+            ending::Ending::At(jpg.len()),
+            "the decoder's JPEG"
+        );
+        assert_eq!(
+            &jpg[3..4],
+            &[0xe0],
+            "starts with the JFIF segment the encoder writes"
+        );
     }
 
     #[test]

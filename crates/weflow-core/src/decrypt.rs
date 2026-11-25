@@ -7,9 +7,7 @@
 use std::path::Path;
 
 use aes::cipher::{BlockModeDecrypt, KeyInit};
-use anyhow::{anyhow, Result};
-
-use crate::error::{AppError, AppResult};
+use anyhow::{anyhow, Context, Result};
 
 type Aes128EcbDec = ecb::Decryptor<aes::Aes128>;
 
@@ -36,6 +34,21 @@ impl std::fmt::Debug for DecryptResult {
             .finish()
     }
 }
+
+/// A V1 or V2 `.dat` file holds less than its header declares (the AES part or the XOR-ed tail is not all there), as a
+/// file WeChat is still writing does (#1112). [`decrypt_dat`] and [`decrypt_file`] fail with it, which
+/// `anyhow::Error::is` tells apart from a wrong key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CutShort(&'static str);
+
+/// What the header declares that is not there.
+impl std::fmt::Display for CutShort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl std::error::Error for CutShort {}
 
 /// The format version of a `.dat` file by its header: 1 or 2, or 0 for a file without one.
 pub fn detect_dat_version(data: &[u8]) -> u8 {
@@ -92,7 +105,8 @@ pub fn parse_aes_key(text: &str) -> Option<[u8; 16]> {
 ///
 /// # Errors
 ///
-/// A V2 file without `aes_key`, a header of an unknown version, or sizes and padding the file does not hold.
+/// A V2 file without `aes_key`, a header of an unknown version, padding that is not PKCS #7 (a wrong key), or
+/// [`CutShort`]: sizes the file does not hold.
 pub fn decrypt_dat(data: &[u8], xor_key: u8, aes_key: Option<&[u8; 16]>) -> Result<DecryptResult> {
     let version = detect_dat_version(data);
     match version {
@@ -136,7 +150,7 @@ pub fn decrypt_dat(data: &[u8], xor_key: u8, aes_key: Option<&[u8; 16]>) -> Resu
 /// plaintext size of the AES part at offset 6 and the tail size at offset 10.
 fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<DecryptResult> {
     if data.len() < 0x0f {
-        return Err(anyhow!("dat file too small"));
+        return Err(CutShort("dat file too small").into());
     }
     let payload = &data[0x0f..];
     let aes_size = i64::from(read_i32_le(data, 6));
@@ -145,7 +159,7 @@ fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
     let aligned = usize::try_from(aes_size + (16 - remainder))
         .ok()
         .filter(|&n| n <= payload.len())
-        .ok_or_else(|| anyhow!("invalid aes size"))?;
+        .ok_or(CutShort("invalid aes size"))?;
     let aes_data = &payload[..aligned];
     let plain_aes = if aes_data.is_empty() {
         Vec::new()
@@ -165,7 +179,7 @@ fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
     let xor_size = usize::try_from(xor_size)
         .ok()
         .filter(|&n| n <= remaining.len())
-        .ok_or_else(|| anyhow!("invalid xor size"))?;
+        .ok_or(CutShort("invalid xor size"))?;
     let raw_len = remaining.len() - xor_size;
     let mut out = Vec::with_capacity(plain_aes.len() + remaining.len());
     out.extend_from_slice(&plain_aes);
@@ -204,14 +218,13 @@ fn read_i32_le(data: &[u8], offset: usize) -> i32 {
 }
 
 /// [`decrypt_dat`] of the file at `path`.
-pub fn decrypt_file(
-    path: &Path,
-    xor_key: u8,
-    aes_key: Option<&[u8; 16]>,
-) -> AppResult<DecryptResult> {
-    let data = std::fs::read(path)
-        .map_err(|err| AppError::runtime(format!("failed to read {}: {err}", path.display())))?;
-    decrypt_dat(&data, xor_key, aes_key).map_err(|err| AppError::runtime(format!("{err:#}")))
+///
+/// # Errors
+///
+/// The file cannot be read, or [`decrypt_dat`]'s errors.
+pub fn decrypt_file(path: &Path, xor_key: u8, aes_key: Option<&[u8; 16]>) -> Result<DecryptResult> {
+    let data = std::fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    decrypt_dat(&data, xor_key, aes_key)
 }
 
 #[cfg(test)]
@@ -324,6 +337,22 @@ mod tests {
             Some(b"ffffffffffffffff"),
         );
         assert!(wrong.is_err(), "bad key fails the strict padding check");
+    }
+
+    #[test]
+    fn a_file_shorter_than_its_header_says_is_cut_short() {
+        let key = *b"0123456789abcdef";
+        let file = encrypt_v4(V2_MAGIC, &sample_jpeg(3000), 1024, 200, &key, 0x5a);
+        // inside the header, the AES part and the XOR-ed tail
+        for keep in [10, 15 + 512, 15 + 1040 + 100] {
+            let err = decrypt_dat(&file[..keep], 0x5a, Some(&key)).unwrap_err();
+            assert!(err.is::<CutShort>(), "kept {keep}: {err:#}");
+        }
+        let wrong = decrypt_dat(&file, 0x5a, Some(b"ffffffffffffffff")).unwrap_err();
+        assert!(
+            !wrong.is::<CutShort>(),
+            "a wrong key is not a cut: {wrong:#}"
+        );
     }
 
     #[test]

@@ -254,6 +254,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("image file not found", "未找到图片文件"),
     ("image decrypt key is not configured", "未配置图片解密密钥"),
     ("native decrypt failed, check the image keys: {}", "原生解密失败，请检查图片密钥：{}"),
+    ("the image file is incomplete, WeChat may still be downloading it: retry later", "图片文件不完整，微信可能还在下载它：请稍后重试"),
     ("image cache", "图片缓存"),
     ("record id is empty", "记录 ID 为空"),
     ("Telegram push failed for chat {}: {}", "Telegram 推送到聊天 {0} 失败：{1}"),
