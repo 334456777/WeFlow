@@ -30,9 +30,10 @@ tempfile = { workspace = true, optional = true }
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Memory", "Win32_Storage_FileSystem", "Win32_System_Kernel", "Win32_System_SystemInformation", "Win32_System_Console", "Win32_System_LibraryLoader"] }
 
-# `cipher_vfs` asks a file's handle whether the file was deleted, on every Windows
+# `cipher_vfs` asks a file's handle whether the file was deleted, and `shared_file` reopens a handle for each reader, on
+# every Windows
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 # `linux_key_helper` attaches to WeChat and reads its registers and memory
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]

@@ -23,6 +23,7 @@ pub mod msg_row;
 pub mod quote;
 pub mod report;
 mod sha512x4;
+mod shared_file;
 pub mod sns;
 pub mod sqlcipher;
 pub mod stats;
