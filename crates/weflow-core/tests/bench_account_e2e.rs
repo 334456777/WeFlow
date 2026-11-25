@@ -52,6 +52,14 @@ fn a_seed_gives_the_same_bytes_and_another_seed_other_ones() {
     let (fa, fb) = (files(&root.join("a")), files(&root.join("b")));
     assert!(fa.len() > 100, "{} files", fa.len());
     assert!(fa == fb, "the same seed wrote different files");
+    // every database has a salt of its own, so each one opened derives its page key (#1127)
+    let dbs: Vec<&[u8]> = fa
+        .iter()
+        .filter(|(path, _)| path.extension().is_some_and(|e| e == "db"))
+        .map(|(_, bytes)| &bytes[..16])
+        .collect();
+    assert!(dbs.len() > 5, "{} databases", dbs.len());
+    assert_eq!(dbs.iter().collect::<HashSet<_>>().len(), dbs.len());
 
     let c = bench::build(&root.join("c"), &small(8)).unwrap();
     assert_ne!(a["conversations"], c["conversations"]);
@@ -179,12 +187,55 @@ fn every_message_is_read_back_with_the_ones_in_the_wal() {
 }
 
 #[test]
+fn the_official_accounts_have_messages_and_wechat_pay_its_notices() {
+    let root = common::temp_dir("bench-official");
+    let data = root.join("data");
+    let made = bench::build(
+        &data,
+        &BenchSpec {
+            media: false,
+            ..small(4)
+        },
+    )
+    .unwrap();
+    let hub = common::hub_for_account(
+        &root,
+        &bench::account_dir(&data),
+        &hex(&KEY),
+        bench::ACCOUNT_DIR,
+        |_| {},
+    );
+    let official: Vec<&Value> = made["conversations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["kind"] == "official")
+        .collect();
+    let listed = hub.biz_accounts().unwrap()["accounts"]
+        .as_array()
+        .unwrap()
+        .len();
+    assert_eq!(listed, official.len());
+    for c in &official {
+        let name = c["username"].as_str().unwrap();
+        let read = hub.biz_messages(name, 0, 0).unwrap().messages.len();
+        assert!(read > 0, "{name}");
+        assert_eq!(read as u64, c["messages"].as_u64().unwrap(), "{name}");
+    }
+    let pay = hub.biz_pay_records(0, 0).unwrap().records;
+    assert!(!pay.is_empty());
+    assert!(pay.iter().any(|r| r.method.is_some() && r.status.is_some()));
+    assert!(pay.iter().any(|r| r.method.is_none()));
+}
+
+#[test]
 fn the_pictures_decrypt_and_the_wxgf_ones_decode() {
     let root = common::temp_dir("bench-images");
     let data = root.join("data");
     bench::build(&data, &small(5)).unwrap();
     let aes = parse_aes_key(bench::IMAGE_AES_KEY).unwrap();
     let mut formats: BTreeMap<String, usize> = BTreeMap::new();
+    let mut largest_jpeg = 0;
     for (path, bytes) in files(&bench::account_dir(&data).join("msg/attach")) {
         assert_eq!(
             path.extension().and_then(|e| e.to_str()),
@@ -198,6 +249,7 @@ fn the_pictures_decrypt_and_the_wxgf_ones_decode() {
                 .iter()
                 .find_map(|(_, stream)| weflow_core::hevc::to_jpeg(stream));
             assert!(decoded.is_some(), "{} does not decode", path.display());
+            largest_jpeg = largest_jpeg.max(decoded.map_or(0, |j| j.len()));
         }
         *formats.entry(plain.ext).or_default() += 1;
     }
@@ -205,4 +257,6 @@ fn the_pictures_decrypt_and_the_wxgf_ones_decode() {
         assert!(formats.get(ext).is_some_and(|n| *n > 0), "{formats:?}");
     }
     assert_eq!(formats.len(), 3, "{formats:?}");
+    // whole pictures, as a real account's are (#1221)
+    assert!(largest_jpeg > 100_000, "{largest_jpeg} bytes");
 }

@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use super::official::WECHAT_PAY;
 use super::profile::TimeProfile;
 use super::rng::{Rng, Weighted};
 use super::words::{Words, LATIN_NICKS, TOPICS};
@@ -245,14 +246,21 @@ impl World {
                 times: timeline(rng, messages, days, 10.0, &profile.time),
             });
         }
-        // official accounts: in the conversation list, their messages in another database
-        for _ in 0..(spec.conversations / 20).max(3) {
-            let username = unique(rng, &mut taken, |r| format!("gh_{}", r.hex(12)));
-            let name = format!(
-                "{}{}",
-                rng.pick(TOPICS),
-                rng.pick(&["服务号", "订阅号", "助手"])
-            );
+        // official accounts and the WeChat Pay account: in the conversation list, at the time of their newest
+        // message, which `official` writes in another database
+        for i in 0..=(spec.conversations / 20).max(3) {
+            let (username, name) = if i == 0 {
+                taken.insert(WECHAT_PAY.to_string());
+                (WECHAT_PAY.to_string(), "微信支付".to_string())
+            } else {
+                let username = unique(rng, &mut taken, |r| format!("gh_{}", r.hex(12)));
+                let name = format!(
+                    "{}{}",
+                    rng.pick(TOPICS),
+                    rng.pick(&["服务号", "订阅号", "助手"])
+                );
+                (username, name)
+            };
             people.push(Person {
                 username: username.clone(),
                 nick: name.clone(),

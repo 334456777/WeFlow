@@ -28,7 +28,7 @@ const USAGE: &str =
     "usage: bench_account <work dir> --weflow <weflow binary> [--seed N] [--group-messages N] \
                      [--conversations N] [--shards N] [--no-media] [--profile <profile.json>]";
 /// Bump on any change to what `bench::build` makes, so an account built before is built again.
-const LAYOUT: u32 = 3;
+const LAYOUT: u32 = 4;
 
 fn number(args: &mut impl Iterator<Item = String>, name: &str) -> Result<u64> {
     args.next()

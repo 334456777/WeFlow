@@ -19,6 +19,7 @@
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection};
+use sha2::{Digest, Sha256};
 
 use crate::db::hex;
 use crate::msg::table_name_for;
@@ -457,7 +458,29 @@ pub struct Fixture {
     pub root: PathBuf,
     /// The account folder, the one holding `db_storage`.
     pub account_dir: PathBuf,
-    cipher: PageCipher,
+    salts: Salts,
+}
+
+/// The salts a [`Fixture`]'s databases are encrypted with.
+#[derive(Debug)]
+enum Salts {
+    /// [`SALT`] for every database: a reader derives one page key for all of them, which keeps tests fast.
+    Shared(Box<PageCipher>),
+    /// A salt of each database's own, drawn from its path and this seed, as WeChat writes them: a reader derives a
+    /// page key for every database it opens (#1127).
+    OwnPerDatabase(u64),
+}
+
+/// The salt [`Salts::OwnPerDatabase`] gives the database at `rel` (below `db_storage`, with `/`): the start of the
+/// SHA-256 of the seed and the path.
+fn own_salt(seed: u64, rel: &str) -> [u8; 16] {
+    let digest = Sha256::new()
+        .chain_update(seed.to_le_bytes())
+        .chain_update(rel.as_bytes())
+        .finalize();
+    let mut salt = [0u8; 16];
+    salt.copy_from_slice(&digest[..16]);
+    salt
 }
 
 impl Fixture {
@@ -479,7 +502,7 @@ impl Fixture {
         Self {
             root: root.to_path_buf(),
             account_dir,
-            cipher: PageCipher::derive(&KEY, &SALT),
+            salts: Salts::Shared(Box::new(PageCipher::derive(&KEY, &SALT))),
         }
     }
 
@@ -488,7 +511,26 @@ impl Fixture {
         Self {
             root: root.to_path_buf(),
             account_dir: root.join(account),
-            cipher: PageCipher::derive(&KEY, &SALT),
+            salts: Salts::Shared(Box::new(PageCipher::derive(&KEY, &SALT))),
+        }
+    }
+
+    /// The same account with a salt of its own for each database, drawn from `seed` and the database's path, as
+    /// WeChat writes them: a reader derives a page key for every database it opens, about 130 ms each, where the
+    /// shared salt of [`new`](Self::new) costs one for all (#1127).
+    #[must_use]
+    pub fn with_own_salts(self, seed: u64) -> Self {
+        Self {
+            salts: Salts::OwnPerDatabase(seed),
+            ..self
+        }
+    }
+
+    /// Runs `f` with the page cipher of the database at `rel` (below `db_storage`, with `/`).
+    pub(crate) fn with_cipher<R>(&self, rel: &str, f: impl FnOnce(&PageCipher) -> R) -> R {
+        match &self.salts {
+            Salts::Shared(cipher) => f(cipher),
+            Salts::OwnPerDatabase(seed) => f(&PageCipher::derive(&KEY, &own_salt(*seed, rel))),
         }
     }
 
@@ -503,11 +545,8 @@ impl Fixture {
     }
 
     fn write(&self, rel: &str, plain: Vec<u8>) {
-        std::fs::write(
-            self.db_storage().join(rel),
-            encrypt_db(&plain, &self.cipher),
-        )
-        .unwrap();
+        let encrypted = self.with_cipher(rel, |cipher| encrypt_db(&plain, cipher));
+        std::fs::write(self.db_storage().join(rel), encrypted).unwrap();
     }
 
     /// `sns/sns.db` with the posts.

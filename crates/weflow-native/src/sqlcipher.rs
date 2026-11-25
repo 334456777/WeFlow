@@ -69,6 +69,15 @@ pub struct PageCipher {
         )
     )]
     mac_key: [u8; 32],
+    /// The salt the keys were derived with, which the fixtures write at the start of page 1.
+    #[cfg_attr(
+        not(any(test, feature = "test-fixtures")),
+        expect(
+            dead_code,
+            reason = "only the fixtures encrypt pages, with the salt they derived from"
+        )
+    )]
+    salt: Vec<u8>,
     /// HMAC already keyed with `mac_key`: cloning it per page skips re-hashing the key pads.
     mac: HmacSha512,
     /// The same keying as SHA-512 states, for checking several pages at once ([`Self::verify_each`]).
@@ -104,6 +113,7 @@ impl PageCipher {
             enc_key,
             mac_states: sha512x4::HmacKey::new(&mac_key),
             mac_key,
+            salt: salt.to_vec(),
             mac,
         }
     }
@@ -612,7 +622,8 @@ pub mod testutil {
     /// The salt of the test databases.
     pub const SALT: [u8; 16] = *b"0123456789abcdef";
 
-    /// Encrypt one plaintext page exactly as SQLCipher 4 does (test-only mirror of `decrypt_page`).
+    /// Encrypt one plaintext page exactly as SQLCipher 4 does (test-only mirror of `decrypt_page`); page 1 starts
+    /// with the salt `cipher` was derived with.
     #[expect(
         clippy::expect_used,
         reason = "test fixture: a failure means the test setup is broken"
@@ -628,7 +639,7 @@ pub mod testutil {
             .expect("a whole page body needs no padding");
         page[start..body_end].copy_from_slice(&body);
         if pgno == 1 {
-            page[..SALT_LEN].copy_from_slice(&SALT);
+            page[..SALT_LEN].copy_from_slice(&cipher.salt);
         }
         page[body_end..body_end + IV_LEN].copy_from_slice(&iv);
         let mut mac = <HmacSha512 as KeyInit>::new_from_slice(&cipher.mac_key)
