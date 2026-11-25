@@ -5,13 +5,14 @@
 //! which files of a picture are on the computer, and so on. Only those numbers are copied, never a name or a message.
 //!
 //! The structure is the one WeChat writes: every database with a salt of its own, so each one opened derives its
-//! page key (#1127); several `message_N.db` whose local ids start again in each database and
-//! whose time ranges overlap, the newest messages of each database still in its WAL, a few `sort_seq` out of step
-//! (#133) or missing, app messages of every common kind as XML compressed with zstd, the messages of the official
-//! accounts and the WeChat Pay account's notices in `biz_message_0.db` (#1068), and the picture, video, voice and
-//! file folders with their `hardlink.db` rows. Pictures are V2 `.dat` files holding a JPEG, PNG or WXGF of the
-//! real sizes; the JPEGs are headers and padding, not pictures, and the WXGF ones whole HEVC pictures of the sizes a
-//! real account's are (#1221).
+//! page key (#1127); several `message_N.db` whose local ids start again in each database and whose time ranges
+//! overlap, the newest messages of each database still in its WAL, a few `sort_seq` out of step (#133) or missing,
+//! app messages of every common kind as XML compressed with zstd, replies that quote a message by its words or by its
+//! XML escaped once and forwarded chat records of texts, pictures and videos, as a real account's do (#1242), the
+//! messages of the official accounts and the WeChat Pay account's notices in `biz_message_0.db` (#1068), and the
+//! picture, video, voice and file folders with their `hardlink.db` rows. Pictures are V2 `.dat` files holding a JPEG,
+//! PNG or WXGF of the real sizes; the JPEGs are headers and padding, not pictures, and the WXGF ones whole HEVC
+//! pictures of the sizes a real account's are (#1221).
 //!
 //! [`build`] draws everything from [`BenchSpec::seed`] with its own generator ([`Rng`]), so one seed gives the same
 //! bytes on every machine and with every dependency version.
@@ -41,6 +42,8 @@ mod files;
 mod messages;
 mod official;
 mod profile;
+mod quote;
+mod record;
 mod rng;
 mod words;
 mod world;
@@ -69,6 +72,8 @@ const DAY: i64 = 86_400;
 const TZ: i64 = 8 * 3600;
 const END_DAY: i64 = (END + TZ) / DAY;
 const MIB: usize = 1 << 20;
+/// The earlier messages a reply can quote: enough that a kind quoted now and then, such as a video, is among them.
+const QUOTABLE: usize = 200;
 
 /// What to build.
 #[derive(Clone, Debug)]
@@ -258,13 +263,18 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
             let compress = !matches!(local_type, 1 | 10000) || content.len() > ZSTD_ABOVE;
             let (content_bytes, compressed) = zstd_or_plain(content, compress)?;
             let at = made.mention.map(|m| world.user(m));
-            let source = if rng.chance(profile.messages.with_source) {
-                let s = source(&mut rng, c.kind, c.members.len(), at);
-                let (bytes, z) = zstd_or_plain(s, rng.chance(profile.messages.source_compressed))?;
-                (Some(bytes), z)
+            let source_text = if rng.chance(profile.messages.with_source) {
+                source(&mut rng, c.kind, c.members.len(), at)
             } else {
+                String::new()
+            };
+            let source = if source_text.is_empty() {
                 // an empty source is stored as empty text
                 (Some(Vec::new()), false)
+            } else {
+                let compress = rng.chance(profile.messages.source_compressed);
+                let (bytes, z) = zstd_or_plain(source_text.clone(), compress)?;
+                (Some(bytes), z)
             };
             let status = if sender == Some(0) {
                 2
@@ -310,9 +320,15 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
                 sender: sender.unwrap_or(0),
                 local_type,
                 time,
-                content: made.indexed.clone().unwrap_or_else(|| made.summary.clone()),
+                plain: made.indexed.clone().unwrap_or_else(|| made.summary.clone()),
+                xml: match &made.quoted_as {
+                    Some(xml) => xml.clone(),
+                    None if local_type == 1 => String::new(),
+                    None => made.content.clone(),
+                },
+                source: source_text,
             });
-            if recent.len() > 30 {
+            if recent.len() > QUOTABLE {
                 recent.pop_front();
             }
             let summary = match sender {
