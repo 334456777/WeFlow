@@ -1,6 +1,6 @@
 ---
 name: weflow-perf
-description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两种账号、新旧二进制的对比（单独的 target 目录、旧新旧三轮、--compare 的假阳性、hyperfine 的坑）、Linux perf 交替测量与热点定位（对照组、让其他任务暂停）、导出的墙钟（输出写到固态盘、先弄清在等什么）、内存优化要同时报告磁盘读写，以及 bench 标签、在 runner 上试跑 bench.yml、删除和重测已发布的结果（连同 runner 的 pending 副本）、装 runner 和校准基准账号。做性能优化、比较改动前后的速度或内存、改基准脚本或 bench.yml、删除或重测基准结果、维护基准的 runner 时使用。
+description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两种账号、新旧二进制的对比（单独的 target 目录、旧新旧三轮、--compare 的假阳性、hyperfine 的坑）、Linux perf 交替测量与热点定位（对照组、让其他任务暂停）、Windows 上用 ETW（xperf）查内核时间和等锁、导出的墙钟（输出写到固态盘、先弄清在等什么）、内存优化要同时报告磁盘读写，以及 bench 标签、在 runner 上试跑 bench.yml、删除和重测已发布的结果（连同 runner 的 pending 副本）、装 runner 和校准基准账号。做性能优化、比较改动前后的速度或内存、改基准脚本或 bench.yml、删除或重测基准结果、维护基准的 runner 时使用。
 ---
 
 # 性能测量
@@ -14,6 +14,7 @@ description: 测量和对比 WeFlow 的性能：选测法、serve_bench 的两�
 | 答案是否不变 | 新旧二进制 `--json` 逐项对比，见 [weflow-real-account](../weflow-real-account/SKILL.md#改动前后对比) |
 | 对实际使用的影响 | serve_bench 两种账号都测；新旧二进制在真实账号上的耗时 |
 | 几个百分点的小幅改动是否真的更快 | Linux perf 交替测量 `cycles:u` |
+| Windows 上的内核时间、等锁和上下文切换 | ETW（xperf），见下面的 [Windows 上的 ETW 剖析](#windows-上的-etw-剖析) |
 | 合并前后、各版本之间的长期趋势 | bench.yml（维护者的自托管 runner） |
 
 ## 两种账号
@@ -28,6 +29,7 @@ serve_bench 每次都同时测合成账号和真实账号：合成账号检查�
 - 用同一个（新版的）`serve_bench` 加 `--weflow` 分别测两个二进制，按「旧、新、旧」跑三轮，以两轮旧版之间的差距作为噪声。
 - 跨版本对比时不带 `--compare`：旧版没有的 `/api/` 路由返回 404（约 0.4 ms），新版真正计算后被判为变慢并以 1 退出，退出前也不写表格和 `--save` 文件。两边都 `--save` 后自己比较；这类路由拿旧版的子进程路由和新版的 `/api/` 比较。
 - hyperfine 的 `-N` 按 POSIX 规则拆分命令行，Windows 的反斜杠路径会被吃掉：传正斜杠路径（Python 里 `as_posix()` 加 `shlex.join`）。用 `-n` 命名后，JSON 的结构是 `name`、`summary.time_wall_clock.median` 和 `measurements`。
+- Windows 上比较 CLI 命令的 CPU 时间：`.github/scripts/bench.py measure --exe <新> --anchor <旧> --anchor-commit <名> --account <基准账号目录> --out <目录> --runs 7 --load-seconds 0 --only "<命令名>,..."`，两个二进制交替运行，`result.json` 里是用户态、内核态、页错误的中位数；先看 `quiet`，机器忙时墙钟会出现两边都有的离群值。
 
 ## Linux perf 交替测量
 
@@ -39,6 +41,21 @@ serve_bench 每次都同时测合成账号和真实账号：合成账号检查�
 - `perf report --children` 的 self 列对内联函数不可信：动手改之前，用 `perf script -F ip,sym` 按叶子帧计数，或用 `--no-inline` 的调用链复核。
 - `perf script -F srcline` 只给文件名，不带目录，按「最近的 weflow 函数名 @ 行号」汇总才分得清。
 - Windows 上在 WSL 里测，见 [weflow-cross-platform](../weflow-cross-platform/SKILL.md#windows-上用-wsl)。
+
+## Windows 上的 ETW 剖析
+
+Linux perf 看不到 Windows 特有的内核开销，例如同步句柄上的文件对象锁（[#1105](https://github.com/334456777/WeFlow/issues/1105)）。
+
+- 工具：Windows ADK 里的 Windows Performance Toolkit（winget 包 `Microsoft.WindowsADK`，安装器参数 `/quiet /norestart /features OptionId.WindowsPerformanceToolkit`）。安装器和录制都要管理员权限（Windows 11 的 `sudo`）；不以管理员运行安装器时它以 1000 退出，什么也不装。
+- 录制：`xperf -on PROC_THREAD+LOADER+PROFILE+CSWITCH+DISPATCHER -stackwalk Profile+CSwitch -setprofint 1221 -f <临时.etl>`，跑命令，`xperf -d <结果.etl>`。再开 `SYSCALL`、`FILE_IO` 时轨迹大一个数量级，内核开销也被放大，定位时只开采样和上下文切换。
+- 分析：
+  - `xperf -i <etl> -symbols -a profile -detail`：按进程和函数的采样占比。
+  - `-a stack -butterfly 30 -process <进程名的正则> -event Prof`（CPU 采样）或 `-event CSwitch`（阻塞在哪个内核入口）输出 HTML 的调用关系；不加 `-event` 时两种栈混在一起。
+  - 比较两个二进制时复制成不同的文件名，进程名才分得开。
+- 符号：`_NT_SYMBOL_PATH` 带微软符号服务器时，会下载整机轨迹里所有模块的符号（几百 MB，很慢）；内核的 `ntkrnlmp.pdb` 下好后改成只读本地目录（`srv*<目录>`）。同时设 `_NT_SYMCACHE_PATH`，否则 symcache 写到 `C:\SymCache`。
+- release 版的 PDB 只有公开符号，用户态的采样会被归到相邻的符号上：用户态的热点用 Linux perf 看，ETW 只看内核部分。
+- 同一份轨迹里的占比可以比较，不同轨迹之间的采样权重不能比（系统的采样间隔会被其他程序改动）。
+- `GetProcessTimes`（`bench.py` 的用户态、内核态）按时钟中断时线程所在的模式记账，粒度 15.6 ms：几十毫秒的命令测不出差别，内核态的比例也高于 ETW 采样的结果。
 
 ## 导出的墙钟
 
