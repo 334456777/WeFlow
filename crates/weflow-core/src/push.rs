@@ -17,6 +17,12 @@ const RECENT_TTL: Duration = Duration::from_secs(10 * 60);
 const GROUP_NICKNAME_TTL: Duration = Duration::from_secs(5 * 60);
 const RECENT_REVOKE_SCAN_SECONDS: i64 = 150;
 const DIRECT_REVOKE_SCAN_LIMIT: usize = 20;
+/// How many of its newest messages are read of a conversation with no baseline, one that appeared after the push
+/// started.
+const NEW_SESSION_READ: usize = 200;
+/// How many messages of a conversation with no baseline are pushed at most: its newest from others, as many as its
+/// unread count.
+const NEW_SESSION_PUSH_LIMIT: i64 = 100;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Baseline {
@@ -527,10 +533,30 @@ impl PushEngine {
         } else {
             0
         };
-        let fetched: Vec<ChatMessage> = self
-            .hub
-            .chat_new_messages(&session.username, since, 1000)
-            .unwrap_or_default();
+        let fetched: Vec<ChatMessage> = if previous.is_some() {
+            self.hub
+                .chat_new_messages(&session.username, since, 1000)
+                .unwrap_or_default()
+        } else {
+            // its whole history is older than the push, so only its unread messages are new; they are the newest
+            // ones from others, as a message the account sends clears the unread count (#1229)
+            self.hub
+                .chat_latest_messages(&session.username, NEW_SESSION_READ)
+                .unwrap_or_default()
+        };
+        let unread_keys: HashSet<&str> = if previous.is_none() {
+            let take = usize::try_from(current_unread.min(NEW_SESSION_PUSH_LIMIT)).unwrap_or(0);
+            fetched
+                .iter()
+                .rev()
+                .filter(|m| m.is_send != Some(1))
+                .map(|m| m.message_key.trim())
+                .filter(|k| !k.is_empty())
+                .take(take)
+                .collect()
+        } else {
+            HashSet::new()
+        };
         if fetched.is_empty() && !scan_recent_revokes {
             return PushResult {
                 max_fetched_timestamp: prev_ts,
@@ -558,6 +584,10 @@ impl PushEngine {
             let seen = Self::is_fresh(&self.seen, key);
             let recent = Self::is_fresh(&self.recent, key);
             let revoke = is_revoke_system_message(m);
+            if previous.is_none() && !unread_keys.contains(key) {
+                Self::remember(&mut self.seen, key);
+                continue;
+            }
             if m.is_send != Some(1)
                 && (previous.is_none()
                     || create_time > prev_ts
@@ -1503,10 +1533,29 @@ mod tests {
     /// An engine over a synthetic account with `messages` from `PEER`, whose session last saw the message at 100:
     /// the next [`PushEngine::flush`] reads what came after it.
     fn engine_after_100(root: &TestDir, summary: &str, messages: Vec<MsgSpec>) -> PushEngine {
-        let fixture = Fixture::new(&root.path().join("data"), ME);
-        let last = messages.iter().map(|m| m.create_time).max().unwrap_or(0);
         let unread =
             i64::try_from(messages.iter().filter(|m| m.create_time > 100).count()).unwrap();
+        let mut engine = engine_with(root, summary, messages, unread);
+        engine.baseline.insert(
+            PEER.into(),
+            Baseline {
+                last_timestamp: 100,
+                unread_count: 0,
+            },
+        );
+        engine
+    }
+
+    /// An engine over a synthetic account with `messages` in the session of `PEER`, which shows `unread` unread
+    /// messages and has no baseline: it appeared after the push started.
+    fn engine_with(
+        root: &TestDir,
+        summary: &str,
+        messages: Vec<MsgSpec>,
+        unread: i64,
+    ) -> PushEngine {
+        let fixture = Fixture::new(&root.path().join("data"), ME);
+        let last = messages.iter().map(|m| m.create_time).max().unwrap_or(0);
         fixture.session_db(&[SessionSpec {
             username: PEER,
             summary,
@@ -1534,15 +1583,62 @@ mod tests {
         profile.decrypt_key = Some(fixture.key_hex());
         profile.wxid = Some(ME.into());
         let mut engine = PushEngine::new(ServiceHub::new(ctx, config));
-        engine.baseline.insert(
-            PEER.into(),
-            Baseline {
-                last_timestamp: 100,
-                unread_count: 0,
-            },
-        );
         engine.baseline_ready = true;
         engine
+    }
+
+    /// A conversation that appears after the push started pushes only its newest unread messages from others, in
+    /// their order, however long its history; the next pass pushes nothing again (#1229).
+    #[test]
+    fn a_new_conversation_pushes_only_its_unread_messages() {
+        let texts = |pushed: &[Value]| -> Vec<String> {
+            events(pushed)
+                .iter()
+                .map(|(event, content)| format!("{event} {content}"))
+                .collect()
+        };
+        let history = |n: i64| -> Vec<MsgSpec> {
+            (1..=n)
+                .map(|i| MsgSpec::text(i, PEER, 1_000 + i, &format!("旧消息 {i}")))
+                .collect()
+        };
+        for (name, old, unread) in [("short", 4, 1), ("long", 1_200, 1)] {
+            let root = TestDir::new(&format!("weflow-push-new-session-{name}"));
+            let mut messages = history(old);
+            messages.push(MsgSpec::text(old + 1, PEER, 5_000, "新消息"));
+            let mut engine = engine_with(&root, "新消息", messages, unread);
+            assert_eq!(
+                texts(&engine.flush(false)),
+                ["message.new 新消息"],
+                "{name}"
+            );
+            assert!(engine.flush(true).is_empty(), "{name}");
+        }
+
+        let root = TestDir::new("weflow-push-new-session-three");
+        let mut messages = history(5);
+        messages.push(MsgSpec::text(6, ME, 2_000, "我说的"));
+        messages.extend((7..=9).map(|i| MsgSpec::text(i, PEER, 3_000 + i, &format!("新消息 {i}"))));
+        let mut engine = engine_with(&root, "新消息 9", messages, 3);
+        assert_eq!(
+            texts(&engine.flush(false)),
+            [
+                "message.new 新消息 7",
+                "message.new 新消息 8",
+                "message.new 新消息 9"
+            ]
+        );
+    }
+
+    /// A conversation that appears with nothing unread pushes nothing, also when a scan reads it (#1229).
+    #[test]
+    fn a_new_conversation_with_nothing_unread_pushes_nothing() {
+        let root = TestDir::new("weflow-push-new-session-read");
+        let messages = (1..=3)
+            .map(|i| MsgSpec::text(i, PEER, 1_000 + i, &format!("旧消息 {i}")))
+            .collect();
+        let mut engine = engine_with(&root, "旧消息 3", messages, 0);
+        assert!(engine.flush(true).is_empty());
     }
 
     fn events(pushed: &[Value]) -> Vec<(&str, &str)> {
