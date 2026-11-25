@@ -6,6 +6,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
+use super::session_kind::is_private_session;
 use super::*;
 use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
 use crate::sync::MutexExt;
@@ -134,43 +135,6 @@ fn normalize_excluded(v: &Value) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .filter(|s| seen.insert(s.clone()))
         .collect()
-}
-
-fn is_private_session(username: &str, cleaned_wxid: &str) -> bool {
-    if username.is_empty() || username.to_lowercase() == cleaned_wxid.to_lowercase() {
-        return false;
-    }
-    if username.contains("@chatroom")
-        || username == "filehelper"
-        || username.starts_with("gh_")
-        || username.to_lowercase() == "weixin"
-    {
-        return false;
-    }
-    for prefix in [
-        "qqmail",
-        "fmessage",
-        "medianote",
-        "floatbottle",
-        "newsapp",
-        "brandsessionholder",
-        "brandservicesessionholder",
-        "notifymessage",
-        "opencustomerservicemsg",
-        "notification_messages",
-        "userexperience_alarm",
-        "helper_folders",
-        "placeholder_foldgroup",
-        "@helper_folders",
-        "@placeholder_foldgroup",
-    ] {
-        if username.starts_with(prefix) || username == prefix {
-            return false;
-        }
-    }
-    !(username.contains("@kefu.openim")
-        || username.contains("@openim")
-        || username.contains("service_"))
 }
 
 fn num(v: &Value) -> i64 {
