@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-本文件写给在这个仓库里工作的编码智能体；[`AGENTS.md`](AGENTS.md) 和 [`GEMINI.md`](GEMINI.md) 是指向它的符号链接，改动只写在本文件里。设计和用法的细节在 [Wiki](https://github.com/334456777/WeFlow/wiki)（见下面的 [Wiki](#wikiwiki) 一节），改代码前先对照[开发指南-常见改动的检查清单](https://github.com/334456777/WeFlow/wiki/开发指南#常见改动的检查清单)。开 PR、发版、真实账号验证等常见流程的步骤写成 skill，见下面的 [Skills](#skillsagentsskills) 一节。
+本文件写给在这个仓库里工作的编码智能体；[`AGENTS.md`](AGENTS.md) 是指向它的符号链接，改动只写在本文件里。设计和用法的细节在 [Wiki](https://github.com/334456777/WeFlow/wiki)（见下面的 [Wiki](#wikiwiki) 一节），改代码前先对照[开发指南-常见改动的检查清单](https://github.com/334456777/WeFlow/wiki/开发指南#常见改动的检查清单)。开 PR、发版、真实账号验证等常见流程的步骤写成 skill，见下面的 [Skills](#skillsagentsskills) 一节。
 
 ## 命令
 Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX shell 的写法，PowerShell 里写 `$env:VAR=1; 命令`；[`Makefile`](Makefile) 在 Windows 上要在 Git Bash 或 WSL 里运行。
@@ -21,7 +21,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - 每个公开类型都实现 `Debug`（`missing_debug_implementations`）；含密钥、令牌的类型不派生，手写只显示有没有，参照 `config.rs` 的 `ProfileConfig`
   - 放过某条警告用带 `reason` 的 `#[expect]`；警告随平台时有时无、`expect` 会落空时才用带 `reason` 的 `#[allow]`
 - 只在部分平台编译的代码：开头写了 `#![cfg(...)]` 的文件在别的平台上不编译，如 [`insight_e2e.rs`](crates/weflow-core/tests/insight_e2e.rs) 只在 Linux 编译。改了这类文件用到的公开接口，或者测试依赖 `cfg!(windows)`、反斜杠路径、符号链接时，在对应的平台上（Windows 上用 WSL）跑一次相关的 clippy 和测试
-- `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README、skill 和本文件的相对链接和锚点、汉字旁的逗号是否为中文逗号（只报告，不自动修改）、skill 的格式，以及 `AGENTS.md`、`GEMINI.md`、`.claude/skills` 是否检出为符号链接
+- `make docs-check`（`cargo test -p weflow-native --test docs_consistency`）检查两份 README、skill 和本文件的相对链接和锚点、汉字旁的逗号是否为中文逗号（只报告，不自动修改）、skill 的格式，以及 `AGENTS.md`、`.claude/skills` 是否检出为符号链接
 - [`rust-toolchain.toml`](rust-toolchain.toml) 固定了 Rust 版本（本地与 CI 共用）
 - `target/` 不会自动清理：用 `cargo sweep` 清理过期的编译缓存，不为了腾空间直接 `cargo clean`
 
@@ -113,7 +113,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 
 ### Skills（`.agents/skills/`）
 常见流程的步骤和易错之处写成 skill（[Agent Skills 规范](https://agentskills.io/specification)），智能体启动时读到每个 skill 的名字和描述，按任务自己使用；设计和原因见 Wiki 的[智能体的流程](https://github.com/334456777/WeFlow/wiki/开发指南#智能体的流程)。维护 skill 时：
-- 只改 `.agents/skills/` 下的正本；`.claude/skills` 是给 Claude Code 的符号链接，Claude Code 不允许写 `.claude/` 下的文件。Windows 上要开启开发者模式并设 `core.symlinks` 才能检出这个链接和 `AGENTS.md`、`GEMINI.md`，见 Wiki 的 [Windows 上的符号链接](https://github.com/334456777/WeFlow/wiki/开发指南#windows-上的符号链接)
+- 只改 `.agents/skills/` 下的正本；`.claude/skills` 是给 Claude Code 的符号链接，Claude Code 不允许写 `.claude/` 下的文件。Windows 上要开启开发者模式并设 `core.symlinks` 才能检出这个链接和 `AGENTS.md`，见 Wiki 的 [Windows 上的符号链接](https://github.com/334456777/WeFlow/wiki/开发指南#windows-上的符号链接)
 - `name` 用 `weflow-` 开头；智能体只凭 `description` 决定用不用，写清做什么、什么时候用，写成一行
 - 只写步骤和易错之处，规则和原因链接到本文件和 Wiki，不重复；需要维护者权限的步骤标「维护者」
 - skill 是公开的，写给所有贡献者和各种智能体：不写本地路径、个人情况和只适用于某个智能体平台的做法；用中文、只写现状，脚本注释用英文
