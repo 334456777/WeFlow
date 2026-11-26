@@ -45,6 +45,9 @@ weflow.exe
 .claude/*
 # loop.md for Bug fix Claude
 !.claude/loop.md
+# the process and the unit list of the continuous-improvement agent (进话体)
+!.claude/evolve.md
+!.claude/evolve-units.json
 # the skills (Agent Skills): .agents/skills for most agents, .claude/skills a symlink to it for Claude Code
 !.claude/skills
 .agents/*
