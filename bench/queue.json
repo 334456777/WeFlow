@@ -2,25 +2,6 @@
  "format": 1,
  "requests": [
   {
-   "id": "pr-1109",
-   "asked_at": "2026-11-23T14:30:12+00:00",
-   "run": "https://github.com/334456777/WeFlow/actions/runs/45193944100",
-   "commits": "#1109前=dbee7124ceb584d3714017fe3303532347f1bf0f,#1109后=1a1aeefb5b480b01602c17c2b7f1d420d0284cfe",
-   "pair": [
-    "#1109前=dbee7124ceb584d3714017fe3303532347f1bf0f",
-    "#1109后=1a1aeefb5b480b01602c17c2b7f1d420d0284cfe"
-   ],
-   "runs": "5",
-   "seed": "1",
-   "group_messages": "200000",
-   "conversations": "300",
-   "load_seconds": "90",
-   "only": "",
-   "force": false,
-   "release_tag": "",
-   "pr": 1109
-  },
-  {
    "id": "v5.0.0",
    "asked_at": "2026-11-25T04:43:17+00:00",
    "run": "https://github.com/334456777/WeFlow/issues/1223#issuecomment-7137839894",
