@@ -1,7 +1,6 @@
 name: Docs check
 
-# Changes to the READMEs, CLAUDE.md, the skills (.agents/skills) or the symlinks to them (AGENTS.md, GEMINI.md,
-# .claude/skills)
+# Changes to the READMEs, CLAUDE.md, the skills (.agents/skills) or the symlinks to them (AGENTS.md, .claude/skills)
 # only run `make docs-check`: the links and anchors of the READMEs and the skills resolve, commas next to Chinese text
 # are full-width, every skill has the front matter of the Agent Skills format, and the symlinks are checked out as
 # links. Code changes are covered by ci.yml, which runs this check as well.
@@ -18,7 +17,6 @@ on:
       - "README.zh-CN.md"
       - "CLAUDE.md"
       - "AGENTS.md"
-      - "GEMINI.md"
       - ".agents/skills/**"
       - ".claude/skills"
       - ".github/workflows/docs-check.yml"
@@ -59,7 +57,7 @@ jobs:
           docs=false
           while read -r path; do
             case "$path" in
-              README.md | README.zh-CN.md | CLAUDE.md | AGENTS.md | GEMINI.md | .agents/skills/* | .claude/skills | \
+              README.md | README.zh-CN.md | CLAUDE.md | AGENTS.md | .agents/skills/* | .claude/skills | \
                 .github/workflows/docs-check.yml) docs=true ;;
             esac
           done <<< "$files"
