@@ -248,14 +248,16 @@ fn skills_follow_the_agent_skills_format() {
     );
 }
 
-/// `AGENTS.md` and `.claude/skills` were checked out as symlinks to `CLAUDE.md` and `.agents/skills`. Git on Windows
-/// checks a symlink out as a plain file holding the target's path unless Developer Mode and `core.symlinks` are on;
-/// agents reading that file then miss the instructions or the skills without any error, so this check is the reminder.
+/// `AGENTS.md`, `GEMINI.md` and `.claude/skills` were checked out as symlinks to `CLAUDE.md` and `.agents/skills`. Git
+/// on Windows checks a symlink out as a plain file holding the target's path unless Developer Mode and `core.symlinks`
+/// are on; agents reading that file then miss the instructions or the skills without any error, so this check is the
+/// reminder.
 #[test]
 fn symlinks_are_checked_out_as_links() {
     let mut problems = Vec::new();
     for (link, target) in [
         ("AGENTS.md", "CLAUDE.md"),
+        ("GEMINI.md", "CLAUDE.md"),
         (".claude/skills", ".agents/skills"),
     ] {
         let resolved = std::fs::canonicalize(root().join(link)).ok();
