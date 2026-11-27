@@ -1667,6 +1667,36 @@
       "max_pct": 14.3,
       "busy_share": 0.069
      }
+    },
+    "c0fc9de84ae46d700d690084735793823f7dd206": {
+     "refs": [
+      "#1206前"
+     ],
+     "version": "weflow 7.0.0 (c0fc9de 2026-11-27 16:51Z)",
+     "measured_at": "2026-11-27T17:29:24+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 347,
+      "p50_pct": 4.5,
+      "p95_pct": 11.0,
+      "max_pct": 14.4,
+      "busy_share": 0.089
+     }
+    },
+    "85545353fc125a030e80c04d0b145e100bb3631e": {
+     "refs": [
+      "#1206后"
+     ],
+     "version": "weflow 7.0.0 (8554535 2026-11-27 17:29Z)",
+     "measured_at": "2026-11-27T18:08:02+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 348,
+      "p50_pct": 4.7,
+      "p95_pct": 11.1,
+      "max_pct": 15.0,
+      "busy_share": 0.103
+     }
     }
    },
    "anchor": "6115746c5f6e5124ed7aaf4febc300d5969cead3"
