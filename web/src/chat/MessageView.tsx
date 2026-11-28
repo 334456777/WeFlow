@@ -1,29 +1,18 @@
 // One message of the chat window (#198), drawn by its kind as the skin's bubbles (#828): received ones and the
 // account's own look different; cards (links, files, records…) are bubbles too.
 import { useEffect, useState } from 'react';
-import type { CSSProperties, ReactNode, Ref } from 'react';
+import type { ReactNode } from 'react';
 import {
   Article, ChatsCircle, CurrencyCny, File, FilePdf, FileText, Gift, Image as ImageIcon, MapPin, Phone, Play,
   UserSquare, VideoCamera, Warning,
 } from '@phosphor-icons/react';
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { formatFileSize } from '../format';
-import { imagePreview, PlayBadge, reasonOf, videoPlays, Voice, type Preview, type PreviewThumb } from '../MessageMedia';
+import { imagePreview, PlayBadge, videoPlays, Voice, type Preview } from '../MessageMedia';
 import { kindOf } from '../messageKind';
 import { appLabel, withoutLabel } from './messages';
-import { ZoomImage, type ZoomControls } from './ZoomImage';
 import { t } from '../i18n';
 import { safeUrl } from '../links';
-
-/** The size of a picture of that shape in the preview: as wide as fits, as the preview's own rules allow. */
-export function previewSize(thumb: PreviewThumb): CSSProperties {
-  return {
-    // the room the preview's bar, corners and margins take: shell/PreviewDialog.css, on .preview-dialog
-    width: 'min(960px, 100vw - var(--preview-room-x), (100dvh - var(--preview-room-y)) * ' + thumb.aspect.toFixed(4) + ')',
-    aspectRatio: String(thumb.aspect),
-    background: 'url(' + JSON.stringify(thumb.src) + ') center / contain no-repeat',
-  };
-}
 
 /** What a picture or video message opens in the preview; null for other messages. */
 export function mediaPreview(sessionId: string, message: ParsedMessage): Preview | null {
@@ -147,28 +136,6 @@ export function MessageView({ sessionId, message, onPreview }: {
     default:
       return <div className="message-bubble">{text}</div>;
   }
-}
-
-function MediaError({ src, what }: { src: string; what: string }) {
-  const [reason, setReason] = useState('');
-  useEffect(() => { let live = true; reasonOf(src).then(r => { if (live) setReason(r); }); return () => { live = false; }; }, [src]);
-  return <div className="file-preview"><Warning size={40} /><h3>{t('{what}无法显示', { what })}</h3><p>{reason || t('正在查找原因…')}</p></div>;
-}
-
-/** The image of the preview, zoomable; why it cannot be shown when it fails to load. */
-export function PreviewImage({ src, title, controls, thumb, onSettled }: { src: string; title: string; controls?: Ref<ZoomControls>; thumb?: PreviewThumb; onSettled?(): void }) {
-  const [failed, setFailed] = useState(false);
-  return failed
-    ? <MediaError src={src} what={t('图片')} />
-    : <ZoomImage ref={controls} src={src} alt={title} onLoad={onSettled} onError={() => { setFailed(true); onSettled?.(); }} sized={thumb && previewSize(thumb)} />;
-}
-
-/** The video of the preview; why it cannot be shown when it fails to load. */
-export function PreviewVideo({ src, poster, thumb }: { src: string; poster?: string; thumb?: PreviewThumb }) {
-  const [failed, setFailed] = useState(false);
-  return failed
-    ? <MediaError src={src} what={t('视频')} />
-    : <video className="preview-video" src={src} poster={poster} controls autoPlay playsInline onError={() => setFailed(true)} style={thumb && previewSize(thumb)} />;
 }
 
 /** A thumbnail from the server, with `badge` over it; when it cannot be decoded, a placeholder that says so instead
