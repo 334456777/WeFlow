@@ -80,6 +80,17 @@ pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
     })
 }
 
+/// The row of the `<type>` that `local_type` keeps above its low 32 bits, as WeChat 4 stores an app message
+/// (`(<type> << 32) | 49`), for what is told by the local type alone (#1263); `None` for a local type that keeps no
+/// `<type>` (49 itself, a message that is no app message) or one the table does not know.
+pub(crate) fn row_kept_in(local_type: i64) -> Option<AppType> {
+    let kept = local_type >> 32;
+    if local_type & 0xFFFF_FFFF != 49 || kept == 0 {
+        return None;
+    }
+    app_type(&kept.to_string())
+}
+
 /// The row of the types whose kind is `kind` ([`type_of_kind`]), for a message whose kind its XML gives rather than
 /// its `<type>`; `None` for a kind with no row (a card, a gift, a place).
 pub(crate) fn row_of_kind(kind: &str) -> Option<AppType> {

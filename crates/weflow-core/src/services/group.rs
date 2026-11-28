@@ -195,13 +195,14 @@ fn extract_owner(value: &Value, lookup: &HashMap<String, String>, depth: u32) ->
 }
 
 /// The kind of a message in a member's message export: an app message kept as `(<type> << 32) | 49` by the tag of
-/// its `<type>` in the one table, without the brackets (#1263).
+/// its `<type>` in the one table, without the brackets, as one kept as 49 for a `<type>` the table does not know
+/// (#1263).
 fn simple_type_name(local_type: i64) -> String {
-    let app_type_kept = local_type >> 32;
-    if local_type & 0xFFFF_FFFF == 49 && app_type_kept != 0 {
-        if let Some(row) = crate::message::appmsg::app_type(&app_type_kept.to_string()) {
-            return row.tag.trim_matches(['[', ']']).to_string();
-        }
+    if local_type & 0xFFFF_FFFF == 49 {
+        return crate::message::appmsg::row_kept_in(local_type)
+            .map_or("链接/文件".into(), |row| {
+                row.tag.trim_matches(['[', ']']).into()
+            });
     }
     match local_type {
         1 => "文本".into(),
@@ -211,7 +212,6 @@ fn simple_type_name(local_type: i64) -> String {
         43 => "视频".into(),
         47 => "表情".into(),
         48 => "位置".into(),
-        49 => "链接/文件".into(),
         50 => "通话".into(),
         10000 => "系统".into(),
         other => format!("类型 {other}"),
@@ -879,15 +879,13 @@ impl ServiceHub {
             let t = crate::api::js_parse_int(&k).unwrap_or(0);
             // an app message kept as `(<type> << 32) | 49` counts by its `<type>` in the one table (#1263): a link or
             // a file as one kept as 49, a sticker as one of type 47
-            let t = match (t & 0xFFFF_FFFF, t >> 32) {
-                (49, kept) if kept != 0 => {
-                    match crate::message::appmsg::app_type(&kept.to_string()) {
-                        Some(row) if matches!(row.kind, Some("link" | "file")) => 49,
-                        _ if kept == 8 => 47,
-                        _ => t,
-                    }
-                }
-                _ => t,
+            let t = match crate::message::appmsg::row_kept_in(t) {
+                Some(row) if matches!(row.kind, Some("link" | "file")) => 49,
+                Some(_) if t >> 32 == 8 => 47,
+                Some(_) => t,
+                // a `<type>` the table does not know, as one kept as 49
+                None if t & 0xFFFF_FFFF == 49 => 49,
+                None => t,
             };
             let c = c
                 .as_i64()

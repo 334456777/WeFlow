@@ -13,7 +13,7 @@ use weflow_native::msg_row::MsgRow;
 use weflow_native::quote::{reply_text, QUOTE};
 
 use crate::api::js_parse_int;
-use crate::message::appmsg::{app_type, kind_by_keywords, kind_of_app_type, without_quoted};
+use crate::message::appmsg::{kind_by_keywords, kind_of_app_type, row_kept_in, without_quoted};
 use crate::message::emoji::percent_decode;
 use crate::message::quote::refermsg_xml;
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message, pat_text};
@@ -76,12 +76,11 @@ fn opt(s: String) -> Option<String> {
 }
 
 /// The label the chat window shows for a message of `local_type` without text, such as `[图片]`, as its text with one
-/// is labelled: an app message kept as `(<type> << 32) | 49` by the tag of its `<type>` in the one table (#1263);
-/// `[消息]` for a type it does not name.
+/// is labelled: an app message kept as `(<type> << 32) | 49` by the tag of its `<type>` in the one table, as one
+/// kept as 49 for a `<type>` the table does not know (#1263); `[消息]` for a type it does not name.
 pub fn message_type_label(local_type: i64) -> &'static str {
-    let app_type_kept = local_type >> 32;
-    if local_type & 0xFFFF_FFFF == 49 && app_type_kept != 0 {
-        return app_type(&app_type_kept.to_string()).map_or("[消息]", |row| row.tag);
+    if local_type & 0xFFFF_FFFF == 49 {
+        return row_kept_in(local_type).map_or("[链接]", |row| row.tag);
     }
     match local_type {
         1 => "[文本]",
@@ -91,7 +90,6 @@ pub fn message_type_label(local_type: i64) -> &'static str {
         43 => "[视频]",
         47 => "[表情]",
         48 => "[位置]",
-        49 => "[链接]",
         50 => "[通话]",
         10000 => "[系统消息]",
         _ => "[消息]",
@@ -252,9 +250,8 @@ fn parsed_content(
         10000 => system_message_text(&content),
         // an app message kept as `(<type> << 32) | 49` reads as one kept as 49 (#1180)
         l if l & 0xFFFF_FFFF == 49 && looks_app => parse_type49(&raw, sender, my_wxid),
-        81604378673 => "[聊天记录]".into(),
-        8594229559345 => "[红包]".into(),
-        8589934592049 => "[转账]".into(),
+        // one without an `<appmsg>` by the tag of the type it is kept as
+        l if row_kept_in(l).is_some() => message_type_label(l).into(),
         _ => {
             if xml_type == "87" {
                 let t = extract_xml_value(&content, "textannouncement");
@@ -1195,6 +1192,7 @@ fn chat_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::appmsg::app_type;
 
     /// The chat window's text of a message, read without the account's wxid.
     fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
@@ -1547,7 +1545,7 @@ mod tests {
             (kept(62), "[拍一拍]"),
             (kept(2000), "[转账]"),
             (kept(2001), "[红包]"),
-            (kept(999), "[消息]"),
+            (kept(999), "[链接]"),
         ] {
             assert_eq!(message_type_label(local_type), label, "{local_type}");
             assert_eq!(parsed_content("", local_type, None), label, "{local_type}");
