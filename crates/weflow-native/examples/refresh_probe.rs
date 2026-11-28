@@ -1,5 +1,6 @@
-//! Synthetic cache-refresh experiment; requires --features test-fixtures.
-//! It never opens a user's account. All mutations stay in a new temp directory.
+//! 在合成账号上检查快照的刷新：重写 `session.db`、保持大小和修改时间不变时是否仍读旧快照，
+//! 修改时间变了以后是否刷新；输出一行 JSON。需要 `--features test-fixtures`。
+//! 从不打开用户的账号，所有改动都在新建的临时目录里。
 use std::fs::{File, FileTimes};
 use std::time::Duration;
 use weflow_native::db::Account;

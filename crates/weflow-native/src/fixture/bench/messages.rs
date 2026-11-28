@@ -1,4 +1,4 @@
-//! Messages: the rows of each message database, their XML and files, the WAL and the hardlinks.
+//! 基准账号的消息：每个消息库的行、消息的 XML 和文件、WAL，以及 `hardlink.db` 的行。
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::Path;
@@ -17,7 +17,7 @@ use super::world::{Kind, World};
 use super::DAY;
 use crate::db::hex;
 
-/// A file written for the account, and its `hardlink.db` row.
+/// 为账号写出的一个文件，以及它在 `hardlink.db` 中的行。
 pub(super) struct Hardlink {
     pub(super) md5: String,
     pub(super) file_name: String,
@@ -31,7 +31,7 @@ pub(super) struct Hardlink {
 #[derive(Default)]
 pub(super) struct Written {
     pub(super) hardlinks: Vec<Hardlink>,
-    /// (conversation, create time, local id, server id, data)
+    /// 各项依次是会话、发送时间、本地 ID、服务器 ID 和数据。
     pub(super) voices: Vec<(usize, i64, i64, i64, Vec<u8>)>,
     pub(super) files: BTreeMap<&'static str, (u64, u64)>,
 }
@@ -49,21 +49,21 @@ impl Written {
     }
 }
 
-/// An earlier message a reply can quote ([`super::quote`]).
+/// 引用消息可以引用的一条之前的消息（[`super::quote`]）。
 pub(super) struct Recent {
     pub(super) server_id: i64,
     pub(super) sender: usize,
     pub(super) local_type: i64,
     pub(super) time: i64,
-    /// Its words, or its summary.
+    /// 消息的文字，或者它的摘要。
     pub(super) plain: String,
-    /// The XML a quote of it holds ([`Made::quoted_as`]), empty for a text.
+    /// 引用它的消息中保存的 XML（[`Made::quoted_as`]）；文字消息为空。
     pub(super) xml: String,
-    /// Its `msgsource`, empty when it has none.
+    /// 它的 `msgsource`；没有时为空。
     pub(super) source: String,
 }
 
-/// One message as it is stored.
+/// 一条消息存储时的样子。
 pub(super) struct Row {
     pub(super) local_id: i64,
     pub(super) server_id: i64,
@@ -86,16 +86,16 @@ pub(super) struct Writer<'a> {
     pub(super) written: Written,
 }
 
-/// The parts of a message the generator makes.
+/// 生成器生成的一条消息的各个部分。
 pub(super) struct Made {
     pub(super) content: String,
-    /// What WeChat's search index holds of it.
+    /// 微信的搜索索引为它保存的文字。
     pub(super) indexed: Option<String>,
     pub(super) summary: String,
-    /// The member a group text mentions.
+    /// 群里的文字消息 @ 的成员。
     pub(super) mention: Option<usize>,
-    /// The XML a reply quoting it holds, when that is not `content`: a reply is quoted without its padding and
-    /// without the XML of what it quotes in turn.
+    /// 引用它的消息中保存的 XML，与 `content` 不同时才有：
+    /// 引用一条回复时不带它的填充，也不带它自己引用的消息的 XML。
     pub(super) quoted_as: Option<String>,
 }
 
@@ -112,7 +112,7 @@ impl World {
 impl<'a> Writer<'a> {
     #[expect(
         clippy::too_many_arguments,
-        reason = "one message's identity: conversation, sender, time and ids"
+        reason = "一条消息的身份：会话、类型、发送者、时间和 ID"
     )]
     pub(super) fn make(
         &mut self,
@@ -266,10 +266,10 @@ impl<'a> Writer<'a> {
         })
     }
 
-    /// An app message (`local_type & 0xFFFFFFFF == 49`) of type `sub`.
+    /// 子类型为 `sub` 的 app 消息（`local_type & 0xFFFFFFFF == 49`）。
     #[expect(
         clippy::too_many_arguments,
-        reason = "one message's identity: conversation, sender, time and ids"
+        reason = "一条消息的会话、子类型、发送者、时间、目标大小和可引用的消息"
     )]
     fn app_message(
         &mut self,
@@ -289,7 +289,7 @@ impl<'a> Writer<'a> {
         let mut indexed = None;
         let mut summary = String::new();
         let mut target = target;
-        // a reply is quoted as a short XML: its `inner` without the XML of what it quotes, and no padding
+        // 引用一条回复时用短的 XML：它的 `inner` 不带它自己引用的消息的 XML，也不带填充
         let mut quoted_inner = None;
         let inner = match sub {
             57 => {
@@ -467,7 +467,7 @@ impl<'a> Writer<'a> {
         })
     }
 
-    /// A picture message: which of its files are here is drawn like the real ones.
+    /// 图片消息：它的哪些文件在电脑上，按真实账号的比例抽取。
     fn image(&mut self, rng: &mut Rng, talker: &str, time: i64, target: f64) -> Result<String> {
         let md5 = rng.hex(32);
         let p = &self.profile.media;
@@ -611,12 +611,12 @@ pub(super) fn zstd_or_plain(data: String, compress: bool) -> Result<(Vec<u8>, bo
     })
 }
 
-/// One message database being written: its tables, its `Name2Id` rows and the rows left for its WAL.
+/// 正在写的一个消息库：它的表、`Name2Id` 的行，以及留给 WAL 的行。
 pub(super) struct Shard {
     pub(super) conn: Connection,
     pub(super) ids: HashMap<String, i64>,
     pub(super) tables: HashSet<String>,
-    /// Messages from this one on go to the WAL.
+    /// 从这条消息起的消息写进 WAL。
     pub(super) wal_from: (i64, usize),
     pub(super) late: Vec<(String, Row)>,
 }
@@ -640,7 +640,7 @@ impl Shard {
             Some(p) => self.id(world.user(p), false)?,
             None => 0,
         };
-        // compressed content is a blob, the rest text
+        // 压缩的内容存成 blob，其余的存成文字
         let text = std::str::from_utf8(&row.content).unwrap_or_default();
         let content: &dyn rusqlite::ToSql = if row.compressed { &row.content } else { &text };
         let source_text;

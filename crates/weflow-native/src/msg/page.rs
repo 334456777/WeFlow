@@ -1,4 +1,4 @@
-//! Pages of a conversation: the newest messages, pages by offset and pages before or after a message.
+//! 会话的分页：最新的消息、按偏移的页，以及某条消息之前或之后的页。
 
 use anyhow::{Context, Result};
 
@@ -8,31 +8,29 @@ use super::{MsgTable, PageFrom, Ties};
 use crate::db::Account;
 use crate::msg_row::{Columns, MsgRow};
 
-/// A row's sort key (see [`MsgPos`]) and the number of its `message_<n>.db`.
+/// 行的排序键（见 [`MsgPos`]）和所在消息库的分片号。
 type ShardKey = ((i64, i64, i64), u32);
 
-/// Where [`Account::messages`] starts a page deep into a conversation.
+/// [`Account::messages`] 在会话中靠后的一页从哪里开始。
 pub(super) enum OffsetPosition {
-    /// After this message, the last one the offset skips.
+    /// 从这条消息之后开始，它是偏移跳过的最后一条消息。
     At(MsgPos),
-    /// The offset skips every message.
+    /// 偏移跳过了全部消息。
     Past,
-    /// A sort key read is not stored as an integer (a `sort_seq` may also be null): [`typed_row_key`] and SQLite order
-    /// such values differently, so the page is read by its offset over the rows themselves, in SQLite's
-    /// order ([`newest_rows`](Account::newest_rows)).
+    /// 读到的排序键中有不是按整数存储的值（`sort_seq` 为 null 不算）：[`typed_row_key`] 与 SQLite
+    /// 对这样的值排序不同，所以按偏移逐行读取这一页，用 SQLite 的顺序（[`newest_rows`](Account::newest_rows)）。
     Unusual,
 }
 
 impl Account {
-    /// The SQL of [`newest_rows`](Self::newest_rows) for one table: its `want` (`?1`) newest rows with a `sort_seq`,
-    /// at `?2` or later when `floor`, then its `want` newest without one. The [`MsgRow`] columns with the sender joined,
-    /// or only `columns`.
+    /// [`newest_rows`](Self::newest_rows) 对一张表的 SQL：先是有 `sort_seq` 的最新 `want`（`?1`）行，
+    /// `floor` 为真时只取 `?2` 及之后的；再是没有 `sort_seq` 的最新 `want` 行。
+    /// 读取连接了发送者的 [`MsgRow`] 各列，给出 `columns` 时只读这些列。
     fn newest_sql(t: &MsgTable, columns: Option<&str>, floor: bool) -> String {
         let order = "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1";
         let floor = if floor { "m.sort_seq >= ?2 and " } else { "" };
         let indexed = format!("where {floor}m.sort_seq <> 0 {order}");
-        // rows without a sort_seq are keyed by create_time * 1000 (see [`MsgPos`]): below any floor, they are read
-        // apart
+        // 没有 sort_seq 的行按 create_time * 1000 排序（见 [`MsgPos`]），它们的 sort_seq 低于任何 floor，所以另外读取
         let unsequenced = "where (m.sort_seq is null or m.sort_seq = 0) \
                            order by m.create_time desc, m.local_id desc limit ?1";
         match columns {
@@ -47,12 +45,11 @@ impl Account {
         }
     }
 
-    /// Where a page `offset` messages deep starts: the place of the last message it skips.
+    /// 跳过 `offset` 条消息的一页从哪里开始：它跳过的最后一条消息的位置。
     ///
-    /// The rows [`newest_rows`](Self::newest_rows) would read are ranked by the first part of their sort key alone:
-    /// the `sort_seq` index holds it, so their pages are not decrypted. Only the rows tied on it with the last skipped
-    /// one, or with the page's last one, are read, for their whole key: those two places are where the rest of the
-    /// key can move a row across the page's ends.
+    /// [`newest_rows`](Self::newest_rows) 会读的行只按排序键的第一部分排名：它就在 `sort_seq` 索引里，
+    /// 不必解密这些行所在的页。只有第一部分与跳过的最后一条或这一页的最后一条相同的行，才读出整个键：
+    /// 排序键的其余部分只在这两处可能把一行移过页的边界。
     pub(super) fn offset_position(
         &self,
         tables: &[MsgTable],
@@ -86,10 +83,10 @@ impl Account {
         let Some(mut tied) = self.tied_keys(tables, first)? else {
             return Ok(OffsetPosition::Unusual);
         };
-        // the listing's order: newest key first, equal keys by ascending database
+        // 列表的顺序：最新的键在前，相同的键按分片号升序
         tied.sort_unstable_by(|(a, sa), (b, sb)| b.cmp(a).then(sa.cmp(sb)));
         let above = firsts.partition_point(|&f| f > first);
-        // fewer tied rows than ranked ones: the table changed between the reads
+        // 读出的键相同的行比排名时少：两次读取之间表发生了变化
         let Some(&((sort_seq, create_time, local_id), shard)) = tied.get(offset - 1 - above) else {
             return Ok(OffsetPosition::Unusual);
         };
@@ -101,9 +98,9 @@ impl Account {
         }))
     }
 
-    /// The first part of the sort key (see [`MsgPos`]) of the `want` newest rows of `t` with a `sort_seq`, from its
-    /// index, and of its `want` newest without one, from their `create_time`; all of them when `want` is negative.
-    /// `None` when one is not an integer.
+    /// `t` 中有 `sort_seq` 的最新 `want` 行和没有 `sort_seq` 的最新 `want` 行的排序键第一部分（见 [`MsgPos`]）：
+    /// 前者从 `sort_seq` 索引读取，后者由 `create_time` 得出；`want` 为负数时取全部的行。
+    /// 有一个不是整数时为 `None`。
     fn first_keys(&self, t: &MsgTable, want: i64) -> Result<Option<Vec<i64>>> {
         let table = &t.table;
         let sequenced = format!(
@@ -114,7 +111,7 @@ impl Account {
              order by create_time desc, local_id desc limit ?1"
         );
         self.with_db(&t.db, |conn| {
-            // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
+            // 每次重试都用新的向量：过期的快照不会留下不完整或重复的键。
             let mut firsts = Vec::new();
             for (sql, scale) in [(&sequenced, 1), (&unsequenced, 1000)] {
                 let mut stmt = conn
@@ -132,8 +129,7 @@ impl Account {
         })
     }
 
-    /// The sort keys and databases of the rows of `tables` whose key starts with `first`; `None` when a key is not
-    /// stored as integers (see [`typed_row_key`]).
+    /// `tables` 中排序键以 `first` 开头的行的排序键和分片号；有键不是按整数存储时为 `None`（见 [`typed_row_key`]）。
     fn tied_keys(&self, tables: &[MsgTable], first: i64) -> Result<Option<Vec<ShardKey>>> {
         let mut keys = Vec::new();
         for t in tables {
@@ -170,7 +166,7 @@ impl Account {
         Ok(Some(keys))
     }
 
-    /// Newest-first page of the messages of `tables`, from the rows before it and the page read in full and sorted.
+    /// `tables` 中最新在前的一页消息：把这一页和它前面的行全部读出、排序后取出。
     pub(super) fn newest_rows(
         &self,
         tables: &[MsgTable],
@@ -184,8 +180,8 @@ impl Account {
         };
         let mut rows: Vec<MsgRow> = Vec::new();
         for t in tables {
-            // Asked as is, SQLite sorts the whole table (it walks the sender index for the join). The `want`-th
-            // newest sort_seq, read from the sort_seq index, bounds the same rows to a range that index serves.
+            // 直接这样查询时 SQLite 会给整张表排序（为了连接，它遍历发送者的索引）。
+            // 从 sort_seq 索引读出第 `want` 新的 sort_seq，把同样的行限定在这个索引能直接给出的范围里。
             let floor = if want > 0 {
                 self.sort_seq_floor(t, want)?
             } else {
@@ -206,9 +202,13 @@ impl Account {
         })
     }
 
-    /// A newest-first page of messages next to a message (see [`MsgPos`]): `limit` of the older ones, or of the newer
-    /// ones closest to it, still listed newest first; `limit == 0` means all of them. Each table is read from the
-    /// position on through its `sort_seq` index, so a page deep into a long conversation costs what the first does.
+    /// 紧挨着某条消息（见 [`MsgPos`]）的一页消息，最新的在前：取比它早的 `limit` 条，或者比它新、离它最近的
+    /// `limit` 条（仍然最新的在前）；`limit == 0` 表示全部。每张表都经 `sort_seq` 索引从这个位置开始读，
+    /// 所以长会话中靠后的一页与第一页的代价相同。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn messages_from(
         &self,
         session_id: &str,
@@ -218,7 +218,7 @@ impl Account {
         self.page_from(&self.message_tables(session_id)?, limit, from)
     }
 
-    /// [`messages_from`](Self::messages_from) over the message tables of a conversation.
+    /// 在一个会话的消息表上做 [`messages_from`](Self::messages_from)。
     pub(super) fn page_from(
         &self,
         tables: &[MsgTable],
@@ -236,7 +236,7 @@ impl Account {
             let Some(shard) = shard_of(t) else {
                 continue;
             };
-            // a row with the position's own key is past it only in a database listed after the position's
+            // 键与这个位置相同的行，只在读取方向上排在这个位置所在数据库之后的数据库里，才算越过了它
             let cmp = match (older, shard > pos.shard, shard < pos.shard) {
                 (true, true, _) => "<=",
                 (true, false, _) => "<",
@@ -244,7 +244,7 @@ impl Account {
                 (false, _, false) => ">",
             };
             let bound = if older { "<=" } else { ">=" };
-            // rows with a sort_seq, through its index; the few without one are keyed by create_time * 1000
+            // 有 sort_seq 的行经它的索引读取；少数没有 sort_seq 的行按 create_time * 1000 排序
             let indexed = format!(
                 "where m.sort_seq {bound} ?1 and m.sort_seq <> 0 and (m.sort_seq, m.create_time, m.local_id) {cmp} (?1, ?2, ?3) \
                  order by m.sort_seq {dir}, m.create_time {dir}, m.local_id {dir} limit ?4"
@@ -261,11 +261,11 @@ impl Account {
             )?;
             rows.extend(page.into_iter().map(|r| (r, shard)));
         }
-        // the listing's order: newest key first, equal keys by ascending database
+        // 列表的顺序：最新的键在前，相同的键按分片号升序
         rows.sort_by(|(a, sa), (b, sb)| b.key().cmp(&a.key()).then(sa.cmp(sb)));
         if !older {
-            // the newer rows closest to the position are at the end
-            // a negative `want` keeps every row
+            // 离这个位置最近的较新的行在末尾
+            // `want` 为负数时保留全部的行
             let skip = usize::try_from(want).map_or(0, |want| rows.len().saturating_sub(want));
             rows.drain(..skip);
         } else if let Ok(want) = usize::try_from(want) {
@@ -282,12 +282,17 @@ impl Account {
         Ok(rows.into_iter().map(|(r, _)| r).collect())
     }
 
-    /// Messages of `tables` (one conversation's, from [`message_tables_by_name`](Self::message_tables_by_name)) of
-    /// the `local_types`, newest first in the chat's order, at most `limit` (all when negative): those listed after
-    /// `before` (older; with its [`Ties`]), all when `None`, sent between the Unix seconds of `range` (inclusive; 0
-    /// for no bound) and at `floor` or later in the chat's order (its `sort_seq`; 0 for no bound). One statement a
-    /// table, of one part a type, so the `(local_type, sort_seq)` index gives each part's rows in order and the
-    /// limit stops its read (issue #178).
+    /// `tables`（一个会话的表，来自 [`message_tables_by_name`](Self::message_tables_by_name)）中类型为
+    /// `local_types` 之一的消息，按聊天窗口的顺序最新在前，最多 `limit` 条（为负数时取全部）。
+    /// 只取列在 `before` 之后的更早的消息（排序位置相同的按它的 [`Ties`]；为 `None` 时不限），
+    /// 发送时间在 `range` 的两个 Unix 秒之间（含两端，0 表示不限），
+    /// 并且在聊天窗口的顺序中不早于 `floor`（即 `sort_seq` 不小于它，0 表示不限）。
+    /// 每张表一条语句，每种类型一个部分，所以 `(local_type, sort_seq)` 索引按顺序给出每部分的行，
+    /// 读到 `limit` 条就停止（#178）。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn typed_before(
         &self,
         tables: &[MsgTable],
@@ -327,8 +332,8 @@ impl Account {
                 continue;
             }
             let table = &t.table;
-            // a part a type, so each reads its index in order; the few rows without a sort_seq in one part of all
-            // the types; the senders joined once, outside (each part takes its time to plan)
+            // 每种类型一个部分，各自按顺序读索引；少数没有 sort_seq 的行合成一个部分，包含所有类型；
+            // 发送者在外层只连接一次（每个部分的查询计划都要花时间）
             let mut parts: Vec<String> = local_types
                 .iter()
                 .map(|lt| {
@@ -376,8 +381,8 @@ impl Account {
         Ok(rows.into_iter().map(|(r, _)| r).collect())
     }
 
-    /// The `n`-th largest `sort_seq` of a table: every one of its `n` newest rows has a `sort_seq` at least this big.
-    /// `None` when the table has fewer rows, or that row has no `sort_seq` (then only a full sort is exact).
+    /// 表中第 `n` 大的 `sort_seq`：最新的 `n` 行的 `sort_seq` 都不小于它。表的行数不到 `n`，或者那一行没有
+    /// `sort_seq` 时为 `None`（这时只有完整排序才准确）。
     fn sort_seq_floor(&self, t: &MsgTable, n: i64) -> Result<Option<i64>> {
         let sql = format!(
             "select sort_seq from \"{}\" order by sort_seq desc limit 1 offset ?1",
@@ -393,7 +398,7 @@ impl Account {
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
-    reason = "test values are known to fit, or are meant to wrap"
+    reason = "测试用的值已知放得下，或者本来就要回绕"
 )]
 mod tests {
     use super::*;
@@ -410,7 +415,7 @@ mod tests {
         let dir = TestDir::new("weflow-msg-ties");
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let table = table_name_for("wxid_bob");
-        // 60 rows: sort_seq takes only 6 distinct values (10 rows each), some rows have none; create_time varies
+        // 60 行：sort_seq 只有 6 个不同的值（每个 10 行），有的行没有 sort_seq；create_time 不全相同
         let plain = plain_db_with(move |c: &Connection| {
             c.execute_batch("create table Name2Id(user_name text primary key, is_session integer)")
                 .unwrap();
@@ -444,8 +449,8 @@ mod tests {
         )
         .unwrap();
         let acct = Account::new(dir.path(), &hex(&KEY)).unwrap();
-        // every row sorted by its key, then the page taken: rows without a sort_seq (null or 0) are keyed by
-        // create_time * 1000, so here they are the newest ones
+        // 参照：全部的行按键排序后再取这一页。没有 sort_seq（null 或 0）的行按 create_time * 1000 排，
+        // 所以在这里是最新的行
         let t = acct.message_tables("wxid_bob").unwrap().remove(0);
         let reference = |limit: i32, offset: i32| -> Vec<String> {
             let sql = Account::select_sql(&t, "");
@@ -482,7 +487,7 @@ mod tests {
             );
         }
 
-        // pages from a cursor, both ways, list the same order through the ties and the rows without a sort_seq
+        // 从游标往两个方向翻页，经过相同的键和没有 sort_seq 的行时，列出的顺序也相同
         let all = acct.messages("wxid_bob", 0, 0).unwrap();
         let pos = |row: &MsgRow| {
             let create_time = row.create_time.unwrap();
@@ -512,7 +517,7 @@ mod tests {
             .unwrap()
             .is_empty());
         for at in [1, 9, 30, 59] {
-            // the 7 rows listed just before row `at`
+            // 列在第 `at` 行之前的 7 行
             let page = acct
                 .messages_from("wxid_bob", 7, PageFrom::After(pos(&all[at])))
                 .unwrap();
@@ -530,8 +535,8 @@ mod tests {
 
     #[test]
     fn offset_pages_are_the_pages_of_reading_every_row() {
-        // sort_seq ties within a table, rows without one (null or 0), negative ones, and rows of the second database
-        // with the very keys of the first one's
+        // 同一张表内相同的 sort_seq、没有 sort_seq 的行（null 或 0）、负的 sort_seq，
+        // 以及第二个数据库中键与第一个数据库完全相同的行
         let row = |i: i64, salt: i64| -> (i64, String, String) {
             let seq = match i {
                 _ if i % 9 == 0 => "null".to_string(),
@@ -584,7 +589,7 @@ mod tests {
             rows.push((7, seq.to_string(), create.to_string()));
             let (_dir, acct) = keyed_account(&format!("unusual-{tag}"), &[rows]);
             let tables = acct.message_tables("wxid_bob").unwrap();
-            // a time that is not an integer is found where it matters: in the page or tied at its ends
+            // 不是整数的时间在影响结果的地方能被发现：在页里，或者与页两端的键相同
             assert_eq!(
                 matches!(
                     acct.offset_position(&tables, 3, 0).unwrap(),
@@ -603,8 +608,8 @@ mod tests {
         }
     }
 
-    /// The rows of one database for [`keyed_account`]: `sort_seq` tied, missing (null or 0), negative or not, and
-    /// `create_time` tied; every database's local ids start at 1, so they share them.
+    /// 给 [`keyed_account`] 的一个数据库的行：`sort_seq` 有相同的、缺失的（null 或 0）、负的和正的，
+    /// `create_time` 也有相同的；每个数据库的本地 ID 都从 1 开始，所以彼此重复。
     fn shard_rows() -> impl proptest::strategy::Strategy<Value = Vec<(i64, String, String)>> {
         use proptest::prelude::*;
         prop::collection::vec((0u8..10, 0i64..6, 0i64..8), 0..30).prop_map(|cells| {
@@ -626,8 +631,7 @@ mod tests {
     proptest::proptest! {
         #![proptest_config(crate::property_cases(24))]
 
-        /// Any page of any offset, and the batches of a cursor, are the rows of reading every row and sorting them
-        /// (#502).
+        /// 任意偏移的任意一页，以及游标读出的每一批，都与读出全部的行再排序得到的结果相同（#502）。
         #[test]
         fn any_page_is_the_page_of_reading_every_row(
             shards in proptest::collection::vec(shard_rows(), 1..=3),

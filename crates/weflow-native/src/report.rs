@@ -1,11 +1,9 @@
-//! Report statistics: the two-person report (`dual_report_stats`) and "my footprint" (`footprint_stats`).
+//! 报告的统计：双人报告（`dual_report_stats`）和足迹（`footprint_stats`）。
 //!
-//! The formulas are WeFlow's desktop app's, taken from the service layer's own cursor fallbacks:
-//! a *conversation* is a run of messages with gaps of at most one hour; replies are measured only for the
-//! account owner; phrases are short exact-match texts, of text messages and of what quotes say
-//! ([`reply_text`]); days and hours are local time.
-//! The annual report's extended statistics (`annual_report_extras`) use the same definitions as the service
-//! layer's cursor fallback, so both paths give the same numbers.
+//! 公式取自桌面版，与业务层自己的游标扫描相同：一轮聊天是相邻消息间隔不超过一小时的一段连续消息；
+//! 只统计账号所有者的回复；常用语是完全相同的短文字，取自文字消息和引用消息的回复（[`reply_text`]）；
+//! 日期和小时按本地时间。年度报告的扩展统计（`annual_report_extras`）与业务层的游标扫描定义相同，
+//! 所以两条路径得出的数字相同。
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -18,21 +16,20 @@ use crate::db::Account;
 use crate::msg::MsgTable;
 use crate::quote::{reply_text, QUOTE};
 
-/// A new conversation (or footprint segment) starts after this many seconds of silence.
+/// 静默超过这么多秒后开始新的一轮聊天（或足迹的新一段）。
 const GAP: i64 = 3600;
-/// Replies slower than this are not counted as replies.
+/// 比这更慢的回复不算回复（秒）。
 const MAX_RESPONSE: i64 = 86_400;
-/// A text message; with [`QUOTE`], the kinds whose text is typed and can be a phrase ([`typed_text`]). A reply is one
-/// only as WeChat 4 keeps it, `(57 << 32) | 49`: the reports read the local type, so a reply kept as 49 with its `<type>`
-/// only in its XML is not (#1263).
+/// 文字消息；与 [`QUOTE`] 一起，是文字由用户输入、可以成为常用语的两种类型（[`typed_text`]）。只有微信 4 保存的
+/// `(57 << 32) | 49` 才算引用回复：报告只读 `local_type`，所以保存成 49、`<type>` 只在 XML 里的回复不算（#1263）。
 const TEXT: i64 = 1;
 const IMAGE: i64 = 3;
 const VOICE: i64 = 34;
 const EMOJI: i64 = 47;
-/// Phrase list sizes (overall, per side).
+/// 常用语列表的长度：总列表取这么多条，每一方的列表取 [`PHRASES_SIDE`] 条。
 const PHRASES_TOP: usize = 50;
 const PHRASES_SIDE: usize = 200;
-/// Accounts that are never "people" in the footprint.
+/// 在足迹里从不算作「人」的账号。
 const NOT_PEOPLE: &[&str] = &[
     "weixin",
     "medianote",
@@ -62,7 +59,7 @@ fn text(row: &Value, key: &str) -> String {
         .to_string()
 }
 
-/// One message of a conversation, reduced to what the reports need.
+/// 会话中的一条消息，只保留报告需要的字段。
 struct Msg {
     time: i64,
     local_id: i64,
@@ -86,8 +83,8 @@ fn range_sql(begin: i64, end: i64) -> String {
     s
 }
 
-/// Phrases of one side: text of 2..=20 chars without `http`, `<` or a leading `[`, counted by exact match.
-/// Kept when seen at least twice, ordered by count then first appearance.
+/// 一方的常用语列表：`texts` 是 2..=20 个字符、不含 `http` 和 `<`、不以 `[` 开头的文字（[`is_phrase`]），
+/// 按完全相同计数，至少出现两次才保留，按次数排序，次数相同时按第一次出现的先后，最多 `cap` 条。
 fn phrase_list(texts: &[&str], cap: usize) -> Value {
     let mut counts: HashMap<&str, (i64, usize)> = HashMap::new();
     for (i, t) in texts.iter().enumerate() {
@@ -112,8 +109,8 @@ fn is_phrase(t: &str) -> bool {
     (2..=20).contains(&n) && !t.contains("http") && !t.contains('<') && !t.starts_with('[')
 }
 
-/// The text a message of `kind` with `content` was typed with: a text message's content, what a quote says. The
-/// SQL reads the content of these two kinds only.
+/// 类型为 `kind`、内容为 `content` 的消息中用户输入的文字：文字消息取内容，引用消息取回复的文字。
+/// SQL 只读这两种类型的内容。
 fn typed_text(kind: i64, content: String) -> String {
     if kind == QUOTE {
         reply_text(&content)
@@ -122,35 +119,34 @@ fn typed_text(kind: i64, content: String) -> String {
     }
 }
 
-/// A message's place in its conversation's order (`sort_seq`, or `create_time * 1000` without one, then
-/// `create_time` and `local_id`), and the message.
+/// 消息在会话顺序中的位置（`sort_seq`，没有时用 `create_time * 1000`；其次是 `create_time` 和 `local_id`），
+/// 以及消息本身。
 type Placed = ((i64, i64, i64), Msg);
 
-/// The longest text [`Account::extras_messages`] decrypts in a page: any longer one is read through SQL.
+/// [`Account::extras_messages`] 在页内解密的文字的最大长度，更长的改用 SQL 读取。
 const LONGEST_TEXT: usize = 4096;
 
-/// What the annual report's extras take from one session's messages (see
-/// [`Account::annual_report_extras`]).
+/// 年度报告的扩展统计从一个会话的消息中取得的数据（见 [`Account::annual_report_extras`]）。
 struct SessionExtras {
-    /// Weekday (Monday first) × hour.
+    /// 星期（周一在前）× 小时。
     heatmap: [[i64; 24]; 7],
     night: i64,
     initiated: i64,
     received: i64,
-    /// How many replies of mine, and their seconds in all.
+    /// 账号所有者的回复次数，以及这些回复总共用的秒数。
     replies: usize,
     reply_seconds: i64,
     in_peak: i64,
-    /// My phrases, in the order of the messages.
+    /// 账号所有者的常用语候选，按消息的顺序。
     phrases: Vec<String>,
-    /// The longest run of consecutive days, its first and last day.
+    /// 最长的连续天数，以及它的第一天和最后一天。
     best: i64,
     best_start: String,
     best_end: String,
 }
 
 impl SessionExtras {
-    /// The sums of a session's messages in their order; `None` when it has none.
+    /// 按顺序汇总一个会话的消息；会话没有消息时为 `None`。
     fn of(msgs: impl Iterator<Item = Msg>, peak_begin: i64, peak_end: i64) -> Option<Self> {
         let mut e = Self {
             heatmap: [[0; 24]; 7],
@@ -217,8 +213,8 @@ impl SessionExtras {
 }
 
 impl Account {
-    /// Chronological messages of a session inside `[begin, end]` from its `tables` (all shards merged); `mine` holds
-    /// the owner's sender ids of each of their databases ([`my_ids_of`](Self::my_ids_of)).
+    /// 会话在 `[begin, end]` 之内的消息，按时间顺序，从它的 `tables` 读出（合并全部分片）；
+    /// `mine` 是各数据库中账号所有者的发送者行号（[`my_ids_of`](Self::my_ids_of)）。
     fn conversation(
         &self,
         tables: &[MsgTable],
@@ -234,7 +230,7 @@ impl Account {
         Ok(rows.into_iter().map(|(_, m)| m).collect())
     }
 
-    /// The messages of one table inside `[begin, end]`, read through SQL, each with its place.
+    /// 用 SQL 读出一张表在 `[begin, end]` 之内的消息，每条带着它的位置。
     fn table_messages(
         &self,
         t: &MsgTable,
@@ -255,7 +251,7 @@ impl Account {
             w = local("%w"),
             table = t.table
         );
-        // turned into `Msg` as they are read (the JSON rows would be several times larger)
+        // 边读边转换成 `Msg`（JSON 行要大好几倍）
         let rows = std::cell::RefCell::new(Vec::<Placed>::new());
         self.query_each(
             &t.db,
@@ -288,11 +284,10 @@ impl Account {
         Ok(rows.into_inner())
     }
 
-    /// [`table_messages`](Self::table_messages) for the annual report's extras, read through the leaf scan: a text is
-    /// kept only where the extras read one, the owner's text messages and quotes whose text may be a phrase
-    /// ([`typed_text`], [`is_phrase`]), and it is read through SQL when the scan does not decrypt it (longer than
-    /// [`LONGEST_TEXT`], stored on overflow pages or compressed). Read through SQL altogether when the scan does not
-    /// read the table.
+    /// 年度报告扩展统计用的 [`table_messages`](Self::table_messages)，经叶页扫描读取。
+    /// 只有扩展统计要读的文字才保留，即账号所有者的、文字可能成为常用语的文字消息和引用消息（[`typed_text`]、
+    /// [`is_phrase`]）；扫描不解密的文字（长于 [`LONGEST_TEXT`]、存在溢出页上或经过压缩）改用 SQL 读取。
+    /// 扫描读不了这张表时全部改用 SQL 读取。
     fn extras_messages(
         &self,
         t: &MsgTable,
@@ -301,19 +296,19 @@ impl Account {
         end: i64,
     ) -> Result<Vec<Placed>> {
         let ids = crate::stats::id_set(mine);
-        /// A message as the scan finds it: its place, type, whether the owner sent it, and its text when kept.
+        /// 扫描找到的一条消息：位置、类型、是否由账号所有者发送，以及保留下来的文字。
         struct Found {
             key: (i64, i64, i64),
             kind: i64,
             mine: bool,
             text: Option<String>,
-            /// The text is to be read through SQL.
+            /// 文字要改用 SQL 读取。
             unread: bool,
         }
         let scanned = self.read_db(
             &t.db,
             |conn| {
-                // the rowid the scan hands over is the `local_id` the order and the SQL read
+                // 扫描给出 rowid，只有 `local_id` 就是 rowid 时，它才是排序和 SQL 所用的 `local_id`
                 let local_id_is_rowid: bool = conn.query_row(
                     "select count(*) = 1 and coalesce(sum(name = 'local_id' and upper(type) = 'INTEGER'), 0) = 1 \
                      from pragma_table_info(?1) where pk > 0",
@@ -356,7 +351,7 @@ impl Account {
                             return;
                         }
                         let mine = sender.is_some_and(|s| ids.contains(&s));
-                        // the content the SQL reads is that of these types themselves, not of a missing type
+                        // 与 SQL 一致：只取这两种类型的内容，类型缺失的行不取
                         let wanted = mine && matches!(*kind, Some(TEXT | QUOTE));
                         let (text, unread) = match (wanted, row.text) {
                             (false, _) | (true, crate::leaf_scan::Text::Null) => (None, false),
@@ -390,7 +385,7 @@ impl Account {
             return self.table_messages(t, mine, begin, end);
         };
         let mut found: Vec<Found> = parts.into_iter().flatten().collect();
-        // the texts the scan left
+        // 扫描留下没读的文字
         let unread: Vec<i64> = found.iter().filter(|f| f.unread).map(|f| f.key.2).collect();
         let mut texts: HashMap<i64, String> = HashMap::new();
         for ids in unread.chunks(500) {
@@ -407,7 +402,7 @@ impl Account {
         for f in found.iter_mut().filter(|f| f.unread) {
             f.text = texts.remove(&f.key.2).map(|c| typed_text(f.kind, c));
         }
-        // the local hour, weekday and day of each quarter of an hour (see `stats::time_groups`)
+        // 每一刻钟的本地小时、星期和日期（见 `stats::time_groups`）
         let quarters: std::collections::BTreeSet<i64> =
             found.iter().map(|f| f.key.1 / 900).collect();
         let list = serde_json::to_string(&quarters.iter().collect::<Vec<_>>())?;
@@ -454,11 +449,15 @@ impl Account {
             .collect())
     }
 
-    /// Extended annual-report statistics over `session_ids` inside `[begin, end]`:
-    /// `heatmap` (weekday Monday-first × hour), `midnight` (messages between 00:00 and 05:59 per session),
-    /// `conversation` (`initiated`/`received` per session), `response` (my replies, only sessions with at least
-    /// 10), `peakDay` (messages per session inside `[peak_begin, peak_end]`), `topPhrases` (my phrases, at most 32)
-    /// and `streak` (the longest run of consecutive days with messages in one session; the first session wins ties).
+    /// `session_ids` 在 `[begin, end]` 之内的年度报告扩展统计：`heatmap`（星期 × 小时，周一在前）、
+    /// `midnight`（每个会话 00:00 到 05:59 的消息数）、`conversation`（每个会话的 `initiated` 和 `received`）、
+    /// `response`（账号所有者的回复，只算至少有 10 次回复的会话）、
+    /// `peakDay`（每个会话在 `[peak_begin, peak_end]` 之内的消息数）、`topPhrases`（账号所有者的常用语，最多 32 条），
+    /// 以及 `streak`（一个会话中连续有消息的最长天数；天数相同时取排在前面的会话）。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn annual_report_extras(
         &self,
         session_ids: &[String],
@@ -467,7 +466,7 @@ impl Account {
         peak_begin: i64,
         peak_end: i64,
     ) -> Result<Value> {
-        /// Sessions need this many replies of mine to take part in the response statistics.
+        /// 会话中账号所有者的回复至少要有这么多次，才计入回复的统计。
         const MIN_REPLIES: usize = 10;
         const PHRASES: usize = 32;
         let mut heatmap = vec![vec![0i64; 24]; 7];
@@ -477,7 +476,7 @@ impl Account {
         let mut streak: Option<(String, i64, String, String)> = None;
         let tables = self.message_tables_of(session_ids)?;
         let mine = self.my_ids_of(tables.iter().flatten())?;
-        // each session read and summed up on a thread of its own: only the sums stay in memory
+        // 每个会话在各自的线程上读取并汇总：内存里只留下汇总的结果
         let sessions: Vec<(&String, &Vec<MsgTable>)> = session_ids.iter().zip(&tables).collect();
         let summed = crate::stats::each_table(&sessions, |(_, ts)| {
             let mut placed: Vec<Placed> = Vec::new();
@@ -507,10 +506,7 @@ impl Account {
                 json!({ "initiated": e.initiated, "received": e.received }),
             );
             if e.replies >= MIN_REPLIES {
-                #[expect(
-                    clippy::cast_precision_loss,
-                    reason = "seconds and a count of replies, far below 2^53"
-                )]
+                #[expect(clippy::cast_precision_loss, reason = "秒数和回复次数，远小于 2^53")]
                 let avg = e.reply_seconds as f64 / e.replies as f64;
                 response.insert((*sid).clone(), json!({ "count": e.replies, "avg": avg }));
             }
@@ -533,7 +529,11 @@ impl Account {
         Ok(out)
     }
 
-    /// Two-person report statistics for `friend` (see the module docs for the definitions).
+    /// 与 `friend` 的双人报告统计（定义见模块的说明）。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn dual_report_stats(&self, friend: &str, begin: i64, end: i64) -> Result<Value> {
         let tables = self.message_tables(friend)?;
         let msgs = self.conversation(&tables, &self.my_ids_of(&tables)?, begin, end)?;
@@ -544,7 +544,7 @@ impl Account {
         let mut responses: Vec<i64> = Vec::new();
         let mut last: Option<(i64, bool)> = None;
         let (mut mine_texts, mut their_texts): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
-        // longest run of consecutive local days
+        // 按本地日期最长的连续天数
         let (mut last_day, mut run, mut run_start) = (None::<i64>, 0i64, String::new());
         let (mut best, mut best_start, mut best_end) = (0i64, String::new(), String::new());
 
@@ -611,7 +611,7 @@ impl Account {
             .collect();
         let mut out = json!({
             "counts": { "total": msgs.len(), "words": words, "image": images, "voice": voices, "emoji": emojis },
-            // empty on purpose: the service layer then tallies the stickers itself
+            // 留空，由业务层自己统计表情
             "emojis": [],
             "phrases": phrase_list(&all_texts, PHRASES_TOP),
             "myPhrases": phrase_list(&mine_texts, PHRASES_SIDE),
@@ -625,8 +625,7 @@ impl Account {
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_precision_loss,
-                reason = "the rounded mean of `i64` values, sums of seconds far below 2^53; float-to-integer `as` \
-                          saturates"
+                reason = "`i64` 值的平均数取整，秒数之和远小于 2^53；浮点数转整数的 `as` 会饱和"
             )]
             let avg = (sum as f64 / responses.len() as f64).round() as i64;
             out["response"] = json!({
@@ -640,7 +639,7 @@ impl Account {
         Ok(out)
     }
 
-    /// Whether a message's `source` XML lists the account owner (or everyone) in `<atuserlist>`.
+    /// 消息的 `source` XML 中 `<atuserlist>` 是否列出了账号所有者（或所有人）。
     fn mentions_me(&self, source: &str) -> bool {
         let lower = source.to_ascii_lowercase();
         let Some(start) = lower.find("<atuserlist") else {
@@ -663,7 +662,16 @@ impl Account {
             .any(|t| t.eq_ignore_ascii_case("notify@all") || self.is_me(t))
     }
 
-    /// `{ summary, private_sessions, private_segments, mentions, mention_groups, diagnostics }`.
+    /// 足迹的统计：`{ summary, private_sessions, private_segments, mentions, mention_groups, diagnostics }`。
+    ///
+    /// `options` 中可以给出 `begin`、`end`（秒）、`mention_limit`、`private_limit`（0 表示不限）、
+    /// `private_session_ids` 和 `group_session_ids`，前四个也接受 `beginTimestamp` 这样的驼峰写法；
+    /// 两个会话列表都没给时，取会话列表中的全部群聊和私聊，私聊不含公众号（`gh_` 开头）
+    /// 和微信的系统会话（`NOT_PEOPLE`）。
+    ///
+    /// # Errors
+    ///
+    /// 读取会话列表或某个消息库失败（打开、解密或查询失败）。
     pub fn footprint_stats(&self, options: &Value) -> Result<Value> {
         let started = Instant::now();
         let pick = |keys: &[&str]| keys.iter().find_map(|k| options.get(*k));
@@ -701,7 +709,7 @@ impl Account {
             }
         }
 
-        // private chats
+        // 私聊
         let mut sessions: Vec<Value> = Vec::new();
         let mut segments: Vec<Value> = Vec::new();
         let private_tables = self.message_tables_of(&private_ids)?;
@@ -778,7 +786,7 @@ impl Account {
             segments.retain(|s| keep.contains(&text(s, "session_id")));
         }
 
-        // group @-mentions
+        // 群里的 @
         let range = range_sql(begin, end);
         let mut mentions: Vec<Value> = Vec::new();
         for (sid, tables) in group_ids.iter().zip(self.message_tables_of(&group_ids)?) {
@@ -789,7 +797,7 @@ impl Account {
                      where m.local_type = {TEXT}{range} and (typeof(m.source) = 'blob' or m.source like '%atuserlist%')",
                     t.table
                 );
-                // matched while reading: compressed sources can only be checked after decoding, which is most rows
+                // 边读边匹配：压缩的 source 只有解码后才能检查，这样的行占大多数
                 let found = std::cell::RefCell::new(Vec::new());
                 self.query_each(&t.db, &sql, &[], || found.borrow_mut().clear(), |r| {
                     let content = text(&r, "message_content");
@@ -831,10 +839,7 @@ impl Account {
             .iter()
             .filter(|s| int(s, "outgoing_count") > 0)
             .count();
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "counts of conversations, far below 2^53"
-        )]
+        #[expect(clippy::cast_precision_loss, reason = "会话的个数，远小于 2^53")]
         let reply_rate = if inbound > 0 {
             replied as f64 / inbound as f64
         } else {
@@ -857,7 +862,7 @@ impl Account {
     }
 }
 
-/// A private-chat segment under construction.
+/// 正在构造的私聊的一段。
 struct Segment {
     index: i64,
     start: i64,
@@ -993,9 +998,9 @@ mod tests {
     #[test]
     fn dual_report_initiative_and_response_follow_the_one_hour_rule() {
         let v = dual().1.dual_report_stats("wxid_pal", 0, 0).unwrap();
-        // conversations start at messages 1 (pal), 5 (me), 7 (me), 9 (pal)
+        // 各轮聊天分别从第 1 条（pal）、第 5 条（我）、第 7 条（我）、第 9 条（pal）开始
         assert_eq!(v["initiative"], json!({"initiated": 2, "received": 2}));
-        // my replies to pal inside a conversation: 10 s, 10 s and 5 s
+        // 同一轮聊天中我对 pal 的回复：10 秒、10 秒和 5 秒
         assert_eq!(
             v["response"],
             json!({"avg": 8, "fastest": 5, "slowest": 10, "count": 3})
@@ -1194,7 +1199,7 @@ mod tests {
                 )
             })
             .collect();
-        // newest first; @Carol is not me; "no at sign here" has no @ in its text
+        // 最新的在前；@Carol 不是我；`no at sign here` 的文字里没有 @
         assert_eq!(
             got,
             [
@@ -1226,13 +1231,13 @@ mod tests {
                 &json!({"begin": T0 + 60, "end": T0 + 150, "mention_limit": 1, "private_limit": 1}),
             )
             .unwrap();
-        // in [T0+60, T0+150] only g1#3 (@all at T0+100) is a mention; g2#1 (T0+50) is before the range
+        // 在 [T0+60, T0+150] 之内只有 g1#3（T0+100 的 @all）是 @；g2#1（T0+50）在范围之前
         assert_eq!(v["mentions"].as_array().unwrap().len(), 1);
         assert_eq!(
             v["diagnostics"]["mention_truncated"], false,
             "the limit was not exceeded"
         );
-        // pal (my reply at T0+60) and quiet (T0+70) are active in range, so a limit of 1 truncates
+        // pal（我在 T0+60 的回复）和 quiet（T0+70）在范围内都有消息，所以上限为 1 时会截断
         assert_eq!(v["private_sessions"].as_array().unwrap().len(), 1);
         assert_eq!(v["diagnostics"]["private_truncated"], true);
         assert_eq!(v["diagnostics"]["truncated"], true);
@@ -1358,7 +1363,7 @@ mod tests {
                 "wxid_pal",
                 vec![
                     MsgSpec::text(1, "wxid_pal", T0, "吃了吗"),
-                    // read by the scan, compressed, and longer than the scan decrypts: the last two through SQL
+                    // 依次是扫描能读的、压缩的和长于扫描解密范围的：后两条改用 SQL 读取
                     quote(2, "wxid_me", 10, "吃过了", "吃了吗"),
                     quote(3, "wxid_me", 20, "吃过了", "吃了吗").compressed(),
                     quote(4, "wxid_me", 30, "吃过了", &long),
@@ -1430,7 +1435,7 @@ mod tests {
             v["conversation"]["wxid_fast"],
             json!({"initiated": 0, "received": 10})
         );
-        // wxid_slow spans 2 days; wxid_fast spans at most 2 (18 hours) and slow is listed first, so slow wins
+        // wxid_slow 跨 2 天；wxid_fast 最多跨 2 天（18 小时），而 slow 排在前面，所以取 slow
         assert_eq!(
             (
                 v["streak"]["sessionId"].clone(),

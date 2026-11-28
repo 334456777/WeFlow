@@ -1,4 +1,4 @@
-//! How many messages there are: per conversation, per day, and the days with messages.
+//! 消息的数量：每个会话的、每天的，以及有消息的日期。
 
 use std::collections::HashMap;
 
@@ -9,16 +9,24 @@ use super::int;
 use super::MsgTable;
 use crate::db::Account;
 
-/// A quarter of an hour in seconds: the step of the local dates of messages.
+/// 一刻钟的秒数：换算消息的本地日期时的步长。
 const QUARTER: i64 = 900;
 
 impl Account {
-    /// The rows of a conversation's message tables together, at most `i32::MAX`.
+    /// 会话的各个消息表的行数之和，最多为 `i32::MAX`。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn message_count(&self, session_id: &str) -> Result<i32> {
         self.count_rows(&self.message_tables(session_id)?)
     }
 
-    /// `{ username: count }`: [`Self::message_count`] of each of `session_ids`.
+    /// `{ username: count }`：`session_ids` 中每个会话的 [`Self::message_count`]。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn session_message_counts(&self, session_ids: &[String]) -> Result<Value> {
         let mut out = Map::new();
         for (id, tables) in session_ids.iter().zip(self.message_tables_of(session_ids)?) {
@@ -27,7 +35,7 @@ impl Account {
         Ok(Value::Object(out))
     }
 
-    /// The rows of `tables` together, at most `i32::MAX`.
+    /// `tables` 的行数之和，最多为 `i32::MAX`。
     fn count_rows(&self, tables: &[MsgTable]) -> Result<i32> {
         let mut total = 0i64;
         for t in tables {
@@ -37,10 +45,13 @@ impl Account {
         Ok(i32::try_from(total).unwrap_or(i32::MAX))
     }
 
-    /// `{ "YYYY-MM-DD": count }` in local time, ascending.
+    /// 按本地时间每天的消息数 `{ "YYYY-MM-DD": count }`，按日期升序。
     ///
-    /// Only the time of each message is read, through `leaf_scan`, which decrypts only the bytes
-    /// of each page that hold it; a table it does not read is counted through SQL.
+    /// 只读取每条消息的时间：经 `leaf_scan` 读取，它只解密每页中存放时间的字节；它读不了的表改用 SQL 统计。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败），包括扫描到的页的 HMAC 校验失败。
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
         let mut counts: std::collections::BTreeMap<String, i64> = Default::default();
         for t in self.message_tables(session_id)? {
@@ -57,9 +68,9 @@ impl Account {
         ))
     }
 
-    /// One table's messages with a positive time counted by local day, the times read by the leaf scan: counted by
-    /// quarter of an hour, and each quarter's local date taken from SQLite's `localtime` (every time zone today is a
-    /// whole number of quarters away from UTC and moves on a quarter). `None` when the scan does not read the table.
+    /// 用 `leaf_scan` 读出的时间，按本地日期统计一张表中时间为正的消息：先按一刻钟计数，每一刻钟的本地日期再由
+    /// SQLite 的 `localtime` 给出（现今每个时区与 UTC 都相差整数个一刻钟，时区的切换也在一刻钟的整点）。
+    /// 扫描读不了这张表时为 `None`。
     fn date_counts_by_scan(&self, t: &MsgTable) -> Result<Option<Vec<(String, i64)>>> {
         let parts = self.read_db(
             &t.db,
@@ -110,7 +121,7 @@ impl Account {
         })
     }
 
-    /// [`date_counts_by_scan`](Self::date_counts_by_scan) through SQL, for a table the scan does not read.
+    /// 用 SQL 做 [`date_counts_by_scan`](Self::date_counts_by_scan) 的统计，用于扫描读不了的表。
     fn date_counts_by_sql(&self, t: &MsgTable) -> Result<Vec<(String, i64)>> {
         let sql = format!(
             "select date(q * {QUARTER}, 'unixepoch', 'localtime') as d, sum(n) as n from \
@@ -125,7 +136,11 @@ impl Account {
             .collect())
     }
 
-    /// `["YYYY-MM-DD", ...]` days that have at least one message, ascending.
+    /// 至少有一条消息的日期 `["YYYY-MM-DD", ...]`，按日期升序。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`session_message_date_counts`](Self::session_message_date_counts)。
     pub fn message_dates(&self, session_id: &str) -> Result<Value> {
         let counts = self.session_message_date_counts(session_id)?;
         Ok(Value::Array(
@@ -148,8 +163,8 @@ mod tests {
     use crate::sqlcipher::PageCipher;
     use rusqlite::Connection;
 
-    /// One conversation in one database whose rows `fill` (SQL run after the schema) writes into table `t`; the
-    /// encrypted file is handed to `damage` before it is written.
+    /// 只有一个数据库、一个会话的账号：`fill`（建表之后运行的 SQL）把行写进表 `t`；
+    /// 加密后的文件写入磁盘之前先交给 `damage`。
     fn scanned_account(
         tag: &str,
         fill: &str,
@@ -175,8 +190,7 @@ mod tests {
         (dir, acct)
     }
 
-    /// 6,000 rows over more than a year: a b-tree of several levels, every 40th row's text long enough to overflow,
-    /// and times that are null, zero or negative.
+    /// 跨一年多的 6000 行：B 树有好几层，每 40 行中有一行的文字长到要用溢出页，有的行时间为 null、0 或负数。
     const MANY_ROWS: &str =
         "with recursive n(i) as (select 1 union all select i + 1 from n where i < 6000)
         insert into \"t\"(local_id, local_type, sort_seq, create_time, message_content)
@@ -205,7 +219,7 @@ mod tests {
 
     #[test]
     fn statistics_from_the_leaf_scan_are_those_of_sql() {
-        // senders of the owner, of others, unknown and none; types null, zero and others
+        // 发送者有账号所有者、其他人、未知的和没有的；类型有 null、0 和其他值
         let fill = format!(
             "{MANY_ROWS}
              insert into Name2Id(rowid, user_name) values (1, 'wxid_me'), (2, 'wxid_bob'), (3, 'wxid_carol');
@@ -237,8 +251,8 @@ mod tests {
 
     #[test]
     fn annual_extras_from_the_leaf_scan_are_those_of_sql() {
-        // the owner's texts: repeated phrases, ones padded with spaces, long ones, ones on overflow pages, a
-        // compressed-looking blob, a null; texts of others and of other types; a missing type
+        // 账号所有者的文字：重复的短语、前后有空格的、长的、在溢出页上的、像压缩数据的 blob、null；
+        // 其他人的文字和其他类型的消息；缺少类型的行
         let fill = format!(
             "{MANY_ROWS}
              insert into Name2Id(rowid, user_name) values (1, 'wxid_me'), (2, 'wxid_bob');
@@ -295,13 +309,13 @@ mod tests {
 
     #[test]
     fn a_leaf_page_damaged_on_disk_fails_the_date_counts() {
-        // the last table leaf page of the file is one of the conversation's: its rows were written last
+        // 文件中最后一个表叶页属于这个会话：它的行是最后写入的
         let (_dir, acct) = scanned_account("damaged", MANY_ROWS, |plain, file| {
             let leaf = (0..plain.len() / crate::sqlcipher::PAGE_SIZE)
                 .rev()
                 .find(|&p| p > 0 && plain[p * crate::sqlcipher::PAGE_SIZE] == 13)
                 .expect("a leaf page");
-            // a byte of the page well past the cells' first bytes the scan decrypts
+            // 改动页内远在扫描所解密的单元格开头字节之后的一个字节
             file[leaf * crate::sqlcipher::PAGE_SIZE + 3000] ^= 0x40;
         });
         let err = acct.session_message_date_counts("wxid_bob").unwrap_err();
@@ -337,7 +351,7 @@ mod tests {
     fn days_are_counted_as_the_local_date_of_each_message() {
         let dir = TestDir::new("weflow-msg-days");
         std::fs::create_dir_all(dir.join("message")).unwrap();
-        // a message every 6 min 13 s for ten days, so midnights fall between the quarters' own messages
+        // 十天里每 6 分 13 秒一条消息，每个午夜前后的一刻钟里都有消息
         let texts: Vec<String> = (0..2400).map(|k| format!("m{k}")).collect();
         let msgs: Vec<(i64, i64, i64, i64, &str)> = texts
             .iter()

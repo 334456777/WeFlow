@@ -1,14 +1,11 @@
-//! Time the two costs of reading an encrypted database: deriving a database's keys (PBKDF2-HMAC-SHA512, 256000
-//! rounds, once per database) and decrypting a page (HMAC-SHA512 check, then AES-256-CBC), on synthetic pages; no
-//! account is read. Run it in release to compare crypto crate versions (#371).
-//! Usage: `cipher_bench [pages=20000] [rounds=5]`
-#![expect(
-    clippy::expect_used,
-    reason = "probe code reports failure by panicking"
-)]
+//! 测量读取加密数据库的两项开销：派生一个数据库的页密钥（PBKDF2-HMAC-SHA512，256000 轮，每个数据库一次），
+//! 以及解密一页（先校验 HMAC-SHA512，再 AES-256-CBC 解密）。用合成的页测量，不读任何账号。
+//! 用 release 构建运行，比较加密 crate 的不同版本（#371）。
+//! 用法：`cipher_bench [pages=20000] [rounds=5]`
+#![expect(clippy::expect_used, reason = "探针用 panic 报告失败")]
 #![expect(
     clippy::cast_possible_truncation,
-    reason = "probe and benchmark data are small values that fit"
+    reason = "探针和基准的数据都是放得下的小值"
 )]
 use std::hint::black_box;
 use std::time::Instant;
@@ -50,7 +47,7 @@ fn main() {
         v.sort_by(f64::total_cmp);
         v[v.len() / 2]
     };
-    #[expect(clippy::cast_precision_loss, reason = "a page is 4096 bytes")]
+    #[expect(clippy::cast_precision_loss, reason = "一页是 4096 字节")]
     let mb = f64::from(pages) * PAGE_SIZE as f64 / 1e6;
     let d = median(&mut decrypt);
     println!(

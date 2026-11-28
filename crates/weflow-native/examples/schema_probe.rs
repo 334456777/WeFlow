@@ -1,9 +1,6 @@
-//! Print table/column structure and row counts of one database (never row contents).
-//! Usage: `schema_probe <account_dir> <key_file> <db path relative to db_storage>`
-#![expect(
-    clippy::unwrap_used,
-    reason = "probe code reports failure by panicking"
-)]
+//! 打印一个数据库的表结构和各表的行数（从不打印行的内容）。
+//! 用法：`schema_probe <account_dir> <key_file> <db path relative to db_storage>`
+#![expect(clippy::unwrap_used, reason = "探针用 panic 报告失败")]
 use weflow_native::db::Account;
 
 fn main() -> anyhow::Result<()> {

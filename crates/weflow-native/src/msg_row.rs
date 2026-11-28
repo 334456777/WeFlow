@@ -1,7 +1,7 @@
-//! The rows of a conversation's `Msg_<md5>` tables (#257, #490), as [`MsgRow`]s.
+//! 会话的 `Msg_<md5>` 表中的行（#257、#490），读成 [`MsgRow`]。
 //!
-//! The paging, cursor and merge code of [`msg`](crate::msg) reads them with the columns typed, the content inflated
-//! and decoded once, the sender resolved, and the database named by its shard number (#491, #492).
+//! [`msg`](crate::msg) 的分页、游标和合并代码读到的行：各列已按类型取出，内容只解压、解码一次，发送者已换成用户名，
+//! 所在的数据库用分片号表示（#491、#492）。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -10,35 +10,35 @@ use rusqlite::Row;
 
 use crate::msg::{shard_of, MsgPos, MsgTable};
 
-/// Which columns of a message row a query reads; the others come back empty.
+/// 查询读取消息行的哪些列；其余的列读出来为空。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Columns {
-    /// Every column.
+    /// 全部的列。
     All,
-    /// All but `source`, which exports do not use.
+    /// 除 `source` 以外的列，导出用不到 `source`。
     NoSource,
-    /// Neither `source` nor `packed_info_data`, which bulk scans do not read.
+    /// 不含 `source` 和 `packed_info_data`，批量扫描不读这两列。
     Lite,
 }
 
-/// Cells of an integer column (`local_id`, `create_time`, `sort_seq`, …) holding another type: read as absent. WeChat
-/// never writes one; a count above zero says the database is not what the reader expects.
+/// 整数列（`local_id`、`create_time`、`sort_seq` 等）里存了其他类型的单元格的个数，这些单元格读作缺失。
+/// 微信不会写出这样的单元格；计数大于零说明数据库与读取的代码预期的不一样。
 static ODD_CELLS: AtomicU64 = AtomicU64::new(0);
 
-/// How many cells of integer columns held another type since the program started (see [`MsgRow`]).
+/// 程序启动以来，整数列中存了其他类型的单元格的个数（见 [`MsgRow`]）。
 pub fn odd_cell_count() -> u64 {
     ODD_CELLS.load(Ordering::Relaxed)
 }
 
-/// What a row is read with besides its columns.
+/// 读一行时除了各列之外还要用到的信息。
 pub(crate) struct RowContext<'a> {
     pub(crate) table: &'a MsgTable,
-    /// Whether a sender is the account's owner.
+    /// 判断一个发送者是不是账号所有者。
     pub(crate) is_me: &'a dyn Fn(&str) -> bool,
 }
 
 fn sort_key(sort_seq: i64, create_time: i64, local_id: i64) -> (i64, i64, i64) {
-    // a time too far off for milliseconds stays at the end it is at, as SQLite's REAL past an overflow does
+    // 换算成毫秒会溢出的时间饱和到它所在的一端，与 SQLite 溢出成 REAL 后的排序一致
     let seq = if sort_seq == 0 {
         create_time.saturating_mul(1000)
     } else {
@@ -47,36 +47,36 @@ fn sort_key(sort_seq: i64, create_time: i64, local_id: i64) -> (i64, i64, i64) {
     (seq, create_time, local_id)
 }
 
-/// A message row (see the module).
+/// 一条消息行（见模块的说明）。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MsgRow {
-    /// The row's id in its table; unique within its message database, not across them.
+    /// 本地 ID：行在所在表中的 ID，只在所在的分片内唯一，不同分片之间可能相同。
     pub local_id: i64,
-    /// WeChat's id of the message; none when the row has none.
+    /// 服务器 ID：微信服务器给消息的 ID；行里没有时为 `None`。
     pub server_id: Option<i64>,
-    /// The type, with the sub-type of an app message in the high 32 bits (`(sub << 32) | 49`).
+    /// 消息类型，app 消息的子类型在高 32 位（`(sub << 32) | 49`）。
     pub local_type: i64,
-    /// The place in the chat's order; WeChat leaves it null or 0 on some rows.
+    /// 消息在聊天窗口中的排序位置；微信在有些行里不填（null 或 0）。
     pub sort_seq: Option<i64>,
-    /// Unix seconds.
+    /// 发送时间，Unix 时间戳（秒）。
     pub create_time: Option<i64>,
-    /// WeChat's `status` column.
+    /// 微信的 `status` 列。
     pub status: Option<i64>,
-    /// The sender's username; none when `Name2Id` has no row for it.
+    /// 发送者的用户名；`Name2Id` 里没有对应的行时为 `None`。
     pub sender: Option<String>,
-    /// Whether the account's owner sent it.
+    /// 是否由账号所有者发送。
     pub is_send: bool,
-    /// `compress_content` when it holds anything, else `message_content`: inflated (zstd) and decoded as text.
+    /// `compress_content` 不为空时取它，否则取 `message_content`；是 zstd 数据时先解压，再解码成文字。
     pub content: String,
-    /// The `msgsource` XML; left out of lite rows.
+    /// `msgsource` 的 XML；按 [`Columns::NoSource`] 或 [`Columns::Lite`] 读的行不含它。
     pub source: Option<String>,
-    /// `packed_info_data` as stored; left out of lite rows.
+    /// 原样保存的 `packed_info_data`；按 [`Columns::Lite`] 读的行不含它。
     pub packed_info: Option<Vec<u8>>,
-    /// The number of the message database holding the row (see [`shard_name`](crate::msg::shard_name)).
+    /// 行所在消息库的分片号（见 [`shard_name`](crate::msg::shard_name)）。
     pub shard: u32,
 }
 
-// one per message read: its size changes only on purpose (#505)
+// 每读一条消息就有一个：固定它的大小，只在有意时改变（#505）
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(size_of::<MsgRow>() == 184);
 
@@ -101,23 +101,21 @@ fn int_cell(v: ValueRef<'_>) -> Option<i64> {
     }
 }
 
-/// zstd frames start with these bytes (`0xFD2FB528`, little-endian).
+/// zstd 帧开头的字节（小端的 `0xFD2FB528`）。
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 
-/// Largest size a zstd frame may declare for [`inflate`] to reserve it up front.
+/// zstd 帧声明的大小不超过这个值时，[`inflate`] 才按声明的大小预先分配空间。
 const INFLATE_RESERVE_MAX: u64 = 16 << 20;
 
 thread_local! {
-    /// A decompression context kept for the next message, instead of a context and a read buffer made and freed
-    /// for each one (`zstd::stream::decode_all`).
+    /// 留给下一条消息复用的解压上下文，不像 `zstd::stream::decode_all` 那样每条消息新建、释放一个上下文和读缓冲区。
     static DCTX: std::cell::RefCell<Option<zstd::zstd_safe::DCtx<'static>>> =
         const { std::cell::RefCell::new(None) };
 }
 
-/// `bytes` (starting with [`ZSTD_MAGIC`]) inflated, or `None` when they are not valid zstd.
+/// 解压 `bytes`（以 [`ZSTD_MAGIC`] 开头）；不是有效的 zstd 数据时为 `None`。
 fn inflate(bytes: &[u8]) -> Option<Vec<u8>> {
-    // input that does not end exactly where a frame ends goes through `decode_all`, which handles errors and
-    // truncation
+    // 输入不恰好在某一帧的结尾结束时交给 `decode_all`，由它处理错误和截断
     DCTX.with(|slot| {
         inflate_with(
             slot.borrow_mut()
@@ -128,7 +126,7 @@ fn inflate(bytes: &[u8]) -> Option<Vec<u8>> {
     .or_else(|| zstd::stream::decode_all(bytes).ok())
 }
 
-/// Every frame of `bytes` inflated with `dctx`; `None` unless the input ends right where a frame does.
+/// 用 `dctx` 解压 `bytes` 的每一帧；输入不恰好在某一帧的结尾结束时为 `None`。
 fn inflate_with(dctx: &mut zstd::zstd_safe::DCtx<'static>, bytes: &[u8]) -> Option<Vec<u8>> {
     use zstd::zstd_safe::{InBuffer, OutBuffer, ResetDirective};
     dctx.reset(ResetDirective::SessionOnly).ok()?;
@@ -153,13 +151,13 @@ fn inflate_with(dctx: &mut zstd::zstd_safe::DCtx<'static>, bytes: &[u8]) -> Opti
             return Some(out);
         }
         if input.pos() == read && out.len() == written && out.len() < out.capacity() {
-            return None; // no progress with room to spare: the input ends inside a frame
+            return None; // 输出还有空间却没有进展：输入在帧的中间结束
         }
     }
 }
 
-/// Bytes as text: inflated first when they are a zstd frame, then UTF-8. Bytes that are not UTF-8 lose the invalid
-/// sequences when they are under a fifth of the characters, and are otherwise read one byte a character (Latin-1).
+/// 把字节读成文字：是 zstd 帧时先解压，再按 UTF-8 解码。不是有效的 UTF-8 时，
+/// 无效的序列少于字符数的五分之一就删掉这些序列，否则每个字节读作一个字符（Latin-1）。
 fn bytes_to_text(bytes: &[u8]) -> String {
     let inflated = if bytes.starts_with(&ZSTD_MAGIC) {
         inflate(bytes)
@@ -167,7 +165,7 @@ fn bytes_to_text(bytes: &[u8]) -> String {
         None
     };
     let inflated = match inflated.map(String::from_utf8) {
-        // the inflated buffer becomes the text as it is
+        // 解压出的缓冲区直接作为文字，不再复制
         Some(Ok(text)) => return text,
         Some(Err(e)) => Some(e.into_bytes()),
         None => None,
@@ -178,10 +176,7 @@ fn bytes_to_text(bytes: &[u8]) -> String {
     }
     let lossy = String::from_utf8_lossy(bytes);
     let replaced = lossy.chars().filter(|c| *c == '\u{FFFD}').count();
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "character counts of one message, far below 2^53"
-    )]
+    #[expect(clippy::cast_precision_loss, reason = "一条消息的字符数，远小于 2^53")]
     let mostly_text = (replaced as f64) < lossy.chars().count() as f64 * 0.2;
     if mostly_text {
         lossy.replace('\u{FFFD}', "")
@@ -200,7 +195,7 @@ fn text_cell(v: ValueRef<'_>) -> Option<String> {
 }
 
 impl MsgRow {
-    /// Where the row is in its conversation's order, to page from.
+    /// 行在会话顺序中的位置，用作翻页的起点。
     pub fn pos(&self) -> MsgPos {
         let (sort_seq, create_time, local_id) = self.key();
         MsgPos {
@@ -211,8 +206,7 @@ impl MsgRow {
         }
     }
 
-    /// The select list over the message table `m` and `Name2Id` `n`, joined on the sender, for `which` columns: lite
-    /// rows leave out the source and the packed info, which bulk scans do not read.
+    /// 读取 `which` 指定的列时的 select 列表：消息表为 `m`，按发送者连接的 `Name2Id` 为 `n`，不读的列写成 `null`。
     pub(crate) fn columns(which: Columns) -> &'static str {
         match which {
             Columns::All => MSG_COLUMNS,
@@ -221,7 +215,7 @@ impl MsgRow {
         }
     }
 
-    /// The row at `row`, whose columns are [`columns`](Self::columns).
+    /// 读出 `row` 这一行，它的列是 [`columns`](Self::columns) 给出的列表。
     pub(crate) fn read(row: &Row<'_>, ctx: &RowContext<'_>) -> rusqlite::Result<Self> {
         let sender = text_cell(row.get_ref(10)?);
         let content = match text_cell(row.get_ref(6)?) {
@@ -248,8 +242,8 @@ impl MsgRow {
         })
     }
 
-    /// `(sort_seq, create_time, local_id)` in the chat's order: a row without a `sort_seq` (null or 0) is placed by
-    /// `create_time * 1000`, and a missing integer counts as 0.
+    /// 聊天窗口中的排序键 `(sort_seq, create_time, local_id)`：没有 `sort_seq`（null 或 0）的行按
+    /// `create_time * 1000` 排，缺失的整数算作 0。
     pub(crate) fn key(&self) -> (i64, i64, i64) {
         sort_key(
             self.sort_seq.unwrap_or(0),
@@ -258,7 +252,7 @@ impl MsgRow {
         )
     }
 
-    /// `(local_id, sort_seq)` as stored, a missing one 0: how WeChat's search index names a message.
+    /// 按原值取的 `(local_id, sort_seq)`，缺失时为 0：微信的搜索索引用它标识一条消息。
     pub(crate) fn index_key(&self) -> (i64, i64) {
         (self.local_id, self.sort_seq.unwrap_or(0))
     }
@@ -274,14 +268,14 @@ mod tests {
         let packed = zstd::stream::encode_all("<msg>x</msg>".as_bytes(), 3).unwrap();
         assert!(packed.starts_with(&ZSTD_MAGIC));
         assert_eq!(bytes_to_text(&packed), "<msg>x</msg>");
-        // a stray invalid byte in text is dropped; bytes that are mostly not UTF-8 are read one a character
+        // 文字里个别的无效字节被删掉；大部分不是 UTF-8 的字节每个读作一个字符
         assert_eq!(bytes_to_text(b"abcdefghij\xff"), "abcdefghij");
         assert_eq!(bytes_to_text(&[0xff, 0xfe, 0x41]), "\u{ff}\u{fe}A");
     }
 
     #[test]
     fn inflating_with_a_kept_context_gives_what_streaming_gives() {
-        // the reference: every frame streamed through `decode_all`, a context made for each message
+        // 参照：每一帧都经 `decode_all` 流式解压，每条消息新建一个上下文
         let streamed = |bytes: &[u8]| -> String {
             let inflated = zstd::stream::decode_all(bytes).ok();
             let bytes = inflated.as_deref().unwrap_or(bytes);
@@ -323,7 +317,7 @@ mod tests {
         ] {
             assert_eq!(bytes_to_text(bytes), streamed(bytes));
         }
-        // whole frames go through the kept context; the rest fall back to streaming
+        // 完整的帧用保留的上下文解压，其余的退回流式解压
         let mut dctx = zstd::zstd_safe::DCtx::create();
         for whole in [&declared, &undeclared, &two_frames] {
             assert!(inflate_with(&mut dctx, whole).is_some());
@@ -342,13 +336,13 @@ mod tests {
     }
 }
 
-/// Proofs of `cargo kani` (#501).
+/// `cargo kani` 的证明（#501）。
 #[cfg(kani)]
 mod proofs {
     use super::*;
 
-    /// A message without a `sort_seq` (0) is placed by its `create_time`, whatever the times: an earlier one sorts
-    /// first, without an overflow; one with a `sort_seq` is placed by it.
+    /// 不论时间是多少，没有 `sort_seq`（为 0）的消息都按 `create_time` 排：早的排在前面，不会溢出；
+    /// 有 `sort_seq` 的消息按 `sort_seq` 排。
     #[kani::proof]
     fn messages_without_a_sort_seq_are_in_time_order() {
         let (t1, t2, a, b): (i64, i64, i64, i64) = kani::any();

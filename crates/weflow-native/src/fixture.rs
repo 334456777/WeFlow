@@ -1,19 +1,15 @@
-//! Builds a synthetic WeChat account on disk (real encrypted SQLCipher databases) for tests.
+//! 为测试在磁盘上生成合成账号（真正加密的 SQLCipher 数据库）。
 //!
-//! Enabled by the `test-fixtures` feature (and always for this crate's own tests). The databases use the
-//! real table layouts, so everything above the file format — table lookup, sender resolution, contacts,
-//! groups — is exercised exactly as it is on a real account.
+//! 由 `test-fixtures` feature 启用（本 crate 自己的测试总是启用）。数据库用真实的表结构，
+//! 所以文件格式之上的一切（查表、解析发送者、联系人、群）都与在真实账号上一样运行。
 //!
 //! # Panics
 //!
-//! The builders panic when they cannot write what they build, which fails the test that asked for it.
-#![expect(
-    clippy::unwrap_used,
-    reason = "test fixtures fail the test by panicking"
-)]
+//! 生成器写不出要生成的内容时 panic，让请求它的测试失败。
+#![expect(clippy::unwrap_used, reason = "测试数据的生成器用 panic 让测试失败")]
 #![expect(
     clippy::cast_possible_wrap,
-    reason = "a fixture's rows, ids and counts number in the hundreds"
+    reason = "合成账号的行、ID 和计数都只有几百"
 )]
 
 use std::path::{Path, PathBuf};
@@ -28,36 +24,31 @@ use crate::sqlcipher::PageCipher;
 
 pub mod bench;
 
-/// A directory of one test's own, `<parent>/<prefix>-<random>`, removed with everything in it when dropped.
+/// 一个测试自己的目录 `<parent>/<prefix>-<random>`，丢弃时连同其中的一切删除。
 ///
-/// It is removed also when the test panics. Set `WEFLOW_KEEP_TEST_DIRS` to keep the directories for a look
-/// afterwards.
+/// 测试 panic 时也会删除。设了 `WEFLOW_KEEP_TEST_DIRS` 时保留这些目录，供之后查看。
 ///
-/// Hold it for as long as anything reads the directory, and drop it after what has files open there: a helper that
-/// returns it next to an account puts it first, `(TestDir, account)`, since the later binding of a pattern is dropped
-/// first.
+/// 只要还有东西在读这个目录就要持有它，并在打开了其中文件的对象之后再丢弃：与账号一起返回它的辅助函数把它放在前面，
+/// 写成 `(TestDir, account)`，因为模式中后绑定的变量先丢弃。
 #[derive(Debug)]
 pub struct TestDir(tempfile::TempDir);
 
 impl TestDir {
-    /// Creates the directory under the system temp directory.
+    /// 在系统的临时目录下建这个目录。
     ///
     /// # Panics
     ///
-    /// If the directory cannot be created.
+    /// 无法建目录时。
     pub fn new(prefix: &str) -> Self {
         Self::new_in(&std::env::temp_dir(), prefix)
     }
 
-    /// Creates the directory under `parent`, which must exist.
+    /// 在 `parent` 下建这个目录，`parent` 必须已经存在。
     ///
     /// # Panics
     ///
-    /// If the directory cannot be created.
-    #[expect(
-        clippy::expect_used,
-        reason = "a test that has no directory fails by panicking"
-    )]
+    /// 无法建目录时。
+    #[expect(clippy::expect_used, reason = "拿不到目录的测试以 panic 失败")]
     pub fn new_in(parent: &Path, prefix: &str) -> Self {
         let dir = tempfile::Builder::new()
             .prefix(&format!("{prefix}-"))
@@ -67,7 +58,7 @@ impl TestDir {
         Self(dir)
     }
 
-    /// The directory.
+    /// 目录的路径。
     pub fn path(&self) -> &Path {
         self.0.path()
     }
@@ -87,48 +78,48 @@ impl AsRef<Path> for TestDir {
     }
 }
 
-/// One `SessionTable` row for [`Fixture::session_db`].
+/// [`Fixture::session_db`] 用的 `SessionTable` 中的一行。
 #[derive(Debug)]
 pub struct SessionSpec<'a> {
-    /// The conversation.
+    /// 会话的用户名。
     pub username: &'a str,
-    /// The last message as the list shows it.
+    /// 会话列表上显示的最后一条消息。
     pub summary: &'a str,
-    /// Its time, also the row's `sort_timestamp`.
+    /// 最后一条消息的时间，也是这一行的 `sort_timestamp`。
     pub last_timestamp: i64,
-    /// `unread_count`.
+    /// 未读数 `unread_count`。
     pub unread: i64,
-    /// The last message's type.
+    /// 最后一条消息的类型。
     pub last_msg_type: i64,
 }
 
-/// One `contact` row for [`Fixture::contact_db`]; [`ContactSpec::new`] leaves the rest empty.
+/// [`Fixture::contact_db`] 用的 `contact` 中的一行；[`ContactSpec::new`] 把其余各列留空。
 #[derive(Clone, Debug)]
 pub struct ContactSpec<'a> {
-    /// The wxid.
+    /// 联系人的 wxid。
     pub username: &'a str,
-    /// WeChat's `local_type`: 1 for a friend, 0 with a pinyin for a former friend.
+    /// 微信的 `local_type`：好友为 1，曾经的好友为 0 并带拼音。
     pub local_type: i64,
-    /// The nickname.
+    /// 昵称。
     pub nick_name: &'a str,
-    /// The remark.
+    /// 备注。
     pub remark: &'a str,
-    /// The WeChat ID.
+    /// 微信号。
     pub alias: &'a str,
-    /// The avatar's address, as `big_head_url`.
+    /// 头像地址，写进 `big_head_url`。
     pub avatar: &'a str,
-    /// The `flag` bits (folded, muted, pinned…).
+    /// `flag` 的各位（折叠、免打扰、置顶等）。
     pub flag: i64,
-    /// `chat_room_notify`: 1 when a group's notifications are off.
+    /// `chat_room_notify`：群关闭了通知时为 1。
     pub chat_room_notify: i64,
-    /// The `description` column.
+    /// `description` 列。
     pub description: &'a str,
-    /// Raw protobuf bytes of the `extra_buffer` column (signature, region, label ids).
+    /// `extra_buffer` 列的原始 protobuf 字节（签名、地区、标签 ID）。
     pub extra: &'a [u8],
 }
 
 impl<'a> ContactSpec<'a> {
-    /// A contact with only a username, a type and a nickname.
+    /// 只有用户名、类型和昵称的联系人。
     pub const fn new(username: &'a str, local_type: i64, nick_name: &'a str) -> Self {
         Self {
             username,
@@ -145,42 +136,42 @@ impl<'a> ContactSpec<'a> {
     }
 }
 
-/// One group for [`Fixture::contact_db`]: its `chat_room` row and its members.
+/// [`Fixture::contact_db`] 用的一个群：它在 `chat_room` 中的行和它的成员。
 #[derive(Debug)]
 pub struct RoomSpec<'a> {
-    /// The group, `…@chatroom`.
+    /// 群的用户名 `…@chatroom`。
     pub username: &'a str,
-    /// Its owner's wxid.
+    /// 群主的 wxid。
     pub owner: &'a str,
-    /// (member username, group nickname or "" for none)
+    /// 每个成员的（用户名，群昵称；没有群昵称时为 ""）。
     pub members: &'a [(&'a str, &'a str)],
 }
 
-/// One message row; [`MsgSpec::text`] makes a text message, the `with_*` methods change it.
+/// 一行消息；[`MsgSpec::text`] 生成文字消息，`with_*` 等方法修改它。
 #[derive(Clone, Debug)]
 pub struct MsgSpec {
-    /// The row's id in its table.
+    /// 行在所在表中的 ID。
     pub local_id: i64,
-    /// WeChat's id of the message.
+    /// 微信给消息的 ID（服务器 ID）。
     pub server_id: i64,
-    /// WeChat's type of the message.
+    /// 微信的消息类型。
     pub local_type: i64,
-    /// Username of the sender; empty for none.
+    /// 发送者的用户名；没有发送者时为空。
     pub sender: &'static str,
-    /// When it was sent, in Unix seconds.
+    /// 发送时间，Unix 秒。
     pub create_time: i64,
-    /// The text, or the XML of a message that is not text.
+    /// 文字，或者非文字消息的 XML。
     pub content: String,
-    /// Store `content` as a zstd blob, as WCDB does for some message types.
+    /// 把 `content` 存成 zstd 压缩的 blob，与 WCDB 对部分消息类型的做法一样。
     pub compressed: bool,
-    /// The message `source` column (msgsource XML), e.g. an `<atuserlist>`.
+    /// 消息的 `source` 列（msgsource XML），如 `<atuserlist>`。
     pub source: String,
-    /// `sort_seq` when it is not WeChat's usual `create_time * 1000`.
+    /// 不是微信通常的 `create_time * 1000` 时的 `sort_seq`。
     pub sort_seq: Option<i64>,
 }
 
 impl MsgSpec {
-    /// A text message with the server id `1000 + local_id`.
+    /// 服务器 ID 为 `1000 + local_id` 的文字消息。
     pub fn text(local_id: i64, sender: &'static str, create_time: i64, content: &str) -> Self {
         Self {
             local_id,
@@ -194,63 +185,63 @@ impl MsgSpec {
             sort_seq: None,
         }
     }
-    /// With this `sort_seq`.
+    /// 改用这个 `sort_seq`。
     pub fn with_sort_seq(mut self, sort_seq: i64) -> Self {
         self.sort_seq = Some(sort_seq);
         self
     }
-    /// With this `source`.
+    /// 改用这个 `source`。
     pub fn with_source(mut self, source: &str) -> Self {
         self.source = source.to_string();
         self
     }
-    /// Of this type.
+    /// 改成这个类型。
     pub fn of_type(mut self, local_type: i64) -> Self {
         self.local_type = local_type;
         self
     }
-    /// With its content stored compressed.
+    /// 内容改为压缩存储。
     pub fn compressed(mut self) -> Self {
         self.compressed = true;
         self
     }
 }
 
-/// One row of WeChat's full-text index, for [`Fixture::message_fts_db`].
+/// [`Fixture::message_fts_db`] 用的微信全文索引中的一行。
 #[derive(Clone, Debug)]
 pub struct FtsSpec<'a> {
-    /// The text indexed.
+    /// 被索引的文字。
     pub text: String,
-    /// The message's id in its table.
+    /// 消息在所在表中的 ID。
     pub local_id: i64,
-    /// The message's `sort_seq`.
+    /// 消息的 `sort_seq`。
     pub sort_seq: i64,
-    /// The message's type.
+    /// 消息的类型。
     pub local_type: i64,
-    /// The conversation.
+    /// 会话的用户名。
     pub session: &'a str,
-    /// When it was sent.
+    /// 发送时间。
     pub create_time: i64,
 }
 
-/// One Moments post for [`Fixture::sns_db`].
+/// [`Fixture::sns_db`] 用的一条朋友圈动态。
 #[derive(Debug)]
 pub struct SnsPostSpec<'a> {
-    /// Stored as-is (a negative value stands for an unsigned snowflake above `i64::MAX`).
+    /// 原样存储的 `tid`（负数表示大于 `i64::MAX` 的无符号雪花 ID）。
     pub tid: i64,
-    /// The poster.
+    /// 发布者。
     pub user: &'a str,
-    /// When it was posted.
+    /// 发布时间。
     pub create_time: i64,
-    /// Its text.
+    /// 动态的文字。
     pub desc: &'a str,
-    /// Its `<ContentObject><type>`.
+    /// 动态的 `<ContentObject><type>`。
     pub kind: i64,
-    /// How many pictures it has.
+    /// 图片的张数。
     pub media: usize,
-    /// (username, nickname) of each liker
+    /// 每个点赞者的（用户名，昵称）。
     pub likes: &'a [(&'a str, &'a str)],
-    /// Raw XML appended inside `<TimelineObject>` (location, comment list, ...).
+    /// 追加在 `<TimelineObject>` 里的原始 XML（位置、评论列表等）。
     pub extra: &'a str,
 }
 
@@ -281,58 +272,58 @@ impl SnsPostSpec<'_> {
     }
 }
 
-/// One `VoiceInfo` row for [`Fixture::media_db`].
+/// [`Fixture::media_db`] 用的 `VoiceInfo` 中的一行。
 #[derive(Debug)]
 pub struct VoiceSpec<'a> {
-    /// The conversation's username.
+    /// 会话的用户名。
     pub chat: &'a str,
-    /// When the message was sent.
+    /// 消息的发送时间。
     pub create_time: i64,
-    /// The message's id in its table.
+    /// 消息在所在表中的 ID。
     pub local_id: i64,
-    /// WeChat's id of the message.
+    /// 微信给消息的 ID（服务器 ID）。
     pub svr_id: i64,
-    /// The audio, or one fragment of it.
+    /// 语音数据，或者其中的一个片段。
     pub data: Vec<u8>,
-    /// `data_index`: the fragment's place.
+    /// `data_index`：片段的位置。
     pub index: &'a str,
 }
 
-/// One own-sticker row for [`Fixture::emoticon_db`].
+/// [`Fixture::emoticon_db`] 用的一行用户自己的表情。
 #[derive(Clone, Copy, Debug)]
 pub struct EmoticonSpec {
-    /// The sticker's MD5.
+    /// 表情的 MD5。
     pub md5: &'static str,
-    /// Its caption.
+    /// 表情的说明文字。
     pub caption: &'static str,
-    /// Its `cdn_url`.
+    /// 表情的 `cdn_url`。
     pub cdn_url: &'static str,
-    /// Its `extern_url`.
+    /// 表情的 `extern_url`。
     pub extern_url: &'static str,
 }
 
-/// One row of `hardlink.db`: `kind` 1 = file, 2 = image, 3 = video, 4 = directory entry.
-/// Images live in `<dir1>/<dir2>/Img/`, videos in `<dir1>/`, files in `<dir1>/`.
+/// `hardlink.db` 中的一行：`kind` 为 1 是文件，2 是图片，3 是视频，4 是目录项。
+/// 图片在 `<dir1>/<dir2>/Img/` 下，视频和文件在 `<dir1>/` 下。
 #[derive(Clone, Debug)]
 pub struct HardlinkSpec<'a> {
-    /// The message's MD5 of the file.
+    /// 消息中记录的文件 MD5。
     pub md5: &'a str,
-    /// The file's name.
+    /// 文件名。
     pub file_name: &'a str,
-    /// What it is: 1 file, 2 image, 3 video, 4 directory entry.
+    /// 种类：1 文件，2 图片，3 视频，4 目录项。
     pub kind: i64,
-    /// The first folder's name.
+    /// 第一层文件夹的名称。
     pub dir1: &'a str,
-    /// The second folder's name; empty for none.
+    /// 第二层文件夹的名称；没有时为空。
     pub dir2: &'a str,
-    /// The file's size.
+    /// 文件的大小。
     pub size: i64,
-    /// When it was written.
+    /// 写入时间。
     pub modify_time: i64,
 }
 
 impl<'a> HardlinkSpec<'a> {
-    /// An image rendition stored under the talker directory `talker_dir` and month `month`.
+    /// 存在聊天对象目录 `talker_dir` 和月份 `month` 下的一个图片版本。
     pub fn image(md5: &'a str, file_name: &'a str, talker_dir: &'a str, month: &'a str) -> Self {
         Self {
             md5,
@@ -345,7 +336,7 @@ impl<'a> HardlinkSpec<'a> {
         }
     }
 
-    /// A video stored under the month `month`.
+    /// 存在月份 `month` 下的视频。
     pub fn video(md5: &'a str, file_name: &'a str, month: &'a str) -> Self {
         Self {
             md5,
@@ -358,7 +349,7 @@ impl<'a> HardlinkSpec<'a> {
         }
     }
 
-    /// A file sent or received, stored as `msg/file/<month>/<file_name>`.
+    /// 收发的文件，存为 `msg/file/<month>/<file_name>`。
     pub fn file(md5: &'a str, file_name: &'a str, month: &'a str) -> Self {
         Self {
             md5,
@@ -372,7 +363,7 @@ impl<'a> HardlinkSpec<'a> {
     }
 }
 
-// The tables as WeChat lays them out, shared by `Fixture` and `bench`.
+// 与微信相同的表结构，`Fixture` 和 `bench` 共用。
 
 const SNS_SCHEMA: &str =
     "create table SnsTimeLine(tid integer primary key desc, user_name text, content text, pack_info_buf text)";
@@ -416,7 +407,7 @@ fn contact_schema() -> String {
     )
 }
 
-/// The `ext_buffer` of a `chat_room` row: the group nickname of each `(member, nickname)` that has one.
+/// `chat_room` 行的 `ext_buffer`：写入每个有群昵称的 `(member, nickname)`。
 fn room_ext_buffer<'a>(members: impl IntoIterator<Item = (&'a str, &'a str)>) -> Vec<u8> {
     let mut ext = vec![0x08, 0x01];
     for (m, nick) in members.into_iter().filter(|(_, n)| !n.is_empty()) {
@@ -451,28 +442,28 @@ fn message_table_schema(table: &str) -> String {
     )
 }
 
-/// A synthetic account on disk, whose databases its methods write.
+/// 磁盘上的合成账号，由它的方法写入各个数据库。
 #[derive(Debug)]
 pub struct Fixture {
-    /// The folder the account folder is in.
+    /// 账号目录所在的目录。
     pub root: PathBuf,
-    /// The account folder, the one holding `db_storage`.
+    /// 账号目录，其中有 `db_storage`。
     pub account_dir: PathBuf,
     salts: Salts,
 }
 
-/// The salts a [`Fixture`]'s databases are encrypted with.
+/// 加密 [`Fixture`] 的数据库所用的盐。
 #[derive(Debug)]
 enum Salts {
-    /// [`SALT`] for every database: a reader derives one page key for all of them, which keeps tests fast.
+    /// 每个数据库都用 [`SALT`]：读取方只派生一次页密钥就能读全部数据库，测试因此更快。
     Shared(Box<PageCipher>),
-    /// A salt of each database's own, drawn from its path and this seed, as WeChat writes them: a reader derives a
-    /// page key for every database it opens (#1127).
+    /// 每个数据库各有自己的盐，由它的路径和这个种子得出，与微信写的一样：
+    /// 读取方每打开一个数据库都要派生一次页密钥（#1127）。
     OwnPerDatabase(u64),
 }
 
-/// The salt [`Salts::OwnPerDatabase`] gives the database at `rel` (below `db_storage`, with `/`): the start of the
-/// SHA-256 of the seed and the path.
+/// [`Salts::OwnPerDatabase`] 给 `rel`（相对于 `db_storage`，用 `/` 分隔）处的数据库的盐：
+/// 种子和路径的 SHA-256 的前 16 字节。
 fn own_salt(seed: u64, rel: &str) -> [u8; 16] {
     let digest = Sha256::new()
         .chain_update(seed.to_le_bytes())
@@ -484,7 +475,7 @@ fn own_salt(seed: u64, rel: &str) -> [u8; 16] {
 }
 
 impl Fixture {
-    /// Create `<root>/<account>/db_storage/...`; `root` is wiped first.
+    /// 建立 `<root>/<account>/db_storage/...`；先清空 `root`。
     pub fn new(root: &Path, account: &str) -> Self {
         let _ = std::fs::remove_dir_all(root);
         let account_dir = root.join(account);
@@ -506,7 +497,7 @@ impl Fixture {
         }
     }
 
-    /// The account [`new`](Self::new) built under `root` earlier, to change some of its databases.
+    /// 之前由 [`new`](Self::new) 在 `root` 下建立的账号，用来修改其中的部分数据库。
     pub fn open(root: &Path, account: &str) -> Self {
         Self {
             root: root.to_path_buf(),
@@ -515,9 +506,8 @@ impl Fixture {
         }
     }
 
-    /// The same account with a salt of its own for each database, drawn from `seed` and the database's path, as
-    /// WeChat writes them: a reader derives a page key for every database it opens, about 130 ms each, where the
-    /// shared salt of [`new`](Self::new) costs one for all (#1127).
+    /// 同一个账号，但每个数据库有自己的盐，由 `seed` 和数据库的路径得出，与微信写的一样：
+    /// 读取方每打开一个数据库都要派生一次页密钥，每次约 130 毫秒，而 [`new`](Self::new) 的共用盐只派生一次（#1127）。
     #[must_use]
     pub fn with_own_salts(self, seed: u64) -> Self {
         Self {
@@ -526,7 +516,7 @@ impl Fixture {
         }
     }
 
-    /// Runs `f` with the page cipher of the database at `rel` (below `db_storage`, with `/`).
+    /// 用 `rel`（相对于 `db_storage`，用 `/` 分隔）处数据库的页密钥（[`PageCipher`]）运行 `f`。
     pub(crate) fn with_cipher<R>(&self, rel: &str, f: impl FnOnce(&PageCipher) -> R) -> R {
         match &self.salts {
             Salts::Shared(cipher) => f(cipher),
@@ -534,12 +524,12 @@ impl Fixture {
         }
     }
 
-    /// The database key, in hex, as `decrypt_key` takes it.
+    /// 十六进制的数据库密钥，即 `decrypt_key` 接受的格式。
     pub fn key_hex(&self) -> String {
         hex(&KEY)
     }
 
-    /// The account's `db_storage` folder.
+    /// 账号的 `db_storage` 目录。
     pub fn db_storage(&self) -> PathBuf {
         self.account_dir.join("db_storage")
     }
@@ -549,7 +539,7 @@ impl Fixture {
         std::fs::write(self.db_storage().join(rel), encrypted).unwrap();
     }
 
-    /// `sns/sns.db` with the posts.
+    /// 写入含这些动态的 `sns/sns.db`。
     pub fn sns_db(&self, posts: &[SnsPostSpec<'_>]) {
         let rows: Vec<(i64, &str, String)> =
             posts.iter().map(|p| (p.tid, p.user, p.xml())).collect();
@@ -568,9 +558,9 @@ impl Fixture {
         );
     }
 
-    /// `message/media_<n>.db` with the voices.
+    /// 写入含这些语音的 `message/media_<n>.db`。
     pub fn media_db(&self, n: u32, voices: &[VoiceSpec<'_>]) {
-        /// (chat id, create time, local id, server id, data, chat name)
+        /// 各项依次是聊天在 `Name2Id` 中的行号、发送时间、本地 ID、服务器 ID、语音数据和片段的位置（`data_index`）。
         type VoiceRow<'a> = (i64, i64, i64, i64, Vec<u8>, &'a str);
         let rows: Vec<VoiceRow<'_>> = {
             let mut names: Vec<&str> = Vec::new();
@@ -619,7 +609,7 @@ impl Fixture {
         );
     }
 
-    /// `store` rows are (md5, language, caption) of the sticker-store caption table.
+    /// 写入 `emoticon/emoticon.db`：`own` 是用户自己的表情，`store` 是商店表情说明表中的（md5，语言，说明文字）。
     pub fn emoticon_db(
         &self,
         own: &[EmoticonSpec],
@@ -644,7 +634,7 @@ impl Fixture {
         );
     }
 
-    /// `hardlink/hardlink.db` with the image/video/file tables and the `dir2id` directory names.
+    /// 写入 `hardlink/hardlink.db`：图片、视频、文件三张表，以及 `dir2id` 中的目录名。
     pub fn hardlink_db(&self, rows: &[HardlinkSpec<'_>]) {
         let rows = rows.to_vec();
         self.write(
@@ -681,7 +671,7 @@ impl Fixture {
         );
     }
 
-    /// `head_image/head_image.db`: `(username, image bytes)` per avatar.
+    /// 写入 `head_image/head_image.db`：每个头像一项（用户名，图片的字节）。
     pub fn head_image_db(&self, avatars: &[(&'static str, &[u8])]) {
         let avatars: Vec<(&'static str, Vec<u8>)> =
             avatars.iter().map(|(u, b)| (*u, b.to_vec())).collect();
@@ -700,7 +690,7 @@ impl Fixture {
         );
     }
 
-    /// `session/session.db` with the conversations.
+    /// 写入含这些会话的 `session/session.db`。
     pub fn session_db(&self, sessions: &[SessionSpec<'_>]) {
         let rows: Vec<(String, String, i64, i64, i64)> = sessions
             .iter()
@@ -730,12 +720,12 @@ impl Fixture {
         );
     }
 
-    /// `contact/contact.db` with the contacts and the groups.
+    /// 写入含这些联系人和群的 `contact/contact.db`。
     pub fn contact_db(&self, contacts: &[ContactSpec<'_>], rooms: &[RoomSpec<'_>]) {
         self.contact_db_with_labels(contacts, rooms, &[]);
     }
 
-    /// Like [`contact_db`](Self::contact_db) with `(label id, name)` rows in `contact_label`.
+    /// 与 [`contact_db`](Self::contact_db) 相同，另在 `contact_label` 中写入（标签 ID，名称）的行。
     pub fn contact_db_with_labels(
         &self,
         contacts: &[ContactSpec<'_>],
@@ -751,7 +741,7 @@ impl Fixture {
             .collect();
         let ids: std::collections::HashMap<&str, i64> =
             contacts.iter().map(|(id, c)| (c.username, *id)).collect();
-        /// (room row id, username, owner, members as (username, nickname), member row ids)
+        /// 各项依次是群的行号、用户名、群主、成员（用户名，群昵称）和成员的行号。
         type RoomRow<'a> = (i64, &'a str, &'a str, &'a [(&'a str, &'a str)], Vec<i64>);
         let rooms: Vec<RoomRow<'_>> = rooms
             .iter()
@@ -798,9 +788,8 @@ impl Fixture {
         );
     }
 
-    /// `message/message_fts.db` in the shape WeChat writes it: an FTS5 table per group (here with SQLite's own
-    /// tokenizer, where WeChat has its `mmftstokenizer`), and a table of user names whose row numbers are the
-    /// `session_id` of the rows.
+    /// 按微信的写法写入 `message/message_fts.db`：每组一张 FTS5 表（这里用 SQLite 自带的分词器，微信用的是
+    /// `mmftstokenizer`），还有一张用户名表，它的行号就是各行的 `session_id`。
     pub fn message_fts_db(&self, groups: &[Vec<FtsSpec<'_>>]) {
         let groups = groups.to_vec();
         self.write(
@@ -839,14 +828,14 @@ impl Fixture {
         );
     }
 
-    /// Add `msgs` of `session` to `message/message_<n>.db` (created when missing, merged when present
-    /// is not supported: one call per session per shard, several sessions per shard are fine).
+    /// 写入 `message/message_<n>.db`，其中是 `sessions` 中每个会话的消息。每次调用都重写整个文件，
+    /// 不与已有的内容合并：一个分片的全部会话要在一次调用里给出。
     pub fn message_shard(&self, n: u32, sessions: &[(&str, Vec<MsgSpec>)]) {
         self.message_db(&format!("message/message_{n}.db"), sessions);
     }
 
-    /// [`message_shard`](Self::message_shard) for `message/biz_message_<n>.db`, where WeChat keeps official accounts
-    /// and service notices.
+    /// 写入 `message/biz_message_<n>.db` 的 [`message_shard`](Self::message_shard)，
+    /// 微信在这个数据库里保存公众号和服务通知的消息。
     pub fn biz_message_db(&self, n: u32, sessions: &[(&str, Vec<MsgSpec>)]) {
         self.message_db(&format!("message/biz_message_{n}.db"), sessions);
     }
@@ -892,14 +881,14 @@ impl Fixture {
     }
 }
 
-/// Base timestamp of the standard world (2023-11-14 22:13:20 UTC).
+/// [`Fixture::standard`] 的基准时间，2023-11-14 22:13:20 UTC。
 pub const T0: i64 = 1_700_000_000;
-/// A day in seconds.
+/// 一天的秒数。
 pub const DAY: i64 = 86_400;
 
 impl Fixture {
-    /// A small but complete account: `wxid_me` talking to `wxid_bob` (two message shards, one image,
-    /// one zstd-compressed message) and to the group `room1@chatroom` (owner bob, nicknames, 3 members).
+    /// 小而完整的账号：`wxid_me` 与 `wxid_bob` 的私聊（两个消息分片、一张图片、一条 zstd 压缩的消息），
+    /// 群 `room1@chatroom`（群主是 bob，有群昵称，3 个成员），以及朋友圈、语音和表情的数据库。
     pub fn standard(root: &Path) -> Self {
         let f = Self::new(root, "wxid_me_ab12");
         f.contact_db(
@@ -911,7 +900,7 @@ impl Fixture {
                     avatar: "https://example.com/bob.png",
                     ..ContactSpec::new("wxid_bob", 1, "Bob")
                 },
-                // pinned to the top of the conversation list (#885)
+                // 在会话列表中置顶（#885）
                 ContactSpec {
                     flag: 1 << 11,
                     ..ContactSpec::new("wxid_carol", 1, "Carol")

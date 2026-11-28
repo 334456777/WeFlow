@@ -1,4 +1,4 @@
-//! Words: the text, names and topics messages and contacts are made of.
+//! 词语：组成消息和联系人的文字、名字和话题。
 
 use super::profile::TextProfile;
 use super::rng::{draw_range, Rng};
@@ -126,9 +126,9 @@ impl Words {
         }
     }
 
-    /// Text of about `chars` characters, in the mix of words, punctuation and emoji of real messages.
+    /// 约 `chars` 个字符的文字，词语、标点和表情的比例与真实消息相同。
     fn text(&self, rng: &mut Rng, chars: usize) -> String {
-        // emoji, a second line and links count in the length, so the lengths stay the real ones
+        // 表情、第二行和链接都计入长度，长度才与真实的一致
         let mut extra = String::new();
         if rng.chance(self.profile.with_bracket_emoji) {
             extra.push_str(rng.pick(BRACKET_EMOJI));
@@ -180,7 +180,7 @@ impl Words {
         out
     }
 
-    /// Like [`text`](Self::text) without emoji, links or control characters.
+    /// 与 [`text`](Self::text) 相同，但不含表情、链接和控制字符。
     pub(super) fn text_plain(&self, rng: &mut Rng, chars: usize) -> String {
         (0..chars)
             .map(|_| {
@@ -193,13 +193,13 @@ impl Words {
             .collect()
     }
 
-    /// [`text_plain`](Self::text_plain) of `lo..hi` characters.
+    /// 字符数在 `lo..hi` 之内的 [`text_plain`](Self::text_plain)。
     pub(super) fn text_between(&self, rng: &mut Rng, lo: usize, hi: usize) -> String {
         let n = lo + rng.below(hi - lo);
         self.text_plain(rng, n)
     }
 
-    /// A message's text: its length drawn from the real lengths.
+    /// 一条消息的文字，长度按真实消息的长度分布抽取。
     pub(super) fn message(&self, rng: &mut Rng) -> String {
         let chars = draw_range(rng, &self.profile.chars) as usize;
         self.text(rng, chars.max(1))
@@ -233,7 +233,7 @@ impl Words {
     }
 }
 
-/// Escapes text for XML.
+/// 把文字转义成 XML。
 pub(super) fn esc(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -248,7 +248,7 @@ pub(super) fn esc(s: &str) -> String {
     out
 }
 
-/// The XML `template` makes with a filler of hex digits sized so the whole is about `target` bytes.
+/// 用 `template` 生成 XML，其中填入十六进制数字，使整体约为 `target` 字节。
 pub(super) fn sized(rng: &mut Rng, target: f64, template: impl Fn(&str) -> String) -> String {
     let base = template("").len();
     let fill = rng.filler((target as usize).saturating_sub(base));

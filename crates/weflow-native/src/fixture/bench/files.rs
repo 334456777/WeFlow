@@ -1,11 +1,11 @@
-//! Files: pictures, videos, voices and their encrypted `.dat` form.
+//! 基准账号的文件：图片、视频、语音，以及加密后的 `.dat` 文件。
 
 use aes::cipher::{BlockCipherEncrypt, KeyInit};
 
 use super::rng::Rng;
 use super::{DAY, IMAGE_AES_KEY, IMAGE_XOR_KEY, TZ};
 
-/// A V2 `.dat` file: the head AES-encrypted with [`IMAGE_AES_KEY`], the tail XOR-ed with [`IMAGE_XOR_KEY`].
+/// V2 格式的 `.dat` 文件：开头用 [`IMAGE_AES_KEY`] 做 AES 加密，结尾用 [`IMAGE_XOR_KEY`] 做 XOR。
 pub(super) fn encrypt_dat(plain: &[u8]) -> Vec<u8> {
     let aes_len = plain.len().min(1024);
     let xor_len = (plain.len() - aes_len).min(100);
@@ -33,7 +33,7 @@ pub(super) fn encrypt_dat(plain: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A JPEG of `len` bytes: a JFIF header, comment segments of noise and the end marker (not a picture).
+/// `len` 字节的 JPEG：JFIF 文件头、填满随机字节的注释段和结束标记（不是真的图片）。
 pub(super) fn jpeg(rng: &mut Rng, len: usize) -> Vec<u8> {
     let mut out = vec![
         0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
@@ -79,11 +79,11 @@ fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     out.extend(crc32(&[kind, data]).to_be_bytes());
 }
 
-/// A valid PNG of one grey pixel padded to `len` bytes with a private chunk of noise.
+/// 只有一个灰色像素的合法 PNG，用一个填满随机字节的私有块补足 `len` 字节。
 pub(super) fn png(rng: &mut Rng, len: usize) -> Vec<u8> {
     let mut out = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
     png_chunk(&mut out, b"IHDR", &[0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0]);
-    // zlib, one stored block of the scanline (filter 0, grey 0x80), and its Adler-32
+    // zlib 数据：扫描线（过滤器 0，灰度 0x80）的一个不压缩块，以及它的 Adler-32
     png_chunk(
         &mut out,
         b"IDAT",
@@ -99,8 +99,8 @@ pub(super) fn png(rng: &mut Rng, len: usize) -> Vec<u8> {
     out
 }
 
-/// The HEVC frames of the WXGF pictures, smallest first: whole pictures of the sizes a real account's WXGF pictures
-/// have for their file size (`testdata/bench_wxgf`, #1221), so that converting them costs what it costs there.
+/// WXGF 图片的 HEVC 帧，最小的在前：完整的图片，尺寸与真实账号中同样文件大小的 WXGF 图片相同（见
+/// `testdata/bench_wxgf`，#1221），转换它们的开销才与真实账号一样。
 const WXGF_FRAMES: [&[u8]; 6] = [
     include_bytes!("../../../testdata/bench_wxgf/wxgf_800x480.hevc"),
     include_bytes!("../../../testdata/bench_wxgf/wxgf_672x1200.hevc"),
@@ -110,8 +110,8 @@ const WXGF_FRAMES: [&[u8]; 6] = [
     include_bytes!("../../../testdata/bench_wxgf/wxgf_1152x2048.hevc"),
 ];
 
-/// A WXGF picture the built-in decoder reads: the largest of [`WXGF_FRAMES`] that fits in `len` bytes (the smallest
-/// when none does), padded to `len` with filler NAL units.
+/// 内置解码器能读的 WXGF 图片：取 [`WXGF_FRAMES`] 中放得进 `len` 字节的最大一帧（都放不下时取最小的），
+/// 再用填充 NAL 单元补足 `len` 字节。
 pub(super) fn wxgf(len: usize) -> Vec<u8> {
     const HEADER: [u8; 10] = *b"wxgf\x24\x01\x00\x46\x00\x2e";
     let frame = WXGF_FRAMES
@@ -122,7 +122,7 @@ pub(super) fn wxgf(len: usize) -> Vec<u8> {
     let mut out = HEADER.to_vec();
     out.extend_from_slice(frame);
     while out.len() + 6 < len {
-        // filler data (NAL type 38): 0xFF bytes up to the stop bit
+        // 填充数据（NAL 类型 38）：0xFF 字节，直到结束位
         let n = (len - out.len() - 6).min(60_000);
         out.extend([0x00, 0x00, 0x01, 0x4C, 0x01]);
         out.extend(std::iter::repeat_n(0xFF, n));
@@ -131,7 +131,7 @@ pub(super) fn wxgf(len: usize) -> Vec<u8> {
     out
 }
 
-/// An MP4 of `len` bytes: a file type box and a media data box of noise.
+/// `len` 字节的 MP4：一个文件类型盒（`ftyp`）和一个填满随机字节的媒体数据盒（`mdat`）。
 pub(super) fn mp4(rng: &mut Rng, len: usize) -> Vec<u8> {
     let mut out = vec![
         0, 0, 0, 0x18, b'f', b't', b'y', b'p', b'i', b's', b'o', b'm', 0, 0, 2, 0, b'i', b's',
@@ -144,14 +144,14 @@ pub(super) fn mp4(rng: &mut Rng, len: usize) -> Vec<u8> {
     out
 }
 
-/// The packets of a second of a 440 Hz tone the SILK SDK encoded at 24 kHz (20 ms each).
+/// SILK SDK 以 24 kHz 编码的一秒 440 Hz 音调的数据包（每包 20 毫秒）。
 static TONE_PACKETS: std::sync::LazyLock<Vec<Vec<u8>>> = std::sync::LazyLock::new(|| {
     let stream = weflow_silk::testenc::encode_tone(24_000);
     let mut packets = Vec::new();
     let mut rest = &stream[b"#!SILK_V3".len()..];
     while let [lo, hi, tail @ ..] = rest {
         let Ok(len) = usize::try_from(i16::from_le_bytes([*lo, *hi])) else {
-            break; // the -1 that ends the stream
+            break; // 结束数据流的 -1
         };
         packets.push(tail[..len].to_vec());
         rest = &tail[len..];
@@ -159,9 +159,9 @@ static TONE_PACKETS: std::sync::LazyLock<Vec<Vec<u8>>> = std::sync::LazyLock::ne
     packets
 });
 
-/// A SILK voice of `ms` milliseconds the decoder reads (#574): the header WeChat writes, then a packet of the tone
-/// per 20 ms, over again past its second. Each packet also draws, and leaves unused, the random bytes of a packet of
-/// random length, so what the rest of the account draws from the generator does not depend on the tone.
+/// 解码器能读的 `ms` 毫秒的 SILK 语音（#574）：先是微信写的文件头，
+/// 然后每 20 毫秒一个音调的数据包，超过一秒就从头循环。每个包还从生成器取一段随机长度的随机字节（不使用），
+/// 这样账号其余部分从生成器取到的随机数与音调无关。
 pub(super) fn silk(rng: &mut Rng, ms: i64) -> Vec<u8> {
     let mut out = b"\x02#!SILK_V3".to_vec();
     for packet in TONE_PACKETS.iter().cycle().take((ms / 20).max(1) as usize) {
@@ -173,15 +173,15 @@ pub(super) fn silk(rng: &mut Rng, ms: i64) -> Vec<u8> {
     out
 }
 
-/// The month folder of a file sent at `t` (`YYYY-MM` in the account's clock).
+/// 在 `t` 时发送的文件所在的月份目录（按账号的时区，`YYYY-MM`）。
 pub(super) fn month(t: i64) -> String {
     let (y, m, _) = civil(t);
     format!("{y}-{m:02}")
 }
 
-/// The year, month and day of `t` in the account's clock.
+/// 按账号的时区，`t` 的年、月、日。
 pub(super) fn civil(t: i64) -> (i64, i64, i64) {
-    // days since 1970-01-01 to a civil date (Howard Hinnant's algorithm)
+    // 从 1970-01-01 起的天数换算成公历日期（Howard Hinnant 的算法）
     let z = (t + TZ).div_euclid(DAY) + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;

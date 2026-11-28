@@ -1,5 +1,5 @@
-//! Forwarded chat records (`<type>19`): the items of `<datalist>`, as the records of a real account hold them
-//! (#1242): texts, pictures and videos, each with an `dataid` of its own and the fields WeChat writes.
+//! 合并转发的聊天记录（`<type>19`）：`<datalist>` 中的条目，与真实账号的聊天记录一致（#1242）：
+//! 文字、图片和视频，每条有自己的 `dataid`，以及微信写的各个字段。
 
 use std::collections::HashSet;
 
@@ -12,14 +12,14 @@ use super::world::World;
 use super::{DAY, TZ};
 use crate::db::hex;
 
-/// Items per record: the median, the 90th percentile and the most WeChat keeps (a real account's: 6, 28 and 100).
+/// 每份聊天记录的条目数：中位数、第 90 百分位数和微信最多保存的条数（真实账号上分别是 6、28 和 100）。
 const ITEMS: (f64, f64, f64) = (6.0, 28.0, 100.0);
 
-/// The `datatype` of an item and its weight: texts, pictures and videos as on a real account (80.7%, 7.6%, 3.2% of
-/// 5,962 items); its stickers, links, files and nested records (8.5%) are texts here.
+/// 条目的 `datatype` 和权重：文字、图片和视频的比例与真实账号一致（5962 个条目中分别占 80.7%、7.6% 和 3.2%）；
+/// 那里的表情、链接、文件和嵌套的聊天记录（8.5%）在这里都写成文字。
 const KINDS: &[(u8, f64)] = &[(1, 0.892), (2, 0.076), (4, 0.032)];
 
-/// How an item's `<sourcetime>` is written, and how often (`%-m` without the leading zero).
+/// 条目的 `<sourcetime>` 的几种写法及其频率（`%-m` 表示不补前导零）。
 const SOURCE_TIMES: &[(&str, f64)] = &[
     ("%Y-%m-%d %H:%M", 0.50),
     ("%Y-%m-%d %H:%M:%S", 0.13),
@@ -27,7 +27,7 @@ const SOURCE_TIMES: &[(&str, f64)] = &[
     ("%Y-%-m-%-d %H:%M", 0.19),
 ];
 
-/// The items of a record forwarded in conversation `conv` at `time`, and how many they are.
+/// 在会话 `conv` 中于 `time` 转发的聊天记录的条目，以及条目数。
 pub(super) fn items(rng: &mut Rng, world: &World, conv: usize, time: i64) -> (String, usize) {
     let members = &world.conversations[conv].members;
     let n = rng.spread(ITEMS).max(1.0) as usize;
@@ -94,7 +94,7 @@ pub(super) fn items(rng: &mut Rng, world: &World, conv: usize, time: i64) -> (St
     (out, n)
 }
 
-/// The fields of a picture's or a video's files on WeChat's servers: the thumbnail's, then the file's.
+/// 图片或视频在微信服务器上的文件字段：先是缩略图的，然后是文件本身的。
 fn files(rng: &mut Rng, thumb_md5: bool, data_bytes: f64) -> String {
     let url = |rng: &mut Rng| {
         let len = if rng.chance(0.75) { 194 } else { 178 };
@@ -166,8 +166,8 @@ fn video(rng: &mut Rng, source: &str) -> String {
     )
 }
 
-/// `t` in the account's clock as `format` writes it: `%Y`, `%m`, `%d`, `%H`, `%M`, `%S`, and `%-m`, `%-d` without the
-/// leading zero.
+/// 按账号的时区，用 `format` 写出 `t`：支持 `%Y`、`%m`、`%d`、`%H`、`%M`、`%S`，
+/// 以及不补前导零的 `%-m`、`%-d`。
 fn source_time(format: &str, t: i64) -> String {
     let (y, m, d) = civil(t);
     let seconds = (t + TZ).rem_euclid(DAY);
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn a_source_time_is_written_in_the_account_s_clock() {
-        // 2024-01-05 01:02:03 in UTC+8
+        // UTC+8 的 2024-01-05 01:02:03
         let t = 1_704_387_723;
         assert_eq!(source_time("%Y-%m-%d %H:%M:%S", t), "2024-01-05 01:02:03");
         assert_eq!(source_time("%Y-%-m-%-d %H:%M", t), "2024-1-5 01:02");

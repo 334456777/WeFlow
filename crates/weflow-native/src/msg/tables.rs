@@ -1,4 +1,4 @@
-//! The message databases and a conversation's tables in them, the SQL that reads them, and their rows.
+//! 消息库和会话在其中的表、读取这些表的 SQL，以及读出的行。
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -13,7 +13,7 @@ use crate::db::Account;
 use crate::msg_row::{Columns, MsgRow, RowContext};
 
 impl Account {
-    /// The message databases in `message/`, ascending by number: `message_<n>.db`, then `biz_message_<n>.db`.
+    /// `message/` 下的消息库，按编号升序：先是 `message_<n>.db`，然后是 `biz_message_<n>.db`。
     pub fn message_dbs(&self) -> Vec<PathBuf> {
         let dir = self.db_path("message");
         let mut found: Vec<(u32, PathBuf)> = std::fs::read_dir(&dir)
@@ -29,12 +29,12 @@ impl Account {
         found.into_iter().map(|(_, p)| p).collect()
     }
 
-    /// Every shard that holds a table for `session_id`, oldest shard first.
+    /// 含有 `session_id` 的表的全部分片，最早的分片在前。
     ///
     /// # Errors
     ///
-    /// A shard whose schema cannot be read fails the call (after the reruns of `with_db` when WeChat changed it):
-    /// only a shard that reads and has no such table is left out.
+    /// 某个分片的表结构读不出来时返回错误（微信改动了数据库时，以 `with_db` 重读之后为准）：
+    /// 只有能读出、但没有这张表的分片才被略过。
     pub fn message_tables(&self, session_id: &str) -> Result<Vec<MsgTable>> {
         let table = table_name_for(session_id);
         let mut out = Vec::new();
@@ -60,12 +60,12 @@ impl Account {
         Ok(out)
     }
 
-    /// `select` of the [`MsgRow`] columns over one message table with the sender resolved from `Name2Id`.
+    /// 从一张消息表读取 [`MsgRow`] 各列的 `select` 语句，发送者从 `Name2Id` 查出。
     pub(crate) fn select_sql(t: &MsgTable, tail: &str) -> String {
         Self::select_sql_of(t, tail, Columns::All)
     }
 
-    /// [`select_sql`](Self::select_sql) reading `which` columns.
+    /// 读取 `which` 指定的列的 [`select_sql`](Self::select_sql)。
     pub(super) fn select_sql_of(t: &MsgTable, tail: &str, which: Columns) -> String {
         format!(
             "select {} from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id {tail}",
@@ -74,8 +74,8 @@ impl Account {
         )
     }
 
-    /// The rows of [`select_sql`](Self::select_sql) with `indexed` (rows with a `sort_seq`), then those with
-    /// `unsequenced` (rows without one), as one statement: a second one per table costs its own preparation.
+    /// 把 `indexed`（有 `sort_seq` 的行）和 `unsequenced`（没有 `sort_seq` 的行）两个
+    /// [`select_sql`](Self::select_sql) 的结果按先后合成一条语句：每张表多一条语句就要多准备一次。
     pub(super) fn select_both_sql(t: &MsgTable, indexed: &str, unsequenced: &str) -> String {
         format!(
             "select * from ({}) union all select * from ({})",
@@ -84,7 +84,7 @@ impl Account {
         )
     }
 
-    /// The rows of `sql` over `t`, whose select list is [`MsgRow::columns`].
+    /// 在 `t` 上运行 `sql` 读出的行，`sql` 的 select 列表须是 [`MsgRow::columns`]。
     pub(crate) fn read_rows(
         &self,
         t: &MsgTable,
@@ -102,8 +102,8 @@ impl Account {
         Ok(out.into_inner())
     }
 
-    /// [`read_rows`](Self::read_rows), each row handed to `each` as it is read. A query read again on a fresh
-    /// snapshot (see `with_db`) starts over: `start` runs before every attempt.
+    /// 逐行交给 `each` 的 [`read_rows`](Self::read_rows)。查询在新的快照上重读时（见 `with_db`）从头开始：
+    /// 每次尝试之前都先运行 `start`。
     pub(crate) fn read_rows_each(
         &self,
         t: &MsgTable,
@@ -130,8 +130,12 @@ impl Account {
         })
     }
 
-    /// The messages of `session_id` sent at `since` or later that `condition` keeps (SQL over the message table
-    /// `m`), oldest first in each table: at most `limit` of each table, the tables one after the other.
+    /// `session_id` 在 `since` 及之后发送、`condition`（消息表为 `m` 的 SQL 条件）保留的消息，每张表内最早的在前：
+    /// 每张表最多 `limit` 条，各表依次排列。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败），包括 `condition` 不是有效的 SQL。
     pub fn messages_where(
         &self,
         session_id: &str,
@@ -152,7 +156,11 @@ impl Account {
         Ok(out)
     }
 
-    /// Newest-first page of messages across all shards.
+    /// 合并全部分片后最新在前的一页消息：跳过 `offset` 条，最多取 `limit` 条（`limit` 不大于 0 时取全部）。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Vec<MsgRow>> {
         let (offset, limit) = (
             usize::try_from(offset).unwrap_or(0),
@@ -160,8 +168,8 @@ impl Account {
         );
         let tables = self.message_tables(session_id)?;
         if offset > 0 {
-            // A page deep into a long conversation: reading every row before it costs what the offset does (issue
-            // #486), so find the last message it skips from the sort keys alone and page on from there.
+            // 长会话中靠后的一页：逐行读完它前面的行，代价与偏移成正比（#486），
+            // 所以只凭排序键找出它跳过的最后一条消息，再从那里往后翻页。
             match self.offset_position(&tables, offset, limit)? {
                 OffsetPosition::At(pos) => {
                     let page = self.page_from(
@@ -169,7 +177,7 @@ impl Account {
                         i32::try_from(limit).unwrap_or(i32::MAX),
                         PageFrom::Before(pos),
                     )?;
-                    // a page row whose time is not an integer: SQLite and the sort key order it differently
+                    // 页中有时间不是整数的行时，SQLite 与排序键对它排序不同，改用 `newest_rows`
                     if page.iter().all(|r| r.create_time.is_some()) {
                         return Ok(page);
                     }
@@ -181,9 +189,9 @@ impl Account {
         self.newest_rows(&tables, offset, limit)
     }
 
-    /// [`message_tables`](Self::message_tables) of each of `session_ids`, in their order. Several conversations are
-    /// looked up in one listing of every shard's tables ([`message_tables_by_name`](Self::message_tables_by_name)), so
-    /// a shard's schema is read once, not once a conversation.
+    /// `session_ids` 中每个会话的 [`message_tables`](Self::message_tables)，顺序与 `session_ids` 相同。
+    /// 多个会话在一次列出的全部分片的表中查找（[`message_tables_by_name`](Self::message_tables_by_name)），
+    /// 每个分片的表结构只读一次，不是每个会话读一次。
     pub(crate) fn message_tables_of(&self, session_ids: &[String]) -> Result<Vec<Vec<MsgTable>>> {
         match session_ids {
             [] => Ok(Vec::new()),
@@ -203,8 +211,12 @@ impl Account {
         }
     }
 
-    /// Every message table of the account by its name ([`table_name_for`] a conversation), oldest shard first: one
-    /// read of each database, for a listing across conversations (issue #178).
+    /// 账号的全部消息表，按表名（会话的 [`table_name_for`]）分组，最早的分片在前：每个数据库只读一次，
+    /// 用于跨会话的列表（#178）。
+    ///
+    /// # Errors
+    ///
+    /// 某个分片的表结构读不出来。
     pub fn message_tables_by_name(&self) -> Result<HashMap<String, Vec<MsgTable>>> {
         let dbs = self.message_dbs();
         self.prefetch(&dbs);
@@ -278,14 +290,13 @@ mod tests {
         assert!(acct.messages("wxid_bob", 10, 5).unwrap().is_empty());
     }
 
-    /// A shard whose schema fails to read is an error, not a shard without the conversation: an export would leave the
-    /// whole database out without a word.
+    /// 表结构读不出来的分片是错误，不当作没有这个会话的分片：否则导出会悄无声息地漏掉整个数据库。
     #[test]
     fn a_shard_whose_schema_cannot_be_read_fails_the_lookup() {
         let dir = TestDir::new("weflow-msg-unreadable-schema");
         std::fs::create_dir_all(dir.join("message")).unwrap();
         let plain = plain_db_with(|c| {
-            // enough tables for the schema to need more pages than the first
+            // 表足够多，表结构要占第一页之外的页
             for i in 0..300 {
                 let table = table_name_for(&format!("wxid_{i}"));
                 c.execute_batch(&format!(
@@ -296,7 +307,7 @@ mod tests {
         });
         let mut enc = encrypt_db(&plain, &PageCipher::derive(&KEY, &SALT));
         assert!(enc.len() > 2 * crate::sqlcipher::PAGE_SIZE);
-        // every page but the first fails its HMAC, as a page torn by a write does
+        // 除第一页外每一页的 HMAC 都校验失败，如同写到一半的页
         for page in enc.chunks_mut(crate::sqlcipher::PAGE_SIZE).skip(1) {
             page[100] ^= 0xff;
         }
@@ -324,13 +335,13 @@ mod tests {
         want.sort_unstable();
         got.sort_unstable();
         assert_eq!(got, want);
-        // at most `limit` of each table, the oldest
+        // 每张表最多 `limit` 条，取最早的
         let one: Vec<MsgRow> = acct.messages_where("wxid_bob", 0, "1", 1).unwrap();
         let tables = acct.message_tables("wxid_bob").unwrap().len();
         assert!(!one.is_empty() && one.len() <= tables);
     }
 
-    /// A cell of an integer column that holds another type is read as absent, and counted.
+    /// 整数列中存了其他类型的单元格读作缺失，并且被计数。
     #[test]
     fn odd_integer_cells_are_absent_and_counted() {
         use crate::fixture::T0;

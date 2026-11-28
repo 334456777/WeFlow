@@ -1,10 +1,9 @@
-//! Statistics over the message tables.
+//! 消息表的统计。
 //!
-//! The ones over every message of a table read the few cells they need through `leaf_scan` and count them here; a
-//! table the scan does not read is counted with grouped SQL.
+//! 涉及一张表全部消息的统计经 `leaf_scan` 只读需要的几个单元格，在这里计数；扫描读不了的表用分组的 SQL 统计。
 //!
-//! Dates, hours and weekdays are in local time (SQLite `localtime`), matching what WeFlow's desktop app shows.
-//! The results have the shapes the service layer reads (`total/sent/received/...`).
+//! 日期、小时和星期按本地时间（SQLite 的 `localtime`），与桌面版显示的一致。
+//! 结果的格式就是业务层读取的格式（`total/sent/received/...`）。
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -20,9 +19,8 @@ const IMAGE: i64 = 3;
 const VIDEO: i64 = 43;
 const EMOJI: i64 = 47;
 const CALL: i64 = 50;
-/// `(2000 << 32) | 49` and `(2001 << 32) | 49`: transfer and red-packet app messages, as WeChat 4 keeps them. The
-/// statistics read the local type only, never the content, so an app message kept as 49 with its `<type>` only in its
-/// XML counts as a 49, not as a transfer or a red packet (#1263).
+/// `(2000 << 32) | 49` 和 `(2001 << 32) | 49`：微信 4 保存的转账和红包 app 消息。统计只读 `local_type`，不读内容，
+/// 所以保存成 49、`<type>` 只在 XML 里的 app 消息算作 49，不算转账或红包（#1263）。
 const TRANSFER: i64 = 8_589_934_592_049;
 const RED_PACKET: i64 = 8_594_229_559_345;
 
@@ -30,7 +28,7 @@ fn int(row: &Value, key: &str) -> i64 {
     row.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
 
-/// An integer column as [`int`] reads one from a JSON row: anything but an integer is 0.
+/// 与 [`int`] 从 JSON 行读整数列的方式一致：不是整数的都算 0。
 fn sql_int(v: rusqlite::types::ValueRef<'_>) -> i64 {
     match v {
         rusqlite::types::ValueRef::Integer(i) => i,
@@ -38,8 +36,8 @@ fn sql_int(v: rusqlite::types::ValueRef<'_>) -> i64 {
     }
 }
 
-/// The local `%H`, `%w` and `%Y-%m-%d` of the start of each quarter hour (`create_time / 900`), as SQLite's
-/// `localtime` gives them, in one query.
+/// 用一次查询得出每一刻钟（`create_time / 900`）开始时刻的本地 `%H`、`%w` 和 `%Y-%m-%d`，
+/// 与 SQLite 的 `localtime` 给出的一致。
 fn local_quarters(
     conn: &rusqlite::Connection,
     quarters: &BTreeSet<i64>,
@@ -71,32 +69,31 @@ fn local_quarters(
     Ok(out)
 }
 
-/// Sender name, type, local hour and count of a group of messages (see [`Account::sender_groups`]).
+/// 一组消息的发送者名称、类型、本地小时和数量（见 [`Account::sender_groups`]）。
 type SenderGroup = (Option<String>, i64, i64, i64);
 
-/// Type, quarter hour (`create_time / 900`) and whether the owner sent it, of a message.
+/// 一条消息的类型、所在的一刻钟（`create_time / 900`）和是否由账号所有者发送。
 type QuarterKey = (i64, i64, bool);
 
-/// The cells of a message the statistics read.
+/// 统计要读的一条消息的单元格。
 #[derive(Clone, Copy)]
 struct Msg {
-    /// `coalesce(nullif(local_type, 0), 1)`.
+    /// 类型：`coalesce(nullif(local_type, 0), 1)`。
     kind: i64,
     time: i64,
-    /// `real_sender_id`.
+    /// 发送者：`real_sender_id`。
     sender: Option<i64>,
 }
 
-// one per message of a table, passed to the accumulators by value: its size changes only on purpose (#505)
+// 表中每条消息一个，按值传给累加器：固定它的大小，只在有意时改变（#505）
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(size_of::<Msg>() == 32);
 
-/// Most tables a statistic reads at once.
+/// 一项统计同时读取的表的最大数目。
 const TABLE_THREADS: usize = 8;
 
-/// `f` of each of `items`, run on up to [`TABLE_THREADS`] threads (each table's leaf scan spends most of its time on
-/// HMACs, and most conversations are too small to share theirs out), the results in the order of `items`; the
-/// first error in that order.
+/// 在至多 [`TABLE_THREADS`] 个线程上对 `items` 的每一项运行 `f`（每张表的叶页扫描大部分时间花在 HMAC 上，
+/// 而大多数会话太小，不值得再把一张表分给几个线程），结果按 `items` 的顺序排列；出错时返回按这个顺序的第一个错误。
 pub(crate) fn each_table<I: Sync, T: Send>(
     items: &[I],
     f: impl Fn(&I) -> Result<T> + Sync,
@@ -134,18 +131,18 @@ pub(crate) fn each_table<I: Sync, T: Send>(
     done.into_iter().map(|(_, r)| r).collect()
 }
 
-/// The message kinds counted one by one in [`TypeCounts::kinds`], in its order after the total.
+/// 在 [`TypeCounts::kinds`] 中逐个计数的消息类型，按它在总数之后的顺序。
 const COUNTED_KINDS: [i64; 7] = [VOICE, IMAGE, VIDEO, EMOJI, CALL, TRANSFER, RED_PACKET];
 
-/// Messages of one table, or of a session's tables together, as the export window counts them.
+/// 一张表或一个会话的全部表中的消息，按导出窗口的统计方式计数。
 #[derive(Default)]
 struct TypeCounts {
-    /// The total, then one count for each of [`COUNTED_KINDS`].
+    /// 先是总数，然后是 [`COUNTED_KINDS`] 中每种类型的数量。
     kinds: [i64; 8],
-    /// Earliest `create_time` (`0`: no message).
+    /// 最早的 `create_time`（`0` 表示没有消息）。
     first: i64,
     last: i64,
-    /// Messages the account owner sent.
+    /// 账号所有者发送的消息数。
     mine: i64,
 }
 
@@ -162,7 +159,7 @@ impl TypeCounts {
     }
 }
 
-/// `Name2Id` as sender row id to name; `user_name` is the primary key, so a row id names one sender.
+/// 把 `Name2Id` 读成发送者行号到名称的映射；`user_name` 是主键，所以一个行号只对应一个发送者。
 fn sender_names(conn: &rusqlite::Connection) -> Result<HashMap<i64, String>> {
     let mut names = HashMap::new();
     let mut stmt = conn.prepare("select rowid, user_name from Name2Id")?;
@@ -177,36 +174,36 @@ fn sender_names(conn: &rusqlite::Connection) -> Result<HashMap<i64, String>> {
     Ok(names)
 }
 
-/// Sender row ids in the list [`Account::my_ids`] gives.
+/// [`Account::my_ids`] 给出的列表中的发送者行号。
 pub(crate) fn id_set(list: &str) -> HashSet<i64> {
     list.split(',')
         .filter_map(|v| v.trim().parse().ok())
         .collect()
 }
 
-/// How many messages, and the earliest and latest `create_time` of them.
+/// 消息数，以及其中最早和最晚的 `create_time`。
 struct Tally {
     count: i64,
     first: i64,
     last: i64,
 }
 
-/// Messages of one table with the same type, local hour, weekday and day and the same sender side.
+/// 一张表中类型、本地小时、星期、日期都相同，发送方（是否由账号所有者发送）也相同的一组消息。
 struct TimeGroup {
     kind: i64,
-    /// `%H`, `%w` and `%Y-%m-%d` in local time.
+    /// 本地时间的 `%H`、`%w` 和 `%Y-%m-%d`。
     hour: i64,
     weekday: i64,
     day: String,
-    /// Sent by the account owner.
+    /// 是否由账号所有者发送。
     mine: bool,
     count: i64,
-    /// Earliest and latest `create_time`.
+    /// 最早和最晚的 `create_time`。
     first: i64,
     last: i64,
 }
 
-/// `and create_time >= b and create_time <= e` for the positive bounds (`0` = unbounded).
+/// 正的边界写成 `and create_time >= b and create_time <= e`（`0` 表示不限）。
 fn range_sql(begin: i64, end: i64) -> String {
     let mut s = String::new();
     if begin > 0 {
@@ -223,9 +220,9 @@ fn local(expr: &str) -> String {
 }
 
 impl Account {
-    /// Every message of `t` with a positive time inside `begin..=end` (0: unbounded), read through the leaf scan:
-    /// each thread of the scan counts its messages into an accumulator of its own (`start`, `each`), and `finish`
-    /// gets them all with a connection to the database. `None` when the scan does not read the table.
+    /// 用叶页扫描读取 `t` 中时间为正、在 `begin..=end`（0 表示不限）之内的每条消息：
+    /// 扫描的每个线程把消息计入自己的累加器（`start`、`each`），`finish` 拿到全部累加器和一个数据库连接。
+    /// 扫描读不了这张表时为 `None`。
     fn scan_messages<A: Send, T>(
         &self,
         t: &MsgTable,
@@ -273,7 +270,7 @@ impl Account {
         }
     }
 
-    /// Ids of the account owner in a shard's `Name2Id` (as a SQL list literal body).
+    /// 账号所有者在一个分片的 `Name2Id` 中的行号，写成 SQL 列表字面量的内容（用逗号分隔）。
     pub(crate) fn my_ids(&self, db: &Path) -> Result<String> {
         let rows = self.query(db, "select rowid as id, user_name from Name2Id", &[])?;
         let ids: Vec<String> = rows
@@ -284,8 +281,7 @@ impl Account {
         Ok(ids.join(","))
     }
 
-    /// [`my_ids`](Self::my_ids) of each database that holds one of `tables`, read once a database rather than once a
-    /// table.
+    /// `tables` 所在的每个数据库的 [`my_ids`](Self::my_ids)，每个数据库只读一次，而不是每张表读一次。
     pub(crate) fn my_ids_of<'t>(
         &self,
         tables: impl IntoIterator<Item = &'t MsgTable>,
@@ -299,13 +295,22 @@ impl Account {
         Ok(mine)
     }
 
-    /// `{ total, sent, received, firstTime, lastTime, typeCounts, hourly, weekday, daily, monthly, sessions }`.
+    /// 消息的统计：`{ total, sent, received, firstTime, lastTime, typeCounts, hourly, weekday, daily, monthly,
+    /// sessions }`。`begin`、`end` 为秒，0 表示不限。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn aggregate_stats(&self, session_ids: &[String], begin: i64, end: i64) -> Result<Value> {
         self.aggregate_inner(session_ids, begin, end, false)
     }
 
-    /// Only the `sessions` and `total` of [`aggregate_stats`](Self::aggregate_stats), the same numbers: one count per
-    /// table, without the grouping by type and time the rest needs. `{ total, sessions }`.
+    /// 只取 [`aggregate_stats`](Self::aggregate_stats) 的 `sessions` 和 `total`，数字相同：每张表计一次数，
+    /// 不做其余各项需要的按类型和时间分组。返回 `{ total, sessions }`。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn session_totals(&self, session_ids: &[String], begin: i64, end: i64) -> Result<Value> {
         let range = range_sql(begin, end);
         let mut total = 0i64;
@@ -368,8 +373,12 @@ impl Account {
         Ok(json!({ "total": total, "sessions": sessions }))
     }
 
-    /// [`aggregate_stats`](Self::aggregate_stats) plus, for every session, `monthly`: messages per month of the
-    /// year (`"1"`..`"12"`, summed over the years in range) — what the annual report ranks friends by.
+    /// [`aggregate_stats`](Self::aggregate_stats) 再给每个会话加上 `monthly`：一年中每个月的消息数（`"1"`..`"12"`，
+    /// 范围内各年相加），年度报告按它给好友排名。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn annual_report_stats(
         &self,
         session_ids: &[String],
@@ -455,13 +464,12 @@ impl Account {
         }))
     }
 
-    /// One table's messages grouped by type, local hour, weekday and day, and whether the owner sent them.
+    /// 一张表的消息按类型、本地小时、星期、日期以及是否由账号所有者发送分组。
     ///
-    /// The messages are read through the leaf scan and grouped here by type, quarter hour (`create_time / 900`) and
-    /// side. The local hour, weekday and day of each quarter hour then come from SQLite's `localtime` in one query, so
-    /// they are what a per-message `strftime` gives: every UTC offset in use is a whole number of quarter hours and
-    /// changes on a quarter hour, so all of a quarter hour has one local hour, weekday and day. A table the scan does
-    /// not read is grouped by SQL.
+    /// 消息经叶页扫描读出，在这里按类型、一刻钟（`create_time / 900`）和发送方分组。每一刻钟的本地小时、
+    /// 星期和日期再用一次查询由 SQLite 的 `localtime` 给出，所以与逐条消息用 `strftime` 得到的相同：
+    /// 现在使用的每个 UTC 偏移都是整数个一刻钟，切换也在一刻钟的整点，所以同一刻钟内的本地小时、星期和日期都相同。
+    /// 扫描读不了的表用 SQL 分组。
     fn time_groups(&self, t: &MsgTable, mine: &str, range: (i64, i64)) -> Result<Vec<TimeGroup>> {
         let ids = id_set(mine);
         let scanned = self.scan_messages(
@@ -517,8 +525,8 @@ impl Account {
         }
     }
 
-    /// [`time_groups`](Self::time_groups) for a table the leaf scan does not read: grouped by SQL, so SQLite's own
-    /// comparisons and arithmetic apply to its cells.
+    /// 叶页扫描读不了的表的 [`time_groups`](Self::time_groups)：
+    /// 用 SQL 分组，单元格按 SQLite 自己的比较和运算规则处理。
     fn time_groups_by_sql(&self, t: &MsgTable, mine: &str, range: &str) -> Result<Vec<TimeGroup>> {
         let local_q = |expr: &str| local(expr).replace("create_time", "q");
         let sql = format!(
@@ -556,19 +564,22 @@ impl Account {
         })
     }
 
-    /// One row per shard table of the session: path, table, row count and first/last message time.
+    /// 会话在每个分片中的表各一行：路径、表名、行数，以及最早和最晚的消息时间。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn message_table_stats(&self, session_id: &str) -> Result<Value> {
         self.tables_stats(&self.message_tables(session_id)?)
     }
 
-    /// [`message_table_stats`](Self::message_table_stats) of each of `session_ids`, in their order. Their tables are
-    /// found in one listing of every shard's tables (`message_tables_of`) rather than a
-    /// search of each shard's schema for each conversation; the rows of each conversation are a result of their own,
-    /// so one whose table cannot be read leaves the others theirs.
+    /// `session_ids` 中每个会话的 [`message_table_stats`](Self::message_table_stats)，顺序与 `session_ids` 相同。
+    /// 各会话的表在一次列出的全部分片的表中查找（`message_tables_of`），而不是为每个会话查一遍每个分片的表结构；
+    /// 每个会话的行各是一个结果，所以一个会话的表读不了时，其他会话的结果不受影响。
     ///
     /// # Errors
     ///
-    /// A shard whose tables cannot be listed fails the call.
+    /// 某个分片的表列不出来时整个调用失败。
     pub fn message_table_stats_of(&self, session_ids: &[String]) -> Result<Vec<Result<Value>>> {
         Ok(self
             .message_tables_of(session_ids)?
@@ -577,7 +588,7 @@ impl Account {
             .collect())
     }
 
-    /// The rows of [`message_table_stats`](Self::message_table_stats) for `tables`.
+    /// `tables` 的 [`message_table_stats`](Self::message_table_stats) 各行。
     fn tables_stats(&self, tables: &[MsgTable]) -> Result<Value> {
         let mut out = Vec::new();
         for t in tables {
@@ -599,7 +610,12 @@ impl Account {
         Ok(Value::Array(out))
     }
 
-    /// `{ first_ts, last_ts }` of one message table (seconds).
+    /// 一张消息表的 `{ first_ts, last_ts }`（秒）。
+    ///
+    /// # Errors
+    ///
+    /// `db` 不在账号的 `db_storage` 之内（为空时取第一个消息库，没有消息库也会失败），`table` 含有字母、数字和
+    /// 下划线以外的字符，或者读取失败（打开、解密或查询失败）。
     pub fn message_table_time_range(&self, db: &str, table: &str) -> Result<Value> {
         let path = self.resolve_db_path("message", Some(db))?;
         check_ident(table)?;
@@ -614,13 +630,17 @@ impl Account {
         Ok(json!({ "first_ts": int(&r, "mn"), "last_ts": int(&r, "mx") }))
     }
 
-    /// Calendar years (local time, descending) in which any of the sessions has messages.
+    /// 这些会话中任一会话有消息的年份（本地时间，降序）。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
         let tables = self.message_tables_of(session_ids)?;
         let every: Vec<&MsgTable> = tables.iter().flatten().collect();
         let found = each_table(&every, |t| -> Result<Vec<i64>> {
             let t = *t;
-            // the local year of each quarter of an hour that has a message (see `time_groups`)
+            // 有消息的每一刻钟的本地年份（见 `time_groups`）
             let scanned = self.scan_messages(
                 t,
                 (0, 0),
@@ -658,8 +678,12 @@ impl Account {
         ))
     }
 
-    /// Per session: message counts by kind plus first/last time; groups also get `group_my_messages`
-    /// and `group_sender_count`.
+    /// 每个会话按类型的消息数，以及最早和最晚的时间；群聊另有 `group_my_messages` 和 `group_sender_count`。
+    /// `options` 的 `begin`、`end` 为秒，没有或为 0 时不限。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn session_message_type_stats_batch(
         &self,
         session_ids: &[String],
@@ -699,8 +723,8 @@ impl Account {
         Ok(Value::Object(out))
     }
 
-    /// One table's [`TypeCounts`] and, with `named`, the names of its senders (`Name2Id` names them), from one read of
-    /// the table through the leaf scan. A table the scan does not read is counted by SQL.
+    /// 一张表的 [`TypeCounts`]，`named` 为真时还有它的发送者的名称（来自 `Name2Id`），叶页扫描只读一遍表。
+    /// 扫描读不了的表用 SQL 统计。
     fn type_counts(
         &self,
         t: &MsgTable,
@@ -787,7 +811,7 @@ impl Account {
         Ok((counts, names))
     }
 
-    /// `(sender username, message count)` of one table; unknown senders are skipped.
+    /// 一张表中每个发送者的用户名和消息数；略过 `Name2Id` 里没有的发送者。
     fn sender_counts(&self, t: &MsgTable, range: &str) -> Result<Vec<(String, i64)>> {
         let sql = format!(
             "select n.user_name as u, count(*) as n from \"{}\" m join Name2Id n on n.rowid = m.real_sender_id \
@@ -802,9 +826,9 @@ impl Account {
             .collect())
     }
 
-    /// One table's messages counted by sender name (`None`: a sender `Name2Id` does not name), type and local hour,
-    /// in one pass: read through the leaf scan and grouped here, the hours worked out once a quarter hour (see
-    /// [`time_groups`](Self::time_groups)). A table the scan does not read is grouped by SQL.
+    /// 一遍读完一张表，按发送者名称（`Name2Id` 里没有的发送者为 `None`）、类型和本地小时统计消息：
+    /// 经叶页扫描读取、在这里分组，每一刻钟只换算一次小时（见 [`time_groups`](Self::time_groups)）。
+    /// 扫描读不了的表用 SQL 分组。
     fn sender_groups(&self, t: &MsgTable, range: (i64, i64)) -> Result<Vec<SenderGroup>> {
         let scanned = self.scan_messages(
             t,
@@ -856,8 +880,12 @@ impl Account {
             .collect())
     }
 
-    /// Group statistics: per-sender counts (`sessions.<room>.senders` keyed by synthetic ids resolved through
-    /// `idMap`, because sender row ids differ between shards), hour histogram and type counts.
+    /// 群的统计：每个发送者的消息数（`sessions.<room>.senders` 的键是从 1 开始的编号，经 `idMap` 换成用户名，
+    /// 因为同一发送者在不同分片中的行号不同）、按小时的分布和按类型的数量。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn group_stats(&self, chatroom_id: &str, begin: i64, end: i64) -> Result<Value> {
         let mut totals: BTreeMap<String, i64> = BTreeMap::new();
         let mut hourly: BTreeMap<i64, i64> = BTreeMap::new();
@@ -887,9 +915,9 @@ impl Account {
         }))
     }
 
-    // ── raw read-only queries ──
+    // ── 只读的原始查询 ──
 
-    /// Default database of a `kind`, or `path` (absolute or relative to `db_storage`) which must stay inside `db_storage`.
+    /// `kind` 的默认数据库；给出 `path`（绝对路径或相对于 `db_storage` 的路径）时取它，它必须在 `db_storage` 之内。
     fn resolve_db_path(&self, kind: &str, path: Option<&str>) -> Result<PathBuf> {
         let root = self.db_storage().to_path_buf();
         match path.map(str::trim).filter(|p| !p.is_empty()) {
@@ -925,14 +953,19 @@ impl Account {
         }
     }
 
-    /// Run a read-only statement and return the rows as JSON objects.
+    /// 运行一条只读语句，把读出的行作为 JSON 对象返回。
+    ///
+    /// # Errors
+    ///
+    /// `path` 不在 `db_storage` 之内，没给 `path` 时 `kind` 未知或者没有消息库，或者读取失败（打开、解密、
+    /// 语句出错，包括写数据库的语句）。
     pub fn exec_query(&self, kind: &str, path: Option<&str>, sql: &str) -> Result<Value> {
         let db = self.resolve_db_path(kind, path)?;
         Ok(Value::Array(self.query(&db, sql, &[])?))
     }
 }
 
-/// Table names come from our own listings, but they are interpolated into SQL, so check them anyway.
+/// 表名来自本程序自己列出的结果，但会拼进 SQL，所以仍然检查一遍。
 fn check_ident(name: &str) -> Result<()> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         bail!("invalid table name: {name}");
@@ -1068,8 +1101,7 @@ mod tests {
         assert_eq!(a.message_table_stats("nobody").unwrap(), json!([]));
     }
 
-    /// The tables of several conversations found together are those found one conversation at a time, in the order
-    /// asked, a conversation without messages included.
+    /// 一起查找的多个会话的表，与逐个会话查找的结果相同，按请求的顺序，包括没有消息的会话。
     #[test]
     fn table_stats_of_several_conversations_are_each_ones() {
         let (_dir, a) = account("tables-of");
@@ -1125,7 +1157,7 @@ mod tests {
             ),
             (Some(1), Some(3))
         );
-        // range: only the day-1..day-3 slice of bob
+        // 时间范围：只取 bob 第 1 到第 3 个 `DAY` 的那一段
         let ranged = a
             .session_message_type_stats_batch(
                 &ids(&["wxid_bob"]),
@@ -1135,9 +1167,8 @@ mod tests {
         assert_eq!(ranged["wxid_bob"]["total_messages"], 2);
     }
 
-    /// A transfer and a red packet are counted by their local type, `(<type> << 32) | 49` as WeChat 4 keeps them; one
-    /// kept as 49 with its `<type>` only in its XML counts among the messages, not as a transfer or a red packet
-    /// (#1263).
+    /// 转账和红包按 `local_type` 计数，即微信 4 保存的 `(<type> << 32) | 49`；
+    /// 保存成 49、`<type>` 只在 XML 里的消息计入消息总数，不算转账或红包（#1263）。
     #[test]
     fn transfers_and_red_packets_are_counted_by_their_local_type() {
         use crate::fixture::{MsgSpec, SessionSpec};
@@ -1207,7 +1238,7 @@ mod tests {
         );
         assert_eq!(sum(&v["typeCounts"]), 3);
         assert_eq!(sum(&v["hourly"]), 3);
-        // bob talks in both shards of the private chat, but the group is only in shard 0
+        // bob 的私聊在两个分片里都有，但这个群只在分片 0 里
         assert_eq!(
             a.group_stats("room1@chatroom", T0 + DAY, 0).unwrap()["sessions"]["room1@chatroom"]
                 ["senders"]

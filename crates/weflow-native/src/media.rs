@@ -1,5 +1,5 @@
-//! Message search, media scans, voice data (`media_*.db`), where WeChat's media index puts images and videos
-//! (`hardlink.db`) and emoticon lookups (`emoticon.db`).
+//! 消息搜索、媒体扫描、语音数据（`media_*.db`）、微信的媒体索引中图片和视频的位置（`hardlink.db`），
+//! 以及表情的查找（`emoticon.db`）。
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -11,19 +11,20 @@ use serde_json::{json, Value};
 use crate::db::Account;
 use crate::msg_row::MsgRow;
 
-/// A message of [`Account::search_messages`] or [`Account::scan_media_stream`], and its conversation.
+/// [`Account::search_messages`] 或 [`Account::scan_media_stream`] 找到的一条消息，以及它所在的会话。
 #[derive(Clone, Debug, PartialEq)]
 pub struct SessionRow {
-    /// The conversation's username.
+    /// 会话的用户名。
     pub session_id: String,
-    /// The message.
+    /// 消息本身。
     pub row: MsgRow,
 }
 
-/// `scan_media_stream` codes: 1 = images, 2 = videos, anything else = both.
+/// 图片消息的 `local_type`。
 const IMAGE: i64 = 3;
+/// 视频消息的 `local_type`。
 const VIDEO: i64 = 43;
-/// Voice rows are matched by `create_time` with this much clock jitter (seconds).
+/// 按 `create_time` 匹配语音行时允许的时钟误差（秒）。
 const VOICE_TIME_WINDOW: i64 = 5;
 
 fn int(row: &Value, key: &str) -> i64 {
@@ -37,8 +38,7 @@ fn text(row: &Value, key: &str) -> String {
         .to_string()
 }
 
-/// One folder or file name, as the media index stores them: not empty, not a path and not a step up, so a path
-/// built from them stays under the account directory.
+/// 媒体索引中保存的一个文件夹名或文件名：不为空、不含路径分隔符、不是 `.` 或 `..`，拼出的路径才不会跑出账号目录。
 fn is_plain_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', ':'])
 }
@@ -66,8 +66,8 @@ fn sort_key(row: &Value) -> (i64, i64, i64) {
     )
 }
 
-/// The first `k` rows in "newest first, then in the order found" order (what a stable newest-first sort of every
-/// row would put first), without holding the others.
+/// 按「最新在前，相同时按找到的先后」排序的前 `k` 行（即对全部行做稳定的最新在前排序后排在最前的几行），
+/// 不保存其余的行。
 struct Newest<T = Value> {
     k: usize,
     found: usize,
@@ -81,7 +81,7 @@ struct Ranked<T> {
 }
 
 impl<T> Ranked<T> {
-    /// Ordered so the heap's top is the row that would come last.
+    /// 排序使堆顶是排在最后的行。
     fn rank(&self, other: &Self) -> std::cmp::Ordering {
         other.key.cmp(&self.key).then(self.seq.cmp(&other.seq))
     }
@@ -119,7 +119,7 @@ impl<T> Newest<T> {
         }
     }
 
-    /// Adds `row`, placed by `key` (`(sort_seq, create_time, local_id)`, as [`sort_key`] reads them).
+    /// 加入 `row`，按 `key`（`(sort_seq, create_time, local_id)`，与 [`sort_key`] 读出的一样）排位置。
     fn push_keyed(&mut self, key: (i64, i64, i64), row: T) {
         let seq = self.found;
         self.found += 1;
@@ -132,13 +132,13 @@ impl<T> Newest<T> {
         }
     }
 
-    /// The key of the row that would come last, once `k` rows are kept: a row with a smaller key cannot make it.
+    /// 已保存 `k` 行时排在最后的那一行的键：键比它小的行不可能进入前 `k` 行。
     fn last_kept(&self) -> Option<(i64, i64, i64)> {
         (self.k > 0 && self.heap.len() == self.k).then(|| self.heap.peek().map(|r| r.key))?
     }
 
-    /// Add the rows another `Newest` kept, as if they had been pushed here in the order they were found (after
-    /// everything pushed so far). Rows it dropped could not have made the cut here either.
+    /// 加入另一个 `Newest` 保存的行，如同按它们被找到的先后接在已加入的行之后加到这里。
+    /// 它丢掉的行在这里也进不了前 `k` 行。
     fn absorb(&mut self, other: Newest<T>) {
         let base = self.found;
         self.found += other.found;
@@ -151,7 +151,7 @@ impl<T> Newest<T> {
         }
     }
 
-    /// The kept rows, first one first.
+    /// 保存的行，排在前面的在前。
     fn into_rows(self) -> Vec<T> {
         self.heap
             .into_sorted_vec()
@@ -161,18 +161,18 @@ impl<T> Newest<T> {
     }
 }
 
-/// WeChat's own full-text index of messages, `message/message_fts.db`. Its FTS5 tables use WeChat's tokenizer
-/// (`mmftstokenizer`), so only the plain `_content` tables behind them are read, with `LIKE`.
+/// 微信自己的消息全文索引 `message/message_fts.db`。它的 FTS5 表用微信的分词器（`mmftstokenizer`），
+/// 所以只用 `LIKE` 读取这些表背后普通的 `_content` 表。
 struct FtsIndex {
     path: PathBuf,
-    /// Each `_content` table, with its columns (`c0`…) of (text, `local_id`, `sort_seq`, session, `create_time`).
+    /// 每张 `_content` 表，以及其中依次存放（文字、`local_id`、`sort_seq`、会话、`create_time`）的列名（`c0`…）。
     tables: Vec<(String, [String; 5])>,
-    /// The table whose row numbers are the `session_id` of the index.
+    /// 行号就是索引中 `session_id` 的那张表。
     users: String,
 }
 
-/// The column names of a `create table` statement, or of the arguments of `using fts5(…)`, in order. Options such
-/// as `tokenize = '…'` and table constraints are left out.
+/// `create table` 语句中的列名，或者 `using fts5(…)` 参数中的列名，按顺序。
+/// `tokenize = '…'` 这样的选项和表的约束不算。
 fn declared_columns(sql: &str) -> Vec<String> {
     let (Some(open), Some(close)) = (sql.find('('), sql.rfind(')')) else {
         return Vec::new();
@@ -195,9 +195,8 @@ fn declared_columns(sql: &str) -> Vec<String> {
         .collect()
 }
 
-/// The text WeChat's index holds for a message, as far as it can be told from the message: the text of a text
-/// message, without the `sender:\n` a group message from someone else starts with, and the `<title>` of an app
-/// message (links, files, quotes…).
+/// 微信的索引为一条消息保存的文字（就消息本身能推断的而言）：文字消息的文字，去掉别人在群里发的消息开头的
+/// `sender:\n`；app 消息（链接、文件、引用等）的 `<title>`。
 fn indexed_text(local_type: i64, content: &str, group: bool) -> String {
     if local_type != 1 {
         return title_of(content).unwrap_or_default();
@@ -212,8 +211,7 @@ fn indexed_text(local_type: i64, content: &str, group: bool) -> String {
     }
 }
 
-/// The text of the first `<title>` of an app message's XML, entities decoded. Plain string search: it runs for every
-/// app message a search reads.
+/// app 消息 XML 中第一个 `<title>` 的文字，已解码实体。用普通的字符串查找：搜索读到的每条 app 消息都要运行它。
 fn title_of(xml: &str) -> Option<String> {
     let start = xml.find("<title>")? + "<title>".len();
     let raw = &xml[start..start + xml[start..].find("</title>")?];
@@ -233,8 +231,8 @@ fn title_of(xml: &str) -> Option<String> {
     )
 }
 
-/// Where a hit of [`Account::search_messages`] is: its table and `local_id` when it was scanned, its
-/// conversation, `local_id` and `sort_seq` when it comes from WeChat's index.
+/// [`Account::search_messages`] 的一个结果在哪里：扫描到的写成所在的表和 `local_id`，
+/// 来自微信索引的写成会话、`local_id` 和 `sort_seq`。
 fn place(r: &Value) -> String {
     match r.get("_session").and_then(Value::as_str) {
         Some(sid) => format!("{sid}\n{}\n{}", int(r, "local_id"), int(r, "sort_seq")),
@@ -242,7 +240,7 @@ fn place(r: &Value) -> String {
     }
 }
 
-/// The tables a hit may be in: its own when it was scanned, those of its conversation when it comes from the index.
+/// 一个结果可能所在的表：扫描到的是它自己的表，来自索引的是它所在会话的各张表。
 fn tables_of(r: &Value, tables: &[(String, crate::msg::MsgTable)]) -> Vec<usize> {
     match r.get("_session").and_then(Value::as_str) {
         Some(sid) => (0..tables.len())
@@ -252,17 +250,13 @@ fn tables_of(r: &Value, tables: &[(String, crate::msg::MsgTable)]) -> Vec<usize>
     }
 }
 
-/// How much of a conversation a search reads newest first before it turns to WeChat's index: rows of each message
-/// table, and time in all. A common word fills a page well before; a word found nowhere loses no more than that.
-/// The hits are the same whatever the budget, only how fast they come.
+/// 搜索在转向微信的索引之前，从最新的消息开始读一个会话的多少：每张消息表的行数，以及总共的时间。
+/// 常见的词远在此前就能凑满一页；哪里都找不到的词最多也只多花这么多。不论预算是多少，结果都相同，只是快慢不同。
 const NEWEST_FIRST_ROWS: usize = 2000;
-#[cfg_attr(
-    test,
-    expect(dead_code, reason = "tests set the budget themselves, without a time")
-)]
+#[cfg_attr(test, expect(dead_code, reason = "测试自己设定预算，不限时间"))]
 const NEWEST_FIRST_TIME: std::time::Duration = std::time::Duration::from_millis(15);
 
-/// Rows and the time when [`NEWEST_FIRST_ROWS`] reading stops.
+/// 从最新的消息开始读（[`NEWEST_FIRST_ROWS`]）时，停止读取的行数和时刻。
 #[derive(Clone, Copy)]
 struct Budget {
     rows: usize,
@@ -295,16 +289,16 @@ impl Budget {
 
 #[cfg(test)]
 thread_local! {
-    /// [`NEWEST_FIRST_ROWS`] for the test running on this thread (with no time limit, so that runs are alike).
+    /// 这个线程上运行的测试所用的 [`NEWEST_FIRST_ROWS`]（不限时间，每次运行的结果才一致）。
     static TEST_NEWEST_FIRST_ROWS: std::cell::Cell<usize> = const { std::cell::Cell::new(NEWEST_FIRST_ROWS) };
 }
 
-/// Text messages, and app messages of any kind (`(kind << 32) | 49`): what WeChat's index holds. Each test has its
-/// own `+` to keep SQLite on the `sort_seq` index, not the type index.
+/// 文字消息和任意子类型的 app 消息（`(kind << 32) | 49`）：微信的索引收录的就是这些。每个比较各带一个 `+`，
+/// 让 SQLite 用 `sort_seq` 索引而不是类型索引。
 const SEARCHABLE_SQL: &str = "(+m.local_type = 1 or (+m.local_type & 4294967295) = 49)";
 
 impl Account {
-    /// WeChat's index of this account, when it has one in the shape this reader knows.
+    /// 这个账号的微信索引；没有，或者结构不是这里认识的样子时为 `None`。
     fn fts_index(&self) -> Option<FtsIndex> {
         let path = self.db_path("message/message_fts.db");
         if !path.is_file() {
@@ -348,9 +342,8 @@ impl Account {
         })
     }
 
-    /// The hits of `ix` among `sessions` (with `below`, only those with a `sort_seq` up to it, and not 0), pushed
-    /// into `hits` as `{sort_seq, create_time, local_id, _session}`; returns the newest `sort_seq` the index holds for
-    /// each of those sessions it knows.
+    /// 在 `ix` 中查找 `sessions` 里的结果（给出 `below` 时只取 `sort_seq` 不大于它且不为 0 的），以
+    /// `{sort_seq, create_time, local_id, _session}` 加入 `hits`；返回索引为它认识的每个会话保存的最新 `sort_seq`。
     fn search_index(
         &self,
         ix: &FtsIndex,
@@ -389,10 +382,9 @@ impl Account {
             if let Some(below) = below {
                 range.push_str(&format!(" and {seq} <= {below} and {seq} <> 0"));
             }
-            // one pass over the rows of these conversations, for the newest sort_seq of each (what the index holds of
-            // it) and for the hits. `like` holds the lowercased keyword, and LIKE ignores the case of ASCII letters
-            // only: what it matches, the scan's lowercased comparison matches too. Rows come newest-ish first (in the
-            // order WeChat added them), so once a page is kept, most hits are passed over without building a row.
+            // 把这些会话的行读一遍，既得出每个会话最新的 sort_seq（索引收录到哪里），也找出结果。
+            // `like` 里是转成小写的关键词，LIKE 只忽略 ASCII 字母的大小写：它能匹配的，扫描时转成小写的比较也能匹配。
+            // 行大致按从新到旧的顺序出来（微信加入它们的顺序），所以保存满一页之后，大部分结果不必构造成行就跳过。
             let sql = format!(
                 "select {seq}, {time}, {id}, {s}, ({t} like ?1 escape '\\'{range}) from \"{table}\" \
                  where {s} in ({list}) order by rowid desc"
@@ -413,7 +405,7 @@ impl Account {
                         continue;
                     }
                     let key = (if seq == 0 { time * 1000 } else { seq }, time, local_id);
-                    // a row ranked no higher than the last one kept, and found after it, cannot make it
+                    // 排名不高于已保存的最后一行、又在它之后找到的行，进不了前 `k` 行
                     if found.last_kept().is_some_and(|last| key <= last) {
                         continue;
                     }
@@ -442,12 +434,15 @@ impl Account {
         Ok(newest)
     }
 
-    /// The messages whose text holds `keyword` (case-insensitively), newest first, `limit` of them from `offset`
-    /// on; `session_id` keeps the search to one conversation.
+    /// 文字中含有 `keyword`（不区分大小写）的消息，最新的在前，从第 `offset` 条起取 `limit` 条；
+    /// `limit` 不大于 0 时取 50 条，给出 `session_id` 时只在这个会话里搜索。
     ///
-    /// The text is the one WeChat's own search matches: WeChat's index (`message_fts.db`) is read where it holds the
-    /// messages, and the messages it does not hold yet (or every message, without an index) are matched on the same
-    /// text, told from the message (`indexed_text`).
+    /// 匹配的文字与微信自己的搜索相同：索引（`message_fts.db`）收录了的消息从索引读取；
+    /// 索引还没收录的消息（没有索引时是全部消息）按从消息推断出的同样的文字匹配（`indexed_text`）。
+    ///
+    /// # Errors
+    ///
+    /// 读取会话列表或某个消息库失败（打开、解密或查询失败）。微信的索引读不了时不算错误，改为扫描全部消息。
     pub fn search_messages(
         &self,
         keyword: &str,
@@ -461,9 +456,8 @@ impl Account {
         if needle.is_empty() {
             return Ok(Vec::new());
         }
-        // The search reads the conversation list, every message database and the index. Opened here at once, their
-        // slow key derivations run side by side instead of one after another as the search reaches each (#1100);
-        // the ones already open cost nothing.
+        // 搜索要读会话列表、每个消息库和索引。在这里一起打开，它们耗时的密钥派生就同时进行，
+        // 而不是搜索读到哪个才派生哪个、一个接一个（#1100）；已经打开的不再花时间。
         let mut dbs = vec![self.session_db(), self.db_path("message/message_fts.db")];
         dbs.extend(self.message_dbs());
         dbs.retain(|p| p.is_file());
@@ -494,8 +488,7 @@ impl Account {
             }
         }
         let index = self.fts_index();
-        // a message the index still holds after it was deleted is left out: while some of the first `k` hits are
-        // such, more are ranked
+        // 已删除但索引里还有的消息不列出：前 `k` 个结果里有这样的消息时，多排一些结果
         let mut k = want;
         let page: Vec<Value> = loop {
             let ranked = self.search_ranked(
@@ -519,8 +512,8 @@ impl Account {
             k += want - kept.len();
         };
 
-        // then the whole rows of the page: by table for those scanned, by conversation for those of the index (which
-        // knows a message by its local_id and sort_seq, not by its database)
+        // 然后读这一页的整行：扫描到的按表读，来自索引的按会话读（索引用 local_id 和 sort_seq 标识消息，
+        // 不知道它在哪个数据库）
         let mut wanted: std::collections::BTreeMap<usize, Vec<String>> = Default::default();
         for r in &page {
             for at in tables_of(r, &tables) {
@@ -530,7 +523,7 @@ impl Account {
                     .push(int(r, "local_id").to_string());
             }
         }
-        // each row once, found by either place a hit may name it by
+        // 每行只读一次，按结果可能给出的两种位置都能找到它
         let mut rows: Vec<Option<SessionRow>> = Vec::new();
         let mut whole = HashMap::new();
         for (at, ids) in wanted {
@@ -552,7 +545,7 @@ impl Account {
             .collect())
     }
 
-    /// The hits of the index among `ranked` whose message is not in its conversation any more.
+    /// `ranked` 中来自索引、但消息已不在所在会话里的结果。
     fn deleted_hits(
         &self,
         ranked: &[Value],
@@ -587,16 +580,12 @@ impl Account {
         Ok(gone)
     }
 
-    /// The first `want` hits, newest first. A hit of the index is `{sort_seq, create_time, local_id, _session}`, a
-    /// scanned one names its table (`_table`).
+    /// 最新在前的前 `want` 个结果。来自索引的结果是 `{sort_seq, create_time, local_id, _session}`，
+    /// 扫描到的结果给出所在的表（`_table`）。
     ///
-    /// A single conversation is first read from its newest messages, as for a search without an index; with an index,
-    /// only as far as a [`Budget`] of rows and time, where a common word fills a page without the index
-    /// being read. Older messages come from the index, and those it does not hold yet are scanned.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "what one search asks for, handed down as it came"
-    )]
+    /// 只搜一个会话时，先从最新的消息开始读，与没有索引时的搜索一样；有索引时只读到 [`Budget`] 限定的行数和时间为止，
+    /// 常见的词不读索引就能凑满一页。更早的消息从索引读取，索引还没收录的消息靠扫描。
+    #[expect(clippy::too_many_arguments, reason = "一次搜索的各项参数，原样往下传")]
     fn search_ranked(
         &self,
         index: Option<&FtsIndex>,
@@ -608,7 +597,7 @@ impl Account {
         want: usize,
     ) -> Result<Vec<Value>> {
         let mut hits = Newest::new(want);
-        // with Some(line), every message with a sort_seq above it (and every one without a sort_seq) was read
+        // line 为 Some 时，sort_seq 大于它的消息（以及没有 sort_seq 的消息）都已读过
         let mut line = None;
         if index.is_none() || sessions.len() == 1 {
             let budget = if index.is_some() {
@@ -636,7 +625,7 @@ impl Account {
             let Some(l) = cut else {
                 return Ok(hits.into_rows());
             };
-            // the hits above the line are all there are; below it they are looked for again
+            // line 以上的结果已经齐全；line 以下的结果重新查找
             let rows = hits.into_rows();
             let above = |r: &Value| int(r, "sort_seq") == 0 || int(r, "sort_seq") > l;
             if rows.iter().filter(|r| above(r)).count() >= want {
@@ -646,7 +635,7 @@ impl Account {
             rows.into_iter().filter(above).for_each(|r| hits.push(r));
             line = Some(l);
         }
-        // an index that cannot be read is left aside, and every message scanned instead
+        // 索引读不了时不用索引，改为扫描全部消息
         let mut covered = HashMap::new();
         if let Some(ix) = index {
             let mut found = Newest::new(want);
@@ -658,7 +647,7 @@ impl Account {
             }
         }
         for (at, (sid, t)) in tables.iter().enumerate() {
-            // what the index holds of this conversation, and what was read above, is not read again
+            // 索引已收录的、上面已经读过的部分不再读
             let mut cond = covered
                 .get(sid)
                 .map_or(String::new(), |top| format!(" and m.sort_seq > {top}"));
@@ -682,13 +671,12 @@ impl Account {
         Ok(hits.into_rows())
     }
 
-    /// The hits of one message table under `cond`, matched on [`indexed_text`]: its rows with a `sort_seq` newest
-    /// first, at most `budget` of them, and with `unsequenced`, the few without one. Also returns, when the budget
-    /// stopped the reading, the `sort_seq` of the first row left unread: rows above it were all read, not all of those
-    /// at or below.
+    /// 一张消息表在 `cond` 条件下按 [`indexed_text`] 匹配到的结果：先读有 `sort_seq` 的行，最新的在前，
+    /// 最多读到 `budget` 为止；`unsequenced` 为真时再读少数没有 `sort_seq` 的行。预算让读取停下时，
+    /// 还返回第一个没读的行的 `sort_seq`：比它大的行都读过了，不大于它的行没有全部读过。
     #[expect(
         clippy::too_many_arguments,
-        reason = "what one search asks for, and where it stands in this table"
+        reason = "一次搜索的各项参数，以及它在这张表里读到哪里"
     )]
     fn scan_table(
         &self,
@@ -705,9 +693,8 @@ impl Account {
     ) -> Result<(Newest, Option<i64>)> {
         let group = sid.ends_with("@chatroom");
         let range = range_sql(begin, end);
-        // only the sort key and the text are read to match. Plain text is pre-filtered in SQL, the XML of app messages
-        // too (their title is in it as is, unless the keyword has a character XML writes as an entity), blobs (zstd)
-        // only after decoding
+        // 只读排序键和文字来匹配。纯文字先在 SQL 里筛选，app 消息的 XML 也一样（标题原样写在里面，
+        // 除非关键词含有 XML 会写成实体的字符），blob（zstd）只能解码之后再筛选
         let xml_escaped = if needle.contains(['&', '<', '>', '"', '\'']) {
             " or +m.local_type <> 1"
         } else {
@@ -719,8 +706,8 @@ impl Account {
              or m.message_content like ?1 escape '\\')",
             table = t.table
         );
-        // rows with a sort_seq newest first, through its index: once a page is kept, a row with a smaller sort_seq
-        // cannot make it, and nor can any after it; the few without one are keyed by create_time * 1000 and read apart
+        // 有 sort_seq 的行经它的索引从新到旧读取：保存满一页之后，sort_seq 更小的行进不了这一页，它后面的行也一样；
+        // 少数没有 sort_seq 的行按 create_time * 1000 排序，另外读取
         let mut table_hits = Newest::new(want);
         let mut stopped = None;
         let mut tails = vec![(" and m.sort_seq <> 0 order by m.sort_seq desc", true)];
@@ -729,7 +716,7 @@ impl Account {
         }
         for (tail, newest_first) in tails {
             let found = std::cell::RefCell::new(Newest::new(want));
-            // rows read, and the sort_seq of the first one left unread for the budget
+            // 已读的行数，以及因预算没读的第一行的 sort_seq
             let read = std::cell::Cell::new((0usize, None));
             self.query_until(
                 &t.db,
@@ -775,12 +762,16 @@ impl Account {
         Ok((table_hits, stopped))
     }
 
-    /// Image/video messages across sessions, newest first; returns the page and whether more remain.
+    /// 跨会话的图片和视频消息，最新的在前；返回这一页，以及后面是否还有。
     ///
-    /// Each conversation gives only its newest `offset + limit + 1` rows of the types, read through the
-    /// `(local_type, sort_seq)` index ([`typed_before`](Self::typed_before)), so a page costs what the rows up to it
-    /// do, not every image and video of the account. Rows tied on their sort key keep the order of `session_ids`,
-    /// then of the shards. `limit <= 0` asks for every row after `offset`.
+    /// `media_type` 为 1 时只取图片，为 2 时只取视频，其他值两者都取。每个会话只给出这些类型最新的
+    /// `offset + limit + 1` 行，经 `(local_type, sort_seq)` 索引读取（[`typed_before`](Self::typed_before)），
+    /// 所以一页的代价取决于这一页之前的行数，而不是账号里全部的图片和视频。排序键相同的行按 `session_ids`
+    /// 的顺序，再按分片的顺序排列。`limit <= 0` 表示取 `offset` 之后的全部行。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn scan_media_stream(
         &self,
         session_ids: &[String],
@@ -800,7 +791,7 @@ impl Account {
             .ok()
             .filter(|&l| l > 0)
             .map(|l| offset.saturating_add(l));
-        // one row past the page from each conversation tells whether more remain; -1 reads them all
+        // 每个会话多取一行，就知道后面是否还有；-1 表示全部读取
         let want = page_end.map_or(-1, |e| {
             i64::try_from(e.saturating_add(1)).unwrap_or(i64::MAX)
         });
@@ -821,9 +812,9 @@ impl Account {
         Ok((page, more))
     }
 
-    // ── voice ──
+    // ── 语音 ──
 
-    /// `message/media_<n>.db` shards.
+    /// `message/media_<n>.db` 的各个分片，按编号升序。
     pub fn media_dbs(&self) -> Vec<PathBuf> {
         let mut found: Vec<(u32, PathBuf)> = std::fs::read_dir(self.db_path("message"))
             .into_iter()
@@ -843,10 +834,14 @@ impl Account {
         found.into_iter().map(|(_, p)| p).collect()
     }
 
-    /// Voice bytes as lowercase hex (several fragments are concatenated in `data_index` order); `""` when absent.
+    /// 语音数据的小写十六进制（有多个片段时按 `data_index` 的顺序拼接）；没有时为 `""`。
     ///
-    /// Matching: the exact server id first, then `local_id` with `create_time` within ±5 s. `candidates` are the
-    /// chat names (sender, session, self) the row may belong to; an empty list accepts any chat.
+    /// 匹配顺序：先按服务器 ID 精确匹配，再按 `local_id` 加上相差不超过 5 秒的 `create_time` 匹配。
+    /// `candidates` 是这一行可能属于的聊天的用户名（发送者、会话、自己）；列表为空时接受任何聊天。
+    ///
+    /// # Errors
+    ///
+    /// 某个 `media_<n>.db` 无法读取（打开、解密或查询失败）。
     pub fn voice_data(
         &self,
         create_time: i64,
@@ -901,7 +896,11 @@ impl Account {
         Ok(String::new())
     }
 
-    /// `[{ "hex": ... }]`, one entry per request (`{}` when no voice was found).
+    /// `[{ "hex": ... }]`：每个请求一项（没有找到语音时为 `{}`）。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`voice_data`](Self::voice_data)。
     pub fn voice_data_batch(&self, requests: &Value) -> Result<Value> {
         let mut out = Vec::new();
         for req in requests.as_array().map(Vec::as_slice).unwrap_or(&[]) {
@@ -933,13 +932,17 @@ impl Account {
         Ok(Value::Array(out))
     }
 
-    // ── WeChat's media index (`hardlink/hardlink.db`) ──
+    // ── 微信的媒体索引 `hardlink/hardlink.db` ──
 
-    /// Every image file WeChat's media index lists, by message md5 (lower case), each md5's newest first, relative
-    /// to the account directory: `msg/attach/<dir1>/<dir2>/Img/<file name>`. The renditions of one image
-    /// (thumbnail, original, HD) share its md5; rows of type 4 name no file. An account without the index lists none.
+    /// 微信媒体索引列出的全部图片文件，按消息的 md5（小写）分组，每个 md5 下最新的在前，路径相对于账号目录：
+    /// `msg/attach/<dir1>/<dir2>/Img/<file name>`。同一张图片的几种版本（缩略图、普通图、原图）共用它的 md5；
+    /// 类型为 4 的行不对应文件。没有这个索引的账号列出的是空表。
     ///
-    /// The whole table at once: WeChat gives it no index on the md5, so looking one md5 up reads all of it.
+    /// 一次读完整张表：微信没有给 md5 建索引，查一个 md5 也要读完整张表。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `hardlink.db`（打开、解密或查询失败）。
     pub fn image_hardlink_index(&self) -> Result<HashMap<String, Vec<PathBuf>>> {
         let db = self.db_path("hardlink/hardlink.db");
         if !db.is_file() {
@@ -966,8 +969,12 @@ impl Account {
         Ok(index)
     }
 
-    /// The video files WeChat's media index lists for a message md5, newest first, relative to the account
-    /// directory: `msg/video/<dir1>/<file name>`. The file can be named otherwise than the md5.
+    /// 微信媒体索引为一个消息 md5 列出的视频文件，最新的在前，路径相对于账号目录：`msg/video/<dir1>/<file name>`。
+    /// 文件名可以与 md5 不同。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `hardlink.db`（打开、解密或查询失败）。
     pub fn video_hardlinks(&self, md5: &str) -> Result<Vec<PathBuf>> {
         let db = self.db_path("hardlink/hardlink.db");
         let md5 = md5.trim().to_ascii_lowercase();
@@ -988,8 +995,12 @@ impl Account {
             .collect())
     }
 
-    /// The files (sent and received documents, archives …) WeChat's media index lists for a message md5, newest
-    /// first, relative to the account directory: `msg/file/<dir1>/<file name>`, `dir1` being the month (`2024-01`).
+    /// 微信媒体索引为一个消息 md5 列出的文件（收发的文档、压缩包等），最新的在前，路径相对于账号目录：
+    /// `msg/file/<dir1>/<file name>`，`dir1` 是月份（`2024-01`）。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `hardlink.db`（打开、解密或查询失败）。
     pub fn file_hardlinks(&self, md5: &str) -> Result<Vec<PathBuf>> {
         let db = self.db_path("hardlink/hardlink.db");
         let md5 = md5.trim().to_ascii_lowercase();
@@ -1010,13 +1021,17 @@ impl Account {
             .collect())
     }
 
-    // ── emoticons ──
+    // ── 表情 ──
 
     fn emoticon_db(&self) -> PathBuf {
         self.db_path("emoticon/emoticon.db")
     }
 
-    /// Download URL of a sticker by content md5 (case-insensitive): CDN first, then external, preview, thumbnail.
+    /// 按内容的 md5（不区分大小写）查表情的下载地址：依次取 CDN 地址、外部地址、预览图、缩略图。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `emoticon.db`（打开、解密或查询失败）。
     pub fn emoticon_cdn_url(&self, md5: &str) -> Result<String> {
         let rows = self.query(&self.emoticon_db(), "select cdn_url, extern_url, tp_url, thumb_url from kNonStoreEmoticonTable where lower(md5) = lower(?1)", &[&md5.trim()])?;
         Ok(rows
@@ -1030,8 +1045,12 @@ impl Account {
             .unwrap_or_default())
     }
 
-    /// Every sticker caption, keyed by lower-case md5: the user's own sticker text, else the store package caption
-    /// (Chinese first). Two table scans: a `lower(md5) = lower(?)` lookup per sticker cannot use an index.
+    /// 全部表情的说明文字，以小写的 md5 为键：先取用户自己表情的文字，没有时取商店表情包的说明（中文优先）。
+    /// 扫描两张表：逐个表情按 `lower(md5) = lower(?)` 查找用不上索引。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `emoticon.db`（打开、解密或查询失败）。
     pub fn emoticon_captions(&self) -> Result<HashMap<String, String>> {
         let mut out = HashMap::new();
         let own = self.query(
@@ -1057,7 +1076,7 @@ impl Account {
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
-    reason = "test values are known to fit, or are meant to wrap"
+    reason = "测试用的值已知放得下，或者本来就要回绕"
 )]
 mod tests {
     use super::*;
@@ -1080,7 +1099,7 @@ mod tests {
 
     #[test]
     fn newest_keeps_what_a_stable_newest_first_sort_puts_first() {
-        // small key ranges so ties (and the "order found" tie-break) are common; a fixed LCG keeps it reproducible
+        // 键的取值范围小，相同的键（以及按找到的先后排序）才常见；用固定种子的线性同余生成器（LCG）让结果可以重现
         let mut x: u64 = 42;
         let mut next = |m: u64| {
             x = x
@@ -1103,7 +1122,7 @@ mod tests {
                     sorted.iter().take(k).cloned().collect::<Vec<_>>(),
                     "round {round} k {k}"
                 );
-                // the same rows found table by table, each table ranked on its own first
+                // 同样的行逐表找到，每张表先单独排名
                 let mut merged = Newest::new(k);
                 for chunk in rows.chunks(7) {
                     let mut local = Newest::new(k);
@@ -1123,7 +1142,7 @@ mod tests {
     #[test]
     fn search_finds_plain_and_compressed_text_across_sessions() {
         let (_dir, a) = account("search");
-        // "later, compressed" is a zstd blob: it can only be found after decoding
+        // `later, compressed` 是 zstd 压缩的 blob：解码之后才能找到
         assert_eq!(
             contents(
                 &a.search_messages("COMPRESSED", Some("wxid_bob"), 50, 0, 0, 0)
@@ -1143,12 +1162,12 @@ mod tests {
         );
         assert_eq!(ok[0].session_id, "room1@chatroom");
         assert_eq!(ok[0].row.sender.as_deref(), Some("wxid_quiet"));
-        // but the prefix is not part of the text searched
+        // 但搜索的文字里不含这个前缀
         assert!(a
             .search_messages("quiet", None, 50, 0, 0, 0)
             .unwrap()
             .is_empty());
-        // the image message's XML is type 3, which is never searched
+        // 图片消息（类型 3）的 XML 从不参与搜索
         assert!(a
             .search_messages("aabbccdd", None, 50, 0, 0, 0)
             .unwrap()
@@ -1157,7 +1176,7 @@ mod tests {
             .search_messages("  ", None, 50, 0, 0, 0)
             .unwrap()
             .is_empty());
-        // LIKE wildcards in the keyword are literals
+        // 关键词里 LIKE 的通配符按字面匹配
         assert!(a
             .search_messages("%", None, 50, 0, 0, 0)
             .unwrap()
@@ -1173,7 +1192,7 @@ mod tests {
         let (_dir, a) = account("page");
         let all = a
             .search_messages("e", Some("wxid_bob"), 50, 0, 0, 0)
-            .unwrap(); // hello, later, compressed, see you
+            .unwrap(); // 含 e 的消息：`hello`、`later, compressed`、`see you`
         assert_eq!(
             contents(&all),
             ["see you", "later, compressed", "hello"],
@@ -1211,8 +1230,8 @@ mod tests {
             unread: 0,
             last_msg_type: 1,
         }]);
-        // two databases; sort_seq ties within and across them, rows without a sort_seq, compressed text, app
-        // messages (matched on their title only), and a kind that is never searched
+        // 两个数据库；库内和库间都有相同的 sort_seq，还有没有 sort_seq 的行、压缩的文字、app 消息（只按标题匹配），
+        // 以及从不参与搜索的类型
         let mut all = Vec::new();
         for shard in 0..2u32 {
             let msgs: Vec<MsgSpec> = (1..=60i64)
@@ -1233,7 +1252,7 @@ mod tests {
                         m = m.compressed();
                     }
                     if i % 5 == 0 {
-                        // a link, whose description must not match
+                        // 链接消息，它的描述不能被匹配到
                         m = m.of_type((5 << 32) | 49);
                         m.content = format!(
                             "<msg><appmsg><title>{}</title><des>apple pie banana</des></appmsg></msg>",
@@ -1275,7 +1294,7 @@ mod tests {
                     ((seq, m.create_time, m.local_id), *shard)
                 })
                 .collect();
-            // newest first; equal keys in database order
+            // 最新的在前；相同的键按数据库的顺序
             hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
             hits.into_iter()
                 .skip(offset)
@@ -1284,7 +1303,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         for keyword in ["apple", "banana", "pie", "msg", "zzz"] {
-            // pages ending at every place, some inside a run of equal sort_seq
+            // 在每个位置结束的页，有的结束在一串相同的 sort_seq 中间
             let pages = (1..=14).map(|limit| (limit, 0)).chain([
                 (50, 0),
                 (5, 5),
@@ -1320,7 +1339,7 @@ mod tests {
                 }
             }
         }
-        // a hit carries its whole row, with the decoded text
+        // 结果带着整行，文字已解码
         let first = &a.search_messages("pie", None, 1, 0, 0, 0).unwrap()[0].row;
         assert!(first.content.ends_with("Apple pie"));
         assert_eq!(first.sender.as_deref(), Some("wxid_bob"));
@@ -1339,7 +1358,7 @@ mod tests {
             unread: 0,
             last_msg_type: 1,
         }));
-        // the index holds the group's messages up to this sort_seq, not the newer ones, and none of bob's
+        // 索引收录了群里 sort_seq 不超过这个值的消息，没有更新的，也没有 bob 的
         const INDEXED_UP_TO: i64 = 40_000;
         let mut all = Vec::new();
         let mut groups = vec![Vec::new(), Vec::new()];
@@ -1347,7 +1366,7 @@ mod tests {
             let msgs: Vec<MsgSpec> = (1..=25i64)
                 .map(|i| {
                     let fruit = ["apple", "Apple pie", "banana"][(i % 3) as usize];
-                    // the databases at different paces, with a few equal sort_seq across them
+                    // 两个数据库的 sort_seq 增长快慢不同，库间有少数相同的 sort_seq
                     let seq = if shard == 0 { i * 2000 } else { i * 3000 + 1000 };
                     let said = format!("msg {shard}-{i} {fruit}");
                     let mut m =
@@ -1357,7 +1376,7 @@ mod tests {
                         m = m.compressed();
                     }
                     if i % 5 == 0 {
-                        // a quote: its title is its text, the quoted message is not
+                        // 引用消息：标题是它的文字，被引用的消息不算
                         m = m.of_type((57 << 32) | 49);
                         m.content = format!(
                             "wxid_alice:\n<msg><appmsg><title>{said}</title><refermsg><content>banana pie</content>\
@@ -1369,12 +1388,12 @@ mod tests {
                 .collect();
             for m in msgs.iter().filter(|m| m.sort_seq.unwrap() <= INDEXED_UP_TO) {
                 let said = m.content.split_once(":\n").unwrap().1;
-                // WeChat keeps the text without its sender, and for an app message its title and a little more
+                // 微信保存去掉发送者后的文字；app 消息保存标题再加一点别的
                 let text = match m.local_type {
                     1 => said.to_string(),
                     _ => format!("{} indexed", indexed_text(m.local_type, said, false)),
                 };
-                // the groups of the index do not follow the databases' numbers
+                // 索引的分组与数据库的编号不对应
                 groups[1 - shard as usize].push(FtsSpec {
                     text,
                     local_id: m.local_id,
@@ -1398,7 +1417,7 @@ mod tests {
             }
             f.message_shard(shard, &sessions);
         }
-        // a message deleted after it was indexed
+        // 被索引之后又删除的消息
         groups[0].push(FtsSpec {
             text: "deleted apple".into(),
             local_id: 77,
@@ -1448,7 +1467,7 @@ mod tests {
                     )
                 })
                 .collect();
-            // newest first: by sort_seq, then local_id (the time follows the sort_seq here)
+            // 最新的在前：先按 sort_seq，再按 local_id（这里的时间随 sort_seq 增长）
             hits.sort_by_key(|h| std::cmp::Reverse((h.0, h.3)));
             hits.into_iter()
                 .skip(offset)
@@ -1456,10 +1475,9 @@ mod tests {
                 .map(|(_, s, db, id)| (s, db, id))
                 .collect::<Vec<_>>()
         };
-        // a conversation is first read newest first, as far as a budget of rows of each table, then from the index:
-        // with the budget at 0 the index serves all; with no limit, it is never read for one conversation. Read from
-        // the messages, an app message is matched on its title only, so a word of the index's text after it
-        // ("indexed") is found in a conversation only below the line where the reading stopped.
+        // 一个会话先从最新的消息开始读，每张表读到预算的行数为止，然后读索引：预算为 0 时全部由索引给出；
+        // 不限预算时搜索一个会话从不读索引。从消息读取时 app 消息只按标题匹配，
+        // 所以索引文字中标题之后的词（`indexed`）在一个会话里只能在读取停下的位置以下找到。
         for budget in (0..=12).chain([usize::MAX]) {
             TEST_NEWEST_FIRST_ROWS.with(|b| b.set(budget));
             for keyword in ["apple", "pie", "indexed", "msg", "alice", "banana", "zzz"] {
@@ -1509,7 +1527,7 @@ mod tests {
                 }
             }
         }
-        // whole rows, as a scan gives them
+        // 与扫描得到的一样是整行
         TEST_NEWEST_FIRST_ROWS.with(|b| b.set(0));
         let first = &a
             .search_messages("indexed", Some(room), 1, 0, 0, 0)
@@ -1541,15 +1559,14 @@ mod tests {
         assert!(page.is_empty() && !more);
     }
 
-    /// Every page of `scan_media_stream` is the slice a stable newest-first sort of all the matching rows gives
-    /// (conversations in the order asked, then shards), with ties across conversations and shards, rows without a
-    /// `sort_seq`, other types mixed in and a time range.
+    /// `scan_media_stream` 的每一页，都是把全部符合的行稳定地按最新在前排序（会话按请求的顺序，再按分片）后的一段；
+    /// 其中有跨会话和跨分片的相同键、没有 `sort_seq` 的行、混入的其他类型，以及时间范围。
     #[test]
     fn media_stream_pages_are_slices_of_every_row_sorted() {
         use crate::fixture::{Fixture, MsgSpec};
         let root = TestDir::new("weflow-media-stream-pages");
         let f = Fixture::new(&root, "wxid_me_ab12");
-        // a fixed LCG keeps it reproducible; small ranges make ties common
+        // 用固定种子的线性同余生成器（LCG）让结果可以重现；取值范围小，相同的键才常见
         let mut x: u64 = 7;
         let mut next = |m: u64| {
             x = x
@@ -1574,7 +1591,7 @@ mod tests {
                                 &format!("{sid}/{shard}/{local_id}"),
                             )
                             .of_type(local_type);
-                            // a few rows without a sort_seq, the rest on a coarse grid so keys tie across tables
+                            // 少数行没有 sort_seq，其余的落在粗的网格上，让不同表的键相同
                             match next(5) {
                                 0 => spec.with_sort_seq(0),
                                 _ => spec.with_sort_seq(create_time * 1000 + next(3)),
@@ -1682,7 +1699,7 @@ mod tests {
             "aabbcc",
             "fragments are joined in data_index order"
         );
-        // the candidate list decides whose chat is searched
+        // 候选列表决定在谁的聊天里查找
         assert_eq!(
             a.voice_data(T0 + 700, 8, 9_000_000_000_003, &bob).unwrap(),
             ""
@@ -1762,7 +1779,7 @@ mod tests {
         let root = TestDir::new("weflow-media-hardlink");
         let f = Fixture::standard(&root);
         let a = Account::new(f.db_storage(), &f.key_hex()).unwrap();
-        // no index: nothing, and no failure
+        // 没有索引：结果为空，也不报错
         assert!(a.image_hardlink_index().unwrap().is_empty());
         assert!(a
             .video_hardlinks("11223344556677889900aabbccddeeff")
@@ -1790,14 +1807,14 @@ mod tests {
                     "2023-12",
                 )
             },
-            // a row of type 4 names no file
+            // 类型为 4 的行不对应文件
             HardlinkSpec {
                 kind: 4,
                 ..HardlinkSpec::image(image, "0", talker, "2023-11")
             },
-            // a name that would leave its folder is not followed
+            // 会跑出所在文件夹的文件名不采用
             HardlinkSpec::image(image, "../escape.dat", talker, "2023-11"),
-            // an md5 kept in upper case is found in lower case
+            // 以大写保存的 md5 用小写也能找到
             HardlinkSpec::image(
                 "FFEEDDCCBBAA99887766554433221100",
                 "ffeeddccbbaa99887766554433221100.dat",
@@ -1828,7 +1845,7 @@ mod tests {
                 "ffeeddccbbaa99887766554433221100.dat"
             )]
         );
-        // each kind in its own table
+        // 每种媒体在各自的表里
         assert_eq!(index.len(), 2);
         assert_eq!(
             a.video_hardlinks(&video.to_uppercase()).unwrap(),
