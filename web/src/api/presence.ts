@@ -1,13 +1,11 @@
-// Whether this page may hold its long-lived connections (#799). Over HTTP/1.1 Chrome opens six connections at most to
-// a server, and all the tabs of the browser share them; every page keeps an event stream open (backend.ts, and
-// useJobs.ts while a job runs). A page that cannot be seen lets go of its streams, so that those in view always have
-// room, and takes them up again the moment it is seen.
+// 这个页面此刻能否保持它的长连接（#799）。走 HTTP/1.1 时 Chrome 对一个服务端最多开六个连接，
+// 浏览器的所有标签页共用这些连接；每个页面都保持一个事件流（backend.ts，以及作业运行期间的 useJobs.ts）。
+// 不可见的页面放开它的事件流，让可见的页面总有连接可用；页面一旦重新可见就立刻重新连上。
 //
-// - hidden (another tab, a minimized or covered window): away after `HIDDEN_MS`; in view again: back at once
-// - `pagehide` (into the back/forward cache, or gone) and `freeze`: away at once; `pageshow` and `resume`: as the
-//   page's visibility says
+// - 隐藏（切到别的标签页、窗口最小化或被挡住）：`HIDDEN_MS` 之后放开；重新可见：立刻连回
+// - `pagehide`（进入往返缓存或页面关闭）和 `freeze`：立刻放开；`pageshow` 和 `resume`：按页面的可见状态处理
 
-/** How long a hidden page keeps its streams, so that a glance at another tab and back connects nothing again. */
+/** 隐藏的页面保持事件流的时长，这样切到别的标签页看一眼再回来不必重新连接。 */
 export const HIDDEN_MS = 10_000;
 
 let here = true;
@@ -39,7 +37,7 @@ function watch(): void {
   document.addEventListener('resume', judge);
   window.addEventListener('pagehide', leave);
   window.addEventListener('pageshow', judge);
-  // a page opened in the background counts as hidden from now
+  // 在后台打开的页面从现在起算作隐藏
   here = true;
   judge();
 }
@@ -55,12 +53,12 @@ function unwatch(): void {
   here = true;
 }
 
-/** Whether the page may hold its streams now. */
+/** 页面此刻能否保持它的事件流。 */
 export function present(): boolean {
   return here;
 }
 
-/** Calls `listener` each time the page goes away or comes back; returns how to stop. */
+/** 页面每次离开或回来时调用 `listener`；返回停止监听的函数。 */
 export function onPresence(listener: (here: boolean) => void): () => void {
   if (!listeners.size) watch();
   listeners.add(listener);

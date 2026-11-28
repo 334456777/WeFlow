@@ -1,29 +1,29 @@
-// The command console (#217): every command `/openapi.json` describes, as a form from its parameters, run as the
-// server runs it, with the answer shown as it comes (status, exit code and document), and the command line it is.
+// 命令控制台（#217）：`/openapi.json` 描述的每条命令，按它的参数生成表单，像服务端那样运行，
+// 原样显示到来的回答（状态码、退出码和文档），以及它对应的命令行。
 import { apiUrl, token, type Params } from './client';
 import { t } from '../i18n';
 
-/** The HTTP methods of the command API. */
+/** 命令 API 用到的 HTTP 方法。 */
 export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
-/** A parameter of a command, as the console's form asks for it. */
+/** 命令的一个参数，即控制台表单里的一项。 */
 export interface Field {
   name: string;
   type: 'string' | 'integer' | 'number' | 'boolean' | 'list' | 'choice';
-  /** The values of a choice. */
+  /** 选项的可选值。 */
   options?: string[];
-  /** A list of integers rather than words. */
+  /** 列表的每一项是整数而不是文字。 */
   integers?: boolean;
   required: boolean;
   description: string;
   defaultValue?: string;
 }
 
-/** A command of `/openapi.json`, as the console lists it. */
+/** `/openapi.json` 里的一条命令，即控制台列出的一项。 */
 export interface ConsoleCommand {
-  /** `chat sessions`. */
+  /** 命令名，如 `chat sessions`。 */
   command: string;
-  /** Its operation, unique: a command whose method follows an argument has one per method. */
+  /** 命令的操作 ID，各不相同：方法由参数决定的命令（如 `chat group-hint`），每种方法各有一个。 */
   id: string;
   path: string;
   method: Method;
@@ -31,7 +31,7 @@ export interface ConsoleCommand {
   summary: string;
   description: string;
   fields: Field[];
-  /** It writes a file the server can hand back (`return=file`). */
+  /** 命令会写出服务端可以交回的文件（`return=file`）。 */
   file: boolean;
 }
 
@@ -51,12 +51,12 @@ function fieldOf(name: string, schema: Schema, required: boolean, description?: 
 
 const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE'];
 
-/** The commands of an OpenAPI document of `weflow serve`, by tag and name; the server's own routes left out. */
+/** `weflow serve` 的 OpenAPI 文档里的命令，按命令名排序（同名的按方法）；不含服务端自己的路由。 */
 export function commandsOf(doc: unknown): ConsoleCommand[] {
   const paths = (doc as { paths?: Record<string, Record<string, Record<string, unknown>>> })?.paths ?? {};
   const out: ConsoleCommand[] = [];
   for (const [path, ops] of Object.entries(paths)) {
-    // the in-process reads (`/api/…`) are the same commands again
+    // 进程内的读取（`/api/…`）是同样的命令，不重复列出
     if (path.startsWith('/api/')) continue;
     for (const [verb, raw] of Object.entries(ops)) {
       const method = verb.toUpperCase() as Method;
@@ -85,8 +85,8 @@ export function commandsOf(doc: unknown): ConsoleCommand[] {
 }
 
 /**
- * `/openapi.json`, in the server's language as every answer is (#433); it needs the token, and is no
- * `{success, data}` document.
+ * 读取 `/openapi.json` 并列出其中的命令。它和所有回答一样用服务端的语言（#433），需要 token，
+ * 而且不是 `{success, data}` 格式的文档。
  */
 export async function getOpenApi(signal?: AbortSignal): Promise<ConsoleCommand[]> {
   const bearer = token();
@@ -95,7 +95,7 @@ export async function getOpenApi(signal?: AbortSignal): Promise<ConsoleCommand[]
   return commandsOf(await response.json());
 }
 
-/** The values typed in a form, as the parameters of the request: empty ones left out, lists split by line or comma. */
+/** 把表单里填的值换成请求的参数：空的不要，列表按换行或逗号拆开。 */
 export function paramsOf(cmd: ConsoleCommand, values: Record<string, string | boolean>): Params {
   const params: Params = {};
   for (const field of cmd.fields) {
@@ -112,7 +112,7 @@ export function paramsOf(cmd: ConsoleCommand, values: Record<string, string | bo
   return params;
 }
 
-/** What a form misses or holds wrongly, one line each; empty when it can run. */
+/** 表单缺少或填错的地方，每处一行；可以运行时为空。 */
 export function formProblems(cmd: ConsoleCommand, values: Record<string, string | boolean>): string[] {
   const problems: string[] = [];
   for (const field of cmd.fields) {
@@ -126,26 +126,26 @@ export function formProblems(cmd: ConsoleCommand, values: Record<string, string 
   return problems;
 }
 
-/** `?std=in`: the command line the request runs, without running it; `{"argv", "stdin"}` itself, no document. */
+/** `?std=in`：请求会运行的命令行，不实际运行；回答就是 `{"argv", "stdin"}`，不是文档。 */
 export async function commandLine(cmd: ConsoleCommand, params: Params, signal?: AbortSignal): Promise<string[] | null> {
   const answer = await runRaw(cmd, params, 'in', signal);
   const argv = (answer.body as { argv?: unknown } | null)?.argv;
   return answer.status === 200 && Array.isArray(argv) ? argv.map(String) : null;
 }
 
-/** A command line to copy into a terminal: words with spaces or quotes are quoted. */
+/** 可以复制到终端的命令行：含空格或引号的词加上引号。 */
 export const shellLine = (argv: string[]) => argv.map(a => (/^[\w@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'")).join(' ');
 
-/** What a command run from the console answered, and how long it took. */
+/** 从控制台运行的命令的回答，以及用了多长时间。 */
 export interface RunAnswer {
   status: number;
   exitCode: string | null;
-  /** The document, or the text when it is none. */
+  /** 回答的文档；不是 JSON 时为文字。 */
   body: unknown;
   ms: number;
 }
 
-/** Runs a command as it is, and answers what the server answered, whatever it was. */
+/** 原样运行一条命令，不论服务端回答什么都原样返回。 */
 export async function runRaw(cmd: ConsoleCommand, params: Params, std?: 'in' | 'out' | 'err', signal?: AbortSignal): Promise<RunAnswer> {
   const inQuery = cmd.method === 'GET' || cmd.method === 'DELETE';
   const bearer = token();
@@ -158,6 +158,6 @@ export async function runRaw(cmd: ConsoleCommand, params: Params, std?: 'in' | '
   });
   const text = await response.text();
   let body: unknown = text;
-  try { body = JSON.parse(text); } catch { /* shown as text */ }
+  try { body = JSON.parse(text); } catch { /* 按文字显示 */ }
   return { status: response.status, exitCode: response.headers.get('X-WeFlow-Exit-Code'), body, ms: Math.round(performance.now() - started) };
 }

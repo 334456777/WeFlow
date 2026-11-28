@@ -1,47 +1,45 @@
-// Group chat analytics (#207): `group list`, and of one group `ranking`, `hours`, `media`, one member's `member` and
-// `member-messages`, each over an optional range of days.
-// The answers' types are the contract's (#430).
+// 群聊分析（#207）：`group list`，以及一个群的 `ranking`、`hours`、`media`，一个成员的 `member` 和
+// `member-messages`，都可以限定日期范围。回答的类型是契约的类型（#430）。
 import { get } from './client';
 import type * as Contract from './contract.gen';
 
-/** A group chat of `group list`. */
+/** `group list` 的一个群聊。 */
 export type Group = Contract.GroupChat;
-/** A member of `group ranking` and their messages. */
+/** `group ranking` 的一个成员及其消息数。 */
 export type GroupRanked = Contract.GroupRank;
-/** `group media`: the message types, named, with their counts. */
+/** `group media`：各种消息类型的名称和条数。 */
 export type GroupMedia = Contract.GroupMedia;
-/** `group member`: the member's messages and the days they wrote on (`activeDays`) counted, by hour, and the words
- * and emoji they use most. */
+/** `group member`：成员的消息数和发过消息的天数（`activeDays`）、按小时的分布，以及最常用的词和表情。 */
 export type MemberStats = Contract.MemberAnalytics;
-/** A page of `group member-messages`. */
+/** `group member-messages` 的一页。 */
 export type MemberPage = Contract.MemberMessages;
-/** What the page shows of a member's message. */
+/** 网页显示的一条成员消息的字段。 */
 export type MemberMessage = Pick<Contract.ChatMessage, 'messageKey' | 'localType' | 'createTime' | 'parsedContent'>;
 
-/** Days, `YYYY-MM-DD` local time, both inclusive; empty for no bound. */
+/** 日期范围：`YYYY-MM-DD`，本地时间，两端都包含；为空表示不限。 */
 export interface DayRange { from: string; to: string }
 
 const span = (range: DayRange) => ({ start: range.from || undefined, end: range.to || undefined });
 
-/** `group list`, the largest first. */
+/** `group list`：群聊列表，成员最多的在前。 */
 export const getGroups = (signal?: AbortSignal) => get<Group[]>('api/group/list', {}, signal);
-/** `group ranking`: the 20 members with the most messages in the range. */
+/** `group ranking`：日期范围内消息最多的 20 个成员。 */
 export const getGroupRanking = (group: string, range: DayRange, signal?: AbortSignal) =>
   get<GroupRanked[]>('api/group/ranking', { 'chatroom-id': group, limit: 20, ...span(range) }, signal);
-/** `group hours`: the group's messages by hour in the range. */
+/** `group hours`：日期范围内群消息按小时的分布。 */
 export const getGroupHours = (group: string, range: DayRange, signal?: AbortSignal) =>
   get<Contract.GroupHours>('api/group/hours', { 'chatroom-id': group, ...span(range) }, signal);
-/** `group media` in the range. */
+/** 日期范围内的 `group media`。 */
 export const getGroupMedia = (group: string, range: DayRange, signal?: AbortSignal) =>
   get<GroupMedia>('api/group/media', { 'chatroom-id': group, ...span(range) }, signal);
-/** `group member` in the range. */
+/** 日期范围内的 `group member`。 */
 export const getMember = (group: string, member: string, range: DayRange, signal?: AbortSignal) =>
   get<MemberStats>('api/group/member', { 'chatroom-id': group, username: member, ...span(range) }, signal);
-/** A page of 50 of a member's messages in the range, from `cursor` (0 for the first page). */
+/** `group member-messages`：日期范围内一个成员从 `cursor` 起的一页消息，每页 50 条（第一页的 `cursor` 为 0）。 */
 export const getMemberMessages = (group: string, member: string, range: DayRange, cursor: number, signal?: AbortSignal) =>
   get<MemberPage>('api/group/member-messages', { 'chatroom-id': group, username: member, limit: 50, cursor: cursor || undefined, ...span(range) }, signal);
 
-/** The parameters of `group export-members` and `export-member-messages`, kept on the server as jobs. */
+/** `group export-members` 的参数。它和 `group export-member-messages` 都在服务端作为作业运行。 */
 export const membersExport = (group: string) => ({ 'chatroom-id': group });
-/** The parameters of `group export-member-messages` over the range. */
+/** 限定日期范围的 `group export-member-messages` 的参数。 */
 export const memberMessagesExport = (group: string, member: string, range: DayRange) => ({ 'chatroom-id': group, username: member, ...span(range) });

@@ -1,40 +1,41 @@
-// Whether `weflow serve` is there and speaks the API this build was written for. `GET /health/events` needs no
-// token; its `hello` is `/health`'s `{"status": "ok", "apiVersion": "…", "version": "5.0.0", "data": "…", "lang": "zh"}`
-// (the wiki's command API page). A server without it (5.0.0-rc.5 and older) is not supported.
+// `weflow serve` 是否在线，以及它提供的是不是这个构建所用的 API。`GET /health/events` 不需要 token，
+// 它的 `hello` 就是 `/health` 的回答（见 Wiki 的「命令 API」页）：
+// `{"status": "ok", "apiVersion": "…", "version": "5.0.0", "data": "…", "lang": "zh"}`。
+// 不支持没有这个路由的服务端（5.0.0-rc.5 及更早的版本）。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiUrl, checkToken, onAuth, token } from './client';
 import { emitLive } from './live';
 import { onPresence, present } from './presence';
 import { setLang, t } from '../i18n';
 
-/** What `/health` answers, and the `hello` of `/health/events`. */
+/** `/health` 的回答，也是 `/health/events` 的 `hello`。 */
 export interface Health {
   status: string;
   apiVersion: string;
   version: string;
-  /** Changes with each start of the server and with its configuration (so with the account); see `scope.ts`. */
+  /** 每次启动服务端和配置变化时都会变（所以账号变了它也会变）；见 `scope.ts`。 */
   data?: string;
-  /** What may run at once (`--max-tasks`, `--max-reads`, `--max-media`). */
+  /** 能同时运行的数量（`--max-tasks`、`--max-reads`、`--max-media`）。 */
   limits?: { maxTasks?: number; maxReads?: number; maxMedia?: number };
-  /** Whether the insight engine runs beside (`--insight`). */
+  /** 是否同时运行见解引擎（`--insight`）。 */
   insight?: boolean;
-  /** The language of the server's answers (#439), which the page shows itself in; older servers do not say. */
+  /** 服务端回答所用的语言（#439），网页也用这种语言显示；较早的服务端不给出。 */
   lang?: 'zh' | 'en';
-  /** The system of the server's computer; older servers do not say. */
+  /** 服务端所在电脑的操作系统；较早的服务端不给出。 */
   platform?: 'windows' | 'macos' | 'linux';
 }
 
-/** Where the connection to the server stands, and what it knows of the server. */
+/** 与服务端的连接状态，以及连接得知的服务端信息。 */
 export type Backend =
   | { state: 'checking' }
-  /** `held`: the server was ready before it went, so the records read from it stay shown until it is back. */
+  /** `held`：服务端断开前已经就绪，从它读到的记录继续显示，直到它回来。 */
   | { state: 'offline'; held?: true }
   | { state: 'ready'; health: Health }
   | { state: 'incompatible'; health: Health; reason: string; advice: string }
-  /** The server is there and suits this page, but refuses the token of this tab (#214). */
+  /** 服务端在线、也适合这个网页，但拒绝了这个标签页的 token（#214）。 */
   | { state: 'unauthorized'; health: Health };
 
-/** This build's name, version and the API it needs, from `package.json`. */
+/** 这个构建的名称、版本和需要的 API，取自 `package.json`。 */
 export const WEB = __WEFLOW_WEB__;
 
 type Identifier = number | string;
@@ -46,16 +47,18 @@ function parse(version: string): { core: number[]; pre: Identifier[] } | null {
   return { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre };
 }
 
-/** A development build reports `git describe`: the last tag, then the commits since it (`5.0.0-rc.4-3-gabc1234`). */
+/**
+ * 拆开开发版报告的 `git describe` 版本：最近的 tag 和之后的提交数（`5.0.0-rc.4-3-gabc1234`）；
+ * 不是这种形式时提交数为 0。
+ */
 function described(version: string): { tag: string; ahead: number } {
   const match = /^(.+)-(\d+)-g[0-9a-f]+$/.exec(version.trim());
   return match ? { tag: match[1], ahead: Number(match[2]) } : { tag: version, ahead: 0 };
 }
 
 /**
- * Orders two versions as SemVer does: a pre-release comes before its release, numeric identifiers before
- * others. A `git describe` version sorts right after its tag and before the next one. Returns NaN when either is
- * not a version.
+ * 按语义化版本（SemVer）比较两个版本：预发布版排在正式版之前，数字标识符排在其他标识符之前。
+ * `git describe` 的版本排在它的 tag 之后、下一个版本之前。任一个不是版本号时返回 NaN。
  */
 export function compareVersions(a: string, b: string): number {
   const p = described(a);
@@ -82,7 +85,7 @@ function compareTags(a: string, b: string): number {
   return x.pre.length - y.pre.length;
 }
 
-/** Why this build cannot use the server, or null when it can. */
+/** 这个构建不能使用这个服务端的原因；能用时为 null。 */
 export function incompatibility(health: Health, web = WEB): string | null {
   if (health.apiVersion !== web.apiVersion) {
     return t('网页需要 API 版本 {want}，weflow 提供的是 {have}', { want: web.apiVersion, have: health.apiVersion });
@@ -95,8 +98,8 @@ export function incompatibility(health: Health, web = WEB): string | null {
 }
 
 /**
- * What to do about a server that does not suit this page (#214): a weflow too old (or of an older API) is upgraded,
- * or another WebUI picked that suits it; a WebUI of an older API than the server's is updated.
+ * 服务端不适合这个网页时的处理办法（#214）：weflow 太旧（或 API 版本较旧）时升级 weflow，或者换一个适用于它的
+ * WebUI；WebUI 的 API 版本比服务端旧时更新 WebUI。
  */
 export function adviceFor(health: Health, web = WEB): string {
   const ours = Number(web.apiVersion);
@@ -112,32 +115,32 @@ function stateOf(health: Health): Backend {
   return reason ? { state: 'incompatible', health, reason, advice: adviceFor(health) } : { state: 'ready', health };
 }
 
-/** The server's event stream (#221): `hello` with what `/health` says, then a `heartbeat` every 15 s. */
+/** 服务端的事件流（#221）：先是内容与 `/health` 相同的 `hello`，之后每 15 秒一个 `heartbeat`。 */
 export const EVENTS_URL = '/health/events';
-/** Without any event for this long (two and a half heartbeats) the stream counts as dead. */
+/** 这么长时间（两个半心跳）收不到任何事件，就认为事件流已经断了。 */
 export const WATCHDOG_MS = 37_500;
-/** Waits before connecting again: 1 s, doubled each time, at most 30 s. */
+/** 重新连接之前的等待：从 1 秒开始，每次加倍，最多 30 秒。 */
 const FIRST_RETRY_MS = 1_000;
 const LAST_RETRY_MS = 30_000;
 
-/** What the connection needs from `EventSource`, so a test can hand it another. */
+/** 连接需要的 `EventSource` 的部分，测试可以换成别的实现。 */
 export interface Stream {
   addEventListener(type: string, listener: (event: MessageEvent) => void): void;
   onerror: ((event: Event) => void) | null;
   close(): void;
 }
 
-/** What a test may give the connection in place of the browser's. */
+/** 测试可以用来替换浏览器所提供部分的选项。 */
 export interface ConnectionOptions {
   open?: (url: string) => Stream;
-  /** True when the page and the server are on this machine, where losing the network does not cut them apart. */
+  /** 网页和服务端在同一台机器上时为 true，这时断网不会断开它们。 */
   loopback?: boolean;
   random?: () => number;
-  /** Whether the server takes the token, asked when the live stream (which needs it) fails; see `checkToken`. */
+  /** 服务端是否接受 token；实时消息的事件流（需要 token）失败时询问，见 `checkToken`。 */
   checkToken?: () => Promise<'ok' | 'unauthorized' | 'offline'>;
 }
 
-/** The wait before attempt `n` (0 first): doubling from 1 s up to 30 s, give or take a fifth so tabs spread out. */
+/** 第 `attempt` 次重试（从 0 开始）之前的等待：从 1 秒加倍到 30 秒，上下浮动五分之一，让各标签页错开。 */
 export function retryDelay(attempt: number, random = Math.random): number {
   const base = Math.min(LAST_RETRY_MS, FIRST_RETRY_MS * 2 ** attempt);
   return Math.min(LAST_RETRY_MS, Math.round(base * (0.8 + 0.4 * random())));
@@ -146,13 +149,12 @@ export function retryDelay(attempt: number, random = Math.random): number {
 const isLoopback = (host: string) => host === 'localhost' || host === '[::1]' || host === '::1' || /^127\./.test(host);
 
 /**
- * One long-lived stream to the server instead of asking it again and again (#221). The state turns `offline` the
- * moment the stream breaks (the server stopped or crashed); a stream that stays silent past the watchdog (a
- * half-open connection: Wi-Fi gone, a NAT that forgot it) is dropped too. It connects again after 1, 2, 4 … 30 s,
- * at once when the network or the tab comes back, and on `reconnect()`. It reconnects itself rather than letting
- * `EventSource` do it, as the browser's own retry is not ours to pace and stops for good on some failures. A page
- * out of view for a while, or put in the back/forward cache, holds no stream (#799, see presence.ts): the state stays
- * as it was, and the stream goes on from the last event once the page is back.
+ * 与服务端保持一个长连接的事件流，而不是一遍遍地询问（#221）。事件流一断（服务端停止或崩溃），状态立即变为
+ * `offline`；超过看门狗时限仍没有任何事件的事件流（半开的连接：Wi-Fi 断了、NAT 忘了这个连接）也会被丢弃。
+ * 之后隔 1、2、4……30 秒重新连接；网络或标签页回来时、调用 `reconnect()` 时立即重新连接。
+ * 重新连接由这里自己做，不交给 `EventSource`：浏览器自己的重试无法控制节奏，而且遇到某些失败会永久停止。
+ * 一段时间不可见或进入往返缓存的页面不保持事件流（#799，见 presence.ts）：状态保持不变，
+ * 页面回来后事件流从最后一个事件接着读。
  */
 export class Connection {
   private state: Backend = { state: 'checking' };
@@ -162,19 +164,19 @@ export class Connection {
   private watchdog: ReturnType<typeof setTimeout> | undefined;
   private lastEvent = 0;
   private stopped = false;
-  /** Live messages (#201): the stream is `/api/push/messages`, which says `hello` and beats the same. */
+  /** 实时消息（#201）：事件流换成 `/api/push/messages`，它同样发 `hello` 和心跳。 */
   private live = false;
-  /** The id of the last message event, to go on from it after a break (`last-event-id`). */
+  /** 最后一个消息事件的 ID，中断后从它接着读（`last-event-id`）。 */
   private lastEventId = '';
-  /** Whether the next `hello` is the page's very first, which needs no catching up. */
+  /** 下一个 `hello` 是否是网页收到的第一个；第一个不需要补读中断期间的消息。 */
   private first = true;
   /**
-   * The server refused the token (#214): the state stays `unauthorized` and the stream is `/health/events`, which
-   * needs none, until another token is set.
+   * 服务端拒绝了 token（#214）：在设置另一个 token 之前，状态保持 `unauthorized`，事件流用不需要 token 的
+   * `/health/events`。
    */
   private unauthorized = false;
   private stopAuth: (() => void) | null = null;
-  /** Whether the page may hold the stream now (see presence.ts). */
+  /** 页面此刻能否保持事件流（见 presence.ts）。 */
   private present = true;
   private stopPresence: (() => void) | null = null;
   private readonly open: (url: string) => Stream;
@@ -212,13 +214,13 @@ export class Connection {
     this.drop();
   }
 
-  /** Connects now, from the first wait again (the settings' 「重新检测」, the network back). */
+  /** 立即连接，等待时间从头算起（设置里的「重新检测」、网络恢复时）。 */
   reconnect(): void {
     this.attempt = 0;
     this.connect();
   }
 
-  /** Listens to the live messages (one stream for both, #221 a) or to the server's state alone. */
+  /** 接收实时消息（与服务端的状态共用一个事件流，#221 a），或者只接收服务端的状态。 */
   setLive(live: boolean): void {
     if (live === this.live) return;
     this.live = live;
@@ -227,17 +229,17 @@ export class Connection {
 
   private url(): string {
     if (!this.live || this.unauthorized) return EVENTS_URL;
-    // EventSource sends no header: the token goes in the address, as for media
+    // EventSource 不能带请求头：与媒体一样，token 放在地址里
     return apiUrl('api/push/messages', { access_token: token() ?? undefined, 'last-event-id': this.lastEventId || undefined });
   }
 
-  /** The state for what the server says, as long as it takes the token. */
+  /** 按服务端的回答得出的状态；服务端就绪但拒绝过 token 时为 `unauthorized`。 */
   private judged(health: Health): Backend {
     const state = stateOf(health);
     return state.state === 'ready' && this.unauthorized ? { state: 'unauthorized', health } : state;
   }
 
-  // A 401 from any request, or another token set by the person
+  // 任何请求收到 401，或者用户设置了另一个 token
   private readonly auth = (event: 'unauthorized' | 'token') => {
     if (event === 'token') {
       this.unauthorized = false;
@@ -251,7 +253,7 @@ export class Connection {
     this.unauthorized = true;
     const now = this.state;
     if (now.state === 'ready') this.set({ state: 'unauthorized', health: now.health });
-    // the live stream needs the token: the state alone, until another one is set
+    // 实时消息的事件流需要 token：设置另一个 token 之前只接收服务端的状态
     if (this.live && !this.stopped) this.reconnect();
   }
 
@@ -261,7 +263,7 @@ export class Connection {
       || ('health' in now && 'health' in next && JSON.stringify(now.health) === JSON.stringify(next.health)));
     if (same) return;
     this.state = next;
-    // the page speaks the server's language (#439)
+    // 网页跟随服务端的语言（#439）
     if ('health' in next) setLang(next.health.lang);
     this.onChange(next);
   }
@@ -293,7 +295,7 @@ export class Connection {
         this.lost();
         return;
       }
-      // back after a break, or live just turned on: messages may have come meanwhile
+      // 中断后恢复，或者刚打开实时消息：这期间可能来过消息
       if (this.live && !this.first) emitLive({ type: 'resumed' });
       this.first = false;
     });
@@ -306,24 +308,24 @@ export class Connection {
           const { sessionId } = JSON.parse(event.data) as { sessionId?: string };
           if (sessionId) emitLive({ type, sessionId });
         } catch {
-          // an event without its conversation tells nothing to show
+          // 不带会话的事件没有可显示的内容
         }
       });
     }
     stream.addEventListener('heartbeat', event => {
       if (this.stream !== stream) return;
       heard();
-      // the data changed under an open stream: another account (see scope.ts)
+      // 事件流没断但数据变了：换了账号（见 scope.ts）
       const now = this.state;
       if (!('health' in now)) return;
       try {
         const { data } = JSON.parse(event.data) as { data?: string };
         if (data !== undefined && data !== now.health.data) this.set(this.judged({ ...now.health, data }));
       } catch {
-        // a heartbeat says the stream is alive whatever it holds
+        // 不论内容是什么，心跳都说明事件流还活着
       }
     });
-    // the server stopped on purpose (Ctrl+C): offline at once, as when it is lost, and back once it starts again
+    // 服务端被主动停止（Ctrl+C）：与断开时一样立即变为 offline，服务端重新启动后连回
     stream.addEventListener('bye', () => {
       if (this.stream === stream) this.lost();
     });
@@ -331,16 +333,16 @@ export class Connection {
       if (this.stream !== stream) return;
       this.lost();
       if (!this.live || this.unauthorized) return;
-      // The live stream needs the token, and an EventSource cannot tell a refused one (401) from a lost server: ask.
-      // Refused, it turns to the state alone at once, which then says `unauthorized`.
+      // 实时消息的事件流需要 token，而 EventSource 无法区分 token 被拒绝（401）和服务端断开，因此询问一次。
+      // token 被拒绝时立即换成只接收服务端状态的事件流，状态随之变为 `unauthorized`。
       this.checkToken().then(answer => {
         if (answer === 'unauthorized' && !this.stopped && !this.unauthorized) this.refused();
-      }, () => { /* no answer: lost, as said */ });
+      }, () => { /* 没有回答：维持上面按断开所做的处理 */ });
     };
     heard();
   }
 
-  /** The stream broke or went silent: offline now, and another try after the wait. */
+  /** 事件流断了或者长时间没有事件：立即变为 offline，等待之后再试。 */
   private lost(): void {
     this.drop();
     const now = this.state;
@@ -352,20 +354,20 @@ export class Connection {
 
   private readonly online = () => this.reconnect();
 
-  // On this machine the server is still there without a network: check at once, but do not turn red for it
+  // 服务端在本机时断网它也还在：立即检查一次，但不因此显示为离线
   private readonly offline = () => {
     if (this.loopback) this.reconnect();
     else this.lost();
   };
 
-  // A tab in the background has its timers slowed down: on coming back, connect at once unless all is well
+  // 后台标签页的计时器会被放慢：回到前台时，除非一切正常，否则立即连接
   private readonly visible = () => {
     if (document.visibilityState !== 'visible' || !this.present) return;
     if (!('health' in this.state)) this.reconnect();
     else if (Date.now() - this.lastEvent > WATCHDOG_MS) this.reconnect();
   };
 
-  // Away, the stream goes and nothing tries again; back, it goes on from the last event (`resumed` reads again)
+  // 页面离开时放开事件流，也不重试；回来时从最后一个事件接着读（`resumed` 让各处重读）
   private readonly presence = (here: boolean) => {
     this.present = here;
     if (here) this.reconnect();
@@ -374,8 +376,8 @@ export class Connection {
 }
 
 /**
- * The backend's state, from one event stream (see `Connection`); `recheck` connects again at once. With `live` the
- * stream is the live messages' (see live.ts).
+ * 服务端的状态（来自一个事件流，见 `Connection`）和立即重新连接的函数 `recheck`。
+ * `live` 为 true 时，事件流是实时消息的事件流（见 live.ts）。
  */
 export function useBackend(live = false): [Backend, () => void] {
   const [backend, setBackend] = useState<Backend>({ state: 'checking' });

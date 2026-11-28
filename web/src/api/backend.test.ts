@@ -38,7 +38,7 @@ describe('incompatibility', () => {
   });
 });
 
-/** A stand-in for EventSource: the test says what the server sends. */
+/** 代替 EventSource 的假事件流：由测试决定服务端发送什么。 */
 class FakeStream implements Stream {
   onerror: ((event: Event) => void) | null = null;
   closed = false;
@@ -59,7 +59,7 @@ class FakeStream implements Stream {
 
 const health = { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: '9.0.0', data: 'a' };
 
-/** A connection on fake streams and timers: the streams it opened, and the states it reported. */
+/** 使用假事件流和假计时器的连接，以及它打开的事件流和报告过的状态。 */
 function connection(options: { loopback?: boolean; tokenTaken?: () => boolean } = {}) {
   const streams: FakeStream[] = [];
   const states: Backend[] = [];
@@ -84,7 +84,7 @@ describe('Connection (#221)', () => {
     expect(c.last().url).toBe('/health/events');
     c.last().send('hello', health);
     expect(c.now()).toEqual({ state: 'ready', health });
-    // heartbeats change nothing
+    // 心跳不改变状态
     c.last().send('heartbeat', { data: 'a' });
     expect(c.states).toHaveLength(1);
     c.last().fail();
@@ -117,7 +117,7 @@ describe('Connection (#221)', () => {
   });
 
   it('holds the records read only when the server goes after it was ready', () => {
-    // never there: the sample, through every try
+    // 服务端从没出现过：每次重试期间都显示示例数据
     const never = connection();
     never.last().fail();
     expect(never.now()).toEqual({ state: 'offline' });
@@ -129,10 +129,10 @@ describe('Connection (#221)', () => {
     expect(holdsRecords(c.now())).toBe(true);
     c.last().fail();
     expect(holdsRecords(c.now())).toBe(true);
-    // the tries that fail meanwhile keep them
+    // 这期间失败的重试也保留这些记录
     for (let i = 0; i < 3; i++) { vi.advanceTimersByTime(30_000); c.last().fail(); }
     expect(c.now()).toEqual({ state: 'offline', held: true });
-    // a server that does not suit this page answers instead: what was read is not shown with it, nor after it goes
+    // 换成一个不适合这个网页的服务端回答：读到的记录不随它显示，它断开后也不显示
     vi.advanceTimersByTime(30_000);
     c.last().send('hello', { ...health, apiVersion: String(Number(__WEFLOW_WEB__.apiVersion) + 1) });
     expect(holdsRecords(c.now())).toBe(false);
@@ -205,11 +205,11 @@ describe('Connection (#221)', () => {
     c.last().fail();
     c.live.reconnect();
     expect(c.streams).toHaveLength(opened + 3);
-    // ready and heard from lately: coming back changes nothing
+    // 已就绪且最近收到过事件：回到前台时什么都不做
     c.last().send('hello', health);
     document.dispatchEvent(new Event('visibilitychange'));
     expect(c.streams).toHaveLength(opened + 3);
-    // ready, but the timers slept in the background past the watchdog
+    // 已就绪，但计时器在后台停得超过了看门狗时限
     vi.setSystemTime(Date.now() + WATCHDOG_MS + 1);
     document.dispatchEvent(new Event('visibilitychange'));
     expect(c.streams).toHaveLength(opened + 4);
@@ -221,7 +221,7 @@ describe('Connection (#221)', () => {
     near.last().send('hello', health);
     window.dispatchEvent(new Event('offline'));
     expect(near.now().state).toBe('ready');
-    // it only checked again
+    // 只是重新检查了一次
     expect(near.streams).toHaveLength(2);
     near.live.stop();
 
@@ -239,7 +239,7 @@ describe('Connection (#221)', () => {
     const c = connection();
     c.last().send('hello', health);
     expect(heard).toEqual([]);
-    // turned on later: what came while it was off is read too
+    // 之后才打开实时消息：关着时来的消息也会读到
     c.live.setLive(true);
     expect(c.last().url).toBe('/api/push/messages?access_token=t%2B1');
     c.last().send('hello', health);
@@ -249,13 +249,13 @@ describe('Connection (#221)', () => {
       c.last().emitWithId(listener, { sessionId: 'wxid_a', content: 'hi' }, listener === 'message.new' ? '1760000000123' : '1760000000124');
     }
     expect(heard.slice(1)).toEqual([{ type: 'message.new', sessionId: 'wxid_a' }, { type: 'message.revoke', sessionId: 'wxid_a' }]);
-    // a break: back from the last event, and anything may have come meanwhile
+    // 中断：从最后一个事件接着读，中断期间可能来过任何消息
     c.last().fail();
     vi.advanceTimersByTime(1_000);
     expect(c.last().url).toBe('/api/push/messages?access_token=t%2B1&last-event-id=1760000000124');
     c.last().send('hello', health);
     expect(heard.at(-1)).toEqual({ type: 'resumed' });
-    // turned off: the state alone again
+    // 关掉实时消息：又只接收服务端的状态
     c.live.setLive(false);
     expect(c.last().url).toBe('/health/events');
     off();
@@ -277,7 +277,7 @@ describe('Connection (#221)', () => {
     c.last().emitWithId('message.new', { sessionId: 'wxid_a' }, '41');
     const opened = c.streams.length;
 
-    // hidden a while: the stream goes, the state stays, and nothing connects meanwhile
+    // 隐藏一段时间：放开事件流，状态不变，这期间也不连接
     setVisibility('hidden');
     vi.advanceTimersByTime(HIDDEN_MS);
     expect(c.last().closed).toBe(true);
@@ -286,14 +286,14 @@ describe('Connection (#221)', () => {
     c.live.reconnect();
     vi.advanceTimersByTime(60_000);
     expect(c.streams).toHaveLength(opened);
-    // seen again: at once, from the last event, and what came meanwhile is read
+    // 重新可见：立即连接，从最后一个事件接着读，并读取这期间来的消息
     setVisibility('visible');
     expect(c.streams).toHaveLength(opened + 1);
     expect(c.last().url).toBe('/api/push/messages?access_token=t&last-event-id=41');
     c.last().send('hello', health);
     expect(heard.at(-1)).toEqual({ type: 'resumed' });
 
-    // into the back/forward cache: at once; shown again: back
+    // 进入往返缓存：立即放开；重新显示：连回
     window.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true }));
     expect(c.last().closed).toBe(true);
     window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
@@ -326,17 +326,17 @@ describe('Connection (#221)', () => {
     c.live.setLive(true);
     c.last().send('hello', health);
     expect(c.now().state).toBe('ready');
-    // the token is refused: the stream fails; asked, the server says 401
+    // token 被拒绝：事件流失败；询问时服务端回答 401
     c.last().fail();
     expect(c.now().state).toBe('offline');
     await vi.advanceTimersByTimeAsync(0);
-    // the state alone, which needs no token, and says the server is there
+    // 只接收不需要 token 的服务端状态，它表明服务端在线
     expect(c.last().url).toBe('/health/events');
     c.last().send('hello', health);
     expect(c.now()).toEqual({ state: 'unauthorized', health });
     c.last().send('heartbeat', { data: 'a' });
     expect(c.now().state).toBe('unauthorized');
-    // another token: the live stream again, at once
+    // 换了 token：立即重新接收实时消息
     taken = true;
     setToken('fresh');
     expect(c.last().url).toBe('/api/push/messages?access_token=fresh');
@@ -352,7 +352,7 @@ describe('Connection (#221)', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: false, error: { code: 'unauthorized', message: 'invalid or missing access token' } }), { status: 401 })));
     await expect(call('GET', 'api/chat/sessions')).rejects.toMatchObject({ status: 401 });
     expect(c.now()).toEqual({ state: 'unauthorized', health });
-    // the state stream needs no token: it stays as it was
+    // 服务端状态的事件流不需要 token：保持原样
     expect(c.streams).toHaveLength(1);
     setToken('fresh');
     expect(c.streams).toHaveLength(2);
@@ -367,7 +367,7 @@ describe('Connection (#221)', () => {
     const web = { name: 'weflow-web', version: '0.2.0', apiVersion: '1', minBackendVersion: '5.0.0-rc.6' };
     expect(adviceFor({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.5' }, web)).toContain('升级到 5.0.0-rc.6');
     expect(adviceFor({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.5' }, web)).toContain('weflow web use');
-    // a server of a newer API: this page is the old one
+    // 服务端的 API 更新：旧的是这个网页
     expect(adviceFor({ status: 'ok', apiVersion: '2', version: '6.0.0' }, web)).toContain('weflow web update');
   });
 

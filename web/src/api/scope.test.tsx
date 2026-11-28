@@ -14,7 +14,7 @@ afterEach(() => {
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 const said = (text: string) => ({ _cursor: 'c.0', localId: 1, localType: 1, createTime: 1_760_000_000, isSend: 0, senderUsername: 'filehelper', parsedContent: text });
 
-/** A server holding one account's records: `filehelper` says the account's name; `calls` counts the reads. */
+/** 保存一个账号记录的服务端：`filehelper` 的消息写着账号名；`calls` 记下每次读取。 */
 function account(name: string, calls: string[], gate?: Promise<void>) {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     calls.push(url);
@@ -34,10 +34,10 @@ describe('scopes (#198)', () => {
     rerender({ backend: ready('a') });
     rerender({ backend: ready('a') });
     expect(result.current).toBe(start);
-    // the server restarted, or the account changed, while the page was connected
+    // 页面连着时服务端重启了，或者换了账号
     rerender({ backend: ready('b') });
     expect(result.current).toBe(start + 1);
-    // gone and back (an older server says no data)
+    // 断开后又回来（较早的服务端不给 data）
     rerender({ backend: { state: 'offline', held: true } });
     rerender({ backend: ready('b') });
     expect(result.current).toBe(start + 2);
@@ -51,13 +51,13 @@ describe('scopes (#198)', () => {
   it('starts a new one between the sample and a server, either way (#879)', () => {
     const { result, rerender } = renderHook(({ backend }) => useScope(backend), { initialProps: { backend: { state: 'checking' } as Backend } });
     const start = result.current;
-    // no server yet: the sample, read in the first scope
+    // 尚无服务端：显示示例数据，在第一个作用域里读取
     rerender({ backend: { state: 'offline' } });
     expect(result.current).toBe(start);
-    // a server: what the sample answered goes
+    // 连上服务端：丢弃示例服务端的回答
     rerender({ backend: ready('a') });
     expect(result.current).toBe(start + 1);
-    // one that does not suit the page takes its place: the sample again, the server's records go
+    // 换成一个不适合这个网页的服务端：又显示示例数据，丢弃服务端的记录
     const incompatible: Backend = { state: 'incompatible', health: { status: 'ok', apiVersion: '0', version: '5.0.0', data: 'a' }, reason: '', advice: '' };
     rerender({ backend: incompatible });
     expect(result.current).toBe(start + 2);
@@ -72,7 +72,7 @@ describe('scopes (#198)', () => {
     await waitFor(() => expect(first.result.current.thread.messages[0]?.parsedContent).toBe('account A'));
     first.unmount();
 
-    // without a new scope, the conversation is kept (as when switching conversations)
+    // 没有开始新的作用域时，会话的消息保留下来（与切换会话时一样）
     const again = renderHook(() => useMessages('filehelper'));
     expect(again.result.current.thread.messages[0]?.parsedContent).toBe('account A');
     again.unmount();
