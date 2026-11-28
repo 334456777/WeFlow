@@ -145,7 +145,8 @@ impl DisplayPref {
     }
 }
 
-/// A group nickname trimmed and without control characters; empty when nothing but quotes and commas is left.
+/// A group nickname trimmed and without control characters; empty when nothing but quotes, commas and `@` is left.
+/// The exports, the chat window and the group panels read members' nicknames by this one rule (#1266).
 pub fn normalize_group_nickname(value: &str) -> String {
     let cleaned: String = value
         .trim()
@@ -155,7 +156,7 @@ pub fn normalize_group_nickname(value: &str) -> String {
     if cleaned.is_empty() {
         return String::new();
     }
-    if cleaned.chars().all(|c| ",\"'“”‘’，、".contains(c)) {
+    if cleaned.chars().all(|c| ",\"'“”‘’，、@".contains(c)) {
         return String::new();
     }
     cleaned
@@ -250,5 +251,20 @@ mod tests {
         assert_eq!(DisplayPref::GroupNickname.pick("w", "n", "r", "g"), "g");
         assert_eq!(DisplayPref::Remark.pick("w", "n", "", "g"), "n");
         assert_eq!(DisplayPref::parse("nickname"), Some(DisplayPref::Nickname));
+    }
+
+    #[test]
+    fn a_nickname_of_marks_only_is_none() {
+        for none in ["", "  ", "@", "@@", "\"'", "“”", "，、", "\u{7}"] {
+            assert_eq!(normalize_group_nickname(none), "", "{none:?}");
+        }
+        for (raw, kept) in [
+            (" 小明 ", "小明"),
+            ("a\u{7}b", "ab"),
+            ("@小明", "@小明"),
+            ("'s", "'s"),
+        ] {
+            assert_eq!(normalize_group_nickname(raw), kept, "{raw:?}");
+        }
     }
 }

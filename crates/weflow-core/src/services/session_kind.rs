@@ -34,6 +34,30 @@ const SERVICE_PREFIXES: [&str; 15] = [
     "@placeholder_foldgroup",
 ];
 
+/// WeChat's own accounts that its contact table lists as friends (the voice notes, the drift bottle, the QQ
+/// messages, QQ Mail, friend requests); the contact lists do not count them.
+pub(super) const NOT_FRIENDS: [&str; 5] =
+    ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
+
+/// Whether `username` is an official account's (`gh_…`).
+pub(super) fn is_official(username: &str) -> bool {
+    username.starts_with("gh_")
+}
+
+/// Whether `username` is one of WeChat's system conversations or folders ([`SERVICE_PREFIXES`]).
+pub(super) fn is_system_conversation(username: &str) -> bool {
+    SERVICE_PREFIXES.iter().any(|p| username.starts_with(p))
+}
+
+/// Whether the contact `username` may be a friend: not empty, not a group, not an official account and not one of
+/// [`NOT_FRIENDS`]. The contact's own type decides the rest.
+pub(super) fn may_be_friend(username: &str) -> bool {
+    !(username.is_empty()
+        || username.contains("@chatroom")
+        || is_official(username)
+        || NOT_FRIENDS.contains(&username))
+}
+
 /// The kind of the conversation `username` names, for the account whose wxid without WeChat's suffix is `own_wxid`
 /// ([`crate::config::clean_account_dir_name`]).
 pub(super) fn session_kind(username: &str, own_wxid: &str) -> SessionKind {
@@ -44,10 +68,10 @@ pub(super) fn session_kind(username: &str, own_wxid: &str) -> SessionKind {
         SessionKind::Own
     } else if username.contains("@chatroom") {
         SessionKind::Group
-    } else if username.starts_with("gh_")
+    } else if is_official(username)
         || username == "filehelper"
         || lowered == "weixin"
-        || SERVICE_PREFIXES.iter().any(|p| username.starts_with(p))
+        || is_system_conversation(username)
         || username.contains("@kefu.openim")
         || username.contains("@openim")
         || username.contains("service_")
@@ -93,5 +117,24 @@ mod tests {
                 "{username}"
             );
         }
+    }
+
+    #[test]
+    fn a_friend_is_none_of_groups_official_accounts_and_wechats_own() {
+        for maybe in ["wxid_friend", "alice", "weixin", "filehelper"] {
+            assert!(may_be_friend(maybe), "{maybe}");
+        }
+        for not in [
+            "",
+            "1@chatroom",
+            "gh_abc",
+            "medianote",
+            "fmessage",
+            "qmessage",
+        ] {
+            assert!(!may_be_friend(not), "{not:?}");
+        }
+        assert!(is_official("gh_abc") && !is_official("wxid_gh_abc"));
+        assert!(is_system_conversation("notifymessage") && !is_system_conversation("wxid_a"));
     }
 }

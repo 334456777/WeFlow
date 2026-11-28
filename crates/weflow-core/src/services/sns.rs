@@ -205,25 +205,6 @@ fn export_stats_value(total_posts: i64, total_friends: i64, my_posts: Option<i64
 impl ServiceHub {
     // ── paths ──
 
-    /// The cache folder, made here when it is not there yet so that it is its owner's only: what goes in it, such as
-    /// decrypted images and voices, takes its folder's protection (#812).
-    pub(super) fn cache_base(&self) -> PathBuf {
-        let base = self
-            .profile()
-            .ok()
-            .and_then(|p| p.cache_path.clone())
-            .filter(|p| !p.trim().is_empty())
-            .map(|p| crate::config::expand_home(&p))
-            .unwrap_or_else(|| self.ctx.cache_dir());
-        // under `sudo`, a cache folder of the caller's goes on being the caller's (#855)
-        crate::sudo_caller::adopt(&base);
-        if !base.exists() {
-            // the parts that write there report a folder they cannot make
-            let _ = crate::private_files::create_dir_all(&base);
-        }
-        base
-    }
-
     fn sns_cache_dir(&self) -> PathBuf {
         let dir = self.cache_base().join("sns_cache");
         let _ = std::fs::create_dir_all(&dir);
@@ -247,33 +228,6 @@ impl ServiceHub {
     }
 
     // ── contacts ──
-
-    /// The names and avatars of `usernames`, as the account's databases give them (#1017).
-    pub(super) fn contact_book(
-        &self,
-        wcdb: &weflow_native::wcdb::Wcdb,
-        usernames: &[String],
-    ) -> HashMap<String, CachedContact> {
-        let mut book: HashMap<String, CachedContact> = HashMap::new();
-        if usernames.is_empty() {
-            return book;
-        }
-        if let Ok(Value::Object(names)) = wcdb.display_names(usernames) {
-            for (k, v) in names {
-                if let Some(n) = v.as_str().filter(|n| !n.is_empty()) {
-                    book.entry(k).or_default().display_name = Some(n.to_string());
-                }
-            }
-        }
-        if let Ok(Value::Object(urls)) = wcdb.avatar_urls(usernames) {
-            for (k, v) in urls {
-                if let Some(u) = v.as_str().filter(|u| !u.is_empty()) {
-                    book.entry(k).or_default().avatar_url = Some(u.to_string());
-                }
-            }
-        }
-        book
-    }
 
     fn contact_identity(
         &self,

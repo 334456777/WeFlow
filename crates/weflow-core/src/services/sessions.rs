@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
+use super::session_kind::{is_official, session_kind, SessionKind, NOT_FRIENDS};
 use super::*;
 use crate::api;
 use crate::chat_msg::{self, ChatMessage};
@@ -12,9 +13,6 @@ use crate::contract::{Contact, ContactKind, Session};
 use crate::message::row::{row_field, row_int};
 use crate::message::xml::rx;
 use weflow_native::wcdb::Databases;
-
-const FRIEND_EXCLUDE_USERNAMES: [&str; 5] =
-    ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 
 fn js_int(v: Option<&Value>) -> Option<i64> {
     match v? {
@@ -51,40 +49,19 @@ fn allowed_openim_by_local_type(username: &str, local_type: Option<i64>) -> bool
     is_enterprise_openim(username) && local_type == Some(5)
 }
 
+/// Whether the session list shows the conversation `username`: every one that is not a service ([`session_kind`]:
+/// official accounts, which the list adds on its own, WeChat's system conversations and folders, customer service),
+/// and besides those the file helper and a WeCom contact of type 5.
 fn should_keep_session(username: &str, local_type: Option<i64>) -> bool {
-    if username.is_empty() {
-        return false;
-    }
-    let lowered = username.to_lowercase();
-    if lowered.contains("@placeholder") || username.starts_with("gh_") || lowered == "weixin" {
-        return false;
-    }
-    for prefix in [
-        "qqmail",
-        "fmessage",
-        "medianote",
-        "floatbottle",
-        "newsapp",
-        "brandsessionholder",
-        "brandservicesessionholder",
-        "notifymessage",
-        "opencustomerservicemsg",
-        "notification_messages",
-        "userexperience_alarm",
-        "helper_folders",
-        "@helper_folders",
-    ] {
-        if username.starts_with(prefix) || username == prefix {
-            return false;
-        }
-    }
-    if username.contains("@kefu.openim") {
-        return false;
+    if username == "filehelper" {
+        return true;
     }
     if is_enterprise_openim(username) {
         return allowed_openim_by_local_type(username, local_type);
     }
-    !username.contains("service_")
+    // the account's own chat is listed like any other, so no own wxid is given
+    !username.to_lowercase().contains("@placeholder")
+        && session_kind(username, "") != SessionKind::Service
 }
 
 fn session_local_type(row: &Value) -> Option<i64> {
@@ -148,20 +125,6 @@ fn truthy(v: &Value) -> bool {
 }
 
 impl ServiceHub {
-    /// Raw `id → group nickname` map of a chatroom.
-    pub fn group_nicknames_pub(&self, chatroom_id: &str) -> Vec<(String, String)> {
-        let Ok(wcdb) = self.open_wcdb() else {
-            return Vec::new();
-        };
-        match wcdb.group_nicknames(chatroom_id) {
-            Ok(Value::Object(m)) => m
-                .into_iter()
-                .map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))
-                .collect(),
-            _ => Vec::new(),
-        }
-    }
-
     /// The avatar URL and the display name of a contact.
     pub fn chat_contact_avatar(&self, username: &str) -> Option<(Option<String>, String)> {
         if username.is_empty() {
@@ -366,10 +329,10 @@ impl ServiceHub {
                 let local_type =
                     row_field(&row, &["local_type", "localType", "WCDB_CT_local_type"])
                         .and_then(|v| js_int(Some(v)));
-                let is_official = username.starts_with("gh_");
+                let official = is_official(&username);
                 let special_weixin = lowered.starts_with("weixin") && lowered != "weixin";
                 let special_openim = allowed_openim_by_local_type(&username, local_type);
-                if !is_official && !special_weixin && !special_openim {
+                if !official && !special_weixin && !special_openim {
                     continue;
                 }
                 let display = ["remark", "nick_name", "alias"]
@@ -380,7 +343,7 @@ impl ServiceHub {
                 existing.insert(username.clone());
                 sessions.push(Session {
                     username,
-                    summary: if is_official {
+                    summary: if official {
                         "查看公众号历史消息"
                     } else {
                         "暂无会话记录"
@@ -394,10 +357,10 @@ impl ServiceHub {
         }
 
         // applySyntheticUnreadCounts (official accounts have no unread column)
-        let is_official = |s: &Session| s.username.trim().starts_with("gh_");
+        let official_session = |s: &Session| is_official(s.username.trim());
         let official: Vec<String> = sessions
             .iter()
-            .filter(|s| is_official(s))
+            .filter(|s| official_session(s))
             .map(|s| s.username.clone())
             .collect();
         // the tables of all of them found in one listing of each database, not in a search of every database's
@@ -407,7 +370,11 @@ impl ServiceHub {
             Ok(each) => each.into_iter().map(Result::ok).collect(),
             Err(_) => vec![None; official.len()],
         };
-        for (s, stats) in sessions.iter_mut().filter(|s| is_official(s)).zip(stats) {
+        for (s, stats) in sessions
+            .iter_mut()
+            .filter(|s| official_session(s))
+            .zip(stats)
+        {
             let name = s.username.clone();
             let (mut total, mut latest_snapshot) = (0i64, 0i64);
             if let Some(Value::Array(tables)) = stats {
@@ -601,11 +568,11 @@ impl ServiceHub {
             let visible_weixin = lowered.starts_with("weixin") && lowered != "weixin";
             let kind = if username.ends_with("@chatroom") {
                 ContactKind::Group
-            } else if username.starts_with("gh_") {
+            } else if is_official(&username) {
                 ContactKind::Official
             } else if openim
                 || visible_weixin
-                || (local_type == 1 && !FRIEND_EXCLUDE_USERNAMES.contains(&username.as_str()))
+                || (local_type == 1 && !NOT_FRIENDS.contains(&username.as_str()))
             {
                 ContactKind::Friend
             } else if local_type == 0 && !quan_pin.is_empty() {
@@ -654,29 +621,35 @@ impl ServiceHub {
         });
         Ok(contacts.into_iter().map(|c| c.0).collect())
     }
+}
 
-    /// Display names and avatar URLs of `usernames`, each map holding the ones the account knows.
-    pub(super) fn names_and_avatars_pub(
-        &self,
-        wcdb: &weflow_native::wcdb::Wcdb,
-        usernames: &[String],
-    ) -> (HashMap<String, String>, HashMap<String, String>) {
-        let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
-            v.ok()
-                .and_then(|v| v.as_object().cloned())
-                .map(|m| {
-                    m.into_iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        if usernames.is_empty() {
-            return (HashMap::new(), HashMap::new());
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The list shows people, groups, the account's own chat, the file helper and a WeCom contact of type 5; not
+    /// official accounts (added on their own), WeChat's system conversations and folders, or customer service.
+    #[test]
+    fn the_list_keeps_chats_and_leaves_out_the_services() {
+        for kept in ["wxid_a", "alice", "1@chatroom", "filehelper", "weixin123"] {
+            assert!(should_keep_session(kept, Some(1)), "{kept}");
         }
-        (
-            to_map(wcdb.display_names(usernames)),
-            to_map(wcdb.avatar_urls(usernames)),
-        )
+        assert!(should_keep_session("corp@openim", Some(5)));
+        for dropped in [
+            "",
+            "gh_abc",
+            "weixin",
+            "Weixin",
+            "notifymessage",
+            "brandsessionholder",
+            "@placeholder_foldgroup",
+            "placeholder_foldgroup",
+            "abc@kefu.openim",
+            "service_abc",
+            "x@placeholder",
+        ] {
+            assert!(!should_keep_session(dropped, Some(1)), "{dropped:?}");
+        }
+        assert!(!should_keep_session("corp@openim", Some(1)));
     }
 }

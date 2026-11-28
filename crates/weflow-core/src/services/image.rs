@@ -636,27 +636,6 @@ fn lookup_bases(
 }
 
 impl ServiceHub {
-    /// The account directory without needing the database key.
-    pub(super) fn account_dir_only(&self) -> AppResult<PathBuf> {
-        let profile = self.profile()?;
-        let db_path = profile
-            .db_path
-            .clone()
-            .filter(|p| !p.trim().is_empty())
-            .ok_or_else(|| AppError::config("no account or database path configured"))?;
-        let wxid = profile
-            .wxid
-            .clone()
-            .filter(|w| !w.trim().is_empty())
-            .ok_or_else(|| AppError::config("no account or database path configured"))?;
-        let dir = crate::config::resolve_account_dir(&db_path, &wxid);
-        if dir.exists() {
-            Ok(dir)
-        } else {
-            Err(AppError::config("account directory not found"))
-        }
-    }
-
     /// [`Self::account_dir_only`], found on disk at most once for `since`.
     fn account_dir_since(&self, since: Since) -> AppResult<PathBuf> {
         if let Some((dir, checked)) = &self.image_state.lock_or_panic().account_dir {

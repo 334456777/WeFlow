@@ -419,7 +419,7 @@ impl ServiceHub {
         if usernames.is_empty() {
             return Ok(Vec::new());
         }
-        let (names, avatars) = self.names_and_avatars_pub(&wcdb, &usernames);
+        let (names, avatars) = self.names_and_avatars(&wcdb, &usernames);
         let aliases = self.alias_map(&wcdb, &usernames);
         Ok(usernames
             .iter()
@@ -506,7 +506,7 @@ impl ServiceHub {
             .cloned()
             .unwrap_or_default();
         let names: Vec<String> = sessions.keys().cloned().collect();
-        let (display, avatars) = self.names_and_avatars_pub(&wcdb, &names);
+        let (display, avatars) = self.names_and_avatars(&wcdb, &names);
         let aliases = self.alias_map(&wcdb, &names);
         let mut rankings: Vec<ContactRank> = names
             .iter()

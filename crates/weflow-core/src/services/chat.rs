@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
+use super::session_kind::may_be_friend;
 use super::{clean_account_dir_name, ServiceHub};
 use crate::chat_msg::{self, ChatMessage};
 use crate::contract::{
@@ -24,7 +25,6 @@ use weflow_native::msg::{table_name_for, Order};
 use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::wcdb::Databases;
 
-const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 pub(super) const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
 
 fn native(e: anyhow::Error) -> AppError {
@@ -170,10 +170,6 @@ pub struct ResourceQuery {
 const RESOURCE_TYPES: [&str; 4] = ["image", "video", "voice", "file"];
 
 impl ServiceHub {
-    pub(super) fn my_wxid_cleaned(&self) -> String {
-        clean_account_dir_name(&self.configured_wxid().unwrap_or_default())
-    }
-
     fn normalize_row(&self, rows: Vec<MsgRow>, session_id: &str) -> Vec<ExportMsg> {
         let my = self.my_wxid_cleaned();
         collect_rows(
@@ -463,11 +459,7 @@ impl ServiceHub {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .trim();
-            if username.is_empty()
-                || username.contains("@chatroom")
-                || username.starts_with("gh_")
-                || FRIEND_EXCLUDE.contains(&username)
-            {
+            if !may_be_friend(username) {
                 continue;
             }
             // the first of the columns the row has
@@ -756,26 +748,6 @@ impl ServiceHub {
         }
     }
 
-    fn session_display_names(
-        &self,
-        wcdb: &weflow_native::wcdb::Wcdb,
-        ids: &[String],
-    ) -> HashMap<String, String> {
-        let mut out = HashMap::new();
-        if ids.is_empty() {
-            return out;
-        }
-        let map = wcdb.display_names(ids).ok();
-        if let Some(map) = map {
-            for (k, v) in map.as_object().into_iter().flatten() {
-                if let Some(name) = v.as_str().filter(|s| !s.is_empty()) {
-                    out.insert(k.clone(), name.to_string());
-                }
-            }
-        }
-        out
-    }
-
     /// What the chat window calls each of `usernames` (a conversation's own username among them names the
     /// conversation): in the group `session_id`, the name a member gave themselves there; else, and in any other
     /// chat, the remark, else the nickname, else the WeChat ID. A username without a name, or with names that cannot
@@ -789,7 +761,7 @@ impl ServiceHub {
         let Ok(wcdb) = self.open_wcdb() else {
             return HashMap::new();
         };
-        let mut names = self.session_display_names(&wcdb, usernames);
+        let mut names = self.contact_names(&wcdb, usernames);
         names.retain(|username, name| username != name);
         if let Some(group) = session_id.filter(|s| s.ends_with("@chatroom")) {
             let nicknames = build_trusted_group_nicknames(self.group_nicknames_pub(group));
@@ -973,7 +945,7 @@ impl ServiceHub {
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
-        let names = self.session_display_names(&wcdb, &ids);
+        let names = self.contact_names(&wcdb, &ids);
         let page: Vec<Resource> = items
             .into_iter()
             .map(|(pos, sid, m, kind)| Resource {
@@ -1093,7 +1065,7 @@ impl ServiceHub {
             )
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
-        let names = self.session_display_names(&wcdb, &ids);
+        let names = self.contact_names(&wcdb, &ids);
         let mut items: Vec<MediaStreamItem> = Vec::new();
         for hit in rows {
             let sid = hit.session_id;
@@ -1383,10 +1355,6 @@ impl ServiceHub {
             "nicknames": nicknames,
             "count": count
         }))
-    }
-
-    pub(super) fn wmy(&self) -> String {
-        self.my_wxid_cleaned()
     }
 
     /// One ascending cursor batch starting at `min_time`.
