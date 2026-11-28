@@ -1,5 +1,5 @@
-//! `weflow-fake-model [--host <address>] [--port <port>] [--key <key>]`: runs the fake model API until it is stopped,
-//! after printing one JSON line with its addresses, so that a script can point weflow at it.
+//! `weflow-fake-model [--host <address>] [--port <port>] [--key <key>]`：启动假模型服务，先打印一行含它的地址的 JSON，
+//! 供脚本把 weflow 指向它，然后一直运行到被停止。
 use std::process::ExitCode;
 
 use weflow_fake_model::{FakeModel, KEY, MODELS};

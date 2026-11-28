@@ -14,5 +14,5 @@ workspace = true
 cc = "1"
 
 [features]
-# Expose the test encoder (`weflow_silk::testenc`) to other crates' tests.
+# 让其他 crate 的测试也能用测试编码器（`weflow_silk::testenc`）。
 test-encoder = []

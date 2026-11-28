@@ -1,12 +1,12 @@
-//! OpenAI's side of the fake: `POST /v1/chat/completions` and `GET /v1/models`, with the checks, answers and errors
-//! of OpenAI's OpenAPI description (`CreateChatCompletionRequest`, `CreateChatCompletionResponse`, `ErrorResponse`).
+//! 假服务的 OpenAI 格式：`POST /v1/chat/completions` 和 `GET /v1/models`，检查、回答和错误按 OpenAI 的 OpenAPI
+//! 描述（`CreateChatCompletionRequest`、`CreateChatCompletionResponse`、`ErrorResponse`）实现。
 use serde_json::{json, Value};
 
 use crate::http::{Request, Response};
 use crate::scenario::{self, Behaviour};
 use crate::Shared;
 
-/// `{"error": {"message", "type", "param", "code"}}` with `status`.
+/// 状态码为 `status` 的错误：`{"error": {"message", "type", "param", "code"}}`。
 fn error(
     status: u16,
     kind: &str,
@@ -24,7 +24,7 @@ fn bad_request(param: Option<&str>, message: &str) -> Response {
     error(400, "invalid_request_error", None, param, message)
 }
 
-/// The key in `Authorization: Bearer`, or the 401 OpenAI answers without it.
+/// 检查 `Authorization: Bearer` 里的密钥；密钥不对或没有时返回 OpenAI 的 401。
 fn authorize(request: &Request, shared: &Shared) -> Result<(), Response> {
     match request
         .header("authorization")
@@ -48,6 +48,7 @@ fn authorize(request: &Request, shared: &Shared) -> Result<(), Response> {
     }
 }
 
+/// `GET /v1/models`：列出全部模型。
 pub fn models(request: &Request, shared: &Shared) -> Response {
     if let Err(denied) = authorize(request, shared) {
         return denied;
@@ -59,6 +60,8 @@ pub fn models(request: &Request, shared: &Shared) -> Response {
     Response::json(200, &json!({ "object": "list", "data": data }))
 }
 
+/// `POST /v1/chat/completions`：检查请求，再按模型的回答方式回答；回答超出 `max_completion_tokens`（或旧的
+/// `max_tokens`）时截断，`finish_reason` 为 `length`。
 pub fn chat(request: &Request, shared: &Shared) -> Response {
     if let Err(denied) = authorize(request, shared) {
         return denied;
@@ -189,7 +192,7 @@ pub fn chat(request: &Request, shared: &Shared) -> Response {
     .with_header("x-request-id", request_id)
 }
 
-/// The error a failing model answers with, if it fails this time.
+/// 会失败的模型这次失败时返回的错误；这次不失败时为 `None`。
 fn scenario_failure(behaviour: Behaviour, shared: &Shared) -> Option<Response> {
     let overloaded = || {
         error(
@@ -235,7 +238,7 @@ fn scenario_failure(behaviour: Behaviour, shared: &Shared) -> Option<Response> {
     }
 }
 
-/// The text of a message's `content`: a string, or the `text` parts of an array.
+/// 消息的 `content` 里的文字：字符串本身，或者数组中各部分的 `text`。
 fn content_text(content: &Value) -> String {
     match content {
         Value::String(text) => text.clone(),

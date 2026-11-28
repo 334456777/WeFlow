@@ -1,6 +1,5 @@
-//! SILK v3 decoder, matching the `silk-wasm` decode loop WeFlow's desktop app uses for WeChat voice
-//! messages (`#!SILK_V3` header, optional leading `0x02` Tencent byte, `i16` length-prefixed
-//! packets terminated by `-1`).
+//! SILK v3 解码器，与桌面版解码微信语音消息时用的 `silk-wasm` 解码循环一致：数据以 `#!SILK_V3` 开头，前面可能有腾讯
+//! 加的一个 `0x02` 字节，之后是以 `i16` 长度开头的数据包，以 `-1` 结束。
 use std::ffi::c_void;
 
 #[repr(C)]
@@ -12,8 +11,8 @@ struct DecControl {
     in_band_fec_offset: i32,
 }
 
-// the layout of SKP_SILK_SDK_DecControlStruct (vendor/interface/SKP_Silk_control.h): five 32-bit integers in this
-// order (#505)
+// SKP_SILK_SDK_DecControlStruct（vendor/interface/SKP_Silk_control.h）的内存布局：按这个顺序排列的五个 32 位
+// 整数（#505）
 const _: () = {
     assert!(size_of::<DecControl>() == 20);
     assert!(std::mem::offset_of!(DecControl, api_sample_rate) == 0);
@@ -40,23 +39,23 @@ extern "C" {
 const HEADER: &[u8] = b"#!SILK_V3";
 const MAX_PAYLOAD: usize = 1024;
 const MAX_INTERNAL_FRAMES: usize = 5;
-/// Samples the decoder may write per call: 20 ms at 48 kHz, twice over.
+/// 解码器每次调用最多写出的采样数：48 kHz 下 20 毫秒的两倍。
 const SCRATCH_SAMPLES: i16 = 960 * 2;
 
-/// Why a SILK stream could not be decoded.
+/// SILK 数据无法解码的原因。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SilkError {
-    /// The stream does not start with `#!SILK_V3` (after WeChat's optional `0x02` byte).
+    /// 数据不以 `#!SILK_V3` 开头（跳过微信可能加的 `0x02` 字节之后）。
     InvalidHeader,
-    /// The stream ends inside a packet or its length.
+    /// 数据在某个数据包或它的长度中间结束。
     TruncatedPayload,
-    /// A packet's length is negative but not the end marker -1.
+    /// 数据包的长度为负数，但不是结束标记 -1。
     InvalidPacketLength,
-    /// A packet is longer than 1024 bytes.
+    /// 数据包超过 1024 字节。
     PayloadTooLarge,
-    /// A packet holds more than 5 frames.
+    /// 一个数据包里超过 5 帧。
     TooManyInternalFrames,
-    /// The SDK failed with this code.
+    /// SDK 返回了这个错误码。
     Sdk(i32),
 }
 
@@ -75,7 +74,11 @@ impl std::fmt::Display for SilkError {
 
 impl std::error::Error for SilkError {}
 
-/// Decodes a SILK v3 stream into 16-bit little-endian mono PCM at `sample_rate` Hz.
+/// 把 SILK v3 数据解码成采样率为 `sample_rate` Hz 的 16 位小端单声道 PCM。
+///
+/// # Errors
+///
+/// 数据不是 SILK v3、数据包的长度不对或被截断，或者 SDK 解码失败时，返回对应的 [`SilkError`]。
 pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
     let mut src = silk;
     if src.first() == Some(&0x02) {
@@ -87,16 +90,16 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
     src = &src[HEADER.len()..];
 
     let mut size = 0i32;
-    // SAFETY: `size` is a live local the SDK writes the decoder's size to.
+    // SAFETY: `size` 是存活的局部变量，SDK 把解码器的大小写到这里。
     let code = unsafe { SKP_Silk_SDK_Get_Decoder_Size(&raw mut size) };
     let size = usize::try_from(size).unwrap_or(0);
     if code != 0 || size == 0 {
         return Err(SilkError::Sdk(code));
     }
-    // u64 backing store keeps the state 8-byte aligned
+    // 用 u64 数组作为存储，使解码器的状态按 8 字节对齐
     let mut state = vec![0u64; size.div_ceil(8)];
     let state_ptr = state.as_mut_ptr().cast::<c_void>();
-    // SAFETY: `state` holds at least the `size` bytes the SDK asked for, 8-byte aligned.
+    // SAFETY: `state` 至少有 SDK 要求的 `size` 字节，并按 8 字节对齐。
     let code = unsafe { SKP_Silk_SDK_InitDecoder(state_ptr) };
     if code != 0 {
         return Err(SilkError::Sdk(code));
@@ -137,8 +140,8 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
                 return Err(SilkError::TooManyInternalFrames);
             }
             let mut n = SCRATCH_SAMPLES;
-            // SAFETY: `state_ptr` is the decoder initialized above, kept alive by `state`; `payload` is `len` live
-            // bytes; `scratch` holds the `n` samples passed as its capacity.
+            // SAFETY: `state_ptr` 指向上面初始化的解码器，由 `state` 保持存活；`payload` 是 `len` 个有效的字节；
+            // `scratch` 能容纳作为容量传入的 `n` 个采样。
             let code = unsafe {
                 SKP_Silk_SDK_Decode(
                     state_ptr,
@@ -165,13 +168,13 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
     Ok(out)
 }
 
-/// Test-only encoder over the vendored SDK, used to build realistic voice fixtures.
+/// 只用于测试的编码器，调用内置的 SDK，用来生成接近真实的语音测试数据。
 #[cfg(any(test, feature = "test-encoder"))]
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
-    reason = "a one-second test tone: frame sizes and samples are small and not negative"
+    reason = "一秒的测试音：帧大小和采样值都很小，且不为负"
 )]
 pub mod testenc {
     use std::ffi::c_void;
@@ -188,8 +191,8 @@ pub mod testenc {
         use_dtx: i32,
     }
 
-    // the layout of SKP_SILK_SDK_EncControlStruct (vendor/interface/SKP_Silk_control.h): eight 32-bit integers in
-    // this order (#505)
+    // SKP_SILK_SDK_EncControlStruct（vendor/interface/SKP_Silk_control.h）的内存布局：按这个顺序排列的八个
+    // 32 位整数（#505）
     const _: () = {
         assert!(size_of::<EncControl>() == 32);
         assert!(std::mem::offset_of!(EncControl, api_sample_rate) == 0);
@@ -215,14 +218,14 @@ pub mod testenc {
         ) -> i32;
     }
 
-    /// Encodes one second of a 440 Hz tone with the vendored encoder into the `.silk` container.
+    /// 用内置的编码器把一秒的 440 Hz 音调编码成 `.silk` 格式。
     ///
     /// # Panics
     ///
-    /// When the encoder fails: `rate` must be a sample rate SILK encodes (8, 12, 16 or 24 kHz).
+    /// 编码器失败时：`rate` 必须是 SILK 能编码的采样率（8、12、16 或 24 kHz）。
     pub fn encode_tone(rate: i32) -> Vec<u8> {
         let mut size = 0;
-        // SAFETY: `size` is a live local the SDK writes the encoder's size to.
+        // SAFETY: `size` 是存活的局部变量，SDK 把编码器的大小写到这里。
         assert_eq!(unsafe { SKP_Silk_SDK_Get_Encoder_Size(&raw mut size) }, 0);
         let mut state = vec![0u64; (size as usize).div_ceil(8)];
         let sp = state.as_mut_ptr().cast::<c_void>();
@@ -236,10 +239,9 @@ pub mod testenc {
             use_in_band_fec: 0,
             use_dtx: 0,
         };
-        // SAFETY: `state` holds at least the `size` bytes the SDK asked for, 8-byte aligned, and `ctl` is a live
-        // EncControl.
+        // SAFETY: `state` 至少有 SDK 要求的 `size` 字节，并按 8 字节对齐；`ctl` 是存活的 `EncControl`。
         assert_eq!(unsafe { SKP_Silk_SDK_InitEncoder(sp, &raw mut ctl) }, 0);
-        // `InitEncoder` reports the encoder status, so the settings go in afterwards
+        // `InitEncoder` 把编码器的状态写进 `ctl`，所以设置要在它之后再填
         ctl = EncControl {
             api_sample_rate: rate,
             max_internal_sample_rate: 24000,
@@ -262,8 +264,8 @@ pub mod testenc {
             let mut buf = [0u8; 1250];
             let mut n = buf.len() as i16;
             assert_eq!(
-                // SAFETY: `sp` is the encoder initialized above, kept alive by `state`; `chunk` holds the `frame`
-                // samples passed and `buf` the `n` bytes passed as its capacity.
+                // SAFETY: `sp` 指向上面初始化的编码器，由 `state` 保持存活；`chunk` 有传入的 `frame` 个采样，
+                // `buf` 能容纳作为容量传入的 `n` 个字节。
                 unsafe {
                     SKP_Silk_SDK_Encode(
                         sp,
@@ -346,7 +348,7 @@ mod tests {
                 rms > 4000.0 && rms < 12000.0,
                 "tone energy survives the codec, rms={rms}"
             );
-            // Tencent-prefixed streams decode identically
+            // 带腾讯前缀字节的数据解码结果相同
             let mut prefixed = vec![0x02];
             prefixed.extend_from_slice(&silk);
             assert_eq!(decode(&prefixed, rate).unwrap(), pcm);
