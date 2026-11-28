@@ -25,7 +25,9 @@ use weflow_native::msg::{table_name_for, Order};
 use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::wcdb::Databases;
 
-pub(super) const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
+/// The local types a file is kept as: an app message of `<type>` 6, kept as 49 or as `(6 << 32) | 49` (#1263). A
+/// sticker or a note kept as `(8 << 32) | 49` or `(24 << 32) | 49` is no file.
+pub(super) const FILE_APP_TYPES: [i64; 2] = [49, (6 << 32) | 49];
 
 fn native(e: anyhow::Error) -> AppError {
     AppError::from_native(e)
@@ -736,7 +738,7 @@ impl ServiceHub {
             3 => Some(ResourceKind::Image),
             43 => Some(ResourceKind::Video),
             34 => Some(ResourceKind::Voice),
-            // every file app type is a file; a type-49 app message only when it says so (the metadata parse is
+            // one kept as `(6 << 32) | 49` is a file; one kept as 49 only when it says so (the metadata parse is
             // the expensive part, so it comes last)
             t if FILE_APP_TYPES.contains(&t) => {
                 let is_file = t != 49

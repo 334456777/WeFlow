@@ -41,7 +41,8 @@ fn words_of(message: &Value) -> String {
     let content = message["parsedContent"].as_str().unwrap_or("").trim();
     let mut words = content.to_string();
     if let Some(seconds) = message["voiceDurationSeconds"].as_i64() {
-        words = match content.strip_prefix("[语音]") {
+        // the chat window labels a voice message `[语音消息]`, with its text or without (#1263)
+        words = match content.strip_prefix("[语音消息]") {
             Some(rest) => format!("[语音 {seconds}″]{rest}"),
             None => format!("{content} {seconds}″"),
         };
@@ -504,7 +505,7 @@ mod tests {
               "senderUsername": "wxid_a", "parsedContent": "改到周四下午", "quotedContent": "几点开周会？",
               "quotedSender": "我", "_cursor": "c2" },
             { "localType": 34, "createTime": at(22, 23, 40), "isSend": 0, "senderUsername": "wxid_b",
-              "parsedContent": "[语音]", "voiceDurationSeconds": 12, "_cursor": "c3" },
+              "parsedContent": "[语音消息]", "voiceDurationSeconds": 12, "_cursor": "c3" },
             { "localType": 10000, "createTime": at(22, 23, 39), "isSend": 0,
               "parsedContent": "成员A 拍了拍 测试员.", "_cursor": "c4" },
         ]);
