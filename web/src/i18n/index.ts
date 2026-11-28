@@ -1,12 +1,10 @@
-// The page's language (#439): that of the server, which answers in the language of the machine it runs on
-// (`/health`'s `lang`, the wiki's command API page), so the page and the server's texts are in one language. The page is written
-// in Chinese and its texts are their own keys: `t('正在读取消息')` is that text in Chinese, its English from `en.ts`,
-// or the Chinese again where `en.ts` has none (`bun run i18n` lists those). Until a server has said, the page is in
-// the language of the last one it talked to, else in Chinese. The English is a chunk of its own, fetched the first time
-// it is wanted: a page in Chinese never downloads it.
+// 网页的语言（#439）：跟随服务端，服务端按它所在机器的语言回答（`/health` 的 `lang`，见 Wiki 的「命令 API」页），
+// 网页和服务端的文字因此是同一种语言。网页用中文写成，文字本身就是键：`t('正在读取消息')` 在中文下就是这句中文，
+// 英文取自 `en.ts`，`en.ts` 里没有时仍显示中文（`bun run i18n` 会列出这些文字）。服务端给出语言之前，
+// 网页用上一次连接的服务端的语言，没有时用中文。英文是单独的 chunk，第一次需要时才下载：中文的网页从不下载它。
 import { useSyncExternalStore } from 'react';
 
-/** The page's languages. */
+/** 网页支持的语言。 */
 export type Lang = 'zh' | 'en';
 
 const KEPT = 'weflow.lang';
@@ -20,13 +18,13 @@ function remembered(): Lang {
   }
 }
 
-// the language asked for (kept for the next visit), and the one the page is drawn in: English once its words are here
+// 要求的语言（保存下来供下次访问使用），以及网页显示所用的语言：英文的文字下载完之后才是英文
 let wanted: Lang = remembered();
 let current: Lang = 'zh';
 let en: Record<string, string> = {};
 let english: Promise<boolean> | null = null;
 
-/** Fetches the English once; false when it could not be fetched (the page stays in Chinese, and a later call tries again). */
+/** 下载一次英文；下载失败时为 false（网页保持中文，之后的调用会再试）。 */
 function loadEnglish(): Promise<boolean> {
   english ??= import('./en').then(m => { en = m.en; return true; }, () => { english = null; return false; });
   return english;
@@ -34,21 +32,21 @@ function loadEnglish(): Promise<boolean> {
 
 const TITLE = msg('WeFlow · 记录工作台');
 
-/** What the document says of its language: `<html lang>` and the tab's title. */
+/** 更新文档里随语言变化的地方：`<html lang>` 和标签页的标题。 */
 function show(): void {
   document.documentElement.lang = current === 'en' ? 'en' : 'zh-CN';
   document.title = t(TITLE);
 }
 
-/** The page's language now. */
+/** 网页当前的语言。 */
 export const lang = (): Lang => current;
 
-/** The page's language as a locale, for `Intl` and `toLocaleString`. */
+/** 网页当前的语言对应的 locale，供 `Intl` 和 `toLocaleString` 使用。 */
 export const locale = (): string => (current === 'en' ? 'en-US' : 'zh-CN');
 
 const formats = new Map<string, Intl.DateTimeFormat>();
 
-/** `date` in the page's language, as `Intl.DateTimeFormat` writes it with `options` (`10月12日`, `Oct 12`). */
+/** 用网页的语言写出的 `date`：由 `Intl.DateTimeFormat` 按 `options` 格式化（`10月12日`、`Oct 12`）。 */
 export function formatDate(date: Date, options: Intl.DateTimeFormatOptions): string {
   const key = locale() + JSON.stringify(options);
   let format = formats.get(key);
@@ -56,7 +54,7 @@ export function formatDate(date: Date, options: Intl.DateTimeFormatOptions): str
   return format.format(date);
 }
 
-/** A day counted from today in the page's language: 今天, 昨天 (Today, Yesterday) for 0 and -1. */
+/** 用网页的语言写出从今天算起的某一天：0 为「今天」（Today），-1 为「昨天」（Yesterday）。 */
 export function relativeDay(offset: number): string {
   const word = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' }).format(offset, 'day');
   return word.charAt(0).toUpperCase() + word.slice(1);
@@ -65,15 +63,14 @@ export function relativeDay(offset: number): string {
 let drawn: Promise<void> = Promise.resolve();
 
 /**
- * Shows the page in `next` (a server's `lang`; anything else is left as it is), English once its words are fetched;
- * settles when the page is drawn in it.
+ * 用 `next`（服务端的 `lang`；其他值不改变语言）显示网页，英文要等文字下载完才切换；网页用这种语言绘制后完成。
  */
 export function setLang(next: unknown): Promise<void> {
   drawn = draw(next);
   return drawn;
 }
 
-/** Settles once the page is drawn in the language asked for last (at first, that of the last visit). */
+/** 网页用最后要求的语言（一开始是上次访问时的语言）绘制后完成。 */
 export const languageReady = (): Promise<void> => drawn;
 
 async function draw(next: unknown): Promise<void> {
@@ -83,29 +80,29 @@ async function draw(next: unknown): Promise<void> {
     try {
       localStorage.setItem(KEPT, next);
     } catch {
-      // not kept: the next visit starts in Chinese until the server says
+      // 无法保存：下次访问时先用中文，直到服务端给出语言
     }
   }
   if (next === 'en' && !(await loadEnglish())) return;
-  // asked again for the other language while the English was on its way
+  // 英文还在下载时又要求了另一种语言
   if (wanted !== next || current === next) return;
   current = next;
   show();
   for (const listener of listeners) listener();
 }
 
-/** The page's language, rendering again when it changes. */
+/** 网页的语言，语言变化时重新渲染。 */
 export const useLang = (): Lang =>
   useSyncExternalStore(listener => (listeners.add(listener), () => listeners.delete(listener)), lang, lang);
 
-/** Marks a text kept as it is (a label in a table, say) and passed through `t()` where it is shown. */
+/** 标出原样保存（如表格里的标签）、到显示时才经过 `t()` 的文字。 */
 export function msg(text: string): string {
   return text;
 }
 
 /**
- * `text` in the page's language, its `{name}`s replaced by `vars`. The English keeps the same names: `t('共 {n} 个群聊',
- * { n })` is `'{n} {n|group|groups}'` in `en.ts`, where `{n|one|other}` is the word for a count of 1 and for any other.
+ * 用网页的语言写出的 `text`，其中的 `{name}` 换成 `vars` 里的值。英文用同样的变量名：`t('共 {n} 个群聊', { n })`
+ * 在 `en.ts` 里是 `'{n} {n|group|groups}'`，`{n|one|other}` 分别是数目为 1 和其他数目时的词。
  */
 export function t(text: string, vars?: Record<string, string | number>): string {
   const said = current === 'en' ? (en[text] ?? text) : text;
