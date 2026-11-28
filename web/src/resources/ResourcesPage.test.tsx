@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import type { ChatSession } from '../api/chat';
 import type { Resource } from '../api/details';
-import type { Preview } from '../chat/MessageView';
+import type { Preview } from '../MessageMedia';
 import { ALL_RESOURCES, ResourceFilterCard, ResourcesPage } from './ResourcesPage';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

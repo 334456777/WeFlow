@@ -1,7 +1,8 @@
 import { describe, expect, it } from '#test';
 import type { ChatSession } from '../api/chat';
 import { setLang } from '../i18n';
-import { FOLDED_ID, formatSessionTime, kindOf, previewOf, sessionRows } from './sessions';
+import { formatSessionTime, kindOf } from '../sessionKind';
+import { FOLDED_ID, previewOf, sessionRows } from './sessions';
 
 const at = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 

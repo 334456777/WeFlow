@@ -27,7 +27,7 @@ import { MediaPanel } from './MediaPanel';
 import { SearchPanel, searchSummary } from './SearchPanel';
 import { SessionInfo } from './SessionInfo';
 import { SessionList } from './SessionList';
-import { kindOf } from './sessions';
+import { kindOf } from '../sessionKind';
 import { useBizAccounts } from './useBizAccounts';
 import type { Jump } from './useMessages';
 import { useSearch } from './useSearch';

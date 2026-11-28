@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import type { ParsedMessage } from '../api/messages';
-import { imagePreview } from './MessageView';
+import { imagePreview } from '../MessageMedia';
 import { OriginalButton } from './OriginalButton';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
