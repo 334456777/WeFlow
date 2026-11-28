@@ -860,7 +860,7 @@ impl ServiceHub {
                         users.push(n.clone());
                     }
                 }
-                let (names, avatars) = self.names_and_avatars_pub(&wcdb, &users);
+                let (names, avatars) = self.names_and_avatars(&wcdb, &users);
                 let enrich = |list: Vec<(String, i64)>| -> Vec<FriendCount> {
                     list.into_iter()
                         .map(|(username, count)| FriendCount {
@@ -910,7 +910,7 @@ impl ServiceHub {
         // contact info
         self.emit_progress("annual-report", "collecting contact info…", 85, 100);
         let contact_ids: Vec<String> = contact_stats.iter().map(|c| c.0.clone()).collect();
-        let (names, avatars) = self.names_and_avatars_pub(&wcdb, &contact_ids);
+        let (names, avatars) = self.names_and_avatars(&wcdb, &contact_ids);
         let info = |sid: &str| -> (String, Option<String>) {
             (
                 names
@@ -1214,7 +1214,7 @@ impl ServiceHub {
             let (display_name, avatar_url) = if contact_ids.contains(&best_sid) {
                 info(&best_sid)
             } else {
-                let (n, a) = self.names_and_avatars_pub(&wcdb, std::slice::from_ref(&best_sid));
+                let (n, a) = self.names_and_avatars(&wcdb, std::slice::from_ref(&best_sid));
                 (
                     n.get(&best_sid)
                         .filter(|x| !x.is_empty())

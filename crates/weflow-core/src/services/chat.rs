@@ -765,7 +765,7 @@ impl ServiceHub {
         let Ok(wcdb) = self.open_wcdb() else {
             return HashMap::new();
         };
-        let mut names = self.session_display_names(&wcdb, usernames);
+        let mut names = self.contact_names(&wcdb, usernames);
         names.retain(|username, name| username != name);
         if let Some(group) = session_id.filter(|s| s.ends_with("@chatroom")) {
             let nicknames = build_trusted_group_nicknames(self.group_nicknames_pub(group));
@@ -949,7 +949,7 @@ impl ServiceHub {
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
-        let names = self.session_display_names(&wcdb, &ids);
+        let names = self.contact_names(&wcdb, &ids);
         let page: Vec<Resource> = items
             .into_iter()
             .map(|(pos, sid, m, kind)| Resource {
@@ -1069,7 +1069,7 @@ impl ServiceHub {
             )
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
-        let names = self.session_display_names(&wcdb, &ids);
+        let names = self.contact_names(&wcdb, &ids);
         let mut items: Vec<MediaStreamItem> = Vec::new();
         for hit in rows {
             let sid = hit.session_id;

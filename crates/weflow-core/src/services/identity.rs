@@ -64,96 +64,77 @@ impl ServiceHub {
 
     // ── contacts ──
 
-    /// The names and avatars of `usernames`, as the account's databases give them (#1017).
-    pub(super) fn contact_book(
+    /// What the account calls each of `usernames`, as its databases give it (#1017): the remark, else the nickname,
+    /// else the WeChat ID, else the username itself. Empty when the contacts cannot be read.
+    pub(super) fn contact_names(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         usernames: &[String],
-    ) -> HashMap<String, CachedContact> {
-        let mut book: HashMap<String, CachedContact> = HashMap::new();
+    ) -> HashMap<String, String> {
         if usernames.is_empty() {
-            return book;
+            return HashMap::new();
         }
-        if let Ok(Value::Object(names)) = wcdb.display_names(usernames) {
-            for (k, v) in names {
-                if let Some(n) = v.as_str().filter(|n| !n.is_empty()) {
-                    book.entry(k).or_default().display_name = Some(n.to_string());
-                }
-            }
-        }
-        if let Ok(Value::Object(urls)) = wcdb.avatar_urls(usernames) {
-            for (k, v) in urls {
-                if let Some(u) = v.as_str().filter(|u| !u.is_empty()) {
-                    book.entry(k).or_default().avatar_url = Some(u.to_string());
-                }
-            }
-        }
-        book
+        texts(wcdb.display_names(usernames))
     }
 
-    /// Display names and avatar URLs of `usernames`, each map holding the ones the account knows.
-    pub(super) fn names_and_avatars_pub(
-        &self,
-        wcdb: &weflow_native::wcdb::Wcdb,
-        usernames: &[String],
-    ) -> (HashMap<String, String>, HashMap<String, String>) {
-        let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
-            v.ok()
-                .and_then(|v| v.as_object().cloned())
-                .map(|m| {
-                    m.into_iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        if usernames.is_empty() {
-            return (HashMap::new(), HashMap::new());
-        }
-        (
-            to_map(wcdb.display_names(usernames)),
-            to_map(wcdb.avatar_urls(usernames)),
-        )
-    }
-
+    /// [`Self::contact_names`], and the address of the avatar of each that has one.
     pub(super) fn names_and_avatars(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         usernames: &[String],
     ) -> (HashMap<String, String>, HashMap<String, String>) {
-        let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
-            v.ok()
-                .and_then(|v| v.as_object().cloned())
-                .map(|m| {
-                    m.into_iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
+        if usernames.is_empty() {
+            return (HashMap::new(), HashMap::new());
+        }
         (
-            to_map(wcdb.display_names(usernames)),
-            to_map(wcdb.avatar_urls(usernames)),
+            texts(wcdb.display_names(usernames)),
+            texts(wcdb.avatar_urls(usernames)),
         )
     }
 
-    pub(super) fn session_display_names(
+    /// [`Self::names_and_avatars`] as one entry for each username.
+    pub(super) fn contact_book(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
-        ids: &[String],
-    ) -> HashMap<String, String> {
-        let mut out = HashMap::new();
-        if ids.is_empty() {
-            return out;
+        usernames: &[String],
+    ) -> HashMap<String, CachedContact> {
+        let (names, avatars) = self.names_and_avatars(wcdb, usernames);
+        let mut book: HashMap<String, CachedContact> = HashMap::new();
+        for (username, name) in names {
+            book.entry(username).or_default().display_name = Some(name);
         }
-        let map = wcdb.display_names(ids).ok();
-        if let Some(map) = map {
-            for (k, v) in map.as_object().into_iter().flatten() {
-                if let Some(name) = v.as_str().filter(|s| !s.is_empty()) {
-                    out.insert(k.clone(), name.to_string());
-                }
-            }
+        for (username, url) in avatars {
+            book.entry(username).or_default().avatar_url = Some(url);
         }
-        out
+        book
+    }
+}
+
+/// The `{ username: text }` the facade answered, without empty texts; empty when it could not read them.
+fn texts(answer: anyhow::Result<Value>) -> HashMap<String, String> {
+    let Ok(Value::Object(map)) = answer else {
+        return HashMap::new();
+    };
+    map.into_iter()
+        .filter_map(|(username, text)| match text {
+            Value::String(text) if !text.is_empty() => Some((username, text)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn texts_keep_the_names_given_and_drop_the_empty_ones() {
+        let answer = json!({ "wxid_a": "Alice", "wxid_b": "", "wxid_c": 3 });
+        let got = texts(Ok(answer));
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got["wxid_a"], "Alice");
+        assert!(texts(Err(anyhow::anyhow!("no contact database"))).is_empty());
+        assert!(texts(Ok(json!([]))).is_empty());
     }
 }

@@ -43,7 +43,7 @@ impl ServiceHub {
                 }
             }
         }
-        let (names, _) = self.names_and_avatars_pub(&wcdb, &ids);
+        let (names, _) = self.names_and_avatars(&wcdb, &ids);
         Ok(crate::export::footprint_timeline(data, &names))
     }
 
