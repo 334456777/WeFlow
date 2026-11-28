@@ -305,6 +305,9 @@ pub struct DualMessage {
     pub create_time_str: String,
     /// WeChat's type of the message, as a parsed message's `localType`.
     pub local_type: i64,
+    /// What an app message is, as a parsed message's `appMsgKind`; left out for any other message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_msg_kind: Option<String>,
     /// A sticker's MD5.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_md5: Option<String>,
@@ -331,6 +334,9 @@ pub struct YearFirstChat {
     pub first_three_messages: Vec<DualMessage>,
     /// WeChat's type of the message, as a parsed message's `localType`.
     pub local_type: i64,
+    /// What an app message is, as a parsed message's `appMsgKind`; left out for any other message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_msg_kind: Option<String>,
     /// A sticker's MD5.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_md5: Option<String>,

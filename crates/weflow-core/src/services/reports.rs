@@ -312,6 +312,14 @@ fn emoji_of(content: &str) -> (Option<String>, Option<String>) {
     (extract_emoji_md5(&stripped), extract_emoji_url(&stripped))
 }
 
+/// What an app message is, as the chat window says (`appMsgKind`): the report names a message's kind by it, as the
+/// chat window does (#1263). `None` for any other message.
+fn app_msg_kind_of(row: &MsgRow) -> Option<String> {
+    crate::chat_msg::map_msg_row(row.clone(), "", "")
+        .app_msg_kind()
+        .map(str::to_string)
+}
+
 fn format_date_time(ms: i64) -> String {
     match Local.timestamp_millis_opt(ms).single() {
         Some(d) => format!(
@@ -1372,6 +1380,7 @@ impl ServiceHub {
                 create_time: create_ms,
                 create_time_str: format_date_time(create_ms),
                 local_type,
+                app_msg_kind: app_msg_kind_of(row),
                 emoji_md5: md5,
                 emoji_cdn_url: url,
             }
@@ -1398,6 +1407,7 @@ impl ServiceHub {
                     friend_name: friend_name.clone(),
                     first_three_messages: rows.iter().map(&message_view).collect(),
                     local_type: view.local_type,
+                    app_msg_kind: view.app_msg_kind,
                     emoji_md5: view.emoji_md5,
                     emoji_cdn_url: view.emoji_cdn_url,
                 });
@@ -1677,5 +1687,27 @@ mod tests {
         assert!(!sent_by_me("john", "john_smith", "john_smith"));
         assert!(!sent_by_me("john_smith", "john", "john"));
         assert!(!sent_by_me("", "john", "john"));
+    }
+
+    #[test]
+    fn a_report_names_an_app_message_as_the_chat_window_does() {
+        let row = |local_type: i64, content: &str| MsgRow {
+            local_type,
+            content: content.into(),
+            ..MsgRow::default()
+        };
+        let transfer = "<msg><appmsg><title>微信转账</title><type>2000</type></appmsg></msg>";
+        // a transfer as a plain app message and with its own type in the high bits
+        for local_type in [49, (2000 << 32) | 49] {
+            assert_eq!(
+                app_msg_kind_of(&row(local_type, transfer)).as_deref(),
+                Some("transfer")
+            );
+        }
+        assert_eq!(app_msg_kind_of(&row(1, "hi")), None);
+        assert_eq!(
+            app_msg_kind_of(&row(3, r#"<msg><img md5="x"/></msg>"#)),
+            None
+        );
     }
 }

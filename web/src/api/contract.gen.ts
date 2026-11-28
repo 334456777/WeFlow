@@ -1333,6 +1333,8 @@ export interface DualMessage {
   createTimeStr: string;
   /** WeChat's type of the message, as a parsed message's `localType`. */
   localType: number;
+  /** What an app message is, as a parsed message's `appMsgKind`; left out for any other message. */
+  appMsgKind?: string;
   /** A sticker's MD5. */
   emojiMd5?: string;
   /** A sticker's address. */
@@ -1355,6 +1357,8 @@ export interface YearFirstChat {
   firstThreeMessages: DualMessage[];
   /** WeChat's type of the message, as a parsed message's `localType`. */
   localType: number;
+  /** What an app message is, as a parsed message's `appMsgKind`; left out for any other message. */
+  appMsgKind?: string;
   /** A sticker's MD5. */
   emojiMd5?: string;
   /** A sticker's address. */

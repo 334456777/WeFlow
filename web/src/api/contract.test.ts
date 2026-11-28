@@ -3,7 +3,8 @@
 // so what is read here is what the server answers, not what a fixture of the page supposes it does.
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, resetZone, vi } from '#test';
-import { isMine, kindOf, withoutLabel } from '../chat/messages';
+import { isMine, withoutLabel } from '../chat/messages';
+import { kindOf } from '../messageKind';
 import { dayOf, formatClock, formatFileSize } from '../format';
 import { sessionRows } from '../chat/sessions';
 import { formatSessionTime, kindOf as sessionKind } from '../sessionKind';
