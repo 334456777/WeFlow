@@ -63,6 +63,11 @@ impl Exporter<'_, '_> {
                 .display_pref
                 .pick(&id, &nickname, &remark, &group_nick);
             let message_count = counts.get(&id.to_lowercase()).copied().unwrap_or(0);
+            let is_friend = crate::services::session_kind::is_friend(
+                &id,
+                contact.as_ref().map_or(0, |c| c.local_type),
+                &self.my_wxid,
+            );
             members.push(ArkGroupMember {
                 wxid: id,
                 display_name: display,
@@ -70,7 +75,7 @@ impl Exporter<'_, '_> {
                 remark,
                 alias,
                 group_nickname: (!group_nick.is_empty()).then_some(group_nick),
-                is_friend: false,
+                is_friend,
                 message_count,
             });
         }

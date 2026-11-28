@@ -144,6 +144,26 @@ fn group_export_uses_group_nicknames_members_and_system_messages() {
         .iter()
         .any(|m| m["wxid"] == "wxid_bob" && m["groupNickname"] == "Bob in room"));
     assert!(members.iter().any(|m| m["wxid"] == "wxid_quiet"));
+    // 与群成员面板相同：Bob 是好友；Quiet 不是（`local_type` 为 3），账号自己也不是（#1343）
+    let is_friend = |wxid: &str| {
+        members
+            .iter()
+            .find(|m| m["wxid"] == wxid)
+            .map(|m| m["isFriend"].clone())
+    };
+    assert_eq!(is_friend("wxid_bob"), Some(Value::Bool(true)));
+    assert_eq!(is_friend("wxid_quiet"), Some(Value::Bool(false)));
+    assert_eq!(is_friend("wxid_me"), Some(Value::Bool(false)));
+    let (panel, _) = hub.group_members_panel("room1@chatroom", false).unwrap();
+    assert!(!panel.is_empty());
+    for m in &panel {
+        assert_eq!(
+            is_friend(&m.username),
+            Some(Value::Bool(m.is_friend)),
+            "{}",
+            m.username
+        );
+    }
     let msgs = v["messages"].as_array().unwrap();
     let system = msgs.iter().find(|m| m["localType"] == 10000).unwrap();
     assert!(
