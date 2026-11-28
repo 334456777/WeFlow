@@ -18,6 +18,12 @@ export function formatFileSize(bytes: number | undefined): string {
   return (unit === 0 ? String(value) : value.toFixed(value < 10 ? 1 : 0)) + ' ' + units[unit];
 }
 
+/** A voice's length as WeChat writes it: `12″`, `1′05″`. */
+export function formatDuration(seconds: number | undefined): string {
+  const s = Math.max(0, Math.round(seconds ?? 0));
+  return s < 60 ? s + '″' : Math.floor(s / 60) + '′' + String(s % 60).padStart(2, '0') + '″';
+}
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** The local time of Unix seconds, `HH:MM`. */

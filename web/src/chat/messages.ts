@@ -55,9 +55,3 @@ export function appLabel(message: ParsedMessage): string {
 export function withoutLabel(text: string): string {
   return text.replace(/^\[[^\]]{1,8}\]\s*/, '');
 }
-
-/** A voice's length as WeChat writes it: `12″`, `1′05″`. */
-export function formatDuration(seconds: number | undefined): string {
-  const s = Math.max(0, Math.round(seconds ?? 0));
-  return s < 60 ? s + '″' : Math.floor(s / 60) + '′' + String(s % 60).padStart(2, '0') + '″';
-}

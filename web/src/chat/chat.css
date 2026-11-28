@@ -84,9 +84,8 @@
 .media-missing .play-badge { position: static; width: 32px; height: 32px; margin: 0; flex: none; }
 .emoji-sticker img { display: block; max-width: 120px; max-height: 120px; }
 
-/* Voice: a button whose length follows the duration, with a row of bars that pulse while it plays. */
+/* Voice: a button whose length follows the duration, with a row of bars (app.css) that pulse while it plays. */
 .voice-bubble { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 72px; color: var(--fg); font-size: var(--text-sm); text-align: left; }
-.voice-wave { flex: 1; height: 10px; background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 5px); opacity: .35; border-radius: 1px; }
 
 .voice-bubble.error { color: var(--fg-muted); }
 
