@@ -1,4 +1,4 @@
-//! Replies: which earlier message a reply quotes and how its `<refermsg>` writes it, as on a real account (#1242).
+//! 引用消息：引用的是之前的哪一条消息，以及它的 `<refermsg>` 怎样写，与真实账号一致（#1242）。
 
 use std::collections::VecDeque;
 
@@ -8,22 +8,22 @@ use super::rng::{Rng, Weighted};
 use super::words::esc;
 use super::world::World;
 
-/// How replies quote each `<type>` of message.
+/// 引用消息怎样引用各种 `<type>` 的消息。
 struct Quoted {
-    /// The quoted message's type (the low 32 bits of its `local_type`).
+    /// 被引用的消息的类型（它的 `local_type` 的低 32 位）。
     kind: i64,
-    /// How often it is quoted, against the other kinds.
+    /// 与其他类型相比被引用的频率（权重）。
     weight: f64,
-    /// The share of its quotes written as plain text: its words, or a summary such as `[视频]`.
+    /// 引用时写成纯文字的比例：消息的文字，或者 `[视频]` 这样的摘要。
     plain: f64,
-    /// Of the quotes written as its XML (escaped once), the share beginning with the XML declaration and the share
-    /// beginning with a line naming its sender; the others begin with `<msg>`.
+    /// 写成 XML（转义一次）的引用中，`declaration` 是以 XML 声明开头的比例，
+    /// `sender_line` 是以写明发送者的一行开头的比例；其余的以 `<msg>` 开头。
     declaration: f64,
     sender_line: f64,
 }
 
-/// The replies of a real account (36,125, `reply_record_probe` in `weflow-core`): text is quoted as itself, the
-/// others mostly as their XML; a sticker or a video is now and then quoted by its summary.
+/// 一个真实账号的引用消息（36125 条，见 `weflow-core` 的 `reply_record_probe`）：文字按原文引用，
+/// 其他类型大多按 XML 引用；表情和视频偶尔按摘要引用。
 const QUOTED: &[Quoted] = &[
     Quoted {
         kind: 1,
@@ -69,13 +69,13 @@ const QUOTED: &[Quoted] = &[
     },
 ];
 
-/// The share of quoted replies whose XML keeps the `<refermsg>` of what they quote, by its plain text and without
-/// its `<msgsource>`; the others leave it out (on a real account, 6,257 of the 8,990 quoted replies keep it).
+/// 被引用的回复中，XML 保留它所引用消息的 `<refermsg>`（写成纯文字，不带 `<msgsource>`）的比例；
+/// 其余的不保留。真实账号上 8990 条被引用的回复中有 6257 条保留。
 const KEEPS_ITS_QUOTE: f64 = 0.70;
 
-/// How big a reply is against replies on the whole, by how it quotes: the median and the 90th percentile of each form
-/// on a real account over those of all its replies (1,575 and 10,549 bytes). A plain quote is small; a quote of a
-/// sticker or a voice message (from `<msg>`) is a little bigger and rarely much bigger.
+/// 按引用的写法，回复相对于全部回复的大小：真实账号上每种写法的中位数和第 90 百分位数，
+/// 除以全部回复的中位数和第 90 百分位数（1575 和 10549 字节）。
+/// 纯文字的引用较小；引用表情或语音（以 `<msg>` 开头）稍大，很少大很多。
 const PLAIN_SIZE: (f64, f64) = (0.796, 0.946);
 const DECLARATION_SIZE: (f64, f64) = (1.714, 1.325);
 const MSG_SIZE: (f64, f64) = (1.219, 0.287);
@@ -83,26 +83,25 @@ const SENDER_LINE_SIZE: (f64, f64) = (2.018, 1.501);
 
 const DECLARATION: &str = "<?xml version=\"1.0\"?>\n";
 
-/// A reply's `<refermsg>`.
+/// 一条回复的 `<refermsg>`。
 pub(super) struct Refer {
-    /// As the reply stores it.
+    /// 回复中存储的样子。
     pub(super) stored: String,
-    /// As it stays in the reply's own XML when that reply is quoted in turn: with the quoted message's plain text, or
-    /// empty when it is left out.
+    /// 这条回复再被引用时，留在它自己的 XML 中的样子：带被引用消息的纯文字；不保留时为空。
     pub(super) when_quoted: String,
-    /// The size of the reply against the size of replies on the whole ([`PLAIN_SIZE`] and the others).
+    /// 这条回复的大小相对于全部回复的大小（[`PLAIN_SIZE`] 等）。
     size: (f64, f64),
 }
 
 impl Refer {
-    /// The sizes of a reply quoting this way, out of the sizes of replies on the whole.
+    /// 由全部回复的大小分布，得出按这种写法引用的回复的大小分布。
     pub(super) fn sizes(&self, (median, p90, max): Spread) -> Spread {
         (median * self.size.0, p90 * self.size.1, max)
     }
 }
 
-/// The `<refermsg>` of a reply in `chat` by `from`, quoting one of the `recent` messages: the newest of a kind drawn
-/// as replies quote kinds, else any of them.
+/// `from` 在 `chat` 里发的一条回复的 `<refermsg>`，引用 `recent` 中的一条消息：
+/// 按引用各类型的频率抽一种类型，取这种类型最新的一条；没有这种类型时任取一条。
 pub(super) fn refermsg(
     rng: &mut Rng,
     world: &World,
@@ -177,10 +176,10 @@ pub(super) fn refermsg(
     }
 }
 
-/// One `<refermsg>`; `source` is its `<msgsource>`, escaped, or `None` for none.
+/// 一个 `<refermsg>`；`source` 是转义过的 `<msgsource>`，为 `None` 时不写。
 #[expect(
     clippy::too_many_arguments,
-    reason = "the fields of one <refermsg>, each written once"
+    reason = "一个 <refermsg> 的各个字段，每个只写一次"
 )]
 fn element(
     kind: i64,

@@ -1,9 +1,9 @@
-//! What official accounts send, in `message/biz_message_0.db` where WeChat keeps it (#1068): the texts and pushes of
-//! every official account in the conversation list, and the WeChat Pay account's notices.
+//! 公众号发来的消息，写在微信保存它们的 `message/biz_message_0.db` 里（#1068）：会话列表中每个公众号的文字和推送，
+//! 以及微信支付的通知。
 //!
-//! The shapes are a real account's (`account_profile_probe`, its `official` part): every official account in the
-//! conversation list has messages, a few each; seven in eight are texts, the others a push of one article, its XML of
-//! a few kilobytes. That account has no WeChat Pay notices; the few here are so that `biz pay-records` reads some.
+//! 分布取自一个真实账号（`account_profile_probe` 的 `official` 部分）：会话列表中的每个公众号都有消息，每个几条；
+//! 八分之七是文字，其余是单篇文章的推送，XML 有几 KB。那个账号没有微信支付的通知；这里的几条是为了让
+//! `biz pay-records` 有内容可读。
 
 use std::collections::{HashMap, HashSet};
 
@@ -18,36 +18,36 @@ use crate::fixture::{message_table_schema, Fixture, NAME2ID_SCHEMA};
 use crate::msg::table_name_for;
 use crate::sqlcipher::testutil::{encrypt_db, plain_connection, plain_image};
 
-/// The WeChat Pay account, whose notices `biz pay-records` reads.
+/// 微信支付的公众号，`biz pay-records` 读取它的通知。
 pub(super) const WECHAT_PAY: &str = "gh_3dfda90e39d6";
-/// The type of an app message that is a link or a push: 49, with its kind of card (5) above the low 32 bits.
+/// 链接或推送的 app 消息的类型：49，卡片的子类型（5）在低 32 位之上。
 const PUSH: i64 = (5 << 32) | 49;
-/// Messages of an official account: median, 90th percentile and most, from the real account.
+/// 一个公众号的消息数：中位数、第 90 百分位数和最大值，取自真实账号。
 const PER_ACCOUNT: (f64, f64, f64) = (4.0, 10.0, 30.0);
-/// The share of an official account's messages that are pushes; the rest are texts.
+/// 公众号消息中推送所占的比例；其余是文字。
 const PUSH_SHARE: f64 = 0.125;
-/// Characters of a text from an official account, and bytes of a push's XML.
+/// 公众号文字消息的字符数：中位数、第 90 百分位数和最大值。
 const TEXT_CHARS: (f64, f64, f64) = (69.0, 294.0, 1_900.0);
+/// 推送的 XML 的字节数：中位数、第 90 百分位数和最大值。
 const PUSH_BYTES: (f64, f64, f64) = (6_000.0, 8_400.0, 16_000.0);
-/// The WeChat Pay account's notices.
+/// 微信支付通知的条数。
 const PAY_NOTICES: usize = 8;
 
-/// An official account's newest message, for its row in the conversation list.
+/// 公众号最新的一条消息，用于它在会话列表中的行。
 pub(super) struct Newest {
     pub(super) time: i64,
     pub(super) local_type: i64,
     pub(super) summary: String,
 }
 
-/// What [`write()`] wrote: per conversation (by its index) its messages and its newest one, and the messages by type.
+/// [`write()`] 写入的内容：每个会话（按序号）的消息数和最新的一条消息，以及每种类型的消息数。
 #[derive(Default)]
 pub(super) struct Written {
     pub(super) newest: HashMap<usize, (usize, Newest)>,
     pub(super) by_type: HashMap<i64, u64>,
 }
 
-/// Writes `message/biz_message_0.db` with the messages of every official account of `world`, its newest at the time
-/// its conversation has.
+/// 写入 `message/biz_message_0.db`，其中是 `world` 中每个公众号的消息，最新的一条在它的会话所记的时间。
 pub(super) fn write(f: &Fixture, world: &World, rng: &Rng) -> Result<Written> {
     let conn = plain_connection();
     conn.execute_batch(NAME2ID_SCHEMA)?;
@@ -71,7 +71,7 @@ pub(super) fn write(f: &Fixture, world: &World, rng: &Rng) -> Result<Written> {
         } else {
             rng.spread(PER_ACCOUNT).max(1.0) as usize
         };
-        // newest last: the newest at the conversation's time, the others days apart before it
+        // 最新的在最后：最新的一条在会话的时间，其余的在它之前，彼此相隔几天
         let mut times = vec![c.times[0]];
         for _ in 1..n {
             let before = times[times.len() - 1] - rng.between(DAY / 2, 30 * DAY);
@@ -132,7 +132,7 @@ pub(super) fn write(f: &Fixture, world: &World, rng: &Rng) -> Result<Written> {
     Ok(written)
 }
 
-/// A push of one article, its XML about a drawn size, and its title.
+/// 一篇文章的推送：大小接近抽到的值的 XML，以及它的标题。
 fn push(world: &World, rng: &mut Rng, account: &str, name: &str, time: i64) -> (String, String) {
     let (title_chars, digest_chars) = (8 + rng.below(16), 20 + rng.below(60));
     let title = format!(
@@ -163,8 +163,7 @@ fn push(world: &World, rng: &mut Rng, account: &str, name: &str, time: i64) -> (
     (xml, title)
 }
 
-/// A WeChat Pay notice, its values made up: every other one a receipt card with a top line, the others labelled
-/// lines; and its title.
+/// 一条微信支付通知（数值是编的）和它的标题：序号为偶数的是带顶行的支付凭证卡片，其余的是几行带标签的文字。
 fn notice(rng: &mut Rng, time: i64, i: usize) -> (String, String) {
     const MERCHANTS: &[&str] = &[
         "街角便利店",

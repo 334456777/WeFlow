@@ -1,5 +1,4 @@
-//! The profile: the shares and sizes the account copies from a real one, the default measured for #488, and
-//! loading and checking a calibrated one (#605).
+//! profile：基准账号从真实账号照搬的比例和大小，为 #488 测得的默认值，以及校准得到的 profile 的读取和检查（#605）。
 
 use std::path::Path;
 
@@ -11,130 +10,130 @@ use serde_json::Value;
 use super::MIB;
 use crate::db::hex;
 
-/// `(median, 90th percentile, at most)` of a size.
+/// 一种大小的分布：（中位数，第 90 百分位数，最大值）。
 pub type Spread = (f64, f64, f64);
 
-/// The shapes the account copies from a real one (#488, #605): shares and sizes only, never a name or a message.
+/// 基准账号从真实账号照搬的分布（#488、#605）：只有比例和大小，从不包含名字或消息。
 ///
-/// [`Profile::default`] is the one measured for #488 (the constants below); a machine may calibrate its own from a
-/// real account (`account_profile_probe --profile-out`), which stays on that machine and is read by [`Profile::load`].
-/// What it holds is never shown: a benchmark result names it by [`Profile::hash`] and the day it was measured.
+/// [`Profile::default`] 是为 #488 测得的那一份（即下面的常量）；一台机器也可以用
+/// `account_profile_probe --profile-out` 从真实账号校准出自己的 profile，
+/// 它只留在那台机器上，由 [`Profile::load`] 读取。它的内容从不公开：基准结果用 [`Profile::hash`] 和测量的日期指代它。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
-    /// The day it was measured, `YYYY-MM-DD`.
+    /// 测量的日期 `YYYY-MM-DD`。
     pub measured: String,
-    /// The messages' types and columns.
+    /// 消息的类型和各列。
     pub messages: MessageProfile,
-    /// When the messages are sent.
+    /// 消息的发送时间。
     pub time: TimeProfile,
-    /// What the texts hold.
+    /// 文字的内容。
     pub text: TextProfile,
-    /// The groups.
+    /// 群。
     pub groups: GroupProfile,
-    /// The media files.
+    /// 媒体文件。
     pub media: MediaProfile,
 }
 
-/// The shares of the messages' types and columns.
+/// 消息的类型和各列的比例。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MessageProfile {
-    /// `(local_type, share)`; an app message's local type is `(its type << 32) | 49`.
+    /// 各类型的比例 `(local_type, share)`；app 消息的 `local_type` 是 `(sub << 32) | 49`。
     pub types: Vec<(i64, f64)>,
-    /// The share of a group's messages the owner sends.
+    /// 群消息中账号所有者发送的比例。
     pub sent_in_group: f64,
-    /// The share of a private chat's messages the owner sends.
+    /// 私聊消息中账号所有者发送的比例。
     pub sent_in_private: f64,
-    /// The share of a group's messages that @-mention someone.
+    /// 群消息中 @ 了某人的比例。
     pub at_in_group: f64,
-    /// The share of messages with a `source` (`msgsource` XML).
+    /// 带 `source`（`msgsource` XML）的消息的比例。
     pub with_source: f64,
-    /// The share of those sources stored compressed.
+    /// 这些 `source` 中压缩存储的比例。
     pub source_compressed: f64,
-    /// The share of messages whose `sort_seq` is days away from their time.
+    /// `sort_seq` 与发送时间相差几天的消息的比例。
     pub sort_seq_off: f64,
-    /// The share of messages whose `sort_seq` is 0.
+    /// `sort_seq` 为 0 的消息的比例。
     pub sort_seq_missing: f64,
-    /// The content size in bytes by type (the size of the XML of all but text), and of the types not listed.
+    /// 各类型内容的字节数（文字以外的类型是 XML 的大小）。
     pub content_bytes: Vec<(i64, Spread)>,
-    /// The content size in bytes of the types `content_bytes` does not list.
+    /// `content_bytes` 没有列出的类型的内容字节数。
     pub content_bytes_other: Spread,
 }
 
-/// When the messages are sent.
+/// 消息的发送时间。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TimeProfile {
-    /// Share of messages by hour of the day (UTC+8).
+    /// 每天各小时的消息比例（UTC+8）。
     pub hours: [f64; 24],
-    /// Share of messages by day of the week, Monday first.
+    /// 一周各天的消息比例，周一在前。
     pub weekdays: [f64; 7],
-    /// Seconds between two messages of one burst, as `(from, to, share)`.
+    /// 一阵连续消息中相邻两条的间隔秒数，写成 `(from, to, share)`。
     pub burst_gaps: Vec<(i64, i64, f64)>,
 }
 
-/// What the texts hold.
+/// 文字的内容。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextProfile {
-    /// Lengths in characters, as `(from, to, share)`.
+    /// 字符数的分布，写成 `(from, to, share)`。
     pub chars: Vec<(u32, u32, f64)>,
-    /// The share of texts with an emoji character.
+    /// 含 emoji 字符的文字的比例。
     pub with_emoji: f64,
-    /// The share of texts with a WeChat emoji in brackets, `[微笑]`.
+    /// 含方括号写法的微信表情（如 `[微笑]`）的文字的比例。
     pub with_bracket_emoji: f64,
-    /// The share of texts of more than one line.
+    /// 多于一行的文字的比例。
     pub with_newline: f64,
-    /// The share of texts with a control character in them.
+    /// 含控制字符的文字的比例。
     pub with_odd_control: f64,
-    /// The share of texts with an address.
+    /// 含网址的文字的比例。
     pub with_url: f64,
 }
 
-/// The groups.
+/// 群的分布。
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GroupProfile {
-    /// The share of the conversations that are groups.
+    /// 会话中群聊的比例。
     pub share: f64,
-    /// The biggest group: members, and how many of them ever speak.
+    /// 最大的群的成员数。
     pub big_members: usize,
-    /// How many of the biggest group's members ever speak.
+    /// 最大的群中发过言的成员数。
     pub big_speakers: usize,
-    /// Who speaks in a group: the member of rank `r` (from 0) says `(r + 1 + q) ^ -s` of it.
+    /// 群里谁在说话：排第 `r`（从 0 起）的成员发言的权重为 `(r + 1 + q) ^ -s`，这是其中的 `q`。
     pub speaker_q: f64,
-    /// The `s` of `speaker_q`'s formula.
+    /// `speaker_q` 的公式中的 `s`。
     pub speaker_s: f64,
 }
 
-/// The media files.
+/// 媒体文件的分布。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MediaProfile {
-    /// Which files of a picture are on the computer: `(thumbnail, image, original, share)`.
+    /// 一张图片的哪些文件在电脑上：`(thumbnail, image, original, share)`，即缩略图、普通图、原图和比例。
     pub image_sets: Vec<(bool, bool, bool, f64)>,
-    /// The size of a thumbnail's `.dat` file.
+    /// 缩略图 `.dat` 文件的大小。
     pub thumb_bytes: Spread,
-    /// The size of an image's `.dat` file.
+    /// 普通图 `.dat` 文件的大小。
     pub image_bytes: Spread,
-    /// The size of an original's `.dat` file.
+    /// 原图 `.dat` 文件的大小。
     pub hd_bytes: Spread,
-    /// What the image file holds, as `(png, jpeg, wxgf)` shares.
+    /// 普通图文件里各格式的比例 `(png, jpeg, wxgf)`。
     pub image_formats: (f64, f64, f64),
-    /// What an original's file holds, as `image_formats`.
+    /// 原图文件里各格式的比例，写法同 `image_formats`。
     pub hd_formats: (f64, f64, f64),
-    /// The size of a video.
+    /// 视频的大小。
     pub video_bytes: Spread,
-    /// The size of a video's thumbnail.
+    /// 视频缩略图的大小。
     pub video_thumb_bytes: Spread,
-    /// The share of videos whose thumbnail is on the computer.
+    /// 缩略图在电脑上的视频的比例。
     pub video_thumb_here: f64,
-    /// The share of videos that are on the computer.
+    /// 在电脑上的视频的比例。
     pub video_here: f64,
-    /// The size of a file sent or received.
+    /// 收发的文件的大小。
     pub file_bytes: Spread,
-    /// The share of files that are on the computer.
+    /// 在电脑上的文件的比例。
     pub file_here: f64,
 }
 
@@ -193,10 +192,10 @@ impl Default for Profile {
 }
 
 impl Profile {
-    /// A profile saved as JSON, checked as [`check`](Self::check) does.
+    /// 读取保存成 JSON 的 profile，并像 [`check`](Self::check) 那样检查。
     ///
     /// # Errors
-    /// When the file cannot be read, is not a profile, or fails the check.
+    /// 文件读不了、不是 profile，或者没有通过检查时。
     pub fn load(path: &Path) -> Result<Self> {
         let bytes =
             std::fs::read(path).with_context(|| format!("read the profile {}", path.display()))?;
@@ -205,11 +204,11 @@ impl Profile {
         Ok(profile)
     }
 
-    /// What the generator needs of it: every list of shares has a positive total, every share is in `0..=1`, every
-    /// range is ordered, and the biggest group has a speaker.
+    /// 检查生成器对它的要求：每组比例的总和为正，每个比例都在 `0..=1` 之内，
+    /// 每个范围都是有序的，最大的群至少有一个人发言。
     ///
     /// # Errors
-    /// The first part that fails, by name.
+    /// 第一个不满足要求的部分，错误中写明它的名称。
     pub fn check(&self) -> Result<()> {
         let share = |name: &str, v: f64| {
             ensure!((0.0..=1.0).contains(&v), "{name}: {v} is not a share");
@@ -276,12 +275,11 @@ impl Profile {
         Ok(())
     }
 
-    /// A short name of what it holds: the first 16 hex digits of the MD5 of its JSON, each fraction written with 9
-    /// significant digits, so that a profile read back from its file (whose last digit may come back off by one)
-    /// has the same name.
+    /// 代表其内容的短名称：它的 JSON 的 MD5 的前 16 位十六进制数字，其中每个小数写成 9 位有效数字，
+    /// 这样从文件读回的 profile（最后一位可能差 1）名称也相同。
     ///
     /// # Errors
-    /// When it does not serialize, which plain data does not do.
+    /// 无法序列化时；只含普通数据的 profile 不会这样。
     pub fn hash(&self) -> Result<String> {
         fn canonical(v: &Value, out: &mut String) {
             match v {
@@ -328,14 +326,14 @@ impl Profile {
     }
 }
 
-// The default profile, measured on a real account for #488.
+// 默认的 profile，为 #488 在一个真实账号上测得。
 const MEASURED: &str = "2026-11-02";
 
 pub(super) const fn app(sub: i64) -> i64 {
     (sub << 32) | 49
 }
 
-/// Message types by share, as `(local_type, share)`; an app message's local type is `(its type << 32) | 49`.
+/// 各消息类型的比例 `(local_type, share)`；app 消息的 `local_type` 是 `(sub << 32) | 49`。
 const TYPES: &[(i64, f64)] = &[
     (1, 0.6162),
     (app(57), 0.1369),
@@ -368,14 +366,14 @@ const TYPES: &[(i64, f64)] = &[
     (48, 0.000_01),
 ];
 
-/// Share of messages by hour of the day.
+/// 每天各小时的消息比例。
 const HOURS: [f64; 24] = [
     0.0400, 0.0139, 0.0080, 0.0029, 0.0031, 0.0039, 0.0074, 0.0093, 0.0223, 0.0425, 0.0604, 0.0706,
     0.0612, 0.0483, 0.0382, 0.0338, 0.0461, 0.0551, 0.0582, 0.0687, 0.0684, 0.0649, 0.1083, 0.0643,
 ];
-/// Share of messages by day of the week, Monday first.
+/// 一周各天的消息比例，周一在前。
 const WEEKDAYS: [f64; 7] = [0.1389, 0.1371, 0.1601, 0.1940, 0.1288, 0.1259, 0.1152];
-/// Text lengths in characters, as `(from, to, share)`.
+/// 文字的字符数分布 `(from, to, share)`。
 const TEXT_CHARS: &[(u32, u32, f64)] = &[
     (1, 2, 0.0220),
     (2, 5, 0.2090),
@@ -393,7 +391,7 @@ const WITH_BRACKET_EMOJI: f64 = 0.2064;
 const WITH_NEWLINE: f64 = 0.0113;
 const WITH_ODD_CONTROL: f64 = 0.0008;
 const WITH_URL: f64 = 0.0013;
-/// Seconds between two messages of one burst, as `(from, to, share)`.
+/// 一阵连续消息中相邻两条的间隔秒数 `(from, to, share)`。
 const BURST_GAPS: &[(i64, i64, f64)] = &[
     (0, 5, 0.2695),
     (5, 60, 0.5787),
@@ -408,36 +406,36 @@ const WITH_SOURCE: f64 = 0.987;
 const SOURCE_COMPRESSED: f64 = 0.984;
 const SORT_SEQ_OFF: f64 = 0.0008;
 const SORT_SEQ_MISSING: f64 = 0.0001;
-/// Who speaks in a group: the member of rank `r` (from 0) says `(r + 1 + Q) ^ -S` of it, which gives the real
-/// group's 13% for the first and 91% for the first tenth.
+/// 群里谁在说话：排第 `r`（从 0 起）的成员发言的权重为 `(r + 1 + Q) ^ -S`，
+/// 得出的比例与真实的群一样：第一名占 13%，前十分之一的成员占 91%。
 const SPEAKER_Q: f64 = 18.5;
 const SPEAKER_S: f64 = 3.8;
-/// The biggest group: members, and how many of them ever speak.
+/// 最大的群：成员数，以及其中发过言的人数。
 const BIG_MEMBERS: usize = 369;
 const BIG_SPEAKERS: usize = 251;
 const GROUP_SHARE: f64 = 0.08;
-/// Which files of a picture are on the computer: `(thumbnail, image, original, share)`.
+/// 一张图片的哪些文件在电脑上：`(thumbnail, image, original, share)`。
 const IMAGE_SETS: &[(bool, bool, bool, f64)] = &[
     (true, false, false, 0.532),
     (true, true, false, 0.437),
     (true, true, true, 0.030),
     (false, true, false, 0.001),
 ];
-/// File sizes in bytes as `(median, 90th percentile, at most)`.
+/// 文件的字节数 `(median, 90th percentile, at most)`：中位数、第 90 百分位数和最大值。
 const THUMB_BYTES: (f64, f64, f64) = (5053.0, 11_639.0, 98_000.0);
 const IMAGE_BYTES: (f64, f64, f64) = (46_540.0, 118_757.0, 2_200_000.0);
 const HD_BYTES: (f64, f64, f64) = (120_040.0, 722_310.0, 8_200_000.0);
 const VIDEO_BYTES: (f64, f64, f64) = (2_872_790.0, 14_861_110.0, 8.0 * MIB as f64);
 const VIDEO_THUMB_BYTES: (f64, f64, f64) = (10_315.0, 25_880.0, 360_000.0);
 const FILE_BYTES: (f64, f64, f64) = (283_610.0, 6_863_770.0, 8.0 * MIB as f64);
-/// What the image file holds, as `(png, jpeg, wxgf)` shares.
+/// 普通图文件里各格式的比例 `(png, jpeg, wxgf)`。
 const IMAGE_FORMATS: (f64, f64, f64) = (0.265, 0.015, 0.720);
 const HD_FORMATS: (f64, f64, f64) = (0.567, 0.233, 0.200);
 const VIDEO_THUMB_HERE: f64 = 0.9;
 const VIDEO_HERE: f64 = 0.1;
 const FILE_HERE: f64 = 0.35;
 
-/// `(median, 90th percentile, largest)` of the content size in bytes by type (the size of the XML of all but text).
+/// 各类型内容字节数的 `(median, 90th percentile, largest)`（文字以外的类型是 XML 的大小）。
 const CONTENT_BYTES: &[(i64, Spread)] = &[
     (3, (1334.0, 1562.0, 17_520.0)),
     (34, (554.0, 556.0, 769.0)),

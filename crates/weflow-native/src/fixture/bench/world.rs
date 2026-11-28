@@ -1,4 +1,4 @@
-//! People and conversations: who the account talks with, when, and in which message database.
+//! 人和会话：账号与谁聊天、什么时候聊，以及消息在哪个消息库里。
 
 use std::collections::HashSet;
 
@@ -8,9 +8,9 @@ use super::rng::{Rng, Weighted};
 use super::words::{Words, LATIN_NICKS, TOPICS};
 use super::{BenchSpec, DAY, END, END_DAY, OWNER, TZ};
 
-/// The share of the messages in the first message database; the others share the rest.
+/// 第一个消息库中的消息所占的比例；其余的由其他消息库分摊。
 const FIRST_SHARD: f64 = 0.15;
-/// Messages this close to where one database ends and the next starts go to either.
+/// 离一个消息库的结束处（也是下一个的开始处）这么近的消息，可能分到两个消息库中的任一个。
 const SHARD_OVERLAP: i64 = 20 * DAY;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -43,11 +43,10 @@ pub(super) struct Conversation {
     pub(super) username: String,
     pub(super) name: String,
     pub(super) kind: Kind,
-    /// People who may write in it (not the owner): the partner of a private chat, a group's members by how much
-    /// they say (the first `speakers` say something).
+    /// 可能在其中发言的人（不含账号所有者）：私聊的对方，或者按发言多少排列的群成员（前 `speakers` 个会发言）。
     pub(super) members: Vec<usize>,
     pub(super) speakers: usize,
-    /// Message times, oldest first.
+    /// 各条消息的时间，最早的在前。
     pub(super) times: Vec<i64>,
 }
 
@@ -69,7 +68,7 @@ fn unique(rng: &mut Rng, taken: &mut HashSet<String>, make: impl Fn(&mut Rng) ->
 fn user_name(rng: &mut Rng) -> String {
     const ALNUM: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let mut name: String = if rng.chance(0.15) {
-        // an old custom id: a letter, then letters, digits, `_` and `-`
+        // 旧式的自定义 ID：一个字母开头，之后是字母、数字、`_` 和 `-`
         let mut s = String::from((b'a' + rng.below(26) as u8) as char);
         for _ in 0..5 + rng.below(14) {
             s.push(match rng.below(20) {
@@ -88,8 +87,8 @@ fn user_name(rng: &mut Rng) -> String {
     name
 }
 
-/// When the messages of a conversation of `n` messages are, between `first_day` and `last_day` (local days):
-/// bursts of messages a few seconds apart, on days and hours drawn like the real ones.
+/// 一个有 `n` 条消息的会话在 `first_day` 和 `last_day`（本地日期）之间的各条消息的时间：
+/// 一阵阵相隔几秒的消息，日期和时段按真实账号的分布抽取。
 fn timeline(
     rng: &mut Rng,
     n: usize,
@@ -98,7 +97,7 @@ fn timeline(
     profile: &TimeProfile,
 ) -> Vec<i64> {
     let days: Vec<i64> = (first_day..=last_day).collect();
-    // a few busy days carry much of a conversation, as on a real account
+    // 少数忙碌的日子承载了一个会话的大部分消息，与真实账号一致
     let day_weights = Weighted::new(days.iter().map(|d| {
         let pareto = (1.0 - rng.unit()).powf(-1.0 / 1.3).min(60.0);
         profile.weekdays[(d + 3).rem_euclid(7) as usize] * pareto
@@ -107,7 +106,7 @@ fn timeline(
     let gaps = Weighted::new(profile.burst_gaps.iter().map(|g| g.2));
     let mut times = Vec::with_capacity(n);
     while times.len() < n {
-        // geometric burst length with this mean
+        // 一阵消息的条数服从以 `burst` 为均值的几何分布
         let len = (1.0 + (1.0 - rng.unit()).ln() / (1.0 - 1.0 / burst).ln()) as usize;
         let day = days[day_weights.draw(rng)];
         let mut hour = hours.draw(rng);
@@ -119,7 +118,7 @@ fn timeline(
             times.push(t);
             let (from, to, _) = profile.burst_gaps[gaps.draw(rng)];
             t += rng.between(from, to);
-            // into a quieter hour, a conversation goes on as much less often as that hour is quieter
+            // 进入较冷清的时段时，会话继续下去的概率按那个时段冷清的程度降低
             let now = ((t + TZ).rem_euclid(DAY) / 3600) as usize;
             if now != hour {
                 if !rng.chance(profile.hours[now] / profile.hours[hour]) {
@@ -177,11 +176,11 @@ impl World {
 
         let groups = (spec.conversations as f64 * profile.groups.share).round() as usize;
         let privates = spec.conversations - groups;
-        // friends are about four times the private chats on the real account; the private chats are with some of them
+        // 真实账号上好友约为私聊的四倍；私聊的对象是其中的一部分
         let friends: Vec<usize> = (0..(privates * 4).max(profile.groups.big_members / 3))
             .map(|_| person(rng, 1))
             .collect();
-        // a few contacts of the other kinds a real account has
+        // 真实账号上也有的几个其他类型的联系人
         for _ in 0..(friends.len() / 40).max(1) {
             person(rng, 0);
         }
@@ -192,7 +191,7 @@ impl World {
         let mut group = |rng: &mut Rng, members: usize, speakers: usize, messages, days, burst| {
             let mut pool: Vec<usize> = Vec::new();
             while pool.len() < members {
-                // a group mixes friends and people the owner only knows from it
+                // 群里既有好友，也有账号所有者只在群里认识的人
                 let who = if rng.chance(0.3) {
                     friends[rng.below(friends.len())]
                 } else {
@@ -246,8 +245,8 @@ impl World {
                 times: timeline(rng, messages, days, 10.0, &profile.time),
             });
         }
-        // official accounts and the WeChat Pay account: in the conversation list, at the time of their newest
-        // message, which `official` writes in another database
+        // 公众号和微信支付：出现在会话列表中，时间是它们最新一条消息的时间，
+        // 这些消息由 `official` 写在另一个数据库里
         for i in 0..=(spec.conversations / 20).max(3) {
             let (username, name) = if i == 0 {
                 taken.insert(WECHAT_PAY.to_string());
@@ -287,8 +286,8 @@ impl World {
     }
 }
 
-/// The message database of each message of each conversation: by time, the first [`FIRST_SHARD`] of the account's
-/// messages in the first, the rest shared by the others, and near each border either.
+/// 每个会话的每条消息所在的消息库：按时间分，账号最早的 [`FIRST_SHARD`] 比例的消息在第一个消息库，
+/// 其余的由其他消息库分摊，靠近边界的消息分到边界两边的任一个。
 pub(super) fn assign_shards(
     rng: &mut Rng,
     conversations: &[Conversation],

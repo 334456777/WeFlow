@@ -1,28 +1,25 @@
-//! A synthetic account as big and as varied as a real one, for the benchmark workflow (#259, #488).
+//! 与真实账号同样大、同样多样的合成账号，即基准账号，供基准测试的工作流使用（#259、#488）。
 //!
-//! The shapes come from the aggregate profile of a real account (`account_profile_probe` in `weflow-core`): the
-//! shares of message types, text lengths, hours and gaps between messages, how much of a group a few members say,
-//! which files of a picture are on the computer, and so on. Only those numbers are copied, never a name or a message.
+//! 各种分布取自一个真实账号的汇总 profile（`weflow-core` 的 `account_profile_probe`）：消息类型、文字长度、
+//! 时段和消息间隔的比例，群里少数成员的发言占比，一张图片的哪些文件在电脑上，等等。
+//! 只照搬这些数字，从不照搬名字或消息。
 //!
-//! The structure is the one WeChat writes: every database with a salt of its own, so each one opened derives its
-//! page key (#1127); several `message_N.db` whose local ids start again in each database and whose time ranges
-//! overlap, the newest messages of each database still in its WAL, a few `sort_seq` out of step (#133) or missing,
-//! app messages of every common kind as XML compressed with zstd, replies that quote a message by its words or by its
-//! XML escaped once and forwarded chat records of texts, pictures and videos, as a real account's do (#1242), the
-//! messages of the official accounts and the WeChat Pay account's notices in `biz_message_0.db` (#1068), and the
-//! picture, video, voice and file folders with their `hardlink.db` rows. Pictures are V2 `.dat` files holding a JPEG,
-//! PNG or WXGF of the real sizes; the JPEGs are headers and padding, not pictures, and the WXGF ones whole HEVC
-//! pictures of the sizes a real account's are (#1221).
+//! 结构与微信写的相同：每个数据库有自己的盐，所以每打开一个都要派生它的页密钥（#1127）；有几个
+//! `message_N.db`，每个数据库的本地 ID 重新从头开始，时间范围互相重叠，每个数据库最新的消息还在它的 WAL 里，
+//! 少数 `sort_seq` 错位（#133）或缺失；各种常见子类型的 app 消息，XML 用 zstd 压缩；引用消息按文字或者按转义过一次的
+//! XML 引用另一条消息，合并转发的聊天记录里有文字、图片和视频，与真实账号一致（#1242）；
+//! 公众号的消息和微信支付的通知在 `biz_message_0.db` 里（#1068）；还有图片、视频、语音和文件的目录，
+//! 以及它们在 `hardlink.db` 中的行。图片是 V2 的 `.dat` 文件，里面是与真实大小相同的 JPEG、PNG 或 WXGF；
+//! JPEG 只有文件头和填充，不是真的图片，WXGF 是与真实账号的图片同样大小的完整 HEVC 图片（#1221）。
 //!
-//! [`build`] draws everything from [`BenchSpec::seed`] with its own generator ([`Rng`]), so one seed gives the same
-//! bytes on every machine and with every dependency version.
+//! [`build`] 用自己的生成器（`Rng`）从 [`BenchSpec::seed`] 生成一切，所以同一个种子在每台机器上、
+//! 用每个版本的依赖都得到相同的字节。
 #![expect(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    reason = "the generated counts, sizes and times are small values that fit (an `f64` holds them exactly), and \
-              none is negative"
+    reason = "生成的计数、大小和时间都是放得下的小值（`f64` 能精确表示），而且都不是负数"
 )]
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -56,39 +53,39 @@ pub use profile::{
 use rng::{Rng, Weighted};
 use world::{assign_shards, Conversation, Kind, World};
 
-/// The account's own user name, and its folder (the name and four more characters, as WeChat names it).
+/// 账号所有者的用户名。
 pub const OWNER: &str = "wxid_benchme";
-/// The account's folder: [`OWNER`] and four more characters.
+/// 账号目录：[`OWNER`] 加上 `_` 和四个字符，与微信的命名方式相同。
 pub const ACCOUNT_DIR: &str = "wxid_benchme_b3n9";
-/// The image keys of the account's `.dat` files (V2: AES for the head, XOR for the tail).
+/// 账号 `.dat` 文件的图片 XOR 密钥（V2 格式的文件开头用 AES 加密，结尾用 XOR）。
 pub const IMAGE_XOR_KEY: u8 = 0x5a;
-/// The AES key of the account's `.dat` files, as [`IMAGE_XOR_KEY`] is the XOR key.
+/// 账号 `.dat` 文件的图片 AES 密钥，与 [`IMAGE_XOR_KEY`] 配套。
 pub const IMAGE_AES_KEY: &str = "b3nchm4rk1m4g3k3";
-/// The newest moment of the account (2025-10-09 08:53:20 UTC): fixed, so a seed gives the same account on any day.
+/// 账号中最新的时刻（2025-10-09 08:53:20 UTC）：固定不变，同一个种子在哪一天生成的账号都相同。
 const END: i64 = 1_760_000_000;
 
 const DAY: i64 = 86_400;
-/// The account's clock, UTC+8: hours, days and the month folders of its files are in it.
+/// 账号所在的时区 UTC+8：小时、日期和文件的月份目录都按它计算。
 const TZ: i64 = 8 * 3600;
 const END_DAY: i64 = (END + TZ) / DAY;
 const MIB: usize = 1 << 20;
-/// The earlier messages a reply can quote: enough that a kind quoted now and then, such as a video, is among them.
+/// 引用消息可以引用的之前的消息条数：足够多，偶尔才被引用的类型（如视频）也在其中。
 const QUOTABLE: usize = 200;
 
-/// What to build.
+/// 要生成的基准账号的参数。
 #[derive(Clone, Debug)]
 pub struct BenchSpec {
-    /// What every random choice starts from: the same seed builds the same account.
+    /// 所有随机选择的起点：同一个种子生成同一个账号。
     pub seed: u64,
-    /// Messages of the biggest group.
+    /// 最大的群的消息数。
     pub group_messages: usize,
-    /// Conversations besides the biggest group: private chats, and a few smaller groups.
+    /// 最大的群以外的会话数：私聊，以及几个较小的群。
     pub conversations: usize,
-    /// Message databases (`message_N.db`).
+    /// 消息库（`message_N.db`）的个数。
     pub shards: usize,
-    /// Write the files of pictures, videos and files (most of the time and the disk space a build takes).
+    /// 是否写出图片、视频和文件（生成的大部分时间和磁盘空间都花在这里）。
     pub media: bool,
-    /// The shapes copied from a real account.
+    /// 从真实账号照搬的分布。
     pub profile: Profile,
 }
 
@@ -105,17 +102,21 @@ impl Default for BenchSpec {
     }
 }
 
-/// Text and system messages longer than this are stored compressed, like every other kind.
+/// 比这更长的文字消息和系统消息压缩存储，与其他各类消息一样。
 const ZSTD_ABOVE: usize = 150;
 
-/// The newest messages of each database that are still in its WAL.
+/// 每个数据库中还留在 WAL 里的最新消息的条数。
 const WAL_MESSAGES: usize = 1500;
-/// WeChat's search index holds the text messages up to the WAL ones, in this many tables.
+/// 微信的搜索索引收录 WAL 之前的文字消息，分在这么多张表里。
 const FTS_TABLES: usize = 5;
 const SNS_PER_FRIEND: f64 = 1.1;
 
-/// Builds the account under `root` (wiped first) and returns what is in it: per conversation, its user name, kind and
-/// messages; per type, the messages; the files written.
+/// 在 `root` 下生成账号（先清空 `root`），返回其中的内容：每个会话的用户名、种类和消息数，每种类型的消息数，
+/// 以及写出的文件。
+///
+/// # Errors
+///
+/// `spec` 不合法（没有消息库、最大的群没有消息，或者 profile 没有通过检查），或者写入失败。
 pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
     ensure!(spec.shards >= 1, "at least one message database");
     ensure!(
@@ -137,7 +138,7 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
         written: Written::default(),
     };
 
-    // the newest messages of each database are the WAL's
+    // 每个数据库最新的消息放进 WAL
     let mut shards: Vec<Shard> = (0..spec.shards)
         .map(|k| -> Result<Shard> {
             let mut times: Vec<(i64, usize)> = world
@@ -269,7 +270,7 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
                 String::new()
             };
             let source = if source_text.is_empty() {
-                // an empty source is stored as empty text
+                // 空的 source 存成空文字
                 (Some(Vec::new()), false)
             } else {
                 let compress = rng.chance(profile.messages.source_compressed);
@@ -469,7 +470,7 @@ fn write_contacts(f: &Fixture, world: &World) {
     for c in &groups {
         contacts.push(ContactSpec::new(&c.username, 2, &c.name));
     }
-    // a third of the members have a nickname of their own in the group
+    // 约三成成员在群里有自己的群昵称
     let mut rng = Rng::new(0x9e0b);
     let nicknames: Vec<Vec<String>> = groups
         .iter()
@@ -544,7 +545,7 @@ fn write_sns(f: &Fixture, world: &World, rng: &mut Rng) {
     f.sns_db(&posts);
 }
 
-/// Where [`build`] puts the account under `root`.
+/// [`build`] 在 `root` 下生成的账号目录。
 pub fn account_dir(root: &Path) -> PathBuf {
     root.join(ACCOUNT_DIR)
 }
