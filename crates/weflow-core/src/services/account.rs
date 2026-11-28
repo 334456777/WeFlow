@@ -112,7 +112,13 @@ impl ServiceHub {
         Ok(wcdb)
     }
 
-    /// The configured account's folder (the one holding `db_storage`).
+    /// The configured account's folder (the one holding `db_storage`), as the databases are opened from it: it needs
+    /// the database key, and is `db_path` itself when the profile names no account. The services that read WeChat's
+    /// files without opening a database find it with `account_dir_only`.
+    ///
+    /// # Errors
+    ///
+    /// A config error when the profile has no `db_path` or no `decrypt_key`.
     pub fn account_dir(&self) -> AppResult<PathBuf> {
         self.connection_inputs().map(|(dir, _, _)| dir)
     }

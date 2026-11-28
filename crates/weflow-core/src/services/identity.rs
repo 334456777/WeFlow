@@ -20,7 +20,9 @@ impl ServiceHub {
         self.my_wxid_cleaned()
     }
 
-    /// The account directory without needing the database key.
+    /// The account's folder from the profile alone, without the database key: where the media, the image keys and the
+    /// key helpers read WeChat's files. A config error when the profile names no database path or account, or the
+    /// folder is not there. [`Self::account_dir`] is the folder the databases are opened from.
     pub(super) fn account_dir_only(&self) -> AppResult<PathBuf> {
         let profile = self.profile()?;
         let db_path = profile
