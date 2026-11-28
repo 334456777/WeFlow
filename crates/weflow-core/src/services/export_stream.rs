@@ -1,29 +1,24 @@
-//! Reading a conversation for an export: worker threads read and parse its pages side by side while the caller
-//! consumes the messages in order.
+//! 为导出读取会话：工作线程并行读取、解析各页，调用方按顺序消费消息。
 //!
-//! A message cursor knows every message of the range (in order) once it is open, so page `i` is fixed before
-//! anything is read. Each worker takes the next page number, reads that page from the database and turns its rows
-//! into export messages; the consumer puts the pages back in order. Reading (SQLite, page decryption, building the
-//! rows) and parsing are both CPU work, and reading is the larger part, so it is the part that runs in parallel.
-//! The database hands each worker its own connection (see `Wcdb::set_read_connections`), so reads of one
-//! database file do not wait for each other.
+//! 消息游标打开后就知道范围内的全部消息及其顺序，所以第 `i` 页在读取之前就已确定。每个工作线程领取下一个页号，
+//! 从数据库读出这一页，把其中的行变成导出用的消息；消费方再把各页按顺序排好。读取（SQLite、数据库页的解密、
+//! 构造行）和解析都是 CPU 的工作，读取占大头，所以并行的是读取。
+//! 数据库给每个工作线程一个自己的连接（见 `Wcdb::set_read_connections`），读同一个数据库文件时不必互相等待。
 //!
-//! How many workers help depends on the export: a format that is slow to write (ChatLab, JSON) keeps up with two,
-//! a light one (TXT) needs more. So the export starts with [`INITIAL_WORKERS`] and wakes one more whenever the
-//! consumer spent more than a tenth of its time waiting for pages, up to one per CPU but one (the consumer's), at
-//! most [`MAX_WORKERS`]. It stops waking workers once one more did not make the workers deliver pages clearly
-//! faster (see `PageStream::adapt`): a consumer that only collects (an export with media) waits whatever the
-//! workers do, yet past some point more of them only share the same CPUs and database. Such a consumer gets at most
-//! [`COLLECT_MAX_WORKERS`] (see [`collect_export_messages`]). Every worker that reads costs memory (its database
-//! connection keeps a page cache, its pages wait for the consumer), so workers that are not needed stay asleep and
-//! never open a connection.
+//! 需要几个工作线程取决于导出：写起来慢的格式（ChatLab、JSON）两个就跟得上，轻的格式（TXT）需要更多。
+//! 所以导出从 [`INITIAL_WORKERS`] 个开始，消费方等待页的时间超过它总时间的十分之一时就再唤醒一个，
+//! 最多为 CPU 数减一（留一个给消费方），且不超过 [`MAX_WORKERS`]。多唤醒的一个没能让工作线程明显更快地交出页时，
+//! 就不再唤醒（见 `PageStream::adapt`）：只收集消息的消费方（带媒体的导出）不论工作线程怎样都在等待，
+//! 但超过某个数量后，更多的工作线程只是在争用同样的 CPU 和数据库。这样的消费方最多有 [`COLLECT_MAX_WORKERS`]
+//! 个工作线程（见 [`collect_export_messages`]）。每个读取的工作线程都要占内存（它的数据库连接有页缓存，
+//! 它读好的页要等消费方取走），所以用不上的工作线程一直休眠，从不打开连接。
 //!
-//! A worker can also finish its page for the consumer: an export whose entries do not depend on each other has the
-//! workers render them too (see [`read_export_pages`]), so the consumer only writes.
+//! 工作线程还可以替消费方完成它那一页：条目互不依赖的导出让工作线程一并渲染（见 [`read_export_pages`]），
+//! 消费方只管写出。
 //!
-//! Workers run at most [`PAGES_AHEAD_PER_WORKER`] pages per working worker ahead of the consumer, so memory stays
-//! bounded however slow the consumer or one early page is. A failed page, a panicking worker or a consumer that
-//! stops early stops every worker; an export never ends as if it were complete after a page went missing.
+//! 每有一个工作中的线程，读取最多可以超前消费方 [`PAGES_AHEAD_PER_WORKER`] 页，所以不论消费方或前面某一页多慢，
+//! 内存都有上限。某一页失败、某个工作线程 panic 或消费方提前停止时，所有工作线程都停下；
+//! 缺了一页的导出决不会当作完整的导出结束。
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -38,31 +33,33 @@ use super::MessageExportRequest;
 use crate::error::{AppError, AppResult};
 use crate::message::{CollectOptions, ExportMsg};
 
-/// Messages per page (cursor batch). Exports sort each page by time, so the page size is part of the output order
-/// when `sort_seq` and `create_time` disagree: keep it fixed.
+/// 每页的消息数（游标的一批）。
+///
+/// 导出把每一页按时间排序，所以 `sort_seq` 与 `create_time` 不一致时，页的大小会影响输出的顺序：保持不变。
 const PAGE_SIZE: i32 = 2000;
-/// How many pages per worker may be read ahead of the one the consumer is on.
+/// 每个工作线程最多可以超前消费方当前所在页读取的页数。
 const PAGES_AHEAD_PER_WORKER: usize = 2;
-/// Workers reading from the start (unless the CPUs or the pages are fewer).
+/// 一开始就读取的工作线程数（CPU 或页更少时取更少的）。
 const INITIAL_WORKERS: usize = 2;
-/// Most workers the export wakes on its own.
+/// 导出自动唤醒的工作线程的上限。
 const MAX_WORKERS: usize = 8;
-/// Most workers for a consumer that only collects the messages (an export with media, which copies the media and
-/// writes the file only once everything is read). On a real 200,000-message group, two workers collected as fast as
-/// the seven the growth check woke, with about 100 MiB less memory.
+/// 只收集消息的消费方的工作线程上限，这样的消费方是带媒体的导出：全部读完后才复制媒体、写文件。
+///
+/// 在一个有 20 万条消息的真实群聊上，两个工作线程与增长检查唤醒的七个收集得一样快，内存少用约 100 MiB。
 const COLLECT_MAX_WORKERS: usize = 2;
-/// Pages the consumer takes before it judges whether it waited too long (or what the last woken worker brought).
+/// 消费方每取多少页判断一次等待是否太久（或者最后唤醒的工作线程带来了多少提升）。
 const PAGES_PER_CHECK: usize = 3;
-/// Fixes the worker count (a number of threads, at least 1) instead of adapting it, for measurements.
+/// 固定工作线程数（至少为 1），不自动调整，用于测量。
 const WORKERS_ENV: &str = "WEFLOW_EXPORT_WORKERS";
 
-/// What a worker turns each parsed page into for the consumer.
+/// 工作线程把解析好的每一页变成交给消费方的结果。
 pub(super) type Finish<'f, T> = dyn FnMut(Vec<ExportMsg>) -> T + 'f;
-/// Runs the given body with a new [`Finish`]: called once by each worker that reads, on its own thread, so the
-/// finisher may hold what cannot be shared (an exporter with its own name cache).
+/// 用一个新的 [`Finish`] 运行给定的 `body`。
+///
+/// 每个读取的工作线程在自己的线程上调用一次，所以 [`Finish`] 可以持有不能共享的东西（如带自己的名字缓存的导出器）。
 pub(super) type WithFinisher<'s, T> = dyn Fn(&mut dyn FnMut(&mut Finish<'_, T>)) + Sync + 's;
 
-/// Runs `f` on the conversation's messages (oldest first), read and parsed while `f` consumes them.
+/// 对会话的消息（从旧到新）运行 `f`，`f` 消费的同时读取和解析后面的消息。
 pub(super) fn read_export_stream<R>(
     wcdb: &Wcdb,
     req: &MessageExportRequest,
@@ -72,8 +69,8 @@ pub(super) fn read_export_stream<R>(
     read_stream(wcdb, req, opts, MAX_WORKERS, f)
 }
 
-/// The conversation's messages (oldest first) for a consumer that only collects them: at most
-/// [`COLLECT_MAX_WORKERS`] workers read, since more would not make the collecting faster.
+/// 给只收集消息的消费方的会话消息（从旧到新）：最多 [`COLLECT_MAX_WORKERS`] 个工作线程读取，
+/// 更多也不会收集得更快。
 pub(super) fn collect_export_messages(
     wcdb: &Wcdb,
     req: &MessageExportRequest,
@@ -97,8 +94,8 @@ fn read_stream<R>(
     })
 }
 
-/// Runs `f` on the conversation's pages (oldest first), each read, parsed and finished by `with_finisher` on a
-/// worker thread while `f` consumes the earlier ones.
+/// 对会话的各页（从旧到新）运行 `f`：每一页在工作线程上读取、解析，并由 `with_finisher` 完成，
+/// 同时 `f` 消费前面的页。
 pub(super) fn read_export_pages<T: Send, R>(
     wcdb: &Wcdb,
     req: &MessageExportRequest,
@@ -129,9 +126,11 @@ fn read_pages<T: Send, R>(
     result
 }
 
-/// (workers reading from the start, most workers) for `pages` pages: both [`WORKERS_ENV`] when it is set; else
-/// [`INITIAL_WORKERS`] growing to one per CPU but one (the consumer formats and writes), at most `max_workers`.
-/// Never more than there are pages.
+/// 共 `pages` 页时的（一开始读取的工作线程数，最多的工作线程数）。
+///
+/// 设了 [`WORKERS_ENV`] 时两者都取它；
+/// 否则从 [`INITIAL_WORKERS`] 开始，最多为 CPU 数减一（留一个给格式化和写出的消费方），且不超过 `max_workers`。
+/// 两者都不超过页数。
 fn worker_counts(
     pages: usize,
     configured: Option<&str>,
@@ -151,7 +150,7 @@ fn worker_counts(
     }
 }
 
-/// Reads the open `cursor` with workers counted from `(CPUs, most workers)` (see [`worker_counts`]).
+/// 按 CPU 数和工作线程上限算出工作线程数（见 [`worker_counts`]），读取已打开的 `cursor`。
 fn read_cursor<T: Send, R>(
     wcdb: &Wcdb,
     cursor: i64,
@@ -173,7 +172,7 @@ fn read_cursor<T: Send, R>(
         cpus,
         max_workers,
     );
-    // connections open only when a worker reads, so sleeping workers cost none
+    // 工作线程读取时才打开连接，休眠的工作线程不占连接
     wcdb.set_read_connections(workers);
     let gate = Gate::new(initial, workers);
     let captions: OnceLock<HashMap<String, String>> = OnceLock::new();
@@ -189,7 +188,7 @@ fn read_cursor<T: Send, R>(
     let (tx, rx) = channel();
     std::thread::scope(|scope| {
         if pages > 0 {
-            // the sticker caption table is one query over a whole database: start it now, beside the first pages
+            // 表情描述的表要对整个数据库查一次：现在就开始，与最初几页同时进行
             scope.spawn(|| captions.get_or_init(load_captions));
         }
         let handles: Vec<_> = (0..workers)
@@ -201,16 +200,15 @@ fn read_cursor<T: Send, R>(
             .collect();
         drop(tx);
         let mut stream = PageStream::new(rx, &gate, pages, total);
-        // a consumer that panics must stop the workers too: the scope waits for them before the panic goes on, and a
-        // worker that was never woken would wait forever
+        // 消费方 panic 时也要停下工作线程：作用域在 panic 继续传播前要等它们结束，而从未被唤醒的工作线程会一直等下去
         let consumer = HaltOnPanic(&gate);
         let result = f(&mut stream);
         drop(consumer);
-        gate.halt(); // the consumer is done (or gave up): workers stop at their next page
+        gate.halt(); // 消费方结束（或放弃）了：工作线程在下一页时停下
         let PageStream {
             rx, error, stats, ..
         } = stream;
-        drop(rx); // a worker still reading fails its send and stops
+        drop(rx); // 仍在读取的工作线程发送失败后停下
         let panicked = handles.into_iter().any(|h| h.join().is_err());
         if panicked {
             return Err(AppError::runtime("message reader thread panicked"));
@@ -224,7 +222,7 @@ fn read_cursor<T: Send, R>(
     })
 }
 
-/// What a worker needs to read and parse one page.
+/// 工作线程读取、解析一页所需的东西。
 struct PageSource<'a> {
     wcdb: &'a Wcdb,
     cursor: i64,
@@ -234,16 +232,16 @@ struct PageSource<'a> {
     load_captions: &'a (dyn Fn() -> HashMap<String, String> + Sync),
 }
 
-/// One page, read and parsed.
+/// 读取并解析好的一页。
 struct ParsedPage {
-    /// Rows the cursor returned (before the time and sender filters): the progress counts these.
+    /// 游标返回的行数（按时间和发送者筛选之前），进度按它计数。
     scanned: usize,
     msgs: Vec<ExportMsg>,
     fetch: Duration,
     parse: Duration,
 }
 
-/// A page as the consumer gets it: finished on the worker.
+/// 消费方拿到的一页：已在工作线程上完成。
 struct Page<T> {
     scanned: usize,
     payload: T,
@@ -257,7 +255,7 @@ type PageResult<T> = (usize, AppResult<Page<T>>);
 impl PageSource<'_> {
     fn read(&self, page: usize) -> AppResult<ParsedPage> {
         let t = Instant::now();
-        // typed rows (#491): their text moves into the messages
+        // 类型化的行（#491）：它们的文字移进消息里
         let rows = self
             .wcdb
             .fetch_message_page(self.cursor, page)
@@ -276,7 +274,7 @@ impl PageSource<'_> {
                 let ts = crate::message::msg_row_timestamp(m);
                 start.is_none_or(|s| ts >= s) && end.is_none_or(|e| ts <= e)
             })
-            // drop other senders' rows before parsing them
+            // 解析前先去掉其他发送者的行
             .filter(|row| {
                 sender.is_none_or(|f| {
                     crate::message::transfer::is_same_wxid(
@@ -304,15 +302,15 @@ impl PageSource<'_> {
     }
 }
 
-/// A sticker: a plain emoji message, or an appmsg of type 8 (a sticker sent as an attachment).
+/// 是否是表情：普通的表情消息，或类型为 8 的 app 消息（作为附件发送的表情）。
 fn is_sticker(m: &ExportMsg) -> bool {
     m.local_type == 47 || m.sticker_md5.is_some()
 }
 
-/// Looks up each sticker's caption and writes it into `emoji_caption`, which the export shows as `[表情：caption]`.
+/// 查出每个表情的描述，写进 `emoji_caption`，导出显示为 `[表情：caption]`。
 ///
-/// The caption is the user's own text for the sticker, else the store sticker's Chinese description. The table
-/// (md5 → caption) is read whole at once, see `emoticon_captions`.
+/// 描述取用户自己给表情写的文字，没有时取商店表情的中文描述。对应表（md5 → 描述）一次整个读出，
+/// 见 `emoticon_captions`。
 fn attach_emoji_captions(table: &HashMap<String, String>, messages: &mut [ExportMsg]) {
     for m in messages.iter_mut() {
         let md5 = match m.local_type {
@@ -327,8 +325,7 @@ fn attach_emoji_captions(table: &HashMap<String, String>, messages: &mut [Export
     }
 }
 
-/// Worker number `index`: once the export needs it, reads, parses and finishes the next unclaimed page until there
-/// is none left or the export stops.
+/// 第 `index` 个工作线程：导出需要它时，不断领取、读取、解析并完成下一个没人领的页，直到没有剩下的页或导出停止。
 fn work<T>(
     index: usize,
     gate: &Gate,
@@ -368,20 +365,21 @@ fn work<T>(
     });
 }
 
-/// Coordination between the workers and the consumer.
+/// 工作线程与消费方之间的协调。
 struct Gate {
-    /// Next page number to hand out.
+    /// 下一个要分出去的页号。
     next: AtomicUsize,
-    /// Pages the consumer has taken so far.
+    /// 消费方到目前为止取走的页数。
     taken: Mutex<usize>,
     moved: Condvar,
     halted: AtomicBool,
-    /// Workers allowed to read (the others sleep).
+    /// 允许读取的工作线程数，其余的休眠。
     active: AtomicUsize,
-    /// Pages the workers delivered since the consumer last looked (in any order, when they were sent): how fast they
-    /// read, unlike the pages the consumer takes, which wait for the earliest one and come out of the read-ahead.
+    /// 自消费方上次查看以来工作线程交出的页数（按发送的时刻计，不论顺序），反映它们读得多快。
+    ///
+    /// 消费方取走的页则不同：要等最早的那一页，而且来自超前读好的部分。
     delivered: AtomicUsize,
-    /// Workers there are.
+    /// 工作线程的总数。
     workers: usize,
 }
 
@@ -407,12 +405,12 @@ impl Gate {
         self.active.load(Ordering::Acquire)
     }
 
-    /// Pages that may be claimed beyond the ones taken.
+    /// 在已取走的页之外还可以领取的页数。
     fn ahead(&self) -> usize {
         self.active() * PAGES_AHEAD_PER_WORKER
     }
 
-    /// Wakes one more worker; false when all of them already read.
+    /// 再唤醒一个工作线程；全部都已在读取时返回 false。
     fn grow(&self) -> bool {
         let grown = self
             .active
@@ -427,7 +425,7 @@ impl Gate {
         grown
     }
 
-    /// Waits until worker `index` may read; false when the export stopped first.
+    /// 等到第 `index` 个工作线程可以读取；导出先停止时返回 false。
     fn wait_until_needed(&self, index: usize) -> bool {
         let mut taken = self.taken.lock().unwrap_or_else(PoisonError::into_inner);
         while index >= self.active() && !self.halted() {
@@ -439,15 +437,16 @@ impl Gate {
         !self.halted()
     }
 
-    /// Stops the workers, waking the ones that wait for room.
+    /// 停止工作线程，并唤醒所有在等待的工作线程（等空位的和休眠的）。
     fn halt(&self) {
         self.halted.store(true, Ordering::Release);
         let _taken = self.taken.lock().unwrap_or_else(PoisonError::into_inner);
         self.moved.notify_all();
     }
 
-    /// Waits until `page` is close enough to the consumer; false when the export stopped meanwhile. Pages are
-    /// claimed in order, so the page the consumer waits for never waits here.
+    /// 等到 `page` 离消费方足够近；期间导出停止时返回 false。
+    ///
+    /// 页是按顺序领取的，所以消费方正在等的那一页从不在这里等待。
     fn wait_for_room(&self, page: usize) -> bool {
         let mut taken = self.taken.lock().unwrap_or_else(PoisonError::into_inner);
         while page >= *taken + self.ahead() && !self.halted() {
@@ -465,7 +464,7 @@ impl Gate {
     }
 }
 
-/// Halts the export when a worker panics, so the others do not wait for room the consumer will never make.
+/// 持有它的线程（工作线程或消费方）panic 时停止导出，免得其他工作线程一直等待不会再来的空位或唤醒。
 struct HaltOnPanic<'a>(&'a Gate);
 
 impl Drop for HaltOnPanic<'_> {
@@ -476,26 +475,26 @@ impl Drop for HaltOnPanic<'_> {
     }
 }
 
-/// Time spent per stage, summed over the workers.
+/// 各阶段花费的时间，所有工作线程的总和。
 #[derive(Default)]
 struct Stats {
     fetch: Duration,
     parse: Duration,
-    /// Rendering on the workers (exports whose entries they render).
+    /// 在工作线程上渲染的时间（由工作线程渲染条目的导出）。
     finish: Duration,
-    /// Time the consumer waited for the next page (the rest of its time went to formatting and writing).
+    /// 消费方等待下一页的时间，其余时间用于格式化和写出。
     starved: Duration,
 }
 
 impl Stats {
-    /// Logged with `RUST_LOG=weflow::export=debug`.
+    /// 设 `RUST_LOG=weflow::export=debug` 时写进日志。
     fn log(&self, workers: usize, pages: usize, total: usize, stale: usize, elapsed: Duration) {
         tracing::debug!(
             target: "weflow::export",
             workers,
             pages,
             messages = total,
-            // page reads run again because WeChat changed the database meanwhile
+            // 因读取期间微信改了数据库而重新运行的页读取次数
             stale_reruns = stale,
             elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
             fetch_ms = u64::try_from(self.fetch.as_millis()).unwrap_or(u64::MAX),
@@ -507,38 +506,37 @@ impl Stats {
     }
 }
 
-/// The finished pages, in page order. It ends early when a page failed (see `error`).
+/// 按页序排列的完成的页；某一页失败时提前结束（见 `error`）。
 struct PageStream<'a, T> {
     rx: Receiver<PageResult<T>>,
     gate: &'a Gate,
     pages: usize,
     next_page: usize,
-    /// Pages that arrived before the ones they follow.
+    /// 比前面的页先到的页。
     pending: BTreeMap<usize, Page<T>>,
     error: Option<AppError>,
     total: usize,
     scanned: usize,
     stats: Stats,
-    /// When the consumer took the previous page, and since the last check: pages taken, time, time waited.
+    /// 消费方取上一页的时刻；`window` 是自上次检查以来取走的页数、经过的时间和等待的时间。
     last_take: Option<Instant>,
     window: (usize, Duration, Duration),
     growth: Growth,
 }
 
-/// Whether the export still wakes workers.
+/// 导出是否还唤醒工作线程。
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Growth {
-    /// The first check: the workers started together and read ahead, so pages come faster than they will. Only
-    /// measured, then `Open`.
+    /// 第一次检查：工作线程同时开始并超前读取，页来得比之后快。只测量，然后转为 `Open`。
     Warming,
-    /// Wakes one more worker when the consumer waits.
+    /// 消费方等待时再唤醒一个工作线程。
     Open,
-    /// A worker was just woken; the next check, one page per working worker, lets it start (open its connection,
-    /// warm its page cache) and is not judged. `before` is the time per delivered page before it was woken.
+    /// 刚唤醒了一个工作线程；下一次检查（每个工作中的线程一页）留给它启动（打开连接、预热页缓存），不作评判。
+    /// `before` 是唤醒它之前每交出一页的时间。
     Starting { before: Duration },
-    /// The check after that, two pages per working worker, shows what the new worker brought.
+    /// 再下一次检查（每个工作中的线程两页）看出新的工作线程带来了多少提升。
     Judging { before: Duration },
-    /// The last woken worker did not pay off: no more.
+    /// 最后唤醒的工作线程不划算：不再唤醒。
     Stopped,
 }
 
@@ -560,11 +558,11 @@ impl<'a, T> PageStream<'a, T> {
         }
     }
 
-    /// Wakes one more worker when the consumer waited for more than a tenth of its time since the last check, until
-    /// a woken worker stops paying off: going from n - 1 to n workers can cut the time per delivered page by at most
-    /// 1/n; when it fell by less than half of that, more readers do not read faster (the CPUs or the database are
-    /// busy) and would only cost memory. (The wait for the first page is how long a page takes,
-    /// not a sign of too few workers.) `now` is when the page was taken.
+    /// 自上次检查以来消费方等待的时间超过十分之一时，再唤醒一个工作线程，直到唤醒的工作线程不再划算。
+    ///
+    /// 从 n - 1 个增加到 n 个工作线程，每交出一页的时间最多缩短 1/n；缩短得不到这个值的一半时，
+    /// 更多的读取线程不会读得更快（CPU 或数据库已经忙不过来），只会多占内存。等待第一页的时间是读一页本身要花的时间，
+    /// 不说明工作线程太少。`now` 是取走这一页的时刻。
     fn adapt(&mut self, waited: Duration, now: Instant) {
         match self.last_take.replace(now) {
             Some(last) => {
@@ -572,7 +570,7 @@ impl<'a, T> PageStream<'a, T> {
                 self.window.1 += now - last;
                 self.window.2 += waited;
             }
-            // the clock starts with the first page: what was delivered before it does not count
+            // 从第一页开始计时：在它之前交出的页不算
             None => {
                 self.gate.delivered.store(0, Ordering::Relaxed);
             }
@@ -683,7 +681,7 @@ mod tests {
 
     #[test]
     fn worker_counts_follow_cpus_pages_and_the_override() {
-        // start with two, grow to one per CPU but the consumer's, capped, never more than the pages
+        // 从两个开始，最多增长到 CPU 数减一（留一个给消费方），有上限，且不超过页数
         let most = MAX_WORKERS;
         assert_eq!(
             worker_counts(100, None, 16, most),
@@ -695,7 +693,7 @@ mod tests {
         assert_eq!(worker_counts(2, None, 16, most), (2, 2));
         assert_eq!(worker_counts(1, None, 16, most), (1, 1));
         assert_eq!(worker_counts(0, None, 16, most), (1, 1));
-        // the override fixes the count, above the CPU count but not above the page count; nonsense is ignored
+        // 覆盖值固定线程数，可以超过 CPU 数但不超过页数；无效的值被忽略
         assert_eq!(worker_counts(100, Some(" 12 "), 4, most), (12, 12));
         assert_eq!(worker_counts(3, Some("12"), 4, most), (3, 3));
         assert_eq!(worker_counts(100, Some("0"), 4, most), (2, 3));
@@ -708,7 +706,7 @@ mod tests {
         assert_eq!(worker_counts(100, None, 16, most), (2, 2));
         assert_eq!(worker_counts(100, None, 2, most), (1, 1));
         assert_eq!(worker_counts(1, None, 16, most), (1, 1));
-        // the override is for measurements: it still fixes the count
+        // 覆盖值用于测量：它仍然固定线程数
         assert_eq!(worker_counts(100, Some("4"), 16, most), (4, 4));
     }
 
@@ -727,7 +725,7 @@ mod tests {
             last_msg_type: 1,
         }]);
         fixture.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
-        // ten cursor pages: room for eight workers, of which only the first two read
+        // 十个游标页：够八个工作线程用，其中只有前两个在读取
         let msgs: Vec<MsgSpec> = (1..=20_000)
             .map(|i| MsgSpec::text(i, "wxid_bob", T0 + i, "hi"))
             .collect();
@@ -766,9 +764,9 @@ mod tests {
                 )
                 .unwrap();
             let as_is: &WithFinisher<'_, Vec<ExportMsg>> = &|body| body(&mut |msgs| msgs);
-            // 16 CPUs: two workers read, six sleep until the consumer would need them. The consumer is slower than
-            // the two, so none of the others is woken, and it fails only after the last page (like a writer whose
-            // final save fails): by then the two have finished, and no failed send stops the sleeping ones.
+            // 16 个 CPU：两个工作线程读取，六个休眠，直到消费方需要它们。消费方比这两个慢，所以其余的都不会被唤醒，
+            // 而且它在最后一页之后才失败（就像最后一次保存失败的写出方）：这时两个工作线程已经结束，
+            // 没有失败的发送能让休眠的那些停下。
             let panicked = catch_unwind(AssertUnwindSafe(|| {
                 read_cursor(
                     &wcdb,
@@ -788,7 +786,7 @@ mod tests {
             .is_err();
             let _ = done.send(panicked);
         });
-        // the panic halts the gate, which wakes the sleeping workers: the export ends and passes the panic on
+        // panic 让 `Gate` 停止，从而唤醒休眠的工作线程：导出结束，并把 panic 传下去
         let panicked = finished.recv_timeout(Duration::from_secs(60));
         assert_eq!(panicked, Ok(true), "the export hung or swallowed the panic");
     }
@@ -807,7 +805,7 @@ mod tests {
             last_msg_type: 1,
         }]);
         fixture.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
-        // twenty cursor pages, and a database well over an export's page cache
+        // 二十个游标页，数据库远大于导出的页缓存
         let text = |i: i64| format!("message {i} {}", "x".repeat(1000));
         let msgs: Vec<MsgSpec> = (1..=40_000)
             .map(|i| MsgSpec::text(i, "wxid_bob", T0 + i, &text(i)))
@@ -837,10 +835,9 @@ mod tests {
         };
         let as_is: &WithFinisher<'_, Vec<ExportMsg>> = &|body| body(&mut |msgs| msgs);
         let mut changes = 0u64;
-        // two workers and a consumer that only collects: the workers are the bottleneck, so they are mostly in the
-        // middle of a query when WeChat writes. A query that starts after a change opens a fresh snapshot; one that is
-        // reading when it changes fails and is run again. On a busy single CPU a change can find no query running:
-        // then the export is checked again, up to five times
+        // 两个工作线程和一个只收集的消费方：工作线程是瓶颈，所以微信写入时它们多半正在查询。
+        // 改动之后开始的查询打开新的快照；改动时正在读取的查询失败并重新运行。
+        // 在繁忙的单个 CPU 上，改动发生时可能没有查询在运行：这时再检查一次导出，最多五次
         for _ in 0..5 {
             let cursor = wcdb
                 .open_message_cursor(
@@ -908,8 +905,9 @@ mod tests {
         assert_eq!(gate.active(), 3);
     }
 
-    /// Takes `pages` pages `every` apart (each delivered just in time), each after waiting `waited`. The clock is passed in: a sleeping test
-    /// would depend on how the runner schedules it.
+    /// 每隔 `every` 毫秒取一页，共取 `pages` 页（每页都恰好及时交出），每页之前等待 `waited` 毫秒。
+    ///
+    /// 时钟由参数传入：靠休眠的测试会受运行机器调度的影响。
     fn feed(
         stream: &mut PageStream<'_, Vec<ExportMsg>>,
         clock: &mut Instant,
@@ -930,10 +928,10 @@ mod tests {
         let (_tx, rx) = channel();
         let mut stream = PageStream::new(rx, &gate, 100, 0);
         let mut clock = Instant::now();
-        // busy: 10 ms per page, nothing waited (one page more: the first only starts the clock)
+        // 忙：每页 10 毫秒，没有等待（多一页：第一页只是开始计时）
         feed(&mut stream, &mut clock, 1 + 2 * PAGES_PER_CHECK, 10, 0);
         assert_eq!(gate.active(), 1);
-        // starved: half of the time went to waiting
+        // 饥饿：一半的时间在等待
         feed(&mut stream, &mut clock, PAGES_PER_CHECK, 10, 5);
         assert_eq!(gate.active(), 2);
     }
@@ -946,23 +944,23 @@ mod tests {
         let mut clock = Instant::now();
         feed(&mut stream, &mut clock, 1 + 2 * PAGES_PER_CHECK, 12, 6);
         assert_eq!(gate.active(), 2);
-        // the new worker starts (one page per worker, at least a check's worth: not judged), then pages come in half
-        // the time over two pages per worker: as good as it gets, so grow again
+        // 新的工作线程启动（每个工作线程一页，至少一次检查的页数：不作评判），之后在每个工作线程两页的检查中，
+        // 每页的时间减半：已是最好的情况，所以继续增长
         feed(&mut stream, &mut clock, PAGES_PER_CHECK.max(2), 12, 6);
         feed(&mut stream, &mut clock, PAGES_PER_CHECK.max(2 * 2), 6, 3);
         assert_eq!(gate.active(), 3);
-        // the third worker leaves 6 ms per page as it was (it could have cut a third): it is the last
+        // 第三个工作线程没有缩短每页 6 毫秒的时间（最多可以缩短三分之一）：它是最后一个
         feed(&mut stream, &mut clock, PAGES_PER_CHECK.max(3), 6, 3);
         feed(&mut stream, &mut clock, PAGES_PER_CHECK.max(2 * 3), 6, 3);
         assert_eq!(stream.growth, Growth::Stopped);
-        // however long the consumer waits from now on
+        // 此后不论消费方等待多久
         feed(&mut stream, &mut clock, 10 * PAGES_PER_CHECK, 6, 5);
         assert_eq!(gate.active(), 3);
     }
 
     #[test]
     fn workers_wait_for_room_and_wake_up_when_halted() {
-        // one working worker: two pages ahead of the consumer
+        // 一个工作中的线程：可以超前消费方两页
         let gate = Gate::new(1, 1);
         assert!(gate.wait_for_room(0));
         assert!(gate.wait_for_room(1));
@@ -1026,7 +1024,7 @@ mod tests {
         assert_eq!(ids, [1]);
         assert!(stream.error.is_some());
 
-        // every worker gone while a page is still missing: not a complete export
+        // 还缺一页时所有工作线程都已退出：不是完整的导出
         let (tx, rx) = channel();
         tx.send((1, Ok(page(1, &[2])))).unwrap();
         drop(tx);

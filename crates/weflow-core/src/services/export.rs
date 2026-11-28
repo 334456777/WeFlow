@@ -1,4 +1,4 @@
-//! Exporting a conversation's messages: collecting or streaming them, the exporter, and writing each format.
+//! 导出会话的消息：收集或流式读取消息、导出器，以及写出各种格式。
 
 use std::path::{Path, PathBuf};
 
@@ -10,8 +10,12 @@ use crate::error::{AppError, AppResult};
 use weflow_native::wcdb::Databases;
 
 impl ServiceHub {
-    /// Export a conversation's messages in one of WeFlow's desktop app's formats
-    /// (json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql).
+    /// 按桌面版的一种格式（json、arkme-json、chatlab、chatlab-jsonl、excel、txt、weclone、html、sql）导出会话的消息。
+    ///
+    /// # Errors
+    ///
+    /// 格式不支持或 `sender` 是账号目录名时返回用法错误，账号没有配置好时返回配置错误，
+    /// 范围内没有消息时返回运行时错误；读取或写入失败时返回错误，并删掉写了一部分的文件。
     pub fn export_messages(
         &self,
         req: &MessageExportRequest,
@@ -29,8 +33,12 @@ impl ServiceHub {
         again_if_keys_changed(|| self.export_streaming(req, out))
     }
 
-    /// [`export_messages`](Self::export_messages) that also copies the selected media (images, voices, videos,
-    /// stickers) to `<out dir>/media/<out name>/` and points the exported messages at the copies.
+    /// [`export_messages`](Self::export_messages)，同时把选中的媒体（图片、语音、视频、表情）复制到
+    /// `<out dir>/media/<out name>/`，并让导出的消息指向这些副本。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`export_messages`](Self::export_messages)。
     pub async fn export_messages_with_media(
         &self,
         req: &MessageExportRequest,
@@ -49,12 +57,21 @@ impl ServiceHub {
         Ok(result)
     }
 
-    /// One conversation in several formats at once (#342), each to its file in `outs`, all in one folder. The messages
-    /// are read once and the formats written side by side, the selected media copied once before them, to
-    /// `<out dir>/media/<first out name>/`, which every format points at.
+    /// 一次把一个会话导出成多种格式（#342），每种写到 `outs` 中各自的文件，都在同一个文件夹里。
     ///
-    /// Reading once holds the whole conversation in memory, where one format alone streams: about 1.6 KiB a message
-    /// more for half the CPU time and, in eight formats, 45% less time (#628). One format without media still streams.
+    /// 消息只读一次，各格式同时写出；选中的媒体在此之前复制一次，放在 `<out dir>/media/<first out name>/`，
+    /// 每种格式都指向那里。
+    ///
+    /// 只读一次要把整个会话放在内存里，而单一格式是流式读写的：每条消息多用约 1.6 KiB 内存，换来一半的 CPU 时间，
+    /// 八种格式时总时间少 45%（#628）。只有一种格式且不带媒体时仍是流式的。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`export_messages`](Self::export_messages)；任何一种格式写出失败时返回它的错误。
+    ///
+    /// # Panics
+    ///
+    /// 写某种格式的线程 panic 时，把它的 panic 传给调用方。
     pub async fn export_messages_formats(
         &self,
         req: &MessageExportRequest,
@@ -127,7 +144,7 @@ impl ServiceHub {
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
-        // the export names its senders from the contacts and reads the messages
+        // 导出要从联系人取发送者的名字，再读消息
         wcdb.prefetch(&[Databases::Contacts, Databases::Messages])
             .map_err(|e| AppError::native(format!("{e:#}")))?;
         let opts = CollectOptions {
@@ -137,7 +154,7 @@ impl ServiceHub {
             end: req.end,
             sender_filter: req.sender.as_deref(),
         };
-        // in the order of the cursor, as a streaming export writes them
+        // 按导出游标的顺序，与流式导出写出的顺序相同
         let collected = export_stream::collect_export_messages(&wcdb, req, &opts)?;
         if collected.is_empty() {
             return Err(no_messages(req));
@@ -145,8 +162,9 @@ impl ServiceHub {
         Ok((wcdb, collected))
     }
 
-    /// Export that writes the file while the messages are read, so memory stays flat whatever the size of the
-    /// conversation. (An export that copies media reads everything first: see `export_collect`.)
+    /// 边读消息边写文件的导出，内存占用不随会话的大小增长。
+    ///
+    /// 复制媒体的导出要先读完全部消息，见 `export_collect`。
     fn export_streaming(
         &self,
         req: &MessageExportRequest,
@@ -157,7 +175,7 @@ impl ServiceHub {
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
-        // the export names its senders from the contacts and reads the messages
+        // 导出要从联系人取发送者的名字，再读消息
         wcdb.prefetch(&[Databases::Contacts, Databases::Messages])
             .map_err(|e| AppError::native(format!("{e:#}")))?;
         let opts = CollectOptions {
@@ -172,8 +190,7 @@ impl ServiceHub {
         let render_ahead =
             crate::export_msg::spool::EntryFormat::parse(&format).filter(|f| f.renders_ahead());
         let read = match render_ahead {
-            // entries that do not depend on each other and are slow to render: the reading workers render them
-            // too, this thread only writes them in order
+            // 各条目互不依赖且渲染较慢：由读取的工作线程一并渲染，这个线程只按顺序写出
             Some(entries) => {
                 let parts = self.exporter_parts(
                     &req.session_id,
@@ -211,8 +228,7 @@ impl ServiceHub {
             }),
         };
         if !matches!(read, Ok(Ok(Ok(_)))) {
-            // the reading or the writing (a full disk) failed after the file was written from the messages read so
-            // far: do not leave a truncated export that looks complete
+            // 读取或写入（如磁盘已满）在文件已按读到的消息写出一部分后失败：不留下看似完整、实际被截断的导出
             remove_if_written(out, before);
         }
         let count = read??.map_err(|e| AppError::runtime(format!("{e:#}")))?;
@@ -228,8 +244,7 @@ impl ServiceHub {
         })
     }
 
-    /// Builds the conversation's [`Exporter`](crate::export_msg::Exporter) (contact names, group nicknames, the
-    /// account's own id) and hands it to `f`.
+    /// 为会话建好 [`Exporter`](crate::export_msg::Exporter)（联系人的名字、群昵称、账号自己的 ID），交给 `f`。
     fn with_exporter<R>(
         &self,
         session_id: &str,
@@ -243,8 +258,8 @@ impl ServiceHub {
         Ok(f(&mut parts.exporter(&mut names)))
     }
 
-    /// What every [`Exporter`](crate::export_msg::Exporter) of one export of `session_id` shares: read once, then
-    /// each thread that renders builds its own exporter from it (see [`ExporterParts::exporter`]).
+    /// 导出 `session_id` 时各个 [`Exporter`](crate::export_msg::Exporter) 共用的部分：只读一次，
+    /// 之后每个渲染的线程用它建自己的导出器（见 [`ExporterParts::exporter`]）。
     fn exporter_parts(
         &self,
         session_id: &str,
@@ -315,7 +330,7 @@ impl ServiceHub {
         })
     }
 
-    /// `collected` written in `req`'s format; `avatars` (`{ username: path from the export file }`) go on the HTML page.
+    /// 把 `collected` 按 `req` 的格式写出；`avatars` 是用户名到头像路径（相对导出文件）的对应表，用在 HTML 页面上。
     fn export_write(
         &self,
         req: &MessageExportRequest,
@@ -355,7 +370,7 @@ impl ServiceHub {
             },
         );
         if !matches!(written, Ok(Ok(()))) {
-            // a write that failed part-way (a full disk) leaves no truncated export behind
+            // 写到一半失败（如磁盘已满）时不留下被截断的导出
             remove_if_written(out, before);
         }
         written??;
@@ -369,32 +384,32 @@ impl ServiceHub {
     }
 }
 
-/// The formats `export messages` writes, as its `--format` takes them, for messages that list them.
+/// `export messages` 能写的格式，写法与 `--format` 接受的一致，供报错等提示列出。
 pub const MESSAGE_EXPORT_FORMATS: &str =
     "json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql";
 
-/// What `export messages` writes of one conversation.
+/// `export messages` 导出一个会话的哪些消息、写成什么样。
 #[derive(Clone, Debug)]
 pub struct MessageExportRequest {
-    /// The conversation: the other party's wxid, or `…@chatroom` for a group.
+    /// 会话：私聊为对方的 wxid，群聊为 `…@chatroom`。
     pub session_id: String,
-    /// One of [`MESSAGE_EXPORT_FORMATS`], in any case.
+    /// [`MESSAGE_EXPORT_FORMATS`] 中的一种，不区分大小写。
     pub format: String,
-    /// The first second (Unix time) of the messages exported: a message sent at it is included.
+    /// 导出的消息的起始秒（Unix 时间），包含在这一秒发送的消息。
     pub start: Option<i64>,
-    /// The last second (Unix time) of the messages exported: a message sent at it is included, as the message
-    /// cursor and [`collect_rows`](crate::message::collect_rows) take it.
+    /// 导出的消息的最后一秒（Unix 时间），包含在这一秒发送的消息，与消息游标和
+    /// [`collect_rows`](crate::message::collect_rows) 的处理一致。
     pub end: Option<i64>,
-    /// Only the messages of this sender's bare wxid.
+    /// 只导出这个发送者（裸 wxid）的消息。
     pub sender: Option<String>,
-    /// Which name the export shows for a sender.
+    /// 导出中发送者显示哪个名字。
     pub display_pref: crate::export_msg::names::DisplayPref,
-    /// Excel: only the time, sender, type and content columns.
+    /// Excel 只写时间、发送者、类型和内容这几列。
     pub excel_compact: bool,
 }
 
-/// The parts of an [`Exporter`](crate::export_msg::Exporter) that do not change during an export (all but its name
-/// cache), so threads that render the same export each build one.
+/// [`Exporter`](crate::export_msg::Exporter) 中导出期间不变的部分（除名字缓存以外的全部），
+/// 渲染同一次导出的各线程各用它建一个导出器。
 struct ExporterParts {
     session: crate::export_msg::SessionInfo,
     my_wxid: String,
@@ -402,7 +417,7 @@ struct ExporterParts {
     my_display: String,
     group_nicks: std::collections::HashMap<String, String>,
     group_members: Vec<String>,
-    /// Holds the export time: every exporter of one export reports the same.
+    /// 含导出时间：同一次导出的每个导出器给出的时间相同。
     settings: crate::export_msg::Settings,
 }
 
@@ -424,7 +439,7 @@ impl ExporterParts {
     }
 }
 
-/// What tells whether an export wrote to `path`: its size and modification time, `None` when it does not exist.
+/// 判断导出是否写过 `path` 的依据：文件的大小和修改时间，文件不存在时为 `None`。
 type FileStamp = Option<(u64, Option<std::time::SystemTime>)>;
 
 fn file_stamp(path: &Path) -> FileStamp {
@@ -433,17 +448,17 @@ fn file_stamp(path: &Path) -> FileStamp {
         .map(|m| (m.len(), m.modified().ok()))
 }
 
-/// Removes `out` after a failed export if the export wrote to it (compared with `before`, its stamp from before the
-/// export), so a truncated file is not taken for a complete export.
+/// 导出失败后，如果导出写过 `out`（与导出前的 `before` 比较），就删掉它，免得被截断的文件被当成完整的导出。
 fn remove_if_written(out: &Path, before: FileStamp) {
     if file_stamp(out) != before {
         let _ = std::fs::remove_file(out);
     }
 }
 
-/// Runs an export once more when the order of its messages changed while it was read: the second run reads the keys
-/// of the tables that broke the `sort_seq` rule from their rows (see `Account::open_export_cursor`). An export
-/// that failed removes what it wrote, so starting over is safe.
+/// 读取期间消息的顺序变了时再运行一次导出。
+///
+/// 第二次从行中读出违反 `sort_seq` 规则的表的键（见 `Account::open_export_cursor`）。失败的导出会删掉它写的文件，
+/// 所以重新开始是安全的。
 fn again_if_keys_changed<T>(mut export: impl FnMut() -> AppResult<T>) -> AppResult<T> {
     match export() {
         Err(e) if e.message.contains(weflow_native::msg::KEYS_CHANGED) => export(),
@@ -451,9 +466,9 @@ fn again_if_keys_changed<T>(mut export: impl FnMut() -> AppResult<T>) -> AppResu
     }
 }
 
-/// `--sender` takes the bare wxid: it is the one identifier every message has, unique and fixed. The account folder
-/// name (the owner's wxid with a `_xxxx` suffix) would match too, by the identity rule, so it is refused with the
-/// bare form to use instead.
+/// `--sender` 只接受裸 wxid：它是每条消息都有、唯一且不变的标识。
+///
+/// 账号目录名（账号所有者的 wxid 加 `_xxxx` 后缀）按身份规则也能匹配，所以拒绝它，并在报错里给出应使用的裸 wxid。
 fn check_sender(sender: Option<&str>, my_wxid: &str) -> AppResult<()> {
     let Some(sender) = sender.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(());
@@ -466,7 +481,7 @@ fn check_sender(sender: Option<&str>, my_wxid: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// The error of an export that found nothing; with `--sender`, a reminder of what it takes.
+/// 导出没有找到消息时的错误；带 `--sender` 时提醒它接受什么。
 fn no_messages(req: &MessageExportRequest) -> AppError {
     match req.sender.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(sender) => AppError::runtime(format!(
@@ -476,7 +491,7 @@ fn no_messages(req: &MessageExportRequest) -> AppError {
     }
 }
 
-/// Contact names looked up in `wcdb` as an export needs them (cached).
+/// 导出时按需从 `wcdb` 查的联系人名字，查过的会缓存。
 fn name_book(wcdb: &weflow_native::wcdb::Wcdb) -> crate::export_msg::names::NameBook<'_> {
     use crate::export_msg::names::{ContactInfo, NameBook};
     NameBook::new(move |username: &str| {

@@ -9034,22 +9034,22 @@
         "properties": {
           "localPath": {
             "type": "string",
-            "description": "The decrypted image: its path, or a data URL of it without `preferFilePath`; left out on failure."
+            "description": "解密后的图片：它的路径；没有 `preferFilePath` 时为它的 data URL。失败时省略。"
           },
           "error": {
             "type": "string",
-            "description": "What went wrong; left out on success."
+            "description": "出了什么错；成功时省略。"
           },
           "failureKind": {
             "type": "string",
-            "description": "Why it failed: `not_found`, `decrypt_failed`, `unsupported_image`, or `invalid_arguments` for a payload with\nneither an md5 nor a `.dat` name."
+            "description": "失败的原因：`not_found`、`decrypt_failed`、`unsupported_image`；\n既没有 md5 也没有 `.dat` 文件名的请求为 `invalid_arguments`。"
           },
           "isThumb": {
             "type": "boolean",
-            "description": "The file is only the thumbnail: the original is not on disk."
+            "description": "文件只是缩略图：原图不在磁盘上。"
           }
         },
-        "description": "Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead: the\ncommand's error, or the row of `image resolve-batch`."
+        "description": "消息图片解密后的位置（`image decrypt`、`resolve-cache`）；失败时改为说明原因：作为命令的错误，\n或者作为 `image resolve-batch` 的一行。"
       },
       "ImageBatch": {
         "type": "object",
@@ -9059,13 +9059,13 @@
             "items": {
               "$ref": "#/components/schemas/ImageResult"
             },
-            "description": "One result for each payload, in their order: `localPath` when it was found, `error` when not."
+            "description": "每个请求一个结果，顺序与请求一致：找到时有 `localPath`，找不到时有 `error`。"
           }
         },
         "required": [
           "rows"
         ],
-        "description": "What `image resolve-batch` answers: one result per payload, in their order."
+        "description": "`image resolve-batch` 的回答：每个请求一个结果，顺序与请求一致。"
       },
       "AutoDownloadStopped": {
         "type": "object",

@@ -1,6 +1,6 @@
-//! WeFlow's caches part by part (`weflow cache list` / `cache clear`), and the removal of the current account's
-//! data (`weflow cache clear-account`).
-//! Only WeFlow's own files are touched; WeChat's data is never written.
+//! 按部分列出和清理 WeFlow 的缓存（`weflow cache list`、`cache clear`），
+//! 以及删除当前账号的数据（`weflow cache clear-account`）。
+//! 只动 WeFlow 自己的文件，从不写微信的数据。
 
 use std::path::{Path, PathBuf};
 
@@ -9,7 +9,7 @@ use walkdir::WalkDir;
 use super::*;
 use crate::contract::CachePart;
 
-/// Bytes and number of the files under `path` (the file itself when it is one); 0 when it is missing.
+/// `path` 下文件的总字节数和个数（`path` 是文件时就是它自己）；不存在时为 0。
 pub fn disk_usage(path: &Path) -> (u64, u64) {
     WalkDir::new(path)
         .into_iter()
@@ -20,17 +20,18 @@ pub fn disk_usage(path: &Path) -> (u64, u64) {
         })
 }
 
-/// A file or folder name belongs to the account when one of the (lowercase) ids appears
-/// in it as a whole word, case-insensitively: `wxid_abc`, `wxid_abc_1a2b`, `wxid_abc-moments.json` and
-/// `group_my_message_counts_wxid_abc.json` do, `wxid_abc123.json` (another account) does not.
+/// 文件名或文件夹名中以完整的词出现了某个（小写的）ID 时，它属于这个账号，不区分大小写：`wxid_abc`、
+/// `wxid_abc_1a2b`、`wxid_abc-moments.json` 和 `group_my_message_counts_wxid_abc.json` 属于，
+/// `wxid_abc123.json`（另一个账号）不属于。
 fn account_name_matches(name: &str, ids: &[String]) -> bool {
     let lowered = name.trim().to_lowercase();
     ids.iter().any(|id| contains_word(&lowered, id))
 }
 
-/// Whether `id` appears in `name` with no ASCII letter or digit right before or after it. WeChat ids are ASCII
-/// letters, digits, `_` and `-`, so a neighbouring letter or digit means a longer, different id; `_`, `-`, `.` and
-/// any other character end the id.
+/// `id` 是否出现在 `name` 中，且紧挨着的前后都不是 ASCII 字母或数字。
+///
+/// 微信 ID 由 ASCII 字母、数字、`_` 和 `-` 组成，挨着字母或数字说明是另一个更长的 ID；
+/// `_`、`-`、`.` 和其他字符都是 ID 的边界。
 fn contains_word(name: &str, id: &str) -> bool {
     if id.is_empty() {
         return false;
@@ -44,7 +45,7 @@ fn contains_word(name: &str, id: &str) -> bool {
     })
 }
 
-/// Removes a file or folder; true when it was there and is gone.
+/// 删除一个文件或文件夹；它存在并且已删掉时返回 true。
 fn remove_path(path: &Path, removed: &mut Vec<String>, warnings: &mut Vec<String>) -> bool {
     if !path.exists() {
         return false;
@@ -66,7 +67,7 @@ fn remove_path(path: &Path, removed: &mut Vec<String>, warnings: &mut Vec<String
     }
 }
 
-/// Entries of `root` named after the account.
+/// `root` 下以账号命名的条目。
 fn matched_entries(root: &Path, ids: &[String]) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(root) else {
         return Vec::new();
@@ -81,8 +82,7 @@ fn matched_entries(root: &Path, ids: &[String]) -> Vec<PathBuf> {
 }
 
 impl ServiceHub {
-    /// Files and folders holding `part`, whether they exist or not (unused programs, and the WebUI versions running
-    /// servers do not show: those that exist).
+    /// 存放 `part` 的文件和文件夹，存在与否都列出；不用的程序、运行中的服务没有显示的 WebUI 版本只列出存在的。
     pub fn cache_part_paths(&self, part: CachePart) -> Vec<PathBuf> {
         let base = self.cache_base();
         match part {
@@ -96,16 +96,16 @@ impl ServiceHub {
                 base.join("push-avatar-files"),
                 self.serve_files_dir(),
             ],
-            // fingerprints of keys that worked, so later commands skip the slower check
+            // 校验通过的密钥的指纹，之后的命令可以跳过较慢的校验
             CachePart::Keys => vec![self.ctx.cache_dir().join("verified-keys")],
             CachePart::Runtime => self.unused_programs(),
-            // the WebUI versions downloaded (issue #148), but the ones running servers show (#1139)
+            // 下载的 WebUI 版本（#148），运行中的服务正在显示的除外（#1139）
             CachePart::Web => self.web_store().clearable(),
         }
     }
 
-    /// Programs that nothing runs: runtime directories earlier versions unpacked into `runtime/`, and the ffmpeg
-    /// builds those versions installed in `ffmpeg/<release>/` (files of one's own in `ffmpeg/` stay).
+    /// 不用的程序：早期版本解压到 `runtime/` 的运行时目录，
+    /// 以及这些版本安装在 `ffmpeg/<release>/` 的 ffmpeg（用户自己放在 `ffmpeg/` 下的文件保留）。
     fn unused_programs(&self) -> Vec<PathBuf> {
         let subfolders = |dir: PathBuf| -> Vec<PathBuf> {
             let Ok(entries) = std::fs::read_dir(dir) else {
@@ -124,13 +124,13 @@ impl ServiceHub {
         dirs
     }
 
-    /// Folder of the files `weflow serve` writes for `?return=file` requests that name no `--out`, a folder of each
-    /// running server's own in it (see [`crate::serve_files`]).
+    /// `weflow serve` 为没有指定 `--out` 的 `?return=file` 请求写文件的目录，
+    /// 其中每个运行中的服务各有自己的文件夹（见 [`crate::serve_files`]）。
     pub fn serve_files_dir(&self) -> PathBuf {
         self.cache_base().join("serve-files")
     }
 
-    /// `weflow cache list`: every part with its paths, size and number of files.
+    /// `weflow cache list`：每个部分的路径、大小和文件数。
     pub fn cache_list(&self) -> Vec<crate::contract::CacheUsage> {
         CachePart::ALL
             .iter()
@@ -150,14 +150,14 @@ impl ServiceHub {
             .collect()
     }
 
-    /// `weflow cache clear`: removes the files of `parts` and forgets what is held in memory about them.
+    /// `weflow cache clear`：删除 `parts` 的文件，并清掉内存中保存的这些部分的内容。
     pub fn cache_clear(&self, parts: &[CachePart]) -> crate::contract::CacheCleared {
         let (mut removed, mut warnings) = (Vec::new(), Vec::new());
         let mut freed = 0u64;
         let serve_files = self.serve_files_dir();
         for &part in parts {
             if part == CachePart::Web {
-                // the versions running servers show stay, as with `web prune` (#1139)
+                // 与 `web prune` 一样，保留运行中的服务正在显示的版本（#1139）
                 let store = self.web_store();
                 let before = disk_usage(store.root()).0;
                 let (gone, failed) = store.clear();
@@ -169,7 +169,7 @@ impl ServiceHub {
             for path in self.cache_part_paths(part) {
                 let (bytes, _) = disk_usage(&path);
                 if path == serve_files {
-                    // the folders of the servers running stay (#815)
+                    // 保留运行中的服务的文件夹（#815）
                     let (gone, failed) = crate::serve_files::remove_unheld(&path);
                     removed.extend(gone.iter().map(|p| p.to_string_lossy().into_owned()));
                     warnings.extend(failed);
@@ -191,13 +191,17 @@ impl ServiceHub {
         }
     }
 
-    /// What [`Self::clear_current_account_data`] removes (only what exists): WeFlow's caches of the current account
-    /// (images, voices, stickers, Moments, analytics, group hints, key fingerprints), its insight records (with the
-    /// copies of its records file set aside when it could not be read), and the entries of `export_dirs` named after
-    /// the account.
+    /// [`Self::clear_current_account_data`] 要删除的路径，只列出存在的。
     ///
-    /// The file of every account's insight records that WeFlow 7.0.0 and earlier wrote is split into the accounts'
-    /// files first, which changes no record, so that the account's own file is the one listed.
+    /// 包括 WeFlow 为当前账号保存的缓存（图片、语音、表情、朋友圈、统计、群提示、密钥指纹），
+    /// 账号的见解记录（以及记录文件读不出时另存的副本），和 `export_dirs` 中以账号命名的条目。
+    ///
+    /// WeFlow 7.0.0 及更早版本写的、含所有账号见解记录的文件先拆分成各账号的文件（不改动任何记录），
+    /// 列出的就是这个账号自己的文件。
+    ///
+    /// # Errors
+    ///
+    /// 没有设置 wxid 时返回配置错误。
     pub fn account_data_paths(&self, export_dirs: &[PathBuf]) -> AppResult<Vec<PathBuf>> {
         let id = self.my_wxid_cleaned();
         if id.is_empty() {
@@ -226,11 +230,11 @@ impl ServiceHub {
             matched_entries(root, &ids).into_iter().for_each(&mut add);
         }
         add(base.join("analytics_cache.json"));
-        // the group hints of the home folder's cache, there when `cache_path` names another folder (#1013)
+        // `cache_path` 指向别的目录时，主目录的缓存里还有群提示（#1013）
         if let Some(path) = self.legacy_hint_path() {
             add(path);
         }
-        // fingerprints of keys that worked (the profile's key goes with the account settings)
+        // 校验通过的密钥的指纹（档案里的密钥随账号设置一起清除）
         add(self.ctx.cache_dir().join("verified-keys"));
         let home = &self.ctx.home_dir;
         crate::insight::split_legacy_records(home);
@@ -244,8 +248,13 @@ impl ServiceHub {
         Ok(paths)
     }
 
-    /// Removes [`Self::account_data_paths`]. The caller then resets the account
-    /// settings of the profile, as WeFlow's desktop app does.
+    /// 删除 [`Self::account_data_paths`] 列出的路径。
+    ///
+    /// 之后由调用方重置档案的账号设置，与桌面版的做法相同。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`Self::account_data_paths`]；删不掉的路径写进结果的 `warnings`，不算失败。
     pub fn clear_current_account_data(
         &self,
         export_dirs: &[PathBuf],
@@ -282,7 +291,7 @@ mod tests {
         assert!(account_name_matches("wxid_abc", &ids));
         assert!(account_name_matches("WXID_ABC_1a2b", &ids));
         assert!(account_name_matches("export-wxid_abc-2026", &ids));
-        // the names WeFlow writes for the account: its folder, files named after it, the group hint file
+        // WeFlow 为账号写的名字：账号的文件夹、以账号命名的文件、群提示文件
         assert!(account_name_matches("wxid_abc_xxxx", &ids));
         assert!(account_name_matches("wxid_abc-moments.json", &ids));
         assert!(account_name_matches("wxid_abc.json", &ids));
@@ -305,7 +314,7 @@ mod tests {
         ] {
             assert!(!account_name_matches(name, &ids), "{name}");
         }
-        // a short custom WeChat id of an older account
+        // 老账号自定义的短微信号
         let ids = vec!["john".to_string()];
         assert!(account_name_matches("john_1a2b", &ids));
         assert!(account_name_matches("chat-john.json", &ids));
@@ -322,7 +331,7 @@ mod tests {
 
     #[test]
     fn an_id_is_found_after_a_partial_match() {
-        // the first `wxid_abc` is part of a longer id, the second stands on its own
+        // 第一个 `wxid_abc` 是更长的 ID 的一部分，第二个是独立的
         let ids = vec!["wxid_abc".to_string()];
         assert!(account_name_matches("wxid_abcd-wxid_abc.json", &ids));
         assert!(account_name_matches("聊天记录wxid_abc", &ids));

@@ -1,5 +1,4 @@
-//! The keys: the database key read from WeChat's process, which waits for a fresh start of WeChat, and the
-//! image keys.
+//! 密钥：从微信进程中读取数据库密钥（要等微信重新启动），以及图片密钥。
 
 use std::path::PathBuf;
 
@@ -10,10 +9,15 @@ use crate::error::{AppError, AppResult};
 use crate::locale::tr;
 
 impl ServiceHub {
-    /// Gets the database key from WeChat. WeChat only produces the key while it opens its databases, so on Windows and Linux the
-    /// command asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for
-    /// the user to click "Enter WeChat". On macOS it hooks the running WeChat. Everywhere the login prompt
-    /// follows the installed hook.
+    /// 从微信取得数据库密钥。
+    ///
+    /// 微信只在打开数据库时产生密钥，所以在 Windows 和 Linux 上，命令请用户退出并重新打开微信，挂钩新的进程，
+    /// 等待用户点击「进入微信」（总共默认 180 秒）。在 macOS 上挂钩正在运行的微信。各平台都在钩子装好之后才提示登录。
+    ///
+    /// # Errors
+    ///
+    /// 平台不支持、没有权限挂钩微信、超时、找不到取密钥的位置或挂钩失败时返回 `native_error`；
+    /// 被中断时返回 `user_interrupt`；macOS 上找不到微信进程时返回 `runtime_error`。
     pub fn key_db(
         &self,
         pid_override: Option<u32>,
@@ -41,7 +45,7 @@ impl ServiceHub {
         self.key_db_hooked(&wxkey, pid_override, timeout_secs)
     }
 
-    /// Hooks WeChat and waits for the database key; shared by Windows, Linux and macOS.
+    /// 挂钩微信并等待数据库密钥；Windows、Linux 和 macOS 共用。
     fn key_db_hooked(
         &self,
         wxkey: &weflow_native::wxkey::WxKey,
@@ -57,7 +61,7 @@ impl ServiceHub {
             ))
         };
         let interrupted = || AppError::new("user_interrupt", "interrupted by user", 130);
-        // the wait under way, said on a line that ends with how it ended
+        // 正在进行的等待：显示在一行上，结束时在行尾写明结果
         let mut waiting = WaitLine::default();
         let pid = match pid_override {
             Some(pid) => pid,
@@ -65,7 +69,7 @@ impl ServiceHub {
                 let found = wait_for_fresh_wechat(
                     &mut wechat_pids,
                     &mut || std::thread::sleep(std::time::Duration::from_secs(1)),
-                    // an interruption ends the wait as its timeout would
+                    // 中断与超时一样结束等待
                     &mut || {
                         if key_db_interrupted() {
                             u64::MAX
@@ -103,7 +107,7 @@ impl ServiceHub {
                 .replace("{pid}", &pid.to_string()),
             );
         };
-        // the macOS hook is tried again once at most: more tries can set off the system's protection (#806)
+        // macOS 的挂钩最多重试一次：重试多了可能触发系统的保护（#806）
         let mut tried_again = false;
         let failed = |waiting: &mut WaitLine, how: WaitEnd, err: AppError| {
             waiting.end(how);
@@ -116,8 +120,7 @@ impl ServiceHub {
             if remaining() == 0 {
                 return failed(&mut waiting, WaitEnd::TimedOut, timeout_error());
             }
-            // wx_key's own progress messages are noise; only its errors are shown, and the login prompt waits
-            // until the hook is in place (#872)
+            // wx_key 自己的进度消息对用户没有用，只显示它的错误；登录提示等钩子装好后才显示（#872）
             let mut on_status = |msg: &str, level: i32| {
                 if msg == "Hook installed; log in to WeChat now" {
                     login_phase();
@@ -158,7 +161,7 @@ impl ServiceHub {
                 Err(DbKeyError::Interrupted) => {
                     return failed(&mut waiting, WaitEnd::Interrupted, interrupted());
                 }
-                // the process may not be ready to be hooked right after it started: try again
+                // 进程刚启动时可能还不能挂钩：再试一次
                 Err(DbKeyError::NotReady(_)) if remaining() > 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
@@ -196,7 +199,12 @@ impl ServiceHub {
         })
     }
 
-    /// Image keys from the `kvcomm` cache, verified against samples of the account; independent of stored image keys.
+    /// 从 `kvcomm` 缓存取得图片密钥，并用账号的样本图片校验；与已保存的图片密钥无关。
+    ///
+    /// # Errors
+    ///
+    /// 没有给 `user_dir` 而档案中的账号目录找不到时返回配置错误；其余同
+    /// [`acquire_image_keys`](crate::image_keys::acquire_image_keys)。
     pub fn key_image(
         &self,
         user_dir: Option<&str>,
@@ -211,7 +219,11 @@ impl ServiceHub {
         crate::image_keys::acquire_image_keys(kvcomm_dirs, &account, wxid, scan_budget)
     }
 
-    /// The running WeChat clients, main application first (`key processes`, macOS).
+    /// 正在运行的微信客户端，主程序在前（`key processes`，仅 macOS）。
+    ///
+    /// # Errors
+    ///
+    /// 不是 macOS 时返回 `native_error`。
     pub fn key_processes(&self) -> AppResult<crate::contract::WeChatProcesses> {
         #[cfg(target_os = "macos")]
         {
@@ -234,16 +246,17 @@ impl ServiceHub {
         }
     }
 
-    /// An image AES key found in WeChat's memory, on Linux and macOS. `pid` defaults to the running WeChat. Without
-    /// `ciphertext` the memory is searched with the first blocks of the newest thumbnails of the configured account,
-    /// and a key is taken only once the thumbnails confirm it ([`crate::image_keys::check_memory_key`]), which also
-    /// gives the XOR key when one of them decodes with the pair. With `ciphertext` the first key that decrypts that
-    /// one block into an image header is taken.
+    /// 在微信的内存中找到的图片 AES 密钥，支持 Linux 和 macOS。
+    ///
+    /// `pid` 默认为正在运行的微信。没有 `ciphertext` 时，用配置的账号最新几张缩略图的第一个块搜索内存，
+    /// 缩略图确认后才采用找到的密钥（[`crate::image_keys::check_memory_key`]）；其中一张能用这对密钥解码时，
+    /// 还会得到 XOR 密钥。有 `ciphertext` 时，采用第一个能把这一块解密成图片文件头的密钥。
     ///
     /// # Errors
     ///
-    /// A usage error for a ciphertext that is not 32 hex characters, `image_key_no_template` without thumbnails,
-    /// and a native error when the system does not let weflow read WeChat's memory.
+    /// `ciphertext` 不是 32 个十六进制字符时返回用法错误；没有 `ciphertext` 时，账号没有配置好返回配置错误，
+    /// 没有缩略图返回 `image_key_no_template`；平台不支持或系统不让 weflow 读微信的内存时返回 `native_error`，
+    /// 找不到微信进程时返回 `runtime_error`。
     pub fn key_image_mem(
         &self,
         pid: Option<u32>,
@@ -308,8 +321,7 @@ impl ServiceHub {
     }
 }
 
-/// Ends `key db` on Linux before the user is asked to restart WeChat when this process may not attach to it, as
-/// Yama's `ptrace_scope` decides (#854).
+/// 在 Linux 上，Yama 的 `ptrace_scope` 不允许这个进程附加到微信时，在请用户重启微信之前就结束 `key db`（#854）。
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn linux_ptrace_check() -> AppResult<()> {
     use weflow_native::linux_key_helper::{ptrace_access, PtraceAccess};
@@ -324,17 +336,18 @@ fn linux_ptrace_check() -> AppResult<()> {
     }
 }
 
-/// The error when the hook finds nowhere to stop in this WeChat (`detail` says what was missing): WeChat had not
-/// fully started, or its version is one the hook does not know (#806).
+/// 钩子在这个微信里找不到停下的位置时的错误（`detail` 说明缺了什么）：微信还没完全启动，
+/// 或者钩子不认识它的版本（#806）。
 fn unsupported_wechat(detail: &str) -> String {
     format!(
         "cannot find where WeChat takes its database key\nMake sure WeChat has fully started and is in front; otherwise this WeChat version is not supported yet. WeChat 4.1.7 and 4.1.8.100 are known to work.\nReason: {detail}"
     )
 }
 
-/// What a failure of the macOS hook (`detail`) leads to (#806): `None` to try once more, while `last` is false, as a
-/// breakpoint or a thread's state may have been refused at a bad moment; else the error to end with. A WeChat that
-/// quit is not tried again.
+/// macOS 的挂钩失败（`detail`）之后怎么办（#806）。
+///
+/// `last` 为 false 时返回 `None`，再试一次，因为断点或线程状态可能恰好在不合适的时刻被拒绝；否则返回结束时的错误。
+/// 微信已经退出时不再重试。
 fn macos_hook_failed(detail: &str, last: bool) -> Option<String> {
     if detail == "process_died_while_waiting" {
         return Some(
@@ -348,21 +361,21 @@ fn macos_hook_failed(detail: &str, last: bool) -> Option<String> {
     })
 }
 
-/// Whether `key image-mem` can read WeChat's memory here.
+/// 在本平台上 `key image-mem` 能否读微信的内存。
 const IMAGE_MEM_SUPPORTED: bool = cfg!(any(
     all(target_os = "linux", target_arch = "x86_64"),
     target_os = "macos"
 ));
 
-/// The first key in the writable memory of WeChat's process `pid` that decrypts one of `ciphertexts` into the start
-/// of an image and that `accept` takes; always `None` where [`IMAGE_MEM_SUPPORTED`] is false.
+/// 微信进程 `pid` 的可写内存中，第一个能把 `ciphertexts` 之一解密成图片开头、且被 `accept` 接受的密钥；
+/// [`IMAGE_MEM_SUPPORTED`] 为 false 的平台上总是 `None`。
 ///
 /// # Errors
 ///
-/// A native error saying how to get the permission when the system does not let weflow read WeChat's memory.
+/// 系统不让 weflow 读微信的内存时返回 `native_error`，并说明怎样取得权限；读取失败时同样返回 `native_error`。
 #[cfg_attr(
     not(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos")),
-    expect(unused_variables, reason = "no memory scanner on this platform")
+    expect(unused_variables, reason = "本平台没有内存扫描器")
 )]
 fn scan_image_memory(
     pid: u32,
@@ -436,7 +449,7 @@ enum WaitEvent {
     Tick { phase: Wait, remaining: u64 },
 }
 
-/// What a wait is for, at the start of its line.
+/// 等待的是什么，写在这一行的开头。
 fn wait_head(phase: Wait) -> &'static str {
     match phase {
         Wait::Quit => tr("Waiting for WeChat to quit…", "等待微信退出…"),
@@ -445,7 +458,7 @@ fn wait_head(phase: Wait) -> &'static str {
     }
 }
 
-/// How a wait ended, at the end of its line.
+/// 等待怎样结束，写在这一行的末尾。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WaitEnd {
     Done,
@@ -454,12 +467,12 @@ enum WaitEnd {
     Failed,
 }
 
-/// The line of the wait under way: `Waiting for the key…`, a grey countdown after it, and how it ended in its place.
+/// 正在进行的等待所在的行：`Waiting for the key…`，后面是灰色的倒计时，结束时倒计时换成结果。
 #[derive(Debug, Default)]
 struct WaitLine(Option<(Wait, crate::status::Pending)>);
 
 impl WaitLine {
-    /// Shows how long `phase` may still take, starting its line when it is a new wait (the one before ended well).
+    /// 显示 `phase` 还能等多久；是新的等待时另起一行（前一个等待按完成结束）。
     fn tick(&mut self, phase: Wait, remaining: u64) {
         if self.0.as_ref().map(|(shown, _)| *shown) != Some(phase) {
             self.end(WaitEnd::Done);
@@ -472,7 +485,7 @@ impl WaitLine {
         }
     }
 
-    /// Ends the line of the wait under way, if any.
+    /// 结束正在进行的等待所在的行（如果有）。
     fn end(&mut self, how: WaitEnd) {
         use crate::colour::Role;
         let Some((_, line)) = self.0.take() else {
@@ -496,7 +509,7 @@ impl WaitLine {
                     .map(u32::to_string)
                     .collect::<Vec<_>>()
                     .join(", ");
-                // the tray is at the bottom right on Windows; Linux desktops put it anywhere, or have none (WSLg)
+                // Windows 的托盘在右下角；Linux 桌面的托盘位置不定，也可能没有（WSLg）
                 let how = if cfg!(windows) {
                     tr(
                         "system tray icon → right click → Quit WeChat",
@@ -539,7 +552,7 @@ impl WaitLine {
     }
 }
 
-/// One status message: JSON event with `--json`, a line of its own otherwise.
+/// 一条状态消息：带 `--json` 时是 JSON 事件，否则单独占一行。
 fn phase(json_event: Value, text: &str) {
     if crate::output::json_output() {
         crate::output::event(json_event);
@@ -551,11 +564,10 @@ fn phase(json_event: Value, text: &str) {
 static KEY_DB_INTERRUPTED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-/// Ends `key db` as Ctrl+C does, from another thread.
+/// 从另一个线程像 Ctrl+C 那样结束 `key db`。
 ///
-/// While it waits for WeChat it stops waiting, and a hook it has set restores WeChat's debug registers and detaches
-/// first, so nothing of it is left in WeChat (#287). It ends with `user_interrupt`. A hook may be about to be set when
-/// this is called: call it again until the command ends.
+/// 正在等待微信时停止等待；已经装好的钩子先恢复微信的调试寄存器再分离，不在微信里留下任何东西（#287）。
+/// 命令以 `user_interrupt` 结束。调用时钩子可能正要装上：命令结束前要反复调用。
 pub fn interrupt_key_db() {
     KEY_DB_INTERRUPTED.store(true, std::sync::atomic::Ordering::Release);
     #[cfg(all(windows, target_arch = "x86_64"))]
@@ -570,11 +582,11 @@ fn key_db_interrupted() -> bool {
     KEY_DB_INTERRUPTED.load(std::sync::atomic::Ordering::Acquire)
 }
 
-/// Waits until WeChat has been quit (when it is running now) and started again; returns the new process id, or
-/// `None` once `timeout_secs` have passed. Time and process list are passed in so the logic can be tested.
+/// 等到微信退出（正在运行时）并重新启动，返回新的进程 ID；超过 `timeout_secs` 时返回 `None`。
+/// 时间和进程列表由参数传入，便于测试。
 ///
-/// WeChat has quit once none of the processes running at first is left, whether or not a new one is there by
-/// then: quit and opened again between two looks at the process list, it never has none (#127).
+/// 最初运行的进程都不在了就算微信已退出，不论这时是否已有新的进程：在两次查看进程列表之间退出又重新打开时，
+/// 进程列表从不为空（#127）。
 fn wait_for_fresh_wechat(
     list: &mut dyn FnMut() -> Vec<u32>,
     sleep: &mut dyn FnMut(),
@@ -621,8 +633,7 @@ fn wait_for_fresh_wechat(
     }
 }
 
-/// Process ids of the running WeChat (Weixin.exe / WeChat.exe on Windows, `wechat` on Linux), in the order the
-/// system lists them.
+/// 正在运行的微信的进程 ID（Windows 上是 `Weixin.exe`、`WeChat.exe`，Linux 上是 `wechat`），按系统列出的顺序。
 fn wechat_pids() -> Vec<u32> {
     #[cfg(target_os = "windows")]
     {
@@ -653,7 +664,7 @@ fn wechat_pids() -> Vec<u32> {
 mod tests {
     use super::*;
 
-    /// A failure of the macOS hook is tried again once, unless WeChat quit, and its reason is in the error (#806).
+    /// macOS 的挂钩失败后重试一次（微信已退出时除外），错误里带着失败的原因（#806）。
     #[test]
     fn the_macos_hook_is_tried_again_once_and_says_why_it_failed() {
         let breakpoint = "patch_breakpoint_failed:ptrace_word:-1";
@@ -669,7 +680,7 @@ mod tests {
         assert!(scan.ends_with("\nReason: Sink pattern not found"), "{scan}");
     }
 
-    /// Drives `wait_for_fresh_wechat` with a scripted process list; each `sleep` is one second.
+    /// 用预先写好的进程列表驱动 `wait_for_fresh_wechat`；每次 `sleep` 算一秒。
     fn run_wait(script: Vec<Vec<u32>>, timeout: u64) -> (Option<u32>, Vec<&'static str>, u64) {
         use std::cell::{Cell, RefCell};
         let calls = Cell::new(0usize);
@@ -704,7 +715,7 @@ mod tests {
 
     #[test]
     fn waits_for_quit_then_a_new_start() {
-        // running at first, gone after the third check, a new process after two more
+        // 一开始在运行，第三次查看之后退出，再过两次出现新的进程
         let (found, events, _) = run_wait(
             vec![vec![10], vec![10], vec![10], vec![], vec![], vec![77]],
             180,
@@ -724,11 +735,11 @@ mod tests {
 
     #[test]
     fn a_wechat_quit_and_opened_between_two_looks_is_the_new_one() {
-        // the old process gone and a new one there at the same look (#127)
+        // 同一次查看时旧进程已退出、新进程已出现（#127）
         let (found, events, _) = run_wait(vec![vec![10, 11], vec![10, 11], vec![42]], 180);
         assert_eq!(found, Some(42));
         assert_eq!(events, ["ask_quit", "tick_quit", "ask_open_after_quit"]);
-        // a new process before the old one is gone: still waiting for the old one
+        // 旧进程退出之前就有了新进程：仍然等旧进程退出
         let (found, events, _) =
             run_wait(vec![vec![10], vec![10, 42], vec![10, 42], vec![42]], 180);
         assert_eq!(found, Some(42));
@@ -736,7 +747,7 @@ mod tests {
             events,
             ["ask_quit", "tick_quit", "tick_quit", "ask_open_after_quit"]
         );
-        // a process left of the old WeChat is not taken for the new one
+        // 旧微信留下的进程不会被当成新的
         let (found, _, _) = run_wait(vec![vec![10], vec![], vec![10, 42]], 180);
         assert_eq!(found, Some(42));
     }
@@ -750,7 +761,7 @@ mod tests {
 
     #[test]
     fn gives_up_after_the_timeout() {
-        // WeChat never quits
+        // 微信一直不退出
         let (found, events, seconds) = run_wait(vec![vec![10]], 5);
         assert_eq!(found, None);
         assert_eq!(seconds, 5);

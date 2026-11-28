@@ -1,5 +1,5 @@
-//! Voice messages: pull the SILK blob out of the media databases through WCDB, decode it
-//! with the vendored SILK SDK and wrap it into a 24 kHz mono WAV, cached on disk.
+//! 语音消息：通过 `wcdb` 门面从媒体数据库中取出 SILK 数据，用内置的 SILK SDK 解码，
+//! 封装成 24 kHz 单声道的 WAV，缓存在磁盘上。
 use std::path::PathBuf;
 
 use serde_json::{json, Value};
@@ -10,7 +10,7 @@ use crate::message::row::unsigned_token;
 
 const VOICE_SAMPLE_RATE: i32 = 24000;
 
-/// The bytes of the hex/base64 strings the WCDB API returns.
+/// `wcdb` 门面返回的十六进制或 base64 字符串的字节；为空或解不开时为 `None`。
 fn decode_voice_blob(raw: &str) -> Option<Vec<u8>> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -29,9 +29,9 @@ fn decode_voice_blob(raw: &str) -> Option<Vec<u8>> {
         .ok()
 }
 
-/// A 16-bit PCM WAV file: the header, then `pcm`.
+/// 16 位 PCM 的 WAV 文件：文件头，后接 `pcm`。
 fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
-    // a WAV header holds 32-bit sizes; a voice message never comes near 4 GiB
+    // WAV 文件头里的大小是 32 位的；语音消息远远达不到 4 GiB
     let data_len = u32::try_from(pcm.len()).unwrap_or(u32::MAX);
     let mut out = Vec::with_capacity(44 + pcm.len());
     out.extend_from_slice(b"RIFF");
@@ -51,7 +51,7 @@ fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
     out
 }
 
-/// The file name a decoded voice is cached under: the conversation, the create time when known, and the message id.
+/// 解码后的语音缓存所用的文件名：会话、发送时间（知道时）和消息 ID。
 fn voice_cache_key(session_id: &str, msg_id: &str, create_time: Option<i64>) -> String {
     match create_time.filter(|t| *t != 0) {
         Some(t) => format!("{session_id}_{t}_{msg_id}"),
@@ -60,7 +60,7 @@ fn voice_cache_key(session_id: &str, msg_id: &str, create_time: Option<i64>) -> 
 }
 
 impl ServiceHub {
-    /// Where the decoded voices are kept, `Voices` in the cache folder.
+    /// 解码后的语音存放的目录：缓存目录下的 `Voices`。
     pub fn voice_cache_dir(&self) -> PathBuf {
         self.cache_base().join("Voices")
     }
@@ -76,8 +76,9 @@ impl ServiceHub {
         c
     }
 
-    /// The SILK data of a voice message in the media databases: strict (no self) candidate set first, then the full set; each
-    /// plan tries the single native call before the batch call.
+    /// 媒体数据库中一条语音消息的 SILK 数据。
+    ///
+    /// 候选的用户名先用不含自己的集合，再用完整的集合；每一轮先试单条的调用，再试批量的调用。
     fn voice_silk_from_media_db(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -142,7 +143,12 @@ impl ServiceHub {
         Ok(create_wav(&pcm, VOICE_SAMPLE_RATE as u32, 1))
     }
 
-    /// Returns the WAV bytes of a voice message.
+    /// 语音消息的 WAV 数据，有缓存时取缓存。
+    ///
+    /// # Errors
+    ///
+    /// 消息 ID 无效或消息不是语音时返回用法错误；找不到消息的时间或语音数据时返回 `not_found`；
+    /// SILK 解码失败时返回运行时错误；账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误。
     pub fn voice_data(
         &self,
         session_id: &str,
@@ -157,8 +163,8 @@ impl ServiceHub {
         self.voice_data_of(&wcdb, session_id, local_id, create_time, server_id, sender)
     }
 
-    /// [`voice_data`](Self::voice_data) with the databases `wcdb` opened already: an export of many voices opens them
-    /// once rather than once a voice.
+    /// 用已经打开的数据库 `wcdb` 读取 [`voice_data`](Self::voice_data)：导出许多条语音时只打开一次数据库，
+    /// 而不是每条语音打开一次。
     pub(super) fn voice_data_with(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -173,7 +179,7 @@ impl ServiceHub {
         self.voice_data_of(wcdb, session_id, local_id, create_time, server_id, sender)
     }
 
-    /// [`voice_data`](Self::voice_data) of the message `local_id`, read through `wcdb`.
+    /// 通过 `wcdb` 读取消息 `local_id` 的 [`voice_data`](Self::voice_data)。
     fn voice_data_of(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -188,19 +194,18 @@ impl ServiceHub {
         let mut server = server_id.and_then(unsigned_token).unwrap_or_default();
         let strong = create_time.is_some_and(|t| t > 0) && !server.is_empty();
         if !strong {
-            // several message databases may hold the local id: the create time, then the voice type, pick one
+            // 多个消息库可能都有这个本地 ID：先按发送时间、再按语音类型选出一条
             if let Ok(Some(row)) =
                 chat::message_by_local_id(wcdb, session_id, local_id, create_time, Some(34))
             {
-                // the lookup prefers a voice only among several messages of the id: the one it found is the
-                // message asked for, of whatever kind
+                // 查找时只在这个 ID 对应多条消息时才优先选语音：找到的那条就是要的消息，不论它是什么类型
                 if row.local_type & 0xFFFF_FFFF != 34 {
                     return Err(AppError::usage("the message is not a voice message"));
                 }
                 let my = self.my_wxid_cleaned();
                 let table_name = weflow_native::msg::table_name_for(session_id);
                 let m = chat_msg::map_msg_row(row, &table_name, &my);
-                // localId is not unique across tables: a non-voice hit never overrides the caller's input
+                // 本地 ID 在不同的表之间不唯一：只有找到的是语音时，才用它的时间、发送者和服务器 ID 替换调用方给的值
                 if m.local_type == 34 {
                     create_time = Some(m.create_time).filter(|t| *t != 0).or(create_time);
                     sender = m
@@ -214,7 +219,7 @@ impl ServiceHub {
                 }
             }
         }
-        // without one given, the time comes from the voice message: none was found (#822)
+        // 调用方没给时间时，时间取自语音消息；这时仍然没有时间，说明没找到这条消息（#822）
         let create_time =
             create_time.ok_or_else(|| AppError::not_found("message timestamp not found"))?;
 
@@ -247,10 +252,10 @@ impl ServiceHub {
         Ok(wav)
     }
 
-    /// The decoded voice of a message from the cache only (`chat voice-cache`), nothing decoded: the WAV
-    /// [`voice_data`](Self::voice_data) and [`voice_preload`](Self::voice_preload) wrote under the message's create time
-    /// (`create_time`, else the voice message's own, looked up by its local id), else one under the key without a time
-    /// (#1203).
+    /// 只从缓存中取消息解码后的语音（`chat voice-cache`），不做解码。
+    ///
+    /// 先找 [`voice_data`](Self::voice_data) 和 [`voice_preload`](Self::voice_preload) 按消息的发送时间写下的
+    /// WAV（时间取 `create_time`，没有时按本地 ID 查语音消息自己的时间），再找不带时间的键下的文件（#1203）。
     pub fn voice_resolve_cache(
         &self,
         session_id: &str,
@@ -289,7 +294,11 @@ impl ServiceHub {
         }
     }
 
-    /// Decodes and caches a list of voice messages in chunks.
+    /// 分批解码并缓存一组语音消息，返回缓存中已有和新写入的条数。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误；某条语音取不到或解码失败时跳过，不算失败。
     pub fn voice_preload(
         &self,
         session_id: &str,

@@ -1794,26 +1794,26 @@ export interface MediaFileExported {
 }
 
 /**
- * Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead: the
- * command's error, or the row of `image resolve-batch`.
+ * 消息图片解密后的位置（`image decrypt`、`resolve-cache`）；失败时改为说明原因：作为命令的错误，
+ * 或者作为 `image resolve-batch` 的一行。
  */
 export interface ImageResult {
-  /** The decrypted image: its path, or a data URL of it without `preferFilePath`; left out on failure. */
+  /** 解密后的图片：它的路径；没有 `preferFilePath` 时为它的 data URL。失败时省略。 */
   localPath?: string;
-  /** What went wrong; left out on success. */
+  /** 出了什么错；成功时省略。 */
   error?: string;
   /**
-   * Why it failed: `not_found`, `decrypt_failed`, `unsupported_image`, or `invalid_arguments` for a payload with
-   * neither an md5 nor a `.dat` name.
+   * 失败的原因：`not_found`、`decrypt_failed`、`unsupported_image`；
+   * 既没有 md5 也没有 `.dat` 文件名的请求为 `invalid_arguments`。
    */
   failureKind?: string;
-  /** The file is only the thumbnail: the original is not on disk. */
+  /** 文件只是缩略图：原图不在磁盘上。 */
   isThumb?: boolean;
 }
 
-/** What `image resolve-batch` answers: one result per payload, in their order. */
+/** `image resolve-batch` 的回答：每个请求一个结果，顺序与请求一致。 */
 export interface ImageBatch {
-  /** One result for each payload, in their order: `localPath` when it was found, `error` when not. */
+  /** 每个请求一个结果，顺序与请求一致：找到时有 `localPath`，找不到时有 `error`。 */
   rows: ImageResult[];
 }
 

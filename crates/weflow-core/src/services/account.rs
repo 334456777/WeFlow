@@ -1,5 +1,4 @@
-//! The account and its databases: where WeChat keeps them, which accounts there are, the configured profile, and
-//! opening the databases with its key.
+//! 账号和它的数据库：微信把数据放在哪里、有哪些账号、配置的档案，以及用密钥打开数据库。
 
 use std::path::{Path, PathBuf};
 
@@ -8,7 +7,7 @@ use crate::config::{clean_account_dir_name, resolve_account_dir, ProfileConfig};
 use crate::error::{AppError, AppResult};
 
 impl ServiceHub {
-    /// The places WeChat keeps its data directory by default on this system (`db detect`).
+    /// 本系统上微信默认存放数据目录的位置（`db detect`）。
     pub fn db_detect(&self) -> crate::contract::DbCandidates {
         let candidates = default_db_candidates()
             .into_iter()
@@ -20,7 +19,7 @@ impl ServiceHub {
         crate::contract::DbCandidates { candidates }
     }
 
-    /// The account folders directly under `root` (`db scan`): those with a `db_storage` folder.
+    /// `root` 下一层的账号目录（`db scan`），即含 `db_storage` 文件夹的目录。
     pub fn db_scan(&self, root: &str) -> crate::contract::DbScan {
         let root = crate::config::expand_home(root);
         let mut wxids = Vec::new();
@@ -42,8 +41,13 @@ impl ServiceHub {
         }
     }
 
-    /// The wxid of every account found in the data directory (`root`, else the configured `db_path`, else the
-    /// default locations), as `config set wxid` expects it (without the `_ab12` suffix of the folder name).
+    /// 数据目录中找到的每个账号的 wxid，写成 `config set wxid` 要求的形式（去掉目录名的 `_ab12` 后缀）。
+    ///
+    /// 数据目录取 `root`；没有给 `root` 时取配置的 `db_path`，也没有配置时取存在的各个默认位置。
+    ///
+    /// # Errors
+    ///
+    /// 找不到数据目录时返回配置错误；数据目录中没有账号目录时返回运行时错误。
     pub fn db_wxid(&self, root: Option<&str>) -> AppResult<crate::contract::DbAccounts> {
         let configured = root
             .map(str::to_string)
@@ -75,11 +79,10 @@ impl ServiceHub {
         Ok(crate::contract::DbAccounts { accounts })
     }
 
-    /// Whether the configured account's databases open with its key (`db test`).
+    /// 检查配置的账号的数据库能否用它的密钥打开（`db test`）。
     ///
     /// # Errors
-    /// A config error when the data directory or the key is not set; a native error when the databases cannot be
-    /// found or the key does not open them.
+    /// 档案不存在、没有设置数据目录或密钥时返回配置错误；找不到数据库或密钥打不开数据库时返回数据库层的错误。
     pub fn db_test(&self) -> AppResult<crate::contract::DbConnection> {
         let (account_dir, key, _) = self.connection_inputs()?;
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
@@ -93,8 +96,8 @@ impl ServiceHub {
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
         wcdb.open_unchecked(&account_dir, &key, wxid.as_deref())
             .map_err(|err| AppError::native(format!("{err:#}")))?;
-        // Proving the key costs a slow key derivation on session.db. Once it has worked, a fingerprint of
-        // (key, session.db salt, account) is remembered, and later runs with the same key and database skip it.
+        // 校验密钥要在 `session.db` 上做一次很慢的密钥派生。校验通过后记下（密钥、`session.db` 的盐、账号）的指纹，
+        // 之后用同样的密钥和数据库运行时跳过校验。
         let fingerprint = wcdb
             .session_salt()
             .map(|salt| key_fingerprint(&account_dir, &key, &salt));
@@ -112,19 +115,25 @@ impl ServiceHub {
         Ok(wcdb)
     }
 
-    /// The configured account's folder (the one holding `db_storage`), as the databases are opened from it: it needs
-    /// the database key, and is `db_path` itself when the profile names no account. The services that read WeChat's
-    /// files without opening a database find it with `account_dir_only`.
+    /// 配置的账号目录（含 `db_storage` 的目录），即打开数据库所用的目录。
+    ///
+    /// 要求设置了数据库密钥；档案没有指定账号时就是 `db_path` 本身。不打开数据库、只读微信文件的服务用
+    /// `account_dir_only` 找账号目录。
     ///
     /// # Errors
     ///
-    /// A config error when the profile has no `db_path` or no `decrypt_key`.
+    /// 档案不存在，或没有 `db_path`、`decrypt_key` 时返回配置错误。
     pub fn account_dir(&self) -> AppResult<PathBuf> {
         self.connection_inputs().map(|(dir, _, _)| dir)
     }
 
-    /// Opens the databases a chat page reads, so the first reads do not wait for their keys to be derived; returns
-    /// how many opened. The databases stay open for the whole process.
+    /// 预先打开聊天页面要读的数据库，返回打开的个数，最初几次读取就不必等待派生密钥。
+    ///
+    /// 这些数据库在整个进程中保持打开。
+    ///
+    /// # Errors
+    ///
+    /// 档案不存在、没有设置数据目录或密钥时返回配置错误；数据库打不开或密钥不对时返回数据库层的错误。
     pub fn warm_chat_databases(&self) -> AppResult<usize> {
         self.open_wcdb()?
             .warm_chat_databases()
@@ -155,23 +164,23 @@ impl ServiceHub {
             .ok_or_else(|| AppError::config(format!("profile not found: {}", self.profile_name)))
     }
 
-    /// The name of the profile this hub reads.
+    /// 读取的档案的名字。
     pub fn profile_name(&self) -> &str {
         &self.profile_name
     }
 
-    /// The account's wxid as the profile has it: the id, or the account folder's name with its suffix.
+    /// 档案中写的账号 wxid：裸 wxid，或者带后缀的账号目录名。
     pub(super) fn configured_wxid(&self) -> Option<String> {
         self.profile().ok()?.wxid.clone()
     }
 
-    /// The WeChat data directory (or account folder) of the profile.
+    /// 档案中的微信数据目录（或账号目录）。
     pub(super) fn configured_db_path(&self) -> Option<String> {
         self.profile().ok()?.db_path.clone()
     }
 }
 
-/// Account folders of a WeChat data directory (or the folder itself when it is one), with their wxid.
+/// 微信数据目录中的账号目录及其 wxid；`root` 本身就是账号目录时只有它自己。
 fn find_accounts(root: &Path) -> Vec<(String, PathBuf)> {
     let wxid_of = |path: &Path| {
         let name = path.file_name().map(|n| n.to_string_lossy().to_string());
@@ -196,7 +205,7 @@ fn default_db_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(home) = crate::sudo_caller::home_dir() {
         if cfg!(target_os = "macos") {
-            // WeChat 4 keeps its accounts in its container's Documents (#869).
+            // 微信 4 把账号放在它的容器的 Documents 下（#869）。
             candidates.push(
                 home.join("Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files"),
             );
@@ -211,7 +220,7 @@ fn default_db_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-/// One-way fingerprint of a key that decrypted an account's `session.db` (the key cannot be recovered from it).
+/// 解密过账号的 `session.db` 的密钥的单向指纹，无法从中反推出密钥。
 fn key_fingerprint(account_dir: &Path, key: &str, salt: &[u8; 16]) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
@@ -224,8 +233,7 @@ fn key_fingerprint(account_dir: &Path, key: &str, salt: &[u8; 16]) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Add a fingerprint to the list of verified keys (a few recent ones are kept). Failing to write only means the
-/// key is checked again next time.
+/// 把指纹加进已校验的密钥列表，只保留最近的 16 个。写入失败只会让下次重新校验密钥。
 fn remember_fingerprint(path: &Path, fingerprint: &str) {
     let mut lines: Vec<String> = std::fs::read_to_string(path)
         .map(|s| s.lines().map(str::to_string).collect())
@@ -251,7 +259,7 @@ mod tests {
         std::fs::create_dir_all(root.join("all_users")).unwrap();
         let found: Vec<String> = find_accounts(&root).into_iter().map(|a| a.0).collect();
         assert_eq!(found, ["someone", "wxid_abc123"]);
-        // the account folder itself works too
+        // 直接给账号目录也可以
         let one = find_accounts(&root.join("wxid_abc123_ab12"));
         assert_eq!(one[0].0, "wxid_abc123");
     }

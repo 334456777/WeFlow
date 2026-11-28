@@ -1,21 +1,19 @@
-//! What kind of conversation a session's username names, as the statistics, the annual report and the AI insights
-//! tell a private chat from the rest.
+//! 会话的用户名指的是哪种会话：统计、年度报告和 AI 见解按这里区分私聊和其他会话。
 
-/// The kind of conversation a session's username names.
+/// 会话的用户名所指的会话种类。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SessionKind {
-    /// A chat with another person.
+    /// 和另一个人的聊天。
     Private,
-    /// A group chat (`…@chatroom`).
+    /// 群聊（`…@chatroom`）。
     Group,
-    /// The account's chat with itself.
+    /// 账号和自己的聊天。
     Own,
-    /// No person: an official account (`gh_…`), the file helper, WeChat's system conversations and folders, and
-    /// the WeCom and customer service accounts; also an empty username.
+    /// 不是人：公众号（`gh_…`）、文件传输助手、微信的系统会话和文件夹、企业微信和客服账号；空的用户名也属于这一类。
     Service,
 }
 
-/// The usernames of WeChat's system conversations and folders; a username that starts with one is one of them.
+/// 微信的系统会话和文件夹的用户名；以其中之一开头的用户名都属于这一类。
 const SERVICE_PREFIXES: [&str; 15] = [
     "qqmail",
     "fmessage",
@@ -34,23 +32,21 @@ const SERVICE_PREFIXES: [&str; 15] = [
     "@placeholder_foldgroup",
 ];
 
-/// WeChat's own accounts that its contact table lists as friends (the voice notes, the drift bottle, the QQ
-/// messages, QQ Mail, friend requests); the contact lists do not count them.
+/// 联系人表列为好友的微信自己的账号（语音记事本、漂流瓶、QQ 消息、QQ 邮箱、好友请求），联系人列表不算它们。
 pub(super) const NOT_FRIENDS: [&str; 5] =
     ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 
-/// Whether `username` is an official account's (`gh_…`).
+/// `username` 是否是公众号（`gh_…`）。
 pub(super) fn is_official(username: &str) -> bool {
     username.starts_with("gh_")
 }
 
-/// Whether `username` is one of WeChat's system conversations or folders ([`SERVICE_PREFIXES`]).
+/// `username` 是否是微信的系统会话或文件夹（[`SERVICE_PREFIXES`]）。
 pub(super) fn is_system_conversation(username: &str) -> bool {
     SERVICE_PREFIXES.iter().any(|p| username.starts_with(p))
 }
 
-/// Whether the contact `username` may be a friend: not empty, not a group, not an official account and not one of
-/// [`NOT_FRIENDS`]. The contact's own type decides the rest.
+/// 联系人 `username` 是否可能是好友：不为空，不是群和公众号，也不在 [`NOT_FRIENDS`] 中。其余由联系人自己的类型决定。
 pub(super) fn may_be_friend(username: &str) -> bool {
     !(username.is_empty()
         || username.contains("@chatroom")
@@ -58,8 +54,7 @@ pub(super) fn may_be_friend(username: &str) -> bool {
         || NOT_FRIENDS.contains(&username))
 }
 
-/// The kind of the conversation `username` names, for the account whose wxid without WeChat's suffix is `own_wxid`
-/// ([`crate::config::clean_account_dir_name`]).
+/// `username` 所指会话的种类；`own_wxid` 是账号的裸 wxid（[`crate::config::clean_account_dir_name`]）。
 pub(super) fn session_kind(username: &str, own_wxid: &str) -> SessionKind {
     let lowered = username.to_lowercase();
     if username.is_empty() {
@@ -82,7 +77,7 @@ pub(super) fn session_kind(username: &str, own_wxid: &str) -> SessionKind {
     }
 }
 
-/// Whether `username` names a chat with another person ([`SessionKind::Private`]).
+/// `username` 是否是和另一个人的私聊（[`SessionKind::Private`]）。
 pub(super) fn is_private_session(username: &str, own_wxid: &str) -> bool {
     session_kind(username, own_wxid) == SessionKind::Private
 }
