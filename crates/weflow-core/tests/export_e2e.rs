@@ -288,8 +288,9 @@ fn media_replies_keep_their_quote_and_no_app_fields_in_the_json_exports() {
         "quotedType": "1",
         "quotedSvrid": "9001",
     });
+    // a quoted link by its title (#1263)
     let to_link = serde_json::json!({
-        "quotedContent": "[链接]",
+        "quotedContent": "A link",
         "quotedSender": "Bob",
         "quotedType": "49",
         "quotedSvrid": "9003",
