@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/334456777/WeFlow)](https://github.com/334456777/WeFlow/releases/latest)
 [![License](https://img.shields.io/github/license/334456777/WeFlow)](LICENSE)
 
-**English** | [简体中文](README.zh-CN.md)
+[English](README.md) | **简体中文**
 
 `weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
