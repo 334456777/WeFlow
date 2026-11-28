@@ -11,7 +11,6 @@ use crate::api;
 use crate::chat_msg::{self, ChatMessage};
 use crate::contract::{Contact, ContactKind, Session};
 use crate::message::row::{row_field, row_int};
-use crate::message::xml::rx;
 use weflow_native::wcdb::Databases;
 
 fn js_int(v: Option<&Value>) -> Option<i64> {
@@ -72,46 +71,9 @@ fn message_label(local_type: i64) -> &'static str {
     chat_msg::message_type_label(local_type)
 }
 
+/// The summary of an official account's conversation, by its last message ([`chat_msg::summary_line`]).
 fn summary_from_message(m: &ChatMessage) -> String {
-    let raw = match m.local_type {
-        1 => {
-            if !m.parsed_content.is_empty() {
-                m.parsed_content.clone()
-            } else {
-                m.raw_content.clone()
-            }
-        }
-        3 => "[图片]".into(),
-        34 => "[语音]".into(),
-        43 => "[视频]".into(),
-        47 => "[表情]".into(),
-        42 => m
-            .card_nickname
-            .clone()
-            .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| "[名片]".into()),
-        48 => "[位置]".into(),
-        49 => m
-            .link_title()
-            .filter(|t| !t.is_empty())
-            .map(str::to_string)
-            .or_else(|| m.file_name().filter(|t| !t.is_empty()).map(str::to_string))
-            .or_else(|| Some(m.parsed_content.clone()).filter(|t| !t.is_empty()))
-            .unwrap_or_else(|| "[消息]".into()),
-        t => {
-            if !m.parsed_content.is_empty() {
-                m.parsed_content.clone()
-            } else if !m.raw_content.is_empty() {
-                m.raw_content.clone()
-            } else {
-                message_label(t).into()
-            }
-        }
-    };
-    rx(r"^\s*\[视频号\]\s*")
-        .replace(&chat_msg::clean_utf16(&raw), "")
-        .trim()
-        .to_string()
+    chat_msg::summary_line(m).unwrap_or_else(|| message_label(m.local_type).into())
 }
 
 fn truthy(v: &Value) -> bool {

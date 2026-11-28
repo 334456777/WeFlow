@@ -175,54 +175,9 @@ fn compare_position(a: &ChatMessage, b: &ChatMessage) -> std::cmp::Ordering {
         .then_with(|| a.message_key.cmp(&b.message_key))
 }
 
+/// The text a push shows for `m` ([`chat_msg::summary_line`]).
 fn message_display_content(m: &ChatMessage) -> Option<String> {
-    let normalize_text = |v: &str| -> Option<String> {
-        if v.is_empty() {
-            return None;
-        }
-        let re = rx(r"(?i)^\s*([a-zA-Z0-9_@-]+):(?:\s*(?:\r?\n|<br\s*/?>)\s*|\s*)");
-        let text = match re.find(v) {
-            Some(mm) if !v[mm.end()..].starts_with("//") => v[mm.end()..].to_string(),
-            _ => v.to_string(),
-        };
-        Some(text.trim().to_string())
-    };
-    let clean_official = |v: Option<String>| -> Option<String> {
-        let v = v?;
-        let cleaned = rx(r"^\s*\[视频号\]\s*").replace(&v, "").trim().to_string();
-        Some(if cleaned.is_empty() { v } else { cleaned })
-    };
-    let text_source = if !m.parsed_content.is_empty() {
-        &m.parsed_content
-    } else {
-        &m.raw_content
-    };
-    match m.local_type {
-        // the parsed text has lost the line naming its sender, and only that line (#656)
-        1 if !m.parsed_content.is_empty() => {
-            clean_official(Some(m.parsed_content.trim().to_string()))
-        }
-        1 => clean_official(normalize_text(text_source)),
-        3 => Some("[图片]".into()),
-        34 => Some("[语音]".into()),
-        43 => Some("[视频]".into()),
-        47 => Some("[表情]".into()),
-        42 => clean_official(Some(
-            m.card_nickname
-                .clone()
-                .filter(|n| !n.is_empty())
-                .unwrap_or_else(|| "[名片]".into()),
-        )),
-        48 => Some("[位置]".into()),
-        49 => clean_official(Some(
-            m.link_title()
-                .filter(|t| !t.is_empty())
-                .or_else(|| m.file_name().filter(|t| !t.is_empty()))
-                .unwrap_or("[消息]")
-                .to_string(),
-        )),
-        _ => clean_official(normalize_text(text_source).filter(|s| !s.is_empty())),
-    }
+    chat_msg::summary_line(m)
 }
 
 fn session_type(session_id: &str) -> &'static str {

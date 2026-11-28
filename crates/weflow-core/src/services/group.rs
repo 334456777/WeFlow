@@ -194,7 +194,15 @@ fn extract_owner(value: &Value, lookup: &HashMap<String, String>, depth: u32) ->
     }
 }
 
+/// The kind of a message in a member's message export: an app message kept as `(<type> << 32) | 49` by the tag of
+/// its `<type>` in the one table, without the brackets (#1263).
 fn simple_type_name(local_type: i64) -> String {
+    let app_type_kept = local_type >> 32;
+    if local_type & 0xFFFF_FFFF == 49 && app_type_kept != 0 {
+        if let Some(row) = crate::message::appmsg::app_type(&app_type_kept.to_string()) {
+            return row.tag.trim_matches(['[', ']']).to_string();
+        }
+    }
     match local_type {
         1 => "文本".into(),
         3 => "图片".into(),
@@ -206,9 +214,6 @@ fn simple_type_name(local_type: i64) -> String {
         49 => "链接/文件".into(),
         50 => "通话".into(),
         10000 => "系统".into(),
-        266287972401 => "拍一拍".into(),
-        8594229559345 => "红包".into(),
-        8589934592049 => "转账".into(),
         other => format!("类型 {other}"),
     }
 }
@@ -872,6 +877,18 @@ impl ServiceHub {
         let mut others = 0i64;
         for (k, c) in raw {
             let t = crate::api::js_parse_int(&k).unwrap_or(0);
+            // an app message kept as `(<type> << 32) | 49` counts by its `<type>` in the one table (#1263): a link or
+            // a file as one kept as 49, a sticker as one of type 47
+            let t = match (t & 0xFFFF_FFFF, t >> 32) {
+                (49, kept) if kept != 0 => {
+                    match crate::message::appmsg::app_type(&kept.to_string()) {
+                        Some(row) if matches!(row.kind, Some("link" | "file")) => 49,
+                        _ if kept == 8 => 47,
+                        _ => t,
+                    }
+                }
+                _ => t,
+            };
             let c = c
                 .as_i64()
                 .unwrap_or_else(|| crate::num::saturating_i64(c.as_f64().unwrap_or(0.0)));

@@ -13,7 +13,7 @@ use weflow_native::msg_row::MsgRow;
 use weflow_native::quote::{reply_text, QUOTE};
 
 use crate::api::js_parse_int;
-use crate::message::appmsg::{kind_by_keywords, kind_of_app_type, without_quoted};
+use crate::message::appmsg::{app_type, kind_by_keywords, kind_of_app_type, without_quoted};
 use crate::message::emoji::percent_decode;
 use crate::message::quote::refermsg_xml;
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message, pat_text};
@@ -75,29 +75,69 @@ fn opt(s: String) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-/// The label the chat window shows for a message of `local_type` without text, such as `[图片]`; `[消息]` for a type
-/// it does not name.
+/// The label the chat window shows for a message of `local_type` without text, such as `[图片]`, as its text with one
+/// is labelled: an app message kept as `(<type> << 32) | 49` by the tag of its `<type>` in the one table (#1263);
+/// `[消息]` for a type it does not name.
 pub fn message_type_label(local_type: i64) -> &'static str {
+    let app_type_kept = local_type >> 32;
+    if local_type & 0xFFFF_FFFF == 49 && app_type_kept != 0 {
+        return app_type(&app_type_kept.to_string()).map_or("[消息]", |row| row.tag);
+    }
     match local_type {
         1 => "[文本]",
         3 => "[图片]",
-        34 => "[语音]",
+        34 => "[语音消息]",
         42 => "[名片]",
         43 => "[视频]",
-        47 => "[动画表情]",
+        47 => "[表情]",
         48 => "[位置]",
         49 => "[链接]",
         50 => "[通话]",
         10000 => "[系统消息]",
-        244813135921 => "[引用消息]",
-        266287972401 => "拍一拍",
-        81604378673 => "[聊天记录]",
-        154618822705 => "[小程序]",
-        8594229559345 => "[红包]",
-        8589934592049 => "[转账]",
-        34359738417 | 103079215153 | 25769803825 => "[文件]",
         _ => "[消息]",
     }
+}
+
+/// The one line that stands for a message where there is room for nothing else: the last message of an official
+/// account's conversation in the session list, and a message push (#1263). An app message, kept as 49 or as
+/// `(<type> << 32) | 49`, says its link's title or its file's name, else its line in the chat window; a medium its
+/// label; any other message its line in the chat window, else its content without the line naming its sender. A
+/// leading `[视频号]` is left out. `None` when nothing is left.
+pub fn summary_line(m: &ChatMessage) -> Option<String> {
+    let non_empty = |s: &str| (!s.trim().is_empty()).then(|| s.to_string());
+    let line = match m.local_type {
+        42 => m
+            .card_nickname
+            .clone()
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "[名片]".into()),
+        3 | 34 | 43 | 47 | 48 => message_type_label(m.local_type).into(),
+        t if t & 0xFFFF_FFFF == 49 => m
+            .link_title()
+            .and_then(non_empty)
+            .or_else(|| m.file_name().and_then(non_empty))
+            .or_else(|| non_empty(&m.parsed_content))
+            .unwrap_or_else(|| "[消息]".into()),
+        _ if !m.parsed_content.trim().is_empty() => m.parsed_content.clone(),
+        // the content itself, without the line naming its sender (but not a link's `https:`)
+        _ => match rx(r"(?i)^\s*([a-zA-Z0-9_@-]+):(?:\s*(?:\r?\n|<br\s*/?>)\s*|\s*)")
+            .find(&m.raw_content)
+        {
+            Some(found) if !m.raw_content[found.end()..].starts_with("//") => {
+                m.raw_content[found.end()..].to_string()
+            }
+            _ => m.raw_content.clone(),
+        },
+    };
+    let line = clean_utf16(&line);
+    let line = line.trim();
+    let shown = rx(r"^\s*\[视频号\]\s*").replace(line, "");
+    let shown = if shown.trim().is_empty() {
+        line
+    } else {
+        shown.trim()
+    };
+    non_empty(shown)
 }
 
 /// The line of a system message: what its `<sysmsg>` says in plain text, else the notice the export reads out of
@@ -1155,7 +1195,6 @@ fn chat_message(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::appmsg::app_type;
 
     /// The chat window's text of a message, read without the account's wxid.
     fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
@@ -1488,6 +1527,54 @@ mod tests {
                 "{xml}"
             );
         }
+    }
+
+    /// A message with no text is labelled as one with text is, an app message kept as `(<type> << 32) | 49` by its
+    /// `<type>` in the one table: a sticker or a note kept so is no file (#1263).
+    #[test]
+    fn a_label_is_the_tag_of_the_type_kept() {
+        let kept = |ty: i64| (ty << 32) | 49;
+        for (local_type, label) in [
+            (3, "[图片]"),
+            (34, "[语音消息]"),
+            (47, "[表情]"),
+            (49, "[链接]"),
+            (kept(6), "[文件]"),
+            (kept(8), "[表情]"),
+            (kept(24), "[笔记]"),
+            (kept(19), "[聊天记录]"),
+            (kept(57), "[引用消息]"),
+            (kept(62), "[拍一拍]"),
+            (kept(2000), "[转账]"),
+            (kept(2001), "[红包]"),
+            (kept(999), "[消息]"),
+        ] {
+            assert_eq!(message_type_label(local_type), label, "{local_type}");
+            assert_eq!(parsed_content("", local_type, None), label, "{local_type}");
+        }
+    }
+
+    /// The session list and the message push say an app message the same way, kept as 49 or as
+    /// `(<type> << 32) | 49` (#1263).
+    #[test]
+    fn a_summary_is_the_same_however_the_message_is_kept() {
+        let transfer = "<msg><appmsg><title>微信转账</title><type>2000</type><wcpayinfo>\
+                        <feedesc>￥12.34</feedesc><paysubtype>1</paysubtype></wcpayinfo></appmsg></msg>";
+        let mut lines = [49, (2000 << 32) | 49].map(|local_type| {
+            let row = MsgRow {
+                local_type,
+                content: transfer.into(),
+                ..MsgRow::default()
+            };
+            summary_line(&map_msg_rows(vec![row], "wxid_bob", "wxid_me")[0])
+        });
+        assert_eq!(lines[0], lines[1]);
+        assert!(lines[0].take().is_some_and(|l| !l.is_empty()));
+        let voice = ChatMessage {
+            local_type: 34,
+            ..ChatMessage::default()
+        };
+        assert_eq!(summary_line(&voice).as_deref(), Some("[语音消息]"));
     }
 
     /// What a reply quotes reads the same in the chat window and the exports (#1263): a quoted app message by its own
