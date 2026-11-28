@@ -13,8 +13,8 @@ onLive(event => {
 });
 
 /**
- * 请求过（`request`）之后 `sessionId` 每天的消息数，否则为 null；读到之前，日历显示没有标记的日子。每次请求都先用
- * 缓存，会话来过消息后重新读取，这期间显示之前读到的日子。
+ * 请求过（`request`）之后 `sessionId` 每天的消息数，否则为 null；读到之前，日历显示没有标记的日子。
+ * 每次请求都先用缓存，会话来过消息后重新读取，这期间显示之前读到的日子。
  */
 export function useDateCounts(sessionId: string | null): { counts: Record<string, number> | null; request(): void } {
   const [wanted, setWanted] = useState<{ id: string; seq: number } | null>(null);

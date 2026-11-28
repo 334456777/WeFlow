@@ -1,5 +1,5 @@
-// 账号的配置（#216），分四步：微信数据目录和其中的账号、数据库密钥、图片密钥，以及验证能否打开数据库。每一步都在
-// 服务端运行对应的命令，失败时显示原因。密钥用 `--save` 获取，网页只知道它们是否已设置。
+// 账号的配置（#216），分四步：微信数据目录和其中的账号、数据库密钥、图片密钥，以及验证能否打开数据库。
+// 每一步都在服务端运行对应的命令，失败时显示原因。密钥用 `--save` 获取，网页只知道它们是否已设置。
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowClockwise, Check, CircleNotch, FolderOpen, Key, X } from '@phosphor-icons/react';
@@ -144,8 +144,9 @@ function phaseText(phase: KeyPhase | null): string {
 }
 
 /**
- * 第 2 步：作为作业运行 `key db --save`，或者手动填写密钥并用 `config set decrypt_key` 保存。作业从共用的作业列表里
- * 查找，因为它运行期间可能离开这一步、关掉配置向导（#1138）；作业保存了密钥后，由 `useProfiles` 重新读取档案。
+ * 第 2 步：作为作业运行 `key db --save`，或者手动填写密钥并用 `config set decrypt_key` 保存。
+ * 作业从共用的作业列表里查找，因为它运行期间可能离开这一步、关掉配置向导（#1138）；
+ * 作业保存了密钥后，由 `useProfiles` 重新读取档案。
  */
 function KeyStep({ profile, jobs, onSaved, onNext }: { profile: Profile | undefined; jobs: JobsState; onSaved(): void; onNext(): void }) {
   const [typed, setTyped] = useState('');

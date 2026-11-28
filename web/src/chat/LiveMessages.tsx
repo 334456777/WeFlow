@@ -1,5 +1,6 @@
-// 从 `weflow serve` 读到的一个会话的消息（#198）：最新的在最下面，向上滚动时加载更早的页，更早的消息加到上方时
-// 屏幕上的位置不变。跳到某一天或某个搜索结果后（#199），窗口停在那里并标出那条消息，向下滚动时加载更新的页。
+// 从 `weflow serve` 读到的一个会话的消息（#198）：最新的在最下面，向上滚动时加载更早的页，
+// 更早的消息加到上方时屏幕上的位置不变。跳到某一天或某个搜索结果后（#199），窗口停在那里并标出那条消息，
+// 向下滚动时加载更新的页。
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { ArrowClockwise, ArrowDown, CircleNotch } from '@phosphor-icons/react';
@@ -59,8 +60,8 @@ onLive(event => {
 });
 
 /**
- * 一个群的成员：每人在群里显示的名字和头像，与 `getMembers` 保留得一样久。读取与成员面板共用：`signal` 被取消的
- * 调用方收到取消的错误、不再等待，读取本身继续进行。
+ * 一个群的成员：每人在群里显示的名字和头像，与 `getMembers` 保留得一样久。读取与成员面板共用：
+ * `signal` 被取消的调用方收到取消的错误、不再等待，读取本身继续进行。
  */
 export async function loadMembers(chatroomId: string, signal?: AbortSignal): Promise<Map<string, Person>> {
   const kept = memberCache.get(chatroomId);
@@ -79,8 +80,9 @@ export async function loadMembers(chatroomId: string, signal?: AbortSignal): Pro
 const NOBODY = new Map<string, Person>();
 
 /**
- * 群里每条消息的发送者：成员的名字和头像，按 `loadMembers` 的缓存。打开群时读取；群里来了实时消息或者事件流恢复后
- * 再读一次（可能有人进群或改了群昵称），连续的消息只读一次，新的名字到达之前继续显示原来的。
+ * 群里每条消息的发送者：成员的名字和头像，按 `loadMembers` 的缓存。打开群时读取；
+ * 群里来了实时消息或者事件流恢复后再读一次（可能有人进群或改了群昵称），连续的消息只读一次，
+ * 新的名字到达之前继续显示原来的。
  */
 function useMembers(chatroomId: string | null): Map<string, Person> {
   const [shown, setShown] = useState(() => ({ id: chatroomId, people: (chatroomId && memberCache.get(chatroomId)) || NOBODY }));
@@ -180,9 +182,9 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
   }, [marked]);
 
   // 更早的消息加到了上方：让原来在最上面的消息留在原处。支持滚动锚定（scroll anchoring）的浏览器（Chrome、Edge、
-  // Firefox）自己会做，上方的图片加载时也是，这里再修正一次就会移动两次。Safari 不支持；其他浏览器在窗口滚到最顶端时
-  // 也不锚定，而快速甩动、拖动滚动条或按 Home 会在新的一页到达之前就滚到顶端（#159）。这两种情况由这里调整，
-  // 调整同时让窗口离开顶端，继续向上滚动时才会请求下一页。
+  // Firefox）自己会做，上方的图片加载时也是，这里再修正一次就会移动两次。Safari 不支持；
+  // 其他浏览器在窗口滚到最顶端时也不锚定，而快速甩动、拖动滚动条或按 Home 会在新的一页到达之前就滚到顶端（#159）。
+  // 这两种情况由这里调整，调整同时让窗口离开顶端，继续向上滚动时才会请求下一页。
   useLayoutEffect(() => {
     const el = scroller.current;
     const kept = anchor.current;

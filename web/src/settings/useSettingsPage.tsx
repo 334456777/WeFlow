@@ -1,6 +1,6 @@
-// 设置页（#214、#776）：按内容保存在哪里分组的分区列表，旁边是打开的分区（手机上一次只显示一个）。每个分区由
-// 几组设置行组成：连接和 token、账号、这个浏览器保存的设置、服务端的启动选项、AI 模型、缓存、网页版本，以及
-// 命令行自带的工具和命令控制台（#217）。
+// 设置页（#214、#776）：按内容保存在哪里分组的分区列表，旁边是打开的分区（手机上一次只显示一个）。
+// 每个分区由几组设置行组成：连接和 token、账号、这个浏览器保存的设置、服务端的启动选项、AI 模型、缓存、
+// 网页版本，以及命令行自带的工具和命令控制台（#217）。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { WEB } from '../api/backend';
@@ -26,8 +26,8 @@ import { t } from '../i18n';
 import './settings.css';
 
 /**
- * 打开设置以来打开过的分区：打开另一个分区时，它们保持原样（填了一半的表单、命令控制台）；分区第一次打开时读取
- * 要显示的内容，离开设置页再重新打开时再读一次。
+ * 打开设置以来打开过的分区：打开另一个分区时，它们保持原样（填了一半的表单、命令控制台）；
+ * 分区第一次打开时读取要显示的内容，离开设置页再重新打开时再读一次。
  */
 function Sections({ open, pane, children }: { open: SectionId; pane: RefObject<HTMLDivElement | null>; children(id: SectionId): ReactNode }) {
   const [opened, setOpened] = useState<SectionId[]>([open]);

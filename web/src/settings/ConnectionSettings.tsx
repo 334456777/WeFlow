@@ -1,5 +1,5 @@
-// 设置里的连接（#214）：weflow serve 的状态和重新检测的按钮、它的版本和是否适用于这个网页、运行方式，以及这个
-// 标签页保存的 token（不显示它的值）。
+// 设置里的连接（#214）：weflow serve 的状态和重新检测的按钮、它的版本和是否适用于这个网页、运行方式，
+// 以及这个标签页保存的 token（不显示它的值）。
 import { useEffect, useState } from 'react';
 import { ArrowsClockwise } from '@phosphor-icons/react';
 import type { Backend, Health } from '../api/backend';

@@ -1,5 +1,5 @@
-// 有服务端时读取的 `config profiles` 档案（#216）：换了服务端或账号（`scope`）、配置向导保存了设置、保存密钥的
-// 作业成功后都重新读取。
+// 有服务端时读取的 `config profiles` 档案（#216）：换了服务端或账号（`scope`）、配置向导保存了设置、
+// 保存密钥的作业成功后都重新读取。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isFinished, type Job } from '../api/jobs';
 import { getProfiles, savedKey, type Profile } from '../api/setup';

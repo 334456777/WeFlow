@@ -44,8 +44,8 @@ const LOADING: Thread = { ...IDLE, status: 'loading' };
 const AROUND = 25;
 
 /**
- * 这个标签页里读过的会话，回到其中一个时立即显示（#159）；超过 `CACHE_SIZE` 个时丢掉最久没有保存过的。只保留读到了
- * 最新消息的会话：跳转后停在过去的会话，下次打开时重新从最新的消息开始。
+ * 这个标签页里读过的会话，回到其中一个时立即显示（#159）；超过 `CACHE_SIZE` 个时丢掉最久没有保存过的。
+ * 只保留读到了最新消息的会话：跳转后停在过去的会话，下次打开时重新从最新的消息开始。
  */
 const cache = new Map<string, Thread>();
 const CACHE_SIZE = 20;
@@ -97,9 +97,9 @@ async function threadAt(sessionId: string, target: Target, seq: number, signal: 
 }
 
 /**
- * 一个会话的消息：先读最新的一页，需要时再读更早的页；跳转（某一天、某个搜索结果）后读那个位置的一页，需要时在上方
- * 读更早的、在下方读更新的。状态记着它属于哪个会话，因此刚切换会话时，新会话不会显示前一个会话的消息，
- * 也不会按它们滚动。
+ * 一个会话的消息：先读最新的一页，需要时再读更早的页；跳转（某一天、某个搜索结果）后读那个位置的一页，
+ * 需要时在上方读更早的、在下方读更新的。状态记着它属于哪个会话，因此刚切换会话时，
+ * 新会话不会显示前一个会话的消息，也不会按它们滚动。
  */
 export function useMessages(sessionId: string | null, jump: Jump | null = null): {
   thread: Thread; loadOlder(): void; loadNewer(): void; reload(): void;
@@ -194,8 +194,9 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
   }, []);
 
   /**
-   * 实时消息（#201）：读出最后显示的消息之后的全部消息，加在下面；`revised`（撤回，或者中断恢复后）时还重读最新的
-   * 一页，换上其中改动过的消息。跳转后停在过去的会话不动，由「回到最新消息」读取最新的。同时只进行一次补读：
+   * 实时消息（#201）：读出最后显示的消息之后的全部消息，加在下面；
+   * `revised`（撤回，或者中断恢复后）时还重读最新的一页，换上其中改动过的消息。
+   * 跳转后停在过去的会话不动，由「回到最新消息」读取最新的。同时只进行一次补读：
    * 补读期间来的事件在它完成后一起处理，从它读到的最后一条消息接着读，因此一阵消息最多读两次，每次都不用等待。
    */
   const catching = useRef<{ id: string; again: boolean; revised: boolean } | null>(null);

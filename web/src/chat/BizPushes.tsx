@@ -62,9 +62,9 @@ function PushCard({ push }: { push: BizPush }) {
 const keyOf = (push: BizPush) => push.localId + ':' + push.createTime;
 
 /**
- * 合并有新推送或中断恢复后重读的第一页：它取代自己覆盖的那一段（公众号里已经没有的推送随之消失），已经显示的更早的
- * 推送留在它下面，因此来了新推送时列表不会退回第一页。这一页不满一页（就是全部推送），或者与已显示的推送没有重叠
- * （这期间来的推送比一页还多）时，只显示这一页，否则中间会缺少推送。
+ * 合并有新推送或中断恢复后重读的第一页：它取代自己覆盖的那一段（公众号里已经没有的推送随之消失），
+ * 已经显示的更早的推送留在它下面，因此来了新推送时列表不会退回第一页。这一页不满一页（就是全部推送），
+ * 或者与已显示的推送没有重叠（这期间来的推送比一页还多）时，只显示这一页，否则中间会缺少推送。
  */
 function withFirstPage(old: Feed, pushes: BizPush[]): Feed {
   const fresh: Feed = { status: 'ready', pushes, hasMore: pushes.length === BIZ_PAGE, loadingMore: false };

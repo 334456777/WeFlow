@@ -1,6 +1,6 @@
 // 见解的模型接口（#213）：接口格式（OpenAI 的 Chat Completions 或 Anthropic 的 Messages）、提问发往的地址、
-// API Key、模型（需要时从服务自己的列表里选），以及说明请求发到了哪里、回答了什么的测试；是否随提问发送最近的
-// 消息、发送多少条（#950）；以及为哪些会话写见解（#1078）。
+// API Key、模型（需要时从服务自己的列表里选），以及说明请求发到了哪里、回答了什么的测试；
+// 是否随提问发送最近的消息、发送多少条（#950）；以及为哪些会话写见解（#1078）。
 import { useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, CheckCircle, CircleNotch, Key, ListBullets, Plugs, WarningCircle } from '@phosphor-icons/react';

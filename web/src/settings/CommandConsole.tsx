@@ -1,5 +1,5 @@
-// 设置里的命令控制台（#217）：`/openapi.json` 里的任何命令，按名称或关键词查找，用按参数生成的表单填写，显示
-// 等价的命令行，可以立即运行，也可以作为任务中心的作业运行。
+// 设置里的命令控制台（#217）：`/openapi.json` 里的任何命令，按名称或关键词查找，用按参数生成的表单填写，
+// 显示等价的命令行，可以立即运行，也可以作为任务中心的作业运行。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowClockwise, Check, CircleNotch, MagnifyingGlass, Play, Terminal } from '@phosphor-icons/react';

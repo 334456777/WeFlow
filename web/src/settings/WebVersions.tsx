@@ -1,5 +1,5 @@
-// 设置里的网页版本（#406）：服务端所在机器上保存的版本、检查更新后列出的已发布版本、选用某个版本（服务端立即显示它时
-// 网页重新载入）和清理旧版本。
+// 设置里的网页版本（#406）：服务端所在机器上保存的版本、检查更新后列出的已发布版本、
+// 选用某个版本（服务端立即显示它时网页重新载入）和清理旧版本。
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowsClockwise, CircleNotch, Trash } from '@phosphor-icons/react';
@@ -20,8 +20,8 @@ type Row = { version: string; kept?: KeptVersion; published?: PublishedVersion }
 const FIRST = 6;
 
 /**
- * 按发布源的顺序（最新的在前）列出已发布的版本，后面是本机保存、但发布源已经不列的版本；还没有检查更新时只有本机
- * 保存的版本。
+ * 按发布源的顺序（最新的在前）列出已发布的版本，后面是本机保存、但发布源已经不列的版本；
+ * 还没有检查更新时只有本机保存的版本。
  */
 function rows(kept: KeptVersion[], published: PublishedVersion[] | null): Row[] {
   const byVersion = new Map(kept.map(k => [k.version, k]));

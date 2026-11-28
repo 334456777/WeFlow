@@ -1,5 +1,5 @@
-// weflow serve 的启动选项（#406），保存在配置文件里（`serve_*`）：命令行没有给出的选项用这里的值，服务端下次启动时
-// 生效。按主题分组显示（#776），用下方的保存栏一起保存。
+// weflow serve 的启动选项（#406），保存在配置文件里（`serve_*`）：命令行没有给出的选项用这里的值，
+// 服务端下次启动时生效。按主题分组显示（#776），用下方的保存栏一起保存。
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowRight, CircleNotch } from '@phosphor-icons/react';
