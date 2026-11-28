@@ -54,6 +54,8 @@ jsonschema = { version = "=0.60.0", default-features = false }
 md-5.workspace = true
 zip.workspace = true
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
+# tests/serve_api/commands.rs runs `serve --insight` against it, so the engine writes an insight in the server
+weflow-fake-model = { path = "../weflow-fake-model" }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
 
 # stop.rs reads whether SIGHUP is ignored (`nohup`) before listening for it

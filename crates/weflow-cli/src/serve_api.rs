@@ -85,8 +85,9 @@ pub struct ApiConfig {
     pub config_path: PathBuf,
     /// Ends the event streams with `bye` when the server stops.
     pub farewell: Farewell,
-    /// Whether the insight engine runs beside (`--insight`), as `/health` says.
-    pub insight: bool,
+    /// The hub of the insight engine that runs beside (`--insight`), or `None`: `/health` says whether it runs, and
+    /// `insight today-stats` reads the counts it keeps (#1264).
+    pub insight: Option<weflow_core::services::ServiceHub>,
     /// The image auto-download hook this server runs (`serve_image_auto_download`), which
     /// `GET /image/auto-download/status` reports; `None` when it runs none.
     pub image_auto_download: Option<weflow_core::image_download::ImageAutoDownload>,
@@ -179,7 +180,7 @@ fn router(cfg: ApiConfig) -> Router {
             max_tasks: cfg.max_tasks,
             max_reads: cfg.max_reads,
             max_media: cfg.max_media,
-            insight: cfg.insight,
+            insight: cfg.insight.is_some(),
         },
     );
     Router::new()
@@ -718,10 +719,13 @@ async fn command_route(
             json!({ "argv": shown, "stdin": Value::Null }).to_string(),
         ));
     }
-    // the hook is this server's own: a child process would answer for itself, which runs none
-    if command == "image auto-download status" && asked.std == Std::Json && !asked.background {
-        let (doc, exit) = auto_download_status(st.cfg.image_auto_download.as_ref());
-        return Ok(in_process_document(&doc, exit, asked.fields.as_deref()));
+    // what this server holds in its own process: a child process would answer with a state of its own, which has
+    // none of it (#1264)
+    if rules::OWN_STATE.contains(&command.as_str()) && asked.std == Std::Json && !asked.background {
+        let hook = st.cfg.image_auto_download.as_ref();
+        if let Some((doc, exit)) = own_state(&command, hook, st.cfg.insight.as_ref()) {
+            return Ok(in_process_document(&doc, exit, asked.fields.as_deref()));
+        }
     }
     // an `/api/` request its typed read did not take and clap refuses too: answered here with clap's error, as the
     // child process would print it, without starting one (#432)
@@ -967,6 +971,26 @@ fn show_chosen(cfg: &ApiConfig, doc: &Value) {
     }
 }
 
+/// The `--json` document of a command of [`rules::OWN_STATE`] for this server, which runs the image hook `hook` and
+/// the insight engine of `engine`; `None` for any other command.
+fn own_state(
+    command: &str,
+    hook: Option<&weflow_core::image_download::ImageAutoDownload>,
+    engine: Option<&weflow_core::services::ServiceHub>,
+) -> Option<(Value, u8)> {
+    match command {
+        "image auto-download status" => Some(auto_download_status(hook)),
+        "insight today-stats" => Some(today_stats(engine)),
+        _ => None,
+    }
+}
+
+/// The `--json` document of `insight today-stats` for this server: the counts of the engine it runs, or none.
+fn today_stats(engine: Option<&weflow_core::services::ServiceHub>) -> (Value, u8) {
+    let stats = engine.map(weflow_core::services::ServiceHub::insight_today_stats);
+    crate::reads::json_document(Ok(json!(stats.unwrap_or_default())))
+}
+
 /// The `--json` document of `image auto-download status` for this server: the state of the hook it runs, or of none.
 fn auto_download_status(
     hook: Option<&weflow_core::image_download::ImageAutoDownload>,
@@ -986,6 +1010,23 @@ fn auto_download_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each command of [`rules::OWN_STATE`] is answered by [`own_state`], and no other: one left out would run in a
+    /// child process again, which holds none of the server's state (#1264).
+    #[test]
+    fn own_state_answers_the_commands_declared() {
+        for command in rules::OWN_STATE {
+            let (doc, exit) = own_state(command, None, None).unwrap_or_else(|| panic!("{command}"));
+            assert_eq!(
+                (exit, &doc["success"]),
+                (0, &json!(true)),
+                "{command}: {doc}"
+            );
+        }
+        assert_eq!(own_state("insight records", None, None), None);
+        // no engine runs: no counts
+        assert_eq!(today_stats(None).0["data"], json!([]));
+    }
 
     #[test]
     fn async_is_asked_for_with_prefer() {

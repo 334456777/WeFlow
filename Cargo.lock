@@ -3282,6 +3282,7 @@ dependencies = [
  "tower-http 0.7.1",
  "tracing-subscriber",
  "weflow-core",
+ "weflow-fake-model",
  "weflow-native",
  "weflow-silk",
  "windows-sys 0.61.2",
