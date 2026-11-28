@@ -6,7 +6,7 @@ import type { ChatSession } from '../api/chat';
 import type { Profile } from '../api/setup';
 import type { Card } from '../CardStack';
 import type { Preview } from '../MessageMedia';
-import type { SessionsState } from '../chat/useSessions';
+import type { SessionsState } from '../useSessions';
 import type { JobsState } from '../jobs/useJobs';
 
 /** What every page shares: the server, the records read once for all pages, and the parts of the screen. */

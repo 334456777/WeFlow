@@ -8,7 +8,7 @@ import { Segmented } from '../Segmented';
 import { VirtualList, type VirtualListHandle } from '../VirtualList';
 import { filterLabels, formatSessionTime, type SessionFilter } from '../sessionKind';
 import { FOLDED_ID, sessionRows, type SessionRow } from './sessions';
-import type { SessionsState } from './useSessions';
+import type { SessionsState } from '../useSessions';
 import { SampleNote } from '../shell/sample';
 import { ListSkeleton } from '../Skeleton';
 import { t } from '../i18n';

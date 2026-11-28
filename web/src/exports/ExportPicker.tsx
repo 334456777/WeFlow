@@ -4,7 +4,7 @@ import { ArrowClockwise, Check, MagnifyingGlass, X } from '@phosphor-icons/react
 import type { ChatSession } from '../api/chat';
 import { Avatar } from '../Avatar';
 import { filterLabels, kindLabels, kindOf, type SessionFilter } from '../sessionKind';
-import type { SessionsState } from '../chat/useSessions';
+import type { SessionsState } from '../useSessions';
 import { Segmented } from '../Segmented';
 import { VirtualList } from '../VirtualList';
 import { ListSkeleton } from '../Skeleton';

@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, expect, it, vi } from '#test';
-import { emitLive, LIVE_READ_MS } from '../api/live';
+import { emitLive, LIVE_READ_MS } from './api/live';
 import { useSessions } from './useSessions';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });

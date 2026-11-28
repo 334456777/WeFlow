@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from '#test';
 import type { ParsedMessage } from '../api/messages';
-import { withGallery } from './MessageView';
+import { withGallery } from '../chat/MessageView';
 import { FIT, keep, zoomAt, ZoomImage } from './ZoomImage';
 
 afterEach(cleanup);

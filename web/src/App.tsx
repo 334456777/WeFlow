@@ -16,7 +16,7 @@ import { currentProfile } from './api/setup';
 import { backupPage } from './backup/BackupPage';
 import { CardStack, type Card } from './CardStack';
 import { useChatPage } from './chat/useChatPage';
-import { useSessions } from './chat/useSessions';
+import { useSessions } from './useSessions';
 import { useContactsPage } from './contacts/useContactsPage';
 import { useExportPage } from './exports/useExportPage';
 import { useFootprintPage } from './footprint/useFootprintPage';

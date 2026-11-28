@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from '#test';
-import { previewSize } from './MessageView';
+import { previewSize } from './PreviewMedia';
 import { canFly, fly, FRAME_NAME, frameFlight, frameVars, MEDIA_NAME, thumbnailOf } from './previewMotion';
 
 afterEach(() => { document.body.innerHTML = ''; Reflect.deleteProperty(document, 'startViewTransition'); });
