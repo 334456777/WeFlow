@@ -41,13 +41,14 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - `cipher_vfs`/`sqlcipher` 负责按页解密，`db` 是账号句柄（`Account`），`wxkey` 处理密钥
   - `msg`、`contact`、`sns`、`media`、`stats`、`report` 按领域（消息、联系人、朋友圈、媒体、统计、报告）查询，[`wcdb.rs`](crates/weflow-native/src/wcdb.rs) 是给上层用的门面，每个调用都是带类型参数的方法
 - [`weflow-core`](crates/weflow-core)：业务层
-  - [`services/`](crates/weflow-core/src/services) 下按领域划分，每个领域一个 `impl ServiceHub`
+  - [`services/`](crates/weflow-core/src/services) 下按领域划分，每个领域一个 `impl ServiceHub`；联系人的显示名、群昵称、会话种类和账号路径只在 `identity.rs`（[#1266](https://github.com/334456777/WeFlow/issues/1266)）
   - `reads`：CLI 与命令 API 共用的类型化读取（[#397](https://github.com/334456777/WeFlow/issues/397)）
   - `contract/`：命令 API 的契约类型，按领域划分（[#399](https://github.com/334456777/WeFlow/issues/399)），见下面的[命令 API 的契约](#命令-api-的契约)
   - 导出（`export*`）：`message/` 按消息种类解析，`export_msg/` 每种格式一个模块
+    - 消息的种类、文字、标签和引用的预览只在 `message/` 实现一份：子类型表是 `appmsg.rs` 的 `app_type`，种类由 `classify_app_message` 判定；聊天窗口（`chat_msg.rs`）、会话摘要、消息推送、群统计和网页都读它的结果，不另写规则（[#1263](https://github.com/334456777/WeFlow/issues/1263)，见 Wiki [消息导出#消息类型的判定](https://github.com/334456777/WeFlow/wiki/消息导出#消息类型的判定)）
     - HTML 导出的页面模板是 [`export_msg/`](crates/weflow-core/src/export_msg) 下的 `template.html`（聊天记录）、`list.html`（会话列表、联系人）和 `moments.html`（朋友圈），三者共用的配色在 `colours.css`
     - 嵌入程序的 `<模板>.{zh,en}.html` 由 `build.mjs` 生成，CI（[`html-template.yml`](.github/workflows/html-template.yml)）在推送后生成并提交到该分支
-  - 另有消息推送（`push`）、见解的模型接口（`model_api`，OpenAI 与 Anthropic 两种格式）、配置（`config`）、图片/视频/语音解密等
+  - 另有消息推送（`push`）、见解的模型接口（`model_api`，OpenAI 与 Anthropic 两种格式）、配置（`config`，键的取值范围和默认值只在 `config/keys.rs`，[#1265](https://github.com/334456777/WeFlow/issues/1265)）、图片/视频/语音解密等
 - [`weflow-cli`](crates/weflow-cli)：命令行入口（clap），生成二进制 `weflow`
   - [`main.rs`](crates/weflow-cli/src/main.rs) 只是入口（分配器、`run` 的分派、结果汇总和退出码），`cli.rs` 是顶层的 `Cli`、`Commands`，`commands/` 每个子命令一个文件（命令定义和执行它的函数放在一起）
   - `reads.rs` 是命令行与 `serve` 共用的读取映射（`read_of`、`media_of`），`term.rs`/`files.rs` 是终端输出和写文件，`help_zh.rs`/`i18n.rs` 为中文帮助与本地化
@@ -85,6 +86,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
 - 渲染：源码按 React 19 来写，构建时由 Preact 11 渲染（`vite.config.ts` 把 `react`、`react-dom` 指到 `preact/compat`，[#783](https://github.com/334456777/WeFlow/issues/783)）；`bun test` 仍用 React
 - 发布：构建产物 `dist/` 由 `serve` 托管在 `/ui/`（[#146](https://github.com/334456777/WeFlow/issues/146)），与二进制分开发布（[#148](https://github.com/334456777/WeFlow/issues/148)）；`package.json` 的 `weflow.apiVersion` / `minBackendVersion` 声明需要的 API，构建时写入 `dist/weflow-web.json`
 - [`src/api/`](web/src/api) 调用命令 API，用 `/health/events` 长连接显示连接状态并检查版本（[#221](https://github.com/334456777/WeFlow/issues/221)）
+- 代码的位置：每个页面一个目录，几个页面共用的模型和组件放在 `src/` 顶层（如 `format.ts`、`messageKind.ts`、`MessageMedia.tsx`、`charts.tsx`、`useSessions.ts`），媒体预览的部件在 `shell/`；页面目录之间不互相导入（[#1268](https://github.com/334456777/WeFlow/issues/1268)、[#1271](https://github.com/334456777/WeFlow/issues/1271)）。服务端判定的东西（消息的种类 `appMsgKind`）读回答里的字段，不在网页里按 `localType` 另写一份（[#1263](https://github.com/334456777/WeFlow/issues/1263)）
 - [`src/mock/`](web/src/mock) 是示例服务端（[#879](https://github.com/334456777/WeFlow/issues/879)，见[示例数据](https://github.com/334456777/WeFlow/wiki/WebUI-实现#示例数据)）：
   - 还没连上服务时，`api/client.ts` 的读取由它按命令 API 的格式回答，各页面用同一套组件显示示例记录，内容围绕 WeFlow 和 WebUI
   - 改动保存在页面的内存里（刷新后复原），作业在页面里按时间跑完，导出只给说明文件，不按格式生成（[#896](https://github.com/334456777/WeFlow/issues/896)）
