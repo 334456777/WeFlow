@@ -110,6 +110,20 @@ impl ServiceHub {
         }
         book
     }
+
+    /// Raw `id → group nickname` map of a chatroom.
+    pub fn group_nicknames_pub(&self, chatroom_id: &str) -> Vec<(String, String)> {
+        let Ok(wcdb) = self.open_wcdb() else {
+            return Vec::new();
+        };
+        match wcdb.group_nicknames(chatroom_id) {
+            Ok(Value::Object(m)) => m
+                .into_iter()
+                .map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// The `{ username: text }` the facade answered, without empty texts; empty when it could not read them.

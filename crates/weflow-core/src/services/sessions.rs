@@ -125,20 +125,6 @@ fn truthy(v: &Value) -> bool {
 }
 
 impl ServiceHub {
-    /// Raw `id → group nickname` map of a chatroom.
-    pub fn group_nicknames_pub(&self, chatroom_id: &str) -> Vec<(String, String)> {
-        let Ok(wcdb) = self.open_wcdb() else {
-            return Vec::new();
-        };
-        match wcdb.group_nicknames(chatroom_id) {
-            Ok(Value::Object(m)) => m
-                .into_iter()
-                .map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))
-                .collect(),
-            _ => Vec::new(),
-        }
-    }
-
     /// The avatar URL and the display name of a contact.
     pub fn chat_contact_avatar(&self, username: &str) -> Option<(Option<String>, String)> {
         if username.is_empty() {
