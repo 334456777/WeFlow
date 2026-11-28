@@ -17,5 +17,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["vite/client", "bun"]
   },
-  "include": ["src", "plugins", "test", "smoke", "scripts/account.ts", "scripts/contract.ts", "scripts/contract-compat.ts", "scripts/jsdoc.ts", "vite.config.ts"]
+  "include": ["src", "plugins", "test", "smoke", "scripts/account.ts", "scripts/contract.ts", "scripts/contract-compat.ts", "scripts/i18n.ts", "scripts/i18n.test.ts", "scripts/jsdoc.ts", "vite.config.ts"]
 }
