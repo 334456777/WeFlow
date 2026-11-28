@@ -1143,20 +1143,21 @@ impl ServiceHub {
         for s in candidates {
             let sid = s.username.trim().to_string();
             let ts = s.last_timestamp;
-            {
-                let mut st = self.insight_state.lock_or_panic();
-                if ts <= st.last_seen.get(&sid).copied().unwrap_or(since) {
-                    continue;
-                }
-                st.last_seen.insert(sid.clone(), ts);
-            }
-            if cooling(&sid) || cooled_by_records(&sid) {
+            let seen = self
+                .insight_state
+                .lock_or_panic()
+                .last_seen
+                .get(&sid)
+                .copied();
+            // 与 whitelist 相同：冷却中的会话不记下新消息，冷却结束后再处理（#1340）
+            if ts <= seen.unwrap_or(since) || cooling(&sid) || cooled_by_records(&sid) {
                 continue;
             }
-            self.insight_state
-                .lock_or_panic()
-                .last_activity
-                .insert(sid.clone(), now);
+            {
+                let mut st = self.insight_state.lock_or_panic();
+                st.last_seen.insert(sid.clone(), ts);
+                st.last_activity.insert(sid.clone(), now);
+            }
             let name = s.display_name.clone();
             match self
                 .insight_generate(&sid, &name, Trigger::Activity, None)
