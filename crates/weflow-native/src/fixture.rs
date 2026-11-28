@@ -560,7 +560,7 @@ impl Fixture {
 
     /// 写入含这些语音的 `message/media_<n>.db`。
     pub fn media_db(&self, n: u32, voices: &[VoiceSpec<'_>]) {
-        /// 各项依次是聊天的 ID、发送时间、本地 ID、服务器 ID、数据和聊天的用户名。
+        /// 各项依次是聊天在 `Name2Id` 中的行号、发送时间、本地 ID、服务器 ID、语音数据和片段的位置（`data_index`）。
         type VoiceRow<'a> = (i64, i64, i64, i64, Vec<u8>, &'a str);
         let rows: Vec<VoiceRow<'_>> = {
             let mut names: Vec<&str> = Vec::new();
