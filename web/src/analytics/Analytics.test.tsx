@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-li
 import { afterEach, describe, expect, it, vi } from '#test';
 import { hourBars, monthBars, typeBars, weekdayBars, type Overall, type TimeSpread } from '../api/analytics';
 import { setLang } from '../i18n';
-import { ExcludedPeople, PrivateAnalytics, yearStarts } from './AnalyticsViews';
+import { yearStarts } from '../charts';
+import { ExcludedPeople, PrivateAnalytics } from './AnalyticsViews';
 import { useAnalytics, type AnalyticsState } from './useAnalytics';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

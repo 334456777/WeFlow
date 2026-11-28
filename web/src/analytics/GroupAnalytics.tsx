@@ -14,7 +14,8 @@ import { useRead } from '../useRead';
 import { Popover } from '../Popover';
 import { GridSkeleton, ListSkeleton, ResultsSkeleton } from '../Skeleton';
 import { n } from '../format';
-import { Columns, day, Shares } from './AnalyticsViews';
+import { Columns } from '../charts';
+import { day, Shares } from './AnalyticsViews';
 import type { GroupsState } from './useAnalytics';
 import { locale, t } from '../i18n';
 

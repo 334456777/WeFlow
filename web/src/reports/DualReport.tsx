@@ -5,7 +5,7 @@ import { CaretDown, MagnifyingGlass, UserCircle } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
 import { getExcludeCandidates, getRankings, monthBars, monthName, type Candidate } from '../api/analytics';
 import { formatWait, getDualReport, messageText, type DualMessage, type DualReport } from '../api/reports';
-import { Columns, yearStarts } from '../analytics/AnalyticsViews';
+import { Columns, yearStarts } from '../charts';
 import { n } from '../format';
 import { Popover } from '../Popover';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
