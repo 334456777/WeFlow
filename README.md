@@ -1,5 +1,9 @@
 # WeFlow CLI
 
+[![CI](https://img.shields.io/github/actions/workflow/status/334456777/WeFlow/ci.yml?branch=main&label=CI)](https://github.com/334456777/WeFlow/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/334456777/WeFlow)](https://github.com/334456777/WeFlow/releases/latest)
+[![License](https://img.shields.io/github/license/334456777/WeFlow)](LICENSE)
+
 **English** | [简体中文](README.zh-CN.md)
 
 `weflow` is a Rust command-line version of the [WeFlow](https://github.com/hicccc77/WeFlow) backend. It reads, analyzes, and exports local WeChat chat history (WeChat 4.0 and later) right in the terminal.
