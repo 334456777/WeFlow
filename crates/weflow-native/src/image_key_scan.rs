@@ -1,26 +1,25 @@
-//! Finding the image AES key among the bytes of WeChat's memory.
+//! 在微信进程的内存中找出图片 AES 密钥。
 //!
-//! Every 16-byte window is tried as a key on the first encrypted block of a few thumbnails, and a window that turns
-//! one of them into the start of an image is a candidate. The memory readers of `linux_key_helper` and
-//! `macos_key_helper` share this search.
+//! 把每个 16 字节的窗口当作密钥，去解密几张缩略图的第一个加密块，能把其中一张解密成图片开头的窗口就是候选。
+//! `linux_key_helper` 和 `macos_key_helper` 的内存读取共用这个搜索。
 //!
-//! WeChat's memory holds around 10^9 windows, so a check of the first few bytes alone lets random windows through:
-//! [`image_block`] checks the structure of the whole block, and the caller confirms each candidate before taking it.
+//! 微信的内存中约有 10^9 个窗口，只检查开头几个字节会放过随机的窗口：[`image_block`] 检查整个块的结构，
+//! 调用方在采用每个候选之前还会再确认。
 
 use aes::cipher::{Array, BlockCipherDecrypt, KeyInit};
 
-/// One AES block, the size of the image AES key and of the ciphertext the key is searched with.
+/// 一个 AES 块，与图片 AES 密钥和搜索密钥时用的密文一样长。
 pub type Block = [u8; 16];
 
-/// The PNG signature followed by the length and type of the `IHDR` chunk every PNG starts with.
+/// PNG 签名，后接每个 PNG 开头的 `IHDR` 块的长度和类型。
 const PNG_START: Block = *b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR";
 
-/// Why WeChat's memory could not be searched.
+/// 无法搜索微信内存的原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MemoryScanError {
-    /// The system refused to let this process read WeChat's memory (no root, `ptrace_scope`, `task_for_pid`).
+    /// 系统不允许本进程读取微信的内存（没有 root 权限、`ptrace_scope` 的限制、`task_for_pid` 失败）。
     PermissionDenied(String),
-    /// The process's memory map could not be read for another reason.
+    /// 因其他原因读不了进程的内存映射。
     Failed(String),
 }
 
@@ -37,11 +36,10 @@ impl std::fmt::Display for MemoryScanError {
 
 impl std::error::Error for MemoryScanError {}
 
-/// Whether a decrypted first block is the start of an image file WeChat stores.
+/// 解密出的第一个块是否为微信保存的某种图片文件的开头。
 ///
-/// That is a JPEG whose first segment is an `APPn` segment with an ASCII identifier (`JFIF`, `Exif`, ...) or a
-/// quantization table, a PNG up to its `IHDR` chunk type, a GIF with its version, a WebP with its `RIFF`/`WEBP`
-/// header, or WeChat's own `wxgf` container.
+/// 包括：第一个段是带 ASCII 标识（`JFIF`、`Exif` 等）的 `APPn` 段或量化表的 JPEG，直到 `IHDR` 块类型为止的 PNG，
+/// 带版本号的 GIF，带 `RIFF`/`WEBP` 头的 WebP，以及微信私有的 `wxgf` 容器。
 #[must_use]
 pub fn image_block(block: &Block) -> bool {
     jpeg_start(block)
@@ -52,21 +50,21 @@ pub fn image_block(block: &Block) -> bool {
         || block.starts_with(b"wxgf")
 }
 
-/// A JPEG's start of image followed by the first segment's marker, length and the start of its data.
+/// JPEG 的图像开始标记，后接第一个段的标记、长度和数据的开头。
 fn jpeg_start(block: &Block) -> bool {
     let [0xff, 0xd8, 0xff, marker, length_high, _, data @ ..] = *block else {
         return false;
     };
     match marker {
-        // APP0..APP15 begin with a NUL-terminated identifier such as "JFIF" or "Exif"
+        // APP0..APP15 以 NUL 结尾的标识开头，如 `JFIF`、`Exif`
         0xe0..=0xef => data[..4].iter().all(u8::is_ascii_alphanumeric),
-        // DQT: 67 bytes per 8-bit table, at most four tables; precision 0 or 1 and table id 0..=3
+        // DQT：每张 8 位的表 67 字节，最多四张表；精度为 0 或 1，表 ID 为 0..=3
         0xdb => length_high <= 1 && data[0] & 0xec == 0,
         _ => false,
     }
 }
 
-/// Whether `key` decrypts `ciphertext` into an [`image_block`].
+/// `key` 能否把 `ciphertext` 解密成 [`image_block`]。
 #[must_use]
 pub fn decrypts_to_image(key: &Block, ciphertext: &Block) -> bool {
     let cipher = aes::Aes128::new(key.into());
@@ -75,7 +73,7 @@ pub fn decrypts_to_image(key: &Block, ciphertext: &Block) -> bool {
     image_block(&block.into())
 }
 
-/// The 16 bytes a ciphertext of 32 hex characters names, or `None` for anything else.
+/// 32 个十六进制字符表示的密文的 16 个字节；其他输入为 `None`。
 #[must_use]
 pub fn parse_ciphertext(value: &str) -> Option<Block> {
     if value.len() != 32 || !value.is_ascii() {
@@ -88,18 +86,18 @@ pub fn parse_ciphertext(value: &str) -> Option<Block> {
     Some(ciphertext)
 }
 
-/// `key` as 32 lowercase hex characters.
+/// 把 `key` 写成 32 个小写十六进制字符。
 #[must_use]
 pub fn hex(key: &Block) -> String {
     key.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// How far consecutive reads of one region overlap, so a key that straddles two reads is still seen whole.
+/// 同一区域相邻两次读取重叠的字节数，跨两次读取的密钥仍能完整看到。
 #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
 pub(crate) const READ_OVERLAP: usize = 15;
 
-/// The first 16-byte window of `memory` that decrypts one of `ciphertexts` into an [`image_block`] and that `accept`
-/// takes; `accept` sees every such window, in order, until it takes one.
+/// `memory` 中第一个能把 `ciphertexts` 之一解密成 [`image_block`]、且被 `accept` 接受的 16 字节窗口；
+/// `accept` 按顺序看到每个这样的窗口，直到接受其中一个。
 #[cfg(any(
     test,
     all(target_os = "linux", target_arch = "x86_64"),
@@ -165,7 +163,7 @@ mod tests {
         ] {
             assert!(image_block(&block), "{block:02x?}");
         }
-        // the magic bytes of a JPEG, PNG or GIF followed by bytes no such file starts with
+        // JPEG、PNG 或 GIF 的魔数，后面跟着这些文件不会有的开头
         for block in [
             *b"\xff\xd8\xffhello world!!",
             *b"\xff\xd8\xff\xe0\x00\x10\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09",
@@ -199,7 +197,7 @@ mod tests {
             [key],
             "only a window that decrypts a ciphertext is offered"
         );
-        // a refused candidate does not end the search, nor is it returned
+        // 被拒绝的候选既不会结束搜索，也不会被返回
         assert_eq!(find_key(&memory, &ciphertexts, &mut |_| false), None);
         assert!(decrypts_to_image(&key, &ciphertexts[1]));
         assert!(!decrypts_to_image(&other, &ciphertexts[1]));

@@ -115,7 +115,7 @@ fn target_binary() -> &'static Path {
             "cc failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        // Keep the directory and binary for the life of the test process.
+        // 测试进程运行期间保留这个目录和其中的二进制文件。
         std::mem::forget(directory);
         binary
     })
@@ -255,7 +255,7 @@ fn image_mem_finds_the_key_in_the_target() {
         crate::linux_key_helper::image_mem(pid, &[ciphertext], &mut |_| true),
         Ok(Some(key))
     );
-    // a candidate the caller refuses is passed over
+    // 调用方拒绝的候选被跳过
     assert_eq!(
         crate::linux_key_helper::image_mem(pid, &[ciphertext], &mut |_| false),
         Ok(None)

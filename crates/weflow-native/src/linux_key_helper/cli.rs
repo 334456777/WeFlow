@@ -1,5 +1,4 @@
-//! The helper's command line and JSON, including exit codes, for comparison
-//! with the original executable.
+//! 辅助程序的命令行和 JSON 输出（含退出码），用来与桌面版的可执行文件对照。
 
 use super::{image_mem, platform, Hook};
 use crate::image_key_scan::{self, MemoryScanError};
@@ -19,7 +18,7 @@ fn success_key(key: &str) -> String {
     format!("{{\"success\":true,\"key\":\"{key}\"}}\n")
 }
 
-/// Runs the helper's command line (`args` includes the program name): its stdout and exit code.
+/// 按命令行运行辅助程序（`args` 含程序名），返回它的标准输出和退出码。
 pub fn run_helper(args: &[String]) -> (String, i32) {
     if args.len() < 2 {
         return (USAGE.to_string(), 1);

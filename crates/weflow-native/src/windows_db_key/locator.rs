@@ -1,16 +1,16 @@
-//! Finding the point to capture the key in WeChat's module: its PE sections, its function table and the byte
-//! signature of each WeChat version.
+//! 在微信的模块中找到捕获密钥的位置：模块的 PE 节、函数表，以及每个微信版本的字节特征码。
 
 use anyhow::{bail, Context, Result};
 use std::ops::Range;
 
-/// A section of the module: where it starts (relative to the image base) and how long it is.
+/// 模块中的一个节：起点（相对映像基址）和长度。
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Section {
     pub rva: usize,
     pub size: usize,
 }
 
+/// 模块中 `.text` 节和 AMD64 异常目录的位置。
 pub(super) struct PeLayout {
     pub text: Section,
     pub exceptions: Section,
@@ -39,6 +39,11 @@ fn section(rva: usize, size: usize, image_size: usize) -> Result<Section> {
     Ok(Section { rva, size })
 }
 
+/// 从模块开头的字节 `headers` 读出 [`PeLayout`]，`image_size` 是模块映像的大小。
+///
+/// 映像必须是 AMD64 的 PE32+，`SizeOfImage` 等于 `image_size`；异常目录（数据目录的第 4 项）不为空，
+/// 大小是 12 字节（一条 `RUNTIME_FUNCTION`）的整数倍；恰好有一个 `.text` 节且可读可执行；各个位置都在映像之内。
+/// 不满足时返回错误。
 pub(super) fn pe_layout(headers: &[u8], image_size: usize) -> Result<PeLayout> {
     if headers.get(..2) != Some(b"MZ") {
         bail!("invalid DOS header");
@@ -101,6 +106,9 @@ pub(super) fn pe_layout(headers: &[u8], image_size: usize) -> Result<PeLayout> {
     })
 }
 
+/// 把异常目录的记录（每条 12 字节的 `RUNTIME_FUNCTION`）读成 `text` 节内的函数范围，按起点排序。
+///
+/// 跳过起止地址都为 0 的记录和 `text` 节以外的函数；记录被截断、范围为空或倒置，或者范围相互重叠时返回错误。
 pub(super) fn function_ranges(bytes: &[u8], text: Section) -> Result<Vec<Range<usize>>> {
     if !bytes.len().is_multiple_of(12) {
         bail!("truncated AMD64 runtime function record");
@@ -125,30 +133,30 @@ pub(super) fn function_ranges(bytes: &[u8], text: Section) -> Result<Vec<Range<u
     Ok(ranges)
 }
 
-/// The bytes that mark the capture point in one range of WeChat versions.
+/// 在一段微信版本中标出捕获位置的字节。
 #[derive(Clone, Copy)]
 pub(super) struct Signature {
     pub bytes: &'static [u8],
-    /// Positions in `bytes` that match any byte.
+    /// `bytes` 中可以匹配任意字节的位置。
     wildcards: &'static [usize],
-    /// How many bytes before a match the capture point is.
+    /// 捕获位置在匹配处之前多少字节。
     back: usize,
 }
 
-/// The signature of WeChat before 4.1.4.0 and after 4.1.6.14.
+/// 4.1.4.0 之前和 4.1.6.14 之后的微信的特征码。
 const OLD: &[u8] = &[
     0x24, 0x50, 0x48, 0xc7, 0x45, 0x00, 0xfe, 0xff, 0xff, 0xff, 0x44, 0x89, 0xcf, 0x44, 0x89, 0xc3,
     0x49, 0x89, 0xd6, 0x48, 0x89, 0xce, 0x48, 0x89,
 ];
-/// The signature of WeChat 4.1.4.0 through 4.1.6.14.
+/// 微信 4.1.4.0 到 4.1.6.14 的特征码。
 const MIDDLE: &[u8] = &[
     0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x00, 0x18, 0x48, 0x89, 0x7c, 0x00,
     0x20, 0x41, 0x56, 0x48, 0x83, 0xec, 0x50, 0x41,
 ];
 
-/// The signature of WeChat `version`, in the three version ranges of the original `wx_key` helper.
+/// 微信 `version` 的特征码，按原版 `wx_key` 辅助程序的三段版本区间选择。
 ///
-/// Versions after 4.1.6.14 match the [`OLD`] bytes again, with the capture point at another distance from them.
+/// 4.1.6.14 之后的版本重新匹配 [`OLD`] 的字节，但捕获位置与匹配处的距离不同。
 pub(super) fn signature(version: [u16; 4]) -> Result<Signature> {
     if version[0] != 4 {
         bail!("unsupported WeChat version: WeChat 4.x x64 is required");
@@ -174,6 +182,7 @@ pub(super) fn signature(version: [u16; 4]) -> Result<Signature> {
     })
 }
 
+/// `bytes` 中与 `sig` 匹配的每个偏移，通配的位置可以是任意字节。
 pub(super) fn matches(bytes: &[u8], sig: Signature) -> impl Iterator<Item = usize> + '_ {
     bytes
         .windows(sig.bytes.len())
@@ -188,6 +197,9 @@ pub(super) fn matches(bytes: &[u8], sig: Signature) -> impl Iterator<Item = usiz
         })
 }
 
+/// 由特征码的匹配处 `matches` 算出捕获位置，即匹配处之前 `sig.back` 个字节。
+///
+/// 要求恰好有一处匹配，且捕获位置和匹配的最后一个字节都在 `functions` 中同一个函数的范围内，否则返回错误。
 pub(super) fn capture_point(
     matches: &[usize],
     sig: Signature,

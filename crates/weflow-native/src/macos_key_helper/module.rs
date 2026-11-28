@@ -1,14 +1,12 @@
-//! Which loaded module `xkey_helper` scans, and the version switch that picks
-//! `KNOWN_RVA`.
+//! `xkey_helper` 扫描哪个已加载的模块，以及按版本选择 `KNOWN_RVA`。
 //!
-//! WeChat 4.1.8 and later keep the main code in `wechat.dylib`; older clients
-//! put it in `/Contents/MacOS/WeChat`.  Either module is only accepted above
-//! 100 MiB, and finding both is an error rather than a guess.
+//! 微信 4.1.8 及以后的主要代码在 `wechat.dylib` 中，更早的版本在 `/Contents/MacOS/WeChat` 中。两种模块都只在超过
+//! 100 MiB 时才采用；两种都找到时报错，不去猜测用哪一个。
 
-/// The module size above which a candidate is the WeChat code.
+/// 模块超过这个大小才被当作微信的代码。
 pub(super) const MIN_MODULE_SIZE: u64 = 100 * 1024 * 1024;
 
-/// The offset of the database-key sink in 4.1.7 and earlier.
+/// 4.1.7 及更早版本中数据库密钥 sink 的偏移。
 pub(super) const LEGACY_KNOWN_RVA: u64 = 0x458c570;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,8 +45,7 @@ pub(super) fn is_main_binary(path: &str) -> bool {
     lower.ends_with("/contents/macos/wechat") || lower.ends_with("/wechat")
 }
 
-/// The module selection of the original scanner: a `wechat.dylib` over
-/// 100 MiB wins, otherwise the main binary; both is ambiguous.
+/// 与桌面版扫描器相同的模块选择：优先选超过 100 MiB 的 `wechat.dylib`，否则选主二进制；两者都有时无法确定。
 pub(super) fn select(modules: &[Module]) -> Choice {
     let dylib = modules
         .iter()
@@ -66,11 +63,10 @@ pub(super) fn select(modules: &[Module]) -> Choice {
     }
 }
 
-/// The newest version whose code stays at [`LEGACY_KNOWN_RVA`].
+/// 代码仍在 [`LEGACY_KNOWN_RVA`] 处的最新版本。
 const LEGACY_LAST_VERSION: [u64; 3] = [4, 1, 7];
 
-/// The first three numeric components of a version string, with missing
-/// components treated as zero and later components ignored.
+/// 版本字符串的前三个数字部分，缺少的部分按 0 算，之后的部分忽略。
 fn version_key(version: &str) -> Option<[u64; 3]> {
     let mut key = [0_u64; 3];
     let mut parts = version.trim().split('.');
@@ -91,9 +87,8 @@ fn version_key(version: &str) -> Option<[u64; 3]> {
     Some(key)
 }
 
-/// `KNOWN_RVA` for the version in `Info.plist`: 4.1.8 and later move the code,
-/// so `0` asks for the semantic scan; 4.1.7 and earlier use the 4.1.7 offset.
-/// A build number such as `4.1.7.31` still counts as 4.1.7.
+/// `Info.plist` 中的版本对应的 `KNOWN_RVA`：4.1.8 及以后的代码换了位置，取 `0` 表示按语义扫描；4.1.7 及更早的用
+/// 4.1.7 的偏移。`4.1.7.31` 这样带构建号的版本仍算作 4.1.7。
 pub(super) fn known_rva(version: Option<&str>) -> u64 {
     match version.and_then(version_key) {
         Some(key) if key > LEGACY_LAST_VERSION => 0,
@@ -101,8 +96,8 @@ pub(super) fn known_rva(version: Option<&str>) -> u64 {
     }
 }
 
-/// `/Applications/WeChat.app/Contents/MacOS/WeChat` ->
-/// `/Applications/WeChat.app/Contents/Info.plist`.
+/// 由可执行文件的路径得到 `Info.plist` 的路径，如 `/Applications/WeChat.app/Contents/MacOS/WeChat` ->
+/// `/Applications/WeChat.app/Contents/Info.plist`。
 pub(super) fn info_plist_path(executable: &str) -> Option<String> {
     let end = executable
         .find(".app/")
@@ -111,7 +106,7 @@ pub(super) fn info_plist_path(executable: &str) -> Option<String> {
     Some(format!("{}/Contents/Info.plist", &executable[..end]))
 }
 
-/// `CFBundleShortVersionString` from the bundle's `Info.plist`.
+/// 从应用包的 `Info.plist` 中读出 `CFBundleShortVersionString`。
 pub(super) fn read_version(executable: &str) -> Option<String> {
     let path = info_plist_path(executable)?;
     let plist = std::fs::read_to_string(path).ok()?;

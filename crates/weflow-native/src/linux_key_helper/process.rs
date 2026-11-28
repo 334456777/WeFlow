@@ -1,4 +1,4 @@
-//! `/proc` access shared by the database and image modes.
+//! 数据库模式和图片模式共用的 `/proc` 访问。
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -52,7 +52,7 @@ pub(super) fn mappings(pid: u32) -> io::Result<Vec<Mapping>> {
         .map_err(|error| io_error(&format!("cannot read {path}"), error))?;
     let mut mappings = Vec::new();
     for line in text.lines() {
-        // The inode column is padded and the pathname may contain spaces.
+        // inode 一列有填充的空格，路径名里也可能有空格。
         let mut rest = line;
         let mut fields = [""; 5];
         for field in &mut fields {
@@ -86,8 +86,7 @@ pub(super) fn mappings(pid: u32) -> io::Result<Vec<Mapping>> {
     Ok(mappings)
 }
 
-/// The smallest mapping start of an address range that contains the
-/// executable's path; the helper takes the same minimum.
+/// 路径含有可执行文件路径的各个映射中最小的起始地址；桌面版的辅助程序取的也是这个最小值。
 pub(super) fn base_address(maps: &[Mapping], executable: &Path) -> Option<usize> {
     let executable = executable.to_string_lossy();
     maps.iter()
@@ -117,9 +116,8 @@ pub(super) fn read_memory_partial(pid: u32, address: usize, bytes: &mut [u8]) ->
         iov_base: address as *mut libc::c_void,
         iov_len: bytes.len(),
     };
-    // SAFETY: both iovecs describe live buffers of their own length; the
-    // kernel either fills `bytes` or reports an error.
+    // SAFETY: 两个 iovec 都描述了长度与自身一致的有效缓冲区；内核要么填写 `bytes`，要么报告错误。
     let read = unsafe { libc::process_vm_readv(pid, &raw const local, 1, &raw const remote, 1, 0) };
-    // a negative count is a failure, its cause in errno
+    // 返回负数表示失败，原因在 errno 中
     usize::try_from(read).map_err(|_| io::Error::last_os_error())
 }

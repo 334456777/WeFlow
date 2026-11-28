@@ -1,11 +1,10 @@
-//! The Rust rewrite of WeFlow's Linux key helper, in PR #796.
+//! 用 Rust 重写的桌面版 Linux 取钥辅助程序（#796）。
 //!
-//! The helper, `xkey_helper_linux`, came with the WeFlow desktop app (`hicccc77/WeFlow`, CC BY-NC-SA 4.0: the
-//! `LICENSE` in this folder).
+//! 辅助程序 `xkey_helper_linux` 来自 WeFlow 桌面版（`hicccc77/WeFlow`，CC BY-NC-SA 4.0，许可证见本目录中的
+//! `LICENSE`）。
 //!
-//! `db_scan` and `db_hook` locate and capture the database key for `key db`;
-//! `image_mem` backs `key image-mem`. The command-line compatibility layer is
-//! in `cli`.
+//! `db_scan` 和 `db_hook` 为 `key db` 定位并捕获数据库密钥；`image_mem` 用于 `key image-mem`。
+//! 与桌面版辅助程序兼容的命令行在 `cli` 中。
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod cli;

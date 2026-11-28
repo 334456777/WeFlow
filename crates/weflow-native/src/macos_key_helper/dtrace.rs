@@ -1,16 +1,11 @@
-//! x86_64: reads the database key from WeChat's call to CommonCrypto's
-//! `CCKeyDerivationPBKDF` with DTrace.
+//! x86_64：用 DTrace 从微信对 CommonCrypto 的 `CCKeyDerivationPBKDF` 的调用中读出数据库密钥。
 //!
-//! DTrace runs the probe in the kernel and copies the key from WeChat's
-//! memory; it neither stops nor changes the client, so it does not trip the
-//! hardened runtime the way `thread_set_state` or code writes do. The caller
-//! runs `key db` with `sudo`, which DTrace needs, and userland probes need
-//! System Integrity Protection turned off.
+//! DTrace 在内核中运行探针，从微信的内存中复制密钥；它既不让微信停下，也不修改微信，所以不会像 `thread_set_state`
+//! 或改写代码那样触发强化运行时的拦截。调用方用 `sudo` 运行 `key db`，这是 DTrace 所需要的；
+//! 用户态探针还要求关闭系统完整性保护（SIP）。
 //!
-//! The probe filters the one call whose password is 32 bytes and whose
-//! `rounds` argument is SQLCipher's KDF iteration count: the raw database key
-//! call. The same function derives the HMAC key in 2 rounds, which must not be
-//! taken for the raw key.
+//! 探针只取口令为 32 字节、`rounds` 参数等于 SQLCipher 的 KDF 轮数的那一次调用，即对原始数据库密钥的派生。
+//! 同一个函数还会用 2 轮派生 HMAC 密钥，那一次不能当作原始密钥。
 
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
@@ -21,7 +16,7 @@ const DTRACE: &str = "/usr/sbin/dtrace";
 const KEY_PREFIX: &str = "WEFLOWKEY:";
 const KEY_LEN: usize = 32;
 
-/// A DTrace process that watches WeChat for the database-key call.
+/// 监视微信、等待数据库密钥调用的 DTrace 进程。
 #[derive(Debug)]
 pub struct DTraceHook {
     child: Child,
@@ -30,8 +25,13 @@ pub struct DTraceHook {
 }
 
 impl DTraceHook {
-    /// Starts DTrace on `pid`. It fails when DTrace is missing or refuses the
-    /// probe before the caller can ask the user to log in.
+    /// 在 `pid` 上启动 DTrace。DTrace 不存在或拒绝探针时，在调用方提示用户登录之前就失败。
+    ///
+    /// # Errors
+    ///
+    /// DTrace 启动失败或无法查询它的状态时返回 `dtrace_start_failed:…`、`dtrace_wait_failed:…`。
+    /// DTrace 很快退出时按原因返回：权限不足为 `dtrace_privileges:…`，探针与这个微信不匹配为 `dtrace_probe:…`，
+    /// 其他为 `dtrace_exited:…`。
     pub fn start(pid: u32) -> Result<Self, String> {
         let mut child = Command::new(DTRACE)
             .arg("-q")
@@ -50,8 +50,7 @@ impl DTraceHook {
             stdout,
             stderr,
         };
-        // Give DTrace time to compile the probe; an error (missing
-        // privileges, no matching symbol) ends the process right away.
+        // 给 DTrace 编译探针的时间；出错时（权限不足、找不到匹配的符号）进程会立即结束。
         thread::sleep(Duration::from_millis(300));
         if let Some(status) = hook
             .child
@@ -63,7 +62,12 @@ impl DTraceHook {
         Ok(hook)
     }
 
-    /// Waits for the key, reporting the seconds left through `on_tick`.
+    /// 等待密钥，通过 `on_tick` 报告剩余的秒数。
+    ///
+    /// # Errors
+    ///
+    /// 被中断时返回 `interrupted by user`，超时返回 `HOOK_TIMEOUT:no_breakpoint_hit`；
+    /// DTrace 退出却没有输出密钥时，按 `classify_failure` 的规则返回原因。
     pub fn wait(
         &mut self,
         timeout: Duration,
@@ -138,7 +142,7 @@ fn read_to_string<R: Read>(reader: Option<R>) -> String {
     text
 }
 
-/// The key from a `WEFLOWKEY:<64 hex digits>` line, if any.
+/// 从 `WEFLOWKEY:<64 hex digits>` 这一行取出密钥；没有这一行时为 `None`。
 fn parse_key(output: &str) -> Option<String> {
     output.lines().find_map(|line| {
         let hex = line.strip_prefix(KEY_PREFIX)?.trim();
@@ -147,8 +151,7 @@ fn parse_key(output: &str) -> Option<String> {
     })
 }
 
-/// A DTrace failure with the reason the caller needs: missing privileges,
-/// a probe that does not match this WeChat, or anything else.
+/// 把 DTrace 的失败归为调用方需要区分的原因：权限不足、探针与这个微信不匹配，或者其他。
 fn classify_failure(status: std::process::ExitStatus, error: &str) -> String {
     let message = error.trim();
     if message.contains("requires additional privileges")
@@ -170,7 +173,7 @@ fn classify_failure(status: std::process::ExitStatus, error: &str) -> String {
     }
 }
 
-/// The D program: on the raw-key call copy 32 bytes of `arg1` and print them.
+/// D 程序：在对原始密钥的那次调用上复制 `arg1` 处的 32 字节并打印出来。
 fn probe() -> String {
     let format = "%02x".repeat(KEY_LEN);
     let arguments = (0..KEY_LEN)

@@ -1,9 +1,8 @@
-//! Database-key extraction, one implementation of [`WxKey`] per platform.
+//! 获取数据库密钥，每个平台各有一份 [`WxKey`] 的实现。
 
 use anyhow::Result;
 
-/// Database-key extraction on a platform without an implementation; `is_available` is false and
-/// `key db` reports that.
+/// 没有实现的平台上的数据库密钥获取：`is_available` 为 `false`，`key db` 会报告这一点。
 #[cfg(not(any(
     windows,
     target_os = "macos",
@@ -18,17 +17,25 @@ pub struct WxKey;
     all(target_os = "linux", target_arch = "x86_64")
 )))]
 impl WxKey {
-    /// The extractor of this platform.
+    /// 这个平台的取钥实现。
+    ///
+    /// # Errors
+    ///
+    /// 总是返回 `Ok`。
     pub fn new() -> Result<Self> {
         Ok(Self)
     }
 
-    /// Always false.
+    /// 总是 `false`：这个平台不支持获取数据库密钥。
     pub fn is_available(&self) -> bool {
         false
     }
 
-    /// Always fails: there is no extraction on this platform.
+    /// 总是失败：这个平台不支持获取数据库密钥。
+    ///
+    /// # Errors
+    ///
+    /// 总是返回 [`DbKeyError::Other`]。
     pub fn get_db_key_with_tick(
         &self,
         _pid: u32,
@@ -42,29 +49,33 @@ impl WxKey {
     }
 }
 
-/// Database-key extraction on Windows: a hook in the WeChat process catches the key when the user logs in.
+/// Windows 上的数据库密钥获取：在微信进程中挂钩，用户登录时截获密钥。
 #[cfg(windows)]
 #[derive(Clone, Copy, Debug)]
 pub struct WxKey;
 
 #[cfg(windows)]
 impl WxKey {
-    /// The extractor of this platform.
+    /// 这个平台的取钥实现。
+    ///
+    /// # Errors
+    ///
+    /// 总是返回 `Ok`。
     pub fn new() -> Result<Self> {
         Ok(Self)
     }
-    /// Whether this build can extract the key: on x64 only.
+    /// 这个构建能否获取密钥：只有 x64 能。
     pub fn is_available(&self) -> bool {
         cfg!(target_arch = "x86_64")
     }
-    /// Hooks the WeChat process `pid` and waits up to `timeout` for the key, as 64 lowercase hex characters.
+    /// 挂钩微信进程 `pid`，最多等待 `timeout`，得到 64 个小写十六进制字符的密钥。
     ///
-    /// `on_status` hears each step with a level (0 information, 1 progress, 2 a failure's diagnostics); `on_tick`
-    /// hears the seconds left whenever they change.
+    /// `on_status` 收到每一步的消息和级别（0 为信息，1 为进度，2 为失败时的诊断）；
+    /// `on_tick` 在剩余秒数变化时收到剩余的秒数。
     ///
     /// # Errors
-    /// [`DbKeyError`]: the process cannot be opened or is not ready, no key came in time, or the run was
-    /// interrupted.
+    ///
+    /// 返回 [`DbKeyError`]：进程无法打开或还没准备好、超时没有得到密钥，或者被中断。
     pub fn get_db_key_with_tick(
         &self,
         pid: u32,
@@ -132,24 +143,32 @@ impl WxKey {
     }
 }
 
-/// Database-key extraction on Linux x64: `ptrace` stops WeChat where it takes the key.
+/// Linux x64 上的数据库密钥获取：用 `ptrace` 让微信停在接收密钥的位置。
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[derive(Clone, Copy, Debug)]
 pub struct WxKey;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl WxKey {
-    /// The extractor of this platform.
+    /// 这个平台的取钥实现。
+    ///
+    /// # Errors
+    ///
+    /// 总是返回 `Ok`。
     pub fn new() -> Result<Self> {
         Ok(Self)
     }
 
-    /// Always true.
+    /// 总是 `true`。
     pub fn is_available(&self) -> bool {
         true
     }
 
-    /// Reads WeChat's ELF image, attaches with ptrace, and waits for the key.
+    /// 读取微信的 ELF 映像，用 ptrace 附加到进程上，等待密钥。
+    ///
+    /// # Errors
+    ///
+    /// 返回 [`DbKeyError`]：无法附加到进程、进程还没准备好、超时没有得到密钥，或者被中断。
     pub fn get_db_key_with_tick(
         &self,
         pid: u32,
@@ -169,6 +188,7 @@ impl WxKey {
     }
 }
 
+/// 按报错的文字判断 Linux 取钥失败的种类。
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn db_key_error(message: String) -> DbKeyError {
     if message == "interrupted by user" {
@@ -189,26 +209,33 @@ fn db_key_error(message: String) -> DbKeyError {
     }
 }
 
-/// Database-key extraction on macOS: DTrace on x86_64, `ptrace` at the key's sink on ARM64.
+/// macOS 上的数据库密钥获取：x86_64 上用 DTrace，ARM64 上用 `ptrace` 停在密钥的 sink 处。
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug)]
 pub struct WxKey;
 
 #[cfg(target_os = "macos")]
 impl WxKey {
-    /// The extractor of this platform.
+    /// 这个平台的取钥实现。
+    ///
+    /// # Errors
+    ///
+    /// 总是返回 `Ok`。
     pub fn new() -> Result<Self> {
         Ok(Self)
     }
 
-    /// Always true.
+    /// 总是 `true`。
     pub fn is_available(&self) -> bool {
         true
     }
 
-    /// On x86_64 the key comes from DTrace watching WeChat's call to
-    /// CommonCrypto's `CCKeyDerivationPBKDF`; on ARM64 the Rust scanner finds
-    /// the database-key sink and `ptrace` stops the client there.
+    /// x86_64 上由 DTrace 监视微信对 CommonCrypto 的 `CCKeyDerivationPBKDF` 的调用，从中得到密钥；
+    /// ARM64 上由 Rust 写的扫描器找到数据库密钥的 sink，再用 `ptrace` 让微信停在那里。
+    ///
+    /// # Errors
+    ///
+    /// 返回 [`DbKeyError`]：无法附加到进程或权限不足、找不到 sink、超时没有得到密钥，或者被中断。
     pub fn get_db_key_with_tick(
         &self,
         pid: u32,
@@ -245,7 +272,7 @@ impl WxKey {
     }
 }
 
-/// The kind of a failure of the macOS hook, from its message.
+/// 按报错的文字判断 macOS 取钥失败的种类。
 #[cfg(any(target_os = "macos", test))]
 fn macos_db_key_error(message: String) -> DbKeyError {
     if message == "interrupted by user" {
@@ -272,21 +299,21 @@ fn macos_db_key_error(message: String) -> DbKeyError {
     }
 }
 
-/// Why the database key was not extracted.
+/// 没有取得数据库密钥的原因。
 #[derive(Debug, PartialEq, Eq)]
 pub enum DbKeyError {
-    /// The process could not be opened (needs administrator rights / a security product interferes).
+    /// 无法打开微信进程（需要管理员权限，或者安全软件阻止了访问）。
     AccessDenied(String),
-    /// No key came before the time ran out: the user did not log in, or WeChat did not take the key.
+    /// 超时前没有得到密钥：用户没有登录，或者微信没有用到密钥。
     Timeout,
-    /// The run was interrupted (Ctrl+C).
+    /// 运行被中断（Ctrl+C）。
     Interrupted,
-    /// WeChat has just started and its modules are not ready for inspection.
+    /// 微信刚刚启动，模块还没准备好，无法检查。
     NotReady(String),
-    /// The hook found nowhere to stop in this WeChat (macOS: no module to scan, or no call that takes the database
-    /// key in it): another try finds the same (#806).
+    /// 在这个版本的微信里找不到可以停下的位置（macOS：没有可扫描的模块，或者模块中没有接收数据库密钥的调用）：
+    /// 再试一次结果也一样（#806）。
     Unsupported(String),
-    /// Any other failure, as the hook said it.
+    /// 其他失败，内容是取钥代码给出的报错。
     Other(String),
 }
 
@@ -305,7 +332,7 @@ impl std::fmt::Display for DbKeyError {
 mod tests {
     use super::*;
 
-    /// The messages of the macOS hook (`macos_key_helper::platform`) and the kind each is taken for (#806).
+    /// macOS 取钥代码（`macos_key_helper::platform`）的报错，以及每一条被判断成的种类（#806）。
     #[test]
     fn the_macos_hooks_failures_are_told_apart() {
         let kind = |m: &str| macos_db_key_error(m.to_string());
