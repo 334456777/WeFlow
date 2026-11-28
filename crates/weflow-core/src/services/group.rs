@@ -13,6 +13,7 @@ use crate::contract::{
     EmojiCount, GroupChat, GroupExported, GroupHours, GroupMedia, GroupMember, GroupRank,
     MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
+use crate::export_msg::names::{build_trusted_group_nicknames, resolve_group_nickname};
 use crate::export_msg::{csv_text_cell, write_csv};
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::rx;
@@ -103,68 +104,29 @@ pub(crate) fn build_id_candidates(values: &[&str]) -> Vec<String> {
     out
 }
 
-fn normalize_group_nickname(v: &str) -> String {
-    let t = v.trim();
-    if t.is_empty() || rx(r#"^["'@]+$"#).is_match(t) {
-        String::new()
-    } else {
-        t.to_string()
-    }
-}
-
-/// The group nicknames the members can be trusted to have, of `candidates` only.
+/// The group nicknames the members can be trusted to have ([`build_trusted_group_nicknames`]), of `candidates` only;
+/// of every member when there are none.
 fn trusted_nicknames(
     entries: &Map<String, Value>,
     candidates: &[String],
 ) -> HashMap<String, String> {
-    let candidate_set: HashSet<String> = candidates
+    let wanted: HashSet<String> = candidates
         .iter()
         .map(|c| c.trim().to_lowercase())
         .filter(|c| !c.is_empty())
         .collect();
-    let mut buckets: HashMap<String, HashSet<String>> = HashMap::new();
-    for (id, nick) in entries {
-        let identity = id.trim().to_lowercase();
-        if identity.is_empty() || (!candidate_set.is_empty() && !candidate_set.contains(&identity))
-        {
-            continue;
-        }
-        let nickname = normalize_group_nickname(nick.as_str().unwrap_or(""));
-        if nickname.is_empty() {
-            continue;
-        }
-        buckets.entry(identity).or_default().insert(nickname);
-    }
-    buckets
-        .into_iter()
-        .filter_map(|(k, v)| {
-            if v.len() == 1 {
-                v.into_iter().next().map(|n| (k, n))
-            } else {
-                None
-            }
-        })
-        .collect()
+    build_trusted_group_nicknames(
+        entries
+            .iter()
+            .filter(|(id, _)| wanted.is_empty() || wanted.contains(&id.trim().to_lowercase()))
+            .map(|(id, nick)| (id.clone(), nick.as_str().unwrap_or_default().to_string())),
+    )
 }
 
+/// The group nickname of the identities `candidates` ([`resolve_group_nickname`]).
 fn resolve_nickname(map: &HashMap<String, String>, candidates: &[String]) -> String {
-    let mut resolved = String::new();
-    for id in candidates {
-        let key = id.trim().to_lowercase();
-        if key.is_empty() {
-            continue;
-        }
-        let cand = normalize_group_nickname(map.get(&key).map(String::as_str).unwrap_or(""));
-        if cand.is_empty() {
-            continue;
-        }
-        if resolved.is_empty() {
-            resolved = cand;
-        } else if resolved != cand {
-            return String::new();
-        }
-    }
-    resolved
+    let candidates: Vec<&str> = candidates.iter().map(String::as_str).collect();
+    resolve_group_nickname(map, &candidates)
 }
 
 // ── owner detection ──
