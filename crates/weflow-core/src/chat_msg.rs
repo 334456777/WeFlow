@@ -13,15 +13,16 @@ use weflow_native::msg_row::MsgRow;
 use weflow_native::quote::{reply_text, QUOTE};
 
 use crate::api::js_parse_int;
-use crate::message::appmsg::{app_type, kind_by_keywords, kind_of_app_type, without_quoted};
+use crate::message::appmsg::{kind_by_keywords, kind_of_app_type, without_quoted};
 use crate::message::emoji::percent_decode;
 use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message, pat_text};
-use crate::message::transfer::{is_same_wxid, transfer_text};
+use crate::message::transfer::is_same_wxid;
 use crate::message::xml::{
     decode_text_entities, extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content,
     strip_sender_line, strip_sender_prefix, xml_text,
 };
+use crate::message::{app_message_text_as, TextForm};
 use crate::xml::decode_entities;
 
 // ───────────────────────── text helpers ─────────────────────────
@@ -144,77 +145,19 @@ fn location_label_by(attr: impl Fn(&str) -> String, text: impl Fn(&str) -> Strin
     ])
 }
 
-/// `parseType49`: the display string for appmsg content. Its kind is the one its own `<type>` gives it, as the
-/// chat window's `appMsgKind` and the exports have it; the words of its XML only count when the type says nothing,
-/// and never those of the message a reply quotes (#1165). `sender` and `my_wxid` tell a transfer's side, as in the
-/// exports (#1185).
+/// The line the chat window shows for an app message: the exports' text of it ([`app_message_text_as`]) in
+/// [`TextForm::Line`], so a reply is its own words and a chat record or a note its title (#1263); `sender` and
+/// `my_wxid` tell a transfer's side (#1185). Its title, else `[消息]`, for a type and a kind the table does not know.
 fn parse_type49(content: &str, sender: Option<&str>, my_wxid: Option<&str>) -> String {
-    let title = extract_xml_value(content, "title");
-    let ty = app_xml_type(content);
-    let own = without_quoted(content);
-    let location_label = location_label_of(&own);
-    let kind = kind_of_app_type(&ty).or_else(|| kind_by_keywords(&own));
-    let is_finder = kind == Some("finder");
-    let is_red_packet = kind == Some("red-packet");
-    let is_music = kind == Some("music");
-
-    if ty == "87" {
-        let t = extract_xml_value(content, "textannouncement");
-        return if t.is_empty() {
-            "[群公告]".into()
+    let x = crate::message::xml::MsgXml::new(content);
+    app_message_text_as(&x, 49, my_wxid, sender, TextForm::Line).unwrap_or_else(|| {
+        let title = xml_text(x.once(), "title");
+        if title.is_empty() {
+            "[消息]".into()
         } else {
-            format!("[群公告] {t}")
-        };
-    }
-    if ty == "2000" {
-        return transfer_text(content, my_wxid, sender);
-    }
-    if is_finder {
-        return if title.is_empty() {
-            "[视频号]".into()
-        } else {
-            format!("[视频号] {title}")
-        };
-    }
-    if is_red_packet {
-        return if title.is_empty() {
-            "[红包]".into()
-        } else {
-            format!("[红包] {title}")
-        };
-    }
-    if !location_label.is_empty() {
-        return format!("[位置] {location_label}");
-    }
-    if is_music {
-        return if title.is_empty() {
-            "[音乐]".into()
-        } else {
-            format!("[音乐] {title}")
-        };
-    }
-    // the tag of the type, from the table the exports' text reads too (#1180)
-    let row = app_type(&ty);
-    if ty == "8" {
-        return row.map_or("[表情]", |row| row.tag).into();
-    }
-    if !title.is_empty() {
-        return match (ty.as_str(), row) {
-            ("57", _) => title,
-            ("53", _) => {
-                let first = title
-                    .split('\n')
-                    .map(|l| l.trim())
-                    .find(|l| !l.is_empty())
-                    .unwrap_or(&title)
-                    .to_string();
-                format!("[接龙] {first}")
-            }
-            (_, Some(row)) => format!("{} {title}", row.tag),
-            (_, None) => title,
-        };
-    }
-    row.map_or("[消息]", |row| row.tag).into()
+            title
+        }
+    })
 }
 
 /// The line the chat window shows for any message
@@ -245,6 +188,8 @@ fn parsed_content(
     if local_type == 1 {
         return strip_sender_line(&clean_utf16(content), sender);
     }
+    // an app message is read as the exports read it, its entities decoded once (#1263)
+    let raw = clean_utf16(content);
     let content = clean_utf16(&decode_entities(content));
     let xml_type = extract_xml_value(&content, "type");
     let looks_app = content.contains("<appmsg") || content.contains("&lt;appmsg");
@@ -253,7 +198,8 @@ fn parsed_content(
         34 => "[语音消息]".into(),
         42 => "[名片]".into(),
         43 => "[视频]".into(),
-        47 => "[动画表情]".into(),
+        // the exports' tag, without the caption the chat window does not read (#1263)
+        47 => crate::message::emoji::format_emoji_semantic_text(None),
         48 => {
             let label = location_label_of(&content);
             if label.is_empty() {
@@ -262,11 +208,11 @@ fn parsed_content(
                 format!("[位置] {label}")
             }
         }
-        49 => parse_type49(&content, sender, my_wxid),
+        49 => parse_type49(&raw, sender, my_wxid),
         50 => parse_voip_message(&content),
         10000 => system_message_text(&content),
         // an app message kept as `(<type> << 32) | 49` reads as one kept as 49 (#1180)
-        l if l & 0xFFFF_FFFF == 49 && looks_app => parse_type49(&content, sender, my_wxid),
+        l if l & 0xFFFF_FFFF == 49 && looks_app => parse_type49(&raw, sender, my_wxid),
         81604378673 => "[聊天记录]".into(),
         8594229559345 => "[红包]".into(),
         8589934592049 => "[转账]".into(),
@@ -288,7 +234,7 @@ fn parsed_content(
                 };
             }
             if looks_app {
-                return parse_type49(&content, sender, my_wxid);
+                return parse_type49(&raw, sender, my_wxid);
             }
             let generic = extract_xml_value(&content, "title");
             if !generic.is_empty() && generic.chars().count() < 100 {
@@ -1239,6 +1185,7 @@ fn chat_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::appmsg::app_type;
 
     /// The chat window's text of a message, read without the account's wxid.
     fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
@@ -1571,6 +1518,50 @@ mod tests {
                 "{xml}"
             );
         }
+    }
+
+    /// The chat window words an app message as the exports do, by the one table (#1263), in one line: a reply by its
+    /// own words, a chat record and a note by their titles.
+    #[test]
+    fn the_chat_window_words_app_messages_as_the_exports_do() {
+        let export = |xml: &str| crate::message::parse_message_content(xml, 49, None, None, None);
+        for ty in [
+            "3", "76", "4", "5", "49", "6", "8", "33", "36", "51", "53", "62", "87", "2001", "115",
+            "999",
+        ] {
+            let xml = format!(
+                "<msg><appmsg><title>T</title><type>{ty}</type><url>https://a</url></appmsg></msg>"
+            );
+            assert_eq!(
+                Some(super::parsed_content(&xml, 49, None, None)),
+                export(&xml),
+                "<type> {ty}"
+            );
+        }
+        // a type the table does not know, by the kind its XML gives it
+        let finder = "<msg><appmsg><title>直播</title><type>63</type>\
+                      <finderUsername>v2_x</finderUsername></appmsg></msg>";
+        assert_eq!(
+            super::parsed_content(finder, 49, None, None),
+            "[视频号] 直播"
+        );
+        assert_eq!(export(finder).as_deref(), Some("[视频号] 直播"));
+        // one line in the chat window, all of it in the exports
+        let record = "<msg><appmsg><title>群聊的聊天记录</title><type>19</type><recorditem>\
+                      &lt;recordinfo&gt;&lt;datalist&gt;&lt;dataitem datatype=\"1\"&gt;&lt;sourcename&gt;A\
+                      &lt;/sourcename&gt;&lt;datadesc&gt;早&lt;/datadesc&gt;&lt;/dataitem&gt;&lt;/datalist&gt;\
+                      &lt;/recordinfo&gt;</recorditem></appmsg></msg>";
+        assert_eq!(
+            super::parsed_content(record, 49, None, None),
+            "[聊天记录] 群聊的聊天记录"
+        );
+        assert_ne!(export(record).as_deref(), Some("[聊天记录] 群聊的聊天记录"));
+        let note = "<msg><appmsg><title>清单</title><type>24</type><des>买菜</des></appmsg></msg>";
+        assert_eq!(super::parsed_content(note, 49, None, None), "[笔记] 清单");
+        assert_eq!(
+            super::parsed_content("<msg><emoji md5=\"a\"/></msg>", 47, None, None),
+            "[表情]"
+        );
     }
 
     /// The chat window and the exports give an app message the same kind as WeChat keeps it (#1241): a `<type>` in

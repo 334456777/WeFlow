@@ -80,10 +80,16 @@ pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
     })
 }
 
-/// The row of the types whose kind is `kind` (an official account's article is a link), for a message whose kind its
-/// XML gives rather than its `<type>`; `None` for a kind with no row (a card, a gift, a place).
+/// The row of the types whose kind is `kind` ([`type_of_kind`]), for a message whose kind its XML gives rather than
+/// its `<type>`; `None` for a kind with no row (a card, a gift, a place).
 pub(crate) fn row_of_kind(kind: &str) -> Option<AppType> {
-    app_type(match kind {
+    app_type(type_of_kind(kind)?)
+}
+
+/// A `<type>` of the table whose kind is `kind` (an official account's article is a link); `None` for a kind with no
+/// row (a card, a gift, a place).
+pub(crate) fn type_of_kind(kind: &str) -> Option<&'static str> {
+    Some(match kind {
         "music" => "3",
         "link" | "official-link" => "5",
         "file" => "6",
