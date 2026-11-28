@@ -7,6 +7,11 @@ use Verb::*;
 /// Commands that are not reachable over HTTP.
 pub(super) const HIDDEN: &[&str] = &["serve"];
 
+/// Commands that report what the server holds in its own process rather than what is in the files: the image
+/// auto-download hook it runs and the counts of its insight engine. `serve` answers them itself (`own_state`), as a
+/// command run in a child process would report a state of its own, which holds none of it (#1264).
+pub(super) const OWN_STATE: &[&str] = &["image auto-download status", "insight today-stats"];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Verb {
     Get,
@@ -217,6 +222,17 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for (p, _) in METHODS {
             assert!(seen.insert(*p), "{p} is listed twice");
+        }
+    }
+
+    #[test]
+    fn own_state_names_real_commands() {
+        let leaves = all_leaves();
+        for command in OWN_STATE {
+            assert!(
+                leaves.iter().any(|l| l == command),
+                "{command} is no command"
+            );
         }
     }
 

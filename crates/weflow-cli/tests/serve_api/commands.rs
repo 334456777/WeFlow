@@ -749,3 +749,87 @@ fn insight_clear_wants_yes() {
     assert_eq!(done.status, 200, "{}", done.body);
     assert_eq!(done.json()["data"]["removed"], 2);
 }
+
+/// `insight today-stats` is answered by the server itself (#1264): the counts are kept by the insight engine in the
+/// server's process, which a command in a child process would not see. A message newer than the server's start is
+/// activity, the engine writes about it, and the route counts that.
+#[test]
+fn today_stats_reads_the_server_engine() {
+    use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, SessionSpec};
+    let fake = weflow_fake_model::FakeModel::start().unwrap();
+    let root = temp_root("insight-today-stats");
+    let fixture = Fixture::new(&root.path().join("data"), "wxid_me_ab12");
+    // after the engine's start, which comes after this
+    let later = unix_now() + 600;
+    fixture.contact_db(
+        &[
+            ContactSpec::new("wxid_me", 1, "Me Nick"),
+            ContactSpec::new("wxid_bob", 1, "Bob"),
+        ],
+        &[],
+    );
+    fixture.session_db(&[SessionSpec {
+        username: "wxid_bob",
+        summary: "news",
+        last_timestamp: later,
+        unread: 1,
+        last_msg_type: 1,
+    }]);
+    fixture.message_shard(
+        0,
+        &[(
+            "wxid_bob",
+            vec![
+                MsgSpec::text(1, "wxid_bob", later - 86_400, "yesterday"),
+                MsgSpec::text(2, "wxid_bob", later, "news"),
+            ],
+        )],
+    );
+    let home = root.path().join("home");
+    let base = fake.openai_base_url();
+    let key_hex = fixture.key_hex();
+    let db_path = fixture.account_dir.to_string_lossy().to_string();
+    for (key, value) in [
+        ("db_path", db_path.as_str()),
+        ("wxid", "wxid_me_ab12"),
+        ("decrypt_key", key_hex.as_str()),
+        ("serve_image_auto_download", "false"),
+        ("ai_model_api_base_url", base.as_str()),
+        ("ai_model_api_key", weflow_fake_model::KEY),
+        ("ai_model_api_model", "fake-chat"),
+        ("ai_insight_enabled", "true"),
+        ("ai_insight_filter_mode", "whitelist"),
+        ("ai_insight_filter_list", r#"["wxid_bob"]"#),
+        ("ai_insight_notification_enabled", "false"),
+    ] {
+        let (exit, _, stderr) = run_cli(&home, &["config", "set", key, value]);
+        assert_eq!(exit, 0, "{key}: {stderr}");
+    }
+    let server = start(&home, &["--api-token", TOKEN, "--insight"]);
+
+    // the engine looks every 5 s
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let written = loop {
+        let r = server.call("GET", "/insight/records", "");
+        assert_eq!(r.status, 200, "{}", r.body);
+        if r.json()["data"]["total"].as_i64() == Some(1) {
+            break r.json()["data"]["records"][0].clone();
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no insight written: {:?}\n{}",
+            fake.requests(),
+            server.stderr.lock().unwrap().join("\n")
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
+    assert_eq!(written["sessionId"], "wxid_bob", "{written}");
+
+    let r = server.call("GET", "/insight/today-stats", "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let stats = r.json()["data"].clone();
+    let rows = stats.as_array().unwrap();
+    assert_eq!(rows.len(), 1, "{stats}");
+    assert_eq!(rows[0]["sessionId"], "wxid_bob", "{stats}");
+    assert_eq!(rows[0]["count"], 1, "{stats}");
+}
