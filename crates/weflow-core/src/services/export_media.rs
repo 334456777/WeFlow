@@ -1,5 +1,5 @@
-//! The media of messages copied out of WeChat (`export media`, and the exports that take `--media`): each
-//! message's image, voice, video, sticker or file, and the avatars of who speaks or of a list's rows.
+//! 从微信中复制出消息的媒体（`export media`，以及带 `--media` 的导出）：每条消息的图片、语音、视频、表情或文件，
+//! 以及发言者或列表各行的头像。
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -16,7 +16,7 @@ use crate::sync::MutexExt;
 use weflow_native::msg::Order;
 
 impl ServiceHub {
-    /// The cached fetch of a sticker by CDN URL.
+    /// 按 CDN 地址下载表情，已下载过的直接取缓存。
     async fn chat_download_emoji(&self, cdn_url: &str, md5: Option<&str>) -> AppResult<PathBuf> {
         if cdn_url.is_empty() {
             return Err(AppError::usage("invalid CDN URL"));
@@ -37,13 +37,13 @@ impl ServiceHub {
                 return Ok(p);
             }
         }
-        // certificates are checked but on the sticker hosts whose certificate names another host (#814)
+        // 校验证书，只有证书上写着别的主机名的那几台表情主机除外（#814）
         let client = crate::http_client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .danger_accept_invalid_certs(crate::http_client::sticker_certificate_unchecked(cdn_url))
             .build()
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;
-        // the client follows redirects itself (reqwest's default policy): the response is the last one
+        // 客户端自己跟随重定向（reqwest 的默认策略）：拿到的响应是最后一个
         let resp = client
             .get(cdn_url)
             .send()
@@ -52,7 +52,7 @@ impl ServiceHub {
         if resp.status().as_u16() != 200 {
             return Err(AppError::runtime("download failed"));
         }
-        // where the sticker came from, after the redirects: its name may tell the format the bytes do not
+        // 重定向之后表情的实际地址：字节看不出格式时，地址里的文件名也许能看出来
         let url = resp.url().to_string();
         let bytes = resp
             .bytes()
@@ -133,8 +133,8 @@ impl ServiceHub {
         self.export_local_media(msg, talker, safe_talker, session_dir, opts, None)
     }
 
-    /// Copies the media of `msgs` into `<out dir>/media/<out name>/{images,voices,videos,emojis,files}` and records
-    /// each file on its message; the avatars asked for go to `avatars/` beside them (see [`Self::export_avatars`]).
+    /// 把 `msgs` 的媒体复制到 `<out dir>/media/<out name>/{images,voices,videos,emojis,files}`，
+    /// 并把每个文件记在它的消息上；要求的头像放在旁边的 `avatars/` 中（见 [`Self::export_avatars`]）。
     pub(super) async fn attach_export_media(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -166,7 +166,7 @@ impl ServiceHub {
             video_md5: m.video_md5.clone(),
             emoji_cdn_url: m.emoji_cdn_url.clone(),
             emoji_md5: m.emoji_md5.clone(),
-            // what finds a file message's file
+            // 用来找到文件消息的文件
             t49: is_file_message(m.xml_type.as_deref()).then(|| {
                 Box::new(chat_msg::Type49Info {
                     xml_type: m.xml_type.clone(),
@@ -180,7 +180,7 @@ impl ServiceHub {
         let safe = api::sanitize_file_name(session_id, "session");
         let total = todo.len();
         let mut results: Vec<Option<ApiExportedMedia>> = (0..total).map(|_| None).collect();
-        // one counter for both passes, so the progress never steps back
+        // 两轮共用一个计数器，进度不会倒退
         let finished = std::sync::atomic::AtomicUsize::new(0);
         {
             let local: Vec<usize> = (0..total).filter(|k| !in_order(&msgs[todo[*k]])).collect();
@@ -214,9 +214,8 @@ impl ServiceHub {
             for (k, r) in found.into_inner_or_panic() {
                 results[k] = r;
             }
-            // An image whose own file is not on disk is still exported when another message shows the same image
-            // (same md5) and that one was found first: its result is remembered (`image_state`). Which message came
-            // first depends on the threads, so look again now that all of them are done.
+            // 图片自己的文件不在磁盘上、但另一条消息显示同一张图（md5 相同）且那条先找到时，仍然导出：
+            // 那次的结果记在 `image_state` 中。哪条消息先处理取决于线程，所以等全部完成后再找一次。
             for &k in &local {
                 if results[k].is_none() && shared[todo[k]].local_type == 3 {
                     results[k] = self.export_local_media(
@@ -281,8 +280,8 @@ impl ServiceHub {
         }
     }
 
-    /// The avatars of who speaks in `msgs` (the user, the other side of a private chat, a group's members) written
-    /// to `<session_dir>/avatars/` (see [`Self::write_avatars`]).
+    /// `msgs` 中发言者（账号所有者、私聊的对方、群成员）的头像，
+    /// 写到 `<session_dir>/avatars/`（见 [`Self::write_avatars`]）。
     async fn export_avatars(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -311,9 +310,14 @@ impl ServiceHub {
             .await
     }
 
-    /// The avatars of the rows of a list (`export sessions`, `export contacts` with `--media avatar`) for its HTML
-    /// page, written to `media/<out name>/avatars/` beside `out` as `write_avatars` does. Returns
-    /// `{ username: path from the page }` for those written.
+    /// 列表（带 `--media avatar` 的 `export sessions`、`export contacts`）各行的头像，供它的 HTML 页面使用。
+    ///
+    /// 与 `write_avatars` 一样写到 `out` 旁边的 `media/<out name>/avatars/`，返回写出的那些头像：
+    /// 用户名到相对页面的路径的对应表。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误。
     pub async fn export_list_avatars(
         &self,
         users: Vec<String>,
@@ -327,9 +331,10 @@ impl ServiceHub {
             .await)
     }
 
-    /// The avatars of `users` written to `<dir>/avatars/`: WeChat's copy on this computer, else, with
-    /// [`AvatarSource::Download`](api::AvatarSource::Download), the picture at the contact's avatar address. Returns
-    /// `{ username: <prefix>/avatars/<file> }` for those written; the others keep the page's initial.
+    /// 把 `users` 的头像写到 `<dir>/avatars/`：用本机上微信保存的头像；没有时，
+    /// 来源为 [`AvatarSource::Download`](api::AvatarSource::Download) 就下载联系人头像地址上的图片。
+    ///
+    /// 返回写出的那些：`{ username: <prefix>/avatars/<file> }`；其余的在页面上仍显示首字。
     async fn write_avatars(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -374,7 +379,7 @@ impl ServiceHub {
             .into_iter()
             .filter_map(|(user, bytes)| {
                 let ext = crate::image::ImageFormat::of(&bytes).map_or(".jpg", |f| f.extension());
-                // named by the user's id, which may hold characters a file name cannot
+                // 用用户 ID 的哈希命名：ID 里可能有文件名不能用的字符
                 let hash: String = {
                     use md5::{Digest, Md5};
                     Md5::digest(user.as_bytes())
@@ -390,8 +395,8 @@ impl ServiceHub {
             .collect()
     }
 
-    /// Images, voices and videos: everything that needs no network, so it can run on several threads (sharing
-    /// `run`, the export they belong to, see [`ExportRun`]).
+    /// 图片、语音和视频：不需要联网的媒体，所以可以在多个线程上处理（共用 `run`，即它们所属的这次导出，
+    /// 见 [`ExportRun`]）。
     fn export_local_media(
         &self,
         msg: &ChatMessage,
@@ -414,7 +419,7 @@ impl ServiceHub {
             put_media(&to, (kind, sub), file_name, source, thumbnail)
         };
         if msg.local_type == 3 && opts.images {
-            // the folders and indexes the images are looked up in are checked once for the whole export
+            // 查找图片用的目录和索引在整次导出中只检查一次
             let since = run.map_or_else(Since::now, |r| r.since);
             let payload = ImagePayload {
                 session_id: Some(talker.to_string()),
@@ -425,7 +430,7 @@ impl ServiceHub {
                 prefer_file_path: true,
                 ..Default::default()
             };
-            // what is decrypted just now is written here; only images converted from WXGF are cached as well
+            // 刚解密的图片写在这里；只有从 WXGF 转换来的图片同时写进缓存
             let decrypted = self.image_decrypt_data(&payload, since, CacheWrites::OnlyWxgf);
             let (bytes, thumbnail) = match decrypted.fresh {
                 Some(fresh) => (fresh.data, fresh.thumbnail),
@@ -534,48 +539,46 @@ impl ServiceHub {
     }
 }
 
-/// What an exported file holds, best last: a full rendition before a thumbnail, then the larger file.
+/// 导出文件内容的优劣，最好的最大：完整版胜过缩略图，其次比文件大小。
 type MediaRank = (bool, u64);
 
-/// The files one media export writes, with the rank of what each holds. Messages that share an image share its
-/// file, and the media threads export them side by side: whichever gets there first, the HD rendition replaces a
-/// thumbnail, so the export does not depend on the threads' order (issue #52).
+/// 一次媒体导出写的文件，以及每个文件内容的优劣。
 ///
-/// A new file is written in place, without a temporary file renamed into place: on Windows the rename went through
-/// every file system filter again and took about half the time of an export with media. A file cut short when the
-/// process is killed is caught by [`INCOMPLETE`]: each folder holds that marker while the export writes into it, and
-/// dropping this takes the markers out again.
+/// 共用一张图片的消息共用它的文件，媒体线程同时导出它们：不论谁先到，高清版都会替换缩略图，
+/// 所以导出的结果不取决于线程的先后（#52）。
+///
+/// 新文件直接写在原位，不经过临时文件再改名：在 Windows 上改名会再经过一遍所有文件系统过滤驱动，
+/// 约占带媒体的导出一半的时间。进程被杀掉时写了一半的文件由 [`INCOMPLETE`] 发现：导出往某个文件夹写文件期间，
+/// 文件夹里有这个标记，丢弃 `ExportedFiles` 时再把标记删掉。
 #[derive(Default)]
 pub(super) struct ExportedFiles {
     written: std::sync::Mutex<Written>,
-    /// Signalled when a thread is done writing a file, for the threads waiting to write the same one.
+    /// 某个线程写完一个文件时发出信号，通知等着写同一个文件的线程。
     done: std::sync::Condvar,
 }
 
-/// What [`ExportedFiles`] holds.
+/// [`ExportedFiles`] 保存的内容。
 #[derive(Default)]
 struct Written {
     ranks: HashMap<PathBuf, MediaRank>,
-    /// The folders written into so far, and what was in each before.
+    /// 到目前为止写过的文件夹，以及每个文件夹在导出之前的状态。
     folders: HashMap<PathBuf, Folder>,
-    /// The files a thread is writing now. Only the threads that write the same file wait for one another: a file is
-    /// written outside the lock, so the threads write different files side by side.
+    /// 线程正在写的文件。只有写同一个文件的线程才互相等待：文件在锁外写，所以不同的文件可以同时写。
     writing: HashSet<PathBuf>,
 }
 
-/// What a folder held when the export first wrote into it.
+/// 导出第一次往文件夹里写文件时，文件夹的状态。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Folder {
-    /// The export made it: no earlier export left a file in it.
+    /// 这次导出建的：没有以前的导出留下的文件。
     Made,
-    /// An earlier export finished in it: the files it left are kept.
+    /// 以前的导出在这里完成了：保留它留下的文件。
     Finished,
-    /// An earlier export was stopped while it wrote into it ([`INCOMPLETE`] was there): any file it left may be cut
-    /// short, so each one is written again.
+    /// 以前的导出往这里写文件时被中止了（有 [`INCOMPLETE`]）：它留下的文件都可能不完整，所以每个都重新写。
     Stopped,
 }
 
-/// The marker a media folder holds while an export writes into it (see [`ExportedFiles`]).
+/// 导出往媒体文件夹写文件期间放在其中的标记（见 [`ExportedFiles`]）。
 const INCOMPLETE: &str = ".weflow-export-incomplete";
 
 impl ExportedFiles {
@@ -587,17 +590,16 @@ impl ExportedFiles {
 }
 
 impl Drop for ExportedFiles {
-    /// Takes the markers out of the folders written into: the export finished, or failed after taking out any file it
-    /// cut short.
+    /// 删掉写过的文件夹中的标记：导出已经完成，或者在删掉写了一半的文件之后失败了。
     fn drop(&mut self) {
         for dir in self.lock().folders.keys() {
-            // a marker that is not there any more has nothing to say
+            // 标记已经不在时无需处理
             let _ = std::fs::remove_file(dir.join(INCOMPLETE));
         }
     }
 }
 
-/// Makes the folder `dir` ready for an export to write into: there, holding [`INCOMPLETE`]; and what it held before.
+/// 让文件夹 `dir` 可以写入：确保它存在并放好 [`INCOMPLETE`]，返回它在这之前的状态。
 fn open_folder(dir: &Path) -> std::io::Result<Folder> {
     let made = make_dir(dir)?;
     let marker = dir.join(INCOMPLETE);
@@ -612,8 +614,8 @@ fn open_folder(dir: &Path) -> std::io::Result<Folder> {
     })
 }
 
-/// Writes `bytes` to `path`, which is not there yet, in place; a file cut short by a failed write is taken out. When
-/// `path` turns out to be there after all, it is replaced through a temporary file ([`write_atomically`]).
+/// 把 `bytes` 直接写到还不存在的 `path`；写入失败时删掉写了一半的文件。
+/// `path` 其实已经存在时，经临时文件替换它（[`write_atomically`]）。
 fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let mut file = match std::fs::OpenOptions::new()
@@ -630,27 +632,26 @@ fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let written = file.write_all(bytes);
     drop(file);
     if written.is_err() {
-        // a file that is not there any more needs no taking out
+        // 文件已经不在时无需删除
         let _ = std::fs::remove_file(path);
     }
     written
 }
 
-/// What the messages of one media export share while their media are copied side by side.
+/// 一次媒体导出中，各条消息并行复制媒体时共用的东西。
 struct ExportRun {
-    /// The files written so far.
+    /// 到目前为止写过的文件。
     files: ExportedFiles,
-    /// WeChat's video folder, listed at most once for the whole export (`None` without an account folder).
+    /// 微信的视频目录，整次导出最多列一次（没有账号目录时为 `None`）。
     videos: Option<crate::video::VideoFolder>,
-    /// From when the folders the images are looked up in are taken as they were (issue #1099).
+    /// 从这一时刻起，查找图片用的目录检查过一次就沿用，不再重新检查（#1099）。
     since: Since,
-    /// The databases, opened when the first voice asks, once for the whole export (`None` when they do not open: each
-    /// voice then tries itself, as on its own).
+    /// 数据库，第一条语音需要时打开，整次导出只打开一次（打不开时为 `None`：这时每条语音像单独导出时一样自己去打开）。
     wcdb: std::sync::OnceLock<Option<weflow_native::wcdb::Wcdb>>,
 }
 
 impl ExportRun {
-    /// A media export of `hub`'s account.
+    /// `hub` 的账号的一次媒体导出。
     fn new(hub: &ServiceHub) -> Self {
         Self {
             files: ExportedFiles::default(),
@@ -660,29 +661,30 @@ impl ExportRun {
         }
     }
 
-    /// The databases of `hub`'s account, opened by the first caller.
+    /// `hub` 的账号的数据库，由第一个调用者打开。
     fn wcdb(&self, hub: &ServiceHub) -> Option<&weflow_native::wcdb::Wcdb> {
         self.wcdb.get_or_init(|| hub.open_wcdb().ok()).as_ref()
     }
 }
 
-/// Where the media of one conversation go.
+/// 一个会话的媒体放到哪里。
 struct MediaTarget<'a> {
     session_dir: &'a Path,
     safe_talker: &'a str,
-    /// The files of the export this belongs to, when it exports several messages at once.
+    /// 它所属的这次导出写过的文件；一次导出多条消息时才有。
     written: Option<&'a ExportedFiles>,
 }
 
-/// What an exported media file is made from.
+/// 导出的媒体文件从哪里来。
 enum MediaSource<'a> {
     Bytes(&'a [u8]),
     Copy(&'a Path),
 }
 
-/// Write (or copy) one exported file below `<session_dir>/<sub>`; `file_name` may name a folder below that too
-/// (`2024-01/report.pdf`). A file already there is kept, unless this export wrote it (`written`) from a lesser
-/// rendition: then a full rendition (not a `thumbnail`), or a larger one of the same kind, replaces it.
+/// 在 `<session_dir>/<sub>` 下写出（或复制）一个导出的文件；`file_name` 也可以带下一级文件夹（`2024-01/report.pdf`）。
+///
+/// 已有的文件保留，除非是这次导出（`written`）从较差的版本写的：这时完整版（不是 `thumbnail`），
+/// 或者同类中更大的文件，会替换它。
 fn put_media(
     to: &MediaTarget<'_>,
     (kind, sub): (&'static str, &str),
@@ -700,7 +702,7 @@ fn put_media(
         MediaSource::Bytes(b) => b.len() as u64,
         MediaSource::Copy(src) => std::fs::metadata(src).ok()?.len(),
     };
-    // renamed into place: the file is whole as soon as another thread sees it
+    // 先写临时文件再改名到位：别的线程一看到这个文件，它就是完整的
     let write = || match source {
         MediaSource::Bytes(b) => write_atomically(&full, b),
         MediaSource::Copy(src) => copy_atomically(src, &full),
@@ -714,8 +716,7 @@ fn put_media(
         }
         Some(written) => {
             let rank = (!thumbnail, size);
-            // decided after the writes of the same file before it are done, so a better rendition is never
-            // overwritten by a worse one
+            // 等之前对同一个文件的写入完成后再决定，更好的版本就不会被更差的覆盖
             let mut files = written.lock();
             while files.writing.contains(&full) {
                 files = written
@@ -723,7 +724,7 @@ fn put_media(
                     .wait(files)
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
             }
-            // the first file into a folder makes it and marks it (`INCOMPLETE`), under the lock, before any is written
+            // 往文件夹里写的第一个文件在锁内建好文件夹并放上标记（`INCOMPLETE`），然后才写任何文件
             let folder = match files.folders.get(dir) {
                 Some(folder) => *folder,
                 None => {
@@ -732,19 +733,19 @@ fn put_media(
                     folder
                 }
             };
-            // what is there now: `None` for nothing, else whether it is kept
+            // 现在那里有什么：没有文件为 `None`，否则为是否保留它
             let there = match files.ranks.get(&full) {
                 Some(have) => Some(*have >= rank),
                 None => match folder {
-                    // a folder this export made holds no file of an earlier one
+                    // 这次导出建的文件夹里没有以前的导出留下的文件
                     Folder::Made => None,
-                    // left by an earlier export into the same folder: kept
+                    // 以前的导出在同一个文件夹里留下的：保留
                     Folder::Finished if full.exists() => {
                         files.ranks.insert(full.clone(), (true, u64::MAX));
                         Some(true)
                     }
                     Folder::Finished => None,
-                    // left by an export that was stopped: written again
+                    // 被中止的导出留下的：重新写
                     Folder::Stopped => Some(false),
                 },
             };
@@ -753,7 +754,7 @@ fn put_media(
                 drop(files);
                 let result = match (there, &source) {
                     (None, MediaSource::Bytes(b)) => write_new(&full, b),
-                    // a file that is there is replaced through a temporary file, so it is never seen cut short
+                    // 已有的文件经临时文件替换，所以从不会被看到不完整的样子
                     _ => write(),
                 };
                 let mut files = written.lock();
@@ -776,7 +777,7 @@ fn put_media(
     })
 }
 
-/// Makes the folder `dir` and those above it; whether `dir` was missing (it was there when the answer is `false`).
+/// 建好文件夹 `dir` 及其上级；返回 `dir` 是否是新建的（`false` 表示它本来就在）。
 fn make_dir(dir: &Path) -> std::io::Result<bool> {
     let made = |result: std::io::Result<()>| match result {
         Ok(()) => Ok(true),
@@ -794,8 +795,8 @@ fn make_dir(dir: &Path) -> std::io::Result<bool> {
     }
 }
 
-/// Where the media of the export written to `out` go, `<out dir>/media/<out name>`, and the same folder as the page
-/// beside `out` names it, `media/<out name>`.
+/// 写到 `out` 的导出的媒体放在哪里：`<out dir>/media/<out name>`，以及 `out` 旁边的页面引用这个文件夹时用的路径
+/// `media/<out name>`。
 fn media_dir(out: &Path) -> (PathBuf, String) {
     let out_dir = out
         .parent()
@@ -811,15 +812,13 @@ fn media_dir(out: &Path) -> (PathBuf, String) {
     (out_dir.join("media").join(&name), format!("media/{name}"))
 }
 
-/// What [`ServiceHub::attach_export_media`] copied: the media messages' counts, and the avatars written as
-/// `{ username: path from the export file }`.
+/// [`ServiceHub::attach_export_media`] 复制了什么：媒体消息的计数，以及写出的头像（用户名到相对导出文件的路径）。
 pub(super) struct ExportMedia {
     pub copied: crate::contract::MediaCopied,
     pub avatars: HashMap<String, String>,
 }
 
-/// The picture at an avatar address: a `data:image/…;base64,` address read as it is, any other downloaded. `None`
-/// when it holds no picture or cannot be fetched.
+/// 头像地址上的图片：`data:image/…;base64,` 地址直接解码，其他地址下载。地址里不是图片或取不到时为 `None`。
 async fn avatar_picture(url: &str) -> Option<Vec<u8>> {
     let bytes = if let Some(rest) = url.strip_prefix("data:image/") {
         crate::sns::lenient_base64(rest.split_once(";base64,")?.1)
@@ -839,26 +838,25 @@ async fn avatar_picture(url: &str) -> Option<Vec<u8>> {
         .then_some(bytes)
 }
 
-/// The name of a message's media file when the media has no name of its own: `<kind>_<send time>_<local id>`. A
-/// local id is unique only within one message database, and the messages of a conversation may lie in several, so
-/// the send time tells two messages of one local id apart; both are fixed, so a message gets the same name in every
-/// export.
+/// 媒体本身没有名字时，消息的媒体文件名：`<kind>_<send time>_<local id>`。
+///
+/// 本地 ID 只在一个消息库内唯一，而一个会话的消息可能分布在多个消息库中，所以用发送时间区分本地 ID 相同的两条消息；
+/// 两者都不变，所以同一条消息在每次导出中的文件名都相同。
 fn message_file_stem(kind: &str, msg: &ChatMessage) -> String {
     format!("{kind}_{}_{}", msg.create_time, msg.local_id)
 }
 
-/// A file message: an app message of type 6.
+/// 是否是文件消息：类型为 6 的 app 消息。
 fn is_file_message(xml_type: Option<&str>) -> bool {
     xml_type == Some("6")
 }
 
-/// The media copied one after another after the threads, where the database is at hand: stickers (downloaded) and
-/// files (found through WeChat's media index).
+/// 在线程之后、能用到数据库的地方逐个复制的媒体：表情（要下载）和文件（通过微信的媒体索引查找）。
 fn copied_in_order(local_type: i64, xml_type: Option<&str>) -> bool {
     local_type == 47 || is_file_message(xml_type)
 }
 
-/// httpService `detectImageExt`: the picture's extension, `.bmp` for a bitmap, `.jpg` for anything else.
+/// 对应桌面版 httpService 的 `detectImageExt`：图片的扩展名，位图为 `.bmp`，认不出的为 `.jpg`。
 fn api_detect_image_ext(b: &[u8]) -> &'static str {
     match crate::image::ImageFormat::of(b) {
         Some(format) => format.extension(),
@@ -868,11 +866,16 @@ fn api_detect_image_ext(b: &[u8]) -> &'static str {
 }
 
 impl ServiceHub {
-    /// `export media`: walks the messages of one conversation (or all of them) and copies each
-    /// image / voice (as WAV) / video / sticker / file into `<out>/<session>/<kind>s/`, using the same
-    /// per-message pipeline as the HTTP API (`media=1`). `media_type`: image, voice, video, emoji, file, all.
-    /// `start` / `end` (Unix seconds, `end` exclusive) restrict the message time.
-    /// `found` counts media *messages* (an image sent twice counts twice; `chat images` lists unique files).
+    /// `export media`：遍历一个会话（或全部会话）的消息，把图片、语音（转成 WAV）、视频、表情和文件复制到
+    /// `<out>/<session>/<kind>s/`，每条消息的处理与 HTTP API 的 `media=1` 相同。
+    ///
+    /// `media_type` 为 image、voice、video、emoji、file 或 all。`start`、`end`（Unix 秒，不含 `end`）限定消息的时间。
+    /// `found` 计的是媒体消息的条数（同一张图片发了两次算两条；`chat images` 列出的是去重后的文件）。
+    ///
+    /// # Errors
+    ///
+    /// `media_type` 不支持时返回用法错误，建不了 `out` 时返回运行时错误；账号没有配置好时返回配置错误，
+    /// 读不出会话列表时返回数据库层的错误。
     pub async fn export_media(
         &self,
         session: Option<&str>,
@@ -905,10 +908,10 @@ impl ServiceHub {
             videos: wanted("video"),
             emojis: wanted("emoji"),
             files: wanted("file"),
-            // a message has no avatar: `export messages` puts them on its page
+            // 消息本身没有头像：`export messages` 把头像放在它的页面上
             avatars: None,
         };
-        // the local types of each kind: a file is an app message of type 6, which several local types carry
+        // 每一类对应的 `local_type`：文件是类型为 6 的 app 消息，有几种 `local_type` 都可能是它
         let types: [(&[i64], &'static str, bool); 5] = [
             (&[3], "image", opts.images),
             (&[34], "voice", opts.voices),
@@ -918,7 +921,7 @@ impl ServiceHub {
         ];
         let my = self.wmy();
 
-        // pass 1: collect the media messages so the progress bar knows the total
+        // 第一轮：先收集媒体消息，进度条才知道总数
         self.emit_progress("media", "scanning messages", 0, sessions.len());
         let mut work: Vec<(String, &'static str, ChatMessage)> = Vec::new();
         for (i, sid) in sessions.iter().enumerate() {
@@ -948,13 +951,12 @@ impl ServiceHub {
             self.emit_progress("media", "scanning messages", i + 1, sessions.len());
         }
 
-        // pass 2: export
+        // 第二轮：导出
         let total = work.len();
         let mut files: Vec<crate::contract::MediaFileExported> = Vec::new();
         let mut missing_by_kind: BTreeMap<&str, usize> = BTreeMap::new();
         let mut thumb_only = 0usize;
-        // Images (WXGF decoded on the way), voices and videos have no network step: run them on a few
-        // threads first, then walk the list in order for emojis and the report.
+        // 图片（顺便解码 WXGF）、语音和视频不需要联网：先在几个线程上处理，再按顺序遍历列表，处理表情和文件并汇总结果。
         let mut done: Vec<Option<Option<ApiExportedMedia>>> = (0..total).map(|_| None).collect();
         {
             let local: Vec<usize> = (0..total)
@@ -991,7 +993,7 @@ impl ServiceHub {
             for (i, r) in results.into_inner_or_panic() {
                 done[i] = Some(r);
             }
-            // see `attach_export_media`: an image found through another message's result, whatever the thread order
+            // 见 `attach_export_media`：通过另一条消息的结果找到的图片，不论线程的先后都能导出
             for &i in &local {
                 if matches!(done[i], Some(None)) && work[i].2.local_type == 3 {
                     let (sid, _, msg) = &work[i];
@@ -1102,7 +1104,7 @@ mod tests {
                 b"full image",
                 "{tag}"
             );
-            // of two full renditions the larger stays
+            // 两个完整版中保留较大的
             assert!(put(&to, b"full", false).is_some());
             assert!(put(&to, b"a larger full image", false).is_some());
             assert_eq!(
@@ -1116,7 +1118,7 @@ mod tests {
     fn threads_writing_the_same_files_at_once_leave_the_best_rendition_of_each() {
         const THREADS: usize = 8;
         const FILES: usize = 6;
-        // each thread writes every file once, a rendition of a size no other thread writes; every third a thumbnail
+        // 每个线程把每个文件写一次，大小与其他线程写的都不同；每三个中有一个是缩略图
         let rendition = |thread: usize, file: usize| {
             let size = 1 + (thread * 7 + file * 3) % THREADS + THREADS * thread;
             let thumbnail = (thread + file).is_multiple_of(3);
@@ -1135,7 +1137,7 @@ mod tests {
                     let (to, rendition) = (&to, &rendition);
                     s.spawn(move || {
                         for i in 0..FILES {
-                            // the threads go through the files in different orders
+                            // 各线程按不同的顺序处理这些文件
                             let file = (i + thread) % FILES;
                             let (bytes, thumbnail) = rendition(thread, file);
                             let name = format!("{file}/a.jpg");
@@ -1167,7 +1169,7 @@ mod tests {
         let images = dir.join("images");
         std::fs::create_dir_all(&images).unwrap();
         std::fs::write(images.join("a.jpg"), b"cut sh").unwrap();
-        // an export that was stopped while writing into the folder left its marker there
+        // 往文件夹写文件时被中止的导出在那里留下了标记
         std::fs::write(images.join(INCOMPLETE), b"").unwrap();
         let written = ExportedFiles::default();
         let to = MediaTarget {
@@ -1181,7 +1183,7 @@ mod tests {
             b"cut short? no: whole",
             "a file a stopped export left is written again"
         );
-        // a new folder is marked as well, while the export writes into it
+        // 新的文件夹在导出写入期间同样有标记
         let other = MediaTarget {
             session_dir: &dir.join("other"),
             safe_talker: "s",
@@ -1196,7 +1198,7 @@ mod tests {
             let names: Vec<_> = std::fs::read_dir(&folder).unwrap().collect();
             assert_eq!(names.len(), 1, "{folder:?}");
         }
-        // the next export finds the folder finished: what is there is kept
+        // 下一次导出发现文件夹已完成：保留已有的文件
         let written = ExportedFiles::default();
         let to = MediaTarget {
             session_dir: &dir,
