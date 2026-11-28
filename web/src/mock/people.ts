@@ -1,29 +1,28 @@
-// Who the sample is about: the account, the friends working on WeFlow and its WebUI with it, and the people of its own
-// life (whom it loves, its family, the table tennis, calligraphy and reading groups, old roommates), the groups and the
-// official accounts. Every name and WeChat ID here is made up.
+// 示例数据里的人物：账号本人、和它一起做 WeFlow 及其 WebUI 的朋友、它生活中的人（恋人、家人、
+// 乒乓球群、书法社和读书会里的人、大学室友），以及群和公众号。这里的名字和微信号都是虚构的。
 import type { Contact } from '../api/contract.gen';
 
-/** Someone of the sample, as their contact says them. */
+/** 示例数据里的一个人，字段与联系人信息一致。 */
 export interface Person {
   username: string;
-  /** The name the list shows: the remark when there is one, else the nickname. */
+  /** 列表显示的名字：有备注时为备注，否则为昵称。 */
   name: string;
   nickname: string;
   remark?: string;
   alias?: string;
   region?: string;
   labels?: string[];
-  /** Their signature. */
+  /** 个性签名。 */
   about?: string;
-  /** What they often say, counted in their messages for a group member's statistics. */
+  /** 常说的话，群成员统计时在其消息里计数。 */
   phrases?: string[];
   formerFriend?: boolean;
 }
 
-/** The account the sample is of. */
+/** 示例数据所属的账号。 */
 export const ME = 'wxid_sample_ayuan';
 
-/** Everyone of the sample, the account first. */
+/** 示例数据里的所有人，账号本人在最前。 */
 export const people: Person[] = [
   { username: ME, name: '阿远', nickname: '阿远', alias: 'ayuan_dev', region: '中国 杭州', about: '在写 WeFlow', phrases: ['好', '收到', '已经'] },
   { username: 'wxid_sample_linmu', name: '林沐', nickname: '沐沐', remark: '林沐', alias: 'linmu_design', region: '中国 上海', labels: ['WeFlow', '设计'], about: '正在给 WeFlow 画皮肤', phrases: ['皮肤', '阴影', '好看'] },
@@ -36,7 +35,7 @@ export const people: Person[] = [
   { username: 'wxid_sample_shenxinghe', name: '沈星河', nickname: '星河', region: '中国 武汉', labels: ['用户群'] },
   { username: 'wxid_sample_chenyiwei', name: '陈一苇', nickname: '一苇', region: '中国 西安', labels: ['用户群'] },
   { username: 'wxid_sample_tangguo', name: '唐果', nickname: '唐果', region: '中国 长沙', formerFriend: true },
-  // the people of the account's own life
+  // 账号本人生活中的人
   { username: 'wxid_sample_xiaolu', name: '小鹿', nickname: '鹿', remark: '小鹿', region: '中国 杭州', labels: ['家人'], about: '今天也要早睡', phrases: ['早点睡', '哼', '这还差不多'] },
   { username: 'wxid_sample_mom', name: '妈妈', nickname: '幸福一家人', remark: '妈妈', region: '中国 湖州', labels: ['家人'], about: '家和万事兴', phrases: ['回家', '吃饭'] },
   { username: 'wxid_sample_dad', name: '爸爸', nickname: '岁月静好', remark: '爸爸', region: '中国 湖州', labels: ['家人'], about: '知足常乐' },
@@ -52,40 +51,41 @@ export const people: Person[] = [
   { username: 'wxid_sample_dabing', name: '大兵', nickname: '大兵', region: '中国 乌鲁木齐', labels: ['室友'] },
 ];
 
-/** The person `username`; undefined for one the sample does not have. */
+/** 用户名为 `username` 的人；示例数据里没有时为 undefined。 */
 export const person = (username: string): Person | undefined => people.find(p => p.username === username);
-/** The name the list shows for `username`; the username itself for one the sample does not have. */
+/** 列表为 `username` 显示的名字；示例数据里没有这个人时为用户名本身。 */
 export const nameOf = (username: string): string => person(username)?.name ?? username;
 
-/** A group of the sample. */
+/** 示例数据里的一个群。 */
 export interface Group {
   username: string;
   name: string;
   owner: string;
   members: string[];
-  /** Folded into 「折叠的群聊」, and muted. */
+  /** 是否折叠进「折叠的群聊」。 */
   folded?: boolean;
+  /** 是否免打扰。 */
   muted?: boolean;
 }
 
-/** WeFlow's developers. */
+/** WeFlow 的开发者群。 */
 export const DEV = 'sample_weflow_dev@chatroom';
-/** The talk about the WebUI's design. */
+/** 讨论 WebUI 设计的群。 */
 export const DESIGN = 'sample_webui_design@chatroom';
-/** WeFlow's users, folded and muted. */
+/** WeFlow 的用户群，折叠且免打扰。 */
 export const USERS = 'sample_weflow_users@chatroom';
-/** The account's family. */
+/** 账号本人的家庭群。 */
 export const FAMILY = 'sample_family@chatroom';
-/** Wednesday's table tennis. */
+/** 周三打乒乓球的群。 */
 export const PINGPONG = 'sample_pingpong@chatroom';
-/** A calligraphy society. */
+/** 一个书法研习社。 */
 export const CALLIGRAPHY = 'sample_calligraphy@chatroom';
-/** A reading group, folded and muted. */
+/** 一个读书会，折叠且免打扰。 */
 export const MINDFUL = 'sample_mindful@chatroom';
-/** Old roommates. */
+/** 大学室友群。 */
 export const DORM = 'sample_dorm404@chatroom';
 
-/** The sample's groups. */
+/** 示例数据里的群。 */
 export const groups: Group[] = [
   {
     username: DEV, name: 'WeFlow 开发群', owner: ME,
@@ -112,22 +112,22 @@ export const groups: Group[] = [
   { username: DORM, name: '404 寝室（永不熄灯）', owner: 'wxid_sample_ajie', members: ['wxid_sample_ajie', 'wxid_sample_laoma', 'wxid_sample_dabing', ME] },
 ];
 
-/** The conversations pinned to the top (#885): the WeFlow group, the family, the one loved and mother. */
+/** 置顶的会话（#885）：WeFlow 开发群、家庭群、恋人和妈妈。 */
 export const pinned = new Set([DEV, FAMILY, 'wxid_sample_xiaolu', 'wxid_sample_mom']);
 
-/** An official account of the sample. */
+/** 示例数据里的一个公众号。 */
 export interface Official {
   username: string;
   name: string;
   about: string;
 }
 
-/** WeFlow's release notes. */
+/** 发布 WeFlow 更新说明的公众号。 */
 export const WEFLOW_NEWS = 'gh_sample_weflow';
-/** WeChat Pay, whose notices the payments page lists. */
+/** 微信支付公众号，支付记录页列出它的通知。 */
 export const WXPAY = 'gh_sample_wxpay';
 
-/** The official accounts the sample follows. */
+/** 示例账号关注的公众号。 */
 export const officials: Official[] = [
   { username: WEFLOW_NEWS, name: 'WeFlow 更新日志', about: 'WeFlow 的发布说明和使用技巧' },
   { username: 'gh_sample_rustnotes', name: 'Rust 编程手记', about: '写给 Rust 开发者的实践笔记' },
@@ -137,12 +137,12 @@ export const officials: Official[] = [
   { username: WXPAY, name: '微信支付', about: '微信支付的付款和退款通知' },
 ];
 
-/** The name a conversation is listed by: the group's, the official account's, or the person's. */
+/** 会话在列表里显示的名字：群名、公众号名或人名。 */
 export const sessionName = (username: string): string =>
   groups.find(g => g.username === username)?.name ?? officials.find(o => o.username === username)?.name
   ?? (username === 'filehelper' ? '文件传输助手' : nameOf(username));
 
-/** The parsed contact list (`chat contacts --parsed`). */
+/** 解析过的联系人列表（`chat contacts --parsed`）。 */
 export function contacts(): Contact[] {
   return [
     ...people.filter(p => p.username !== ME).map((p): Contact => ({
@@ -154,7 +154,7 @@ export function contacts(): Contact[] {
   ];
 }
 
-/** The contact table as the server reads it (`chat contacts`), for the names of Moments' posters. */
+/** 服务端读到的联系人表（`chat contacts`），用于朋友圈发布者的名字。 */
 export function contactRows(): Record<string, unknown>[] {
   return [
     ...people.map(p => ({ username: p.username, nick_name: p.nickname, remark: p.remark ?? '', alias: p.alias ?? '' })),

@@ -1,11 +1,11 @@
-// The sample's database backup, as `backup inspect` reads one: the databases, some pictures, files and stickers.
+// 示例数据的数据库备份，格式与 `backup inspect` 读到的一致：数据库，以及一些图片、文件、视频和表情。
 import type { BackupEntry, BackupManifest } from '../api/contract.gen';
 import { ago } from './clock';
 import { ME } from './people';
 
 const entry = (path: string, size: number, i: number): BackupEntry => ({ path, size, sha256: (i * 2_654_435_761 >>> 0).toString(16).padStart(8, '0').repeat(8) });
 
-/** `backup inspect` of the sample's backup. */
+/** 示例备份的 `backup inspect`。 */
 export function backupManifest(): BackupManifest {
   const files: [string, number][] = [
     ['db_storage/contact/contact.db', 2_883_584], ['db_storage/session/session.db', 1_048_576],

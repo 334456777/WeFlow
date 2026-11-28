@@ -1,31 +1,30 @@
-// The sample's jobs (#896): the commands `weflow serve` runs in the background, run here one after another as a server
-// running one task at a time runs them, each for a few seconds of the page's clock. A job that writes a file hands back
-// a note saying that the sample's records are not exported, and what the job was asked for; what a job changes (a key
-// saved) is done once it has succeeded. Times are Unix milliseconds, as the server's.
+// 示例数据的作业（#896）：`weflow serve` 在后台运行的命令，在这里像一次只运行一个任务的服务端那样依次运行，
+// 每个按页面的时钟运行几秒钟。写文件的作业交回一份说明文件，写明示例数据的记录不会导出，以及作业被要求做什么；
+// 作业的改动（如保存密钥）在它成功后才生效。时间与服务端一样是 Unix 毫秒数。
 import type { Job } from '../api/contract.gen';
 import { threads } from './chats';
 import { contacts, groups, nameOf, officials, sessionName } from './people';
 
 type Params = Record<string, unknown>;
 
-/** What a job changes once it has succeeded, and the data it answers then. */
+/** 作业成功后要做的改动，返回那时回答的数据。 */
 export type Effect = () => unknown;
 
 interface Note { name: string; text: string }
 
 interface Run {
   job: Job;
-  /** Its command, `export messages`. */
+  /** 作业的命令，如 `export messages`。 */
   name: string;
   params: Params;
-  /** How long it runs. */
+  /** 运行多长时间（毫秒）。 */
   duration: number;
-  /** The records it goes through, for its progress; 0 when it does not say. */
+  /** 作业要处理的记录数，用于进度；不报告数量时为 0。 */
   total: number;
-  /** The note it hands back, when it was asked for its file (`return=file`). */
+  /** 要求交回文件（`return=file`）时交回的说明文件。 */
   note: Note | null;
   effect?: Effect;
-  /** The document of its `--json` output once it has ended. */
+  /** 作业结束后它的 `--json` 输出。 */
   result: { success: boolean; data?: unknown } | null;
   url: string | null;
 }
@@ -39,7 +38,7 @@ const list = (params: Params, key: string): string[] => {
 };
 const text = (params: Params, key: string) => list(params, key)[0] ?? '';
 
-/** The records a command goes through, for its progress. */
+/** 命令要处理的记录数，用于进度。 */
 function workOf(name: string, params: Params): number {
   switch (name) {
     case 'export messages': return threads.get(text(params, 'session-id'))?.length ?? 0;
@@ -50,7 +49,7 @@ function workOf(name: string, params: Params): number {
   }
 }
 
-/** How long a command runs: an export by the messages it goes through, the rest a fixed while. */
+/** 命令运行多长时间：导出聊天记录的时长随消息数增加，其他命令是固定的时长。 */
 function durationOf(name: string, total: number): number {
   switch (name) {
     case 'export messages': return Math.min(5000, 1000 + total * 15);
@@ -61,7 +60,7 @@ function durationOf(name: string, total: number): number {
   }
 }
 
-/** What a running job says it is doing, as the commands' progress says. */
+/** 运行中的作业说明自己在做什么，与命令的进度说明一样。 */
 function messageOf(name: string): string {
   if (name === 'key db') return '等待微信打开数据库';
   if (name === 'backup create') return '正在复制数据库';
@@ -70,13 +69,13 @@ function messageOf(name: string): string {
   return '正在运行';
 }
 
-/** The commands of the page's jobs, in words. */
+/** 用文字说明网页里各作业的命令。 */
 const WHAT: Record<string, string> = {
   'export messages': '导出聊天记录', 'export sessions': '导出会话列表', 'export contacts': '导出通讯录', 'export footprint': '导出足迹',
   'group export-members': '导出群成员', 'group export-member-messages': '导出群成员的消息', 'backup create': '备份数据库',
 };
 
-/** The note a job hands back in place of its file: that the sample is not exported, and what was asked for. */
+/** 作业代替导出文件交回的说明文件：写明示例数据不导出，以及作业被要求做什么。 */
 function noteOf(name: string, params: Params): Note {
   const about = text(params, 'session-id') || text(params, 'chatroom-id');
   const member = text(params, 'username');
@@ -93,7 +92,7 @@ function noteOf(name: string, params: Params): Note {
   };
 }
 
-/** The command line a job runs: `weflow --json --progress export messages --session-id … --format html`. */
+/** 作业运行的命令行：`weflow --json --progress export messages --session-id … --format html`。 */
 function commandLine(name: string, params: Params): string[] {
   const flags: string[] = [];
   for (const [key, value] of Object.entries(params)) {
@@ -106,7 +105,7 @@ function commandLine(name: string, params: Params): string[] {
 
 const finished = (job: Job) => job.status === 'succeeded' || job.status === 'failed' || job.status === 'cancelled';
 
-/** Moves every job on to where it is at `now`: started once the one before has ended, ended once it has run its time. */
+/** 把每个作业推进到 `now` 时的状态：前一个结束后开始，运行满时长后结束。 */
 function advance(now = Date.now()) {
   let free = 0;
   for (const run of runs) {
@@ -154,8 +153,8 @@ const copy = (run: Run, withResult: boolean): Job => {
 };
 
 /**
- * Starts `name` with `params` as a job; with `wantsFile`, it hands back its note to be saved. `effect` is what it
- * changes once it has succeeded, and the data it answers then.
+ * 用 `params` 把 `name` 作为作业启动；`wantsFile` 时它交回说明文件供保存。`effect` 是它成功后要做的改动，
+ * 返回那时回答的数据。
  */
 export function startJob(name: string, params: Params, wantsFile: boolean, effect?: Effect): Job {
   const now = Date.now();
@@ -174,20 +173,20 @@ export function startJob(name: string, params: Params, wantsFile: boolean, effec
   return copy(run, false);
 }
 
-/** Every job, oldest first, as `GET /jobs` lists them: without their results. */
+/** 全部作业，最早的在前，与 `GET /jobs` 列出的一样：不带结果。 */
 export function listJobs(): Job[] {
   advance();
   return runs.map(run => copy(run, false));
 }
 
-/** One job with its result; null when there is none of that id. */
+/** 带结果的一个作业；没有这个 ID 的作业时为 null。 */
 export function getJob(id: string): Job | null {
   advance();
   const run = runs.find(r => r.job.id === id);
   return run ? copy(run, true) : null;
 }
 
-/** Cancels a job that has not ended, or forgets one that has; null when there is none of that id. */
+/** 取消尚未结束的作业，或者删掉已经结束的作业；没有这个 ID 的作业时为 null。 */
 export function dropJob(id: string): Job | null {
   advance();
   const index = runs.findIndex(r => r.job.id === id);
@@ -204,7 +203,7 @@ export function dropJob(id: string): Job | null {
   return copy(run, true);
 }
 
-/** The address of a job's note, once it has succeeded; made once, as the browser keeps it. */
+/** 作业成功后说明文件的地址；只生成一次，这个对象 URL 在撤销之前一直有效。 */
 export function jobFileUrl(id: string): string | null {
   advance();
   const run = runs.find(r => r.job.id === id);

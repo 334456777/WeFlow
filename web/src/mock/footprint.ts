@@ -1,11 +1,11 @@
-// The sample's footprint, counted from its own conversations as `insight footprint` counts a range of days: who wrote
-// to me and whom I answered, each stretch of a private chat, and where I was @-mentioned.
+// 示例数据的足迹：按 `insight footprint` 统计一段日期的方式，从示例数据自己的会话算出：谁给我发过消息、
+// 我回复了谁、私聊里的每一段聊天，以及我在哪里被 @。
 import type { Footprint, FootprintMention, FootprintSegment, FootprintSession, InsightReply, MentionGroup } from '../api/contract.gen';
 import { dayEnd, dayStart } from './clock';
 import { threads, type Message } from './chats';
 import { ME, nameOf } from './people';
 
-/** A pause this long ends a stretch of a chat. */
+/** 停顿这么久（秒）就结束一段聊天。 */
 const PAUSE = 3600;
 
 const isPrivate = (session: string) => !session.endsWith('@chatroom') && !session.startsWith('gh_') && session !== 'filehelper';
@@ -20,14 +20,14 @@ function stretches(messages: Message[]): Message[][] {
   return parts;
 }
 
-/** When I first answered after the first message to me, or 0. */
+/** 第一条发给我的消息的时间，以及我在它之后第一次回复的时间；没有时为 0。 */
 function answer(messages: Message[]): { firstIn: number; firstReply: number } {
   const firstIn = messages.find(m => m.isSend === 0)?.createTime ?? 0;
   const firstReply = firstIn ? messages.find(m => m.isSend === 1 && m.createTime > firstIn)?.createTime ?? 0 : 0;
   return { firstIn, firstReply };
 }
 
-/** `insight footprint` of the sample between two days (`YYYY-MM-DD`, either may be empty). */
+/** 示例数据在两个日期之间的 `insight footprint`（日期写成 `YYYY-MM-DD`，都可以为空）。 */
 export function footprint(start: string, end: string): Footprint {
   const from = start ? dayStart(start) : 0;
   const to = end ? dayEnd(end) : Number.MAX_SAFE_INTEGER;
@@ -92,10 +92,10 @@ export function footprint(start: string, end: string): Footprint {
   };
 }
 
-/** What `insight footprint-summary` answers: the AI's few sentences, written for the sample. */
+/** `insight footprint-summary` 的回答：为示例数据写好的几句 AI 总结。 */
 export function footprintSummary(payload: string): InsightReply {
   let label = '这段时间';
-  try { label = (JSON.parse(payload) as { range_label?: string }).range_label || label; } catch { /* the sample's own sentence */ }
+  try { label = (JSON.parse(payload) as { range_label?: string }).range_label || label; } catch { /* 用默认的说法 */ }
   return {
     message: '生成成功',
     insight: label + '里，大部分对话都围绕 WeFlow：和林沐聊新皮肤和深色模式，和陈屿聊按页解密的性能，'

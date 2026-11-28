@@ -1,12 +1,12 @@
-// The sample's reports: the year of WeFlow 6.0 as an annual report, where the one the chat calls first is first (and
-// still talking after midnight), and a dual report with each friend, its own story for the closest of them.
+// 示例数据的报告：把 WeFlow 6.0 这一年写成年度报告，聊天里说排第一的那位在报告里也排第一（还常常过了午夜还在聊）；
+// 以及和每位好友的双人报告，最亲近的几位各有自己的故事。
 import type { AnnualReport, DualMessage, DualReport } from '../api/contract.gen';
 import { ago, dayOf } from './clock';
 import { threads } from './chats';
 import { ME, nameOf } from './people';
 import { timeline } from './moments';
 
-/** The years with messages, the current one first. */
+/** 有消息的年份，今年在最前。 */
 export const reportYears = () => {
   const year = new Date().getFullYear();
   return { years: [year, year - 1, year - 2], strategy: 'native' };
@@ -14,7 +14,7 @@ export const reportYears = () => {
 
 const date = (year: number, month: number, day: number) => year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
 
-/** Busy evenings, quiet mornings, more at the weekend: a week of hours. */
+/** 一周里每个小时的热度：晚上忙、早上安静，周末更多。 */
 function heatmap(scale: number): number[][] {
   return Array.from({ length: 7 }, (_, weekday) => Array.from({ length: 24 }, (_, hour) => {
     const evening = hour >= 19 ? 3 + (hour - 19) : hour <= 1 ? 4 - hour * 2 : 0;
@@ -26,13 +26,13 @@ function heatmap(scale: number): number[][] {
 
 const LU = 'wxid_sample_xiaolu';
 
-/** This year's most talked to: the one the chat calls first, the thirty thousand messages of all years with them. */
+/** 今年聊得最多的人：聊天里说排第一的那位在最前，所有年份加起来与这位有三万多条消息。 */
 const FRIENDS: [username: string, sent: number, received: number][] = [
   [LU, 6_020, 6_380], ['wxid_sample_linmu', 1_820, 2_050], ['wxid_sample_chenyu', 1_610, 1_790], ['wxid_sample_mom', 1_120, 1_460],
   ['wxid_sample_zhouzhou', 1_402, 1_398],
 ];
 
-/** The annual report of `year` (0 for all of them). */
+/** `year` 年的年度报告（0 为全部年份）。 */
 export function annualReport(year: number): AnnualReport {
   const all = year === 0;
   const scale = all ? 2.6 : 1;
@@ -51,7 +51,7 @@ export function annualReport(year: number): AnnualReport {
     peakDay: { date: date(shown, 11, 16), messageCount: 612, topFriend: '陈屿', topFriendCount: 188 },
     longestStreak: { friendName: '小鹿', days: all ? 618 : 214, startDate: date(shown, 4, 18), endDate: date(shown, 11, 17) },
     activityHeatmap: { data: heatmap(14 * scale) },
-    // who is still talking after midnight: the one telling to go to sleep
+    // 过了午夜还在聊的人：就是一直催人早点睡的那位
     midnightKing: { displayName: '小鹿', count: Math.round(1_904 * scale), percentage: 31.2 },
     mutualFriend: { displayName: '周舟', sentCount: Math.round(1_402 * scale), receivedCount: Math.round(1_398 * scale), ratio: 1.0 },
     socialInitiative: { initiatedChats: Math.round(312 * scale), receivedChats: Math.round(287 * scale), initiativeRate: 52.1, topInitiatedFriend: '小鹿', topInitiatedCount: Math.round(96 * scale) },
@@ -72,11 +72,11 @@ const dual = (content: string, mine: boolean, at: number, friend: string): DualM
   content, isSentByMe: mine, senderUsername: mine ? ME : friend, createTime: at * 1000, createTimeStr: dayOf(at), localType: 1,
 });
 
-/** How it began with someone, what the new year started with, and this year's messages, where it is not WeFlow. */
+/** 和某人的故事（话题不是 WeFlow 的那几位）：怎样开始聊的、新年第一次聊了什么，以及今年的消息。 */
 interface Story { first: [text: string, mine: boolean][]; newYear: [text: string, mine: boolean][]; messages: number; phrases: [string, number][]; mine: string[] }
 
 const STORIES: Record<string, Story> = {
-  // the thirty thousand messages of all years the chat speaks of
+  // 聊天里说的、所有年份加起来的三万多条消息
   [LU]: {
     first: [['你好，我是读书会上坐你旁边的那个', false], ['我记得，你借了我一支笔', true], ['那支笔还没还你 😅', false]],
     newYear: [['新年快乐，今年也请多指教', true], ['新年快乐！今年少熬夜', false]],
@@ -94,7 +94,7 @@ const STORIES: Record<string, Story> = {
   },
 };
 
-/** The dual report with `friend` for `year` (0 for all of them): how it began, then what the sample's chat with them holds. */
+/** 与 `friend` 在 `year` 年（0 为全部年份）的双人报告：怎样开始聊的，以及示例数据里与这位的聊天内容。 */
 export function dualReport(friend: string, year: number): DualReport {
   const messages = threads.get(friend) ?? [];
   const firstAt = ago(3 * 365 + 40, 3);

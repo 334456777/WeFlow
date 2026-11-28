@@ -4,17 +4,17 @@ import type { Params, SampleAnswer } from '../api/client';
 import { savedKey } from '../api/setup';
 import { server } from './server';
 
-// The sample server keeps what changes for as long as the page (here, the test run) is open, and other test files use
-// it too: each test reads what it changed, not what the sample starts with.
+// 示例服务端在页面（这里是整个测试运行）打开期间保留改动，其他测试文件也用它：
+// 每个测试读取自己改过的东西，而不是示例数据一开始的样子。
 afterEach(() => { vi.useRealTimers(); });
 
-/** The data of an answer, or the answer itself when it has none. */
+/** 回答里的数据；回答没有数据时抛出错误，错误信息里带上整个回答。 */
 const data = <T>(answer: SampleAnswer): T => {
   if (!('data' in answer)) throw new Error('no data: ' + JSON.stringify(answer));
   return answer.data as T;
 };
 const ask = <T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, params: Params = {}) => data<T>(server.answer(method, path, params, false));
-/** Starts a job, as `Prefer: respond-async` asks. */
+/** 按 `Prefer: respond-async` 的要求启动一个作业。 */
 const start = (path: string, params: Params) => data<Job>(server.answer('POST', path, params, true));
 const at = (ms: number) => vi.setSystemTime(ms);
 
@@ -25,7 +25,7 @@ describe('the sample server (#896)', () => {
     ask('DELETE', 'config/unset', { key: 'serve_max_media' });
     expect(ask('GET', 'api/config/get', { key: 'serve_max_media' })).toBeNull();
 
-    // a profile added starts empty: the database does not open until it is set up
+    // 新加的档案是空的：设置好之前无法打开数据库
     ask('PUT', 'config/set', { key: 'current_profile', value: 'work' });
     const added = ask<ProfileSummary[]>('GET', 'api/config/profiles').find(p => p.current)!;
     expect(added).toMatchObject({ name: 'work', complete: false, decryptKey: false });
@@ -40,7 +40,7 @@ describe('the sample server (#896)', () => {
     expect(ask('GET', 'api/db/test')).toHaveProperty('accountDir');
     expect(ask<ProfileSummary[]>('GET', 'api/config/profiles').find(p => p.current)).toMatchObject({ complete: true, imageKeys: true });
 
-    // clearing the account takes it out of the profile
+    // 清除账号会把它从档案里去掉
     expect(ask<{ profileKeys: string[] }>('DELETE', 'cache/clear-account', { 'dry-run': true }).profileKeys).toEqual(['db_path', 'wxid', 'decrypt_key', 'image_xor_key', 'image_aes_key']);
     expect(ask('DELETE', 'cache/clear-account', { yes: true })).toMatchObject({ profileReset: true });
     expect(ask<ProfileSummary[]>('GET', 'api/config/profiles').find(p => p.current)).toMatchObject({ complete: false, dbPath: null });
@@ -80,7 +80,7 @@ describe('the sample server (#896)', () => {
   });
 
   it('runs jobs one after another, hands back a note for the file asked for, and cancels or forgets them', async () => {
-    // after the jobs other tests started, which have ended by then
+    // 排在其他测试启动的作业之后，那时它们都已结束
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
     const t0 = Date.now();
     const listed = (id: string) => ask<Job[]>('GET', 'jobs').find(j => j.id === id)!;
@@ -93,7 +93,7 @@ describe('the sample server (#896)', () => {
     at(t0 + 800);
     expect(listed(first.id).progress).toMatchObject({ message: '正在导出', percent: expect.any(Number), formats: [{ name: 'html' }, { name: 'txt' }] });
 
-    // the second starts once the first has ended, which says what was asked for and that nothing of the sample is exported
+    // 第一个结束后第二个才开始；第一个交回的说明写着要求了什么，以及示例数据不会导出
     at(t0 + 10_000);
     const done = listed(first.id);
     const next = listed(second.id);
@@ -104,7 +104,7 @@ describe('the sample server (#896)', () => {
     expect(note).toBe('这是 WeFlow 网页的示例数据，连接 weflow serve 后才能导出真实记录。\n\n任务：导出聊天记录 · 林沐\n格式：html、txt\n时间范围：2026-11-01 至 最新\n');
     expect(ask<Job>('GET', 'jobs/' + done.id).result).toEqual({ success: true, data: { out: 'WeFlow 示例数据说明.txt' } });
 
-    // a job without `return=file` hands back nothing; one not ended is cancelled, one ended forgotten
+    // 不带 `return=file` 的作业不交回文件；尚未结束的作业被取消，已经结束的被删掉
     const key = start('key/db', { save: true });
     expect(ask<Job>('DELETE', 'jobs/' + key.id).status).toBe('cancelled');
     ask('DELETE', 'jobs/' + done.id);

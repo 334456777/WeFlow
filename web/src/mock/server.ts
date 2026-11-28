@@ -1,9 +1,8 @@
-// The sample server (#879): it answers the page while no `weflow serve` has answered it, as the command API would (the
-// wiki's command API page), so every page shows the sample records with the components that show a server's. What
-// changes something is done in the page's memory until it is reloaded (#896): settings, the people left out of the
-// statistics, the insights; jobs run for a few seconds each, and an export hands back a note in place of the records;
-// what reaches WeChat or the server's computer answers as it would there.
-// A chunk of its own, loaded only then: it imports nothing of the page's but types (plugins/plainImport.ts).
+// 示例服务端（#879）：尚无 `weflow serve` 回答过网页时，由它按命令 API 的格式回答（见 Wiki 的「命令 API」页），
+// 各页面用显示服务端记录的同一套组件显示示例记录。改动保存在页面的内存里，刷新后复原（#896）：
+// 设置、不参与统计的人、见解；每个作业运行几秒钟，导出交回一份说明文件，而不是导出的记录；
+// 要访问微信或服务端所在电脑的操作，按在那里运行时的样子回答。
+// 它是单独的 chunk，只在这时加载：除了类型，不从页面导入任何东西（plugins/plainImport.ts）。
 import type { Health } from '../api/backend';
 import type { SampleAnswer, SampleServer } from '../api/client';
 import type { Answers, GroupMember, MemberAnalytics, Resource, ResourceKind, Session } from '../api/contract.gen';
@@ -28,7 +27,7 @@ import { clearCache, health, listCache } from './upkeep';
 
 type Params = Parameters<SampleServer['answer']>[2];
 
-/** An answer of an error, as a server's `{ success: false, error }` with its status. */
+/** 一个错误回答，相当于服务端带状态码的 `{ success: false, error }`。 */
 class Failure {
   constructor(readonly status: number, readonly code: string, readonly message: string) {}
 }
@@ -47,7 +46,7 @@ const list = (params: Params, key: string): string[] => {
 };
 const flag = (params: Params, key: string) => params[key] === true || params[key] === 'true';
 
-/** The conversation list, newest first: the chats, then the official accounts by their last push. */
+/** 会话列表，最新的在前：各个聊天，以及按最后一次推送的时间排进来的公众号。 */
 function sessions(): Session[] {
   const rows: Session[] = [];
   for (const [username, messages] of threads) {
@@ -70,8 +69,7 @@ function sessions(): Session[] {
   return rows.sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 }
 
-/** A page of a conversation, newest first, as `chat messages` reads one: the newest, before or after a cursor, or
- * from a time on. */
+/** 会话的一页消息，最新的在前，与 `chat messages` 的读法一致：最新的、某个游标之前或之后的，或某个时间以后的。 */
 function messagePage(params: Params): Message[] {
   const all = threads.get(text(params, 'session-id')) ?? [];
   const limit = number(params, 'limit') ?? 50;
@@ -119,7 +117,7 @@ const BASE = 4_294_967_296;
 const resourceKind = (m: Message): ResourceKind | null =>
   m.localType === 3 ? 'image' : m.localType === 34 ? 'voice' : m.localType === 43 ? 'video' : m.localType % BASE === 49 && m.appMsgKind === 'file' ? 'file' : null;
 
-/** Every picture, voice message and file of the conversations, newest first. */
+/** 各个会话里的全部图片、语音、视频和文件消息，最新的在前。 */
 function resources(): Resource[] {
   const all: Resource[] = [];
   for (const [session, messages] of threads) {
@@ -186,7 +184,7 @@ function members(params: Params) {
   return { chatroomId, count: rows.length, updatedAt: NOW, members: rows.sort((a, b) => b.messageCount - a.messageCount) };
 }
 
-/** One member's messages in a group, counted as `group member` counts them. */
+/** 一个成员在群里的消息，按 `group member` 的方式统计。 */
 function memberStats(params: Params): MemberAnalytics {
   const username = text(params, 'username');
   const said = groupMessages(text(params, 'chatroom-id'), text(params, 'start'), text(params, 'end')).filter(m => m.senderUsername === username);
@@ -240,22 +238,22 @@ function snsTimeline(params: Params) {
 
 type Route = (params: Params) => unknown;
 
-/** The command a route runs, as the server names it: `GET api/chat/sessions` runs `chat sessions`. */
+/** 一个路由运行的命令，按服务端的叫法：`GET api/chat/sessions` 运行 `chat sessions`。 */
 type CommandOf<Key> = Key extends `${string} ${infer Path}` ? Words<Path extends `api/${infer Read}` ? Read : Path> : never;
-/** A route's path as the words of its command: `chat/sessions` is `chat sessions`. */
+/** 把路由的路径写成命令的词：`chat/sessions` 写成 `chat sessions`。 */
 type Words<Path extends string> = Path extends `${infer Head}/${infer Tail}` ? `${Head} ${Words<Tail>}` : Path;
 
 /**
- * What a route may answer: the contract's `data` of its command, or a failure. `health` answers as the page reads it,
- * and `config get` with the value, which the contract does not describe; any other command must be in the contract.
+ * 一个路由可以回答的内容：契约里它的命令的 `data`，或者一个失败。`health` 按网页读取它的方式回答，
+ * `config get` 回答设置的值，这两者契约里没有描述；其他命令都必须在契约里。
  */
 type Answer<Key> = Failure | (Key extends 'GET health' ? Health : Key extends 'GET api/config/get' ? string | null
   : CommandOf<Key> extends keyof Answers ? Answers[CommandOf<Key>] : never);
 
-/** A table of routes, each checked against what the contract says its command answers (#1267). */
+/** 路由表，每个路由都按契约里它的命令的回答类型检查（#1267）。 */
 const described = <T extends Record<string, Route>>(table: T & NoInfer<{ [Key in keyof T]: (params: Params) => Answer<Key> }>): T => table;
 
-/** The routes the sample answers, by method and path. */
+/** 示例服务端回答的路由，按方法和路径列出。 */
 const table = {
   'GET api/chat/sessions': () => sessions(),
   'GET api/chat/statuses': params => Object.fromEntries(list(params, 'sessions').map(username => {
@@ -287,7 +285,7 @@ const table = {
   },
   'GET api/sns/timeline': snsTimeline,
   'GET api/sns/post-counts': () => postCounts(),
-  // the people who posted, the account among them, as the server counts them (#1158)
+  // 发过动态的人数，包括账号本人，与服务端的计法一致（#1158）
   'GET api/sns/stats': () => ({ totalPosts: timeline.length, totalFriends: Object.keys(postCounts()).length, myPosts: postCounts()[ME] ?? 0 }),
   'GET api/analytics/overall': () => overall(),
   'GET api/analytics/rankings': params => rankings(number(params, 'limit') ?? 20),
@@ -302,7 +300,7 @@ const table = {
   'GET api/group/member-messages': params => memberMessages(text(params, 'chatroom-id'), text(params, 'username'), text(params, 'start'), text(params, 'end'),
     number(params, 'cursor') ?? 0, number(params, 'limit') ?? 50),
   'GET api/report/annual/years': () => reportYears(),
-  // a report is generated, which the command API takes as a POST (#336): it changes nothing
+  // 报告是生成出来的，命令 API 把它当作 POST（#336）：实际上不改变任何东西
   'POST report/annual/generate': params => annualReport(number(params, 'year') ?? 0),
   'POST report/dual/generate': params => dualReport(text(params, 'friend'), number(params, 'year') ?? 0),
   'GET api/insight/footprint': params => footprint(text(params, 'start'), text(params, 'end')),
@@ -319,7 +317,7 @@ const table = {
   'GET insight/models': () => sampleModels(getSetting('ai_model_api_format')),
   'GET backup/inspect': () => backupManifest(),
 
-  // the settings, the account's setup and the server's own upkeep (#896)
+  // 设置、账号设置和服务端自身的维护（#896）
   'GET health': () => health(),
   'GET api/config/profiles': () => profileSummaries(),
   'GET api/config/get': params => getSetting(text(params, 'key')),
@@ -337,13 +335,13 @@ const table = {
   'DELETE cache/clear': params => clearCache(params),
 } satisfies Record<string, Route>;
 
-/** The routes the sample answers, each answering what the contract says (#1267). */
+/** 示例服务端回答的路由，每个都按契约的规定回答（#1267）。 */
 const routes: Record<string, Route> = described(table);
 
-/** Where the sample's backup is said to be written. */
+/** 示例数据里备份写到的位置。 */
 const BACKUP = 'C:\\Users\\sample\\Documents\\WeFlow\\backups\\weflow-backup.zip';
 
-/** What a job of `command` changes once it has succeeded, and the data it answers then. */
+/** `command` 的作业成功后要做的改动，以及那时回答的数据。 */
 function effectOf(command: string, params: Params): Effect | undefined {
   switch (command) {
     case 'key db': return () => saveDatabaseKey();
@@ -353,10 +351,10 @@ function effectOf(command: string, params: Params): Effect | undefined {
   }
 }
 
-/** The command of a route: `export/messages` is `export messages`. */
+/** 路由对应的命令：`export/messages` 是 `export messages`。 */
 const commandOf = (route: string) => route.split('/').join(' ');
 
-/** Answers `method route`: a route's data, or its failure; refused when the sample has no such route. */
+/** 回答 `method route`：路由的数据或失败；示例服务端没有这个路由时为 `refused`。 */
 function answer(method: string, route: string, params: Params, async: boolean, wantsFile: boolean): SampleAnswer {
   if (method === 'GET' && route === 'jobs') return { data: listJobs() };
   const job = /^jobs\/([^/]+)$/.exec(route);
@@ -372,7 +370,7 @@ function answer(method: string, route: string, params: Params, async: boolean, w
   return data instanceof Failure ? { failed: { status: data.status, code: data.code, message: data.message } } : { data };
 }
 
-/** The sample server `api/client.ts` loads while no server answers: its routes, and the addresses of its media. */
+/** 没有服务端回答时 `api/client.ts` 加载的示例服务端：它的路由和媒体文件的地址。 */
 export const server: SampleServer = {
   answer(method, path, params, async) {
     const [route, query = ''] = path.split('?');
