@@ -1,6 +1,6 @@
 // The WeChat Pay records chosen (#204), saved by the browser as HTML, JSON or Excel, as the chat export offers.
 import { formatYuan, type Payment } from '../api/pay';
-import { dayOf, formatClock } from '../chat/messages';
+import { dayOf, formatClock } from '../format';
 import { makeSheet, safeName, saveFile, xmlEscape, XLSX_TYPE } from '../files';
 import { locale, msg, t } from '../i18n';
 import type { ExportFormat, ExportResult } from '../types';

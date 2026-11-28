@@ -7,10 +7,9 @@ import { ApiError } from '../api/client';
 import { getExcludeCandidates, getExcluded, hourBars, monthBars, setExcluded, typeBars, weekdayBars, type Bar, type Candidate, type Ranked } from '../api/analytics';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import type { AnalyticsState } from './useAnalytics';
+import { n } from '../format';
 import { locale, t } from '../i18n';
 
-/** A count with the page's separators. */
-export const n = (value: number) => value.toLocaleString(locale());
 /** The local date of Unix seconds; `—` for none. */
 export const day = (seconds: number | null) => (seconds ? new Date(seconds * 1000).toLocaleDateString(locale()) : '—');
 /** `part` as a percentage of `whole`, to one decimal; `0%` of nothing. */

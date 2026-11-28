@@ -6,7 +6,7 @@ import type { FormEvent } from 'react';
 import { CheckCircle, CircleNotch, Plus, Trash, Warning } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { clearAccount, planClearAccount, profileNameProblem, switchProfile, type ClearPlan, type Profile } from '../api/setup';
-import { formatSize } from '../jobs/TaskCenter';
+import { formatSize } from '../format';
 import { SettingRow, SettingsGroup } from './layout';
 import { t } from '../i18n';
 

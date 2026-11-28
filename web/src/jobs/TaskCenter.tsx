@@ -2,37 +2,11 @@
 // has succeeded, and a way to cancel it or take it off the list.
 import { useState } from 'react';
 import { Check, Circle, CircleNotch, DownloadSimple, X } from '@phosphor-icons/react';
-import { describeCommand, isFinished, jobFileUrl, type Job } from '../api/jobs';
-import { formatClock } from '../chat/messages';
+import { describeCommand, isFinished, jobFileUrl, jobLine, type Job } from '../api/jobs';
+import { formatClock } from '../format';
 import { FormatLanes } from '../exports/FormatLanes';
 import { removeJob, type JobsState } from './useJobs';
-import { msg, t } from '../i18n';
-
-// shown through t()
-const STATUS: Record<Job['status'], string> = { queued: msg('排队中'), running: msg('正在运行'), succeeded: msg('已完成'), failed: msg('未完成'), cancelled: msg('已取消') };
-
-/** A file's size in B, KB or MB. */
-export const formatSize = (bytes: number) =>
-  bytes < 1024 ? bytes + ' B' : bytes < 1024 * 1024 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1024 / 1024).toFixed(1) + ' MB';
-
-/** What the line under a job's name says: its progress, its error, or its file. */
-export function jobDetail(job: Job): string {
-  if (job.status === 'running') {
-    const p = job.progress;
-    if (p?.formats?.every(f => f.done)) return t('正在打包');
-    const count = p?.total ? (p.current ?? 0) + ' / ' + p.total : '';
-    return [p?.message, count, p?.percent !== undefined ? Math.round(p.percent) + '%' : ''].filter(Boolean).join(' · ') || t('正在运行');
-  }
-  if (job.status === 'failed') return job.result?.error?.message || (job.httpStatus ? t('命令没有完成（HTTP {status}）', { status: job.httpStatus }) : t('命令没有完成'));
-  if (job.status === 'succeeded' && job.file) return (job.file.name ?? t('文件')) + (job.file.size !== null ? ' · ' + formatSize(job.file.size) : '');
-  return t(STATUS[job.status]);
-}
-
-/** The state of a job and what it says: 「未完成 · 磁盘空间不足」. */
-export const jobLine = (job: Job) => {
-  const status = t(STATUS[job.status]);
-  return status === jobDetail(job) ? status : status + ' · ' + jobDetail(job);
-};
+import { t } from '../i18n';
 
 function JobRow({ job, label }: { job: Job; label: string }) {
   const [busy, setBusy] = useState(false);

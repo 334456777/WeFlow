@@ -16,6 +16,9 @@ const MESSAGE_KEYS = [
 /** A message of `chat messages --parsed` (the contract's, #399); only the keys the chat window uses are asked for. */
 export type ParsedMessage = Pick<Contract.ParsedMessage, (typeof MESSAGE_KEYS)[number]> & { _cursor: string };
 
+/** WeChat keeps an app message's kind in the high 32 bits of its type; the low bits are the type itself. */
+export const baseType = (localType: number) => localType % 4_294_967_296;
+
 const MESSAGE_FIELDS = ['_cursor', ...MESSAGE_KEYS].join(',');
 
 /** Messages per page of a conversation. */

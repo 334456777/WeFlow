@@ -13,8 +13,8 @@ import {
   type Footprint, type FootprintChoice, type FootprintFormat, type FootprintRange,
 } from '../api/footprint';
 import { setSetting } from '../api/settings';
-import { n } from '../analytics/AnalyticsViews';
-import { Failed } from '../reports/AnnualReport';
+import { n } from '../format';
+import { Failed } from '../Failed';
 import { runJob } from '../jobs/useJobs';
 import { Segmented } from '../Segmented';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';

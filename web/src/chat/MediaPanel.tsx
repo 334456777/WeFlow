@@ -8,7 +8,7 @@ import { useGathered, useLive } from '../api/live';
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
-import { formatClock } from './messages';
+import { formatClock } from '../format';
 import { MediaSkeleton } from '../Skeleton';
 import { locale, msg, t } from '../i18n';
 

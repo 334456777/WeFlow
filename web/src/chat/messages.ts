@@ -1,14 +1,11 @@
 // How the chat window shows a parsed message (#198): its kind, its labels, and where the date changes.
-import type { ParsedMessage } from '../api/messages';
-import { formatDate, lang, relativeDay, t } from '../i18n';
+import { baseType, type ParsedMessage } from '../api/messages';
+import { t } from '../i18n';
 
 /** How the chat window draws a message. */
 export type MessageKind =
   | 'text' | 'quote' | 'image' | 'emoji' | 'voice' | 'video' | 'file' | 'link' | 'finder' | 'record'
   | 'contact' | 'location' | 'call' | 'money' | 'system';
-
-/** WeChat keeps an app message's kind in the high 32 bits of its type; the low bits are the type itself. */
-export const baseType = (localType: number) => localType % 4_294_967_296;
 
 const APP_KINDS: Record<string, MessageKind> = {
   quote: 'quote', file: 'file', link: 'link', 'official-link': 'link', music: 'link', miniapp: 'link', announcement: 'text',
@@ -59,47 +56,8 @@ export function withoutLabel(text: string): string {
   return text.replace(/^\[[^\]]{1,8}\]\s*/, '');
 }
 
-/** A size in B, KB, MB or GB; empty for none. */
-export function formatFileSize(bytes: number | undefined): string {
-  if (!bytes || bytes < 0) return '';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
-  return (unit === 0 ? String(value) : value.toFixed(value < 10 ? 1 : 0)) + ' ' + units[unit];
-}
-
 /** A voice's length as WeChat writes it: `12″`, `1′05″`. */
 export function formatDuration(seconds: number | undefined): string {
   const s = Math.max(0, Math.round(seconds ?? 0));
   return s < 60 ? s + '″' : Math.floor(s / 60) + '′' + String(s % 60).padStart(2, '0') + '″';
-}
-
-const pad = (n: number) => String(n).padStart(2, '0');
-
-/** The local time of Unix seconds, `HH:MM`. */
-export const formatClock = (seconds: number) => {
-  const date = new Date(seconds * 1000);
-  return pad(date.getHours()) + ':' + pad(date.getMinutes());
-};
-
-/** The local day of a message, as `2026-10-12`. */
-export function dayOf(seconds: number): string {
-  const date = new Date(seconds * 1000);
-  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
-}
-
-/**
- * The heading of a day: 今天, 昨天, or the date with its weekday (and the year when it is not this year), in the page's
- * language: `10月12日 周一` in Chinese, `Mon, Oct 12` in English.
- */
-export function formatDayHeading(day: string, now = new Date()): string {
-  const [y, m, d] = day.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.round((today.getTime() - date.getTime()) / 86_400_000);
-  if (days === 0 || days === 1) return relativeDay(-days);
-  const year = y === now.getFullYear() ? undefined : 'numeric';
-  if (lang() === 'zh') return formatDate(date, { year, month: 'long', day: 'numeric' }) + ' ' + formatDate(date, { weekday: 'short' });
-  return formatDate(date, { year, month: 'short', day: 'numeric', weekday: 'short' });
 }

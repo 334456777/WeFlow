@@ -6,7 +6,7 @@ import { ApiError } from '../api/client';
 import { useGathered, useLive } from '../api/live';
 import { t } from '../i18n';
 import { getPayRecords, paymentOf, PAY_PAGE, PAY_SESSIONS, type Payment } from '../api/pay';
-import { dayOf } from '../chat/messages';
+import { dayOf } from '../format';
 
 /** The notices as read: how many so far, all of them newest first, or why it failed. */
 export type PaymentsState =

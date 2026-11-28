@@ -1,21 +1,16 @@
 // The annual report page (#208): the years with messages to pick from, and one year (or all of them) told in
 // numbers: who the chats were with, month by month and hour by hour, the moments that stand out, the words said most.
 import type { ReactNode } from 'react';
-import { ArrowClockwise } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
 import { busiestHour, formatWait, getAnnualReport, type AnnualReport } from '../api/reports';
 import { monthName } from '../api/analytics';
-import { n } from '../analytics/AnalyticsViews';
+import { Failed } from '../Failed';
+import { n } from '../format';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 import { weekdays } from '../calendar/dates';
 import { useShownReport } from './shown';
 import { t } from '../i18n';
-
-/** A report that could not be made: why, and a button to try again. */
-export const Failed = ({ title, message, onRetry }: { title: string; message: string; onRetry(): void }) =>
-  <div className="pane-message" role="alert"><strong>{title}</strong><p>{message}</p>
-    <button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={12} />{t('重试')}</button></div>;
 
 /** One moment of the year: what it is, its number, and a line about it. */
 export function Moment({ label, value, children }: { label: string; value: ReactNode; children: ReactNode }) {

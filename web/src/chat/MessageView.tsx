@@ -7,7 +7,8 @@ import {
   UserSquare, VideoCamera, Warning,
 } from '@phosphor-icons/react';
 import { mediaUrl, type ParsedMessage } from '../api/messages';
-import { appLabel, formatDuration, formatFileSize, kindOf, withoutLabel } from './messages';
+import { formatFileSize } from '../format';
+import { appLabel, formatDuration, kindOf, withoutLabel } from './messages';
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 import { t } from '../i18n';
 import { safeUrl } from '../links';

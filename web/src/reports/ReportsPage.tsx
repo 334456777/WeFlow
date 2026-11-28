@@ -4,7 +4,8 @@ import { getReportYears } from '../api/reports';
 import { Chip } from '../Chip';
 import { ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
-import { AnnualReportPage, Failed } from './AnnualReport';
+import { Failed } from '../Failed';
+import { AnnualReportPage } from './AnnualReport';
 import { DualReportPage, type Friend } from './DualReport';
 import { t } from '../i18n';
 
