@@ -1,4 +1,4 @@
-//! Link cards: their title, address and text.
+//! 链接卡片：标题、地址和文字。
 
 use super::appmsg::kind_of_app_type;
 use super::xml::{
@@ -6,11 +6,16 @@ use super::xml::{
     strip_sender_prefix, xml_text,
 };
 
+/// 链接消息的卡片。
 pub struct LinkCard {
+    /// 标题；消息没有标题时为地址。
     pub title: String,
+    /// `http:` 或 `https:` 地址。
     pub url: String,
 }
 
+/// 把 `raw` 规范化成可以打开的 `http:` 或 `https:` 地址：`&amp;` 换成 `&`，以 `//` 开头的和像域名的补上
+/// `https://`；其他协议（如 `javascript:`）、含空格的和太短的为空字符串。
 pub(super) fn normalize_http_link_url(raw: &str) -> String {
     let value = raw.trim().replace("&amp;", "&");
     if value.is_empty() {
@@ -42,6 +47,8 @@ pub(super) fn normalize_http_link_url(raw: &str) -> String {
     String::new()
 }
 
+/// 链接消息的卡片：`<type>` 在表中算作链接（4、5、49）或没有 `<type>` 的 app 消息，取第一个能打开的地址；
+/// 标题依次取 `<title>`、`<des>` 和地址，去掉发送者前缀。没有能打开的地址时为 `None`。
 pub fn extract_html_link_card(content: &str, local_type: i64) -> Option<LinkCard> {
     if content.is_empty() {
         return None;
@@ -51,7 +58,7 @@ pub fn extract_html_link_card(content: &str, local_type: i64) -> Option<LinkCard
     if !is_app {
         return None;
     }
-    // a card for every type the table calls a link (4, 5, 49), as the kind has it (#1191)
+    // 表中算作链接的 `<type>`（4、5、49）都有卡片，与种类的判定一致（#1191）
     let sub = extract_app_message_type(&normalized);
     if !sub.is_empty() && kind_of_app_type(&sub) != Some("link") {
         return None;
@@ -93,12 +100,16 @@ fn link_card_display_title(card: &LinkCard) -> String {
     }
 }
 
+/// 链接写进导出文字的方式。
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LinkStyle {
+    /// `[标题](地址)`，ChatLab 用。
     Markdown,
+    /// `[链接] 标题`，下一行是地址；标题就是地址时只写 `[链接]`。
     AppendUrl,
 }
 
+/// 链接消息在导出中的文字，按 `style` 写；不是链接或没有能打开的地址时为 `None`。
 pub fn format_link_card_export_text(
     content: &str,
     local_type: i64,
@@ -142,9 +153,8 @@ mod tests {
         assert_eq!(normalize_http_link_url("javascript:alert(1)"), "");
     }
 
-    /// Every `<type>` the table calls a link (4, 5, 49) has a card, kept as `local_type` 49 or as
-    /// `(<type> << 32) | 49`: the exports write its address, and Arkme has its title and address. The other types have
-    /// none (#1191).
+    /// 表中算作链接的每个 `<type>`（4、5、49）不论存为 `local_type` 49 还是 `(<type> << 32) | 49` 都有卡片：
+    /// 导出写出它的地址，Arkme 带它的标题和地址。其他 `<type>` 没有卡片（#1191）。
     #[test]
     fn every_link_type_has_a_card() {
         use super::super::appmsg::extract_arkme_app_message_meta_in;

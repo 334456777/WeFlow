@@ -1,8 +1,7 @@
-//! Message decoding and formatting for the exports.
+//! 导出用的消息解码和格式化。
 //!
-//! Raw WCDB rows go in, [`ExportMsg`] values and human-readable text come out. The text is
-//! the desktop app's, so exports stay comparable with its exports. Placeholder strings such as
-//! `[图片]` are data and intentionally stay as in the desktop exports.
+//! 输入数据库的消息行（[`MsgRow`]），输出 [`ExportMsg`] 和给人读的文字。
+//! 文字与桌面版的导出相同，两边的导出可以逐条对照。`[图片]` 这类占位文字是数据，与桌面版一致，不随 CLI 的语言变化。
 
 use serde_json::Value;
 use weflow_native::msg_row::MsgRow;
@@ -38,108 +37,108 @@ use xml::{
     MsgXml,
 };
 
-// ───────────────────────────── message struct ─────────────────────────────
+// ───────────────────────────── 导出的消息 ─────────────────────────────
 
-/// A message of a forwarded chat record (`<recorditem>`'s `<dataitem>`).
+/// 转发的聊天记录中的一条消息（`<recorditem>` 的 `<dataitem>`）。
 #[derive(Clone, Debug, Default)]
 pub struct ForwardRecord {
-    /// Its `datatype`, in the record's own numbers (1 text, 2 image, 3 voice, 4 video, 5 link, 8 file, 17 a chat
-    /// record of its own, 19 mini program, 37 sticker…, read by `RecordKind`); 0 when it gives none.
+    /// 条目的 `datatype`，用聊天记录自己的编号（1 文字、2 图片、3 语音、4 视频、5 链接、8 文件、17 嵌套的聊天记录、
+    /// 19 小程序、37 表情等，由 `RecordKind` 解读）；没有时为 0。
     pub datatype: i64,
-    /// The name of who sent it.
+    /// 发送者的名字。
     pub sourcename: String,
-    /// When it was sent, as the record writes it.
+    /// 发送时间，即聊天记录里写的原文。
     pub sourcetime: String,
-    /// Its text (`datadesc`, else `content`).
+    /// 条目的文字（`<datadesc>`，没有时取 `<content>`）。
     pub datadesc: Option<String>,
-    /// Its title, such as a link's or a file's.
+    /// 条目的标题，如链接或文件的标题。
     pub datatitle: Option<String>,
-    /// A nested record's title, else the item's own.
+    /// 嵌套的聊天记录的标题，没有时为条目自己的标题。
     pub chat_record_title: Option<String>,
-    /// A nested record's description, else the item's text.
+    /// 嵌套的聊天记录的描述，没有时为条目的文字。
     pub chat_record_desc: Option<String>,
-    /// A nested record's messages (`datatype` 17).
+    /// 嵌套的聊天记录中的消息（`datatype` 17）。
     pub chat_record_list: Option<Vec<ForwardRecord>>,
 }
 
-/// A media file copied next to the export: what the exported message points at instead of its placeholder text.
+/// 复制到导出文件旁边的媒体文件：导出的消息指向它，不再写占位文字。
 #[derive(Clone, Debug, Default)]
 pub struct MediaRef {
-    /// `image`, `voice`, `video`, `emoji` or `file`.
+    /// 媒体的种类：`image`、`voice`、`video`、`emoji` 或 `file`。
     pub kind: &'static str,
-    /// Path of the file relative to the export file, with `/` separators.
+    /// 文件相对于导出文件的路径，以 `/` 分隔。
     pub relative_path: String,
 }
 
-/// A message as the exports read it: the row's fields and what its XML names.
+/// 导出读到的一条消息：行的字段，以及从它的 XML 中取出的内容。
 #[derive(Clone, Debug, Default)]
 pub struct ExportMsg {
-    /// The message's id in its conversation's table.
+    /// 本地 ID，即消息在所在分片的会话表中的行号。
     pub local_id: i64,
-    /// WeChat's id of the message; 0 when it has none.
+    /// 服务器 ID；没有时为 0。
     pub server_id: i64,
-    /// WeChat's id as the row gives it, every digit kept; none when the row has none.
+    /// 服务器 ID 的十进制文字，保留全部数字；行中没有时为 `None`。
     pub server_id_raw: Option<String>,
-    /// When it was sent, in Unix seconds.
+    /// 发送时间，Unix 秒。
     pub create_time: i64,
-    /// WeChat's type of the message, with an app message's sub-type in the high 32 bits.
+    /// 消息类型（`local_type`），app 消息的子类型在高 32 位。
     pub local_type: i64,
-    /// The text, or the XML of a message that is not text.
+    /// 文字；不是文字的消息为它的 XML。
     pub content: String,
-    /// Who sent it, as the exports name it: the revoker of a revoke notice, the account for its own messages, else
-    /// the row's sender, else the conversation.
+    /// 导出所写的发送者：系统消息和拍一拍中，撤回提示为撤回者，其他为会话；其余消息中，账号自己发的为账号，
+    /// 其他为行中的发送者，没有时为会话。
     pub sender_username: String,
-    /// Whether the account's owner sent it.
+    /// 是否为账号所有者发的。
     pub is_send: bool,
-    /// An image's MD5.
+    /// 图片的 MD5。
     pub image_md5: Option<String>,
-    /// The name of an image's `.dat` file.
+    /// 图片的 `.dat` 文件名。
     pub image_dat_name: Option<String>,
-    /// A sticker's address on WeChat's servers.
+    /// 表情在微信服务器上的地址。
     pub emoji_cdn_url: Option<String>,
-    /// A sticker's MD5.
+    /// 表情的 MD5。
     pub emoji_md5: Option<String>,
-    /// The md5 of a sticker sent as an app message of type 8 (`appmsg_emoticon_md5_in`).
+    /// 以 `<type>` 为 8 的 app 消息发出的表情的 MD5（`appmsg_emoticon_md5_in`）。
     pub sticker_md5: Option<String>,
-    /// A sticker's caption, from WeChat's sticker database.
+    /// 表情的描述，取自微信的表情库。
     pub emoji_caption: Option<String>,
-    /// The MD5 that names a video's file.
+    /// 视频的 MD5，视频文件以它命名。
     pub video_md5: Option<String>,
-    /// An app message's `<type>`.
+    /// app 消息的 `<appmsg><type>`，读取时求出，各格式的导出器经 `MsgXml::of_export` 沿用。
     pub xml_type: Option<String>,
-    /// A file's name.
+    /// 文件名；没有 `<filename>` 时为 `<title>`。
     pub file_name: Option<String>,
-    /// A file's size, in bytes.
+    /// 文件大小，单位为字节。
     pub file_size: Option<i64>,
-    /// A file's extension, without its dot.
+    /// 文件的扩展名，不带点。
     pub file_ext: Option<String>,
-    /// A file's MD5.
+    /// 文件的 MD5。
     pub file_md5: Option<String>,
-    /// A location's latitude.
+    /// 位置的纬度。
     pub location_lat: Option<f64>,
-    /// A location's longitude.
+    /// 位置的经度。
     pub location_lng: Option<f64>,
-    /// The name of a location's place.
+    /// 位置的地点名称（`poiname`）。
     pub location_poiname: Option<String>,
-    /// A location's label, its address as WeChat shows it.
+    /// 位置的标签（`label`），即微信显示的地址。
     pub location_label: Option<String>,
-    /// A chat record's messages.
+    /// 聊天记录中的消息。
     pub chat_record_list: Option<Vec<ForwardRecord>>,
-    /// Set when the export was asked to embed media and the file could be found.
+    /// 导出要求复制媒体并且找到了文件时才有。
     pub media: Option<MediaRef>,
 }
 
-// one per message of an exported page: its size changes only on purpose (#505)
+// 导出的一页中每条消息各占一个：断言它的大小，使大小只在有意修改时改变（#505）
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(size_of::<ExportMsg>() == 536);
 
 impl ExportMsg {
-    /// JSON view used by the CLI query commands ([`crate::contract::MessageView`]).
+    /// 消息的 JSON 形式，即 [`crate::contract::MessageView`]。
     pub fn to_json(&self, my_wxid: &str) -> Value {
         serde_json::to_value(crate::contract::MessageView::of(self, my_wxid)).unwrap_or_default()
     }
 
-    /// WeChat's id of the message in decimal without leading zeros; `None` when it has none.
+    /// 十进制、不带前导零的服务器 ID；没有时为 `None`。
     pub fn platform_message_id(&self) -> Option<String> {
         match &self.server_id_raw {
             Some(raw) => unsigned_token(raw),
@@ -148,8 +147,9 @@ impl ExportMsg {
     }
 }
 
-// ──────────────────────────── plain text rendering ────────────────────────────
+// ──────────────────────────── 纯文本渲染 ────────────────────────────
 
+/// 时长的文字换算成整秒：不小于 1000 的值按毫秒算；不是正数时为 `None`。
 fn parse_duration_seconds(value: &str) -> Option<i64> {
     let n: f64 = value.trim().parse().ok()?;
     if !n.is_finite() || n <= 0.0 {
@@ -162,8 +162,7 @@ fn parse_duration_seconds(value: &str) -> Option<i64> {
     })
 }
 
-/// `text` with numeric entities such as `&#x0A;` and `&#32;` decoded (a note's body stores line breaks and spaces
-/// this way).
+/// 解码 `text` 中 `&#x0A;`、`&#32;` 这类数字实体（笔记的正文这样保存换行和空格）。
 fn decode_numeric_entities(text: &str) -> String {
     rx(r"&#(?:[xX]([0-9a-fA-F]+)|([0-9]+));")
         .replace_all(text, |c: &regex::Captures<'_>| {
@@ -179,10 +178,10 @@ fn decode_numeric_entities(text: &str) -> String {
         .into_owned()
 }
 
-/// The text of a WeChat note (appmsg type 24).
+/// 微信笔记（app 消息的 `<type>` 24）的文字。
 ///
-/// `<des>` holds only a truncated preview; the full body is in `<recorditem>`, one `<datadesc>` per `datatype="1"`
-/// item (a text section), while a `datatype="2"` item is an image.
+/// `<des>` 只有截断的预览，完整的正文在 `<recorditem>` 里：`datatype="1"` 的条目是一段文字，各有一个 `<datadesc>`；
+/// `datatype="2"` 的条目是图片。条目中没有文字时依次用标题和 `<des>`。
 fn note_text(normalized: &str, title: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
     for c in rx(r#"(?is)<dataitem\b[^>]*\bdatatype\s*=\s*["']?(\d+)["']?[^>]*>(.*?)</dataitem>"#)
@@ -214,7 +213,8 @@ fn note_text(normalized: &str, title: &str) -> String {
     }
 }
 
-/// The text of a message for ChatLab / JSON / WeClone.
+/// 消息的文字：各格式导出的文字和命令 API 的消息（[`crate::contract::MessageView`]）都在它的基础上写。
+/// 没有可写的文字时为 `None`。
 pub fn parse_message_content(
     content: &str,
     local_type: i64,
@@ -231,7 +231,7 @@ pub fn parse_message_content(
     )
 }
 
-/// [`parse_message_content`] of a message's `MsgXml`.
+/// 用消息已有的 `MsgXml` 求 [`parse_message_content`]。
 pub fn parse_message_content_in(
     x: &MsgXml<'_>,
     local_type: i64,
@@ -258,7 +258,7 @@ pub fn parse_message_content_in(
         48 => Some(location_text(content)),
         50 => Some(parse_voip_message(content)),
         10000 => Some(clean_system_message(content)),
-        // a pat's `<title>` is escaped XML, as the chat window reads it (#1196)
+        // 拍一拍的标题带转义的实体：与聊天窗口一样由 `pat_text` 先解码整条内容的实体，再取 `<title>`（#1196）
         266287972401 => Some(pat_text(content)),
         244813135921 => match x.quoted_display() {
             Some(d) => Some(build_quoted_reply_text(d)),
@@ -271,8 +271,7 @@ pub fn parse_message_content_in(
                 })
             }
         },
-        // an app message, whether `local_type` keeps its `<type>` in the high bits (`(<type> << 32) | 49`, as
-        // WeChat 4 does) or not: the same text either way (#1180)
+        // app 消息：不论 `local_type` 是否在高位保存 `<type>`（微信 4 存为 `(<type> << 32) | 49`），文字都相同（#1180）
         l if l & 0xFFFF_FFFF == 49 => Some(
             app_message_text(x, local_type, my_wxid, sender_wxid).unwrap_or_else(|| {
                 let title = xml_text(normalized, "title");
@@ -303,16 +302,16 @@ pub fn parse_message_content_in(
     }
 }
 
-/// How much of an app message its text says.
+/// app 消息的文字写多少。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextForm {
-    /// All of it, as the exports write it: a reply with what it quotes, a chat record's messages, a note's text.
+    /// 全文，即导出的写法：回复连同被引用的内容、聊天记录中的消息、笔记的正文。
     Full,
-    /// One line, as the chat window shows it: a reply's own text, the title of a chat record or a note.
+    /// 一行，即聊天窗口的写法：回复本身的文字，聊天记录或笔记的标题。
     Line,
 }
 
-/// [`app_message_text_as`] in [`TextForm::Full`].
+/// 按 [`TextForm::Full`] 求 [`app_message_text_as`]。
 fn app_message_text(
     x: &MsgXml<'_>,
     local_type: i64,
@@ -322,10 +321,9 @@ fn app_message_text(
     app_message_text_as(x, local_type, my_wxid, sender_wxid, TextForm::Full)
 }
 
-/// The text of an app message: by its own `<type>`, with the tag of its row of
-/// [`appmsg::app_type`](crate::message::appmsg::app_type); for a type not in the table, by the row of the kind its XML
-/// gives it ([`appmsg::app_message_kind_in`]), and a place as `[位置] <place>`. The chat window and the exports both
-/// read it, the chat window in [`TextForm::Line`] (#1263). `None` for a type and a kind the table does not know.
+/// app 消息的文字。种类（[`appmsg::app_message_kind_in`]）为 `location` 时写 `[位置] <地点>`；其余按它自己的
+/// `<type>` 在 [`appmsg::app_type`] 表中的那一行写，用那一行的标签，`<type>` 不在表中时按种类在表中的那一行。
+/// 聊天窗口和导出都读它，聊天窗口用 [`TextForm::Line`]（#1263）。`<type>` 和种类在表中都没有对应的行时为 `None`。
 pub(crate) fn app_message_text_as(
     x: &MsgXml<'_>,
     local_type: i64,
@@ -380,25 +378,25 @@ pub(crate) fn app_message_text_as(
     })
 }
 
-// ─────────────────────────── row → ExportMsg ───────────────────────────
+// ─────────────────────────── 行 → ExportMsg ───────────────────────────
 
-/// Which rows [`collect_rows`] takes, and whose they are.
+/// [`collect_rows`] 取哪些行，以及行所属的会话和账号。
 #[derive(Debug)]
 pub struct CollectOptions<'a> {
-    /// The conversation the rows are of.
+    /// 行所属的会话。
     pub session_id: &'a str,
-    /// The account's wxid.
+    /// 账号的 wxid。
     pub my_wxid: &'a str,
-    /// Unix seconds: only messages from then on; none or 0 for no bound.
+    /// Unix 秒：只取这个时间及以后的消息；`None` 或 0 时不限。
     pub start: Option<i64>,
-    /// Unix seconds: only messages up to then; none or 0 for no bound.
+    /// Unix 秒：只取这个时间及以前的消息；`None` 或 0 时不限。
     pub end: Option<i64>,
-    /// Only the messages of this sender.
+    /// 只取这个发送者的消息；为空时不限。
     pub sender_filter: Option<&'a str>,
 }
 
-/// Who sent a message, as the exports name it: the revoker of a revoke notice, the account for its own messages,
-/// else the row's sender, else the conversation itself.
+/// 导出所写的消息发送者：系统消息和拍一拍中，撤回提示为撤回者，其他为会话本身；其余消息中，账号自己发的为账号，
+/// 其他为行中的发送者，没有时为会话本身。
 fn message_sender(
     local_type: i64,
     content: &str,
@@ -425,7 +423,8 @@ fn message_sender(
     }
 }
 
-/// A Unix time stored as an integer: a compact date (`YYYYMMDD`, `YYYYMMDDhhmm`, `YYYYMMDDhhmmss`), else seconds, milliseconds or finer cut to seconds.
+/// 以整数保存的时间换算成 Unix 秒：8、12、14 位的先按紧凑日期（`YYYYMMDD`、`YYYYMMDDhhmm`、`YYYYMMDDhhmmss`）读，
+/// 读不出时与其余的一样按秒、毫秒或更细的单位截成秒；不是正数时为 0。
 fn int_timestamp_seconds(value: i64) -> i64 {
     if value <= 0 {
         return 0;
@@ -438,13 +437,13 @@ fn int_timestamp_seconds(value: i64) -> i64 {
     }
     #[expect(
         clippy::cast_precision_loss,
-        reason = "as the text of the cell is parsed: a time above 2^53 is not a time to keep exact"
+        reason = "与解析单元格的文字时相同：超过 2^53 的值不会是需要保留精度的时间"
     )]
     normalize_timestamp_seconds(value as f64)
 }
 
-/// A typed row's send time in Unix seconds: its `create_time`, or its `sort_seq` when that is the only one that looks
-/// like a time.
+/// 类型化的消息行的发送时间（Unix 秒）：取 `create_time`；`create_time` 早于 2000 年而 `sort_seq` 晚于 2000 年时，
+/// 或者 `create_time` 缺失、不是正数时，取 `sort_seq`。
 pub fn msg_row_timestamp(row: &MsgRow) -> i64 {
     let primary = row.create_time.map_or(0, int_timestamp_seconds);
     let sort_seq = row.sort_seq.map_or(0, int_timestamp_seconds);
@@ -457,7 +456,7 @@ pub fn msg_row_timestamp(row: &MsgRow) -> i64 {
     sort_seq.max(0)
 }
 
-/// `message_sender` of a typed row.
+/// 类型化的消息行的发送者，规则同 `message_sender`。
 pub fn msg_row_sender(row: &MsgRow, session_id: &str, my_wxid: &str) -> String {
     message_sender(
         row.local_type,
@@ -473,8 +472,8 @@ pub fn msg_row_sender(row: &MsgRow, session_id: &str, my_wxid: &str) -> String {
     )
 }
 
-/// The export messages of typed rows, which it takes (their text moves into the messages): the messages
-/// in the time range and of the sender asked for, sorted chronologically.
+/// 把类型化的消息行转换成导出的消息：只留时间范围内、指定发送者的消息，按时间排序，时间相同的按 `local_id`。
+/// 行的所有权交给它，行的文字直接移进消息，不复制。
 pub fn collect_rows(rows: Vec<MsgRow>, opts: &CollectOptions<'_>) -> Vec<ExportMsg> {
     let mut out: Vec<ExportMsg> = Vec::new();
     for row in rows {
@@ -552,7 +551,7 @@ pub fn collect_rows(rows: Vec<MsgRow>, opts: &CollectOptions<'_>) -> Vec<ExportM
             msg.video_md5 = extract_video_md5(&content);
         }
         {
-            // read once for all of it
+            // 只解析一次，下面各项共用
             let x = MsgXml::new(&content);
             let app_like =
                 local_type == 49 || content.contains("<appmsg") || content.contains("&lt;appmsg");
@@ -593,7 +592,7 @@ mod tests {
         let xml = "<msg><appmsg><title /><des>预览被截断…</des><type>24</type><recorditem><![CDATA[<recordinfo><desc>预览</desc><datalist count=\"3\"><dataitem datatype=\"8\" dataid=\"a\"><fileext>.htm</fileext></dataitem><dataitem datatype=\"1\" dataid=\"b\"><datadesc>第一段&#x0A;第&#x20;二行</datadesc></dataitem><dataitem datatype=\"2\" dataid=\"c\"></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>";
         let t = parse_message_content(xml, 103_079_215_153, None, None, None).unwrap();
         assert_eq!(t, "[笔记]\n第一段\n第 二行\n[图片]");
-        // without a recorditem, the <des>
+        // 没有 recorditem 时取 <des>
         let t = parse_message_content(
             "<msg><appmsg><title /><des>只有预览</des><type>24</type></appmsg></msg>",
             103_079_215_153,
@@ -653,9 +652,8 @@ mod tests {
         assert_eq!(filtered.len(), 1);
     }
 
-    /// The `<appmsg>` type an export takes from reading a message is the one its XML gives, for app messages plain
-    /// and escaped, quoting another message with a type of its own, with a pat, without a type, and for text that
-    /// only mentions `<appmsg>`.
+    /// 导出读取消息时记下的 `<appmsg>` 类型与从 XML 重新求出的相同：普通和转义的 app 消息、
+    /// 引用了另一条带自己类型的消息的回复、带拍一拍的、没有类型的，以及只是提到 `<appmsg>` 的文字。
     #[test]
     fn the_app_type_read_is_the_one_worked_out_again() {
         let contents = [

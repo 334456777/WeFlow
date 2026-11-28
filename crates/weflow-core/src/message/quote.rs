@@ -1,4 +1,4 @@
-//! Quoted replies: what they quote, its preview and who sent it.
+//! 引用回复：被引用的内容、它的预览和发送者。
 
 use super::xml::{
     decode_html_entities, decode_text_entities, extract_app_message_type, extract_xml_value,
@@ -6,11 +6,16 @@ use super::xml::{
     MsgXml,
 };
 
+/// 回复中被引用的消息，各项取自 `<refermsg>`，没有时为 `None`。
 #[derive(Clone)]
 pub(super) struct QuoteInfo {
+    /// 被引用内容的预览。
     pub content: Option<String>,
+    /// 被引用消息的发送者的显示名（`<displayname>`）；是 wxid 时为 `None`。
     pub sender: Option<String>,
+    /// 被引用消息的类型（`<type>`）。
     pub quote_type: Option<String>,
+    /// 被引用消息的服务器 ID（`<svrid>`）。
     pub svrid: Option<String>,
 }
 
@@ -25,11 +30,11 @@ impl QuoteInfo {
     }
 }
 
-/// The `<refermsg>` block of a quote, in content whose entities are decoded.
+/// 从已解码实体的内容中取出引用的 `<refermsg>` 块。
 pub(crate) fn refermsg_xml(normalized: &str) -> Option<String> {
     let start = memchr::memmem::find(normalized.as_bytes(), b"<refermsg>")?;
-    // when the quoted message carries a quote itself (such as an image with a quote), its content holds another
-    // (decoded) <refermsg>: the outer block ends at the last closing tag, or its type and displayname would be cut off
+    // 被引用的消息本身也带引用时（如带引用的图片），它的内容里还有一个（已解码的）<refermsg>：
+    // 外层的块要到最后一个结束标签为止，否则外层的 type 和 displayname 会被截掉
     let end = memchr::memmem::rfind(normalized.as_bytes(), b"</refermsg>")?;
     if end < start {
         return None;
@@ -37,6 +42,8 @@ pub(crate) fn refermsg_xml(normalized: &str) -> Option<String> {
     Some(normalized[start..end + "</refermsg>".len()].to_string())
 }
 
+/// 回复选中的部分引用：`full` 中从 `<start>` 到 `<end>` 的一段（含两端），没有时按 `<startindex>`、`<endindex>`
+/// 的字符下标截取；都没有时为空字符串。
 fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
     if xml.is_empty() || full.is_empty() {
         return String::new();
@@ -47,7 +54,7 @@ fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
     let end_index = extract_xml_value(xml, "endindex").parse::<i64>().ok();
     if !start_char.is_empty() && !end_char.is_empty() {
         if let Some(sp) = full.find(&start_char) {
-            // the end is looked for from the last character of the start on, so the two may share it
+            // 从开始字符串的最后一个字符起找结束字符串，两者可以共用这个字符
             let last = start_char.char_indices().last().map_or(0, |(at, _)| at);
             let from = sp + last;
             if let Some(rel) = full.get(from..).and_then(|s| s.find(&end_char)) {
@@ -74,9 +81,9 @@ fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
     String::new()
 }
 
-/// `text` with the numeric references of white space (line breaks, tabs, spaces) as spaces. A quoted text is mostly
-/// escaped once, as any XML text; some keep their line breaks and spaces as `&#x0A;`, `&#x20;` escaped once more, which
-/// are left after the quote is decoded (#1212). The preview turns white space into single spaces anyway.
+/// 把 `text` 中表示空白（换行、制表符、空格）的数字实体换成空格。被引用的文字大多像其他 XML 文字一样只转义一次；
+/// 有些把换行和空格写成多转义了一层的 `&#x0A;`、`&#x20;`，解码引用之后仍留在文字里（#1212）。
+/// 预览本来就把空白并成一个空格。
 fn white_space_references_as_spaces(text: &str) -> std::borrow::Cow<'_, str> {
     const REFERENCES: [&str; 8] = [
         "&#x0a;", "&#10;", "&#x0d;", "&#13;", "&#x09;", "&#9;", "&#x20;", "&#32;",
@@ -107,13 +114,13 @@ fn white_space_references_as_spaces(text: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(out)
 }
 
-/// The quoted text of a `<refermsg>` block: the part the reply picked when it names one, else all of it.
+/// `<refermsg>` 块中被引用的文字：回复选了其中一部分时取那一部分（按 `<start>`、`<end>`，下标，
+/// 或 `<selectedcontent>` 等元素），否则取全部。
 pub(crate) fn extract_preferred_quoted_text(refer_xml: &str) -> String {
     if refer_xml.is_empty() {
         return String::new();
     }
-    // the quoted text is escaped once more inside the block: numeric entities too, such as the `&#x0A;` WeChat writes
-    // for a line break (#1212)
+    // 块里被引用的文字多转义了一层，数字实体也是，如微信表示换行的 `&#x0A;`（#1212）
     let mut sources = vec![decode_text_entities(refer_xml).into_owned()];
     let raw_msgsource = extract_xml_value(refer_xml, "msgsource");
     if !raw_msgsource.is_empty() {
@@ -157,7 +164,7 @@ pub(crate) fn extract_preferred_quoted_text(refer_xml: &str) -> String {
     full
 }
 
-/// The quote a `<refermsg>` block (of the normalized content) holds.
+/// 规范化后的内容中的 `<refermsg>` 块所引用的消息。
 pub(super) fn quote_info_of(refer: impl AsRef<str>) -> QuoteInfo {
     let refer = refer.as_ref();
     let mut sender = extract_xml_value(refer, "displayname");
@@ -173,13 +180,13 @@ pub(super) fn quote_info_of(refer: impl AsRef<str>) -> QuoteInfo {
         "34" => "[语音消息]".into(),
         "43" => "[视频]".into(),
         "47" => "[表情]".into(),
-        // an app message by its own XML: a quoted reply by its words, a link by its title, a file by its name (#1263)
+        // app 消息按它自己的 XML 写：回复写它的文字，链接写标题，文件写文件名（#1263）
         "49" => quoted_other_preview(&refer_content),
         "42" => "[名片]".into(),
         "48" => "[位置]".into(),
         _ => quoted_other_preview(&refer_content),
     };
-    // quoted text that is XML itself (a quote of a message carrying an image, say) becomes a readable preview
+    // 本身是 XML 的被引用文字（如引用了一条带图片的消息）换成可读的预览
     let display = if looks_like_xml_payload(&display) {
         quoted_xml_preview(&display)
     } else {
@@ -194,7 +201,7 @@ pub(super) fn quote_info_of(refer: impl AsRef<str>) -> QuoteInfo {
     }
 }
 
-/// A readable preview of quoted content that is XML itself (a quote of another quote, a file, an image, a note…).
+/// 本身是 XML 的被引用内容的可读预览（被引用的是另一条回复、文件、图片、笔记等）。
 fn quoted_xml_preview(content: &str) -> String {
     let normalized = normalize_app_message_content(content);
     let title = extract_xml_value(&normalized, "title");
@@ -241,8 +248,7 @@ fn quoted_xml_preview(content: &str) -> String {
     }
 }
 
-/// Whether `text` is an XML payload, by its start alone: WeChat cuts long quoted content short, so the XML may have
-/// no closing tag.
+/// `text` 是否为 XML，只看开头：微信会截短较长的被引用内容，XML 可能没有结束标签。
 fn looks_like_xml_payload(text: &str) -> bool {
     let head = text.trim_start();
     [
@@ -258,8 +264,7 @@ fn looks_like_xml_payload(text: &str) -> bool {
     .any(|p| head.starts_with(p))
 }
 
-/// The text of a quote's quoted content: XML becomes a readable preview, other text comes back sanitized, and
-/// content that is empty or names a wxid is `[消息]`.
+/// 被引用内容的文字：XML 换成可读的预览，其他文字清理后返回；为空或含 wxid 的内容为 `[消息]`。
 fn quoted_other_preview(refer_content: &str) -> String {
     let decoded = decode_html_entities(refer_content);
     let body = strip_sender_prefix(&decoded);
@@ -273,6 +278,8 @@ fn quoted_other_preview(refer_content: &str) -> String {
     }
 }
 
+/// 按被引用消息的类型 `refer_type` 写它的预览：app 消息（49）写标题、文件名或应用名，都没有时写类型的标签；
+/// 其他类型写导出给这种消息的文字；类型不是数字时按 [`quoted_other_preview`]。
 pub(super) fn format_quoted_reference_preview(content: &str, refer_type: &str) -> String {
     let t: Option<i64> = refer_type.trim().parse().ok();
     let Some(ty) = t else {
@@ -299,7 +306,7 @@ pub(super) fn format_quoted_reference_preview(content: &str, refer_type: &str) -
             _ => "[链接]".into(),
         };
     }
-    // the text the exports give a message of that type (#1263)
+    // 导出给这种类型的消息写的文字（#1263）
     let out = super::parse_message_content(content, ty, None, None, None).unwrap_or_default();
     if out.is_empty() {
         "[消息]".into()
@@ -308,13 +315,18 @@ pub(super) fn format_quoted_reference_preview(content: &str, refer_type: &str) -
     }
 }
 
+/// 引用回复显示出来的三部分。
 #[derive(Clone, Debug)]
 pub struct QuotedDisplay {
+    /// 回复本身的文字。
     pub reply_text: String,
+    /// 被引用消息的发送者。
     pub quoted_sender: Option<String>,
+    /// 被引用内容的预览。
     pub quoted_preview: String,
 }
 
+/// 引用回复的文字 `<回复>[引用 <发送者>：<预览>]`：没有发送者时不写「<发送者>：」，没有回复时只写方括号的部分。
 pub fn build_quoted_reply_text(d: &QuotedDisplay) -> String {
     let label = match &d.quoted_sender {
         Some(s) if !s.is_empty() => format!("{s}：{}", d.quoted_preview),
@@ -327,8 +339,8 @@ pub fn build_quoted_reply_text(d: &QuotedDisplay) -> String {
     }
 }
 
-/// Whether the message is a reply (a text quote): only local type 244813135921 and app message type 57 are.
-/// Images, forwarded chat records and others may carry a `<refermsg>` too, and are not text quotes.
+/// 消息是否为回复（文字引用）：只有 `local_type` 为 244813135921 的和 `<type>` 为 57 的 app 消息是。
+/// 图片、转发的聊天记录等也可能带 `<refermsg>`，但不是文字引用。
 pub fn is_text_quote_message_in(local_type: i64, x: &MsgXml<'_>) -> bool {
     if local_type == 244_813_135_921 {
         return true;
@@ -373,10 +385,10 @@ mod tests {
             ))
         };
         assert_eq!(quote("abcdefg", "b", "d"), "bcd");
-        // multi-byte start and end characters
+        // 多字节的开始和结束字符
         assert_eq!(quote("今天天气很好，去公园吧", "天", "好"), "天天气很好");
         assert_eq!(quote("今天天气很好，去公园吧", "天气", "好"), "天气很好");
-        // the start and the end may share a character
+        // 开始和结束可以共用一个字符
         assert_eq!(quote("今天天气很好，去公园吧", "公", "公"), "公");
         assert_eq!(quote("今天天气很好，去公园吧", "很好", "好"), "很好");
         assert_eq!(quote("今天天气很好🙂，去公园吧", "🙂", "园"), "🙂，去公园");

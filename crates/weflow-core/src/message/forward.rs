@@ -1,4 +1,4 @@
-//! Chat histories forwarded as one message: their records and their text.
+//! 合并转发的聊天记录：其中的条目和文字。
 
 use super::xml::{
     decode_html_entities_cow, decode_text_entities, extract_app_message_type, extract_xml_value,
@@ -7,8 +7,8 @@ use super::xml::{
 use super::ForwardRecord;
 use std::collections::HashSet;
 
-/// What an item of a chat record is, by the record's own `datatype` numbers, which are not a message's
-/// `local_type`: the one table the exports' text, ChatLab and HTML read them by (#1171).
+/// 聊天记录中一个条目的种类，按聊天记录自己的 `datatype` 编号，与消息的 `local_type` 不同：
+/// 导出文字、ChatLab 和 HTML 都按这一张表读（#1171）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecordKind {
     Text,
@@ -24,7 +24,7 @@ pub(crate) enum RecordKind {
 }
 
 impl RecordKind {
-    /// The kind of an item of `datatype`.
+    /// `datatype` 对应的条目种类。
     pub(crate) fn of(datatype: i64) -> Self {
         match datatype {
             1 => Self::Text,
@@ -40,7 +40,7 @@ impl RecordKind {
         }
     }
 
-    /// The text standing in for an item of this kind that has none of its own, as the exports' text writes it.
+    /// 这种条目没有自己的文字时，导出文字中代替它的标签。
     pub(crate) fn tag(self) -> &'static str {
         match self {
             Self::Image => "[图片]",
@@ -56,14 +56,14 @@ impl RecordKind {
     }
 }
 
-/// An item of a chat record and its `dataid`, which names it apart from another item with the same words.
+/// 聊天记录的一个条目和它的 `dataid`，`dataid` 用来区分文字相同的两个条目。
 struct Item {
     id: Option<String>,
     record: ForwardRecord,
 }
 
-/// The items of `found` whose `dataid` is not in `seen` yet, in order; an item without one is always kept, since
-/// two such items with the same words (the same text sent twice in a minute, two pictures) are still two (#1171).
+/// `found` 中 `dataid` 还不在 `seen` 里的条目，保持原来的顺序；没有 `dataid` 的条目都保留，
+/// 因为文字相同的两个这样的条目（一分钟内发了两次的同一句话、两张图片）仍是两条（#1171）。
 fn new_items(
     found: Vec<Item>,
     seen: &mut HashSet<String>,
@@ -74,6 +74,8 @@ fn new_items(
         .map(|item| item.record)
 }
 
+/// 聊天记录（`<type>` 19 或带 `<recorditem>` 的消息）中的条目：读每个 `<recorditem>`，`dataid` 相同的只算一条；
+/// 都没有读到时直接在内容中找 `<dataitem>`。没有条目时为 `None`。
 pub(super) fn parse_chat_history(content: &str) -> Option<Vec<ForwardRecord>> {
     let normalized = normalize_app_message_cow(content);
     let app_type = extract_app_message_type(&normalized);
@@ -95,13 +97,14 @@ pub(super) fn parse_chat_history(content: &str) -> Option<Vec<ForwardRecord>> {
     }
 }
 
-/// The records of a chat record's `<recordinfo>` (or of a nested one), which may be kept as text, escaped once or
-/// inside a CDATA section.
+/// 聊天记录（或嵌套的聊天记录）的 `<recordinfo>` 中的条目；`<recordinfo>` 可能是原文、转义过一次的，
+/// 或在 CDATA 里。
 fn parse_forward_records(container: &str) -> Vec<ForwardRecord> {
     let mut seen = HashSet::new();
     new_items(parse_forward_container(container), &mut seen).collect()
 }
 
+/// `container` 中的条目：依次试原文、解码一次实体的、CDATA 里的及其解码一次实体的几种形式，取第一种找到条目的。
 fn parse_forward_container(container: &str) -> Vec<Item> {
     if container.is_empty() {
         return Vec::new();
@@ -120,10 +123,10 @@ fn parse_forward_container(container: &str) -> Vec<Item> {
             }
         }
     }
-    // Each form is the same items read once more: the first form that holds any is the one read, never a mix of
-    // them. A form decoded further would also show a nested record's escaped items as items of this one.
+    // 每种形式都是同一批条目再读一遍：只读第一种找到条目的形式，不把几种混在一起。
+    // 再多解码一层的形式还会把嵌套记录中转义的条目当成这一层的条目。
     for seg in &segments {
-        // a nested record kept as it is inside an item's `<recordxml>` is in that item, not items of this one (#1174)
+        // 原样放在条目的 `<recordxml>` 里的嵌套记录属于那个条目，其中的条目不是这一层的（#1174）
         let items: Vec<Item> = crate::xml::outer_elements(seg, "dataitem")
             .filter_map(|(attrs, body)| parse_forward_data_item(body, attrs))
             .collect();
@@ -134,12 +137,13 @@ fn parse_forward_container(container: &str) -> Vec<Item> {
     parse_forward_data_item(container, "").into_iter().collect()
 }
 
+/// `<dataitem>` 中的一个条目（`body` 是元素的内容，`attrs` 是它的属性）；发送者、文字和标题都没有时为 `None`。
 fn parse_forward_data_item(body: &str, attrs: &str) -> Option<Item> {
     let nested_xml = crate::xml::outer_elements(body, "recordxml")
         .next()
         .map(|(_, inner)| strip_cdata(inner))
         .unwrap_or_default();
-    // the item's own fields, not those of the items of a record nested in it (#1174)
+    // 条目自己的字段，不是嵌套在其中的记录的条目的字段（#1174）
     let body = crate::xml::without_outer_elements(body, "recordxml");
     let body = body.as_ref();
     let datatype_raw = rx(r#"(?i)datatype\s*=\s*["']?(\d+)["']?"#)
@@ -149,7 +153,7 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<Item> {
         .or_else(|| Some(extract_xml_value(body, "datatype")).filter(|s| !s.is_empty()))
         .unwrap_or_else(|| "0".into());
     let datatype = datatype_raw.parse::<i64>().unwrap_or(0);
-    // numeric entities (`&#x0A;`) too, in the same one pass (#1199)
+    // 数字实体（`&#x0A;`）也在同一遍里解码（#1199）
     let text = |s: &str| decode_text_entities(s).into_owned();
     let sourcename = text(&extract_xml_value(body, "sourcename"));
     let sourcetime = extract_xml_value(body, "sourcetime");
@@ -203,6 +207,7 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<Item> {
     })
 }
 
+/// 条目在导出文字中的文字（不含发送者）：依次取文字、标题；都没有时嵌套的聊天记录取描述，其余写种类的标签。
 fn format_forward_item_text(item: &ForwardRecord) -> String {
     let desc = item.datadesc.clone().unwrap_or_default();
     let desc = desc.trim();
@@ -224,6 +229,8 @@ fn format_forward_item_text(item: &ForwardRecord) -> String {
     }
 }
 
+/// 条目在导出文字中的行 `<发送者>: <文字>`；嵌套的聊天记录先写一行 `<发送者>: [转发的聊天记录]<标题>`，
+/// 其中的条目各缩进一级（两个空格，最多 8 级）。
 fn build_forward_lines(record: &ForwardRecord, depth: usize) -> Vec<String> {
     let indent = if depth > 0 {
         "  ".repeat(depth.min(8))
@@ -255,6 +262,8 @@ fn build_forward_lines(record: &ForwardRecord, depth: usize) -> Vec<String> {
     )]
 }
 
+/// 聊天记录消息的导出文字：第一行是 `[转发的聊天记录]` 加标题（依次取 `<nickname>`、`<title>`、`<des>`、
+/// `<displayname>`），下面每个条目一行。
 pub(super) fn format_forward_chat_record_content(content: &str) -> String {
     let normalized = normalize_app_message_content(content);
     let name = ["nickname", "title", "des", "displayname"]
@@ -287,7 +296,7 @@ mod tests {
         let text = format_forward_chat_record_content(xml);
         assert_eq!(text, "[转发的聊天记录]群聊的聊天记录\nBob: hello");
         assert_eq!(convert_message_type_in(49, &MsgXml::new(xml)), 7);
-        // an item's text has its numeric entities decoded too, in the same one pass (#1199)
+        // 条目的文字中的数字实体也在同一遍里解码（#1199）
         let escaped = xml
             .replace(">Bob<", ">B&amp;b<")
             .replace(">hello<", ">a&#x0A;b &amp;amp;<");
@@ -297,9 +306,8 @@ mod tests {
         );
     }
 
-    /// A nested record as WeChat keeps it: its XML as it is inside the item's `<recordxml>`, within the outer
-    /// record's CDATA section, here two levels deep, and before the item's own fields. Each record keeps its own
-    /// items, and each item its own sender (#1174).
+    /// 微信保存的嵌套记录：它的 XML 原样放在条目的 `<recordxml>` 里，位于外层记录的 CDATA 中、条目自己的字段之前，
+    /// 这里嵌套两层。每个记录只有自己的条目，每个条目只有自己的发送者（#1174）。
     #[test]
     fn a_nested_record_keeps_its_own_items() {
         let info = |title: &str, items: &str| {
@@ -346,7 +354,7 @@ mod tests {
         );
     }
 
-    /// A chat record of `items` (`<dataitem>` attributes and body), inside a CDATA section as WeChat keeps it.
+    /// 由 `items`（`<dataitem>` 的属性和内容）组成的聊天记录，像微信一样放在 CDATA 里。
     pub(crate) fn record_of(items: &[(&str, &str)]) -> String {
         let list: String = items
             .iter()
@@ -361,8 +369,8 @@ mod tests {
 
     const BOB: &str = "<sourcename>Bob</sourcename><sourcetime>2024-01-01 10:00</sourcetime>";
 
-    /// Eight items Bob sent in one minute, two of them the same words and two pictures: all eight are read, each
-    /// with the tag of its own `datatype` (#1171).
+    /// Bob 在一分钟内发的八个条目，其中两条文字相同、两张是图片：
+    /// 八个都要读到，各带自己的 `datatype` 的标签（#1171）。
     pub(crate) fn eight_items() -> String {
         let text = format!("{BOB}<datadesc>收到</datadesc>");
         let bare = BOB.to_string();
@@ -389,14 +397,13 @@ mod tests {
             "[转发的聊天记录]聊天记录\nBob: 收到\nBob: 收到\nBob: [图片]\nBob: [图片]\nBob: [语音消息]\nBob: [视频]\n\
              Bob: 一篇文章\nBob: f.pdf"
         );
-        // without a `dataid`, two items with the same words are still two
+        // 没有 `dataid` 时，文字相同的两个条目仍是两条
         let text = format!("{BOB}<datadesc>收到</datadesc>");
         let xml = record_of(&[("datatype=\"1\"", &text), ("datatype=\"1\"", &text)]);
         assert_eq!(parse_chat_history(&xml).map(|l| l.len()), Some(2));
     }
 
-    /// The tags of the items with no text of their own, by the record's `datatype` numbers rather than a
-    /// message's `local_type` (#1171).
+    /// 没有自己的文字的条目，标签按聊天记录的 `datatype` 编号，而不是消息的 `local_type`（#1171）。
     #[test]
     fn an_item_is_told_by_the_record_s_own_numbers() {
         for (datatype, tag) in [
@@ -421,9 +428,8 @@ mod tests {
         }
     }
 
-    /// An item that the record holds once is one item, though it is read in several forms of the container: as
-    /// it is, with its entities decoded, inside the CDATA section; and so is an item that two `<recorditem>`s hold
-    /// with the same `dataid` (#1171).
+    /// 记录中只出现一次的条目，即使按容器的几种形式（原文、解码实体后、CDATA 里）读到，也只算一条；
+    /// 两个 `<recorditem>` 中 `dataid` 相同的条目同样只算一条（#1171）。
     #[test]
     fn an_item_read_in_several_forms_is_one() {
         let item = |id: &str| {

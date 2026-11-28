@@ -1,4 +1,4 @@
-//! Pictures, videos, files and locations: the names and MD5s of their files and what their XML says.
+//! 图片、视频、文件和位置：文件名、MD5，以及它们的 XML 中的信息。
 
 use super::emoji::{extract_loose_hex_md5, percent_decode};
 use super::xml::{
@@ -6,6 +6,8 @@ use super::xml::{
     xml_attr_text, xml_text, MsgXml,
 };
 
+/// 从 `<imgname>`、CDN 地址这类值中取出图片 `.dat` 文件名的十六进制部分（小写）：先找 `<hex>[.t].dat`；
+/// 没有时去掉查询串、目录和扩展名，在 `_` 前面的部分中取 16～64 位的十六进制。取不出时为 `None`。
 pub(super) fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     let mut text = value.trim().to_string();
     if text.is_empty() {
@@ -18,7 +20,7 @@ pub(super) fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     }
     let no_query = text.split(['?', '#']).next().unwrap_or("").to_string();
     let base = rx(r"^.*[\\/]").replace(&no_query, "").to_string();
-    // the regex below needs `.dat`, and no character but these letters' ASCII cases folds to them
+    // 下面的正则要有 `.dat` 才能匹配；只有这几个字母的 ASCII 大小写折叠成它们，所以先按 ASCII 查一遍不会漏掉
     let base = if crate::xml::find_ci(&base, 0, ".dat").is_some() {
         rx(r"(?i)\.(?:t\.)?dat$").replace(&base, "").to_string()
     } else {
@@ -33,7 +35,7 @@ pub(super) fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     } else {
         base
     };
-    // `^[a-fA-F0-9]{16,64}$`
+    // 相当于 `^[a-fA-F0-9]{16,64}$`
     if (16..=64).contains(&cdn_token.len()) && cdn_token.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Some(cdn_token.to_lowercase());
     }
@@ -43,6 +45,8 @@ pub(super) fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     last_hex_token(&cdn_token, 16, 64).map(|t| t.to_lowercase())
 }
 
+/// 图片消息的 XML 中 `.dat` 文件的名字：取元素 `<imgname>`、`<cdnmidimgurl>`、`<cdnthumburl>` 和 `<img>`
+/// 的同名属性中第一个不为空的，再按 [`normalize_image_dat_name_token`] 取出。
 pub(crate) fn extract_image_dat_name(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
@@ -62,8 +66,8 @@ pub(crate) fn extract_image_dat_name(content: &str) -> Option<String> {
     normalize_image_dat_name_token(&pick)
 }
 
-/// The name of an image's `.dat` file in a row's packed info: its printable bytes as text, a `<hex>[.t].dat` name
-/// or else a long run of hex digits.
+/// 行的 `packed_info` 中图片 `.dat` 文件的名字（小写）：把其中可打印的字节当作文字，取 `<hex>[.t].dat` 的名字，
+/// 没有时取第一段至少 16 位的十六进制数字。
 pub(crate) fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
     let text: String = bytes
         .iter()
@@ -78,7 +82,7 @@ pub(crate) fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
     if let Some(name) = hex_dat_name(&text) {
         return Some(name);
     }
-    // `([0-9a-fA-F]{16,})`: the first run of at least 16 hex digits
+    // 相当于 `([0-9a-fA-F]{16,})`：第一段至少 16 位的十六进制数字
     let h = text.as_bytes();
     let mut i = 0;
     while i < h.len() {
@@ -91,21 +95,23 @@ pub(crate) fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
     None
 }
 
-/// `(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat`: the hex name of a `.dat` file in `text`, lowercased.
+/// `(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat`：`text` 中 `.dat` 文件名的十六进制部分，转成小写。
 fn hex_dat_name(text: &str) -> Option<String> {
-    // the regex needs `.dat`, and no character but these letters' ASCII cases folds to them
+    // 正则要有 `.dat` 才能匹配；只有这几个字母的 ASCII 大小写折叠成它们，所以先按 ASCII 查一遍不会漏掉
     crate::xml::find_ci(text, 0, ".dat")?;
     rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat")
         .captures(text)
         .map(|c| c[1].to_lowercase())
 }
 
+/// 图片的 MD5（小写）：`<img>` 的 `md5` 属性，没有时取 `<md5>` 元素。
 pub fn extract_image_md5(content: &str) -> Option<String> {
     crate::xml::spaced_hex_attribute(content, "<img", "md5")
         .map(str::to_ascii_lowercase)
         .or_else(|| crate::xml::text_inner(content, "md5").map(str::to_lowercase))
 }
 
+/// 视频的 MD5（小写）：`<videomsg>` 的 `md5` 属性，没有时取 `<md5>` 元素。
 pub(super) fn extract_video_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
@@ -115,6 +121,7 @@ pub(super) fn extract_video_md5(content: &str) -> Option<String> {
         .or_else(|| crate::xml::text_inner(content, "md5").map(str::to_lowercase))
 }
 
+/// app 消息带的文件，各字段与 [`super::ExportMsg`] 的同名字段相同。
 pub(super) struct FileMeta {
     pub xml_type: Option<String>,
     pub file_name: Option<String>,
@@ -123,7 +130,7 @@ pub(super) struct FileMeta {
     pub file_md5: Option<String>,
 }
 
-/// The file an app message carries ([`FileMeta`]), read from its [`MsgXml`].
+/// 从 app 消息的 [`MsgXml`] 中读出它带的文件（[`FileMeta`]）；不像 app 消息或没有 `<type>` 时为 `None`。
 pub(super) fn extract_file_app_message_meta_in(x: &MsgXml<'_>) -> Option<FileMeta> {
     let normalized = x.once();
     if normalized.is_empty() || (!normalized.contains("<appmsg") && !normalized.contains("<msg>")) {
@@ -150,7 +157,7 @@ pub(super) fn extract_file_app_message_meta_in(x: &MsgXml<'_>) -> Option<FileMet
         raw_md5 = extract_loose_hex_md5(normalized).unwrap_or_default();
     }
     let size = raw_size.trim().parse::<i64>().ok().filter(|n| *n > 0);
-    // decoded already, by `xml_text` (#1199)
+    // `xml_text` 已经解码过实体（#1199）
     let non_empty = |s: String| (!s.is_empty()).then_some(s);
     Some(FileMeta {
         xml_type: Some(xml_type),
@@ -165,9 +172,11 @@ pub(super) fn extract_file_app_message_meta_in(x: &MsgXml<'_>) -> Option<FileMet
     })
 }
 
-/// (latitude, longitude, label, poi name) of a location message.
+/// 位置消息的（纬度，经度，地点名称，标签）。
 type LocationMeta = (Option<f64>, Option<f64>, Option<String>, Option<String>);
 
+/// 位置消息（`local_type` 48）的坐标、地点名称和标签：坐标取 `<location>` 的 `x`、`y` 属性（或 `latitude`、
+/// `longitude`）；四项都没有时为 `None`。
 pub(super) fn extract_location_meta(content: &str, local_type: i64) -> Option<LocationMeta> {
     if content.is_empty() || local_type != 48 {
         return None;
@@ -213,6 +222,8 @@ pub(super) fn extract_location_meta(content: &str, local_type: i64) -> Option<Lo
     Some((lat, lng, poi, lab))
 }
 
+/// 位置消息的文字 `[位置] <地点名称> <标签> (<纬度>,<经度>)`：没有的部分不写，标签与地点名称相同时只写一次；
+/// 都没有时为 `[位置]`。
 pub(super) fn location_text(content: &str) -> String {
     let n = normalize_app_message_content(content);
     let first = |vals: Vec<String>| vals.into_iter().find(|v| !v.is_empty()).unwrap_or_default();

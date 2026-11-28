@@ -1,11 +1,12 @@
-//! The fields of a raw row, as text or numbers.
+//! 按文字或数字读取 JSON 形式的原始行的字段，以及无符号 ID 的十进制写法。
 
 use serde_json::Value;
 
+/// `row` 中 `keys` 里第一个有值的字段。
 pub fn row_field<'a>(row: &'a Value, keys: &[&str]) -> Option<&'a Value> {
     let obj = row.as_object()?;
     for key in keys {
-        // a null or empty value is passed over for the next key
+        // 值为 null 或空字符串时看下一个键
         match obj.get(*key) {
             None | Some(Value::Null) => {}
             Some(Value::String(s)) if s.is_empty() => {}
@@ -23,13 +24,15 @@ fn value_to_string(v: &Value) -> String {
     }
 }
 
+/// `row` 中 `keys` 里第一个能读成整数的字段：整数直接取，其他值取文字开头的数字（可带正负号）；都读不出时为
+/// `fallback`。
 pub fn row_int(row: &Value, keys: &[&str], fallback: i64) -> i64 {
     let Some(obj) = row.as_object() else {
         return fallback;
     };
     for key in keys {
         if let Some(v) = obj.get(*key) {
-            // integer columns (nearly every row): same result as the text parse below, without its two allocations
+            // 整数列（几乎每一行都是）：结果与下面按文字解析的相同，省去它的两次分配
             if let Some(n) = v.as_i64() {
                 return n;
             }
@@ -52,8 +55,7 @@ pub fn row_int(row: &Value, keys: &[&str], fallback: i64) -> i64 {
     fallback
 }
 
-/// An unsigned id in decimal without leading zeros (a float is cut to its whole part); `None` when it is empty,
-/// zero or not a number.
+/// 十进制、不带前导零的无符号 ID（小数取整数部分）；为空、不是数字，或取整后不是正数时为 `None`。
 pub fn unsigned_token(value: &str) -> Option<String> {
     let raw = value.trim();
     if !raw.is_empty() && raw.bytes().all(|b| b.is_ascii_digit()) {
@@ -61,7 +63,7 @@ pub fn unsigned_token(value: &str) -> Option<String> {
         return (!digits.is_empty()).then(|| digits.to_string());
     }
     match raw.parse::<f64>() {
-        // a float displays without an exponent, so a whole number prints as an integer
+        // f64 的 `{}` 不用指数写法，整数值打印出来没有小数部分
         Ok(n) if n.is_finite() && n >= 1.0 => Some(format!("{}", n.floor())),
         _ => None,
     }
@@ -79,10 +81,10 @@ mod tests {
         assert_eq!(row_int(&row, &["a"], 0), 42);
         assert_eq!(row_int(&row, &["b"], 0), -7);
         assert_eq!(row_int(&row, &["c"], 0), 123);
-        // null and empty text fall through to the next key
+        // null 和空字符串跳过，看下一个键
         assert_eq!(row_int(&row, &["d", "e", "a"], 0), 42);
         assert_eq!(row_int(&row, &["f"], 0), 1);
-        // out of range for i64: skipped like any unparsable value
+        // 超出 i64 的范围：与读不出的值一样跳过
         assert_eq!(row_int(&row, &["g", "b"], 0), -7);
         assert_eq!(row_int(&row, &["h"], 0), 5);
         assert_eq!(row_int(&row, &["missing"], 9), 9);

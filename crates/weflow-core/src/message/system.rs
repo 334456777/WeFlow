@@ -1,16 +1,22 @@
-//! System messages: revokes, templates with their names filled in, and calls (VoIP).
+//! 系统消息：撤回、填上名字的模板、拍一拍和通话（VoIP）。
 
 use super::xml::{
     extract_xml_value, normalize_app_message_content, rx, sender_prefix_len, strip_sender_prefix,
 };
 use crate::chat_msg::clean_utf16;
 
+/// 系统消息是否为撤回提示，以及撤回者。
 pub(super) struct RevokeInfo {
+    /// 是否为撤回提示。
     pub is_revoke: bool,
+    /// 是否为账号自己撤回的（「你撤回了……」）。
     pub is_self_revoke: bool,
+    /// 别人撤回时的撤回者；读不出时为 `None`。
     pub revoker_wxid: Option<String>,
 }
 
+/// 读出撤回提示和撤回者：内容含 `revokemsg` 或「撤回」时算撤回提示，含「你撤回」的是账号自己撤回的；
+/// 别人撤回时，撤回者取像用户名的 `<session>`，没有时取 `<fromusername>`。
 pub(super) fn extract_revoker_info(content: &str) -> RevokeInfo {
     let none = RevokeInfo {
         is_revoke: false,
@@ -51,17 +57,19 @@ pub(super) fn extract_revoker_info(content: &str) -> RevokeInfo {
     }
 }
 
-/// The reference [`MsgXml::readable_system_once`](super::xml::MsgXml::readable_system_once) is tested against.
+/// 测试中与 [`MsgXml::readable_system_once`](super::xml::MsgXml::readable_system_once) 对照的参考实现。
 #[cfg(test)]
 pub(super) fn is_readable_system_message(local_type: i64, content: &str) -> bool {
     local_type == 10000 || has_sysmsg(&super::xml::normalize_app_message_cow(content))
 }
 
-/// Whether normalized content opens a `<sysmsg>` after its sender prefix.
+/// 规范化后的内容在发送者前缀之后是否有 `<sysmsg>` 的开始标签。
 pub(super) fn has_sysmsg(normalized: &str) -> bool {
     crate::xml::has_open(&normalized[sender_prefix_len(normalized)..], "sysmsg")
 }
 
+/// 系统消息给人看的文字，依次取：`<revokemsg>` 的 `<content>`；`<replacemsg>` 的 CDATA；
+/// `<template>`，其中的名字按 [`fill_template_links`] 填上；`<title>`；去掉全部标签后的文字，为空时是 `[系统消息]`。
 pub fn clean_system_message(content: &str) -> String {
     if content.is_empty() {
         return "[系统消息]".into();
@@ -70,8 +78,8 @@ pub fn clean_system_message(content: &str) -> String {
     if let Some(c) = rx(r"(?is)<sysmsg[^>]*>(.*?)</sysmsg>").captures(&content.clone()) {
         content = c[1].to_string();
     }
-    // a revoke as the database keeps it: `<revokemsg><content>…</content><revoketime>…</revoketime></revokemsg>`,
-    // at times with more elements after it. Only the content is the notice
+    // 数据库中保存的撤回：`<revokemsg><content>…</content><revoketime>…</revoketime></revokemsg>`，
+    // 后面有时还有别的元素；只有 `<content>` 是提示的文字
     if let Some((_, revoke)) = crate::xml::elements(&content, "revokemsg").next() {
         let notice = extract_xml_value(revoke, "content");
         if !notice.is_empty() {
@@ -117,13 +125,13 @@ pub fn clean_system_message(content: &str) -> String {
     }
 }
 
-/// The text of a pat (拍一拍, `(62 << 32) | 49`), the same in the chat window and the exports (#1196): its
-/// `<title>`, with the entities of `content`, the message as it is kept, decoded once.
+/// 拍一拍（`(62 << 32) | 49`）的文字，聊天窗口与导出相同（#1196）：把保存的整条消息 `content` 的实体解码一次，
+/// 再取 `<title>`；没有标题时取「拍了拍」那一句，都没有时为「拍一拍」。
 pub(crate) fn pat_text(content: &str) -> String {
     clean_pat_message(&clean_utf16(&crate::xml::decode_entities(content)))
 }
 
-/// [`pat_text`] of content whose entities are decoded.
+/// 对已经解码了实体的内容求 [`pat_text`]。
 fn clean_pat_message(content: &str) -> String {
     if content.is_empty() {
         return "拍一拍".into();
@@ -154,9 +162,9 @@ fn clean_pat_message(content: &str) -> String {
     "拍一拍".into()
 }
 
-/// The template of a `<sysmsgtemplate>` notice (`"$username$"邀请"$names$"加入了群聊`) with each `$name$` filled from
-/// its `<link name="name">` in `source`: the nicknames of the link's members, joined by its separator. A link without
-/// members is something to click in WeChat (`$revoke$`), and leaves nothing.
+/// 把 `<sysmsgtemplate>` 提示的模板（`"$username$"邀请"$names$"加入了群聊`）中的每个 `$名字$` 换成 `source` 中
+/// `<link name="名字">` 的成员昵称，用这个 link 的 `<separator>` 连接，没有时用 `、`。
+/// 没有成员的 link 是微信里可以点的按钮（如 `$revoke$`），换成空。
 fn fill_template_links(template: &str, source: &str) -> String {
     let mut text = template.to_string();
     for (attributes, body) in crate::xml::elements(source, "link") {
@@ -180,6 +188,8 @@ fn fill_template_links(template: &str, source: &str) -> String {
     text
 }
 
+/// 可读的系统消息（带 `<sysmsg>` 的消息）的文字：`<sysmsg>` 中的 `<plain>`，没有时取 `<text>`；去掉发送者前缀，
+/// 连续的空白并成一个空格。
 pub fn extract_readable_system_message_text(content: &str) -> String {
     if content.is_empty() {
         return String::new();
@@ -197,6 +207,8 @@ pub fn extract_readable_system_message_text(content: &str) -> String {
     rx(r"\s+").replace_all(&text, " ").trim().to_string()
 }
 
+/// 通话消息（`local_type` 50）的文字 `[<通话种类>] <时长或状态>`：`room_type` 为 0 是视频通话，为 1 是语音通话；
+/// 接通的写时长，没接通的写状态。
 pub fn parse_voip_message(content: &str) -> String {
     if content.is_empty() {
         return "[通话]".into();
@@ -261,7 +273,7 @@ mod tests {
         assert_eq!(parse_voip_message(xml), "[视频通话] 对方无应答");
     }
 
-    /// A pat's title is escaped XML, read decoded once (#1196).
+    /// 拍一拍的标题带转义的实体，解码一次后读出（#1196）。
     #[test]
     fn a_pat_is_its_title_decoded_once() {
         let xml = "<msg><appmsg><title>&quot;A&amp;B&quot; 拍了拍 &quot;C&quot;</title><type>62</type></appmsg></msg>";
@@ -273,7 +285,7 @@ mod tests {
     fn system_messages() {
         let xml = "<sysmsg type=\"revokemsg\"><revokemsg><replacemsg><![CDATA[\"Bob\" 撤回了一条消息]]></replacemsg></revokemsg></sysmsg>";
         assert_eq!(clean_system_message(xml), "\"Bob\" 撤回了一条消息");
-        // as the database keeps a revoke: the time and what follows it are not part of the notice
+        // 数据库中保存的撤回：撤回时间和它后面的内容不属于提示
         for more in [
             "",
             "<extcommoninfo><groupinfo><type>1</type><id>0a1b-2c3d</id><count>2</count></groupinfo>\
@@ -285,7 +297,7 @@ mod tests {
             );
             assert_eq!(clean_system_message(&xml), "\"Bob\" 撤回了一条消息");
         }
-        // a notice written as a template names its people in the links after it
+        // 写成模板的提示：其中的人名在后面的 link 里
         let member = |id: &str, name: &str| {
             format!("<member><username><![CDATA[{id}]]></username><nickname><![CDATA[{name}]]></nickname></member>")
         };
