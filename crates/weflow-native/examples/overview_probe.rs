@@ -1,9 +1,9 @@
-//! Read-only probe of the native backend against a real account (prints counts, never message text).
-//! Usage: `overview_probe <account_dir> <key_file>`
+//! 在真实账号上只读地探查原生数据库层：打印计数和前三个会话用户名的前 6 个字符，从不打印消息的文字。
+//! 用法：`overview_probe <account_dir> <key_file>`
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "probe code reports failure by panicking"
+    reason = "探针用 panic 报告失败"
 )]
 use std::time::Instant;
 use weflow_native::db::Account;

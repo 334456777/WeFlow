@@ -1,8 +1,6 @@
-//! Inspect filesystem access without printing path names or file contents.
-#![expect(
-    clippy::expect_used,
-    reason = "probe code reports failure by panicking"
-)]
+//! 检查账号目录、`db_storage` 和 `session.db` 能否访问：打印各自是否为目录、是否为文件和长度，或读取元数据的错误，
+//! 再打印临时目录是否就是 `TMP`。不打印路径名和文件内容。
+#![expect(clippy::expect_used, reason = "探针用 panic 报告失败")]
 fn main() {
     let root = std::path::PathBuf::from(std::env::args().nth(1).expect("path_probe <account>"));
     for (kind, path) in [

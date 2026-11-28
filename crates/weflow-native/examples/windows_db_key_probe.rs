@@ -1,4 +1,5 @@
-//! Read-only candidate inspection; does not attach a debugger or print keys/account data.
+//! 只读地找出挂钩在微信进程中会停下的位置（`Weixin.dll` 的版本和模块内偏移），
+//! 不附加调试器，也不打印密钥或账号数据。
 #[cfg(all(windows, target_arch = "x86_64"))]
 fn main() -> anyhow::Result<()> {
     let pid: u32 = std::env::args()

@@ -1,9 +1,6 @@
-//! Time a full lite-cursor scan of one conversation (no content is printed).
-//! Usage: `cursor_bench <account_dir> <key_file> <session id> [lite=1|0] [your wxid]`
-#![expect(
-    clippy::unwrap_used,
-    reason = "probe code reports failure by panicking"
-)]
+//! 测量用游标完整扫描一个会话的耗时，不打印任何内容。默认只读精简的列（`Columns::Lite`），`lite=0` 时读全部的列。
+//! 用法：`cursor_bench <account_dir> <key_file> <session id> [lite=1|0] [your wxid]`
+#![expect(clippy::unwrap_used, reason = "探针用 panic 报告失败")]
 use std::time::Instant;
 use weflow_native::db::Account;
 use weflow_native::msg::Order;

@@ -1,11 +1,7 @@
-//! Keeps the Markdown in the repository self-consistent: the relative links and `#anchors` of the READMEs, CLAUDE.md
-//! and the skills resolve, commas next to Chinese characters are full-width (`，`), every skill has the front matter of the Agent
-//! Skills format, and the symlinks agents read were checked out as links. The commas are only reported, never
-//! rewritten.
-#![expect(
-    clippy::unwrap_used,
-    reason = "test helpers fail the test by panicking"
-)]
+//! 让仓库里的 Markdown 保持自洽：README、CLAUDE.md 和 skill 中的相对链接和锚点（`#…`）都能找到，
+//! 汉字旁的逗号是全角的（`，`），每个 skill 都有 Agent Skills 格式的 front matter，
+//! 智能体读取的符号链接检出为链接。逗号只报告，不自动改写。
+#![expect(clippy::unwrap_used, reason = "测试辅助函数用 panic 让测试失败")]
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -16,12 +12,12 @@ fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// The skills: Agent Skills, which most agents read here and Claude Code through the `.claude/skills` symlink.
+/// skill 所在的目录：Agent Skills，多数智能体从这里读取，Claude Code 经 `.claude/skills` 符号链接读取。
 fn skills_dir() -> PathBuf {
     root().join(".agents/skills")
 }
 
-/// The Markdown files under `dir` and its subfolders, in path order.
+/// `dir` 及其子目录中的 Markdown 文件，按路径排序。
 fn markdown_under(dir: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut pending = vec![dir.to_path_buf()];
@@ -39,8 +35,8 @@ fn markdown_under(dir: &Path) -> Vec<PathBuf> {
     found
 }
 
-/// Docs covered by the checks: the READMEs, the agents' instructions (CLAUDE.md) and the skills. The documentation
-/// itself is in the GitHub Wiki, outside this repository.
+/// 检查覆盖的文档：两份 README、给智能体的说明（CLAUDE.md）和各个 skill。
+/// 文档本身在 GitHub Wiki 里，不在这个仓库中。
 fn doc_files() -> Vec<PathBuf> {
     let mut files = vec![
         root().join("README.md"),
@@ -51,8 +47,8 @@ fn doc_files() -> Vec<PathBuf> {
     files
 }
 
-/// The `key: value` lines of a Markdown file's front matter, between the `---` on its first line and the next `---`.
-/// Empty when the file has none.
+/// Markdown 文件 front matter 中的 `key: value` 行，即第一行的 `---` 与下一个 `---` 之间的内容。
+/// 文件没有 front matter 时为空。
 fn front_matter(text: &str) -> HashMap<String, String> {
     let mut lines = text.lines();
     if lines.next().map(str::trim_end) != Some("---") {
@@ -74,8 +70,7 @@ fn rel(path: &Path) -> String {
         .join("/")
 }
 
-/// Text with fenced code blocks blanked and inline code replaced by a placeholder, so examples such as
-/// `[title](URL)` are not links. Line numbers are preserved.
+/// 把围栏代码块清空、行内代码换成占位符后的文字，这样 `[title](URL)` 这样的示例不算链接。行号保持不变。
 fn strip_code(text: &str) -> String {
     let inline = Regex::new(r"`[^`\n]*`").unwrap();
     let mut out = String::new();
@@ -91,7 +86,7 @@ fn strip_code(text: &str) -> String {
     out
 }
 
-/// GitHub's heading slug: lowercase, drop punctuation except `-` and `_`, spaces become `-`.
+/// GitHub 给标题生成的 slug：转成小写，去掉 `-` 和 `_` 以外的标点，空格变成 `-`。
 fn slug(heading: &str) -> String {
     let plain = Regex::new(r"\[([^\]]*)\]\([^)]*\)")
         .unwrap()
@@ -170,9 +165,8 @@ fn relative_links_and_anchors_resolve() {
     );
 }
 
-/// An ASCII comma next to a Han character, optionally with closing/opening brackets, emphasis marks or spaces in
-/// between (`(可选绑定), 也`). Link targets are left out, so an English link to a Chinese Wiki anchor
-/// (`[contacts](…#联系人与群), …`) is not a match, while a Chinese link text before a comma still is.
+/// 汉字旁的 ASCII 逗号，中间可以隔着右括号或左括号、强调标记或空格（`(可选绑定), 也`）。链接的目标不算，
+/// 所以指向中文 Wiki 锚点的英文链接（`[contacts](…#联系人与群), …`）不算匹配，逗号前是中文的链接文字则仍然算。
 #[test]
 fn commas_next_to_chinese_are_full_width() {
     let han = r"[\u{4e00}-\u{9fff}]";
@@ -199,9 +193,9 @@ fn commas_next_to_chinese_are_full_width() {
     );
 }
 
-/// Every folder in `.agents/skills` is a skill in the Agent Skills format: its `SKILL.md` starts with front matter
-/// whose `name` is the folder's name (lowercase letters and digits joined by single hyphens, at most 64 characters)
-/// and whose `description`, which agents read to decide when to use the skill, is one line of at most 1024 characters.
+/// `.agents/skills` 中的每个目录都是 Agent Skills 格式的 skill：它的 `SKILL.md` 以 front matter 开头，
+/// 其中 `name` 是目录名（由单个连字符连接的小写字母和数字，最多 64 个字符），`description`
+/// 是一行不超过 1024 个字符的文字，智能体凭它决定什么时候用这个 skill。
 #[test]
 fn skills_follow_the_agent_skills_format() {
     let name_form = Regex::new(r"^[a-z0-9]+(-[a-z0-9]+)*$").unwrap();
@@ -248,9 +242,9 @@ fn skills_follow_the_agent_skills_format() {
     );
 }
 
-/// `AGENTS.md` and `.claude/skills` were checked out as symlinks to `CLAUDE.md` and `.agents/skills`. Git on Windows
-/// checks a symlink out as a plain file holding the target's path unless Developer Mode and `core.symlinks` are on;
-/// agents reading that file then miss the instructions or the skills without any error, so this check is the reminder.
+/// `AGENTS.md` 和 `.claude/skills` 已检出为指向 `CLAUDE.md` 和 `.agents/skills` 的符号链接。
+/// Windows 上的 Git 在没有开启开发者模式和 `core.symlinks` 时，把符号链接检出为内容是目标路径的普通文件；
+/// 读取这个文件的智能体会读不到说明或 skill，又没有任何报错，所以用这项检查提醒。
 #[test]
 fn symlinks_are_checked_out_as_links() {
     let mut problems = Vec::new();
