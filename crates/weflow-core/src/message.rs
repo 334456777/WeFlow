@@ -28,17 +28,14 @@ use media::{
     dat_name_in_packed_info, extract_file_app_message_meta_in, extract_image_dat_name,
     extract_image_md5, extract_location_meta, extract_video_md5, location_text,
 };
-use quote::{build_quoted_reply_text, extract_quoted_reply_display};
+use quote::build_quoted_reply_text;
 use row::unsigned_token;
-use system::{
-    clean_system_message, extract_readable_system_message_text, extract_revoker_info,
-    is_readable_system_message, parse_voip_message, pat_text,
-};
+use system::{clean_system_message, extract_revoker_info, parse_voip_message, pat_text};
 use time::{normalize_timestamp_seconds, parse_compact_datetime};
-use transfer::{get_transfer_prefix, is_same_wxid, transfer_text};
+use transfer::{is_same_wxid, transfer_text};
 use xml::{
-    decode_html_entities, extract_app_message_type, extract_xml_value,
-    normalize_app_message_content, rx, strip_sender_line, strip_sender_prefix, xml_text, MsgXml,
+    decode_html_entities, extract_xml_value, rx, strip_sender_line, strip_sender_prefix, xml_text,
+    MsgXml,
 };
 
 // ───────────────────────────── message struct ─────────────────────────────
@@ -153,11 +150,6 @@ impl ExportMsg {
 
 // ──────────────────────────── plain text rendering ────────────────────────────
 
-#[derive(Clone, Debug, Default)]
-struct PlainOpts {
-    pub export_voice_as_text: bool,
-}
-
 fn parse_duration_seconds(value: &str) -> Option<i64> {
     let n: f64 = value.trim().parse().ok()?;
     if !n.is_finite() || n <= 0.0 {
@@ -168,15 +160,6 @@ fn parse_duration_seconds(value: &str) -> Option<i64> {
     } else {
         crate::num::saturating_i64(n.round())
     })
-}
-
-fn extract_amount_from_text(text: &str) -> Option<String> {
-    if text.is_empty() {
-        return None;
-    }
-    rx(r"([¥￥]\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?)")
-        .captures(text)
-        .map(|c| rx(r"\s+").replace_all(&c[1], "").to_string())
 }
 
 /// `text` with numeric entities such as `&#x0A;` and `&#32;` decoded (a note's body stores line breaks and spaces
@@ -395,183 +378,6 @@ pub(crate) fn app_message_text_as(
         ),
         _ => with_title(&title),
     })
-}
-
-/// The text of a message for TXT / Excel / HTML.
-fn format_plain_export_content(
-    content: &str,
-    local_type: i64,
-    opts: &PlainOpts,
-    voice_transcript: Option<&str>,
-    my_wxid: Option<&str>,
-    sender_wxid: Option<&str>,
-    emoji_caption: Option<&str>,
-) -> String {
-    let readable = extract_readable_system_message_text(content);
-    if !readable.is_empty() && is_readable_system_message(local_type, content) {
-        return readable;
-    }
-    match local_type {
-        3 => return "[图片]".into(),
-        1 => return strip_sender_prefix(content),
-        34 => {
-            if opts.export_voice_as_text {
-                return voice_transcript
-                    .filter(|t| !t.is_empty())
-                    .map(str::to_string)
-                    .unwrap_or_else(|| "[语音消息 - 转文字失败]".into());
-            }
-            return "[其他消息]".into();
-        }
-        42 => {
-            let n = normalize_app_message_content(content);
-            let nick = ["nickname", "displayname", "name"]
-                .iter()
-                .map(|k| xml_text(&n, k))
-                .find(|v| !v.is_empty())
-                .unwrap_or_default();
-            return if nick.is_empty() {
-                "[名片]".into()
-            } else {
-                format!("[名片]{nick}")
-            };
-        }
-        43 => {
-            let n = normalize_app_message_content(content);
-            let len = ["playlength", "playLength", "length", "duration"]
-                .iter()
-                .map(|k| extract_xml_value(&n, k))
-                .find(|v| !v.is_empty());
-            return match len.and_then(|v| parse_duration_seconds(&v)) {
-                Some(s) if s > 0 => format!("[视频]{s}s"),
-                _ => "[视频]".into(),
-            };
-        }
-        47 => return format_emoji_semantic_text(emoji_caption),
-        48 => return location_text(content),
-        50 => return parse_voip_message(content),
-        10000 => return clean_system_message(content),
-        266287972401 => return pat_text(content),
-        _ => {}
-    }
-    let normalized = normalize_app_message_content(content);
-    let is_app = normalized.contains("<appmsg") || normalized.contains("<msg>");
-    if local_type == 49 || is_app {
-        let sub: i64 = extract_app_message_type(&normalized).parse().unwrap_or(0);
-        let title = {
-            let t = xml_text(&normalized, "title");
-            if !t.is_empty() {
-                t
-            } else {
-                xml_text(&normalized, "appname")
-            }
-        };
-        if sub == 8 {
-            return "[表情]".into();
-        }
-        if sub == 24 {
-            return note_text(&normalized, &title);
-        }
-        if sub == 87 {
-            let t = xml_text(&normalized, "textannouncement");
-            return if t.is_empty() {
-                "[群公告]".into()
-            } else {
-                format!("[群公告]{t}")
-            };
-        }
-        if sub == 2000 || title.contains("转账") || normalized.contains("transfer") {
-            let feedesc = xml_text(&normalized, "feedesc");
-            let memo = xml_text(&normalized, "pay_memo");
-            let prefix = get_transfer_prefix(&normalized, my_wxid, sender_wxid);
-            if !feedesc.is_empty() {
-                return if memo.is_empty() {
-                    format!("{prefix}{feedesc}")
-                } else {
-                    format!("{prefix}{feedesc} {memo}")
-                };
-            }
-            let joined: Vec<String> = [
-                title,
-                extract_xml_value(&normalized, "des"),
-                extract_xml_value(&normalized, "money"),
-                extract_xml_value(&normalized, "amount"),
-                extract_xml_value(&normalized, "fee"),
-            ]
-            .into_iter()
-            .filter(|v| !v.is_empty())
-            .collect();
-            return match extract_amount_from_text(&joined.join(" ")) {
-                Some(a) => format!("{prefix}{a}"),
-                None => prefix.to_string(),
-            };
-        }
-        if sub == 3
-            || sub == 76
-            || normalized.contains("<musicurl")
-            || normalized.contains("<songname")
-        {
-            let song = xml_text(&normalized, "songname");
-            let name = if !song.is_empty() {
-                song
-            } else if !title.is_empty() {
-                title
-            } else {
-                "音乐".into()
-            };
-            return format!("[音乐]{name}");
-        }
-        if sub == 6 {
-            let f = xml_text(&normalized, "filename");
-            let name = if !f.is_empty() {
-                f
-            } else if !title.is_empty() {
-                title
-            } else {
-                "文件".into()
-            };
-            return format!("[文件]{name}");
-        }
-        if title.contains("红包") || normalized.contains("hongbao") {
-            return format!(
-                "[红包]{}",
-                if title.is_empty() {
-                    "微信红包"
-                } else {
-                    &title
-                }
-            );
-        }
-        if sub == 19 || normalized.contains("<recorditem") {
-            return format_forward_chat_record_content(&normalized);
-        }
-        if sub == 33 || sub == 36 {
-            let a = xml_text(&normalized, "appname");
-            let name = if !a.is_empty() {
-                a
-            } else if !title.is_empty() {
-                title
-            } else {
-                "小程序".into()
-            };
-            return format!("[小程序]{name}");
-        }
-        if sub == 57 {
-            if let Some(d) = extract_quoted_reply_display(content) {
-                return build_quoted_reply_text(&d);
-            }
-            return if title.is_empty() {
-                "[引用消息]".into()
-            } else {
-                title
-            };
-        }
-        if !title.is_empty() {
-            return format!("[链接]{title}");
-        }
-        return "[其他消息]".into();
-    }
-    "[其他消息]".into()
 }
 
 // ─────────────────────────── row → ExportMsg ───────────────────────────
@@ -797,34 +603,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(t, "[笔记]\n只有预览");
-    }
-
-    #[test]
-    fn plain_content_per_type() {
-        let opts = PlainOpts::default();
-        assert_eq!(
-            format_plain_export_content("wxid_a:hi", 1, &opts, None, None, None, None),
-            "hi"
-        );
-        assert_eq!(
-            format_plain_export_content("", 3, &opts, None, None, None, None),
-            "[图片]"
-        );
-        assert_eq!(
-            format_plain_export_content("x", 34, &opts, None, None, None, None),
-            "[其他消息]"
-        );
-        let v = "<msg><videomsg playlength=\"12\"/><playlength>12</playlength></msg>";
-        assert_eq!(
-            format_plain_export_content(v, 43, &opts, None, None, None, None),
-            "[视频]12s"
-        );
-        let loc =
-            "<msg><location x=\"31.2\" y=\"121.4\" poiname=\"Tower\" label=\"Road 1\"/></msg>";
-        assert_eq!(
-            format_plain_export_content(loc, 48, &opts, None, None, None, None),
-            "[位置] Tower Road 1 (31.2,121.4)"
-        );
     }
 
     #[test]

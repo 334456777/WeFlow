@@ -5,7 +5,6 @@ use super::xml::{
     looks_like_wxid, normalize_app_message_content, sanitize_quoted_content, strip_sender_prefix,
     MsgXml,
 };
-use super::{format_plain_export_content, PlainOpts};
 
 #[derive(Clone)]
 pub(super) struct QuoteInfo {
@@ -174,7 +173,8 @@ pub(super) fn quote_info_of(refer: impl AsRef<str>) -> QuoteInfo {
         "34" => "[语音消息]".into(),
         "43" => "[视频]".into(),
         "47" => "[表情]".into(),
-        "49" => "[链接]".into(),
+        // an app message by its own XML: a quoted reply by its words, a link by its title, a file by its name (#1263)
+        "49" => quoted_other_preview(&refer_content),
         "42" => "[名片]".into(),
         "48" => "[位置]".into(),
         _ => quoted_other_preview(&refer_content),
@@ -299,8 +299,8 @@ pub(super) fn format_quoted_reference_preview(content: &str, refer_type: &str) -
             _ => "[链接]".into(),
         };
     }
-    let out =
-        format_plain_export_content(content, ty, &PlainOpts::default(), None, None, None, None);
+    // the text the exports give a message of that type (#1263)
+    let out = super::parse_message_content(content, ty, None, None, None).unwrap_or_default();
     if out.is_empty() {
         "[消息]".into()
     } else {
@@ -313,10 +313,6 @@ pub struct QuotedDisplay {
     pub reply_text: String,
     pub quoted_sender: Option<String>,
     pub quoted_preview: String,
-}
-
-pub(super) fn extract_quoted_reply_display(content: &str) -> Option<QuotedDisplay> {
-    MsgXml::new(content).quoted_display().cloned()
 }
 
 pub fn build_quoted_reply_text(d: &QuotedDisplay) -> String {
@@ -351,7 +347,7 @@ mod tests {
     #[test]
     fn quoted_reply_text() {
         let xml = "<msg><appmsg><title>ok</title><type>57</type><refermsg><type>1</type><displayname>Bob</displayname><content>hi there</content><svrid>123</svrid></refermsg></appmsg></msg>";
-        let d = extract_quoted_reply_display(xml).unwrap();
+        let d = MsgXml::new(xml).quoted_display().cloned().unwrap();
         assert_eq!(build_quoted_reply_text(&d), "ok[引用 Bob：hi there]");
         assert_eq!(
             MsgXml::new(xml).reply_to_message_id().as_deref(),

@@ -1,8 +1,7 @@
 //! System messages: revokes, templates with their names filled in, and calls (VoIP).
 
 use super::xml::{
-    extract_xml_value, normalize_app_message_content, normalize_app_message_cow, rx,
-    sender_prefix_len, strip_sender_prefix,
+    extract_xml_value, normalize_app_message_content, rx, sender_prefix_len, strip_sender_prefix,
 };
 use crate::chat_msg::clean_utf16;
 
@@ -52,11 +51,13 @@ pub(super) fn extract_revoker_info(content: &str) -> RevokeInfo {
     }
 }
 
+/// The reference [`MsgXml::readable_system_once`](super::xml::MsgXml::readable_system_once) is tested against.
+#[cfg(test)]
 pub(super) fn is_readable_system_message(local_type: i64, content: &str) -> bool {
-    local_type == 10000 || has_sysmsg(&normalize_app_message_cow(content))
+    local_type == 10000 || has_sysmsg(&super::xml::normalize_app_message_cow(content))
 }
 
-/// Whether normalized content opens a `<sysmsg>` after its sender prefix (see [`is_readable_system_message`]).
+/// Whether normalized content opens a `<sysmsg>` after its sender prefix.
 pub(super) fn has_sysmsg(normalized: &str) -> bool {
     crate::xml::has_open(&normalized[sender_prefix_len(normalized)..], "sysmsg")
 }
