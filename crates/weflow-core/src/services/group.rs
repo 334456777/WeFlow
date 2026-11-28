@@ -7,6 +7,7 @@ use std::path::Path;
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
+use super::session_kind::may_be_friend;
 use super::*;
 use crate::chat_msg;
 use crate::contract::{
@@ -20,8 +21,6 @@ use crate::message::xml::rx;
 use weflow_native::msg::Order;
 use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::wcdb::Databases;
-
-const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 
 /// How many messages a page of `group member-messages` holds: a `limit` outside this range is a usage error.
 pub const MEMBER_MESSAGES_LIMIT: std::ops::RangeInclusive<usize> = 1..=100;
@@ -528,11 +527,8 @@ impl ServiceHub {
                 .unwrap_or_else(|| wxid.clone());
             let lw = wxid.to_lowercase();
             // the account's own row is a friend's (`local_type` 1) in WeChat's contacts; it is not a friend (#1079)
-            let is_friend = !(lw.is_empty()
-                || lw.contains("@chatroom")
-                || lw.starts_with("gh_")
-                || FRIEND_EXCLUDE.contains(&lw.as_str())
-                || normalized_wxid == my_wxid)
+            let is_friend = may_be_friend(&lw)
+                && normalized_wxid != my_wxid
                 && contact.as_ref().is_some_and(|c| c.local_type == 1);
             let is_owner = owner.as_deref() == Some(wxid.as_str());
             let count = lookup_candidates

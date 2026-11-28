@@ -313,10 +313,7 @@ fn is_sticker(m: &ExportMsg) -> bool {
 ///
 /// The caption is the user's own text for the sticker, else the store sticker's Chinese description. The table
 /// (md5 → caption) is read whole at once, see `emoticon_captions`.
-fn attach_emoji_captions(
-    table: &HashMap<String, String>,
-    messages: &mut [ExportMsg],
-) {
+fn attach_emoji_captions(table: &HashMap<String, String>, messages: &mut [ExportMsg]) {
     for m in messages.iter_mut() {
         let md5 = match m.local_type {
             47 => m.emoji_md5.clone(),

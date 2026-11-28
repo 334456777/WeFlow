@@ -258,7 +258,12 @@ mod tests {
         for none in ["", "  ", "@", "@@", "\"'", "“”", "，、", "\u{7}"] {
             assert_eq!(normalize_group_nickname(none), "", "{none:?}");
         }
-        for (raw, kept) in [(" 小明 ", "小明"), ("a\u{7}b", "ab"), ("@小明", "@小明"), ("'s", "'s")] {
+        for (raw, kept) in [
+            (" 小明 ", "小明"),
+            ("a\u{7}b", "ab"),
+            ("@小明", "@小明"),
+            ("'s", "'s"),
+        ] {
             assert_eq!(normalize_group_nickname(raw), kept, "{raw:?}");
         }
     }

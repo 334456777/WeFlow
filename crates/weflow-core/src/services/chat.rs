@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
+use super::session_kind::may_be_friend;
 use super::{clean_account_dir_name, ServiceHub};
 use crate::chat_msg::{self, ChatMessage};
 use crate::contract::{
@@ -24,7 +25,6 @@ use weflow_native::msg::{table_name_for, Order};
 use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::wcdb::Databases;
 
-const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 pub(super) const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
 
 fn native(e: anyhow::Error) -> AppError {
@@ -459,11 +459,7 @@ impl ServiceHub {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .trim();
-            if username.is_empty()
-                || username.contains("@chatroom")
-                || username.starts_with("gh_")
-                || FRIEND_EXCLUDE.contains(&username)
-            {
+            if !may_be_friend(username) {
                 continue;
             }
             // the first of the columns the row has
