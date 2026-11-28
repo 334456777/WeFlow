@@ -1,5 +1,5 @@
-// The task centre (#211): every job of `weflow serve`, newest first, with its progress, the file to save once it
-// has succeeded, and a way to cancel it or take it off the list.
+// 任务中心（#211）：`weflow serve` 的全部作业，最新的在前，显示进度、成功后可以下载的文件，
+// 以及取消作业或把它从列表里删掉的按钮。
 import { useState } from 'react';
 import { Check, Circle, CircleNotch, DownloadSimple, X } from '@phosphor-icons/react';
 import { describeCommand, isFinished, jobFileUrl, jobLine, type Job } from '../api/jobs';
@@ -34,10 +34,10 @@ function JobRow({ job, label }: { job: Job; label: string }) {
   </li>;
 }
 
-/** The jobs, newest first, each with where it stands and what can be done with it; `empty` without any. */
+/** 作业列表，最新的在前，每个作业显示状态和可以做的操作；没有作业时显示 `empty`。 */
 export function TaskCenter({ jobs, names, empty = t('还没有任务。导出等耗时的命令会在这里排队、显示进度。') }: {
   jobs: JobsState;
-  /** The conversations by id, to name the one a job started elsewhere exports. */
+  /** 会话 ID 到名称的映射，用来给别处启动的导出作业写上它导出的会话的名称。 */
   names?: ReadonlyMap<string, string>;
   empty?: string;
 }) {
@@ -48,7 +48,7 @@ export function TaskCenter({ jobs, names, empty = t('还没有任务。导出等
   </ol>;
 }
 
-/** The card's summary: what runs or waits. */
+/** 卡片标题栏上的摘要：运行中和排队的作业数；都没有时是作业的总数或「没有任务」。 */
 export function jobsSummary(jobs: JobsState): string {
   const running = jobs.jobs.filter(j => j.status === 'running').length;
   const queued = jobs.jobs.filter(j => j.status === 'queued').length;

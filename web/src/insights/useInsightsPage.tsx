@@ -1,5 +1,4 @@
-// The insights page (#210): the records of the AI insights, of everyone or one conversation, found by words; made
-// and deleted from the console.
+// 灵感信箱页（#210）：AI 见解的记录，可以看全部或一个会话的，按关键词搜索；在操作控制台里生成和删除。
 import { useEffect, useState } from 'react';
 import { markInsightRead } from '../api/insights';
 import type { ChatWith, Page, Shell } from '../shell/page';
@@ -9,7 +8,7 @@ import { useInsights, type InsightFilter } from './useInsights';
 import { t } from '../i18n';
 import './insights.css';
 
-/** The insights page: its view and its console cards; `openAiSettings` opens the settings where the session list is. */
+/** 灵感信箱页：页面视图和操作控制台的卡片；`openAiSettings` 打开会话名单所在的设置。 */
 export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWith, openAiSettings: () => void): Page {
   const { backend, records, scope, setMobileDetail } = shell;
   const [filter, setFilter] = useState<InsightFilter>({ keyword: '', session: null });

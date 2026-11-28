@@ -1,4 +1,4 @@
-// The export page (#211): the conversations picked from the list, and how they are exported, one job each.
+// 导出页（#211）：从列表里选的会话，以及它们的导出方式，每个会话一个作业。
 import { useEffect, useMemo, useState } from 'react';
 import type { Page, Shell } from '../shell/page';
 import { BrowserPanel, ConnectedList } from '../shell/panels';
@@ -7,7 +7,7 @@ import { ExportPicker, PickedList } from './ExportPicker';
 import { t } from '../i18n';
 import './exports.css';
 
-/** The export page: its view and its console cards. */
+/** 导出页：页面视图和操作控制台的卡片。 */
 export function useExportPage(shell: Shell): Page {
   const { records, scope, sessionList, setMobileDetail } = shell;
   const [picked, setPicked] = useState<Set<string>>(() => new Set());

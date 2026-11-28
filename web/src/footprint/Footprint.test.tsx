@@ -42,7 +42,7 @@ describe('my footprint', () => {
       { preset: 'thisWeek', label: '本周', from: '2026-10-19', to: '2026-10-21' },
       { preset: 'lastWeek', label: '上周', from: '2026-10-12', to: '2026-10-18' },
     ]);
-    // a Sunday is the end of its week
+    // 周日是它所在一周的最后一天
     expect(presetRanges(new Date(2026, 9, 25, 15))[2]).toEqual({ preset: 'thisWeek', label: '本周', from: '2026-10-19', to: '2026-10-25' });
     expect(rangeOf({ preset: 'lastWeek' }, new Date(2026, 9, 21, 15))).toEqual({ label: '上周', from: '2026-10-12', to: '2026-10-18' });
     expect(rangeOf({ from: '2026-10-01', to: '2026-10-03' })).toEqual({ label: '2026-10-01 至 2026-10-03', from: '2026-10-01', to: '2026-10-03' });

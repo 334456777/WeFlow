@@ -99,7 +99,7 @@ describe('insights', () => {
     await act(async () => {});
     expect(urls.some(u => u.startsWith('/insight/trigger'))).toBe(false);
 
-    // chosen in the settings since: read again on the next try, which goes to the server, whose reason keeps its lines
+    // 这期间在设置里选了会话：下一次尝试时重读名单、请求服务端，服务端给的原因保留换行
     list = ['wxid_a'];
     fireEvent.click(screen.getByRole('button', { name: '生成见解' }));
     await act(async () => {});

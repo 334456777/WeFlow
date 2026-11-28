@@ -1,26 +1,26 @@
-// The jobs of `weflow serve` (#211), shared by every page: the list of `GET /jobs`, the progress of the running
-// one from its event stream, and what this tab started them for. Tasks run one at a time on the server, so one
-// stream is open at most; the queued ones are seen to start by reading the list again while any wait. A page away
-// (#799, see presence.ts) neither follows nor reads again; back, it reads the list and follows the running job anew.
+// `weflow serve` 的作业（#211），所有页面共用：`GET /jobs` 的列表、从事件流读到的正在运行的作业的进度，
+// 以及这个标签页启动各个作业时给的名称。服务端默认一次只运行一个任务（`--max-tasks` 为 1），所以最多只开一个事件流；
+// 有作业在排队时反复重读列表，从中看到排队的作业开始运行。页面放开长连接时（#799，见 presence.ts）
+// 既不跟踪也不重读；重新可见后重读列表，重新跟踪正在运行的作业。
 import { useEffect, useSyncExternalStore } from 'react';
 import { ApiError, sampling, type Params } from '../api/client';
 import { dropJob, getJob, isFinished, jobEventsUrl, listJobs, startJob, type Job } from '../api/jobs';
 import { onPresence, present } from '../api/presence';
 import { t } from '../i18n';
 
-/** How often the list is read again while a job waits or runs. */
+/** 有作业在排队或运行时，重读列表的间隔。 */
 const POLL_MS = 2000;
-/** The sample's jobs (#896) send no events: their list, read in the page, is read often instead. */
+/** 示例服务端的作业（#896）不发事件，它们的列表在页面里就能读到，所以改为更频繁地重读。 */
 const SAMPLE_POLL_MS = 400;
-/** How soon after a job was started the list is read again, to see it leave the queue. */
+/** 启动作业后多久重读列表，以便看到它离开队列。 */
 const START_MS = 300;
 const LABELS_KEY = 'weflow.jobs';
 
-/** The jobs of the server, as the task centre shows them. */
+/** 服务端的作业，即任务中心显示的内容。 */
 export interface JobsState {
-  /** Newest first. */
+  /** 最新的在前。 */
   jobs: Job[];
-  /** The name this tab gave a job when it started it: 「导出 林沐 · HTML」. */
+  /** 这个标签页启动作业时给它起的名称，如 `导出 林沐 · HTML`。 */
   labels: Record<string, string>;
   error?: string;
 }
@@ -38,15 +38,15 @@ function readLabels(): Record<string, string> {
 
 function set(next: Partial<JobsState>) {
   state = { ...state, ...next };
-  if (next.labels) { try { sessionStorage.setItem(LABELS_KEY, JSON.stringify(next.labels)); } catch { /* lost on reload */ } }
+  if (next.labels) { try { sessionStorage.setItem(LABELS_KEY, JSON.stringify(next.labels)); } catch { /* 写不进去时，刷新页面后名称就没有了 */ } }
   for (const listener of [...listeners]) listener();
 }
 
-/** Whether an answer is a job, as a server of another kind could send anything. */
+/** 回答是不是作业：其他种类的服务端可能回答任何内容。 */
 const isJob = (value: unknown): value is Job =>
   typeof value === 'object' && value !== null && typeof (value as Job).id === 'string' && Array.isArray((value as Job).command);
 
-/** Puts `job` in the list in place of its older copy, keeping the result already known. */
+/** 把 `job` 放进列表，替换它的旧副本并保留已经知道的结果；没有旧副本时加在最前面。 */
 function merge(job: Job) {
   if (!isJob(job)) return;
   const old = state.jobs.find(j => j.id === job.id);
@@ -54,7 +54,7 @@ function merge(job: Job) {
   set({ jobs: old ? state.jobs.map(j => (j.id === job.id ? merged : j)) : [merged, ...state.jobs] });
 }
 
-/** Reads the list again, then follows the running job and keeps reading while any job is not finished. */
+/** 重读列表，然后跟踪正在运行的作业，还有作业没结束时继续定期重读；同时调用时共用同一次读取。 */
 export function refreshJobs(): Promise<void> {
   if (reading) return reading;
   reading = (async () => {
@@ -63,7 +63,7 @@ export function refreshJobs(): Promise<void> {
       const jobs = (Array.isArray(listed) ? listed : []).filter(isJob);
       const known = new Map(state.jobs.map(j => [j.id, j]));
       set({ jobs: [...jobs].reverse().map(job => ({ ...job, result: known.get(job.id)?.result })), error: undefined });
-      // the list leaves results out: those of the jobs this tab started, and why any job failed
+      // 列表里没有结果：另外读取这个标签页启动的作业的结果，以及失败的作业的原因
       const missing = state.jobs.filter(j => isFinished(j.status) && !j.result && (state.labels[j.id] || j.status === 'failed'));
       await Promise.all(missing.map(j => getJob(j.id).then(merge, () => {})));
     } catch (problem) {
@@ -76,7 +76,7 @@ export function refreshJobs(): Promise<void> {
   return reading;
 }
 
-/** Follows the running job; `soon`: a job was just started, so the list is read again before long. */
+/** 跟踪正在运行的作业；`soon` 表示刚启动了作业，很快就重读列表。没有页面在用或页面放开了长连接时关闭事件流。 */
 function follow(soon = false) {
   clearTimeout(timer);
   if (!users || !present()) { closeStream(); return; }
@@ -92,14 +92,14 @@ function openStream(id: string) {
   stream = { id, source };
   source.addEventListener('progress', event => {
     const job = state.jobs.find(j => j.id === id);
-    try { if (job) merge({ ...job, status: 'running', progress: JSON.parse((event as MessageEvent).data) }); } catch { /* not JSON */ }
+    try { if (job) merge({ ...job, status: 'running', progress: JSON.parse((event as MessageEvent).data) }); } catch { /* 不是 JSON */ }
   });
   source.addEventListener('result', event => {
-    try { merge(JSON.parse((event as MessageEvent).data) as Job); } catch { /* not JSON */ }
+    try { merge(JSON.parse((event as MessageEvent).data) as Job); } catch { /* 不是 JSON */ }
     closeStream();
     void refreshJobs();
   });
-  // the list, read every few seconds, still says how it ends
+  // 事件流出错时关闭它：每隔几秒重读的列表仍会告诉作业怎样结束
   source.onerror = () => { if (stream?.source === source) closeStream(); };
 }
 
@@ -108,7 +108,7 @@ function closeStream() {
   stream = null;
 }
 
-/** Starts `method path` as a job named `label`; with `file`, its file can be saved once it has succeeded. */
+/** 以名称 `label` 把 `method path` 作为作业启动；`file` 为 true 时，作业成功后可以下载它写出的文件。 */
 export async function runJob(label: string, method: 'POST' | 'GET', path: string, params: Params, file = true): Promise<Job> {
   const job = await startJob(method, path, params, file);
   set({ labels: { ...state.labels, [job.id]: label } });
@@ -117,7 +117,7 @@ export async function runJob(label: string, method: 'POST' | 'GET', path: string
   return job;
 }
 
-/** Cancels a job that has not finished, or forgets a finished one. */
+/** 取消没有结束的作业，或者让服务端忘掉已经结束的作业。 */
 export async function removeJob(id: string): Promise<void> {
   const job = state.jobs.find(j => j.id === id);
   try {
@@ -127,7 +127,7 @@ export async function removeJob(id: string): Promise<void> {
       set({ jobs: state.jobs.filter(j => j.id !== id), labels });
     } else merge(ended);
   } catch (problem) {
-    // already forgotten by the server
+    // 服务端已经忘掉了这个作业
     if (problem instanceof ApiError && problem.status === 404) set({ jobs: state.jobs.filter(j => j.id !== id) });
     else throw problem;
   }
@@ -137,7 +137,7 @@ export async function removeJob(id: string): Promise<void> {
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const snapshot = () => state;
 
-/** The jobs, read while `enabled`; another server or account (`scope`) starts from an empty list. */
+/** `enabled` 期间读取的作业；换了服务端或账号（`scope`）时从空列表开始。 */
 export function useJobs(enabled: boolean, scope: number): JobsState {
   useEffect(() => {
     if (!enabled) return;
@@ -150,5 +150,5 @@ export function useJobs(enabled: boolean, scope: number): JobsState {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
-/** One job of the list, or undefined. */
+/** 列表里 ID 为 `id` 的作业；没有时为 undefined。 */
 export const findJob = (jobs: JobsState, id: string | null | undefined) => (id ? jobs.jobs.find(j => j.id === id) : undefined);
