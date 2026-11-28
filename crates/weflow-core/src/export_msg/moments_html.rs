@@ -1,13 +1,13 @@
-//! The HTML page of Moments (`sns export --format html`): `moments.{zh,en}.html`, which build.mjs makes from
-//! `moments.html`, with the posts as JSON in its `#wf-data`:
+//! 朋友圈的 HTML 页面（`sns export --format html`）：build.mjs 由 `moments.html` 生成的 `moments.{zh,en}.html`，
+//! 动态以 JSON 写在其中的 `#wf-data` 里：
 //!
-//! `{v, lang, title, exported, keyword, users, posts}`: `exported` the time of the export in unix seconds; `keyword`
-//! the words the posts were picked by (left out when none); `users` the posters as `[name, avatar path]` (the path
-//! from the page, `""` when no avatar was saved); `posts` newest first, each `{t, u, text, loc, media, likes, cmts}`:
-//! the time in unix seconds, the poster's index in `users`, the text, the place, the pictures and videos as `{k:
-//! "img" | "vid", s, url, live}` (`s` the path of the copy, `""` when none was saved; `url` WeChat's address; `live` a
-//! live photo's video), the names of those who liked it, and the comments as `[name, text]` or `[name, text, name
-//! answered]`. A field a post has nothing in is left out.
+//! `{v, lang, title, exported, keyword, users, posts}`：`exported` 是导出的 Unix 时间（秒）；
+//! `keyword` 是筛选动态用的关键词（没有时省略）；`users` 是发动态的人，每项是 `[名字, 头像路径]`（路径相对页面，
+//! 没有保存头像时为 `""`）；`posts` 从新到旧排列，每条是 `{t, u, text, loc, media, likes, cmts}`：
+//! Unix 时间（秒）、发布者在 `users` 中的下标、文字、位置、图片和视频、点赞者的名字、评论。
+//! 图片和视频的每项是 `{k, s, url, live}`：`k` 为 `"img"` 或 `"vid"`，`s` 是副本的路径（没有保存副本时为 `""`），
+//! `url` 是微信的地址，`live` 是实况照片的视频；评论的每项是 `[名字, 文字]` 或 `[名字, 文字, 被回复者的名字]`。
+//! 没有内容的字段省略。
 
 use std::collections::HashMap;
 use std::io::{self, Write};
@@ -22,46 +22,46 @@ use crate::locale;
 const MOMENTS_ZH: &str = include_str!("moments.zh.html");
 const MOMENTS_EN: &str = include_str!("moments.en.html");
 
-/// A post as the page draws it.
+/// 页面绘制的一条动态。
 #[derive(Debug, Default, Serialize)]
 pub struct MomentPost {
-    /// When it was posted, in unix seconds.
+    /// 发布的时间，Unix 时间（秒）。
     pub t: i64,
-    /// The poster: an index into [`MomentsPage`]'s users (see [`MomentsPage::user`]).
+    /// 发布者：在 [`MomentsPage`] 的发布者列表中的下标（见 [`MomentsPage::user`]）。
     pub u: usize,
-    /// The text of the post.
+    /// 动态的文字。
     #[serde(skip_serializing_if = "String::is_empty")]
     pub text: String,
-    /// Where it was posted, as one line.
+    /// 发布的位置，写成一行。
     #[serde(skip_serializing_if = "String::is_empty")]
     pub loc: String,
-    /// Its pictures or video.
+    /// 动态的图片或视频。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub media: Vec<MomentMedia>,
-    /// The names of those who liked it.
+    /// 点赞者的名字。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub likes: Vec<String>,
-    /// Its comments, in order.
+    /// 评论，按顺序排列。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cmts: Vec<MomentComment>,
 }
 
-/// What a medium of a post is.
+/// 动态中一项媒体的种类。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum MomentMediaKind {
-    /// A picture, `img` on the page.
+    /// 图片，页面上为 `img`。
     #[serde(rename = "img")]
     Picture,
-    /// A video, `vid` on the page.
+    /// 视频，页面上为 `vid`。
     #[serde(rename = "vid")]
     Video,
 }
 
-/// A picture or video of a post.
+/// 动态中的一张图片或一个视频。
 #[derive(Debug, Serialize)]
 pub struct MomentMedia {
     k: MomentMediaKind,
-    /// The copy's path from the page; empty when none was saved, and the page offers `url` instead.
+    /// 副本相对页面的路径；没有保存副本时为空，页面改为提供 `url`。
     s: String,
     url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,7 +69,7 @@ pub struct MomentMedia {
 }
 
 impl MomentMedia {
-    /// `saved` and `live` are the paths of the copies from the page, as the export wrote them.
+    /// 一项媒体；`saved` 和 `live` 是导出写出的副本相对页面的路径。
     pub fn new(kind: MomentMediaKind, saved: Option<&str>, url: &str, live: Option<&str>) -> Self {
         Self {
             k: kind,
@@ -83,14 +83,14 @@ impl MomentMedia {
     }
 }
 
-/// A comment: who wrote it, what, and whom it answers; on the page `[name, text]` or `[name, text, name answered]`.
+/// 一条评论：谁写的、写了什么、回复谁；在页面上写成 `[名字, 文字]` 或 `[名字, 文字, 被回复者的名字]`。
 #[derive(Debug)]
 pub struct MomentComment {
-    /// The commenter's name.
+    /// 评论者的名字。
     pub name: String,
-    /// Empty for a comment of only a sticker, which the page shows as `[表情]`.
+    /// 评论的文字；只有表情的评论为空，页面显示为 `[表情]`。
     pub text: String,
-    /// The name of whom it answers; none, or empty, when it answers no one.
+    /// 被回复者的名字；没有回复谁时为 `None` 或空字符串。
     pub to: Option<String>,
 }
 
@@ -107,21 +107,21 @@ impl Serialize for MomentComment {
     }
 }
 
-/// The posts of a Moments export, to write as a page.
+/// 要写成页面的朋友圈导出中的动态。
 #[derive(Debug, Default)]
 pub struct MomentsPage {
-    /// The words the posts were picked by.
+    /// 筛选动态用的关键词。
     pub keyword: Option<String>,
-    /// When the posts were exported, in unix seconds.
+    /// 导出动态的时间，Unix 时间（秒）。
     pub exported_at: i64,
-    /// The posts, in the order the page lists them.
+    /// 各条动态，按页面列出的顺序排列。
     pub posts: Vec<MomentPost>,
     users: Vec<(String, String)>,
     by_username: HashMap<String, usize>,
 }
 
 impl MomentsPage {
-    /// A page without posts yet: those picked by `keyword`, exported at `exported_at` (unix seconds).
+    /// 还没有动态的页面：动态按 `keyword` 筛选，导出时间为 `exported_at`（Unix 时间，秒）。
     pub fn new(keyword: Option<String>, exported_at: i64) -> Self {
         Self {
             keyword,
@@ -130,8 +130,7 @@ impl MomentsPage {
         }
     }
 
-    /// The index of the poster `username`, added as `name` with its avatar's path (from the page, as the export wrote
-    /// it) the first time.
+    /// 发布者 `username` 的下标；第一次出现时以名字 `name` 和头像路径（导出写出的、相对页面的路径）加入。
     pub fn user(&mut self, username: &str, name: &str, avatar: Option<&str>) -> usize {
         if let Some(&at) = self.by_username.get(username) {
             return at;
@@ -146,7 +145,11 @@ impl MomentsPage {
         at
     }
 
-    /// Writes the page, in the language of the program.
+    /// 按程序的语言写出页面。
+    ///
+    /// # Errors
+    ///
+    /// 写入 `w` 失败时返回错误。
     pub fn write(&self, w: &mut impl Write) -> io::Result<()> {
         let lang = locale::current();
         let (template, lang_name, page_lang, title) = match lang {
@@ -184,7 +187,7 @@ mod tests {
     use super::*;
     use serde_json::{json, Value};
 
-    /// The page's `#wf-data`, read back.
+    /// 读回页面的 `#wf-data`。
     fn data(page: &str) -> Value {
         let open = r#"<script id="wf-data" type="application/json">"#;
         let start = page.find(open).unwrap() + open.len();
@@ -238,7 +241,7 @@ mod tests {
         let mut out = Vec::new();
         page.write(&mut out).unwrap();
         let out = String::from_utf8(out).unwrap();
-        // a name never ends the data's script
+        // 名字不会提前结束数据所在的 script 元素
         assert_eq!(out.matches("</script>").count(), 2, "{out}");
         assert!(!out.contains("__WF_"), "a placeholder is left");
         let d = data(&out);
@@ -263,7 +266,7 @@ mod tests {
             json!({ "k": "vid", "s": "", "url": "https://x/2" })
         );
         assert_eq!(p["cmts"], json!([["Amy", "nice"], ["Bob", "", "Amy"]]));
-        // what a post has nothing in is left out
+        // 动态中没有内容的字段省略
         assert_eq!(d["posts"][1], json!({ "t": 1_699_000_000, "u": 1 }));
     }
 }

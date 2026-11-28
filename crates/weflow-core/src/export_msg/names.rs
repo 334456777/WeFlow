@@ -1,25 +1,24 @@
-//! Who sent a message and what to call them: contacts, the name book, the display preference and group
-//! nicknames.
+//! 消息是谁发的、该怎么称呼：联系人、名字簿、显示偏好和群昵称。
 
 use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
-/// The names of a contact; a field is empty when the contact has none.
+/// 联系人的各个名字；联系人没有的字段为空。
 #[derive(Clone, Debug, Default)]
 pub struct ContactInfo {
-    /// The wxid.
+    /// 用户名（wxid）。
     pub username: String,
-    /// The name they gave themselves.
+    /// 联系人给自己起的昵称。
     pub nickname: String,
-    /// My remark for them.
+    /// 账号所有者给联系人的备注。
     pub remark: String,
-    /// The WeChat ID.
+    /// 微信号。
     pub alias: String,
 }
 
 impl ContactInfo {
-    /// The names of the contact row `v`, by its `snake_case` or `camelCase` keys; `username` when the row names none.
+    /// 从联系人的行 `v` 读出各个名字，键可以是 `snake_case` 或 `camelCase`；行里没有用户名时用 `username`。
     pub fn from_value(username: &str, v: &Value) -> Self {
         let s = |keys: &[&str]| {
             keys.iter()
@@ -43,7 +42,7 @@ impl ContactInfo {
         }
     }
 
-    /// What WCDB's display-name lookup yields: the remark, else the nickname, else the alias, else the username.
+    /// 与 WCDB 取显示名的结果相同：依次取备注、昵称、微信号，都没有时为用户名。
     pub fn display_name(&self) -> String {
         if !self.remark.is_empty() {
             self.remark.clone()
@@ -57,15 +56,16 @@ impl ContactInfo {
     }
 }
 
+/// 按用户名查联系人的加载函数。
 type Loader<'a> = Box<dyn FnMut(&str) -> Option<ContactInfo> + 'a>;
 
-/// The contacts an export names, each looked up once by its loader and kept.
+/// 导出时要取名字的联系人：每个只用加载函数查一次，查到的结果留下来。
 pub struct NameBook<'a> {
     cache: HashMap<String, Option<ContactInfo>>,
     loader: Loader<'a>,
 }
 
-/// The contacts looked up so far; the loader is a closure.
+/// 只显示已经查过的联系人；加载函数是闭包，不显示。
 impl std::fmt::Debug for NameBook<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NameBook")
@@ -75,7 +75,7 @@ impl std::fmt::Debug for NameBook<'_> {
 }
 
 impl<'a> NameBook<'a> {
-    /// A book that looks a contact up with `loader` the first time it is asked for.
+    /// 名字簿：联系人第一次被问到时用 `loader` 查找。
     pub fn new(loader: impl FnMut(&str) -> Option<ContactInfo> + 'a) -> Self {
         NameBook {
             cache: HashMap::new(),
@@ -83,12 +83,13 @@ impl<'a> NameBook<'a> {
         }
     }
 
+    /// 测试用：从现成的表里查联系人的名字簿。
     #[cfg(test)]
     pub(super) fn from_map(map: HashMap<String, ContactInfo>) -> NameBook<'static> {
         NameBook::new(move |u| map.get(u).cloned())
     }
 
-    /// The contact `username`; `None` when the loader knows none, which is kept too.
+    /// 联系人 `username`；加载函数不知道时为 `None`，这个结果也会留下来。
     pub fn get(&mut self, username: &str) -> Option<ContactInfo> {
         if let Some(found) = self.cache.get(username) {
             return found.clone();
@@ -98,7 +99,7 @@ impl<'a> NameBook<'a> {
         loaded
     }
 
-    /// [`ContactInfo::display_name`] of `username`; `username` itself for one the loader does not know.
+    /// `username` 的 [`ContactInfo::display_name`]；加载函数不知道这个联系人时为 `username` 本身。
     pub fn display_name(&mut self, username: &str) -> String {
         match self.get(username) {
             Some(c) => c.display_name(),
@@ -107,19 +108,19 @@ impl<'a> NameBook<'a> {
     }
 }
 
-/// Which name an export shows for a sender (`export messages --display-name`).
+/// 导出时发送者显示哪个名字（`export messages --display-name`）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisplayPref {
-    /// The group nickname, else the remark, else the nickname, else the wxid.
+    /// 依次取群昵称、备注、昵称、wxid。
     GroupNickname,
-    /// The remark, else the nickname, else the wxid.
+    /// 依次取备注、昵称、wxid。
     Remark,
-    /// The nickname, else the wxid.
+    /// 先取昵称，没有时取 wxid。
     Nickname,
 }
 
 impl DisplayPref {
-    /// `group-nickname`, `remark` or `nickname`; `None` for anything else.
+    /// 读取 `group-nickname`、`remark` 或 `nickname`；其他值为 `None`。
     pub fn parse(s: &str) -> Option<Self> {
         match s.trim() {
             "group-nickname" => Some(Self::GroupNickname),
@@ -129,7 +130,7 @@ impl DisplayPref {
         }
     }
 
-    /// The first name that is not empty, in the preference's order.
+    /// 按偏好的顺序取第一个不为空的名字。
     pub fn pick(self, wxid: &str, nickname: &str, remark: &str, group_nickname: &str) -> String {
         let first = |vals: &[&str]| {
             vals.iter()
@@ -145,8 +146,8 @@ impl DisplayPref {
     }
 }
 
-/// A group nickname trimmed and without control characters; empty when nothing but quotes, commas and `@` is left.
-/// The exports, the chat window and the group panels read members' nicknames by this one rule (#1266).
+/// 去掉首尾空白和控制字符后的群昵称；只剩引号、逗号、顿号和 `@` 时为空。
+/// 导出、聊天窗口和群面板都按这一条规则读取成员的群昵称（#1266）。
 pub fn normalize_group_nickname(value: &str) -> String {
     let cleaned: String = value
         .trim()
@@ -162,7 +163,7 @@ pub fn normalize_group_nickname(value: &str) -> String {
     cleaned
 }
 
-/// Keep only identities whose nickname is unambiguous.
+/// 只保留群昵称没有歧义的身份：身份不分大小写，规范化（见 [`normalize_group_nickname`]）后只有一种群昵称。
 pub fn build_trusted_group_nicknames(
     entries: impl IntoIterator<Item = (String, String)>,
 ) -> HashMap<String, String> {
@@ -190,8 +191,7 @@ pub fn build_trusted_group_nicknames(
         .collect()
 }
 
-/// The group nickname of the identities `candidates` in `map`: empty when none has one, or when two have different
-/// ones.
+/// `candidates` 这些身份在 `map` 中的群昵称：都没有，或者有两个不同的群昵称时为空。
 pub fn resolve_group_nickname(map: &HashMap<String, String>, candidates: &[&str]) -> String {
     let mut resolved = String::new();
     let mut seen: Vec<&str> = Vec::new();
@@ -215,20 +215,20 @@ pub fn resolve_group_nickname(map: &HashMap<String, String>, candidates: &[&str]
     resolved
 }
 
-/// The names of a message's sender, as an export writes them.
+/// 导出写出的消息发送者的各个名字。
 #[derive(Clone, Debug, Default)]
 pub struct Profile {
-    /// The sender's wxid; `unknown` when the message does not say.
+    /// 发送者的 wxid；消息里没有写时为 `unknown`。
     pub wxid: String,
-    /// Their nickname, else the name the message gives, else the wxid.
+    /// 发送者的昵称；没有时取消息给出的名字，再没有时为 wxid。
     pub nickname: String,
-    /// My remark for them; empty when none.
+    /// 账号所有者给发送者的备注；没有时为空。
     pub remark: String,
-    /// Their WeChat ID; empty when none.
+    /// 发送者的微信号；没有时为空。
     pub alias: String,
-    /// Their nickname in the group; empty when none, or in a private chat.
+    /// 发送者的群昵称；没有时或在私聊中为空。
     pub group_nickname: String,
-    /// The name the export shows, by its [`DisplayPref`].
+    /// 按导出的 [`DisplayPref`] 显示的名字。
     pub display_name: String,
 }
 

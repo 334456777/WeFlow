@@ -1,4 +1,4 @@
-//! The ChatLab export, as one JSON document or as JSONL lines.
+//! ChatLab 导出：一个 JSON 文档，或者 JSONL 的多行。
 
 #[cfg(test)]
 use std::collections::HashMap;
@@ -23,7 +23,7 @@ use super::spool::{EntryFormat, RenderedEntries, SenderTally, Spool};
 use super::Exporter;
 
 impl Exporter<'_, '_> {
-    // ───────────────────────────────── ChatLab ─────────────────────────────────
+    // ─────────────────────────────── ChatLab 导出 ───────────────────────────────
 
     fn chatlab_header(&self) -> ChatlabHeader {
         ChatlabHeader {
@@ -43,7 +43,7 @@ impl Exporter<'_, '_> {
         }
     }
 
-    /// The whole ChatLab document, built in memory: what the tests hold the streamed file against.
+    /// 在内存里构建的整个 ChatLab 文档，测试拿流式写出的文件与它比较。
     #[cfg(test)]
     pub(super) fn build_chatlab(&mut self, msgs: &[ExportMsg]) -> Value {
         let (members, messages) = self.chatlab_parts(msgs);
@@ -56,8 +56,8 @@ impl Exporter<'_, '_> {
         serde_json::to_value(document).unwrap_or_default()
     }
 
-    /// The ChatLab object of one message. `member_name` is the sender's name in the member list; the names of the
-    /// people in a forwarded chat history go to `record_names` (they become members too).
+    /// 一条消息的 ChatLab 对象。`member_name` 是发送者在成员列表中的名字；转发的聊天记录里出现的人名放进
+    /// `record_names`（他们也会成为成员）。
     pub(super) fn chatlab_message<'m>(
         &mut self,
         msg: &'m ExportMsg,
@@ -124,7 +124,7 @@ impl Exporter<'_, '_> {
         }
     }
 
-    /// The member list with the names resolved like WeFlow's desktop app does for groups.
+    /// 群聊时按桌面版的方式确定成员列表中的名字；私聊时原样返回。
     fn chatlab_finish_members(&mut self, mut members: Vec<ChatlabMember>) -> Vec<ChatlabMember> {
         if !self.session.is_group {
             return members;
@@ -148,7 +148,7 @@ impl Exporter<'_, '_> {
         members
     }
 
-    /// The (resolved) members and the message objects of a ChatLab export.
+    /// ChatLab 导出的成员（已确定名字）和各条消息的对象。
     #[cfg(test)]
     fn chatlab_parts<'m>(
         &mut self,
@@ -180,10 +180,11 @@ impl Exporter<'_, '_> {
         (self.chatlab_finish_members(members), messages)
     }
 
-    /// Writes `msgs` to `out` in ChatLab's format: one JSON document, or JSON Lines with `jsonl`.
+    /// 把 `msgs` 以 ChatLab 格式写到 `out`：一个 JSON 文档，`jsonl` 为真时写成 JSON Lines。
     ///
     /// # Errors
-    /// When the file cannot be written.
+    ///
+    /// 无法写入文件时返回错误。
     pub fn write_chatlab(&mut self, msgs: &[ExportMsg], out: &Path, jsonl: bool) -> Result<()> {
         let format = if jsonl {
             EntryFormat::ChatlabJsonl
@@ -194,8 +195,7 @@ impl Exporter<'_, '_> {
         Ok(())
     }
 
-    /// ChatLab: the entries go to a spool file; the member list, which comes first in the file and needs every
-    /// sender, is written at the end.
+    /// ChatLab：各条目先写进暂存文件；成员列表在文件里排在最前面，但要等到所有发送者都出现，所以最后才写。
     pub(super) fn write_rendered_chatlab(
         &mut self,
         out: &Path,
@@ -227,8 +227,7 @@ impl Exporter<'_, '_> {
         if count == 0 && !write_if_empty {
             return Ok(0);
         }
-        // members: the senders in order of appearance, then the rest of the group, then the people who only
-        // appear inside forwarded chat histories
+        // 成员：先是按出现顺序排列的发送者，然后是群里的其他人，最后是只出现在转发的聊天记录里的人
         let mut ids = tally.order;
         let mut known: HashSet<String> = ids.iter().cloned().collect();
         if self.session.is_group {
@@ -297,11 +296,11 @@ impl Exporter<'_, '_> {
     }
 }
 
-// ──────────────────────── JSON / ChatLab / HTML documents ────────────────────────
+// ──────────────────────────────── ChatLab 文档 ────────────────────────────────
 //
-// The structs below are serialized straight into the output; their field order is the key order of the files.
+// 下面的结构体直接序列化进输出，字段的顺序就是文件中键的顺序。
 
-/// A JSONL line: `_type` first, then the fields of `entry`.
+/// JSONL 的一行：先是 `_type`，然后是 `entry` 的各字段。
 #[derive(Serialize)]
 pub(super) struct Tagged<'a, T> {
     #[serde(rename = "_type")]
@@ -310,7 +309,7 @@ pub(super) struct Tagged<'a, T> {
     pub(super) entry: &'a T,
 }
 
-/// The `chatlab` header of a ChatLab export.
+/// ChatLab 导出的 `chatlab` 文件头。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatlabHeader {
@@ -319,7 +318,7 @@ struct ChatlabHeader {
     generator: &'static str,
 }
 
-/// The `meta` object of a ChatLab export.
+/// ChatLab 导出的 `meta` 对象。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatlabMeta<'a> {
@@ -331,7 +330,7 @@ struct ChatlabMeta<'a> {
     group_id: Option<&'a str>,
 }
 
-/// The first line of a ChatLab JSONL export.
+/// ChatLab JSONL 导出的第一行。
 #[derive(Serialize)]
 struct ChatlabJsonlHeader<'a> {
     #[serde(rename = "_type")]
@@ -340,7 +339,7 @@ struct ChatlabJsonlHeader<'a> {
     meta: &'a ChatlabMeta<'a>,
 }
 
-/// One entry of the ChatLab member list.
+/// ChatLab 成员列表中的一项。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatlabMember {
@@ -360,7 +359,7 @@ impl ChatlabMember {
     }
 }
 
-/// One message of a ChatLab export.
+/// ChatLab 导出中的一条消息。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ChatlabMessage<'m> {
@@ -380,7 +379,7 @@ pub(super) struct ChatlabMessage<'m> {
     chat_records: Option<Vec<ChatlabRecord<'m>>>,
 }
 
-/// One message of a forwarded chat history inside a ChatLab message.
+/// ChatLab 消息中转发的聊天记录里的一条消息。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatlabRecord<'m> {
@@ -392,7 +391,7 @@ struct ChatlabRecord<'m> {
     content: String,
 }
 
-/// A whole ChatLab export, for [`Exporter::build_chatlab`].
+/// 整个 ChatLab 导出，供 [`Exporter::build_chatlab`] 使用。
 #[cfg(test)]
 #[derive(Serialize)]
 struct ChatlabDocument<'a> {
@@ -402,11 +401,11 @@ struct ChatlabDocument<'a> {
     messages: Vec<ChatlabMessage<'a>>,
 }
 
-/// The ChatLab record of one message in a forwarded chat history; `fallback_time` stands in for an unreadable time.
+/// 转发的聊天记录中一条消息的 ChatLab 记录；时间读不出来时用 `fallback_time`。
 fn chatlab_record(rec: &ForwardRecord, fallback_time: i64) -> ChatlabRecord<'_> {
     let timestamp = parse_record_time(&rec.sourcetime).unwrap_or(fallback_time);
     let text = || rec.datadesc.clone().or_else(|| rec.datatitle.clone());
-    // the codes are the ones of the messages themselves (`convert_message_type_in`)
+    // 类型代码与普通消息的相同（`convert_message_type_in`）
     let record = RecordKind::of(rec.datatype);
     let tagged = |code: i64| (code, record.tag().to_string());
     let (kind, content) = match record {
@@ -438,6 +437,7 @@ fn chatlab_record(rec: &ForwardRecord, fallback_time: i64) -> ChatlabRecord<'_> 
     }
 }
 
+/// 把 `YYYY-MM-DD HH:MM:SS` 形式的本地时间读成 Unix 时间（秒）；格式不对或本地时区里没有这个时刻时为 `None`。
 fn parse_record_time(value: &str) -> Option<i64> {
     use chrono::{Local, TimeZone};
     let c = rx(r"(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})").captures(value)?;
@@ -462,8 +462,7 @@ mod tests {
     use std::fs;
     use weflow_native::fixture::TestDir;
 
-    /// A chat record's item is of the ChatLab type of what its own `datatype` says it is, the same type as such a
-    /// message of its own (#1171).
+    /// 聊天记录中的一项按它自己的 `datatype` 取 ChatLab 类型，与同类的普通消息相同（#1171）。
     #[test]
     fn a_record_item_has_the_type_of_its_datatype() {
         for (datatype, kind, content) in [

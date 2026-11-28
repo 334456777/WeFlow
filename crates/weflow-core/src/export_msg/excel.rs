@@ -1,4 +1,4 @@
-//! The Excel export.
+//! Excel 导出。
 
 use std::path::Path;
 
@@ -12,29 +12,29 @@ use crate::message::*;
 
 use super::{chrome, write_bytes, Exporter};
 
-/// Most rows an Excel sheet holds (Excel's limit): the messages that do not fit go on in another sheet.
+/// 一个 Excel 工作表最多容纳的行数（Excel 的上限）：放不下的消息接着写到下一个工作表。
 const SHEET_ROWS: u32 = 1_048_576;
-/// Rows above the messages of every sheet: the conversation's details, then the column headers.
+/// 每个工作表中消息上方的行数：先是会话的信息，然后是列的表头。
 const HEAD_ROWS: u32 = 4;
 
 impl Exporter<'_, '_> {
-    // ─────────────────────────────────── Excel ───────────────────────────────────
+    // ──────────────────────────────── Excel 导出 ────────────────────────────────
 
-    /// A sheet with more rows than this is written in constant-memory mode (no hyperlinks, rows go to disk).
+    /// 行数超过这个数的工作表以常量内存模式写出（没有超链接，行写到磁盘上）。
     pub(super) const EXCEL_BIG: usize = 20000;
 
-    /// Writes `msgs` to `out` as an Excel workbook, a new sheet every 1 048 576 rows.
+    /// 把 `msgs` 写成 Excel 工作簿 `out`，每个工作表写满 1048576 行（Excel 的上限）后换下一个。
     ///
     /// # Errors
-    /// When the workbook cannot be written.
+    ///
+    /// 无法写出工作簿时返回错误。
     pub fn write_excel(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
         self.write_excel_rows(msgs, msgs.len() > Self::EXCEL_BIG, out, SHEET_ROWS)?;
         Ok(())
     }
 
-    /// Excel written from a stream of messages (oldest first). Whether the sheet is "big" depends on the total, so
-    /// the first `EXCEL_BIG + 1` messages are held back: if the stream ends before that, the small sheet is written
-    /// as usual; otherwise the constant-memory sheet takes them and then the rest as they arrive.
+    /// 从消息流（从旧到新）写出 Excel。工作表是否算「大」取决于总数，所以先留下前 `EXCEL_BIG + 1` 条消息：
+    /// 消息流在这之前结束时照常写普通工作表；否则把它们写进常量内存的工作表，其余的消息到来时接着写。
     pub(super) fn stream_excel(
         &mut self,
         msgs: &mut dyn Iterator<Item = ExportMsg>,
@@ -51,9 +51,9 @@ impl Exporter<'_, '_> {
         self.write_excel_rows(head.into_iter().chain(msgs), true, out, SHEET_ROWS)
     }
 
-    /// Writes the workbook; `big` picks the constant-memory mode (rows must then be written in order, as they are).
-    /// A sheet holds `sheet_rows` rows ([`SHEET_ROWS`] but in tests): the messages that do not fit go on in another
-    /// sheet, under the same rows on top, numbered on. Returns the number of messages.
+    /// 写出工作簿；`big` 为真时用常量内存模式（这时各行必须按顺序写，这里正是按顺序写的）。一个工作表容纳
+    /// `sheet_rows` 行（除测试外都是 [`SHEET_ROWS`]）：放不下的消息接着写到下一个工作表，上方的行相同，序号接着编。
+    /// 返回消息数。
     fn write_excel_rows<I>(
         &mut self,
         msgs: I,
@@ -201,8 +201,8 @@ impl Exporter<'_, '_> {
                 ws.write_string(row, content_col, crate::export::fit_cell(&content))?;
             }
         }
-        // Built in memory, then written: rust_xlsxwriter panics (an unwrap) when writing a constant-memory sheet to
-        // the file fails, for instance on a full disk, while writing to memory cannot fail.
+        // 先在内存里生成再写出：常量内存的工作表写到文件失败时（例如磁盘已满），rust_xlsxwriter 会 panic（一处
+        // unwrap），而写到内存不会失败
         let bytes = workbook
             .save_to_buffer()
             .with_context(|| format!("failed to build {}", out.display()))?;
@@ -211,11 +211,11 @@ impl Exporter<'_, '_> {
     }
 }
 
-/// What every sheet of an Excel export has above its messages: the conversation's details, then the column headers.
+/// Excel 导出的每个工作表在消息上方的内容：先是会话的信息，然后是列的表头。
 struct SheetTop {
     session_id: String,
     nickname: String,
-    /// The group's remark (a group only).
+    /// 群的备注（只有群聊有）。
     remark: Option<String>,
     exported_at: String,
     headers: Vec<&'static str>,
@@ -223,7 +223,7 @@ struct SheetTop {
 }
 
 impl SheetTop {
-    /// Adds sheet number `index` (from 0) to `workbook`, in constant-memory mode when `big`, with the rows on top.
+    /// 向 `workbook` 添加第 `index` 个工作表（从 0 开始），`big` 为真时用常量内存模式，并写好上方的行。
     fn add_sheet<'w>(
         &self,
         workbook: &'w mut rust_xlsxwriter::Workbook,
@@ -291,7 +291,7 @@ mod tests {
         assert!(bytes.len() > 2000);
     }
 
-    /// The XML of the part `name` of the workbook at `path`.
+    /// `path` 处工作簿中部件 `name` 的 XML。
     fn part(path: &std::path::Path, name: &str) -> String {
         let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
         let mut xml = String::new();
@@ -299,7 +299,7 @@ mod tests {
         xml
     }
 
-    /// The value of the cell `cell` (`A5`) in a sheet's XML.
+    /// 工作表 XML 中单元格 `cell`（如 `A5`）的值。
     fn cell_value<'x>(sheet: &'x str, cell: &str) -> Option<&'x str> {
         let at = sheet.find(&format!("<c r=\"{cell}\""))?;
         let rest = &sheet[at..];
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn messages_beyond_a_sheet_go_on_in_the_next_sheets() {
-        // the five messages of the fixture, two to a sheet: three sheets, in either mode
+        // `fixture` 的五条消息，每个工作表两条：不论哪种模式都是三个工作表
         for big in [false, true] {
             let dir = TestDir::new("weflow-xlsx-sheets");
             let out = dir.join("chat.xlsx");

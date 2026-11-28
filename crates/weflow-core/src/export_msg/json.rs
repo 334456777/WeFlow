@@ -1,4 +1,4 @@
-//! The detailed JSON export.
+//! 详细 JSON 导出。
 
 use std::collections::HashMap;
 use std::io;
@@ -25,13 +25,12 @@ use super::names::{resolve_group_nickname, ContactInfo, Profile};
 use super::spool::{EntryFormat, RenderedEntries, SenderTally, Spool};
 use super::Exporter;
 
-/// The key of a detailed-JSON message's first field, whose value the writer sets (see
-/// [`Exporter::render_entries`]).
+/// 详细 JSON 中一条消息第一个字段的键，它的值在写出时填入（见 [`Exporter::render_entries`]）。
 const JSON_LOCAL_ID_KEY: &[u8] = b"\"localId\": ";
 
-/// Writes `entry`, a detailed-JSON message rendered ahead, with `local_id` as the value of its `localId`.
+/// 写出预先渲染好的详细 JSON 消息 `entry`，把其中 `localId` 的值换成 `local_id`。
 fn write_json_entry(w: &mut impl io::Write, entry: &[u8], local_id: usize) -> io::Result<()> {
-    // `localId` is the first field, so the first match is the key and not text inside a later value
+    // `localId` 是第一个字段，所以第一处匹配就是这个键，不会是后面某个值里的文字
     let Some(key) = memchr::memmem::find(entry, JSON_LOCAL_ID_KEY) else {
         return w.write_all(entry);
     };
@@ -46,8 +45,7 @@ fn write_json_entry(w: &mut impl io::Write, entry: &[u8], local_id: usize) -> io
 }
 
 impl Exporter<'_, '_> {
-    /// Detailed JSON: the entries go to a spool file, numbered as they are written; the session header, which comes
-    /// first in the file and has the totals, is written at the end.
+    /// 详细 JSON：各条目写进暂存文件，写入时编号；会话信息在文件里排在最前面，但含有总数，所以最后才写。
     pub(super) fn write_rendered_json(
         &mut self,
         out: &Path,
@@ -71,7 +69,7 @@ impl Exporter<'_, '_> {
         Ok(count)
     }
 
-    // ─────────────────────────── detailed JSON / arkme-json ───────────────────────────
+    // ─────────────────────────── 详细 JSON 和 arkme-json ───────────────────────────
 
     fn weflow_header(&self, format: Option<&'static str>) -> WeflowHeader {
         WeflowHeader {
@@ -82,8 +80,8 @@ impl Exporter<'_, '_> {
         }
     }
 
-    /// The detailed-JSON object of one message; `index` is the number of messages before it. Records the sender's
-    /// profile in `profiles` (the first one seen wins).
+    /// 一条消息的详细 JSON 对象；`index` 是它前面的消息数。把发送者的资料记进 `profiles`，
+    /// 同一个发送者只记第一次见到的。
     pub(super) fn json_message<'m>(
         &mut self,
         msg: &'m ExportMsg,
@@ -129,9 +127,9 @@ impl Exporter<'_, '_> {
             );
         }
 
-        // later keys replace the value of an earlier one in place (the quoted sender and text of a quote)
+        // 后写入的键在原位置替换先前的值（引用的被引用者和文字）
         let mut extra = Map::new();
-        // detailed JSON keeps the app-message fields of quotes and links only
+        // 详细 JSON 只保留引用和链接的 app 消息字段
         let meta = if arkme {
             extract_arkme_app_message_meta_in(&x, msg.local_type)
         } else {
@@ -188,7 +186,7 @@ impl Exporter<'_, '_> {
         }
     }
 
-    /// `{ wxid, nickname, remark, displayName, type, lastTimestamp, messageCount }` of the exported session.
+    /// 导出的会话的 `{ wxid, nickname, remark, displayName, type, lastTimestamp, messageCount }`。
     fn json_session(&mut self, count: usize, last_ts: Option<i64>) -> JsonSession {
         let is_group = self.session.is_group;
         let session_contact = self.names.get(&self.session.id.clone());
@@ -223,7 +221,7 @@ impl Exporter<'_, '_> {
         }
     }
 
-    /// The whole detailed-JSON (or arkme-json) document, with the messages sorted by time.
+    /// 整个详细 JSON（或 arkme-json）文档，消息按时间排序。
     #[cfg(test)]
     fn json_document<'m>(&mut self, msgs: &'m [ExportMsg], arkme: bool) -> JsonDocument<'m> {
         let mut profiles: HashMap<String, Profile> = HashMap::new();
@@ -244,7 +242,7 @@ impl Exporter<'_, '_> {
             };
         }
 
-        // arkme-json: compact messages + sender table (+ group members)
+        // arkme-json：紧凑的消息加发送者表，群聊另有群成员
         let mut ark = ArkCompact::default();
         let compact: Vec<ArkMessage<'m>> = messages
             .into_iter()
@@ -260,18 +258,19 @@ impl Exporter<'_, '_> {
         }
     }
 
-    /// The whole document, built in memory: what the tests hold the streamed file against.
+    /// 在内存里构建的整个文档，测试拿流式写出的文件与它比较。
     #[cfg(test)]
     pub(super) fn build_json(&mut self, msgs: &[ExportMsg], arkme: bool) -> Value {
         serde_json::to_value(self.json_document(msgs, arkme)).unwrap_or_default()
     }
 
-    /// Writes `msgs` to `out` as WeFlow's JSON, or as Arkme's with `arkme`.
+    /// 把 `msgs` 写成 WeFlow 的详细 JSON 文件 `out`，`arkme` 为真时写成 Arkme 的 JSON。
     ///
     /// # Errors
-    /// When the file cannot be written.
+    ///
+    /// 无法写入文件时返回错误。
     pub fn write_json(&mut self, msgs: &[ExportMsg], out: &Path, arkme: bool) -> Result<()> {
-        // written message by message in the order given, as a streaming export writes them
+        // 按给出的顺序逐条写出，与流式导出的写法相同
         if arkme {
             self.stream_arkme_json(msgs, out, true)?;
         } else {
@@ -280,8 +279,8 @@ impl Exporter<'_, '_> {
         Ok(())
     }
 
-    /// Writes the detailed-JSON file, or with `arkme` (its sender table and a tally of the senders) the arkme-json
-    /// file, around the `count` messages in `spool`.
+    /// 在 `spool` 中的 `count` 条消息前后写好其余部分，写成详细 JSON 文件；
+    /// 给出 `arkme`（发送者表和发送者的统计）时写成 arkme-json 文件。
     pub(super) fn write_json_file(
         &mut self,
         out: &Path,
@@ -325,7 +324,7 @@ impl Exporter<'_, '_> {
     }
 }
 
-/// The `weflow` header of a detailed-JSON / arkme-json export.
+/// 详细 JSON 和 arkme-json 导出的 `weflow` 文件头。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WeflowHeader {
@@ -336,7 +335,7 @@ struct WeflowHeader {
     format: Option<&'static str>,
 }
 
-/// The `session` object of a detailed-JSON / arkme-json export.
+/// 详细 JSON 和 arkme-json 导出的 `session` 对象。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonSession {
@@ -350,7 +349,7 @@ struct JsonSession {
     message_count: usize,
 }
 
-/// One message of the detailed-JSON export.
+/// 详细 JSON 导出中的一条消息。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct JsonMessage<'m> {
@@ -382,9 +381,8 @@ pub(super) struct JsonMessage<'m> {
     pub(super) platform_message_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) reply_to_message_id: Option<String>,
-    /// The app-message and contact-card fields ([`extract_arkme_app_message_meta_in`],
-    /// [`extract_arkme_contact_card_meta`]) and the quoted sender and text: which keys appear depends on the message
-    /// XML, so they stay a JSON map, in the order they were found.
+    /// app 消息和名片的字段（[`extract_arkme_app_message_meta_in`]、[`extract_arkme_contact_card_meta`]），
+    /// 以及被引用者和引用的文字：出现哪些键取决于消息的 XML，所以保留为 JSON 对象，按找到的顺序排列。
     #[serde(flatten)]
     pub(super) extra: Map<String, Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -397,7 +395,7 @@ pub(super) struct JsonMessage<'m> {
     pub(super) location_label: Option<&'m str>,
 }
 
-/// The messages of a detailed-JSON or arkme-json document.
+/// 详细 JSON 或 arkme-json 文档中的消息。
 #[cfg(test)]
 #[derive(Serialize)]
 #[serde(untagged)]
@@ -406,7 +404,7 @@ enum JsonMessages<'m> {
     Arkme(Vec<ArkMessage<'m>>),
 }
 
-/// A whole detailed-JSON or arkme-json export (`senders` and `groupMembers` are arkme's).
+/// 整个详细 JSON 或 arkme-json 导出（`senders` 和 `groupMembers` 只有 arkme 有）。
 #[cfg(test)]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

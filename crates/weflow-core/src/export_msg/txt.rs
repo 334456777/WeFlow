@@ -1,4 +1,4 @@
-//! The TXT export.
+//! TXT 导出。
 
 use std::path::Path;
 
@@ -11,13 +11,12 @@ use crate::message::*;
 use super::{write_bytes, Exporter};
 
 impl Exporter<'_, '_> {
-    /// One message of the TXT export: `<time> '<sender>'`, the text, a blank line.
-    /// Appends the TXT entry of `msg` to `out`.
+    /// 把 `msg` 的 TXT 条目追加到 `out`：一行 `<时间> '<发送者>'`，然后是文字和一个空行。
     pub(super) fn write_txt_entry(&mut self, msg: &ExportMsg, out: &mut Vec<u8>) {
         use std::io::Write;
         let (content, _) = self.plain_row_content(msg, &MsgXml::of_export(msg));
         let sender = self.sender_fields(msg);
-        // writing to a Vec cannot fail
+        // 写进 Vec 不会失败
         let _ = write!(
             out,
             "{} '{}'\n{}\n\n",
@@ -27,19 +26,21 @@ impl Exporter<'_, '_> {
         );
     }
 
+    /// 整个 TXT 导出的文字。
     pub(super) fn render_txt(&mut self, msgs: &[ExportMsg]) -> String {
         let mut out = Vec::new();
         for msg in msgs {
             self.write_txt_entry(msg, &mut out);
         }
-        // the entries are written from strings, so the bytes are UTF-8
+        // 各条目都由字符串写成，字节一定是 UTF-8
         String::from_utf8(out).unwrap_or_default()
     }
 
-    /// Writes `msgs` to `out` as plain text.
+    /// 把 `msgs` 写成纯文本文件 `out`。
     ///
     /// # Errors
-    /// When the file cannot be written.
+    ///
+    /// 无法写入文件时返回错误。
     pub fn write_txt(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
         let text = self.render_txt(msgs);
         write_bytes(out, text.as_bytes())
