@@ -1,14 +1,14 @@
-//! Pure-Rust reader for WeChat 4.x databases (SQLCipher 4 layout, as written by WCDB).
+//! 用纯 Rust 读取微信 4.x 的数据库（WCDB 写入的 SQLCipher 4 布局）。
 //!
-//! Layout, verified against real databases:
-//! - page size 4096; every page ends with an 80-byte reserve = 16-byte IV + 64-byte HMAC-SHA512
-//! - the first 16 bytes of page 1 hold the KDF salt instead of the SQLite header
+//! 布局如下，已在真实数据库上核对：
+//! - 页大小 4096；每页末尾是 80 字节的保留区，即 16 字节的 IV 加 64 字节的 HMAC-SHA512
+//! - 第 1 页开头的 16 字节是 KDF 盐，取代 SQLite 文件头
 //! - `enc_key  = PBKDF2-HMAC-SHA512(raw_key_bytes, salt, 256000, 32)`
 //! - `mac_key  = PBKDF2-HMAC-SHA512(enc_key, salt ^ 0x3a, 2, 32)`
-//! - page body is AES-256-CBC (no padding); `HMAC(mac_key, ciphertext || iv || pgno_le)` must match
-//! - the WAL is encrypted the same way, page by page (frame headers stay in the clear)
+//! - 页内容用 AES-256-CBC 加密（无填充）；`HMAC(mac_key, ciphertext || iv || pgno_le)` 必须匹配
+//! - WAL 按页以相同方式加密（帧头为明文）
 //!
-//! The key from `key db` is the raw 32 bytes fed to PBKDF2 as the password, *not* its hex text.
+//! `key db` 得到的密钥是 32 个原始字节，直接作为 PBKDF2 的口令，十六进制文本*不*参与派生。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -21,23 +21,26 @@ use sha2::{Digest, Sha256, Sha512};
 
 use crate::sha512x4;
 
-/// The page size of WeChat's databases, in bytes, reserved tail included.
+/// 微信数据库的页大小（字节），含末尾的保留区。
 pub const PAGE_SIZE: usize = 4096;
 const SALT_LEN: usize = 16;
 const IV_LEN: usize = 16;
 const HMAC_LEN: usize = 64;
 pub(crate) const RESERVE: usize = IV_LEN + HMAC_LEN;
-/// The bytes of a page (other than page 1) its HMAC covers before the page number: the body and the IV.
+/// 第 1 页以外的页中，HMAC 在页号之前覆盖的字节数：页内容和 IV。
 const SIGNED: usize = PAGE_SIZE - RESERVE + IV_LEN;
-/// PBKDF2 rounds from the raw key to a page key; the macOS x86_64 DTrace probe
-/// recognizes the raw key's derivation by it.
+/// 从原始密钥派生页密钥的 PBKDF2 轮数；macOS x86_64 上用 DTrace 取钥时，靠它认出对原始密钥的那次派生。
 pub(crate) const KDF_ITER: u32 = 256_000;
 const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
 
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
 type HmacSha512 = Hmac<Sha512>;
 
-/// Parse the 64-hex-character database key printed by `weflow key db`.
+/// 解析 `weflow key db` 输出的数据库密钥（64 个十六进制字符）。
+///
+/// # Errors
+///
+/// 去掉首尾空白后不是 64 个字符，或者含有非十六进制字符时返回错误。
 pub fn parse_key(hex_key: &str) -> Result<[u8; 32]> {
     let hex_key = hex_key.trim();
     if hex_key.len() != 64 {
@@ -46,7 +49,7 @@ pub fn parse_key(hex_key: &str) -> Result<[u8; 32]> {
             hex_key.len()
         );
     }
-    // Checked before slicing: a multi-byte character would put a slice boundary inside it and panic.
+    // 切片之前先检查：多字节字符会让切片边界落在字符内部而 panic。
     if !hex_key.bytes().all(|b| b.is_ascii_hexdigit()) {
         bail!("database key contains a non-hex character");
     }
@@ -58,35 +61,29 @@ pub fn parse_key(hex_key: &str) -> Result<[u8; 32]> {
     Ok(out)
 }
 
-/// Keys derived for one database file (each file has its own salt).
+/// 为一个数据库文件派生的密钥（每个文件有自己的盐）。
 pub struct PageCipher {
     enc_key: [u8; 32],
     #[cfg_attr(
         not(any(test, feature = "test-fixtures")),
-        expect(
-            dead_code,
-            reason = "only the fixtures encrypt pages, with the raw key"
-        )
+        expect(dead_code, reason = "只有夹具加密页时才用到")
     )]
     mac_key: [u8; 32],
-    /// The salt the keys were derived with, which the fixtures write at the start of page 1.
+    /// 派生密钥时用的盐，夹具把它写在第 1 页的开头。
     #[cfg_attr(
         not(any(test, feature = "test-fixtures")),
-        expect(
-            dead_code,
-            reason = "only the fixtures encrypt pages, with the salt they derived from"
-        )
+        expect(dead_code, reason = "只有夹具加密页时才用到派生时的盐")
     )]
     salt: Vec<u8>,
-    /// HMAC already keyed with `mac_key`: cloning it per page skips re-hashing the key pads.
+    /// 已写入 `mac_key` 的 HMAC 状态：每页克隆一份，省去重新计算密钥填充块的哈希。
     mac: HmacSha512,
-    /// The same keying as SHA-512 states, for checking several pages at once ([`Self::verify_each`]).
+    /// 同样写入了 `mac_key` 的 SHA-512 中间状态，供一次校验几页时使用（[`Self::verify_each`]）。
     mac_states: sha512x4::HmacKey,
-    /// AES with `enc_key` expanded: cloning it per decryption skips the key schedule.
+    /// 已完成 `enc_key` 密钥编排的 AES：每次解密克隆一份，省去密钥编排。
     aes: Aes256,
 }
 
-/// Nothing but the name: every field is a key or keyed with one.
+/// 只显示类型名：每个字段都是密钥或者含有密钥。
 impl std::fmt::Debug for PageCipher {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PageCipher").finish_non_exhaustive()
@@ -94,18 +91,17 @@ impl std::fmt::Debug for PageCipher {
 }
 
 impl PageCipher {
-    /// The keys of a file with `salt`, derived from the database key `raw_key` (PBKDF2-HMAC-SHA512, 256 000
-    /// rounds: slow on purpose).
+    /// 用数据库密钥 `raw_key` 派生盐为 `salt` 的文件的密钥（PBKDF2-HMAC-SHA512，256,000 轮，有意设计得很慢）。
     pub fn derive(raw_key: &[u8; 32], salt: &[u8]) -> Self {
         let enc_key = crate::kdf::pbkdf2_hmac_sha512(raw_key, salt, KDF_ITER);
         Self::from_enc_key(enc_key, salt)
     }
 
-    /// The keys of a database whose page key, the slow part of [`Self::derive`], is known.
+    /// 已知页密钥（[`Self::derive`] 中慢的那一步的结果）时，得到数据库的全部密钥。
     fn from_enc_key(enc_key: [u8; 32], salt: &[u8]) -> Self {
         let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3a).collect();
         let mac_key = crate::kdf::pbkdf2_hmac_sha512(&enc_key, &mac_salt, 2);
-        #[expect(clippy::expect_used, reason = "HMAC accepts a key of any length")]
+        #[expect(clippy::expect_used, reason = "HMAC 接受任意长度的密钥")]
         let mac =
             <HmacSha512 as KeyInit>::new_from_slice(&mac_key).expect("hmac accepts any key length");
         Self {
@@ -118,9 +114,9 @@ impl PageCipher {
         }
     }
 
-    /// The 16-byte blocks `blocks` of the body of encrypted page `pgno` (not page 1, whose body starts after the salt),
-    /// decrypted into the same bytes of `out`, without checking the page's HMAC: for reads that need a few bytes of
-    /// each of many pages. CBC decrypts a block from it and the block before (the IV for the first).
+    /// 解密加密页 `page` 中 `blocks` 范围内的 16 字节块，写到 `out` 的相同位置，不校验这一页的 HMAC：
+    /// 供需要很多页中各几个字节的读取使用。`page` 不能是第 1 页（它的页内容从盐之后开始）。CBC
+    /// 解密一个块只需要它自身和前一个块（第一个块用 IV）。
     pub(crate) fn decrypt_blocks(
         &self,
         page: &[u8],
@@ -143,8 +139,8 @@ impl PageCipher {
         Ok(())
     }
 
-    /// Check the HMAC of encrypted page `pgno` (`PAGE_SIZE` bytes): it covers the whole page, so a page that was torn
-    /// or damaged on disk, or one of another position or key, fails it.
+    /// 校验加密的第 `pgno` 页（`PAGE_SIZE` 字节）的 HMAC：它覆盖整页，所以撕裂的页、在磁盘上损坏的页、
+    /// 位置不对或密钥不对的页都会校验失败。
     pub(crate) fn verify(&self, pgno: u32, page: &[u8]) -> Result<()> {
         let start = if pgno == 1 { SALT_LEN } else { 0 };
         let body_end = PAGE_SIZE - RESERVE;
@@ -160,10 +156,9 @@ impl PageCipher {
         mac.verify_slice(stored_mac).map_err(|_| hmac_failed(pgno))
     }
 
-    /// [`Self::verify`] of each of `pages` (a page number and its encrypted bytes), four at once where the CPU can
-    /// ([`sha512x4`]): the error is the first failing page's. Two or three pages left over are hashed four at once
-    /// too, the last of them again in the lanes that are left: that costs no more than four, and less than two or
-    /// three one by one.
+    /// 对 `pages`（页号和加密字节）中的每一页做 [`Self::verify`]，CPU 支持时一次四页（[`sha512x4`]）：
+    /// 返回第一个校验失败的页的错误。剩下两三页时同样一次算四个哈希，空出的通道重复算其中的最后一页：
+    /// 这样的花费与满四页时相同，比逐页算两三页少。
     pub(crate) fn verify_each(&self, pages: &[(u32, &[u8])]) -> Result<()> {
         for group in pages.chunks(sha512x4::LANES) {
             let four: [(u32, &[u8]); sha512x4::LANES] =
@@ -172,7 +167,7 @@ impl PageCipher {
             match tags {
                 Some(tags) => {
                     for ((pgno, page), tag) in group.iter().zip(&tags) {
-                        // every byte compared, as `verify` does
+                        // 与 `verify` 一样比较每一个字节
                         let differ = tag
                             .iter()
                             .zip(&page[SIGNED..])
@@ -192,8 +187,8 @@ impl PageCipher {
         Ok(())
     }
 
-    /// The HMACs of four pages computed at once, `None` where the CPU cannot ([`sha512x4::hmac4`]) or for page 1 and
-    /// pages of another size (page 1 signs less, its salt is not signed, and every lane hashes the same length).
+    /// 一次算出的四页的 HMAC；CPU 不支持时（[`sha512x4::hmac4`]），或者其中有第 1 页或大小不对的页时为
+    /// `None`：第 1 页的盐不参与签名，签名的字节较少，而每个通道哈希的长度必须相同。
     fn tags4(&self, four: &[(u32, &[u8]); sha512x4::LANES]) -> Option<[[u8; HMAC_LEN]; 4]> {
         if !four
             .iter()
@@ -209,12 +204,15 @@ impl PageCipher {
         )
     }
 
-    /// Verify and decrypt one encrypted page into `out` (`PAGE_SIZE` bytes).
-    /// Page 1 comes out with the standard SQLite header restored.
+    /// 校验并解密一个加密页，写进 `out`（`PAGE_SIZE` 字节）。第 1 页解密后恢复标准的 SQLite 文件头。
+    ///
+    /// # Errors
+    ///
+    /// HMAC 校验失败（密钥不对或页已损坏）或者解密失败时返回错误。
     pub fn decrypt_page(&self, pgno: u32, page: &[u8], out: &mut [u8]) -> Result<()> {
         debug_assert_eq!(page.len(), PAGE_SIZE);
         debug_assert_eq!(out.len(), PAGE_SIZE);
-        // A page that was never written is all zeros and is stored as such.
+        // 从未写入的页全部为 0，原样保存。
         if page.iter().all(|b| *b == 0) {
             out.fill(0);
             return Ok(());
@@ -223,8 +221,8 @@ impl PageCipher {
         self.decrypt_verified_page(pgno, page, out)
     }
 
-    /// [`Self::decrypt_page`] of a written page (not all zeros) whose HMAC was checked already ([`Self::verify`],
-    /// [`Self::verify_each`]): only decrypted.
+    /// 对已写入（不是全 0）、HMAC 已经校验过（[`Self::verify`]、[`Self::verify_each`]）的页做
+    /// [`Self::decrypt_page`]：只解密，不再校验。
     pub(crate) fn decrypt_verified_page(
         &self,
         pgno: u32,
@@ -245,17 +243,17 @@ impl PageCipher {
         Aes256CbcDec::inner_iv_init(self.aes.clone(), iv.into())
             .decrypt_padded::<NoPadding>(body)
             .map_err(|_| anyhow!("AES decrypt failed for page {pgno}"))?;
-        // Keep the reserve area (IV/HMAC slot) zeroed: SQLite treats it as unused.
+        // 保留区（IV 和 HMAC 的位置）保持为 0：SQLite 把它当作未使用的空间。
         Ok(())
     }
 }
 
-/// The error of a page whose HMAC does not match.
+/// HMAC 不匹配的页的错误。
 fn hmac_failed(pgno: u32) -> anyhow::Error {
     anyhow!("HMAC check failed for page {pgno}: wrong key, or the page is corrupt")
 }
 
-/// Cheap key check: derive the keys and verify page 1 of `db`.
+/// 较快的密钥检查：派生密钥，再校验 `db` 的第 1 页。
 fn verify_key(db: &[u8], raw_key: &[u8; 32]) -> Result<PageCipher> {
     if db.len() < PAGE_SIZE {
         bail!("file is smaller than one page: {} bytes", db.len());
@@ -273,47 +271,45 @@ fn check_page1(cipher: &PageCipher, db: &[u8]) -> Result<()> {
     cipher.decrypt_page(1, &db[..PAGE_SIZE], &mut scratch)
 }
 
-/// Keys being derived or derived, per raw key and salt.
+/// 正在派生或已经派生的密钥，按原始密钥和盐区分。
 ///
-/// A poisoned lock on the map or on a slot is used as it is: a thread that panics holding one leaves nothing half
-/// updated. The map only ever gains a whole entry or is cleared, either of which is a valid cache, and a slot is
-/// written once, after its keys are verified, so it holds no keys or verified ones. Failing instead would make every
-/// later open of the database fail for the rest of the process.
+/// 表或槽的锁中毒后照常使用：持有锁的线程 panic 时不会留下改了一半的数据。表只会整项增加或整个清空，
+/// 两种结果都是有效的缓存；槽只在密钥校验通过后写入一次，所以其中要么没有密钥，要么是校验过的密钥。
+/// 中毒后如果改为报错，这个进程此后每次打开这个数据库都会失败。
 type Derived = HashMap<([u8; 32], [u8; SALT_LEN]), Arc<Mutex<Option<Arc<PageCipher>>>>>;
 
 static DERIVED: OnceLock<Mutex<Derived>> = OnceLock::new();
 
-/// Keys kept by [`shared_cipher`]; past this many, they are all dropped (an account has a few dozen databases).
+/// [`shared_cipher`] 最多保留的密钥数，超过时全部丢弃（一个账号只有几十个数据库）。
 const MAX_DERIVED: usize = 1024;
 
-/// Page keys handed over by another process ([`import_keys`]), per SHA-256 of their raw key and salt.
+/// 另一个进程交来的页密钥（[`import_keys`]），按原始密钥的 SHA-256 和盐区分。
 type Imported = HashMap<([u8; 32], [u8; SALT_LEN]), [u8; 32]>;
 
 static IMPORTED: OnceLock<Imported> = OnceLock::new();
 
-/// One key of [`export_keys`]: the SHA-256 of its raw key, its salt and its page key.
+/// [`export_keys`] 中一条记录的字节数：原始密钥的 SHA-256、盐和页密钥。
 const RECORD: usize = 32 + SALT_LEN + 32;
 
 fn fingerprint(raw_key: &[u8; 32]) -> [u8; 32] {
     Sha256::digest(raw_key).into()
 }
 
-/// The page keys [`shared_cipher`] derived so far, for [`import_keys`] in a process this one starts.
+/// [`shared_cipher`] 到目前为止派生的页密钥，交给这个进程启动的进程，供它调用 [`import_keys`]。
 ///
-/// A page key opens its database just as the raw key does: the bytes are meant for a pipe to that process, nothing
-/// else.
+/// 页密钥与原始密钥一样能打开对应的数据库：这些字节只能经由管道交给那个进程，不作他用。
 pub fn export_keys() -> Vec<u8> {
     let slots: Vec<_> = DERIVED
         .get_or_init(Default::default)
         .lock()
-        // poisoning leaves the map whole (see `Derived`)
+        // 锁中毒不会让表残缺（见 `Derived`）
         .unwrap_or_else(|e| e.into_inner())
         .iter()
         .map(|((raw_key, salt), slot)| (fingerprint(raw_key), *salt, slot.clone()))
         .collect();
     let mut out = Vec::with_capacity(slots.len() * RECORD);
     for (fingerprint, salt, slot) in slots {
-        // a key being derived right now is left out rather than waited for
+        // 正在派生的密钥直接跳过，不等它
         if let Ok(slot) = slot.try_lock() {
             if let Some(cipher) = slot.as_ref() {
                 out.extend_from_slice(&fingerprint);
@@ -325,9 +321,9 @@ pub fn export_keys() -> Vec<u8> {
     out
 }
 
-/// Takes the page keys of [`export_keys`] from the process that started this one, so they are not derived again.
+/// 接收启动这个进程的进程用 [`export_keys`] 交来的页密钥，免得重新派生。
 ///
-/// Only the first call counts. A key is used for a file only when it opens it.
+/// 只有第一次调用有效。只有确实能打开某个文件的密钥才会用于这个文件。
 pub fn import_keys(bytes: &[u8]) {
     let _ = IMPORTED.set(parse_keys(bytes));
 }
@@ -345,14 +341,14 @@ fn parse_keys(bytes: &[u8]) -> Imported {
         .collect()
 }
 
-/// [`verify_key`] for an encrypted `db`, with its page key taken from `imported` when one there opens it.
+/// 对加密的 `db` 做 [`verify_key`]；`imported` 中有能打开它的页密钥时直接使用。
 fn verify_key_with(
     imported: Option<&Imported>,
     db: &[u8],
     raw_key: &[u8; 32],
 ) -> Result<PageCipher> {
     let Some(&salt) = db.first_chunk::<SALT_LEN>() else {
-        return verify_key(db, raw_key); // which says what is wrong
+        return verify_key(db, raw_key); // 由它报告哪里不对
     };
     if let Some(enc_key) = imported.and_then(|keys| keys.get(&(fingerprint(raw_key), salt))) {
         let cipher = PageCipher::from_enc_key(*enc_key, &salt);
@@ -363,15 +359,18 @@ fn verify_key_with(
     verify_key(db, raw_key)
 }
 
-/// The page cipher `verify_key` gives, derived once per process for each raw key and salt.
+/// `verify_key` 得到的页密钥，每个进程对每组原始密钥和盐只派生一次。
 ///
-/// The 256,000 rounds take about 0.1 s, and the same file is opened again after its snapshot was dropped, or by two
-/// threads at once. A thread asking for keys
-/// another one is deriving waits for them instead of deriving them too, and keys handed over by the process that
-/// started this one ([`import_keys`]) are not derived at all.
+/// 256,000 轮约需 0.1 秒，而同一个文件会在快照丢弃后再次打开，也会被两个线程同时打开。
+/// 一个线程请求另一个线程正在派生的密钥时，等它派生完，不重复派生；
+/// 启动这个进程的进程交来的密钥（[`import_keys`]）完全不用派生。
+///
+/// # Errors
+///
+/// `db` 不到一页、是未加密的 SQLite 数据库，或者 `raw_key` 通不过第 1 页的校验时返回错误。
 pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
     if db.len() < PAGE_SIZE || &db[..SQLITE_MAGIC.len()] == SQLITE_MAGIC {
-        return verify_key(db, raw_key).map(Arc::new); // which says what is wrong
+        return verify_key(db, raw_key).map(Arc::new); // 由它报告哪里不对
     }
     let mut salt = [0u8; SALT_LEN];
     salt.copy_from_slice(&db[..SALT_LEN]);
@@ -379,14 +378,14 @@ pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
         let mut all = DERIVED
             .get_or_init(Default::default)
             .lock()
-            // poisoning leaves the map whole (see `Derived`)
+            // 锁中毒不会让表残缺（见 `Derived`）
             .unwrap_or_else(|e| e.into_inner());
         if all.len() >= MAX_DERIVED && !all.contains_key(&(*raw_key, salt)) {
             all.clear();
         }
         all.entry((*raw_key, salt)).or_default().clone()
     };
-    // poisoning leaves the slot empty or with verified keys (see `Derived`)
+    // 锁中毒后槽里要么为空，要么是校验过的密钥（见 `Derived`）
     let mut slot = slot.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(cipher) = slot.as_ref() {
         return Ok(cipher.clone());
@@ -396,8 +395,8 @@ pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
     Ok(cipher)
 }
 
-/// The bytes of the 16-byte `blocks` of a page body, and those of the IV that decrypts the first of them (the block
-/// before, or the page's IV for the first block); `None` unless they are all in the body.
+/// 页内容中 `blocks` 范围内的 16 字节块所在的字节，以及解密其中第一块所用的 IV 所在的字节（前一个块；
+/// 从第 0 块开始时是页的 IV）；块不全在页内容中时为 `None`。
 fn block_bytes(
     blocks: std::ops::Range<usize>,
 ) -> Option<(std::ops::Range<usize>, std::ops::Range<usize>)> {
@@ -414,7 +413,7 @@ fn block_bytes(
     Some((from..to, iv))
 }
 
-/// One committed WAL frame worth applying: (page number, byte offset of its page data in the WAL).
+/// 一个需要采用的已提交 WAL 帧：页号，以及它的页数据在 WAL 中的字节偏移。
 struct WalFrame {
     pgno: u32,
     data_offset: usize,
@@ -424,6 +423,7 @@ fn be32(b: &[u8]) -> u32 {
     u32::from_be_bytes([b[0], b[1], b[2], b[3]])
 }
 
+/// SQLite WAL 的累积校验和：从 `(s0, s1)` 起，按 `big_endian` 给出的字节序每 8 字节累加一次 `data`。
 fn wal_checksum(data: &[u8], big_endian: bool, mut s0: u32, mut s1: u32) -> (u32, u32) {
     for chunk in data.as_chunks::<8>().0 {
         let (a, b) = if big_endian {
@@ -440,18 +440,17 @@ fn wal_checksum(data: &[u8], big_endian: bool, mut s0: u32, mut s1: u32) -> (u32
     (s0, s1)
 }
 
-/// What a WAL holds: its salt (when the header is valid), how many frames its committed prefix has (what SQLite's
-/// wal-index calls `mxFrame`), and the newest committed frame of each page.
+/// WAL 的内容：它的盐（头有效时）、已提交前缀的帧数（SQLite 的 wal-index 称为 `mxFrame`），以及每页最新的已提交帧。
 pub(crate) struct WalOverlay {
     pub salt: Option<[u8; 8]>,
     pub frames: u32,
-    /// Database size in pages after the last commit (`None` when nothing is committed).
+    /// 最后一次提交后的数据库页数（没有已提交的内容时为 `None`）。
     pub db_pages: Option<u32>,
-    /// Page number -> byte offset of that page's newest committed copy in the WAL.
+    /// 页号 -> 这一页最新的已提交副本在 WAL 中的字节偏移。
     pub pages: HashMap<u32, usize>,
 }
 
-/// Parse a WAL (see [`WalOverlay`]). A missing or invalid WAL gives an empty overlay.
+/// 解析 WAL（见 [`WalOverlay`]）。缺失或无效的 WAL 得到空的结果。
 pub(crate) fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
     let salt = wal.and_then(wal_salt);
     let mut overlay = WalOverlay {
@@ -461,23 +460,23 @@ pub(crate) fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
         pages: HashMap::new(),
     };
     if let Some((frames, db_pages)) = wal.and_then(committed_wal_frames::<PAGE_SIZE>) {
-        // each frame holds a page, so a WAL SQLite can read never has `u32::MAX` of them
+        // 每帧含一页，所以 SQLite 能读的 WAL 不会有 `u32::MAX` 帧
         overlay.frames = u32::try_from(frames.len()).unwrap_or(u32::MAX);
         overlay.db_pages = Some(db_pages);
         for f in frames {
-            overlay.pages.insert(f.pgno, f.data_offset); // later frames override earlier ones
+            overlay.pages.insert(f.pgno, f.data_offset); // 后面的帧覆盖前面的帧
         }
     }
     overlay
 }
 
-/// The salt of a WAL whose header is valid.
+/// 头有效的 WAL 的盐。
 fn wal_salt(wal: &[u8]) -> Option<[u8; 8]> {
     wal_header::<PAGE_SIZE>(wal)?;
     wal[16..24].try_into().ok()
 }
 
-/// Validate the header of a WAL of `PAGE`-byte pages: (big-endian checksums?, header checksum words).
+/// 校验页大小为 `PAGE` 字节的 WAL 的头，返回（校验和是否为大端，头校验和的两个字）。
 fn wal_header<const PAGE: usize>(wal: &[u8]) -> Option<(bool, u32, u32)> {
     if wal.len() < 32 {
         return None;
@@ -497,8 +496,8 @@ fn wal_header<const PAGE: usize>(wal: &[u8]) -> Option<(bool, u32, u32)> {
     Some((big_endian, h0, h1))
 }
 
-/// Parse a WAL of `PAGE`-byte pages and return the frames of its last valid *committed* prefix, plus the database
-/// size in pages after the last commit. Returns `None` when the WAL holds nothing usable.
+/// 解析页大小为 `PAGE` 字节的 WAL，返回最后一个有效的*已提交*前缀中的帧，以及最后一次提交后的数据库页数。
+/// WAL 中没有可用的内容时返回 `None`。
 fn committed_wal_frames<const PAGE: usize>(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
     const WAL_HEADER: usize = 32;
     const FRAME_HEADER: usize = 24;
@@ -549,30 +548,34 @@ fn committed_wal_frames<const PAGE: usize>(wal: &[u8]) -> Option<(Vec<WalFrame>,
     }
 }
 
-/// Pages of the database a reader sees: the size after the last committed WAL transaction, else the main file's.
+/// 读取方看到的数据库页数：WAL 中最后一个已提交事务之后的大小，没有时为主文件的大小。
 pub fn total_pages(main_len: u64, db_pages: Option<u32>) -> u32 {
     match db_pages {
         Some(n) => n.max(1),
-        // SQLite numbers pages with 32 bits
+        // SQLite 用 32 位给页编号
         None => u32::try_from(main_len / PAGE_SIZE as u64).unwrap_or(u32::MAX),
     }
 }
 
-/// Patch a decrypted page 1 so the database opens as a stand-alone file: the header page count becomes
-/// authoritative and WAL mode (bytes 18/19) is downgraded to legacy, so no `-wal` file is looked for.
+/// 修补解密后的第 1 页，让数据库作为独立的文件打开：使文件头里的页数生效，
+/// 把 WAL 模式（第 18、19 字节）改回旧式日志，这样 SQLite 不会去找 `-wal` 文件。
 ///
 /// # Panics
 ///
-/// Panics if `page1` is shorter than the 100-byte SQLite header.
+/// `page1` 比 100 字节的 SQLite 文件头还短时 panic。
 pub fn patch_header(page1: &mut [u8], total_pages: u32) {
     page1[28..32].copy_from_slice(&total_pages.to_be_bytes());
-    page1.copy_within(24..28, 92); // the change counter becomes version-valid-for
+    page1.copy_within(24..28, 92); // 文件修改计数器写进 version-valid-for，页数才会被采用
     page1[18] = 1;
     page1[19] = 1;
 }
 
-/// Decrypt a whole database held in memory (plus its WAL, when given) into a plain SQLite image.
-/// The reference the on-demand reader ([`crate::cipher_vfs`]) is tested against.
+/// 把内存中的整个数据库（给出 WAL 时连同 WAL）解密成明文的 SQLite 映像。
+/// 测试按需读取（[`crate::cipher_vfs`]）时以它为对照。
+///
+/// # Errors
+///
+/// 页数超出 `u32` 的范围，或者某一页的 HMAC 校验失败时返回错误。
 #[cfg(any(test, feature = "test-fixtures"))]
 pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> Result<Vec<u8>> {
     let overlay = wal_overlay(wal);
@@ -602,14 +605,14 @@ pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> R
 #[cfg(any(test, feature = "test-fixtures"))]
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "test values are known to fit, or are meant to wrap"
+    reason = "测试数据已知放得下，或者有意回绕"
 )]
 pub mod testutil {
-    //! Encrypted and plain database images for tests.
+    //! 测试用的加密和明文数据库映像。
     //!
     //! # Panics
     //!
-    //! The helpers panic when the setup they build fails, which fails the test that asked for it.
+    //! 构建的测试数据出错时，这些辅助函数 panic，使调用它的测试失败。
 
     use super::*;
     use aes::cipher::BlockModeEncrypt;
@@ -617,17 +620,14 @@ pub mod testutil {
 
     type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
-    /// The raw database key of the test databases.
+    /// 测试数据库的原始数据库密钥。
     pub const KEY: [u8; 32] = [7u8; 32];
-    /// The salt of the test databases.
+    /// 测试数据库的盐。
     pub const SALT: [u8; 16] = *b"0123456789abcdef";
 
-    /// Encrypt one plaintext page exactly as SQLCipher 4 does (test-only mirror of `decrypt_page`); page 1 starts
-    /// with the salt `cipher` was derived with.
-    #[expect(
-        clippy::expect_used,
-        reason = "test fixture: a failure means the test setup is broken"
-    )]
+    /// 完全按 SQLCipher 4 的方式加密一个明文页（只用于测试，是 `decrypt_page` 的逆操作）；
+    /// 第 1 页以派生 `cipher` 时用的盐开头。
+    #[expect(clippy::expect_used, reason = "测试夹具：失败说明测试的准备有误")]
     pub fn encrypt_page(cipher: &PageCipher, pgno: u32, plain: &[u8], iv: [u8; 16]) -> Vec<u8> {
         let start = if pgno == 1 { SALT_LEN } else { 0 };
         let body_end = PAGE_SIZE - RESERVE;
@@ -650,18 +650,15 @@ pub mod testutil {
         page
     }
 
-    /// A plain SQLite image whose pages leave the 80-byte reserve free; `setup` creates the schema/rows.
+    /// 每页留出 80 字节保留区的明文 SQLite 映像；`setup` 建表并写入行。
     pub fn plain_db_with(setup: impl FnOnce(&Connection)) -> Vec<u8> {
         let conn = plain_connection();
         setup(&conn);
         plain_image(&conn)
     }
 
-    /// The plain image of a database made by [`plain_connection`], as it is now.
-    #[expect(
-        clippy::expect_used,
-        reason = "test fixture: a failure means the test setup is broken"
-    )]
+    /// 用 [`plain_connection`] 建的数据库当前的明文映像。
+    #[expect(clippy::expect_used, reason = "测试夹具：失败说明测试的准备有误")]
     pub fn plain_image(conn: &Connection) -> Vec<u8> {
         let data = conn
             .serialize(rusqlite::MAIN_DB)
@@ -670,21 +667,17 @@ pub mod testutil {
         data.to_vec()
     }
 
-    /// An empty in-memory database of 4096-byte pages that leave the reserve SQLCipher needs, to fill and then
-    /// take [`plain_image`]s of.
-    #[expect(
-        clippy::expect_used,
-        reason = "test fixture: a failure means the test setup is broken"
-    )]
+    /// 页大小为 4096 字节、留出 SQLCipher 所需保留区的空内存数据库，写入数据后用 [`plain_image`] 取得映像。
+    #[expect(clippy::expect_used, reason = "测试夹具：失败说明测试的准备有误")]
     pub fn plain_connection() -> Connection {
         let conn = Connection::open_in_memory().expect("open an in-memory database");
         conn.pragma_update(None, "page_size", 4096)
             .expect("set the page size");
         let mut reserve =
             std::os::raw::c_int::try_from(RESERVE).expect("the reserve is a few dozen bytes");
-        // SQLITE_FCNTL_RESERVE_BYTES = 38; only legal while the database is still empty.
-        // SAFETY: the connection is open, `main` is a NUL-terminated literal and `reserve` a live local;
-        // SQLITE_FCNTL_RESERVE_BYTES reads and writes one `c_int` through it.
+        // SQLITE_FCNTL_RESERVE_BYTES = 38；只能在数据库还是空的时候设置。
+        // SAFETY: 连接是打开的，`main` 是以 NUL 结尾的字面量，`reserve` 是存活的局部变量；
+        // SQLITE_FCNTL_RESERVE_BYTES 通过它读写一个 `c_int`。
         let rc = unsafe {
             rusqlite::ffi::sqlite3_file_control(
                 conn.handle(),
@@ -697,11 +690,8 @@ pub mod testutil {
         conn
     }
 
-    /// A plain SQLite image with one table, `t(id integer primary key, v text)`, holding `rows` in order from id 0.
-    #[expect(
-        clippy::expect_used,
-        reason = "test fixture: a failure means the test setup is broken"
-    )]
+    /// 只有一张表 `t(id integer primary key, v text)` 的明文 SQLite 映像，按顺序存放 `rows`，id 从 0 开始。
+    #[expect(clippy::expect_used, reason = "测试夹具：失败说明测试的准备有误")]
     pub fn plain_db(rows: &[&str]) -> Vec<u8> {
         plain_db_with(|conn| {
             conn.execute_batch("create table t(id integer primary key, v text)")
@@ -716,12 +706,12 @@ pub mod testutil {
         })
     }
 
-    /// SQLite's WAL checksum of a big-endian WAL, carried on from `sum`.
+    /// 大端 WAL 的 SQLite 校验和，从 `sum` 接着累加。
     pub fn wal_checksum_be(data: &[u8], sum: (u32, u32)) -> (u32, u32) {
         wal_checksum(data, true, sum.0, sum.1)
     }
 
-    /// The 32-byte header of a WAL of generation `salt`.
+    /// 代次（盐）为 `salt` 的 WAL 的 32 字节头。
     pub fn encrypted_wal_header(salt: (u32, u32)) -> Vec<u8> {
         let mut h = Vec::new();
         for v in [0x377f0683u32, 3007000, PAGE_SIZE as u32, 0, salt.0, salt.1] {
@@ -733,8 +723,8 @@ pub mod testutil {
         h
     }
 
-    /// A WAL holding one committed transaction that turns the plain image `base` into `newer`: a frame for each page
-    /// that differs or is new. An empty `base` rewrites every page.
+    /// 只含一个已提交事务的 WAL，这个事务把明文映像 `base` 变成 `newer`：每个不同的页或新页各一帧。`base`
+    /// 为空时改写每一页。
     pub fn encrypt_wal(
         cipher: &PageCipher,
         base: &[u8],
@@ -758,7 +748,7 @@ pub mod testutil {
             let page = encrypt_page(cipher, pgno, &newer[at..at + PAGE_SIZE], [0x55; 16]);
             let mut fh = Vec::new();
             fh.extend(pgno.to_be_bytes());
-            // the last frame commits the transaction and gives the database's size in pages
+            // 最后一帧提交事务，并给出数据库的页数
             fh.extend((if i + 1 == changed.len() { pages } else { 0 }).to_be_bytes());
             fh.extend(salt.0.to_be_bytes());
             fh.extend(salt.1.to_be_bytes());
@@ -771,7 +761,7 @@ pub mod testutil {
         wal
     }
 
-    /// A plain SQLite file encrypted page by page as SQLCipher 4 writes it, each page with its own IV.
+    /// 按 SQLCipher 4 的写法逐页加密的明文 SQLite 文件，每页有自己的 IV。
     pub fn encrypt_db(plain: &[u8], cipher: &PageCipher) -> Vec<u8> {
         let mut out = Vec::new();
         for (i, page) in plain.chunks(PAGE_SIZE).enumerate() {
@@ -789,7 +779,7 @@ pub mod testutil {
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "test values are known to fit, or are meant to wrap"
+    reason = "测试数据已知放得下，或者有意回绕"
 )]
 mod tests {
     use super::testutil::*;
@@ -821,7 +811,7 @@ mod tests {
 
     #[test]
     fn parse_key_rejects_non_ascii_without_panicking() {
-        // 64 bytes in UTF-8, so the length check passes and only the character check can catch them
+        // UTF-8 下是 64 字节，所以能通过长度检查，只有字符检查才能拦住
         for key in [
             format!("a中{}", "a".repeat(60)),
             format!("中{}", "a".repeat(61)),
@@ -850,7 +840,7 @@ mod tests {
             &first,
             &shared_cipher(&enc, &[3u8; 32]).unwrap()
         ));
-        // a wrong key is checked, and not kept
+        // 错误的密钥会被检查出来，不会保留
         assert!(shared_cipher(&enc, &[4u8; 32]).is_err());
         assert!(shared_cipher(&enc, &[4u8; 32]).is_err());
         assert!(shared_cipher(&plain_db(&["x"]), &[3u8; 32]).is_err());
@@ -862,27 +852,27 @@ mod tests {
         let real = PageCipher::derive(&raw, &SALT);
         let enc = encrypt_db(&plain_db(&["x"]), &real);
 
-        // what a process derived is exported, and reads back as it was
+        // 进程派生的密钥可以导出，读回来与原来相同
         shared_cipher(&enc, &raw).unwrap();
         let exported = export_keys();
         assert_eq!(exported.len() % RECORD, 0);
         let keys = parse_keys(&exported);
         assert_eq!(keys.get(&(fingerprint(&raw), SALT)), Some(&real.enc_key));
-        // the raw key itself is not in it
+        // 导出的数据里没有原始密钥本身
         assert!(!exported.windows(32).any(|w| w == raw));
 
-        // a key handed over is taken without deriving: here it is filed under a raw key that does not derive it
+        // 交来的密钥不经派生直接使用：这里把它登记在一个派生不出它的原始密钥下
         let other = [12u8; 32];
         let mut handed = Imported::new();
         handed.insert((fingerprint(&other), SALT), real.enc_key);
         let taken = verify_key_with(Some(&handed), &enc, &other).unwrap();
         assert_eq!(taken.mac_key, real.mac_key);
-        // one that does not open the file is derived again, so a wrong raw key still fails
+        // 打不开文件的密钥会重新派生，所以错误的原始密钥仍然失败
         handed.insert((fingerprint(&raw), SALT), [0u8; 32]);
         let derived = verify_key_with(Some(&handed), &enc, &raw).unwrap();
         assert_eq!(derived.enc_key, real.enc_key);
         assert!(verify_key_with(Some(&handed), &enc, &[13u8; 32]).is_err());
-        // a cut-off record is dropped
+        // 不完整的记录被丢弃
         assert_eq!(parse_keys(&exported[..RECORD - 1]).len(), 0);
     }
 
@@ -901,11 +891,11 @@ mod tests {
         assert!(verify_key(&enc, &KEY).is_err());
     }
 
-    /// The keys of the property tests, derived once: deriving them is the slow part.
+    /// 性质测试用的密钥，只派生一次：派生是其中慢的部分。
     static PROPERTY_CIPHER: std::sync::LazyLock<PageCipher> =
         std::sync::LazyLock::new(|| PageCipher::derive(&KEY, &SALT));
 
-    /// A page's plain bytes: any body, and the reserve free as SQLite leaves it.
+    /// 一页的明文字节：任意的页内容，保留区与 SQLite 留下的一样为空。
     fn plain_page() -> impl proptest::strategy::Strategy<Value = Vec<u8>> {
         use proptest::prelude::*;
         prop::collection::vec(any::<u8>(), PAGE_SIZE - RESERVE).prop_map(|mut page| {
@@ -917,8 +907,7 @@ mod tests {
     proptest::proptest! {
         #![proptest_config(crate::property_cases(256))]
 
-        /// Any page decrypts to the bytes it was encrypted from; page 1 with SQLite's header in place of the salt
-        /// (#502).
+        /// 任何页都解密回加密前的字节；第 1 页的盐换成 SQLite 文件头（#502）。
         #[test]
         fn any_page_decrypts_to_its_plain_bytes(
             plain in plain_page(),
@@ -937,9 +926,8 @@ mod tests {
             }
         }
 
-        /// A page with any byte changed, or read as another page, fails its check instead of decrypting to other
-        /// bytes (#502). The salt at the start of page 1 is not signed: the keys come from it, so another salt
-        /// fails every page.
+        /// 改动了任何一个字节的页，或者被当作另一页读取的页，都校验失败，不会解密成别的字节（#502）。
+        /// 第 1 页开头的盐不参与签名：密钥由它派生，换了盐每一页都会失败。
         #[test]
         fn any_changed_or_moved_page_fails_its_check(
             plain in plain_page(),
@@ -973,7 +961,7 @@ mod tests {
         h
     }
 
-    /// Append one WAL frame carrying the already-encrypted `page`; returns the running checksum.
+    /// 追加一个带有已加密的 `page` 的 WAL 帧，返回累积的校验和。
     fn push_frame(
         wal: &mut Vec<u8>,
         sum: (u32, u32),
@@ -1003,7 +991,7 @@ mod tests {
         let enc_main = encrypt_db(&old, &cipher);
         let derived = verify_key(&enc_main, &KEY).unwrap();
 
-        // Same schema, different row: page 2 (the table's root leaf) is what changes.
+        // 表结构相同、行不同：变化的是第 2 页（表的根叶子页）。
         let newer = plain_db(&["new"]);
         assert_eq!(newer.len(), old.len());
         let newest = plain_db(&["never-committed"]);
@@ -1024,7 +1012,7 @@ mod tests {
                 &encrypt_page(&cipher, pgno, pg, [0x55; 16]),
             );
         }
-        // A later transaction that never committed (commit == 0): must not be applied.
+        // 之后一个从未提交的事务（commit == 0）：不能采用。
         let pg = &newest[..PAGE_SIZE];
         push_frame(
             &mut wal,
@@ -1056,7 +1044,7 @@ mod tests {
         let sum = (be32(&wal[24..28]), be32(&wal[28..32]));
         let other = plain_db(&["stale"]);
         let pg = &other[..PAGE_SIZE];
-        // Frame written under a different salt pair (leftover from before a WAL reset).
+        // 用另一对盐写入的帧（WAL 重置之前遗留的）。
         push_frame(
             &mut wal,
             sum,
@@ -1072,12 +1060,12 @@ mod tests {
     }
 }
 
-/// Proofs of `cargo kani` (#501): for every input up to the sizes they state.
+/// `cargo kani` 的证明（#501）：覆盖各证明所述大小以内的每一种输入。
 #[cfg(kani)]
 mod proofs {
     use super::*;
 
-    /// A WAL header is read from any bytes without a panic, and only from 32 of them or more.
+    /// 从任意字节读取 WAL 头都不会 panic，且只有 32 字节或更长时才可能读出。
     #[kani::proof]
     fn any_bytes_are_read_as_a_wal_header_or_refused() {
         let bytes: [u8; 40] = kani::any();
@@ -1087,10 +1075,9 @@ mod proofs {
         }
     }
 
-    /// The committed frames of any WAL of up to two frames are read without a panic, each whole inside the WAL,
-    /// after its header and after the frame before, its page number not 0, and the size after the commit not 0.
-    /// The pages are of 8 bytes instead of 4096: the walk and its bounds are the same for any page size, and the
-    /// checksums of 4096 bytes are too big for the solver.
+    /// 读取不超过两帧的任何 WAL 的已提交帧都不会 panic：每帧都完整地在 WAL 内，位于头和前一帧之后，页号不为 0，
+    /// 提交后的大小也不为 0。页大小用 8 字节而不是 4096 字节：遍历和边界与页大小无关，
+    /// 而 4096 字节的校验和对求解器来说太大。
     #[kani::proof]
     #[kani::unwind(12)]
     fn any_wal_gives_committed_frames_inside_it() {
@@ -1102,7 +1089,7 @@ mod proofs {
             assert!(db_pages != 0);
             assert!(!frames.is_empty() && frames.len() <= 2);
             let mut end = 32;
-            // at most 2, as asserted: a bound the solver can unwind
+            // 上面断言了最多 2 帧：给求解器一个能展开的上界
             for f in frames.iter().take(2) {
                 assert!(f.pgno != 0);
                 assert!(f.data_offset == end + 24);
@@ -1112,8 +1099,7 @@ mod proofs {
         }
     }
 
-    /// The page count never overflows: the size of the last commit (at least a page), else the main file's whole
-    /// pages, at most what 32 bits number.
+    /// 页数不会溢出：是最后一次提交的大小（至少一页），没有时是主文件的整页数，最多为 32 位能编号的页数。
     #[kani::proof]
     fn total_pages_are_the_commit_or_the_main_file() {
         let main_len: u64 = kani::any();
@@ -1125,8 +1111,7 @@ mod proofs {
         }
     }
 
-    /// Any page 1 of 100 bytes or more is patched without a panic: the page count, the version-valid-for and the
-    /// two format bytes change, nothing else.
+    /// 修补任何 100 字节或更长的第 1 页都不会 panic：只有页数、version-valid-for 和两个格式字节改变，其他不变。
     #[kani::proof]
     #[kani::unwind(130)]
     fn page_1_is_patched_in_place() {
@@ -1145,8 +1130,8 @@ mod proofs {
         }
     }
 
-    /// Any range of blocks is refused, or names whole blocks inside the body with an IV of 16 bytes inside the
-    /// page: the block before the first, or the page's own IV for block 0.
+    /// 任何块范围要么被拒绝，要么对应页内容中的整块，且 IV 是页内的 16 字节：第一块的前一块，
+    /// 从第 0 块开始时是页自己的 IV。
     #[kani::proof]
     fn any_block_range_stays_inside_the_page() {
         let (start, end): (usize, usize) = kani::any();

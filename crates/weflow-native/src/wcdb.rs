@@ -1,7 +1,7 @@
-//! Database facade used by the service layer.
+//! 服务层使用的数据库门面。
 //!
-//! Everything is served by the pure-Rust backend in [`crate::db`]/[`crate::msg`]; there is
-//! no dependency on the closed-source `wcdb_api` library.
+//! 每个调用都转给纯 Rust 实现的 [`Account`]（[`crate::db`]，各领域的查询在 [`crate::msg`]、[`crate::contact`]
+//! 等模块中），不依赖闭源的 `wcdb_api` 库。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,27 +14,30 @@ use crate::db::Account;
 use crate::msg::Order;
 use crate::msg_row::{Columns, MsgRow};
 
-/// A group of an account's databases, for [`Wcdb::prefetch`].
+/// 账号数据库的一组，供 [`Wcdb::prefetch`] 使用。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Databases {
-    /// The conversation list, `session/session.db`.
+    /// 会话列表，`session/session.db`。
     Sessions,
-    /// The contacts, `contact/contact.db`.
+    /// 联系人，`contact/contact.db`。
     Contacts,
-    /// Every message database (`message/message_<n>.db`, `biz_message_<n>.db`).
+    /// 所有消息库（`message/message_<n>.db`、`biz_message_<n>.db`）。
     Messages,
-    /// The Moments, `sns/sns.db`.
+    /// 朋友圈，`sns/sns.db`。
     Moments,
 }
 
-/// The handle of one account's databases that the service layer calls; closed until [`Wcdb::open`].
+/// 服务层调用的一个账号的数据库句柄，打开（[`Wcdb::open`]、[`Wcdb::open_unchecked`]）之前是关闭的。
+///
+/// 返回 `Result` 的方法在句柄没有打开时返回错误（`WCDB is not connected`），其他错误来自所调用的 [`Account`] 方法；
+/// 另有失败情形的方法单独写明。
 #[derive(Debug, Default)]
 pub struct Wcdb {
     native: Option<Account>,
 }
 
 impl Wcdb {
-    /// A closed handle.
+    /// 关闭的句柄。
     pub fn new() -> Self {
         Self::default()
     }
@@ -45,19 +48,27 @@ impl Wcdb {
             .ok_or_else(|| anyhow!("WCDB is not connected"))
     }
 
-    /// Open the account: decrypt `session.db` with the key to prove the key and path are right.
+    /// 打开账号：用密钥解密 `session.db`，确认密钥和路径都正确。
+    ///
+    /// # Errors
+    ///
+    /// 找不到 `session.db`、密钥的格式不对，或者密钥解不开 `session.db` 时返回错误，句柄保持关闭。
     pub fn open(&mut self, account_dir: &Path, hex_key: &str, wxid: Option<&str>) -> Result<()> {
         self.open_unchecked(account_dir, hex_key, wxid)?;
         let tested = self.account()?.test_connection();
         if tested.is_err() {
-            self.native = None; // a handle whose key does not work stays closed
+            self.native = None; // 密钥不能用的句柄保持关闭
         }
         tested
     }
 
-    /// [`open`](Self::open) without proving the key up front: each database checks the key when it is first
-    /// read, so a command that never reads `session.db` skips its (slow) key derivation. A wrong key still fails,
-    /// at the first read, with the same "cannot decrypt ... with the configured database key" error.
+    /// 不预先验证密钥的 [`open`](Self::open)：每个数据库在第一次读取时检查密钥，所以从不读 `session.db`
+    /// 的命令省去它较慢的密钥派生。密钥不对时仍会失败，只是在第一次读取时才失败，报错同样是
+    /// `cannot decrypt ... with the configured database key`。
+    ///
+    /// # Errors
+    ///
+    /// 找不到 `session.db` 或者密钥的格式不对时返回错误。
     pub fn open_unchecked(
         &mut self,
         account_dir: &Path,
@@ -67,12 +78,12 @@ impl Wcdb {
         self.native = None;
         let session_db = find_session_db(&account_dir.join("db_storage"))
             .ok_or_else(|| anyhow!("session.db not found under {}", account_dir.display()))?;
-        // session.db lives in <db_storage>/session/, so its grandparent is db_storage.
+        // `session.db` 在 `<db_storage>/session/` 下，所以它的上两级目录就是 `db_storage`。
         let db_storage = session_db
             .parent()
             .and_then(Path::parent)
             .unwrap_or(account_dir);
-        // Without an explicit wxid, the account directory name (`<wxid>_<4 chars>`) identifies the owner.
+        // 没有给出 wxid 时，用账号目录名（`<wxid>_<4 chars>`）识别所有者。
         let me = wxid.map(str::to_string).or_else(|| {
             account_dir
                 .file_name()
@@ -82,13 +93,17 @@ impl Wcdb {
         Ok(())
     }
 
-    /// Prove the key of an account opened with [`open_unchecked`](Self::open_unchecked) (decrypts `session.db`).
+    /// 验证用 [`open_unchecked`](Self::open_unchecked) 打开的账号的密钥（解密 `session.db`）。
+    ///
+    /// # Errors
+    ///
+    /// 句柄没有打开，或者密钥解不开 `session.db` 时返回错误。
     pub fn check_key(&self) -> Result<()> {
         self.account()?.test_connection()
     }
 
-    /// The key-derivation salt of `session.db` (its first 16 bytes). With the key it identifies a successful
-    /// [`check_key`](Self::check_key): a different key, or a replaced database, gives a different pair.
+    /// `session.db` 派生密钥用的盐（文件的前 16 字节）。它与密钥一起标识一次成功的 [`check_key`](Self::check_key)：
+    /// 换了密钥或数据库被替换，这一对值就会不同。
     pub fn session_salt(&self) -> Option<[u8; 16]> {
         use std::io::Read;
         let mut salt = [0u8; 16];
@@ -99,34 +114,35 @@ impl Wcdb {
         Some(salt)
     }
 
-    /// Whether the account at `account_dir` opens with `hex_key`: [`open`](Self::open), then [`close`](Self::close).
+    /// `account_dir` 处的账号能否用 `hex_key` 打开：先 [`open`](Self::open)，再 [`close`](Self::close)。
     ///
     /// # Errors
-    /// As [`open`](Self::open).
+    ///
+    /// 与 [`open`](Self::open) 相同。
     pub fn test_connection(&mut self, account_dir: &Path, hex_key: &str) -> Result<()> {
         self.open(account_dir, hex_key, None)?;
         self.close();
         Ok(())
     }
 
-    /// Closes the handle; later calls fail with "WCDB is not connected" until it is opened again.
+    /// 关闭句柄；此后的调用返回 `WCDB is not connected`，直到重新打开。
     pub fn close(&mut self) {
         self.native = None;
     }
 
-    // ── sessions and messages ──
+    // ── 会话和消息 ──
 
-    /// The rows of `SessionTable`, newest first (see [`Account::sessions`]).
+    /// `SessionTable` 的各行，最新的在前（见 [`Account::sessions`]）。
     pub fn sessions(&self) -> Result<Value> {
         self.account()?.sessions()
     }
 
-    /// A newest-first page of a conversation's messages across the message databases (see [`Account::messages`]).
+    /// 跨各个消息库的一页会话消息，最新的在前（见 [`Account::messages`]）。
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Vec<MsgRow>> {
         self.account()?.messages(session_id, limit, offset)
     }
 
-    /// See [`Account::messages_from`](crate::db::Account::messages_from).
+    /// 见 [`Account::messages_from`](crate::db::Account::messages_from)。
     pub fn messages_from(
         &self,
         session_id: &str,
@@ -136,7 +152,7 @@ impl Wcdb {
         self.account()?.messages_from(session_id, limit, from)
     }
 
-    /// See [`Account::messages_where`].
+    /// 见 [`Account::messages_where`]。
     pub fn messages_where(
         &self,
         session_id: &str,
@@ -148,14 +164,14 @@ impl Wcdb {
             .messages_where(session_id, since, condition, limit)
     }
 
-    /// See [`Account::message_tables_by_name`].
+    /// 见 [`Account::message_tables_by_name`]。
     pub fn message_tables_by_name(
         &self,
     ) -> Result<std::collections::HashMap<String, Vec<crate::msg::MsgTable>>> {
         self.account()?.message_tables_by_name()
     }
 
-    /// See [`Account::typed_before`].
+    /// 见 [`Account::typed_before`]。
     pub fn typed_before(
         &self,
         tables: &[crate::msg::MsgTable],
@@ -169,17 +185,15 @@ impl Wcdb {
             .typed_before(tables, local_types, before, range, floor, limit)
     }
 
-    /// Opens the databases a chat page reads, at the same time (see
-    /// [`Account::warm`](crate::db::Account::warm)); returns how many opened.
+    /// 同时打开聊天页面要读的数据库（见 [`Account::warm`](crate::db::Account::warm)），返回打开成功的个数。
     pub fn warm_chat_databases(&self) -> Result<usize> {
         let account = self.account()?;
         Ok(account.warm(&account.chat_databases()))
     }
 
-    /// Opens the databases of `groups` side by side, ahead of a read that goes through them one after another: the
-    /// first open of each derives its key (PBKDF2, about 130 ms that one thread does alone), so opened as the read
-    /// reaches each they add up, and opened here they overlap (#1100). Those already open cost nothing (see
-    /// [`Account::prefetch`](crate::db::Account::prefetch)).
+    /// 在逐个读取 `groups` 中的数据库之前，先并行打开它们：每个库第一次打开时要派生密钥（PBKDF2，约 130 ms，
+    /// 只能在一个线程上算），读到哪个才打开哪个时这些时间会累加，在这里打开则相互重叠（#1100）。
+    /// 已经打开的不花时间（见 [`Account::prefetch`](crate::db::Account::prefetch)）。
     pub fn prefetch(&self, groups: &[Databases]) -> Result<()> {
         let account = self.account()?;
         let mut paths = Vec::new();
@@ -196,30 +210,27 @@ impl Wcdb {
         Ok(())
     }
 
-    /// How many messages a conversation has (see [`Account::message_count`]).
+    /// 会话的消息数（见 [`Account::message_count`]）。
     pub fn message_count(&self, session_id: &str) -> Result<i32> {
         self.account()?.message_count(session_id)
     }
 
-    /// The days a conversation has messages on, `YYYY-MM-DD` in local time, oldest first (see
-    /// [`Account::message_dates`]).
+    /// 会话中有消息的日期，按本地时间写成 `YYYY-MM-DD`，最早的在前（见 [`Account::message_dates`]）。
     pub fn message_dates(&self, session_id: &str) -> Result<Value> {
         self.account()?.message_dates(session_id)
     }
 
-    /// `{ username: count }`: how many messages each of `session_ids` has (see
-    /// [`Account::session_message_counts`]).
+    /// `{ username: count }`：`session_ids` 中每个会话的消息数（见 [`Account::session_message_counts`]）。
     pub fn session_message_counts(&self, session_ids: &[String]) -> Result<Value> {
         self.account()?.session_message_counts(session_ids)
     }
 
-    /// `{ "YYYY-MM-DD": count }`: a conversation's messages by local day (see
-    /// [`Account::session_message_date_counts`]).
+    /// `{ "YYYY-MM-DD": count }`：会话按本地日期统计的消息数（见 [`Account::session_message_date_counts`]）。
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
         self.account()?.session_message_date_counts(session_id)
     }
 
-    /// Every message of one `local_type` (see [`Account::messages_by_type`]).
+    /// 某一种 `local_type` 的全部消息（见 [`Account::messages_by_type`]）。
     pub fn messages_by_type(
         &self,
         session_id: &str,
@@ -230,7 +241,7 @@ impl Wcdb {
             .messages_by_type(session_id, local_type, order)
     }
 
-    /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
+    /// `local_id` 为这个值的全部消息（每个消息库最多一条），给出 `create_time` 时只取这个时间发送的。
     pub fn messages_by_local_id(
         &self,
         session_id: &str,
@@ -241,14 +252,14 @@ impl Wcdb {
             .messages_by_local_id(session_id, local_id, create_time)
     }
 
-    /// The message of a conversation with the server id `svrid`, a decimal string that may pass 2^53 (see
-    /// [`Account::message_by_server_id`]).
+    /// 会话中服务器 ID 为 `svrid` 的消息，
+    /// `svrid` 是可能超过 2^53 的十进制字符串（见 [`Account::message_by_server_id`]）。
     pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Option<MsgRow>> {
         self.account()?.message_by_server_id(session_id, svrid)
     }
 
-    /// Opens a cursor over a conversation's messages between `begin` and `end` (seconds; 0 is unbounded) and returns
-    /// its id (see [`Account::open_message_cursor`]).
+    /// 在会话中 `begin` 到 `end` 之间（秒；0 表示不限）的消息上打开游标，
+    /// 返回游标的 ID（见 [`Account::open_message_cursor`]）。
     pub fn open_message_cursor(
         &self,
         session_id: &str,
@@ -262,7 +273,7 @@ impl Wcdb {
             .open_message_cursor(session_id, batch_size, order, begin, end, columns)
     }
 
-    /// The cursor of an export (see [`Account::open_export_cursor`]).
+    /// 导出用的游标（见 [`Account::open_export_cursor`]）。
     pub fn open_export_cursor(
         &self,
         session_id: &str,
@@ -274,7 +285,7 @@ impl Wcdb {
             .open_export_cursor(session_id, batch_size, begin, end)
     }
 
-    /// A cursor over one member's messages only (see `Account::open_message_cursor_for_senders`).
+    /// 只含 `senders` 选中的发送者的消息的游标（见 `Account::open_message_cursor_for_senders`）。
     pub fn open_message_cursor_for_senders(
         &self,
         session_id: &str,
@@ -288,48 +299,47 @@ impl Wcdb {
             .open_message_cursor_for_senders(session_id, batch_size, order, range, columns, senders)
     }
 
-    /// Returns the next batch of rows and whether more remain.
+    /// 返回下一批行，以及是否还有剩余。
     pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Vec<MsgRow>, bool)> {
         self.account()?.fetch_message_batch(cursor)
     }
 
-    /// (messages, batch size) of a cursor (see [`Account::message_cursor_len`]).
+    /// 游标的消息数和每批的大小（见 [`Account::message_cursor_len`]）。
     pub fn message_cursor_len(&self, cursor: i64) -> Result<(usize, usize)> {
         self.account()?.message_cursor_len(cursor)
     }
 
-    /// Batch number `page` of a cursor, without moving it (see [`Account::fetch_message_page`]).
+    /// 游标的第 `page` 批，不移动游标（见 [`Account::fetch_message_page`]）。
     pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Vec<MsgRow>> {
         self.account()?.fetch_message_page(cursor, page)
     }
 
-    /// Closes a cursor and frees what it holds (see [`Account::close_message_cursor`]).
+    /// 关闭游标，释放它持有的资源（见 [`Account::close_message_cursor`]）。
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
         self.account()?.close_message_cursor(cursor)
     }
 
-    /// Connections a database may open for this handle's queries (see [`Account::set_read_connections`]).
+    /// 设置数据库为这个句柄的查询最多打开的连接数（见 [`Account::set_read_connections`]）。
     pub fn set_read_connections(&self, n: usize) {
         if let Some(a) = &self.native {
             a.set_read_connections(n);
         }
     }
 
-    /// Queries run again on a fresh snapshot so far (see [`Account::stale_reruns`]).
+    /// 到目前为止在新快照上重新执行的查询数（见 [`Account::stale_reruns`]）。
     pub fn stale_reruns(&self) -> usize {
         self.native.as_ref().map_or(0, Account::stale_reruns)
     }
 
-    // ── statistics of conversations ──
+    // ── 会话的统计 ──
 
-    /// The compact contact rows of `usernames`: names, alias, avatar and type (see [`Account::contacts_compact`]).
+    /// `usernames` 的精简联系人行：名字、微信号、头像和类型（见 [`Account::contacts_compact`]）。
     pub fn contacts_compact(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
             .contacts_compact(&distinct_usernames(usernames))
     }
 
-    /// The messages of `session_ids` between `begin` and `end`, by direction, type and time (see
-    /// [`Account::aggregate_stats`]).
+    /// `session_ids` 在 `begin` 到 `end` 之间的消息，按方向、类型和时间统计（见 [`Account::aggregate_stats`]）。
     pub fn aggregate_stats(
         &self,
         session_ids: &[impl AsRef<str>],
@@ -343,8 +353,7 @@ impl Wcdb {
         )
     }
 
-    /// The totals the annual report starts from, of `session_ids` between `begin` and `end` (see
-    /// [`Account::annual_report_stats`]).
+    /// 年度报告所依据的总数：`session_ids` 在 `begin` 到 `end` 之间的统计（见 [`Account::annual_report_stats`]）。
     pub fn annual_report_stats(
         &self,
         session_ids: &[impl AsRef<str>],
@@ -358,16 +367,14 @@ impl Wcdb {
         )
     }
 
-    /// The first and last message time of the table `table` of the database `db` (see
-    /// [`Account::message_table_time_range`]).
+    /// 数据库 `db` 中表 `table` 的第一条和最后一条消息的时间（见 [`Account::message_table_time_range`]）。
     pub fn message_table_time_range(&self, db: &str, table: &str) -> Result<Value> {
         self.account()?.message_table_time_range(db, table)
     }
 
-    // ── search, contacts, groups, statistics, Moments and media ──
+    // ── 搜索、联系人、群、统计、朋友圈和媒体 ──
 
-    /// The messages whose text holds `keyword`, newest first, each hit with its conversation (see
-    /// [`Account::search_messages`]).
+    /// 文字含有 `keyword` 的消息，最新的在前，每条结果带上它所在的会话（见 [`Account::search_messages`]）。
     pub fn search(
         &self,
         keyword: &str,
@@ -387,76 +394,71 @@ impl Wcdb {
         )
     }
 
-    /// One contact's row, `{}` when it is unknown (see [`Account::contact`]).
+    /// 一个联系人的行，未知时为 `{}`（见 [`Account::contact`]）。
     pub fn contact(&self, username: &str) -> Result<Value> {
         self.account()?.contact(username)
     }
 
-    /// Every row of `contact` (see [`Account::contacts`]).
+    /// `contact` 表的全部行（见 [`Account::contacts`]）。
     pub fn contacts(&self) -> Result<Value> {
         self.account()?.contacts()
     }
 
-    /// The rows of `contact` that may be official accounts, `weixin…` or `@openim` ones (see
-    /// [`Account::contacts_maybe_special`]).
+    /// `contact` 表中可能是公众号、`weixin…` 或 `@openim` 账号的行（见 [`Account::contacts_maybe_special`]）。
     pub fn contacts_maybe_special(&self) -> Result<Value> {
         self.account()?.contacts_maybe_special()
     }
 
-    /// `{ "private", "group", "official", "former_friend" }`: how many contacts of each kind (see
-    /// [`Account::contact_type_counts`]).
+    /// `{ "private", "group", "official", "former_friend" }`：
+    /// 每种联系人的个数（见 [`Account::contact_type_counts`]）。
     pub fn contact_type_counts(&self) -> Result<Value> {
         self.account()?.contact_type_counts()
     }
 
-    /// How many members a group has (see [`Account::group_member_count`]).
+    /// 群的成员数（见 [`Account::group_member_count`]）。
     pub fn group_member_count(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.group_member_count(chatroom_id)
     }
 
-    /// A group's members as WeFlow's desktop app lists them (see [`Account::group_members`]).
+    /// 群成员，与桌面版列出的相同（见 [`Account::group_members`]）。
     pub fn group_members(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.group_members(chatroom_id)
     }
 
-    /// `{ username: group nickname }` of a group's members (see [`Account::group_nicknames`]).
+    /// 群成员的 `{ username: group nickname }`（见 [`Account::group_nicknames`]）。
     pub fn group_nicknames(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.group_nicknames(chatroom_id)
     }
 
-    /// Messages, sent and received, and the last time, of each of `session_ids` (see
-    /// [`Account::session_totals`]).
+    /// `session_ids` 中每个会话的消息数、发出和收到的消息数，以及最后一条的时间（见 [`Account::session_totals`]）。
     pub fn session_totals(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
         self.account()?
             .session_totals(session_ids, i64::from(begin), i64::from(end))
     }
 
-    /// A group's statistics between `begin` and `end`: messages by sender, by hour and by type (see
-    /// [`Account::group_stats`]).
+    /// 群在 `begin` 到 `end` 之间的统计：按发送者、按小时和按类型的消息数（见 [`Account::group_stats`]）。
     pub fn group_stats(&self, chatroom_id: &str, begin: i32, end: i32) -> Result<Value> {
         self.account()?
             .group_stats(chatroom_id, i64::from(begin), i64::from(end))
     }
 
-    /// The local years, newest first, in which any of `session_ids` has messages (see
-    /// [`Account::available_years`]).
+    /// `session_ids` 中任一会话有消息的年份（本地时间），最新的在前（见 [`Account::available_years`]）。
     pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
         self.account()?.available_years(session_ids)
     }
 
-    /// The dual report's statistics of the chat with `session_id` between `begin` and `end` (see
-    /// [`Account::dual_report_stats`]).
+    /// 与 `session_id` 的聊天在 `begin` 到 `end` 之间的双人报告统计（见 [`Account::dual_report_stats`]）。
     pub fn dual_report_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
         self.account()?
             .dual_report_stats(session_id, i64::from(begin), i64::from(end))
     }
 
-    /// The footprint over the range and conversations `options` gives (see [`Account::footprint_stats`]).
+    /// `options` 给出的时间范围和会话内的足迹（见 [`Account::footprint_stats`]）。
     pub fn footprint_stats(&self, options: &Value) -> Result<Value> {
         self.account()?.footprint_stats(options)
     }
 
-    /// Newest-first page of Moments posts, of the posters `usernames` (all when empty).
+    /// 一页朋友圈动态，最新的在前，只含 `usernames` 中发布者的动态（为空时不限）。
     pub fn sns_timeline(
         &self,
         limit: i32,
@@ -476,34 +478,34 @@ impl Wcdb {
         )
     }
 
-    /// The owner's Moments between `begin` and `end`: posts and their types, who liked them most and whose posts the
-    /// owner liked most (see [`Account::sns_annual_stats`]).
+    /// 账号所有者在 `begin` 到 `end` 之间的朋友圈：动态及其类型、给这些动态点赞最多的人，
+    /// 以及所有者点赞最多的是谁（见 [`Account::sns_annual_stats`]）。
     pub fn sns_annual_stats(&self, begin: i32, end: i32) -> Result<Value> {
         self.account()?
             .sns_annual_stats(i64::from(begin), i64::from(end))
     }
 
-    /// Who has Moments posts, the one who posted last first (see [`Account::sns_usernames`]).
+    /// 发过朋友圈的人，最近发过的在前（见 [`Account::sns_usernames`]）。
     pub fn sns_usernames(&self) -> Result<Value> {
         self.account()?.sns_usernames()
     }
 
-    /// `{ username: posts }` of every poster (see [`Account::sns_post_counts`]).
+    /// 每个发布者的 `{ username: posts }`（见 [`Account::sns_post_counts`]）。
     pub fn sns_post_counts(&self) -> Result<Value> {
         self.account()?.sns_post_counts()
     }
 
-    /// `{ total_posts, total_friends, my_posts }` of the Moments (see [`Account::sns_export_stats`]).
+    /// 朋友圈的 `{ total_posts, total_friends, my_posts }`（见 [`Account::sns_export_stats`]）。
     pub fn sns_export_stats(&self, my_wxid: Option<&str>) -> Result<Value> {
         self.account()?.sns_export_stats(my_wxid)
     }
 
-    /// The rows of a read-only statement on one database, as JSON objects (see [`Account::exec_query`]).
+    /// 在一个数据库上执行只读语句，以 JSON 对象返回各行（见 [`Account::exec_query`]）。
     pub fn exec_query(&self, kind: &str, path: &str, sql: &str) -> Result<Value> {
         self.account()?.exec_query(kind, Some(path), sql)
     }
 
-    /// Image/video messages of the conversations `session_ids`, newest first, and whether more remain.
+    /// `session_ids` 这些会话中的图片、视频消息，最新的在前，以及是否还有更多。
     pub fn scan_media_stream(
         &self,
         session_ids: &[String],
@@ -523,61 +525,60 @@ impl Wcdb {
         )
     }
 
-    /// `{ username: name }` of `usernames`: the remark, else the nickname, else the alias, else the username (see
-    /// [`Account::display_names`]).
+    /// `usernames` 的 `{ username: name }`：
+    /// 依次取备注、昵称、微信号，都没有时用用户名（见 [`Account::display_names`]）。
     pub fn display_names(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
             .display_names(&distinct_usernames(usernames))
     }
 
-    /// The avatar kept on this computer for `username` (see `Account::head_image`).
+    /// 本机保存的 `username` 的头像（见 `Account::head_image`）。
     pub fn head_image(&self, username: &str) -> Result<Option<Vec<u8>>> {
         self.account()?.head_image(username)
     }
 
-    /// `{ username: url }` of the contacts of `usernames` that have an avatar (see [`Account::avatar_urls`]).
+    /// `usernames` 中有头像的联系人的 `{ username: url }`（见 [`Account::avatar_urls`]）。
     pub fn avatar_urls(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?.avatar_urls(&distinct_usernames(usernames))
     }
 
-    /// `{ chatroom: count }` of the groups `chatroom_ids` (see [`Account::group_member_counts`]).
+    /// `chatroom_ids` 这些群的 `{ chatroom: count }`（见 [`Account::group_member_counts`]）。
     pub fn group_member_counts(&self, chatroom_ids: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
             .group_member_counts(&distinct_usernames(chatroom_ids))
     }
 
-    /// Whether each conversation of `usernames` is folded, muted and pinned (see [`Account::contact_status`]).
+    /// `usernames` 的每个会话是否折叠、免打扰、置顶（见 [`Account::contact_status`]）。
     pub fn contact_status(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
             .contact_status(&distinct_usernames(usernames))
     }
 
-    /// `{ username: alias }` of the contacts of `usernames` with a WeChat ID (see [`Account::contact_alias_map`]).
+    /// `usernames` 中有微信号的联系人的 `{ username: alias }`（见 [`Account::contact_alias_map`]）。
     pub fn contact_alias_map(&self, usernames: &[impl AsRef<str>]) -> Result<Value> {
         self.account()?
             .contact_alias_map(&distinct_usernames(usernames))
     }
 
-    /// `{ "ext_buffer": "<hex>" }` of a group, `{}` when it is unknown (see [`Account::chat_room_ext_buffer`]).
+    /// 群的 `{ "ext_buffer": "<hex>" }`，未知时为 `{}`（见 [`Account::chat_room_ext_buffer`]）。
     pub fn chat_room_ext_buffer(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.chat_room_ext_buffer(chatroom_id)
     }
 
-    /// One row for each table of a conversation: its database, its name, its messages and their first and last time
-    /// (see [`Account::message_table_stats`]).
+    /// 会话的每张表一行：所在的数据库、表名、消息数，
+    /// 以及第一条和最后一条消息的时间（见 [`Account::message_table_stats`]）。
     pub fn message_table_stats(&self, session_id: &str) -> Result<Value> {
         self.account()?.message_table_stats(session_id)
     }
 
-    /// [`message_table_stats`](Self::message_table_stats) of each of several conversations, in their order, their
-    /// tables found in one listing of each database (see [`Account::message_table_stats_of`]).
+    /// 按顺序对几个会话各做一次 [`message_table_stats`](Self::message_table_stats)，
+    /// 每个数据库只列一次表，从中找出各会话的表（见 [`Account::message_table_stats_of`]）。
     pub fn message_table_stats_of(&self, session_ids: &[String]) -> Result<Vec<Result<Value>>> {
         self.account()?.message_table_stats_of(session_ids)
     }
 
-    /// What the annual report reads besides the totals: the heatmap, the midnight messages, who opened the
-    /// conversations, my replies, the peak day, my phrases and the longest streak (see
-    /// [`Account::annual_report_extras`]).
+    /// 年度报告除总数以外要读的内容：热力图、深夜消息、谁先开启会话、我的回复、最高峰的一天、
+    /// 我的常用语和最长的连续天数（见 [`Account::annual_report_extras`]）。
     pub fn annual_report_extras(
         &self,
         session_ids: &[impl AsRef<str>],
@@ -595,32 +596,32 @@ impl Wcdb {
         )
     }
 
-    /// Where WeChat's media index puts the images, by message md5 (see `Account::image_hardlink_index`).
+    /// 微信的媒体索引中图片所在的位置，按消息的 md5 区分（见 `Account::image_hardlink_index`）。
     pub fn image_hardlink_index(&self) -> Result<std::collections::HashMap<String, Vec<PathBuf>>> {
         self.account()?.image_hardlink_index()
     }
 
-    /// Where WeChat's media index puts the video of a message md5 (see `Account::video_hardlinks`).
+    /// 微信的媒体索引中 md5 为 `md5` 的消息的视频所在的位置（见 `Account::video_hardlinks`）。
     pub fn video_hardlinks(&self, md5: &str) -> Result<Vec<PathBuf>> {
         self.account()?.video_hardlinks(md5)
     }
 
-    /// Where WeChat's media index puts the file of a message md5 (see `Account::file_hardlinks`).
+    /// 微信的媒体索引中 md5 为 `md5` 的消息的文件所在的位置（见 `Account::file_hardlinks`）。
     pub fn file_hardlinks(&self, md5: &str) -> Result<Vec<PathBuf>> {
         self.account()?.file_hardlinks(md5)
     }
 
-    /// The download address of the sticker `md5` (see [`Account::emoticon_cdn_url`]).
+    /// md5 为 `md5` 的表情的下载地址（见 [`Account::emoticon_cdn_url`]）。
     pub fn emoticon_cdn_url(&self, md5: &str) -> Result<String> {
         self.account()?.emoticon_cdn_url(md5)
     }
 
-    /// Every sticker caption, keyed by lower-case md5 (see `Account::emoticon_captions`).
+    /// 所有表情的说明文字，以小写的 md5 为键（见 `Account::emoticon_captions`）。
     pub fn emoticon_captions(&self) -> Result<std::collections::HashMap<String, String>> {
         self.account()?.emoticon_captions()
     }
 
-    /// A voice message's audio as lowercase hex, `""` when there is none (see [`Account::voice_data`]).
+    /// 语音消息的音频，写成小写十六进制，没有时为 `""`（见 [`Account::voice_data`]）。
     pub fn voice_data(
         &self,
         create_time: i32,
@@ -636,14 +637,14 @@ impl Wcdb {
         )
     }
 
-    /// The audio of each voice message the array `requests` asks for, `[{ "hex": … }]` in its order (see
-    /// [`Account::voice_data_batch`]).
+    /// 数组 `requests` 请求的每条语音消息的音频，
+    /// 按请求的顺序写成 `[{ "hex": … }]`（见 [`Account::voice_data_batch`]）。
     pub fn voice_data_batch(&self, requests: &Value) -> Result<Value> {
         self.account()?.voice_data_batch(requests)
     }
 
-    /// Each conversation's messages by type, and their first and last time, within the range of `options` (see
-    /// [`Account::session_message_type_stats_batch`]).
+    /// 在 `options` 给出的范围内，每个会话按类型统计的消息数，以及第一条和最后一条消息的时间（见
+    /// [`Account::session_message_type_stats_batch`]）。
     pub fn session_message_type_stats_batch(
         &self,
         session_ids: &[impl AsRef<str>],
@@ -654,9 +655,9 @@ impl Wcdb {
     }
 }
 
-/// `session/session.db` of `root`, else the first `session.db` (any case) under it. The search goes on past a folder
-/// it cannot list, and does not enter links to folders (symbolic links, junctions), so a link back up the tree cannot
-/// send it round in circles. Each folder's entries are taken in name order, so the same tree gives the same file.
+/// `root` 下的 `session/session.db`，没有时为它下面第一个 `session.db`（不区分大小写）。
+/// 搜索时跳过无法列出的目录，不进入指向目录的链接（符号链接、目录联接），所以指回上层的链接不会让它绕圈。
+/// 每个目录中的条目按名字排序，同一棵目录树总是得到同一个文件。
 fn find_session_db(root: &Path) -> Option<PathBuf> {
     if !root.exists() {
         return None;
@@ -671,7 +672,7 @@ fn find_session_db(root: &Path) -> Option<PathBuf> {
             continue;
         };
         let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
-        // popped last first: the subfolders in reverse name order, so the first by name is searched first
+        // 栈后进先出：子目录按名字倒序入栈，名字排在最前的最先搜索
         entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
         for entry in entries {
             let Ok(kind) = entry.file_type() else {
@@ -726,18 +727,18 @@ mod tests {
         let outside = TestDir::new("weflow-find-session-outside");
         fs::write(outside.join("session.db"), b"").unwrap();
         fs::create_dir_all(root.join("a")).unwrap();
-        // a link back up the tree, and one to a folder outside it
+        // 一个指回上层的链接，一个指向树外目录的链接
         symlink(root.path(), root.join("a/up")).unwrap();
         symlink(outside.path(), root.join("a/out")).unwrap();
         assert_eq!(find_session_db(root.path()), None);
 
-        // searched first by name, but it cannot be listed
+        // 按名字最先搜索，但无法列出
         let locked = root.join("a/locked");
         fs::create_dir_all(&locked).unwrap();
         fs::create_dir_all(root.join("b")).unwrap();
         fs::write(root.join("b/session.db"), b"").unwrap();
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
-        let unlistable = fs::read_dir(&locked).is_err(); // root lists it anyway
+        let unlistable = fs::read_dir(&locked).is_err(); // root 用户照样能列出
         let found = find_session_db(root.path());
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
         if unlistable {

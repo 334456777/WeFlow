@@ -1,15 +1,13 @@
-//! Reads of a few integer columns of every row of a table that decrypt only the bytes they read.
+//! 读取表中每一行的几个整数列，只解密读到的字节。
 //!
-//! A query that needs one column of every message (the dates of a conversation) makes SQLite read every leaf page of
-//! the table and decrypt all of its 4 KiB, while the cells' first few dozen bytes hold all the query reads. Here the
-//! table's b-tree is walked directly: interior pages are decrypted and checked as SQLite reads them; of each leaf page
-//! the HMAC is checked over the whole page, as SQLite's reads do, so a page damaged on disk or torn by a write fails
-//! the read the same way, but only the 16-byte blocks of its header, cell pointers and the start of each cell's
-//! record are decrypted (CBC decrypts a block from it and the block before), and the leaves are shared out between
-//! threads.
+//! 需要每条消息某一列的查询（如一个会话有消息的日期）会让 SQLite 读取表的每个叶子页并解密整整 4 KiB，
+//! 而查询要读的内容全在各单元开头的几十个字节里。这里直接遍历表的 B 树：内部页与 SQLite 读取时一样完整解密并校验；
+//! 叶子页与 SQLite 的读取一样校验整页的 HMAC，所以在磁盘上损坏或被写入撕裂的页同样会让读取失败，
+//! 但只解密页头、单元指针和每个单元记录开头所在的 16 字节块（CBC 解密一个块只需要它自身和前一个块），
+//! 叶子页分给多个线程处理。
 //!
-//! A row whose wanted cells are not integers or nulls, a record longer than the wanted cells allow in the page, or a
-//! page of a kind a rowid table does not have, ends the scan as unusual: the caller then reads the table through SQL.
+//! 某一行要读的单元不是整数或空值、超出了记录存放在页内的部分，或者遇到 rowid 表不会有的页类型时，
+//! 扫描以「不寻常」结束：调用方改用 SQL 读这张表。
 
 use std::ops::ControlFlow;
 
@@ -18,7 +16,7 @@ use anyhow::{bail, Result};
 use crate::cipher_vfs::CipherFile;
 use crate::sqlcipher::{PageCipher, PAGE_SIZE, RESERVE};
 
-/// Bytes of a page that hold b-tree content (the rest is the IV and HMAC).
+/// 一页中存放 B 树内容的字节数（其余是 IV 和 HMAC）。
 const USABLE: usize = PAGE_SIZE - RESERVE;
 const BLOCK: usize = 16;
 const LEAF_TABLE: u8 = 13;
@@ -26,12 +24,12 @@ const INTERIOR_TABLE: u8 = 5;
 
 #[cfg(test)]
 thread_local! {
-    /// Set by a test to read every table through SQL, as for a table the scan does not read.
+    /// 测试设置它后，每张表都通过 SQL 读取，与扫描不读的表一样。
     pub(crate) static SQL_ONLY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// The root page of table `table` and the places of its `columns` in a record, for [`int_columns`]; `None` for a
-/// table it does not read: one without a rowid, or without one of the columns.
+/// 表 `table` 的根页，以及 `columns` 在记录中的位置，供 [`int_columns`] 使用；扫描不读的表为 `None`：没有 rowid
+/// 的表，或者缺少其中某一列的表。
 pub(crate) fn target(
     conn: &rusqlite::Connection,
     table: &str,
@@ -85,25 +83,24 @@ pub(crate) fn target(
     Ok(Some((root, places)))
 }
 
-/// Whether a part of a scan read every row of its pages, or stopped at something it does not read (see the module
-/// docs).
+/// 扫描的一部分是读完了它的页中的每一行，还是停在了它不读的内容上（见模块文档）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Scan {
     Done,
     Unusual,
 }
 
-/// Leaf pages a thread of a scan takes at least.
+/// 扫描时每个线程至少处理的叶子页数。
 const PAGES_PER_PART: usize = 512;
-/// Most threads a scan uses: the HMAC of every page is most of its work.
+/// 扫描最多使用的线程数：每页的 HMAC 是它的主要工作量。
 const MAX_PARTS: usize = 8;
-/// Leaf pages whose HMACs are checked at once, a multiple of what the CPU hashes side by side ([`crate::sha512x4`]).
+/// 一次校验 HMAC 的叶子页数，是 CPU 并行计算的哈希数（[`crate::sha512x4`]）的倍数。
 const CHECKED_TOGETHER: usize = 4 * crate::sha512x4::LANES;
 
-/// The cells `columns` (indexes into the record, in any order) of every row of the rowid table whose b-tree starts at
-/// page `root` of `file`, `None` for a null: each part of the leaf pages, read by a thread of its own, starts an
-/// accumulator with `start` and hands it every row of its pages with `each`, the cells in the order of `columns`.
-/// The accumulators come back in no set order; `None` when the scan met something it does not read.
+/// 读取 B 树从 `file` 的第 `root` 页开始的 rowid 表中每一行的 `columns` 单元（记录中的序号，顺序不限），
+/// 空值为 `None`：叶子页分成几部分，各由一个线程读取，每部分用 `start` 建一个累加器，再用 `each`
+/// 把这部分页中的每一行交给它，单元按 `columns` 的顺序排列。累加器返回的顺序不定；
+/// 扫描遇到不读的内容时为 `None`。
 pub(crate) fn int_columns<A: Send>(
     file: &CipherFile,
     root: u32,
@@ -116,27 +113,27 @@ pub(crate) fn int_columns<A: Send>(
     })
 }
 
-/// A text cell as [`rows`] hands it over.
+/// [`rows`] 交出的文本单元。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Text<'a> {
-    /// No text cell was asked for, or the cell is null.
+    /// 没有要求读文本单元，或者单元为空值。
     Null,
-    /// A text of at most the length asked for, stored in the page and valid UTF-8.
+    /// 不超过要求的长度、存放在页内且是合法 UTF-8 的文本。
     Short(&'a str),
-    /// Anything else: a longer text, one that goes on to overflow pages or is not UTF-8, or a cell of another type.
+    /// 其他情况：更长的文本、延续到溢出页或不是 UTF-8 的文本，或者其他类型的单元。
     Other,
 }
 
-/// A row as [`rows`] hands it over.
+/// [`rows`] 交出的一行。
 pub(crate) struct Row<'a> {
     pub(crate) rowid: i64,
-    /// The integer cells asked for, in their order; `None` for a null.
+    /// 要求读的整数单元，按要求的顺序排列；空值为 `None`。
     pub(crate) ints: &'a [Option<i64>],
     pub(crate) text: Text<'a>,
 }
 
-/// [`int_columns`] that also hands over each row's rowid and, when `text` names a column and a length in bytes, that
-/// cell as a [`Text`]: only the texts that short are decrypted.
+/// 同 [`int_columns`]，另外交出每一行的 rowid；`text` 给出一列和一个字节长度时，还把这一列的单元作为 [`Text`]
+/// 交出：只解密不超过这个长度的文本。
 pub(crate) fn rows<A: Send>(
     file: &CipherFile,
     root: u32,
@@ -164,10 +161,10 @@ pub(crate) fn rows<A: Send>(
         let mut page = Lazy::new(file.page_cipher());
         let mut values = vec![None; columns.len()];
         let mut serials: Vec<u64> = Vec::with_capacity(last + 1);
-        // the HMACs of a few pages are checked at once (`with_checked_pages`)
+        // 一次校验几页的 HMAC（`with_checked_pages`）
         for group in pages.chunks(CHECKED_TOGETHER) {
             let scan = file.with_checked_pages(group, |_, raw| {
-                // a page never written is not a leaf
+                // 从未写入的页不是叶子页
                 let Some(raw) = raw else {
                     return ControlFlow::Break(Ok(Scan::Unusual));
                 };
@@ -218,13 +215,12 @@ pub(crate) fn rows<A: Send>(
     Ok(Some(out))
 }
 
-/// The leaf pages of the table b-tree at `root`, in order, from its interior pages (decrypted and checked whole);
-/// `None` when it holds a page a rowid table does not have. Every leaf of a b-tree is at the same depth, so the
-/// children of an interior page are leaves when its first child is one.
+/// 从内部页（完整解密并校验）按顺序得到以 `root` 为根的表 B 树的叶子页；树中有 rowid 表不会有的页时为 `None`。
+/// B 树的所有叶子页深度相同，所以内部页的第一个子页是叶子页时，它的所有子页都是叶子页。
 fn leaf_pages(file: &CipherFile, root: u32) -> Result<Option<Vec<u32>>> {
     let mut plain = vec![0u8; PAGE_SIZE];
     let mut level = vec![root];
-    // a b-tree is a tree: more pages than the file has means a loop
+    // B 树是一棵树：页数超过文件的总页数说明有环
     let mut budget = file.page_count() as usize;
     loop {
         if level.iter().any(|&p| p <= 1) || level.len() > budget {
@@ -266,16 +262,16 @@ fn leaf_pages(file: &CipherFile, root: u32) -> Result<Option<Vec<u32>>> {
     }
 }
 
-/// What a scan reads of each row.
+/// 扫描从每一行读取的内容。
 struct Wanted<'a> {
     columns: &'a [usize],
-    /// The text column and the longest text decrypted.
+    /// 文本列，以及解密的文本的最大长度。
     text: Option<(usize, usize)>,
-    /// The last column of the two.
+    /// `columns` 和文本列中最靠后的一列。
     last: usize,
 }
 
-/// The rows of one leaf page.
+/// 读取一个叶子页中的各行。
 fn leaf_rows(
     page: &mut Lazy<'_>,
     wanted: &Wanted<'_>,
@@ -296,7 +292,7 @@ fn leaf_rows(
     for at in pointers {
         let (payload, n) = page.varint(at)?;
         let (rowid, m) = page.varint(at + n)?;
-        // a rowid is stored as the two's complement bits of an i64
+        // rowid 以 i64 的补码位形式保存
         let rowid = i64::from_ne_bytes(rowid.to_ne_bytes());
         let record = at + n + m;
         let local = local_payload(payload);
@@ -307,7 +303,7 @@ fn leaf_rows(
         if header_len > local || header_len < k {
             return Ok(Scan::Unusual);
         }
-        // the serial types of the cells up to the last one wanted
+        // 直到要读的最后一个单元为止各单元的序列类型
         serials.clear();
         let mut pos = record + k;
         while serials.len() <= last && pos < record + header_len {
@@ -316,7 +312,7 @@ fn leaf_rows(
             pos += n;
         }
         if serials.len() <= last {
-            // a row written before the column was added holds its default, which the record does not say
+            // 加上这一列之前写入的行取它的默认值，而记录中没有这个值
             return Ok(Scan::Unusual);
         }
         let mut offsets = Vec::with_capacity(serials.len());
@@ -340,7 +336,7 @@ fn leaf_rows(
                         return Ok(Scan::Unusual);
                     }
                     let bytes = page.bytes(at, at + size)?;
-                    // big-endian two's complement of `size` bytes, sign-extended
+                    // `size` 字节的大端补码，做符号扩展
                     let mut v = i64::from(bytes[0].cast_signed());
                     for &b in &bytes[1..] {
                         v = (v << 8) | i64::from(b);
@@ -377,8 +373,7 @@ fn leaf_rows(
     Ok(Scan::Done)
 }
 
-/// Bytes of a table leaf cell's payload stored in the page itself (the rest goes to overflow pages), as SQLite
-/// computes it.
+/// 按 SQLite 的算法，表的叶子单元的负载中存放在页内的字节数（其余存放在溢出页）。
 fn local_payload(payload: u64) -> usize {
     const MAX: u64 = USABLE as u64 - 35;
     const MIN: u64 = (USABLE as u64 - 12) * 32 / 255 - 23;
@@ -392,11 +387,11 @@ fn local_payload(payload: u64) -> usize {
             MIN
         }
     };
-    // at most `MAX`, below a page
+    // 不超过 `MAX`，小于一页
     usize::try_from(local).unwrap_or(0)
 }
 
-/// The size in the record of a cell of serial type `serial`; `None` for the reserved types.
+/// 序列类型为 `serial` 的单元在记录中占的字节数；保留的类型为 `None`。
 fn serial_size(serial: u64) -> Option<usize> {
     Some(match serial {
         0 | 8 | 9 => 0,
@@ -411,12 +406,12 @@ fn serial_size(serial: u64) -> Option<usize> {
     })
 }
 
-/// A leaf page whose blocks are decrypted when first read.
+/// 第一次读到某个块时才解密它的叶子页。
 struct Lazy<'c> {
     cipher: &'c PageCipher,
     raw: Vec<u8>,
     plain: Vec<u8>,
-    /// Which 16-byte blocks of `plain` are decrypted.
+    /// `plain` 中哪些 16 字节块已经解密。
     done: [u64; 4],
 }
 
@@ -439,7 +434,7 @@ impl<'c> Lazy<'c> {
         self.done[block / 64] & (1 << (block % 64)) != 0
     }
 
-    /// Bytes `from..to` of the page, decrypted.
+    /// 页中解密后的 `from..to` 字节。
     fn bytes(&mut self, from: usize, to: usize) -> Result<&[u8]> {
         if from > to || to > USABLE {
             bail!("a cell runs past the page: bytes {from}..{to}");
@@ -461,7 +456,7 @@ impl<'c> Lazy<'c> {
         Ok(&self.plain[from..to])
     }
 
-    /// The varint at `at` and its length.
+    /// `at` 处的 varint 和它的长度。
     fn varint(&mut self, at: usize) -> Result<(u64, usize)> {
         let bytes = self.bytes(at, (at + 9).min(USABLE))?;
         let mut v = 0u64;

@@ -1,9 +1,8 @@
-//! Native (pure Rust + bundled SQLite) replacement for the closed `wcdb_api` library.
+//! 取代闭源 `wcdb_api` 库的原生实现（纯 Rust 加内置的 SQLite）。
 //!
-//! An account is a `db_storage` directory plus the raw database key. Each database file is opened as a
-//! read-only SQLite snapshot that decrypts pages on demand (see [`crate::cipher_vfs`]), and is reopened
-//! whenever the file or its `-wal` changes on disk, so long-running commands (`serve`, message push) keep
-//! seeing new messages. Nothing plaintext is written to disk.
+//! 一个账号是一个 `db_storage` 目录加上原始的数据库密钥。每个数据库文件作为按需解密页的只读 SQLite 快照打开（见
+//! [`crate::cipher_vfs`]），文件或它的 `-wal` 在磁盘上变化时重新打开，所以长时间运行的命令（`serve`、消息推送）
+//! 能持续看到新消息。明文不写入磁盘。
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -18,24 +17,24 @@ use serde_json::{json, Map, Value};
 use crate::cipher_vfs::{self, CipherFile};
 use crate::sqlcipher;
 
-/// SQLite page cache per connection (KiB): the pages a query reads again while it runs, such as the inner pages of
-/// a b-tree. A read that walks a whole table decrypts each page once whatever the size.
+/// 每个连接的 SQLite 页缓存（KiB）：保留查询运行期间会再次读取的页，如 B 树的内部页。无论缓存多大，
+/// 遍历整张表的读取每页都只解密一次。
 const PAGE_CACHE_KIB: i64 = 16 * 1024;
-/// Soft limit of SQLite's heap across all snapshots: above it page caches recycle their oldest pages.
+/// 所有快照共用的 SQLite 堆软上限：超过后页缓存回收最旧的页。
 const HEAP_SOFT_LIMIT: i64 = 1024 * 1024 * 1024;
-/// Snapshots kept open (least recently used ones are closed first).
+/// 同时保持打开的快照数（最近最少使用的先关闭）。
 const MAX_SNAPSHOTS: usize = 32;
-/// How many times a query runs at most, the first included, while WeChat keeps changing the file under it.
+/// 微信在查询期间不断改动文件时，一次查询最多运行的次数，含第一次。
 const STALE_RETRIES: usize = 4;
 
-/// A snapshot's connection, and whether its page cache is sized yet.
+/// 快照的一个连接，以及它的页缓存大小是否已经设置。
 struct Conn {
     conn: Connection,
     sized: bool,
 }
 
 struct Snapshot {
-    /// Connections over `file`; one unless a handle asks for more (see [`Account::set_read_connections`]).
+    /// `file` 上的连接；只有一个，除非账号句柄要求更多（见 [`Account::set_read_connections`]）。
     conns: Vec<Arc<Mutex<Conn>>>,
     file: Arc<CipherFile>,
     key: [u8; 32],
@@ -48,7 +47,7 @@ struct Cache {
     tick: u64,
 }
 
-/// Whether two ids are the same account: equal, or one is the other plus the `_<4 chars>` directory suffix.
+/// 两个 ID 是否属于同一个账号（忽略首尾空白和大小写）：相等，或者其中一个是另一个加上 `_` 和 4 个字符的目录后缀。
 pub fn same_identity(a: &str, b: &str) -> bool {
     let (a, b) = (a.trim().to_ascii_lowercase(), b.trim().to_ascii_lowercase());
     if a.is_empty() || b.is_empty() {
@@ -62,17 +61,16 @@ pub fn same_identity(a: &str, b: &str) -> bool {
     a == b || suffixed(&a, &b) || suffixed(&b, &a)
 }
 
-/// Process-wide SQLite settings for the snapshots.
+/// 快照用的进程级 SQLite 设置。
 fn configure_sqlite() {
     static ONCE: std::sync::Once = std::sync::Once::new();
-    // SAFETY: plain configuration call, valid at any time.
+    // SAFETY: 普通的配置调用，任何时候调用都有效。
     ONCE.call_once(|| unsafe {
         rusqlite::ffi::sqlite3_soft_heap_limit64(HEAP_SOFT_LIMIT);
     });
 }
 
-/// Decrypted snapshots are shared by every account handle in the process: the service layer opens a
-/// fresh handle per call, and re-decrypting a large message database each time would dominate the run.
+/// 进程内所有账号句柄共用解密的快照：服务层每次调用都新建句柄，每次都重新解密大的消息库会占去大部分运行时间。
 static SHARED_CACHE: OnceLock<Arc<Mutex<Cache>>> = OnceLock::new();
 
 fn shared_cache() -> Arc<Mutex<Cache>> {
@@ -81,22 +79,21 @@ fn shared_cache() -> Arc<Mutex<Cache>> {
         .clone()
 }
 
-/// One WeChat account's databases, opened read-only with its key: every query of the database layer is a method of it.
+/// 用密钥以只读方式打开的一个微信账号的数据库：数据库层的每个查询都是它的方法。
 pub struct Account {
     db_storage: PathBuf,
     raw_key: [u8; 32],
     cache: Arc<Mutex<Cache>>,
-    /// Identity of the account owner (wxid, optionally with the `_xxxx` account-directory suffix);
-    /// used to tell which messages were sent by the user.
+    /// 账号所有者的身份（wxid，可以带账号目录的后缀 `_xxxx`），用来判断哪些消息是用户自己发的。
     my_wxid: Option<String>,
     pub(crate) cursors: Mutex<crate::msg::cursor::Cursors>,
-    /// Most connections a snapshot gets for this handle's queries (see [`Account::set_read_connections`]).
+    /// 这个句柄的查询在一个快照上最多使用的连接数（见 [`Account::set_read_connections`]）。
     read_connections: std::sync::atomic::AtomicUsize,
-    /// Queries run again because their snapshot went stale (see [`Account::stale_reruns`]).
+    /// 因快照过期而重新执行的查询数（见 [`Account::stale_reruns`]）。
     stale_reruns: std::sync::atomic::AtomicUsize,
 }
 
-/// Where the databases are, without the key.
+/// 只显示数据库所在的位置，不显示密钥。
 impl std::fmt::Debug for Account {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Account")
@@ -105,7 +102,7 @@ impl std::fmt::Debug for Account {
     }
 }
 
-/// BLOB columns that carry binary payloads (protobuf and friends): always exposed as lowercase hex.
+/// 存放二进制内容（protobuf 之类）的 BLOB 列：一律输出为小写十六进制。
 const HEX_BLOB_COLUMNS: &[&str] = &[
     "packed_info_data",
     "extra_buffer",
@@ -114,8 +111,9 @@ const HEX_BLOB_COLUMNS: &[&str] = &[
     "voice_data",
 ];
 
-/// Turn one SQLite value into JSON. zstd blobs (WCDB compresses some text columns) are inflated;
-/// other blobs become text when the column is a text column, hex when it is a binary one.
+/// 把一个 SQLite 值转成 JSON。`HEX_BLOB_COLUMNS` 中的二进制列输出为十六进制，不解压；
+/// 其他 BLOB 是 zstd 帧时先解压（WCDB 压缩了部分文本列），结果是合法的 UTF-8 时输出文本，否则输出十六进制。
+/// TEXT 列按 UTF-8 解码，非法字节被替换。
 pub(crate) fn value_to_json(column: &str, v: ValueRef<'_>) -> Value {
     match v {
         ValueRef::Null => Value::Null,
@@ -127,7 +125,7 @@ pub(crate) fn value_to_json(column: &str, v: ValueRef<'_>) -> Value {
     }
 }
 
-/// `bytes` in lowercase hex.
+/// `bytes` 的小写十六进制。
 pub fn hex(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -138,7 +136,7 @@ pub fn hex(bytes: &[u8]) -> String {
     out
 }
 
-/// A BLOB as WCDB stores it compressed: zstd frames inflated, anything else (or frames that do not inflate) as it is.
+/// 还原 WCDB 压缩存储的 BLOB：zstd 帧解压，其他内容（或解压失败的帧）原样返回。
 pub(crate) fn inflate_blob(b: &[u8]) -> Cow<'_, [u8]> {
     if b.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
         if let Ok(v) = zstd::stream::decode_all(b) {
@@ -148,7 +146,7 @@ pub(crate) fn inflate_blob(b: &[u8]) -> Cow<'_, [u8]> {
     Cow::Borrowed(b)
 }
 
-/// Text form of a BLOB: inflate zstd frames, then UTF-8 if valid, otherwise lowercase hex.
+/// BLOB 的文本形式：先解压 zstd 帧，是合法的 UTF-8 时为文本，否则为小写十六进制。
 fn blob_to_string(b: &[u8]) -> String {
     let bytes = inflate_blob(b);
     match std::str::from_utf8(&bytes) {
@@ -158,7 +156,12 @@ fn blob_to_string(b: &[u8]) -> String {
 }
 
 impl Account {
-    /// `db_storage` is `<account>/db_storage`; `hex_key` is the 64-hex key from `weflow key db`.
+    /// 打开账号：`db_storage` 是 `<account>/db_storage`，
+    /// `hex_key` 是 `weflow key db` 输出的 64 个十六进制字符的密钥。
+    ///
+    /// # Errors
+    ///
+    /// `db_storage` 不是目录，或者 `hex_key` 不是合法的密钥时返回错误。
     pub fn new(db_storage: impl Into<PathBuf>, hex_key: &str) -> Result<Self> {
         let db_storage = db_storage.into();
         if !db_storage.is_dir() {
@@ -175,41 +178,39 @@ impl Account {
         })
     }
 
-    /// How many connections a database snapshot may open for this handle's queries (at least one). Queries on one
-    /// connection run one at a time; with more, threads that read the same database (a parallel export) run side by
-    /// side. Every connection keeps its own page cache, so memory grows with the count. Extra connections stay with
-    /// the snapshot for later queries.
+    /// 设置数据库快照为这个句柄的查询最多打开几个连接（至少一个）。一个连接上的查询逐个执行；连接更多时，
+    /// 读同一个数据库的多个线程（并行导出）可以同时进行。每个连接各有自己的页缓存，所以内存随连接数增长。
+    /// 多出的连接留在快照上，供以后的查询使用。
     pub fn set_read_connections(&self, n: usize) {
         self.read_connections
             .store(n.max(1), std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// How many of this handle's queries were run again on a fresh snapshot because WeChat changed the file while
-    /// they read it (see [`with_db`](Self::with_db)).
+    /// 这个句柄的查询中，因读取期间微信改动了文件而在新快照上重新执行的次数（见 [`with_db`](Self::with_db)）。
     pub fn stale_reruns(&self) -> usize {
         self.stale_reruns.load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    /// Set the account owner's wxid (see [`Account::is_me`]).
+    /// 设置账号所有者的 wxid（见 [`Account::is_me`]）。
     pub fn with_my_wxid(mut self, wxid: Option<String>) -> Self {
         self.my_wxid = wxid.map(|w| w.trim().to_string()).filter(|w| !w.is_empty());
         self
     }
 
-    /// Whether `sender` is the account owner. Message databases store the bare wxid while the account
-    /// directory is `<wxid>_<4 chars>`, so a bare id matches its suffixed form and the other way round.
+    /// `sender` 是否为账号所有者。消息库中保存的是裸 wxid，而账号目录名是 `<wxid>_<4 chars>`，
+    /// 所以裸 wxid 与带后缀的形式互相匹配。
     pub fn is_me(&self, sender: &str) -> bool {
         self.my_wxid
             .as_deref()
             .is_some_and(|me| same_identity(sender, me))
     }
 
-    /// The account's `db_storage` folder.
+    /// 账号的 `db_storage` 目录。
     pub fn db_storage(&self) -> &Path {
         &self.db_storage
     }
 
-    /// Connections the snapshot of `path` holds (0 when it is not open).
+    /// `path` 的快照持有的连接数（没有打开时为 0）。
     #[cfg(test)]
     pub(crate) fn snapshot_connections(&self, path: &Path) -> usize {
         self.cache
@@ -220,15 +221,19 @@ impl Account {
             .map_or(0, |s| s.conns.len())
     }
 
-    /// Absolute path of a database given relative to `db_storage` (`session/session.db`).
+    /// 相对 `db_storage` 给出的数据库（如 `session/session.db`）的绝对路径。
     pub fn db_path(&self, rel: &str) -> PathBuf {
         self.db_storage.join(rel)
     }
 
-    /// Open (or refresh) the snapshot of `path` and run `f` on it.
+    /// 打开（或刷新）`path` 的快照，在其上运行 `f`。
     ///
-    /// When WeChat changes the file under the snapshot while `f` reads it, `f` fails, and it is run again on a fresh
-    /// snapshot; so `f` must be safe to repeat (a pure query, or one that starts its output over).
+    /// `f` 读取期间微信改动了快照下的文件时，`f` 失败，并在新的快照上重新运行；所以 `f` 必须可以重复执行（纯查询，
+    /// 或者每次都从头开始输出的查询）。
+    ///
+    /// # Errors
+    ///
+    /// 快照无法打开、`f` 返回错误，或者文件在 `STALE_RETRIES` 次运行中一直在变化时返回错误。
     pub fn with_db<T>(
         &self,
         path: &Path,
@@ -237,10 +242,9 @@ impl Account {
         self.read_db(path, |c| f(c), |_, v| Ok(v))
     }
 
-    /// [`with_db`](Self::with_db) in two steps, for reads that walk the file's pages themselves (see
-    /// [`crate::leaf_scan`]): `prepare` runs on the snapshot's connection, then `read` on its file with what `prepare`
-    /// gave, the connection left free for other queries meanwhile. Both run again on a fresh snapshot when WeChat
-    /// changed the file under them.
+    /// 分两步的 [`with_db`](Self::with_db)，供自己遍历文件页的读取使用（见 [`crate::leaf_scan`]）：`prepare`
+    /// 在快照的连接上运行，然后 `read` 拿 `prepare` 的结果在快照的文件上运行，这期间连接空出来供其他查询使用。
+    /// 微信改动了文件时，两步都在新的快照上重新运行。
     pub(crate) fn read_db<P, T>(
         &self,
         path: &Path,
@@ -254,7 +258,7 @@ impl Account {
                 let mut guard = conn
                     .lock()
                     .map_err(|_| anyhow!("database snapshot lock poisoned"))?;
-                // Inside the closure: the pragma reads the schema, so it can hit a stale snapshot like `f` does.
+                // 放在闭包里：这个 pragma 会读 schema，所以与 `f` 一样可能遇到过期的快照。
                 let mut run = || {
                     if !guard.sized {
                         guard
@@ -286,7 +290,7 @@ impl Account {
         }
     }
 
-    /// Drop the cached snapshot of `path` if it is still `file`.
+    /// 缓存中 `path` 的快照仍是 `file` 时把它丢弃。
     fn forget(&self, path: &Path, file: &Arc<CipherFile>) {
         if let Ok(mut cache) = self.cache.lock() {
             if cache
@@ -299,9 +303,8 @@ impl Account {
         }
     }
 
-    /// Open the snapshots of `paths` that are not open yet, several at once: each new file costs a slow key
-    /// derivation, so a command that needs every message shard waits for one instead of all of them in a row.
-    /// Errors are left for the real call to report.
+    /// 同时打开 `paths` 中还没打开的快照：每个新文件都要做一次较慢的密钥派生，
+    /// 这样需要每个消息分片的命令只等一次派生，而不是一个接一个地等全部。出错时不报告，留给实际的调用报告。
     pub fn prefetch(&self, paths: &[PathBuf]) {
         let missing: Vec<&PathBuf> = {
             let Ok(cache) = self.cache.lock() else { return };
@@ -337,11 +340,11 @@ impl Account {
             let tick = cache.tick;
             match cache.entries.get_mut(path) {
                 Some(entry) if entry.key == self.raw_key => {
-                    // asked through the handles the snapshot holds: the files are not opened again
+                    // 通过快照持有的句柄查询：不重新打开文件
                     if entry.file.unchanged() && !entry.file.is_stale() {
                         entry.last_used = tick;
                         let file = entry.file.clone();
-                        // a connection nobody else holds; else a new one while the limit allows; else the least busy
+                        // 先找没有别人持有的连接；没有就在上限内新开一个；否则用最空闲的
                         if let Some(free) = entry.conns.iter().find(|c| Arc::strong_count(c) == 1) {
                             return Ok((free.clone(), file));
                         }
@@ -358,18 +361,18 @@ impl Account {
                         drop(cache);
                         return self.add_connection(path, file, limit);
                     }
-                    Some(entry.file.cipher()) // same file => same salt => reuse the slow KDF result
+                    Some(entry.file.cipher()) // 同一个文件 => 同一个盐 => 复用较慢的 KDF 的结果
                 }
                 _ => None,
             }
         };
 
-        // Opened without holding the cache lock, so other files can be opened meanwhile. The files are stamped as the
-        // snapshot opens them: a change that lands meanwhile makes the next call reopen.
+        // 打开时不持有缓存的锁，这期间其他文件也可以打开。快照打开文件时取文件戳：
+        // 这期间发生的变化会让下一次调用重新打开。
         let file = Arc::new(CipherFile::open(path, &self.raw_key, known_cipher)?);
         let conn = cipher_vfs::open_connection(file.clone())?;
         configure_sqlite();
-        let conn = Arc::new(Mutex::new(Conn { conn, sized: false })); // sized by `with_db`
+        let conn = Arc::new(Mutex::new(Conn { conn, sized: false })); // 由 `read_db` 设置页缓存大小
         let mut cache = self
             .cache
             .lock()
@@ -400,8 +403,8 @@ impl Account {
         Ok((conn, file))
     }
 
-    /// One more connection over the snapshot `file` of `path` (no key derivation: the file is already open), kept
-    /// with the snapshot while it has fewer than `limit`.
+    /// 在 `path` 的快照 `file` 上再开一个连接（不用派生密钥：文件已经打开），
+    /// 快照的连接少于 `limit` 个时把它留在快照上。
     fn add_connection(
         &self,
         path: &Path,
@@ -409,12 +412,12 @@ impl Account {
         limit: usize,
     ) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
         let conn = cipher_vfs::open_connection(file.clone())?;
-        let conn = Arc::new(Mutex::new(Conn { conn, sized: false })); // sized by `with_db`
+        let conn = Arc::new(Mutex::new(Conn { conn, sized: false })); // 由 `read_db` 设置页缓存大小
         let mut cache = self
             .cache
             .lock()
             .map_err(|_| anyhow!("snapshot cache lock poisoned"))?;
-        // the snapshot may have been replaced meanwhile: then this connection only serves the query that asked
+        // 这期间快照可能已被替换：那样这个连接只为请求它的这次查询服务
         if let Some(entry) = cache
             .entries
             .get_mut(path)
@@ -425,7 +428,11 @@ impl Account {
         Ok((conn, file))
     }
 
-    /// Run a read-only query on `path` and return every row as a JSON object.
+    /// 在 `path` 上执行只读查询，把每一行作为 JSON 对象返回。
+    ///
+    /// # Errors
+    ///
+    /// 快照无法打开、SQL 有误或执行失败时返回错误，重新执行的规则见 [`with_db`](Self::with_db)。
     pub fn query(
         &self,
         path: &Path,
@@ -443,9 +450,13 @@ impl Account {
         Ok(out.into_inner())
     }
 
-    /// Like [`query`](Self::query), but hands each row to `each` as it is read instead of collecting them.
-    /// `start` runs before the first row, and again if the snapshot went stale and the rows are read once more
-    /// from the beginning (see [`with_db`](Self::with_db)): it must reset whatever `each` accumulated.
+    /// 与 [`query`](Self::query) 相同，但每读到一行就交给 `each`，不收集起来。
+    /// `start` 在第一行之前运行；快照过期、从头重新读取各行时再运行一次（见 [`with_db`](Self::with_db)）：
+    /// 它必须重置 `each` 累积的内容。
+    ///
+    /// # Errors
+    ///
+    /// 与 [`query`](Self::query) 相同。
     pub fn query_each(
         &self,
         path: &Path,
@@ -460,7 +471,11 @@ impl Account {
         })
     }
 
-    /// Like [`query_each`](Self::query_each), but stops reading once `each` returns false.
+    /// 与 [`query_each`](Self::query_each) 相同，但 `each` 返回 `false` 后停止读取。
+    ///
+    /// # Errors
+    ///
+    /// 与 [`query`](Self::query) 相同。
     pub fn query_until(
         &self,
         path: &Path,
@@ -489,12 +504,16 @@ impl Account {
         })
     }
 
-    /// `session/session.db` of the account's `db_storage`.
+    /// 账号的 `db_storage` 下的 `session/session.db`。
     pub fn session_db(&self) -> PathBuf {
         self.db_path("session/session.db")
     }
 
-    /// Probe the account: decrypt `session.db` and read its schema.
+    /// 检查账号能否读取：解密 `session.db`，读出它的 schema。
+    ///
+    /// # Errors
+    ///
+    /// `session.db` 无法打开或解密（如密钥不对）时返回错误。
     pub fn test_connection(&self) -> Result<()> {
         self.with_db(&self.session_db(), |conn| {
             conn.query_row("select count(*) from sqlite_master", [], |r| {
@@ -504,8 +523,8 @@ impl Account {
         })
     }
 
-    /// The databases a chat page reads: conversations, contacts (with the avatars' addresses), WeChat's media index,
-    /// WeChat's search index, messages and voices.
+    /// 聊天页面要读的数据库：会话、联系人（含头像的地址）、微信的媒体索引、微信的搜索索引、消息和语音，
+    /// 只列出存在的文件。
     pub fn chat_databases(&self) -> Vec<PathBuf> {
         let mut all: Vec<PathBuf> = [
             "session/session.db",
@@ -522,8 +541,7 @@ impl Account {
         all
     }
 
-    /// Opens these databases at the same time, so their keys are derived before a read needs them (see
-    /// [`sqlcipher::shared_cipher`]); returns how many opened.
+    /// 同时打开这些数据库，在读取需要之前派生好它们的密钥（见 [`sqlcipher::shared_cipher`]）；返回打开成功的个数。
     pub fn warm(&self, paths: &[PathBuf]) -> usize {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let (next, opened) = (AtomicUsize::new(0), AtomicUsize::new(0));
@@ -551,7 +569,11 @@ impl Account {
         opened.into_inner()
     }
 
-    /// Rows of `SessionTable`, newest first — the same columns WeChat stores.
+    /// `SessionTable` 的各行，最新的在前，列与微信保存的相同。
+    ///
+    /// # Errors
+    ///
+    /// `session.db` 无法读取时返回错误。
     pub fn sessions(&self) -> Result<Value> {
         let rows = self.query(
             &self.session_db(),
@@ -594,8 +616,8 @@ mod tests {
             1,
             "the snapshot is kept while the file is as it was"
         );
-        // WeChat writes the database in place, later: two writes of the same size inside one tick of the file
-        // system's clock look alike, by the path as by the handle, so the time is set past the first one's
+        // 之后微信在原文件上写入数据库：在文件系统时钟的同一个刻度内两次大小相同的写入，
+        // 无论按路径还是按句柄看都一样，所以把时间设到第一次写入之后
         f.session_db(&[session("wxid_bob"), session("wxid_carol")]);
         let db = acct.db_path("session/session.db");
         let later =
@@ -635,7 +657,7 @@ mod tests {
         }
         assert!(all.iter().all(|p| p.is_file()));
         assert_eq!(acct.warm(&all), all.len());
-        // a database that cannot be opened is skipped
+        // 打不开的数据库被跳过
         let missing = acct.db_path("message/message_9.db");
         assert_eq!(acct.warm(&[missing]), 0);
     }
