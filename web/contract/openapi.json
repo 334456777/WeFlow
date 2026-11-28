@@ -4522,26 +4522,26 @@
           "localId": {
             "type": "integer",
             "format": "int64",
-            "description": "The message's id in its conversation's table; with `createTime`, the key of `chat message`."
+            "description": "本地 ID，即消息在所在分片的会话表中的行号；与 `createTime` 一起是 `chat message` 的键。"
           },
           "serverId": {
             "type": "string",
-            "description": "WeChat's id of the message, in decimal: a string, as it may pass 2^53."
+            "description": "十进制的服务器 ID：可能超过 2^53，所以是字符串。"
           },
           "localType": {
             "type": "integer",
             "format": "int64",
-            "description": "WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…)."
+            "description": "消息类型（1 文本、3 图片、34 语音、43 视频、47 表情、49 app 消息、10000 系统消息等）。"
           },
           "createTime": {
             "type": "integer",
             "format": "int64",
-            "description": "When it was sent."
+            "description": "发送时间。"
           },
           "sortSeq": {
             "type": "integer",
             "format": "int64",
-            "description": "WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little."
+            "description": "消息在聊天窗口中的排序位置，通常是毫秒的发送时间加一个计数。"
           },
           "isSend": {
             "type": [
@@ -4549,224 +4549,224 @@
               "null"
             ],
             "format": "int64",
-            "description": "1 when I sent it, 0 when I received it; null when the row does not say."
+            "description": "账号自己发的为 1，收到的为 0；行中没有时为 null。"
           },
           "senderUsername": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Who sent it; null when the row does not say."
+            "description": "发送者：取行的发送者列，没有时取内容开头的 `<发送者>:`；都没有时为 null。"
           },
           "parsedContent": {
             "type": "string",
-            "description": "The text the chat window shows."
+            "description": "聊天窗口显示的文字。"
           },
           "rawContent": {
             "type": "string",
-            "description": "The message as WeChat keeps it (often XML)."
+            "description": "微信保存的消息原文（常是 XML）。"
           },
           "emojiCdnUrl": {
             "type": "string",
-            "description": "A sticker's address on WeChat's servers."
+            "description": "表情在微信服务器上的地址。"
           },
           "emojiMd5": {
             "type": "string",
-            "description": "A sticker's MD5."
+            "description": "表情的 MD5。"
           },
           "quotedContent": {
             "type": "string",
-            "description": "What a reply quotes, as the exports preview it: a reply's or an image's, voice message's, video's, sticker's\nor place's that answers a message."
+            "description": "回复所引用的内容，与导出写的预览相同：回复，以及回复某条消息的图片、语音、视频、表情和位置都有这一项。"
           },
           "quotedSender": {
             "type": "string",
-            "description": "The name of whom a reply quotes."
+            "description": "被引用的人的名字。"
           },
           "imageMd5": {
             "type": "string",
-            "description": "An image's MD5, as its XML gives it."
+            "description": "图片的 MD5，取自它的 XML。"
           },
           "imageDatName": {
             "type": "string",
-            "description": "The name of an image's `.dat` file, from the row's packed info or the XML."
+            "description": "图片的 `.dat` 文件名，取自行的 `packed_info` 或 XML。"
           },
           "videoMd5": {
             "type": "string",
-            "description": "The MD5 that names a video's file, in lowercase."
+            "description": "视频的 MD5（小写），视频文件以它命名。"
           },
           "voiceDurationSeconds": {
             "type": "integer",
             "format": "int64",
-            "description": "A voice's length in seconds, rounded."
+            "description": "语音的时长，四舍五入到秒。"
           },
           "aesKey": {
             "type": "string",
-            "description": "An image's AES key on WeChat's servers (`<img aeskey>`)."
+            "description": "图片在微信服务器上的 AES 密钥（`<img aeskey>`）。"
           },
           "encrypVer": {
             "type": "integer",
             "format": "int64",
-            "description": "An image's `encrypver`."
+            "description": "图片的 `encrypver`。"
           },
           "cdnThumbUrl": {
             "type": "string",
-            "description": "The address of an image's or a sticker's thumbnail on WeChat's servers."
+            "description": "图片或表情的缩略图在微信服务器上的地址。"
           },
           "cardUsername": {
             "type": "string",
-            "description": "The username a contact card shares."
+            "description": "名片分享的用户名。"
           },
           "cardNickname": {
             "type": "string",
-            "description": "The nickname a contact card shows."
+            "description": "名片上显示的昵称。"
           },
           "cardAvatarUrl": {
             "type": "string",
-            "description": "The address of a contact card's avatar."
+            "description": "名片头像的地址。"
           },
           "locationLat": {
             "type": "number",
             "format": "double",
-            "description": "A location's latitude."
+            "description": "位置的纬度。"
           },
           "locationLng": {
             "type": "number",
             "format": "double",
-            "description": "A location's longitude."
+            "description": "位置的经度。"
           },
           "locationPoiname": {
             "type": "string",
-            "description": "The name of a location's place."
+            "description": "位置的地点名称（`poiname`）。"
           },
           "locationLabel": {
             "type": "string",
-            "description": "A location's label, its address as WeChat shows it."
+            "description": "位置的标签（`label`），即微信显示的地址。"
           },
           "xmlType": {
             "type": "string",
-            "description": "The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a\nquote, `2000` a transfer, `2001` a red packet…"
+            "description": "`<appmsg>` 的 `<type>`：`5` 链接，`6` 文件，`19` 聊天记录，`33`、`36` 小程序，`57` 引用，`2000` 转账，\n`2001` 红包等。"
           },
           "linkTitle": {
             "type": "string",
-            "description": "The title: a link's or a mini program's, a file's name, a transfer's memo."
+            "description": "标题：链接或小程序的标题、文件名、转账的备注（没有备注时为金额）。"
           },
           "linkUrl": {
             "type": "string",
-            "description": "The address it opens."
+            "description": "点开时打开的地址。"
           },
           "linkThumb": {
             "type": "string",
-            "description": "The address of its thumbnail."
+            "description": "缩略图的地址。"
           },
           "appMsgKind": {
             "type": "string",
-            "description": "What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,\n`red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`."
+            "description": "种类：`link`、`official-link`、`file`、`music`、`location`、`miniapp`、`chat-record`、`transfer`、\n`red-packet`、`gift`、`finder`、`quote`、`announcement`、`solitaire` 或 `card`。"
           },
           "appMsgDesc": {
             "type": "string",
-            "description": "Its description (`<des>`)."
+            "description": "描述（`<des>`，没有时为 `<description>`）。"
           },
           "appMsgAppName": {
             "type": "string",
-            "description": "The name of the app that sent it (`<appname>`)."
+            "description": "发出它的应用的名称（`<appname>`）。"
           },
           "appMsgSourceName": {
             "type": "string",
-            "description": "The name of the account it comes from (`<sourcename>`), such as an official account's."
+            "description": "来源账号的名称（`<sourcename>`），如公众号的名称。"
           },
           "appMsgSourceUsername": {
             "type": "string",
-            "description": "The username of the account it comes from (`<sourceusername>`)."
+            "description": "来源账号的用户名（`<sourceusername>`）。"
           },
           "appMsgThumbUrl": {
             "type": "string",
-            "description": "The address of its thumbnail or cover."
+            "description": "缩略图或封面的地址。"
           },
           "appMsgMusicUrl": {
             "type": "string",
-            "description": "The address of a song (`<musicurl>`, `<playurl>`)."
+            "description": "歌曲的地址（`<musicurl>`、`<playurl>`）。"
           },
           "appMsgDataUrl": {
             "type": "string",
-            "description": "The address of its data (`<dataurl>`, `<lowurl>`)."
+            "description": "数据的地址（`<dataurl>`、`<lowurl>`）。"
           },
           "appMsgLocationLabel": {
             "type": "string",
-            "description": "The label of a location it names."
+            "description": "消息自己的 XML 中写的地点（`<location>` 的 `label` 或 `poiname`）。"
           },
           "finderNickname": {
             "type": "string",
-            "description": "The name of a Channels account."
+            "description": "视频号账号的名称。"
           },
           "finderUsername": {
             "type": "string",
-            "description": "The username of a Channels account."
+            "description": "视频号账号的用户名。"
           },
           "finderCoverUrl": {
             "type": "string",
-            "description": "A Channels video's cover."
+            "description": "视频号视频的封面。"
           },
           "finderAvatar": {
             "type": "string",
-            "description": "The address of a Channels account's avatar."
+            "description": "视频号账号头像的地址。"
           },
           "finderDuration": {
             "type": "integer",
             "format": "int64",
-            "description": "A Channels video's length, in seconds."
+            "description": "视频号视频的时长，单位为秒。"
           },
           "musicAlbumUrl": {
             "type": "string",
-            "description": "A song's album cover."
+            "description": "歌曲的专辑封面。"
           },
           "musicUrl": {
             "type": "string",
-            "description": "A song's address to play."
+            "description": "歌曲的播放地址：依次取 `<musicurl>`、`<playurl>`、`<dataurl>`、`<lowurl>`、`<url>`。"
           },
           "giftImageUrl": {
             "type": "string",
-            "description": "A gift's picture."
+            "description": "礼物的图片。"
           },
           "giftWish": {
             "type": "string",
-            "description": "A gift's wish."
+            "description": "礼物的祝福语。"
           },
           "giftPrice": {
             "type": "string",
-            "description": "A gift's price, as the message writes it."
+            "description": "礼物的价格，即消息中写的原文。"
           },
           "fileName": {
             "type": "string",
-            "description": "A file's name."
+            "description": "文件名。"
           },
           "fileSize": {
             "type": "integer",
             "format": "int64",
-            "description": "A file's size, in bytes."
+            "description": "文件大小，单位为字节。"
           },
           "fileExt": {
             "type": "string",
-            "description": "A file's extension, without its dot."
+            "description": "文件的扩展名，不带点。"
           },
           "fileMd5": {
             "type": "string",
-            "description": "A file's MD5, in lowercase."
+            "description": "文件的 MD5，小写。"
           },
           "transferPayerUsername": {
             "type": "string",
-            "description": "Who pays a transfer."
+            "description": "转账的付款方。"
           },
           "transferReceiverUsername": {
             "type": "string",
-            "description": "Who receives a transfer."
+            "description": "转账的收款方。"
           },
           "chatRecordTitle": {
             "type": "string",
-            "description": "A chat record's title; 「聊天记录」 when it has none."
+            "description": "聊天记录的标题；没有时为「聊天记录」。"
           },
           "messageKey": {
             "type": "string",
-            "description": "The message's key: the same message has the same key on every machine. It is opaque; only compare it."
+            "description": "消息的键：同一条消息在每台机器上的键都相同。键的内容不透明，只用来比较。"
           },
           "_cursor": {
             "type": "string",
@@ -6085,26 +6085,26 @@
           "localId": {
             "type": "integer",
             "format": "int64",
-            "description": "The message's id in its conversation's table; with `createTime`, the key of `chat message`."
+            "description": "本地 ID，即消息在所在分片的会话表中的行号；与 `createTime` 一起是 `chat message` 的键。"
           },
           "serverId": {
             "type": "string",
-            "description": "WeChat's id of the message, in decimal: a string, as it may pass 2^53."
+            "description": "十进制的服务器 ID：可能超过 2^53，所以是字符串。"
           },
           "localType": {
             "type": "integer",
             "format": "int64",
-            "description": "WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…)."
+            "description": "消息类型（1 文本、3 图片、34 语音、43 视频、47 表情、49 app 消息、10000 系统消息等）。"
           },
           "createTime": {
             "type": "integer",
             "format": "int64",
-            "description": "When it was sent."
+            "description": "发送时间。"
           },
           "sortSeq": {
             "type": "integer",
             "format": "int64",
-            "description": "WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little."
+            "description": "消息在聊天窗口中的排序位置，通常是毫秒的发送时间加一个计数。"
           },
           "isSend": {
             "type": [
@@ -6112,224 +6112,224 @@
               "null"
             ],
             "format": "int64",
-            "description": "1 when I sent it, 0 when I received it; null when the row does not say."
+            "description": "账号自己发的为 1，收到的为 0；行中没有时为 null。"
           },
           "senderUsername": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Who sent it; null when the row does not say."
+            "description": "发送者：取行的发送者列，没有时取内容开头的 `<发送者>:`；都没有时为 null。"
           },
           "parsedContent": {
             "type": "string",
-            "description": "The text the chat window shows."
+            "description": "聊天窗口显示的文字。"
           },
           "rawContent": {
             "type": "string",
-            "description": "The message as WeChat keeps it (often XML)."
+            "description": "微信保存的消息原文（常是 XML）。"
           },
           "emojiCdnUrl": {
             "type": "string",
-            "description": "A sticker's address on WeChat's servers."
+            "description": "表情在微信服务器上的地址。"
           },
           "emojiMd5": {
             "type": "string",
-            "description": "A sticker's MD5."
+            "description": "表情的 MD5。"
           },
           "quotedContent": {
             "type": "string",
-            "description": "What a reply quotes, as the exports preview it: a reply's or an image's, voice message's, video's, sticker's\nor place's that answers a message."
+            "description": "回复所引用的内容，与导出写的预览相同：回复，以及回复某条消息的图片、语音、视频、表情和位置都有这一项。"
           },
           "quotedSender": {
             "type": "string",
-            "description": "The name of whom a reply quotes."
+            "description": "被引用的人的名字。"
           },
           "imageMd5": {
             "type": "string",
-            "description": "An image's MD5, as its XML gives it."
+            "description": "图片的 MD5，取自它的 XML。"
           },
           "imageDatName": {
             "type": "string",
-            "description": "The name of an image's `.dat` file, from the row's packed info or the XML."
+            "description": "图片的 `.dat` 文件名，取自行的 `packed_info` 或 XML。"
           },
           "videoMd5": {
             "type": "string",
-            "description": "The MD5 that names a video's file, in lowercase."
+            "description": "视频的 MD5（小写），视频文件以它命名。"
           },
           "voiceDurationSeconds": {
             "type": "integer",
             "format": "int64",
-            "description": "A voice's length in seconds, rounded."
+            "description": "语音的时长，四舍五入到秒。"
           },
           "aesKey": {
             "type": "string",
-            "description": "An image's AES key on WeChat's servers (`<img aeskey>`)."
+            "description": "图片在微信服务器上的 AES 密钥（`<img aeskey>`）。"
           },
           "encrypVer": {
             "type": "integer",
             "format": "int64",
-            "description": "An image's `encrypver`."
+            "description": "图片的 `encrypver`。"
           },
           "cdnThumbUrl": {
             "type": "string",
-            "description": "The address of an image's or a sticker's thumbnail on WeChat's servers."
+            "description": "图片或表情的缩略图在微信服务器上的地址。"
           },
           "cardUsername": {
             "type": "string",
-            "description": "The username a contact card shares."
+            "description": "名片分享的用户名。"
           },
           "cardNickname": {
             "type": "string",
-            "description": "The nickname a contact card shows."
+            "description": "名片上显示的昵称。"
           },
           "cardAvatarUrl": {
             "type": "string",
-            "description": "The address of a contact card's avatar."
+            "description": "名片头像的地址。"
           },
           "locationLat": {
             "type": "number",
             "format": "double",
-            "description": "A location's latitude."
+            "description": "位置的纬度。"
           },
           "locationLng": {
             "type": "number",
             "format": "double",
-            "description": "A location's longitude."
+            "description": "位置的经度。"
           },
           "locationPoiname": {
             "type": "string",
-            "description": "The name of a location's place."
+            "description": "位置的地点名称（`poiname`）。"
           },
           "locationLabel": {
             "type": "string",
-            "description": "A location's label, its address as WeChat shows it."
+            "description": "位置的标签（`label`），即微信显示的地址。"
           },
           "xmlType": {
             "type": "string",
-            "description": "The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a\nquote, `2000` a transfer, `2001` a red packet…"
+            "description": "`<appmsg>` 的 `<type>`：`5` 链接，`6` 文件，`19` 聊天记录，`33`、`36` 小程序，`57` 引用，`2000` 转账，\n`2001` 红包等。"
           },
           "linkTitle": {
             "type": "string",
-            "description": "The title: a link's or a mini program's, a file's name, a transfer's memo."
+            "description": "标题：链接或小程序的标题、文件名、转账的备注（没有备注时为金额）。"
           },
           "linkUrl": {
             "type": "string",
-            "description": "The address it opens."
+            "description": "点开时打开的地址。"
           },
           "linkThumb": {
             "type": "string",
-            "description": "The address of its thumbnail."
+            "description": "缩略图的地址。"
           },
           "appMsgKind": {
             "type": "string",
-            "description": "What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,\n`red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`."
+            "description": "种类：`link`、`official-link`、`file`、`music`、`location`、`miniapp`、`chat-record`、`transfer`、\n`red-packet`、`gift`、`finder`、`quote`、`announcement`、`solitaire` 或 `card`。"
           },
           "appMsgDesc": {
             "type": "string",
-            "description": "Its description (`<des>`)."
+            "description": "描述（`<des>`，没有时为 `<description>`）。"
           },
           "appMsgAppName": {
             "type": "string",
-            "description": "The name of the app that sent it (`<appname>`)."
+            "description": "发出它的应用的名称（`<appname>`）。"
           },
           "appMsgSourceName": {
             "type": "string",
-            "description": "The name of the account it comes from (`<sourcename>`), such as an official account's."
+            "description": "来源账号的名称（`<sourcename>`），如公众号的名称。"
           },
           "appMsgSourceUsername": {
             "type": "string",
-            "description": "The username of the account it comes from (`<sourceusername>`)."
+            "description": "来源账号的用户名（`<sourceusername>`）。"
           },
           "appMsgThumbUrl": {
             "type": "string",
-            "description": "The address of its thumbnail or cover."
+            "description": "缩略图或封面的地址。"
           },
           "appMsgMusicUrl": {
             "type": "string",
-            "description": "The address of a song (`<musicurl>`, `<playurl>`)."
+            "description": "歌曲的地址（`<musicurl>`、`<playurl>`）。"
           },
           "appMsgDataUrl": {
             "type": "string",
-            "description": "The address of its data (`<dataurl>`, `<lowurl>`)."
+            "description": "数据的地址（`<dataurl>`、`<lowurl>`）。"
           },
           "appMsgLocationLabel": {
             "type": "string",
-            "description": "The label of a location it names."
+            "description": "消息自己的 XML 中写的地点（`<location>` 的 `label` 或 `poiname`）。"
           },
           "finderNickname": {
             "type": "string",
-            "description": "The name of a Channels account."
+            "description": "视频号账号的名称。"
           },
           "finderUsername": {
             "type": "string",
-            "description": "The username of a Channels account."
+            "description": "视频号账号的用户名。"
           },
           "finderCoverUrl": {
             "type": "string",
-            "description": "A Channels video's cover."
+            "description": "视频号视频的封面。"
           },
           "finderAvatar": {
             "type": "string",
-            "description": "The address of a Channels account's avatar."
+            "description": "视频号账号头像的地址。"
           },
           "finderDuration": {
             "type": "integer",
             "format": "int64",
-            "description": "A Channels video's length, in seconds."
+            "description": "视频号视频的时长，单位为秒。"
           },
           "musicAlbumUrl": {
             "type": "string",
-            "description": "A song's album cover."
+            "description": "歌曲的专辑封面。"
           },
           "musicUrl": {
             "type": "string",
-            "description": "A song's address to play."
+            "description": "歌曲的播放地址：依次取 `<musicurl>`、`<playurl>`、`<dataurl>`、`<lowurl>`、`<url>`。"
           },
           "giftImageUrl": {
             "type": "string",
-            "description": "A gift's picture."
+            "description": "礼物的图片。"
           },
           "giftWish": {
             "type": "string",
-            "description": "A gift's wish."
+            "description": "礼物的祝福语。"
           },
           "giftPrice": {
             "type": "string",
-            "description": "A gift's price, as the message writes it."
+            "description": "礼物的价格，即消息中写的原文。"
           },
           "fileName": {
             "type": "string",
-            "description": "A file's name."
+            "description": "文件名。"
           },
           "fileSize": {
             "type": "integer",
             "format": "int64",
-            "description": "A file's size, in bytes."
+            "description": "文件大小，单位为字节。"
           },
           "fileExt": {
             "type": "string",
-            "description": "A file's extension, without its dot."
+            "description": "文件的扩展名，不带点。"
           },
           "fileMd5": {
             "type": "string",
-            "description": "A file's MD5, in lowercase."
+            "description": "文件的 MD5，小写。"
           },
           "transferPayerUsername": {
             "type": "string",
-            "description": "Who pays a transfer."
+            "description": "转账的付款方。"
           },
           "transferReceiverUsername": {
             "type": "string",
-            "description": "Who receives a transfer."
+            "description": "转账的收款方。"
           },
           "chatRecordTitle": {
             "type": "string",
-            "description": "A chat record's title; 「聊天记录」 when it has none."
+            "description": "聊天记录的标题；没有时为「聊天记录」。"
           },
           "messageKey": {
             "type": "string",
-            "description": "The message's key: the same message has the same key on every machine. It is opaque; only compare it."
+            "description": "消息的键：同一条消息在每台机器上的键都相同。键的内容不透明，只用来比较。"
           }
         },
         "required": [
@@ -6344,7 +6344,7 @@
           "rawContent",
           "messageKey"
         ],
-        "description": "A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399).\n\nIt holds its text and the keys of its media, links, cards and so on, parsed from the row. An optional field is\nleft out when the message has none; times are Unix seconds."
+        "description": "聊天窗口显示的一条消息（`chat messages --parsed` 和其他解析过的读取，#399）。\n\n其中有从行中解析出的文字，以及媒体、链接、卡片等的标识。消息没有的可选字段不输出；时间都是 Unix 秒。"
       },
       "OverallStatistics": {
         "type": "object",

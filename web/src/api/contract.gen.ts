@@ -39,130 +39,127 @@ export interface Session {
  * `parsed`).
  */
 export interface ParsedMessage {
-  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
+  /** 本地 ID，即消息在所在分片的会话表中的行号；与 `createTime` 一起是 `chat message` 的键。 */
   localId: number;
-  /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
+  /** 十进制的服务器 ID：可能超过 2^53，所以是字符串。 */
   serverId: string;
-  /** WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…). */
+  /** 消息类型（1 文本、3 图片、34 语音、43 视频、47 表情、49 app 消息、10000 系统消息等）。 */
   localType: number;
-  /** When it was sent. */
+  /** 发送时间。 */
   createTime: number;
-  /** WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little. */
+  /** 消息在聊天窗口中的排序位置，通常是毫秒的发送时间加一个计数。 */
   sortSeq: number;
-  /** 1 when I sent it, 0 when I received it; null when the row does not say. */
+  /** 账号自己发的为 1，收到的为 0；行中没有时为 null。 */
   isSend: number | null;
-  /** Who sent it; null when the row does not say. */
+  /** 发送者：取行的发送者列，没有时取内容开头的 `<发送者>:`；都没有时为 null。 */
   senderUsername: string | null;
-  /** The text the chat window shows. */
+  /** 聊天窗口显示的文字。 */
   parsedContent: string;
-  /** The message as WeChat keeps it (often XML). */
+  /** 微信保存的消息原文（常是 XML）。 */
   rawContent: string;
-  /** A sticker's address on WeChat's servers. */
+  /** 表情在微信服务器上的地址。 */
   emojiCdnUrl?: string;
-  /** A sticker's MD5. */
+  /** 表情的 MD5。 */
   emojiMd5?: string;
-  /**
-   * What a reply quotes, as the exports preview it: a reply's or an image's, voice message's, video's, sticker's
-   * or place's that answers a message.
-   */
+  /** 回复所引用的内容，与导出写的预览相同：回复，以及回复某条消息的图片、语音、视频、表情和位置都有这一项。 */
   quotedContent?: string;
-  /** The name of whom a reply quotes. */
+  /** 被引用的人的名字。 */
   quotedSender?: string;
-  /** An image's MD5, as its XML gives it. */
+  /** 图片的 MD5，取自它的 XML。 */
   imageMd5?: string;
-  /** The name of an image's `.dat` file, from the row's packed info or the XML. */
+  /** 图片的 `.dat` 文件名，取自行的 `packed_info` 或 XML。 */
   imageDatName?: string;
-  /** The MD5 that names a video's file, in lowercase. */
+  /** 视频的 MD5（小写），视频文件以它命名。 */
   videoMd5?: string;
-  /** A voice's length in seconds, rounded. */
+  /** 语音的时长，四舍五入到秒。 */
   voiceDurationSeconds?: number;
-  /** An image's AES key on WeChat's servers (`<img aeskey>`). */
+  /** 图片在微信服务器上的 AES 密钥（`<img aeskey>`）。 */
   aesKey?: string;
-  /** An image's `encrypver`. */
+  /** 图片的 `encrypver`。 */
   encrypVer?: number;
-  /** The address of an image's or a sticker's thumbnail on WeChat's servers. */
+  /** 图片或表情的缩略图在微信服务器上的地址。 */
   cdnThumbUrl?: string;
-  /** The username a contact card shares. */
+  /** 名片分享的用户名。 */
   cardUsername?: string;
-  /** The nickname a contact card shows. */
+  /** 名片上显示的昵称。 */
   cardNickname?: string;
-  /** The address of a contact card's avatar. */
+  /** 名片头像的地址。 */
   cardAvatarUrl?: string;
-  /** A location's latitude. */
+  /** 位置的纬度。 */
   locationLat?: number;
-  /** A location's longitude. */
+  /** 位置的经度。 */
   locationLng?: number;
-  /** The name of a location's place. */
+  /** 位置的地点名称（`poiname`）。 */
   locationPoiname?: string;
-  /** A location's label, its address as WeChat shows it. */
+  /** 位置的标签（`label`），即微信显示的地址。 */
   locationLabel?: string;
   /**
-   * The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a
-   * quote, `2000` a transfer, `2001` a red packet…
+   * `<appmsg>` 的 `<type>`：`5` 链接，`6` 文件，`19` 聊天记录，`33`、`36` 小程序，`57` 引用，`2000` 转账，
+   * `2001` 红包等。
    */
   xmlType?: string;
-  /** The title: a link's or a mini program's, a file's name, a transfer's memo. */
+  /** 标题：链接或小程序的标题、文件名、转账的备注（没有备注时为金额）。 */
   linkTitle?: string;
-  /** The address it opens. */
+  /** 点开时打开的地址。 */
   linkUrl?: string;
-  /** The address of its thumbnail. */
+  /** 缩略图的地址。 */
   linkThumb?: string;
   /**
-   * What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,
-   * `red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`.
+   * 种类：`link`、`official-link`、`file`、`music`、`location`、`miniapp`、`chat-record`、`transfer`、
+   * `red-packet`、`gift`、`finder`、`quote`、`announcement`、`solitaire` 或 `card`。
    */
   appMsgKind?: string;
-  /** Its description (`<des>`). */
+  /** 描述（`<des>`，没有时为 `<description>`）。 */
   appMsgDesc?: string;
-  /** The name of the app that sent it (`<appname>`). */
+  /** 发出它的应用的名称（`<appname>`）。 */
   appMsgAppName?: string;
-  /** The name of the account it comes from (`<sourcename>`), such as an official account's. */
+  /** 来源账号的名称（`<sourcename>`），如公众号的名称。 */
   appMsgSourceName?: string;
-  /** The username of the account it comes from (`<sourceusername>`). */
+  /** 来源账号的用户名（`<sourceusername>`）。 */
   appMsgSourceUsername?: string;
-  /** The address of its thumbnail or cover. */
+  /** 缩略图或封面的地址。 */
   appMsgThumbUrl?: string;
-  /** The address of a song (`<musicurl>`, `<playurl>`). */
+  /** 歌曲的地址（`<musicurl>`、`<playurl>`）。 */
   appMsgMusicUrl?: string;
-  /** The address of its data (`<dataurl>`, `<lowurl>`). */
+  /** 数据的地址（`<dataurl>`、`<lowurl>`）。 */
   appMsgDataUrl?: string;
-  /** The label of a location it names. */
+  /** 消息自己的 XML 中写的地点（`<location>` 的 `label` 或 `poiname`）。 */
   appMsgLocationLabel?: string;
-  /** The name of a Channels account. */
+  /** 视频号账号的名称。 */
   finderNickname?: string;
-  /** The username of a Channels account. */
+  /** 视频号账号的用户名。 */
   finderUsername?: string;
-  /** A Channels video's cover. */
+  /** 视频号视频的封面。 */
   finderCoverUrl?: string;
-  /** The address of a Channels account's avatar. */
+  /** 视频号账号头像的地址。 */
   finderAvatar?: string;
-  /** A Channels video's length, in seconds. */
+  /** 视频号视频的时长，单位为秒。 */
   finderDuration?: number;
-  /** A song's album cover. */
+  /** 歌曲的专辑封面。 */
   musicAlbumUrl?: string;
-  /** A song's address to play. */
+  /** 歌曲的播放地址：依次取 `<musicurl>`、`<playurl>`、`<dataurl>`、`<lowurl>`、`<url>`。 */
   musicUrl?: string;
-  /** A gift's picture. */
+  /** 礼物的图片。 */
   giftImageUrl?: string;
-  /** A gift's wish. */
+  /** 礼物的祝福语。 */
   giftWish?: string;
-  /** A gift's price, as the message writes it. */
+  /** 礼物的价格，即消息中写的原文。 */
   giftPrice?: string;
-  /** A file's name. */
+  /** 文件名。 */
   fileName?: string;
-  /** A file's size, in bytes. */
+  /** 文件大小，单位为字节。 */
   fileSize?: number;
-  /** A file's extension, without its dot. */
+  /** 文件的扩展名，不带点。 */
   fileExt?: string;
-  /** A file's MD5, in lowercase. */
+  /** 文件的 MD5，小写。 */
   fileMd5?: string;
-  /** Who pays a transfer. */
+  /** 转账的付款方。 */
   transferPayerUsername?: string;
-  /** Who receives a transfer. */
+  /** 转账的收款方。 */
   transferReceiverUsername?: string;
-  /** A chat record's title; 「聊天记录」 when it has none. */
+  /** 聊天记录的标题；没有时为「聊天记录」。 */
   chatRecordTitle?: string;
-  /** The message's key: the same message has the same key on every machine. It is opaque; only compare it. */
+  /** 消息的键：同一条消息在每台机器上的键都相同。键的内容不透明，只用来比较。 */
   messageKey: string;
   /**
    * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
@@ -687,136 +684,132 @@ export interface MemberMessages {
 }
 
 /**
- * A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399).
+ * 聊天窗口显示的一条消息（`chat messages --parsed` 和其他解析过的读取，#399）。
  *
- * It holds its text and the keys of its media, links, cards and so on, parsed from the row. An optional field is
- * left out when the message has none; times are Unix seconds.
+ * 其中有从行中解析出的文字，以及媒体、链接、卡片等的标识。消息没有的可选字段不输出；时间都是 Unix 秒。
  */
 export interface ChatMessage {
-  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
+  /** 本地 ID，即消息在所在分片的会话表中的行号；与 `createTime` 一起是 `chat message` 的键。 */
   localId: number;
-  /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
+  /** 十进制的服务器 ID：可能超过 2^53，所以是字符串。 */
   serverId: string;
-  /** WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…). */
+  /** 消息类型（1 文本、3 图片、34 语音、43 视频、47 表情、49 app 消息、10000 系统消息等）。 */
   localType: number;
-  /** When it was sent. */
+  /** 发送时间。 */
   createTime: number;
-  /** WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little. */
+  /** 消息在聊天窗口中的排序位置，通常是毫秒的发送时间加一个计数。 */
   sortSeq: number;
-  /** 1 when I sent it, 0 when I received it; null when the row does not say. */
+  /** 账号自己发的为 1，收到的为 0；行中没有时为 null。 */
   isSend: number | null;
-  /** Who sent it; null when the row does not say. */
+  /** 发送者：取行的发送者列，没有时取内容开头的 `<发送者>:`；都没有时为 null。 */
   senderUsername: string | null;
-  /** The text the chat window shows. */
+  /** 聊天窗口显示的文字。 */
   parsedContent: string;
-  /** The message as WeChat keeps it (often XML). */
+  /** 微信保存的消息原文（常是 XML）。 */
   rawContent: string;
-  /** A sticker's address on WeChat's servers. */
+  /** 表情在微信服务器上的地址。 */
   emojiCdnUrl?: string;
-  /** A sticker's MD5. */
+  /** 表情的 MD5。 */
   emojiMd5?: string;
-  /**
-   * What a reply quotes, as the exports preview it: a reply's or an image's, voice message's, video's, sticker's
-   * or place's that answers a message.
-   */
+  /** 回复所引用的内容，与导出写的预览相同：回复，以及回复某条消息的图片、语音、视频、表情和位置都有这一项。 */
   quotedContent?: string;
-  /** The name of whom a reply quotes. */
+  /** 被引用的人的名字。 */
   quotedSender?: string;
-  /** An image's MD5, as its XML gives it. */
+  /** 图片的 MD5，取自它的 XML。 */
   imageMd5?: string;
-  /** The name of an image's `.dat` file, from the row's packed info or the XML. */
+  /** 图片的 `.dat` 文件名，取自行的 `packed_info` 或 XML。 */
   imageDatName?: string;
-  /** The MD5 that names a video's file, in lowercase. */
+  /** 视频的 MD5（小写），视频文件以它命名。 */
   videoMd5?: string;
-  /** A voice's length in seconds, rounded. */
+  /** 语音的时长，四舍五入到秒。 */
   voiceDurationSeconds?: number;
-  /** An image's AES key on WeChat's servers (`<img aeskey>`). */
+  /** 图片在微信服务器上的 AES 密钥（`<img aeskey>`）。 */
   aesKey?: string;
-  /** An image's `encrypver`. */
+  /** 图片的 `encrypver`。 */
   encrypVer?: number;
-  /** The address of an image's or a sticker's thumbnail on WeChat's servers. */
+  /** 图片或表情的缩略图在微信服务器上的地址。 */
   cdnThumbUrl?: string;
-  /** The username a contact card shares. */
+  /** 名片分享的用户名。 */
   cardUsername?: string;
-  /** The nickname a contact card shows. */
+  /** 名片上显示的昵称。 */
   cardNickname?: string;
-  /** The address of a contact card's avatar. */
+  /** 名片头像的地址。 */
   cardAvatarUrl?: string;
-  /** A location's latitude. */
+  /** 位置的纬度。 */
   locationLat?: number;
-  /** A location's longitude. */
+  /** 位置的经度。 */
   locationLng?: number;
-  /** The name of a location's place. */
+  /** 位置的地点名称（`poiname`）。 */
   locationPoiname?: string;
-  /** A location's label, its address as WeChat shows it. */
+  /** 位置的标签（`label`），即微信显示的地址。 */
   locationLabel?: string;
   /**
-   * The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a
-   * quote, `2000` a transfer, `2001` a red packet…
+   * `<appmsg>` 的 `<type>`：`5` 链接，`6` 文件，`19` 聊天记录，`33`、`36` 小程序，`57` 引用，`2000` 转账，
+   * `2001` 红包等。
    */
   xmlType?: string;
-  /** The title: a link's or a mini program's, a file's name, a transfer's memo. */
+  /** 标题：链接或小程序的标题、文件名、转账的备注（没有备注时为金额）。 */
   linkTitle?: string;
-  /** The address it opens. */
+  /** 点开时打开的地址。 */
   linkUrl?: string;
-  /** The address of its thumbnail. */
+  /** 缩略图的地址。 */
   linkThumb?: string;
   /**
-   * What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,
-   * `red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`.
+   * 种类：`link`、`official-link`、`file`、`music`、`location`、`miniapp`、`chat-record`、`transfer`、
+   * `red-packet`、`gift`、`finder`、`quote`、`announcement`、`solitaire` 或 `card`。
    */
   appMsgKind?: string;
-  /** Its description (`<des>`). */
+  /** 描述（`<des>`，没有时为 `<description>`）。 */
   appMsgDesc?: string;
-  /** The name of the app that sent it (`<appname>`). */
+  /** 发出它的应用的名称（`<appname>`）。 */
   appMsgAppName?: string;
-  /** The name of the account it comes from (`<sourcename>`), such as an official account's. */
+  /** 来源账号的名称（`<sourcename>`），如公众号的名称。 */
   appMsgSourceName?: string;
-  /** The username of the account it comes from (`<sourceusername>`). */
+  /** 来源账号的用户名（`<sourceusername>`）。 */
   appMsgSourceUsername?: string;
-  /** The address of its thumbnail or cover. */
+  /** 缩略图或封面的地址。 */
   appMsgThumbUrl?: string;
-  /** The address of a song (`<musicurl>`, `<playurl>`). */
+  /** 歌曲的地址（`<musicurl>`、`<playurl>`）。 */
   appMsgMusicUrl?: string;
-  /** The address of its data (`<dataurl>`, `<lowurl>`). */
+  /** 数据的地址（`<dataurl>`、`<lowurl>`）。 */
   appMsgDataUrl?: string;
-  /** The label of a location it names. */
+  /** 消息自己的 XML 中写的地点（`<location>` 的 `label` 或 `poiname`）。 */
   appMsgLocationLabel?: string;
-  /** The name of a Channels account. */
+  /** 视频号账号的名称。 */
   finderNickname?: string;
-  /** The username of a Channels account. */
+  /** 视频号账号的用户名。 */
   finderUsername?: string;
-  /** A Channels video's cover. */
+  /** 视频号视频的封面。 */
   finderCoverUrl?: string;
-  /** The address of a Channels account's avatar. */
+  /** 视频号账号头像的地址。 */
   finderAvatar?: string;
-  /** A Channels video's length, in seconds. */
+  /** 视频号视频的时长，单位为秒。 */
   finderDuration?: number;
-  /** A song's album cover. */
+  /** 歌曲的专辑封面。 */
   musicAlbumUrl?: string;
-  /** A song's address to play. */
+  /** 歌曲的播放地址：依次取 `<musicurl>`、`<playurl>`、`<dataurl>`、`<lowurl>`、`<url>`。 */
   musicUrl?: string;
-  /** A gift's picture. */
+  /** 礼物的图片。 */
   giftImageUrl?: string;
-  /** A gift's wish. */
+  /** 礼物的祝福语。 */
   giftWish?: string;
-  /** A gift's price, as the message writes it. */
+  /** 礼物的价格，即消息中写的原文。 */
   giftPrice?: string;
-  /** A file's name. */
+  /** 文件名。 */
   fileName?: string;
-  /** A file's size, in bytes. */
+  /** 文件大小，单位为字节。 */
   fileSize?: number;
-  /** A file's extension, without its dot. */
+  /** 文件的扩展名，不带点。 */
   fileExt?: string;
-  /** A file's MD5, in lowercase. */
+  /** 文件的 MD5，小写。 */
   fileMd5?: string;
-  /** Who pays a transfer. */
+  /** 转账的付款方。 */
   transferPayerUsername?: string;
-  /** Who receives a transfer. */
+  /** 转账的收款方。 */
   transferReceiverUsername?: string;
-  /** A chat record's title; 「聊天记录」 when it has none. */
+  /** 聊天记录的标题；没有时为「聊天记录」。 */
   chatRecordTitle?: string;
-  /** The message's key: the same message has the same key on every machine. It is opaque; only compare it. */
+  /** 消息的键：同一条消息在每台机器上的键都相同。键的内容不透明，只用来比较。 */
   messageKey: string;
 }
 
