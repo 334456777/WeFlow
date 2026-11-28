@@ -2759,33 +2759,35 @@ export interface ModelProbe {
 }
 
 /**
- * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
- * Times are Unix milliseconds.
+ * `/jobs` 回答的一个作业（`Prefer: respond-async`，#398）：运行的命令、进度和结束的情况。
+ * 时间都是 Unix 毫秒。
  */
 export interface Job {
   id: string;
   status: JobStatus;
-  /** The command line it runs, `weflow` first (`weflow --json --progress export messages …`). */
+  /** 作业运行的命令行，第一项是 `weflow`（如 `weflow --json --progress export messages …`）。 */
   command: string[];
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;
   exitCode: number | null;
-  /** The status a synchronous request would have got. */
+  /** 同步请求会得到的 HTTP 状态。 */
   httpStatus: number | null;
-  /** The last `progress` event. */
+  /** 最后一个 `progress` 事件。 */
   progress: unknown;
-  /** The file of a job started with `return=file`, once it has succeeded: `GET /jobs/{id}/file`. */
+  /** 以 `return=file` 启动的作业成功后写出的文件，用 `GET /jobs/{id}/file` 取得。 */
   file: JobFile | null;
-  /** The command's `--json` document; only in `GET /jobs/{id}`. */
+  /** 命令的 `--json` 文档；只出现在 `GET /jobs/{id}`、`DELETE /jobs/{id}` 的回答和 `result` 事件中。 */
   result?: unknown;
 }
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
+/** 作业写出的文件。 */
 export interface JobFile {
+  /** 文件名。 */
   name: string | null;
-  /** In bytes. */
+  /** 字节数；读不到文件时为 `null`。 */
   size: number | null;
 }
 

@@ -1,15 +1,15 @@
-//! Which HTTP method each command takes.
+//! 每条命令使用的 HTTP 方法（[`METHODS`]），
+//! 以及不能通过 HTTP 调用的命令（[`HIDDEN`]）和由服务进程自己回答的命令（[`OWN_STATE`]）。
 
 use axum::http::Method;
 
 use Verb::*;
 
-/// Commands that are not reachable over HTTP.
+/// 不能通过 HTTP 调用的命令。
 pub(super) const HIDDEN: &[&str] = &["serve"];
 
-/// Commands that report what the server holds in its own process rather than what is in the files: the image
-/// auto-download hook it runs and the counts of its insight engine. `serve` answers them itself (`own_state`), as a
-/// command run in a child process would report a state of its own, which holds none of it (#1264).
+/// 报告服务进程自己持有的状态、而不是文件内容的命令：服务运行的原图自动下载钩子，以及见解引擎记下的次数。
+/// `serve` 自己回答这些命令（`own_state`），因为在子进程中运行的命令只能报告它自己的状态，其中没有这些（#1264）。
 pub(super) const OWN_STATE: &[&str] = &["image auto-download status", "insight today-stats"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,11 +31,12 @@ impl Verb {
     }
 }
 
-/// How the HTTP method of a command is chosen.
+/// 命令的 HTTP 方法怎样确定。
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Rule {
+    /// 固定用这个方法。
     Fixed(Verb),
-    /// `with` when the argument is given, `without` otherwise (`analytics excluded --set`).
+    /// 给了参数 `arg` 时用 `with`，否则用 `without`（如 `analytics excluded --set`）。
     Arg {
         arg: &'static str,
         without: Verb,
@@ -43,9 +44,8 @@ pub(super) enum Rule {
     },
 }
 
-/// The HTTP method of every command: `GET` reads (it may fill caches that can be rebuilt), `POST` runs a task or
-/// writes files, `PUT` changes a setting, `DELETE` removes one. `tests::every_command_has_a_method` keeps this table
-/// in step with the command tree.
+/// 每条命令的 HTTP 方法：`GET` 只读取（可能填充能够重建的缓存），`POST` 运行任务或写出文件，`PUT` 修改设置，
+/// `DELETE` 删除设置、记录或缓存。`tests::every_command_has_a_method` 保证这张表与命令树一致。
 pub(super) const METHODS: &[(&str, Rule)] = &[
     ("config path", Rule::Fixed(Get)),
     ("config list", Rule::Fixed(Get)),

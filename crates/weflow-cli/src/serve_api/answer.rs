@@ -1,5 +1,4 @@
-//! The answers: a command's `--json` document and its status, `?fields=`, and the media files of `/api/` routes
-//! with their byte ranges.
+//! 回答：命令的 `--json` 文档及其状态码、`?fields=`，以及 `/api/` 媒体路由的文件和字节范围。
 
 use std::path::PathBuf;
 
@@ -13,7 +12,7 @@ use super::endpoints::text_of;
 use super::http::{built, error_response, json_body};
 use super::in_process;
 
-/// A read run in this process that did not end (it panicked).
+/// 在服务进程内执行、没有正常结束（panic 了）的读取的回答。
 pub(super) fn failed_in_process(err: &tokio::task::JoinError) -> Response {
     error_response(
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -22,7 +21,7 @@ pub(super) fn failed_in_process(err: &tokio::task::JoinError) -> Response {
     )
 }
 
-/// The `--json` document of a command run in this process, answered as the child process prints it.
+/// 在服务进程内执行的命令的 `--json` 文档，按子进程打印的样子回答，并带上 `X-WeFlow-Exit-Code` 头。
 pub(super) fn in_process_document(doc: &Value, exit: u8, fields: Option<&[String]>) -> Response {
     let body = match fields {
         Some(fields) => json_line(&only_fields(doc.clone(), fields)),
@@ -34,12 +33,12 @@ pub(super) fn in_process_document(doc: &Value, exit: u8, fields: Option<&[String
     resp
 }
 
-/// A `--json` document as the command prints it: on one line.
+/// 按命令打印的样子写出 `--json` 文档：写在一行里，以换行结尾。
 pub(super) fn json_line(doc: &Value) -> String {
     format!("{doc}\n")
 }
 
-/// The names of `?fields=`: repeated, comma-separated, or a JSON array.
+/// `?fields=` 给出的列名：可以重复给出、用逗号分隔，或者写成 JSON 数组。
 pub(super) fn field_names(values: &[Value]) -> Vec<String> {
     values
         .iter()
@@ -56,8 +55,8 @@ pub(super) fn field_names(values: &[Value]) -> Vec<String> {
         .collect()
 }
 
-/// `?fields=` (issue #155): of a successful document, only the named keys of each row: the objects of `data` when
-/// it is a list, or of each list in `data` when it is an object. Anything else is left as it is.
+/// `?fields=`（#155）：成功的文档中每一行只留下指定的键。`data` 是列表时，行是其中的对象；
+/// `data` 是对象时，行是其中每个列表里的对象。其他内容保持原样。
 pub(super) fn only_fields(mut doc: Value, fields: &[String]) -> Value {
     if doc["success"] != true {
         return doc;
@@ -81,9 +80,10 @@ pub(super) fn only_fields(mut doc: Value, fields: &[String]) -> Value {
     doc
 }
 
-/// The file of an `/api/` media route. Its `ETag` lets a page ask again with `If-None-Match` and get `304`; the
-/// file of a message rarely changes (a thumbnail replaced by the full image), so it may be kept for an hour. A file
-/// on disk (a video) is read as it is sent, only the part asked for: its `ETag` comes from its size and time.
+/// `/api/` 媒体路由的文件，支持 `ETag` 和字节范围。
+///
+/// 页面可以带上 `If-None-Match` 和 `ETag` 再次请求，得到 `304`；消息的文件很少变化（缩略图换成大图），
+/// 所以可以缓存一小时。磁盘上的文件（视频）边读边发送，只读请求的部分，它的 `ETag` 由大小和修改时间生成。
 pub(super) fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response {
     use std::hash::{Hash, Hasher};
     let (etag, len) = match &file.body {
@@ -129,7 +129,7 @@ pub(super) fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -
     if unchanged {
         return built(builder.status(StatusCode::NOT_MODIFIED).body(Body::empty()));
     }
-    // `If-Range` asks for the part only while the file is the one it names
+    // 只有文件仍是 `If-Range` 指明的那个时，才按请求回答其中的一部分
     let same = headers
         .get(header::IF_RANGE)
         .and_then(|v| v.to_str().ok())
@@ -170,7 +170,7 @@ pub(super) fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -
     built(builder.header(header::CONTENT_LENGTH, count).body(body))
 }
 
-/// `count` bytes of a file from `first` on, read as they are sent: a video is not held in memory.
+/// 文件从 `first` 开始的 `count` 个字节，边读边发送：不把视频整个读进内存。
 fn file_part(path: PathBuf, first: u64, count: u64) -> Body {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
     let chunks = async_stream::stream! {
@@ -190,7 +190,7 @@ fn file_part(path: PathBuf, first: u64, count: u64) -> Body {
         while left > 0 {
             let want = buf.len().min(usize::try_from(left).unwrap_or(usize::MAX));
             match file.read(&mut buf[..want]).await {
-                // shorter than it was: the answer ends early, as its length says it should not
+                // 文件变短了：回答提前结束，与声明的长度不符，客户端因此知道出错了
                 Ok(0) => {
                     yield Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof));
                     return;
@@ -209,9 +209,9 @@ fn file_part(path: PathBuf, first: u64, count: u64) -> Body {
     Body::from_stream(chunks)
 }
 
-/// The one range of a `Range: bytes=…` header for a file of `len` bytes, as (first, last) byte, clamped to the file;
-/// `Err` when it starts past the end. `None` (the whole file) for a header that names several ranges or that this
-/// does not read, as RFC 9110 allows.
+/// `Range: bytes=…` 头对 `len` 字节的文件给出的唯一范围，写成首尾两个字节的位置（first, last），
+/// 超出文件的部分截掉；起点在文件末尾之后时为 `Err`。头给出多个范围或者无法解读时为 `None`（回答整个文件），
+/// RFC 9110 允许这样做。
 fn byte_range(header: &str, len: usize) -> Option<Result<(usize, usize), ()>> {
     let spec = header.trim().strip_prefix("bytes=")?.trim();
     if spec.contains(',') {
@@ -220,7 +220,7 @@ fn byte_range(header: &str, len: usize) -> Option<Result<(usize, usize), ()>> {
     let (from, to) = spec.split_once('-')?;
     let (from, to) = (from.trim(), to.trim());
     if from.is_empty() {
-        // the last `to` bytes
+        // 最后 `to` 个字节
         let n: usize = to.parse().ok()?;
         if n == 0 {
             return Some(Err(()));
@@ -238,7 +238,7 @@ fn byte_range(header: &str, len: usize) -> Option<Result<(usize, usize), ()>> {
     (first <= last).then_some(Ok((first, last)))
 }
 
-/// A command's `--json` document, with its error code in a header.
+/// 命令的 `--json` 文档，错误码写在 `X-WeFlow-Error-Code` 头里。
 pub(super) fn document_response(
     doc: &Value,
     status: StatusCode,
@@ -266,10 +266,10 @@ mod tests {
         assert_eq!(r("bytes=-10"), Some(Ok((90, 99))), "the last ten");
         assert_eq!(r("bytes=-500"), Some(Ok((0, 99))));
         assert_eq!(r(" bytes= 5 - 6 "), Some(Ok((5, 6))));
-        // past the end: 416
+        // 起点在文件末尾之后：416
         assert_eq!(r("bytes=100-"), Some(Err(())));
         assert_eq!(r("bytes=-0"), Some(Err(())));
-        // the whole file: several ranges, other units, nonsense, a range that ends before it starts
+        // 回答整个文件：多个范围、其他单位、无法解读的内容、终点在起点之前的范围
         for h in [
             "bytes=0-1,5-6",
             "items=0-1",

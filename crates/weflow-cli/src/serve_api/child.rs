@@ -1,12 +1,11 @@
-//! Commands run in a child process: the command line, the keys handed over on stdin, and the HTTP status of
-//! their outcome.
+//! 在子进程中运行的命令：命令行、通过 stdin 交给子进程的页密钥、自行结束的命令，以及结果的 HTTP 状态。
 
 use axum::http::StatusCode;
 use serde_json::Value;
 
 use crate::served::{CANCEL_ON_STDIN, KEYS_ON_STDIN};
 
-/// The server's language as `WEFLOW_LANG` names it, for its child processes.
+/// 服务端的语言，写成 `WEFLOW_LANG` 的取值，传给子进程。
 pub(super) fn server_lang() -> &'static str {
     match weflow_core::locale::current() {
         weflow_core::locale::Lang::Zh => "zh",
@@ -14,7 +13,7 @@ pub(super) fn server_lang() -> &'static str {
     }
 }
 
-/// `weflow <args>` with no stdin and both outputs captured.
+/// 运行 `weflow <args>` 的命令：没有 stdin，捕获 stdout 和 stderr。
 fn command(exe: &std::path::Path, args: &[String], lang: &str) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(exe);
     cmd.args(args)
@@ -22,14 +21,14 @@ fn command(exe: &std::path::Path, args: &[String], lang: &str) -> tokio::process
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        // the command is killed if its request or job goes away before it ends
+        // 请求或作业在命令结束之前没有了，就终止命令
         .kill_on_drop(true);
     cmd
 }
 
-/// Whether the command `args` runs must be let to end by itself rather than killed, as a killed one would leave its
-/// hook in WeChat: `key db` (#287) and `image auto-download start` (#809). Its stdin stays open while it runs; once it
-/// ends (the job cancelled, the request or the server gone), the command takes its hook out of WeChat and ends.
+/// `args` 运行的命令是否必须让它自己结束、而不能终止：被终止的命令会把钩子留在微信里，
+/// 这样的命令有 `key db`（#287）和 `image auto-download start`（#809）。命令运行期间 stdin 保持打开；
+/// stdin 关闭时（作业被取消、请求断开或服务停止），命令先把钩子撤出微信再结束。
 pub(super) fn ends_by_itself(args: &[String]) -> bool {
     let words: Vec<&str> = args
         .iter()
@@ -42,9 +41,8 @@ pub(super) fn ends_by_itself(args: &[String]) -> bool {
     )
 }
 
-/// [`command`], started, with the database keys this server derived written to its stdin
-/// ([`weflow_core::page_keys::export_keys`]): opening a database derives its key first (about 0.1 s), and the
-/// command does not have to do it again. The keys go through the pipe only, never to a file or the environment.
+/// 启动 [`command`]，把服务端已经派生的数据库页密钥写进它的 stdin（[`weflow_core::page_keys::export_keys`]）：
+/// 打开数据库时要先派生密钥（约 0.1 秒），命令不必再做一次。密钥只经过管道，不写进文件或环境变量。
 pub(super) async fn spawn(
     exe: &std::path::Path,
     args: &[String],
@@ -52,7 +50,7 @@ pub(super) async fn spawn(
 ) -> std::io::Result<tokio::process::Child> {
     let mut cmd = command(exe, args, lang);
     if ends_by_itself(args) {
-        // not killed when dropped: dropping its stdin ends it, once its hook is out of WeChat
+        // 丢弃时不终止：丢弃它的 stdin 后，它把钩子撤出微信，再自己结束
         cmd.stdin(std::process::Stdio::piped())
             .env(CANCEL_ON_STDIN, "1")
             .kill_on_drop(false);
@@ -65,27 +63,28 @@ pub(super) async fn spawn(
     }
     let mut child = cmd.spawn()?;
     if let Some(mut stdin) = child.stdin.take() {
-        // a command that ends without reading them did not need them; closing the pipe ends what it reads
+        // 写入出错时忽略：没读密钥就结束的命令本来就不需要它们。写完后关闭管道，命令读到结尾
         let _ = tokio::io::AsyncWriteExt::write_all(&mut stdin, &keys).await;
     }
     Ok(child)
 }
 
+/// 在子进程中运行 `weflow <args>`，等它结束，返回它的输出。
 pub(super) async fn run(
     exe: &std::path::Path,
     args: &[String],
     lang: &str,
 ) -> std::io::Result<std::process::Output> {
     let mut child = spawn(exe, args, lang).await?;
-    // `wait_with_output` closes stdin first, which would end a command that ends by itself (see [`spawn`]); it
-    // is held until the command ends, or dropped with the request
+    // `wait_with_output` 会先关闭 stdin，这会让自行结束的命令结束（见 [`spawn`]）；所以先取出 stdin，
+    // 保留到命令结束，或者随请求一起丢弃
     let stdin = child.stdin.take();
     let output = child.wait_with_output().await;
     drop(stdin);
     output
 }
 
-/// The HTTP status of a `--json` document: by its error code first, then by the exit code.
+/// `--json` 文档对应的 HTTP 状态：先看错误码，再看退出码。
 pub(super) fn status_for(doc: &Value, exit: i32) -> StatusCode {
     if exit == 0 && doc["success"] == Value::Bool(true) {
         return StatusCode::OK;
@@ -101,13 +100,14 @@ pub(super) fn status_for(doc: &Value, exit: i32) -> StatusCode {
     }
 }
 
+/// 只按退出码确定的 HTTP 状态。
 pub(super) fn status_for_exit(exit: i32) -> StatusCode {
     match exit {
         0 => StatusCode::OK,
         2 => StatusCode::BAD_REQUEST,
         3 => StatusCode::CONFLICT,
-        // the client closed the request (nginx's 499)
-        #[expect(clippy::expect_used, reason = "499 lies in the range of status codes")]
+        // 客户端关闭了请求（nginx 的 499）
+        #[expect(clippy::expect_used, reason = "499 在状态码的取值范围内")]
         130 => StatusCode::from_u16(499).expect("499 is a status code"),
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }

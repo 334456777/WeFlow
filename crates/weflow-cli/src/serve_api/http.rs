@@ -1,5 +1,4 @@
-//! HTTP around the routes: the access token, CORS, answering only requests that name this machine, compression
-//! and the server's own answers.
+//! 路由外围的 HTTP 处理：访问令牌、CORS、只回答指向本机的请求、压缩，以及服务自己的回答。
 
 use axum::body::Body;
 use axum::http::uri::Authority;
@@ -10,9 +9,8 @@ use serde_json::json;
 use super::bad_request;
 use super::rules::Verb;
 
-/// gzip or br, as `Accept-Encoding` asks (issue #155): a page of messages or the contacts are mostly repeated
-/// column names and XML. Not for what is compressed already or streamed: images, voices, videos, the files of
-/// `return=file`, the event streams, and a part of a file (`206`).
+/// 按 `Accept-Encoding` 用 gzip 或 br 压缩（#155）：一页消息或联系人大多是重复的列名和 XML。
+/// 已经压缩过的或流式发送的内容不压缩：图片、语音、视频、`return=file` 的文件、事件流，以及文件的一部分（`206`）。
 pub(super) fn compression(
 ) -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate> {
     use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
@@ -30,13 +28,14 @@ pub(super) fn compression(
     )
 }
 
+/// 状态码为 `status`、内容为 `body` 的 JSON 回答。
 pub(super) fn json_body(status: StatusCode, body: impl Into<Body>) -> Response {
     let content_type = HeaderValue::from_static("application/json; charset=utf-8");
     let body: Body = body.into();
     (status, [(header::CONTENT_TYPE, content_type)], body).into_response()
 }
 
-/// A redirect to `to`, a path on this server, which may carry the query of the request.
+/// 跳转到这个服务上的路径 `to`，`to` 可以带着请求的查询参数；`to` 不能作为头的值时回答 `400`。
 pub(super) fn redirect(status: StatusCode, to: &str) -> Response {
     match HeaderValue::from_str(to) {
         Ok(location) => (status, [(header::LOCATION, location)]).into_response(),
@@ -44,7 +43,7 @@ pub(super) fn redirect(status: StatusCode, to: &str) -> Response {
     }
 }
 
-/// The answer a builder made; `500` when one of the headers given to it is no valid header value.
+/// 构建器生成的回答；交给它的某个头不是有效的头的值时回答 `500`。
 pub(super) fn built(resp: Result<Response, axum::http::Error>) -> Response {
     resp.unwrap_or_else(|err| {
         error_response(
@@ -55,8 +54,8 @@ pub(super) fn built(resp: Result<Response, axum::http::Error>) -> Response {
     })
 }
 
-/// An error answered by the server itself, in the shape of a failed `--json` command and, as the commands' errors
-/// are, in the server's language (#1090).
+/// 服务自己回答的错误：格式与失败的 `--json` 命令相同，并且与命令的错误一样用服务端的语言（#1090）；
+/// 错误码同时写在 `X-WeFlow-Error-Code` 头里。
 pub(super) fn error_response(status: StatusCode, code: &str, message: &str) -> Response {
     let message = weflow_core::locale::localize(message.to_owned());
     let body = json!({ "success": false, "error": { "code": code, "message": message } });
@@ -68,6 +67,7 @@ pub(super) fn error_response(status: StatusCode, code: &str, message: &str) -> R
     resp
 }
 
+/// `405 Method Not Allowed`，`Allow` 头列出 `allowed` 中的方法。
 pub(super) fn method_not_allowed(allowed: &[Verb]) -> Response {
     let allow = allowed
         .iter()
@@ -79,22 +79,20 @@ pub(super) fn method_not_allowed(allowed: &[Verb]) -> Response {
         "method_not_allowed",
         &format!("method not allowed; use {allow}"),
     );
-    #[expect(
-        clippy::expect_used,
-        reason = "method names joined by commas are a valid header value"
-    )]
+    #[expect(clippy::expect_used, reason = "用逗号连接的方法名是有效的头的值")]
     let allow = HeaderValue::from_str(&allow).expect("method names are visible ASCII");
     resp.headers_mut().insert(header::ALLOW, allow);
     resp
 }
 
+/// 用恒定时间比较 `a` 和 `b`：耗时不随第一个不同的字节的位置变化，不能借此逐个字节猜出令牌。
 fn safe_equal(a: &str, b: &str) -> bool {
     let (x, y) = (a.as_bytes(), b.as_bytes());
     x.len() == y.len() && x.iter().zip(y).fold(0u8, |acc, (p, q)| acc | (p ^ q)) == 0
 }
 
-/// Whether the request gives the server's `token`, in an `Authorization: Bearer` header or an `access_token`
-/// parameter. An empty `token` lets no one in: an empty parameter would match it (#808).
+/// 请求是否在 `Authorization: Bearer` 头或 `access_token` 参数中给出了服务的 `token`。
+/// `token` 为空时谁也不放行：空的参数会与它相等（#808）。
 pub(super) fn authorized(token: &str, headers: &HeaderMap, query: &[(String, String)]) -> bool {
     if token.is_empty() {
         return false;
@@ -113,6 +111,7 @@ pub(super) fn authorized(token: &str, headers: &HeaderMap, query: &[(String, Str
             .any(|(k, v)| k == "access_token" && safe_equal(v.trim(), token))
 }
 
+/// 解码 URL 中的一段：`+` 是空格，`%XX` 按字节解码，不是 UTF-8 的字节换成替换字符。
 pub(super) fn url_decode(s: &str) -> String {
     String::from_utf8_lossy(&weflow_core::message::emoji::percent_decode_bytes(
         &s.replace('+', " "),
@@ -120,6 +119,7 @@ pub(super) fn url_decode(s: &str) -> String {
     .into_owned()
 }
 
+/// 把查询字符串拆成解码后的键值对，按出现的顺序排列；没有 `=` 的键的值为空。
 pub(super) fn query_pairs(query: Option<&str>) -> Vec<(String, String)> {
     query
         .unwrap_or("")
@@ -132,9 +132,9 @@ pub(super) fn query_pairs(query: Option<&str>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Allows pages served from this machine (the WebUI's dev server, for one) to call the API.
+/// 允许本机提供的页面（如 WebUI 的开发服务器）调用 API。
 pub(super) fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
-    // the origin is sent back as the request gave it
+    // 按请求给出的原样送回 origin
     let Some((value, origin)) = headers
         .get(header::ORIGIN)
         .and_then(|v| Some((v, v.to_str().ok()?)))
@@ -157,7 +157,7 @@ pub(super) fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
     if local {
         h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, value.clone());
         h.insert(header::VARY, HeaderValue::from_static("Origin"));
-        // the stages of `Server-Timing` in the page's own performance entries
+        // 让页面在自己的性能条目中读到 `Server-Timing` 的各阶段
         h.insert("timing-allow-origin", value.clone());
         h.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
@@ -177,8 +177,8 @@ pub(super) fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
     resp
 }
 
-/// Whether the request names this machine: `localhost` or a loopback address, with any port. A page of another
-/// site whose name it made resolve to 127.0.0.1 (DNS rebinding) sends that name and is refused.
+/// 请求是否指向本机：`localhost` 或回环地址，端口不限。
+/// 别的网站把自己的域名解析到 127.0.0.1（DNS 重绑定）后，它的页面发出的请求带着这个域名，因而被拒绝。
 pub(super) fn local_host(uri: &Uri, headers: &HeaderMap) -> bool {
     let authority = uri.authority().cloned().or_else(|| {
         headers
@@ -200,7 +200,7 @@ pub(super) fn local_host(uri: &Uri, headers: &HeaderMap) -> bool {
             .is_ok_and(|ip| ip.is_loopback())
 }
 
-/// A random access token for a run without a configured one.
+/// 没有配置访问令牌时这次运行使用的随机令牌：16 个随机字节写成 32 个十六进制字符。
 pub fn generate_token() -> String {
     let bytes: [u8; 16] = rand::random();
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -274,7 +274,7 @@ mod tests {
             assert!(!host(bad), "{bad}");
         }
         assert!(!local_host(&Uri::from_static("/"), &HeaderMap::new()));
-        // HTTP/2 and absolute-form requests carry the name in the URI
+        // HTTP/2 和绝对形式（absolute-form）的请求把主机名放在 URI 里
         assert!(local_host(
             &Uri::from_static("http://localhost:18108/health"),
             &HeaderMap::new()

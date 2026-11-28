@@ -1,16 +1,16 @@
-//! What tells a client the server is there (issue #221): `GET /health`, and `GET /health/events`, the same as a
-//! stream of server-sent events that a page keeps open instead of asking again and again.
+//! 让客户端知道服务还在（#221）：`GET /health`，以及内容相同、以服务器发送事件（server-sent events）推送的
+//! `GET /health/events`，网页让它一直开着，不必反复请求。
 //!
-//! - The stream starts with `event: hello`, whose data is `/health`'s; then `event: heartbeat` every 15 s, whose
-//!   data is `{"data": …}` (see [`Status::data`]). A heartbeat is an event, not a comment line: `EventSource` reports
-//!   no comment, and a page needs something it can see to tell a stream still alive from a half-open one.
-//! - Like `/health`, it needs no token (an `EventSource` cannot send a header, and a token in the address ends up
-//!   in logs and history) and is behind the `Host` check. It starts no work: no push engine, only the heartbeat.
-//! - `/api/push/messages` starts with the same `hello` and sends the same heartbeat, so a page listening to it
-//!   needs no second stream. `/jobs/{id}/events` sends a `heartbeat` as often, with empty data.
-//! - When the server is asked to stop (Ctrl+C or any other request `crate::stop` takes: SIGTERM, SIGHUP, a closed
-//!   console window, Windows logging off or shutting down), `/health/events` and `/api/push/messages` end with
-//!   `event: bye` (see [`Farewell`]), so a page can tell a server that stopped from one it lost.
+//! - 事件流以 `event: hello` 开始，数据与 `/health` 相同；之后每 15 秒一个 `event: heartbeat`，
+//!   数据为 `{"data": …}`（见 [`Status::data`]）。心跳是事件而不是注释行：`EventSource` 不报告注释，
+//!   网页需要看得见的东西来区分仍然活着的事件流和半开的连接。
+//! - 与 `/health` 一样不需要令牌（`EventSource` 不能发送请求头，而地址里的令牌会留在日志和浏览历史中），
+//!   同样经过 `Host` 检查。它不启动任何工作：没有推送引擎，只有心跳。
+//! - `/api/push/messages` 以同样的 `hello` 开始，发送同样的心跳，监听它的网页不需要第二个事件流。
+//!   `/jobs/{id}/events` 以同样的间隔发送数据为空的 `heartbeat`。
+//! - 服务被要求停止时（Ctrl+C 或 `crate::stop` 接受的其他停止请求：SIGTERM、SIGHUP、关闭控制台窗口、
+//!   Windows 注销或关机），`/health/events` 和 `/api/push/messages` 以 `event: bye` 结束（见 [`Farewell`]），
+//!   网页因此能区分已停止的服务和失去连接的服务。
 
 use std::convert::Infallible;
 use std::path::PathBuf;
@@ -26,7 +26,7 @@ use tokio::sync::watch;
 
 use super::API_VERSION;
 
-/// Says `bye` on every open event stream when the server stops.
+/// 服务停止时在每个打开的事件流上发送 `bye`。
 #[derive(Clone)]
 pub struct Farewell {
     stopping: Arc<watch::Sender<bool>>,
@@ -43,20 +43,20 @@ impl Default for Farewell {
 }
 
 impl Farewell {
-    /// Every open stream sends `bye` and ends; returns once they all did, or `within` passed.
+    /// 让每个打开的事件流发送 `bye` 并结束；全部结束或过了 `within` 后返回。
     pub async fn say(&self, within: Duration) {
         self.stopping.send_replace(true);
         let deadline = Instant::now() + within;
         while self.open.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        // the last `bye` handed over is still on its way out
+        // 最后交出去的 `bye` 可能还没发出
         if self.open.load(Ordering::SeqCst) == 0 {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
 
-    /// A stream that is open: it ends with `bye` once [`Farewell::say`] is called.
+    /// 登记一个打开的事件流：调用 [`Farewell::say`] 后，它以 `bye` 结束。
     pub(super) fn listen(&self) -> Listening {
         self.open.fetch_add(1, Ordering::SeqCst);
         Listening {
@@ -72,7 +72,7 @@ pub(super) struct Listening {
 }
 
 impl Listening {
-    /// Resolves when the server stops.
+    /// 服务停止时完成。
     pub(super) async fn stopping(&mut self) {
         let _ = self.stopping.wait_for(|stopping| *stopping).await;
     }
@@ -91,7 +91,7 @@ pub(super) fn bye() -> Bytes {
     ))
 }
 
-/// How often a stream sends `heartbeat`; `WEFLOW_SSE_HEARTBEAT_MS` sets another for tests.
+/// 事件流发送 `heartbeat` 的间隔，默认 15 秒；测试用 `WEFLOW_SSE_HEARTBEAT_MS` 另设。
 pub(super) fn heartbeat() -> Duration {
     static EVERY: OnceLock<Duration> = OnceLock::new();
     *EVERY.get_or_init(|| {
@@ -103,19 +103,18 @@ pub(super) fn heartbeat() -> Duration {
     })
 }
 
-/// What `/health` and `hello` say of the server.
+/// `/health` 和 `hello` 报告的服务状态。
 #[derive(Clone)]
 pub(super) struct Status {
-    /// Drawn at start, so `data` differs between two runs and tells nothing of the configuration.
+    /// 启动时随机生成，所以 `data` 在两次运行之间不同，也不透露配置的内容。
     seed: std::collections::hash_map::RandomState,
-    /// The configuration the commands read at start: the one `data` follows when the config file in use cannot be
-    /// located.
+    /// 服务启动时命令读取的配置文件：找不到当前使用的配置文件时，`data` 按它计算。
     config: PathBuf,
-    /// How it runs (issue #214): its limits and whether the insight engine runs; nothing of the account.
+    /// 服务的运行方式（#214）：各项上限和见解引擎是否在运行，不含账号的任何信息。
     server: Arc<Value>,
 }
 
-/// How a server runs, as `/health` says it.
+/// `/health` 报告的服务运行方式。
 pub(super) struct ServerInfo {
     pub(super) max_tasks: usize,
     pub(super) max_reads: usize,
@@ -139,10 +138,10 @@ impl Status {
         }
     }
 
-    /// `data` (issue #198): changes when the configuration does (so with the account the commands read) and with
-    /// each run, so a client knows when what it read before may be another account's. The configuration is the
-    /// file the commands read now, its path and its content: `config set config_path` chooses another file while the
-    /// server runs. A keyed hash, its key drawn at start: it says nothing of the configuration itself.
+    /// `data`（#198）：配置（因而命令读取的账号）变化时和每次启动时都会改变，
+    /// 客户端由此知道之前读到的内容可能属于另一个账号。配置指命令当前读取的文件，包括它的路径和内容：
+    /// 服务运行期间，`config set config_path` 可以换成另一个文件。它是带密钥的哈希，密钥在启动时随机生成，
+    /// 不透露配置本身的任何内容。
     pub(super) fn data(&self) -> String {
         use std::hash::BuildHasher;
         let path =
@@ -151,16 +150,16 @@ impl Status {
         format!("{:016x}", self.seed.hash_one((&path, &content)))
     }
 
-    /// The body of `/health`, and the data of `hello`.
+    /// `/health` 的回答，也是 `hello` 的数据。
     pub(super) fn health(&self) -> Value {
         let mut body = json!({
             "status": "ok",
             "apiVersion": API_VERSION,
             "version": env!("WEFLOW_VERSION"),
             "data": self.data(),
-            // the language of the server's answers, which the WebUI shows itself in too (#439)
+            // 服务端回答所用的语言，WebUI 也用它显示界面（#439）
             "lang": super::server_lang(),
-            // the system of the server's computer: `windows`, `macos` or `linux`
+            // 服务端所在计算机的系统：`windows`、`macos` 或 `linux`
             "platform": std::env::consts::OS,
         });
         if let (Some(body), Some(server)) = (body.as_object_mut(), self.server.as_object()) {
@@ -181,7 +180,7 @@ impl Status {
     }
 }
 
-/// An event stream of the command API, with its headers.
+/// 命令 API 的事件流回答：`no-transform` 和 `x-accel-buffering: no` 让代理（如 nginx）不缓冲、不改写事件流。
 pub(super) fn event_stream(body: Body) -> Response {
     (
         StatusCode::OK,
@@ -204,7 +203,7 @@ pub(super) fn event_stream(body: Body) -> Response {
         .into_response()
 }
 
-/// `GET /health/events`.
+/// `GET /health/events` 的事件流。
 pub(super) fn events(status: Status, farewell: &Farewell) -> Response {
     let mut listening = farewell.listen();
     let stream = async_stream::stream! {

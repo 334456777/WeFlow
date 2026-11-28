@@ -1,5 +1,5 @@
-//! `/jobs`, `/jobs/{id}`, `/jobs/{id}/events` and `/jobs/{id}/file`: the jobs of [`super::jobs`] over HTTP, as JSON,
-//! server-sent events and the file a job wrote. Only how they are shown is here; what a job does is in `jobs`.
+//! `/jobs`、`/jobs/{id}`、`/jobs/{id}/events` 和 `/jobs/{id}/file`：通过 HTTP 提供 [`super::jobs`] 的作业，
+//! 形式为 JSON、服务器发送事件和作业写出的文件。这里只管作业怎样呈现，作业做什么在 `jobs` 里。
 
 use std::sync::Arc;
 
@@ -21,17 +21,17 @@ fn success(status: StatusCode, data: Value) -> Response {
     json_body(status, json!({ "success": true, "data": data }).to_string())
 }
 
-/// The `202 Accepted` answer to a request that started `job`.
+/// 启动了 `job` 的请求的 `202 Accepted` 回答，`Location` 指向这个作业。
 pub(super) fn accepted(job: &Job) -> Response {
     let mut resp = success(StatusCode::ACCEPTED, job.to_json());
-    #[expect(clippy::expect_used, reason = "a job id is hex digits")]
+    #[expect(clippy::expect_used, reason = "作业 ID 由十六进制数字组成")]
     let location = HeaderValue::from_str(&format!("/jobs/{}", job.id))
         .expect("a job id is a valid header value");
     resp.headers_mut().insert(header::LOCATION, location);
     resp
 }
 
-/// `/jobs` and what is under it; `segments` are the path's, starting with `jobs`.
+/// `/jobs` 及其下的路由；`segments` 是路径的各段，以 `jobs` 开头。
 pub(super) async fn route(
     jobs: &Arc<Jobs>,
     method: &Method,
@@ -51,7 +51,7 @@ pub(super) async fn route(
             if method == Method::GET {
                 success(StatusCode::OK, job.to_json_with_result())
             } else if method == Method::DELETE {
-                // cancelled, or forgotten when it had ended: either way the job as it ended
+                // 作业还在运行时取消它，已经结束时忘掉它：两种情况都回答作业结束时的样子
                 let _ = jobs.cancel_or_forget(&job).await;
                 success(StatusCode::OK, job.to_json_with_result())
             } else {
@@ -90,10 +90,11 @@ pub(super) async fn route(
     }
 }
 
-/// What a job's stream sends while it is quiet: an event, as the other streams send (see `status`), without an id, so
-/// it leaves `Last-Event-ID` as it is.
+/// 作业的事件流没有事件时发送的内容：与其他事件流一样是一个事件（见 `status`），但不带 id，
+/// 所以不改变 `Last-Event-ID`。
 const HEARTBEAT: &[u8] = b"event: heartbeat\ndata: {}\n\n";
 
+/// 把作业的事件写成服务器发送事件，序号作为 id。
 fn sse(event: &Event) -> Bytes {
     Bytes::from(format!(
         "id: {}\nevent: {}\ndata: {}\n\n",
@@ -101,8 +102,8 @@ fn sse(event: &Event) -> Bytes {
     ))
 }
 
-/// `GET /jobs/{id}/events`: the events kept so far (after `Last-Event-ID`), then the new ones until `result`, with a
-/// `heartbeat` while it is quiet.
+/// `GET /jobs/{id}/events`：先发送已经保存的事件（`Last-Event-ID` 之后的），再发送新的事件，直到 `result`；
+/// 没有事件时发送 `heartbeat`。
 fn event_stream(job: Arc<Job>, after: u64) -> Response {
     let Subscription {
         replay,
@@ -132,7 +133,7 @@ fn event_stream(job: Arc<Job>, after: u64) -> Response {
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(_)) => {
-                            // fall back on the events kept in the job
+                            // 改从作业保存的事件中补发
                             let mut last = false;
                             for event in job.kept_after(highest) {
                                 highest = event.seq;

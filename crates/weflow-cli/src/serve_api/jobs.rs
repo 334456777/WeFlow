@@ -1,11 +1,11 @@
-//! Commands run in the background (`Prefer: respond-async`): their lifecycle, apart from HTTP (#398). A job is queued,
-//! runs once it has a place, and ends succeeded, failed or cancelled; its end is written once, with its `result`
-//! event, and nothing that comes later (a late progress line, a second cancel) changes it. Its events are kept for
-//! clients that subscribe late or reconnect. The routes that show jobs are in [`super::job_routes`]. Jobs live in
-//! memory only; the most recent finished ones are kept for [`KEEP_FINISHED`] lookups.
+//! 在后台运行的命令（`Prefer: respond-async`）：作业的生命周期，与 HTTP 无关（#398）。
 //!
-//! A job runs its command in a child process (see [`run_child`]): a long task or an export that crashes does not take
-//! the server down, and cancelling it kills the process, which frees its memory and files for sure.
+//! 作业先排队，有空位后运行，结束于成功、失败或取消；结束状态只写一次，与 `result` 事件一起写入，
+//! 之后到来的事情（迟到的进度行、第二次取消）都不会改变它。作业的事件会保存下来，供晚订阅或重连的客户端读取。
+//! 呈现作业的路由在 [`super::job_routes`]。作业只保存在内存中，已结束的作业保留最近的 [`KEEP_FINISHED`] 个。
+//!
+//! 作业在子进程中运行命令（见 [`run_child`]）：长时间运行的任务或导出崩溃时不会拖垮服务，
+//! 取消作业时终止进程，一定能释放它占用的内存和文件。
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -18,13 +18,13 @@ use weflow_core::sync::MutexExt;
 
 use super::child::status_for;
 
-/// Finished jobs kept for `GET /jobs`; older ones are forgotten.
+/// `GET /jobs` 保留的已结束作业数，更早的被忘掉。
 const KEEP_FINISHED: usize = 100;
 
-/// Events kept per job for clients that subscribe late or reconnect.
+/// 每个作业保存的事件数，供晚订阅或重连的客户端读取。
 const KEEP_EVENTS: usize = 1000;
 
-/// How long a cancelled command that ends by itself (`key db`) has to, before it is killed.
+/// 被取消的自行结束的命令（如 `key db`）有多长时间自己结束，超时后被终止。
 const CLEAN_UP: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
@@ -44,39 +44,41 @@ impl Status {
     }
 }
 
-/// A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
-/// Times are Unix milliseconds.
+/// `/jobs` 回答的一个作业（`Prefer: respond-async`，#398）：运行的命令、进度和结束的情况。
+/// 时间都是 Unix 毫秒。
 #[derive(serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 #[schemars(rename = "Job")]
 pub(super) struct JobView {
     pub(super) id: String,
     pub(super) status: Status,
-    /// The command line it runs, `weflow` first (`weflow --json --progress export messages …`).
+    /// 作业运行的命令行，第一项是 `weflow`（如 `weflow --json --progress export messages …`）。
     pub(super) command: Vec<String>,
     pub(super) created_at: u64,
     pub(super) started_at: Option<u64>,
     pub(super) finished_at: Option<u64>,
     pub(super) exit_code: Option<i32>,
-    /// The status a synchronous request would have got.
+    /// 同步请求会得到的 HTTP 状态。
     pub(super) http_status: Option<u16>,
-    /// The last `progress` event.
+    /// 最后一个 `progress` 事件。
     pub(super) progress: Option<Value>,
-    /// The file of a job started with `return=file`, once it has succeeded: `GET /jobs/{id}/file`.
+    /// 以 `return=file` 启动的作业成功后写出的文件，用 `GET /jobs/{id}/file` 取得。
     pub(super) file: Option<JobFile>,
-    /// The command's `--json` document; only in `GET /jobs/{id}`.
+    /// 命令的 `--json` 文档；只出现在 `GET /jobs/{id}`、`DELETE /jobs/{id}` 的回答和 `result` 事件中。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) result: Option<Value>,
 }
 
+/// 作业写出的文件。
 #[derive(serde::Serialize, schemars::JsonSchema)]
 pub(super) struct JobFile {
+    /// 文件名。
     pub(super) name: Option<String>,
-    /// In bytes.
+    /// 字节数；读不到文件时为 `null`。
     pub(super) size: Option<u64>,
 }
 
-/// One event of a job: its sequence number (the SSE `id`), name and JSON data.
+/// 作业的一个事件：序号（服务器发送事件的 `id`）、名称和 JSON 数据。
 #[derive(Clone, Debug)]
 pub(super) struct Event {
     pub seq: u64,
@@ -85,28 +87,30 @@ pub(super) struct Event {
 }
 
 impl Event {
-    /// The last event of a job.
+    /// 是否是作业的最后一个事件 `result`。
     pub(super) fn is_result(&self) -> bool {
         self.name == "result"
     }
 }
 
+/// 作业会变化的部分，由 `Job::state` 的锁保护。
 struct State {
     status: Status,
     started: Option<u64>,
     finished: Option<u64>,
     exit_code: Option<i32>,
     http_status: Option<u16>,
-    /// The last `progress` event.
+    /// 最后一个 `progress` 事件。
     progress: Option<Value>,
-    /// The `--json` document of the command (or the server's own error document).
+    /// 命令的 `--json` 文档（或者服务自己的错误文档）。
     result: Option<Value>,
     events: VecDeque<Event>,
     next_seq: u64,
-    /// The file the command wrote, for a job started with `?return=file` that succeeded.
+    /// 以 `?return=file` 启动并成功的作业，命令写出的文件。
     file: Option<PathBuf>,
 }
 
+/// 一个作业：命令、状态、事件，以及取消它的开关。
 pub(super) struct Job {
     pub id: String,
     command: Vec<String>,
@@ -114,12 +118,11 @@ pub(super) struct Job {
     state: Mutex<State>,
     sender: broadcast::Sender<Event>,
     cancel: watch::Sender<bool>,
-    /// Where the command writes its file, for a job started with `?return=file`.
+    /// 以 `?return=file` 启动的作业，命令把文件写到哪里。
     file_out: Option<super::FileOut>,
 }
 
-/// What a subscriber of a job's events gets: the events kept after the one it last saw, then the new ones from
-/// `live` unless the job had ended.
+/// 订阅作业的事件时得到的：它最后看到的事件之后保存的事件，以及作业尚未结束时 `live` 送来的新事件。
 pub(super) struct Subscription {
     pub replay: Vec<Event>,
     pub live: broadcast::Receiver<Event>,
@@ -158,12 +161,12 @@ impl Job {
         }
     }
 
-    /// The job as JSON, without the command's result.
+    /// 不含命令结果的作业 JSON。
     pub(super) fn to_json(&self) -> Value {
         self.json_of(&self.state.lock_or_panic(), false)
     }
 
-    /// The job as JSON, with the command's result once it has one.
+    /// 含命令结果的作业 JSON；还没有结果时 `result` 为 `null`。
     pub(super) fn to_json_with_result(&self) -> Value {
         self.json_of(&self.state.lock_or_panic(), true)
     }
@@ -191,13 +194,12 @@ impl Job {
         self.state.lock_or_panic().status
     }
 
-    /// The file the job wrote, once it succeeded with one.
+    /// 作业成功并写出了文件时，这个文件。
     pub(super) fn file(&self) -> Option<PathBuf> {
         self.state.lock_or_panic().file.clone()
     }
 
-    /// Records an event and sends it to the subscribers, under the lock of `st`, so a subscriber sees each event
-    /// either among those kept or as a new one.
+    /// 在持有 `st` 的锁时记下一个事件并发给订阅者，所以订阅者看到的每个事件，要么在保存的事件中，要么是新事件。
     fn emit(&self, st: &mut State, name: &str, data: String) {
         let event = Event {
             seq: st.next_seq,
@@ -209,11 +211,11 @@ impl Job {
             st.events.pop_front();
         }
         st.events.push_back(event.clone());
-        // no subscriber is fine
+        // 没有订阅者也没关系
         let _ = self.sender.send(event);
     }
 
-    /// Queued → running; a job cancelled meanwhile stays cancelled.
+    /// 从排队变为运行；这期间被取消的作业保持取消，返回 `false`。
     fn set_running(&self) -> bool {
         let mut st = self.state.lock_or_panic();
         if st.status != Status::Queued {
@@ -229,8 +231,8 @@ impl Job {
         true
     }
 
-    /// One line the command wrote on stderr: its NDJSON events keep their `type` as the event name, any other
-    /// text becomes a `stderr` event. A line that comes after the end is dropped.
+    /// 命令在 stderr 写出的一行：NDJSON 事件用它的 `type` 作为事件名，没有有效 `type` 的 JSON 对象成为 `message`
+    /// 事件，其他文字成为 `stderr` 事件。作业结束后到来的行被丢弃。
     fn stderr_line(&self, line: &str) {
         let line = line.trim_end_matches(['\r', '\n']);
         if line.trim().is_empty() {
@@ -259,8 +261,8 @@ impl Job {
         }
     }
 
-    /// Ends the job, once: the status, the result and the `result` event under one lock. `false` when it had ended
-    /// already, and nothing changes.
+    /// 结束作业，只结束一次：在同一把锁下写入状态、结果和 `result` 事件。
+    /// 作业已经结束时返回 `false`，什么也不改变。
     fn finish(
         &self,
         status: Status,
@@ -297,7 +299,7 @@ impl Job {
         true
     }
 
-    /// The events after `after` (an SSE `Last-Event-ID`), and the new ones.
+    /// `after`（服务器发送事件的 `Last-Event-ID`）之后的事件，以及新的事件。
     pub(super) fn subscribe(&self, after: u64) -> Subscription {
         let st = self.state.lock_or_panic();
         Subscription {
@@ -312,7 +314,7 @@ impl Job {
         }
     }
 
-    /// The events kept after `after`, for a subscriber that fell behind.
+    /// `after` 之后保存的事件，供落后的订阅者补读。
     pub(super) fn kept_after(&self, after: u64) -> Vec<Event> {
         let st = self.state.lock_or_panic();
         st.events
@@ -322,7 +324,7 @@ impl Job {
             .collect()
     }
 
-    /// Removes the folder the server chose for the job's file (`serve-files/<id>/`); a given `out` stays.
+    /// 删除服务端为作业的文件选定的文件夹（`files_dir` 下请求自己的文件夹）；请求自己给的 `out` 保留。
     fn remove_folder(&self) {
         if let Some(dir) = self.file_out.as_ref().and_then(|f| f.dir.as_ref()) {
             let _ = std::fs::remove_dir_all(dir);
@@ -330,16 +332,17 @@ impl Job {
     }
 }
 
+/// 服务的全部作业，按启动的先后排列。
 pub(super) struct Jobs {
     list: Mutex<VecDeque<Arc<Job>>>,
 }
 
-/// What [`Jobs::cancel_or_forget`] did.
+/// [`Jobs::cancel_or_forget`] 做了什么。
 #[must_use]
 pub(super) enum Ended {
-    /// The job was queued or running, and has ended (or did not end within the wait).
+    /// 作业原本在排队或运行，现在已经结束（或者在等待时间内没有结束）。
     Cancelled,
-    /// The job had ended: it is forgotten.
+    /// 作业早已结束：把它忘掉。
     Forgotten,
 }
 
@@ -362,7 +365,7 @@ impl Jobs {
         self.list.lock_or_panic().iter().cloned().collect()
     }
 
-    /// Forgets the oldest finished jobs beyond [`KEEP_FINISHED`].
+    /// 已结束的作业超过 [`KEEP_FINISHED`] 个时，忘掉最早的几个，并删除服务端为它们选定的文件夹。
     fn prune(&self) {
         let mut list = self.list.lock_or_panic();
         let mut finished = list.iter().filter(|j| j.status().finished()).count();
@@ -377,8 +380,8 @@ impl Jobs {
         });
     }
 
-    /// Queues `args` (after `weflow`) and runs them in a child process once `limit` lets it; returns the new job.
-    /// With `file_out` (`?return=file`), the job keeps the file the command wrote for `GET /jobs/{id}/file`.
+    /// 让 `args`（`weflow` 之后的部分）排队，`limit` 有空位时在子进程中运行，返回新的作业。
+    /// 带 `file_out`（`?return=file`）时，作业保留命令写出的文件，供 `GET /jobs/{id}/file` 取得。
     pub(super) fn start(
         self: &Arc<Self>,
         exe: PathBuf,
@@ -405,7 +408,7 @@ impl Jobs {
         job
     }
 
-    /// Cancels a queued or running job, waiting (10 s at most) for it to end, or forgets a job that had ended.
+    /// 取消排队或运行中的作业，最多等 10 秒让它结束；作业已经结束时忘掉它，并删除服务端为它选定的文件夹。
     pub(super) async fn cancel_or_forget(&self, job: &Arc<Job>) -> Ended {
         let mut events = job.sender.subscribe();
         if job.status().finished() {
@@ -414,7 +417,7 @@ impl Jobs {
             return Ended::Forgotten;
         }
         let _ = job.cancel.send(true);
-        // the child is killed right away; wait for the job to record it
+        // 子进程被终止（自行结束的命令有 `CLEAN_UP` 的时间自己结束）；等作业记下它的结束
         let wait = async {
             while !job.status().finished() {
                 match events.recv().await {
@@ -428,6 +431,7 @@ impl Jobs {
     }
 }
 
+/// 被取消的作业的结果：`user_interrupt` 错误。
 pub(super) fn cancelled_result() -> Value {
     json!({
         "success": false,
@@ -435,8 +439,8 @@ pub(super) fn cancelled_result() -> Value {
     })
 }
 
-/// A job's life: queued until `limit` gives it a place, then running `work`, then ended, or cancelled at any point.
-/// `work` ends the job itself; cancelling it is up to `work` too, which hears of it from `cancelled`.
+/// 作业的一生：排队直到 `limit` 给出空位，然后运行 `work`，再结束；任何时候都可能被取消。
+/// `work` 自己结束作业；运行中的取消也由 `work` 处理，它从 `cancelled` 得知取消。
 async fn run<'a, W, F>(
     job: &'a Job,
     limit: Arc<Semaphore>,
@@ -446,7 +450,7 @@ async fn run<'a, W, F>(
     W: FnOnce(&'a Job, watch::Receiver<bool>) -> F,
     F: std::future::Future<Output = ()> + 'a,
 {
-    #[expect(clippy::expect_used, reason = "the job semaphores are never closed")]
+    #[expect(clippy::expect_used, reason = "作业用的信号量从不关闭")]
     let _place = tokio::select! {
         place = limit.acquire_owned() => place.expect("the semaphore is never closed"),
         _ = cancelled.wait_for(|c| *c) => {
@@ -460,8 +464,8 @@ async fn run<'a, W, F>(
     work(job, cancelled).await;
 }
 
-/// Runs the job's command in a child process: its stderr lines become the job's events, its stdout the result. A
-/// cancel kills the process.
+/// 在子进程中运行作业的命令：stderr 的每一行成为作业的事件，stdout 成为结果。取消时终止进程；
+/// 自行结束的命令先关闭它的 stdin，[`CLEAN_UP`] 内没有结束才终止。
 async fn run_child(
     job: &Job,
     exe: PathBuf,
@@ -480,20 +484,20 @@ async fn run_child(
             return;
         }
     };
-    #[expect(clippy::expect_used, reason = "`spawn` pipes stdout and stderr")]
+    #[expect(clippy::expect_used, reason = "`spawn` 为 stdout 和 stderr 建了管道")]
     let (mut stdout, stderr) = (
         child.stdout.take().expect("stdout is piped"),
         child.stderr.take().expect("stderr is piped"),
     );
-    // `Child::wait` closes stdin first, which would end at once a command that ends by itself (`key db`, see
-    // `spawn`): held until the job is cancelled
+    // `Child::wait` 会先关闭 stdin，这会让自行结束的命令（`key db`，见 `spawn`）立即结束：
+    // 所以先取出 stdin，保留到作业被取消
     let stdin = child.stdin.take();
     let out = tokio::spawn(async move {
         let mut buf = Vec::new();
         let _ = stdout.read_to_end(&mut buf).await;
         buf
     });
-    // stderr is read in a task of its own and its lines are handed over here, where `job` can be borrowed
+    // stderr 在单独的任务里读取，各行交到这里处理，这里可以借用 `job`
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     let reader = tokio::spawn(async move {
         let mut reader = tokio::io::BufReader::new(stderr);
@@ -525,7 +529,7 @@ async fn run_child(
         _ = cancelled.wait_for(|c| *c) => None,
     };
     let Some(status) = waited else {
-        // a command that ends by itself is asked to (#287), and killed only when it has not within a while
+        // 让自行结束的命令自己结束（#287），过一段时间仍没有结束才终止它
         let asked = stdin.is_some();
         drop(stdin);
         if !asked || tokio::time::timeout(CLEAN_UP, child.wait()).await.is_err() {
@@ -536,7 +540,7 @@ async fn run_child(
     };
     let stdout = out.await.unwrap_or_default();
     let stderr_tail = reader.await.unwrap_or_default();
-    // killed by a signal: no exit code
+    // 被信号终止时没有退出码
     let exit = status.ok().and_then(|s| s.code()).unwrap_or(-1);
     match serde_json::from_slice::<Value>(&stdout) {
         Ok(doc) => {
@@ -625,7 +629,7 @@ mod tests {
         );
     }
 
-    /// The end is written once: a second end, a late progress line or a cancel after it change nothing.
+    /// 结束状态只写一次：之后的第二次结束、迟到的进度行或取消都不改变它。
     #[test]
     fn the_end_of_a_job_is_written_once() {
         let job = job();
@@ -642,9 +646,8 @@ mod tests {
         assert_eq!(job.state.lock().unwrap().events.len(), events);
     }
 
-    /// A subscriber gets the `result` event whenever it subscribes, also at the moment the job ends (#396, risk 1):
-    /// subscribing over and over while another thread ends the job, each subscription that finds the job ended has
-    /// the result among the events kept, and the others get it as a new event.
+    /// 订阅者不论何时订阅都能收到 `result` 事件，在作业结束的那一刻订阅也一样（#396 的风险 1）：
+    /// 另一个线程结束作业时反复订阅，发现作业已结束的订阅在保存的事件中有结果，其余的订阅把它作为新事件收到。
     #[test]
     fn a_subscriber_gets_the_result_however_close_to_the_end_it_comes() {
         for _ in 0..200 {
@@ -687,7 +690,7 @@ mod tests {
     #[tokio::test]
     async fn a_queued_job_is_cancelled_before_it_runs_and_then_forgotten() {
         let jobs = Arc::new(Jobs::new());
-        // no place: the job waits in line
+        // 没有空位：作业排队等待
         let limit = Arc::new(Semaphore::new(0));
         let job = jobs.start(
             PathBuf::from("weflow-that-is-not-there"),

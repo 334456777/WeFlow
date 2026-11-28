@@ -1,16 +1,14 @@
-//! The WebUI under `/ui/` (issue #146): the files of a built WebUI (`web/dist`), read-only, without the token (the
-//! page brings it in its address and sends it with each API request), and still behind the `Host` check.
+//! `/ui/` 下的 WebUI（#146）：构建好的 WebUI（`web/dist`）的文件，只读，不需要令牌（令牌在页面的地址里，
+//! 页面在每个 API 请求中带上它），但同样经过 `Host` 检查。
 //!
-//! - `/ui` goes to `/ui/`, and `/ui/` is the page's `index.html`.
-//! - A path of the page's own (no extension: `/ui/chat`) that is not a file gets `index.html` too, so the page can
-//!   route it; a missing file with an extension (`/ui/assets/x.js`) answers `404`, never the page. Nothing outside
-//!   `/ui/` falls back: an unknown API path stays a `404`.
-//! - Only files inside the folder are served: `..` and the like answer `404`, and a link leading out of the folder
-//!   is not followed.
-//! - The built assets (`/ui/assets/`, named by their content) are cached for good; everything else is asked again
-//!   each time, so a new version shows at once. The page is sent with `Referrer-Policy: no-referrer`: its address
-//!   holds the token until it removes it. It also carries a `Content-Security-Policy` (#818, see
-//!   `content_security_policy`) and may not be framed.
+//! - `/ui` 跳转到 `/ui/`，`/ui/` 是页面的 `index.html`。
+//! - 页面自己的路径（没有扩展名，如 `/ui/chat`）不是文件时同样回答 `index.html`，由页面自己路由；
+//!   缺少的带扩展名的文件（`/ui/assets/x.js`）回答 `404`，不回答页面。`/ui/` 以外的路径不会退回到页面：
+//!   未知的 API 路径仍是 `404`。
+//! - 只提供文件夹里的文件：`..` 之类的路径回答 `404`，不跟随指向文件夹外的链接。
+//! - 构建出的资源（`/ui/assets/`，按内容命名）永久缓存；其他文件每次都重新请求，新版本因此立即生效。
+//!   页面带 `Referrer-Policy: no-referrer` 发送：页面删掉地址里的令牌之前，令牌一直在地址里。页面还带
+//!   `Content-Security-Policy`（#818，见 `content_security_policy`），且不能放进框架（frame）。
 
 use std::path::{Path, PathBuf};
 
@@ -22,19 +20,19 @@ mod pending;
 
 pub use pending::Pending;
 
-/// What `/ui/` shows: a page, or why there is none.
+/// `/ui/` 显示的内容：页面，或者没有页面的原因。
 #[derive(Clone, Debug)]
 pub enum Ui {
-    /// A built WebUI.
+    /// 构建好的 WebUI。
     Page(UiDir),
-    /// No page while the version wanted is downloaded beside the server, or after that failed (issue #946).
+    /// 要显示的版本在服务启动后下载期间，或者下载失败后，没有页面（#946）。
     Pending(Pending),
-    /// No page at all: `--api-only`, or no version to show.
+    /// 完全没有页面：`--api-only`，或者没有可显示的版本。
     Absent,
 }
 
 impl Ui {
-    /// The page shown, if any.
+    /// 显示的页面；没有时为 `None`。
     pub fn page(&self) -> Option<&UiDir> {
         match self {
             Self::Page(dir) => Some(dir),
@@ -43,7 +41,7 @@ impl Ui {
     }
 }
 
-/// The answer of `/ui/…` (`rest` as for [`serve`]): the page's files, or when there is none, why.
+/// `/ui/…` 的回答（`rest` 与 [`serve`] 的相同）：页面的文件；没有页面时说明原因。
 pub async fn answer(ui: &Ui, method: &Method, rest: &str, query: Option<&str>) -> Response {
     match ui {
         Ui::Page(dir) => serve(dir, method, rest, query).await,
@@ -56,19 +54,19 @@ pub async fn answer(ui: &Ui, method: &Method, rest: &str, query: Option<&str>) -
     }
 }
 
-/// A folder holding a built WebUI.
+/// 存放构建好的 WebUI 的文件夹。
 #[derive(Clone, Debug)]
 pub struct UiDir {
-    /// Resolved (links followed), to tell what lies inside it.
+    /// 解析过的路径（跟随了链接），用来判断一个文件是否在它里面。
     root: PathBuf,
-    /// The version kept by `weflow web` it is, if it is one.
+    /// 它是 `weflow web` 保存的版本时，这个版本号。
     version: Option<String>,
-    /// Keeps that version from `weflow web prune` while the server shows it.
+    /// 服务显示这个版本期间，防止 `weflow web prune` 删掉它。
     _hold: Option<std::sync::Arc<std::fs::File>>,
 }
 
 impl UiDir {
-    /// The folder, when it holds a page (`index.html`).
+    /// `dir` 中有页面（`index.html`）时打开它。
     pub fn open(dir: &Path) -> Option<Self> {
         let root = std::fs::canonicalize(dir).ok()?;
         root.join("index.html").is_file().then_some(Self {
@@ -78,7 +76,7 @@ impl UiDir {
         })
     }
 
-    /// A version kept by `weflow web`, held (see `WebStore::hold`) for as long as this or a clone of it lives.
+    /// 打开 `weflow web` 保存的版本 `version`，在这个值或它的克隆存在期间一直占用这个版本（见 `WebStore::hold`）。
     pub fn open_version(store: &weflow_core::webui::WebStore, version: &str) -> Option<Self> {
         let hold = store.hold(version).ok()?;
         Self::open(&store.dir(version)).map(|ui| Self {
@@ -88,11 +86,12 @@ impl UiDir {
         })
     }
 
+    /// 它是 `weflow web` 保存的版本时的版本号。
     pub fn version(&self) -> Option<&str> {
         self.version.as_deref()
     }
 
-    /// The file a path inside the folder names, when it is one and lies inside the folder.
+    /// 文件夹内的路径 `segments` 指向的文件；不是文件或在文件夹之外时为 `None`。
     fn file(&self, segments: &[String]) -> Option<PathBuf> {
         let mut path = self.root.clone();
         path.extend(segments);
@@ -101,8 +100,8 @@ impl UiDir {
     }
 }
 
-/// The answer to `rest`, what follows `/ui` in the path (`""`, `"/"`, `"/assets/index.js"`, …); `query` is kept
-/// when going from `/ui` to `/ui/`.
+/// 对 `rest`（路径中 `/ui` 之后的部分：`""`、`"/"`、`"/assets/index.js"` 等）的回答；
+/// 从 `/ui` 跳转到 `/ui/` 时保留 `query`。
 pub async fn serve(ui: &UiDir, method: &Method, rest: &str, query: Option<&str>) -> Response {
     if rest.is_empty() {
         let to = format!("/ui/{}", query.map(|q| format!("?{q}")).unwrap_or_default());
@@ -125,7 +124,7 @@ pub async fn serve(ui: &UiDir, method: &Method, rest: &str, query: Option<&str>)
         ui.file(&["index.html".into()])
     } else {
         ui.file(&segments).or_else(|| {
-            // a path of the page's own: no extension, and not among the built assets
+            // 页面自己的路径：没有扩展名，也不在构建出的资源中
             let last = segments.last().map(String::as_str).unwrap_or("");
             (!last.contains('.') && segments[0] != "assets")
                 .then(|| ui.file(&["index.html".into()]))
@@ -138,8 +137,7 @@ pub async fn serve(ui: &UiDir, method: &Method, rest: &str, query: Option<&str>)
     }
 }
 
-/// The decoded segments of a path, or `None` when one would leave the folder or name something else than a file in
-/// it (`..`, `.`, a drive, a backslash, a NUL).
+/// 路径解码后的各段；某一段会离开文件夹，或者指向的不是其中的文件时（`..`、`.`、盘符、反斜杠、NUL）为 `None`。
 fn segments(rest: &str) -> Option<Vec<String>> {
     let mut out = Vec::new();
     for raw in rest.split('/').filter(|s| !s.is_empty()) {
@@ -164,6 +162,7 @@ fn not_found() -> Response {
     )
 }
 
+/// 发送 `file`，`head` 为真时只发送头；缓存方式和页面的安全头见模块文档。
 async fn send(ui: &UiDir, file: &Path, head: bool) -> Response {
     let Ok(bytes) = tokio::fs::read(file).await else {
         return not_found();
@@ -212,12 +211,13 @@ async fn send(ui: &UiDir, file: &Path, head: bool) -> Response {
     resp
 }
 
-/// The `Content-Security-Policy` of a page (#818). The page holds the token of the command API, so a script of someone
-/// else's in it could run any command: scripts come only from the folder, besides the page's own inline ones named by
-/// their hash (the theme set before the first paint, `web/index.html`), and the page talks to this server alone.
-/// Pictures also come from WeChat's servers (avatars, stickers, link covers; over `http:` as often as `https:`), and
-/// styles may be inline (the renderer's `style` attributes): with pictures from anywhere, a style could send out no
-/// more than a picture could. No other site may show the page in a frame.
+/// 页面的 `Content-Security-Policy`（#818）。
+///
+/// 页面持有命令 API 的令牌，混进页面的他人脚本可以运行任何命令：脚本只能来自文件夹，
+/// 另外只允许页面自己按哈希列出的内联脚本（`web/index.html` 中在首次绘制前设置主题的脚本），
+/// 页面也只能与这个服务通信。图片还可以来自微信的服务器（头像、表情、链接封面；`http:` 和 `https:` 一样常见），
+/// 样式可以内联（渲染器的 `style` 属性）：既然图片可以来自任何地方，样式能发出去的东西不会比图片多。
+/// 其他网站不能把页面放进框架。
 fn content_security_policy(html: &[u8]) -> HeaderValue {
     use base64::Engine;
     use sha2::{Digest, Sha256};
@@ -235,13 +235,13 @@ fn content_security_policy(html: &[u8]) -> HeaderValue {
          img-src 'self' data: blob: http: https:; media-src 'self' data: blob:; connect-src 'self'; \
          object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
     );
-    // keywords and base64 are always a valid header; were they not, no script but the folder's would run
+    // 关键字和 base64 总能组成有效的头；万一无效，就只运行文件夹里的脚本
     HeaderValue::try_from(policy)
         .unwrap_or_else(|_| HeaderValue::from_static("default-src 'self'; frame-ancestors 'none'"))
 }
 
-/// The text of each `<script>` of `html` without a `src`, as the browser hashes it: with its line breaks made `\n`,
-/// as the HTML parser makes them before anything else.
+/// `html` 中每个不带 `src` 的 `<script>` 的文字，与浏览器计算哈希时的一样：换行都换成 `\n`，
+/// HTML 解析器最先做的就是这一步。
 fn inline_scripts(html: &[u8]) -> Vec<Vec<u8>> {
     const OPEN: &[u8] = b"<script";
     const CLOSE: &[u8] = b"</script";
@@ -249,7 +249,7 @@ fn inline_scripts(html: &[u8]) -> Vec<Vec<u8>> {
     let mut rest = html;
     while let Some(start) = find_ignoring_case(rest, OPEN) {
         let after = &rest[start + OPEN.len()..];
-        // `<scripts>` or the like is another element
+        // `<scripts>` 之类的是别的元素
         if !after
             .first()
             .is_some_and(|&b| b == b'>' || b == b'/' || b.is_ascii_whitespace())
@@ -278,9 +278,8 @@ fn find_ignoring_case(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window.eq_ignore_ascii_case(needle))
 }
 
-/// Whether the attributes of a start tag (what lies between its name and `>`) have a `src`: a name starts after a
-/// space or `/` and ends at one or at `=`. A script with one runs the file it names, never its text, even when the
-/// address is empty.
+/// 开始标签的属性（标签名与 `>` 之间的部分）中是否有 `src`：属性名从空白或 `/` 之后开始，到空白、`/` 或 `=` 结束。
+/// 带 `src` 的脚本运行它指向的文件，从不运行自己的文字，地址为空时也一样。
 fn has_src(attrs: &[u8]) -> bool {
     let starts =
         |at: usize| at > 0 && (attrs[at - 1] == b'/' || attrs[at - 1].is_ascii_whitespace());
@@ -291,7 +290,7 @@ fn has_src(attrs: &[u8]) -> bool {
     })
 }
 
-/// `\r\n` and a lone `\r` made `\n`.
+/// 把 `\r\n` 和单独的 `\r` 换成 `\n`。
 fn normalize_newlines(text: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(text.len());
     let mut bytes = text.iter().peekable();
@@ -382,7 +381,7 @@ mod tests {
 
     #[test]
     fn the_policy_names_the_inline_scripts_by_their_hash() {
-        // the hash of `alert(1)`, as a browser reports it for a script it refuses
+        // `alert(1)` 的哈希，与浏览器拒绝运行这段脚本时报告的相同
         let policy = content_security_policy(b"<script>alert(1)</script>");
         let policy = policy.to_str().unwrap();
         assert!(

@@ -1,7 +1,7 @@
-//! `/api/<command path>` (issue #140): reads the WebUI asks for all the time, run in the server's own process on a
-//! hub that stays open, so the databases are not opened again for every request. Parameters and answers are
-//! those of `/<command path>`: the request is read into the same typed read the command runs (`weflow_core::reads`,
-//! #397), without a command line; only the language is the server's, as it is set once per process.
+//! `/api/<命令路径>`（#140）：网页经常请求的读取，在服务进程内用一直打开的 `Hub` 执行，
+//! 不必为每个请求重新打开数据库。参数和回答与 `/<命令路径>` 相同：请求不经过命令行，
+//! 直接读成命令运行的同一个类型化读取（`weflow_core::reads`，#397）；
+//! 只有语言是服务端的，因为语言在每个进程中只设置一次。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -16,8 +16,7 @@ use weflow_core::sync::MutexExt;
 
 use super::endpoints::{find_param, flag_value, Endpoint, Kind, Params};
 
-/// The commands with an `/api/` route; `tests::the_list_matches_the_cli` keeps it in step with
-/// `read_of`.
+/// 有 `/api/` 路由的命令；`tests::the_list_matches_the_cli` 保证它与 `read_of` 一致。
 pub(super) const COMMANDS: &[&str] = &[
     "chat sessions",
     "chat messages",
@@ -63,8 +62,8 @@ pub(super) const COMMANDS: &[&str] = &[
     "db wxid",
 ];
 
-/// Commands of [`COMMANDS`] that run in process only in part, and which part (English, Chinese); the rest runs as
-/// the route without `/api/` does, with the same answer.
+/// [`COMMANDS`] 中只有一部分在服务进程内执行的命令，以及是哪一部分（英文、中文）；
+/// 其余部分与不带 `/api/` 的路由一样执行，回答相同。
 pub(super) const IN_PART: &[(&str, &str, &str)] = &[
     (
         "chat detail",
@@ -83,18 +82,18 @@ pub(super) const IN_PART: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// How long two writes of a file can leave it the same time: a tick of the coarsest clock of a common file system
-/// (2 s on FAT), and a margin.
+/// 两次写入可能让文件的修改时间相同的最长间隔：常见文件系统中最粗的时钟的一个刻度（FAT 上是 2 秒），再加一点余量。
 const COARSE_TICK: Duration = Duration::from_secs(3);
 
-/// What tells a change of the config file (#402): its time and size, and, while that time may still be shared by a
-/// later write, its content. Two writes within one tick of a coarse clock leave the same time, and a switch between
-/// two profiles whose names are as long the same size; once a tick has gone by, a write changes the time.
+/// 判断配置文件是否变化的依据（#402）：修改时间和大小；之后的写入仍可能得到相同修改时间的期间，还要比较内容。
+///
+/// 时钟粗糙时，一个刻度内的两次写入修改时间相同，在两个名字等长的档案之间切换时大小也相同；
+/// 过了一个刻度后，写入一定会改变修改时间。
 struct Stamp {
     modified: SystemTime,
     len: u64,
     content: u64,
-    /// The content was found the same after a tick had gone by: the time and size tell from now on.
+    /// 过了一个刻度后内容仍然相同：此后只看修改时间和大小。
     settled: bool,
 }
 
@@ -105,7 +104,7 @@ fn digest(bytes: &[u8]) -> u64 {
     hasher.finish()
 }
 
-/// Whether `modified` is older than a tick.
+/// `modified` 是否已经过了一个刻度。
 fn past_a_tick(modified: SystemTime) -> bool {
     SystemTime::now()
         .duration_since(modified)
@@ -125,7 +124,7 @@ impl Stamp {
         })
     }
 
-    /// Whether the file at `path` is still the one stamped. Its content is read only until it has settled.
+    /// `path` 处的文件是否仍是记下状态时的那个；内容只在稳定之前读取。
     fn holds(&mut self, path: &Path) -> bool {
         let Some(meta) = std::fs::metadata(path).ok() else {
             return false;
@@ -136,7 +135,7 @@ impl Stamp {
         if self.settled {
             return true;
         }
-        // the time is read before the content: a tick gone by then has gone by for what is read after
+        // 先判断是否过了一个刻度再读内容：判断时已经过了，之后读到的内容也一定在一个刻度之后
         let past = past_a_tick(self.modified);
         let same = std::fs::read(path).is_ok_and(|bytes| digest(&bytes) == self.content);
         self.settled = same && past;
@@ -144,24 +143,25 @@ impl Stamp {
     }
 }
 
+/// 已经建好的 `ServiceHub`，以及建它时用的配置文件和文件的状态。
 struct Open {
     hub: ServiceHub,
     config: PathBuf,
     stamp: Option<Stamp>,
-    /// Counts the hubs built, so a user of [`Hub::hub_and_generation`] tells a new hub from the one it had.
+    /// 建过的 `ServiceHub` 的计数，[`Hub::hub_and_generation`] 的调用者据此区分新建的和它原来的那个。
     generation: u64,
 }
 
-/// The hub of the in-process routes, built again when the config file changes (`PUT /config/set`, another
-/// profile…). Its databases stay open across hubs: `weflow-native` keeps them per path.
+/// 进程内路由的 `ServiceHub`，配置文件变化（`PUT /config/set`、换档案等）时重建。
+/// 数据库在重建前后保持打开：`weflow-native` 按路径保留它们。
 #[derive(Default)]
 pub(super) struct Hub {
     open: Mutex<Option<Open>>,
 }
 
 impl Hub {
-    /// Builds the hub in the background, which opens the databases of a chat page (see [`hub_and_generation`]), so
-    /// the first request finds them ready.
+    /// 在后台建好 `ServiceHub`，它会打开聊天页面用到的数据库（见 [`hub_and_generation`]），
+    /// 第一个请求到来时它们已经就绪。
     ///
     /// [`hub_and_generation`]: Self::hub_and_generation
     pub(super) fn warm(self: &std::sync::Arc<Self>) {
@@ -173,10 +173,10 @@ impl Hub {
         self.hub_and_generation().map(|(hub, _)| hub)
     }
 
-    /// The hub, and which one it is: the number changes when the hub is built again.
+    /// `ServiceHub` 及它的编号：重建时编号改变。配置文件读不出来、建不起 `ServiceHub` 时为 `Err`。
     pub(super) fn hub_and_generation(&self) -> AppResult<(ServiceHub, u64)> {
         let mut open = self.open.lock_or_panic();
-        // another config file chosen (`config set config_path`) is a change too
+        // 换了配置文件（`config set config_path`）也算变化
         let in_use = weflow_core::config::default_config_path();
         let before = match open.as_mut() {
             Some(o) => {
@@ -193,14 +193,14 @@ impl Hub {
             None => None,
         };
         let (hub, config) = crate::reads::open_hub()?;
-        // a change while the config was read is caught by the next request
+        // 读取配置期间发生的变化由下一个请求发现
         let stamp = if open.is_some() && in_use.as_ref() == Some(&config) {
             before
         } else {
             Stamp::of(&config)
         };
         let generation = open.as_ref().map_or(0, |o| o.generation + 1);
-        // the databases of a chat page, opened in the background: the first reads would wait for their keys
+        // 在后台打开聊天页面用到的数据库：否则最初的几次读取要等待派生密钥
         let warm = hub.clone();
         std::thread::spawn(move || warm.warm_chat_databases());
         *open = Some(Open {
@@ -213,25 +213,25 @@ impl Hub {
     }
 }
 
-/// A request's parameters by the argument of the command they set, as the texts its command line would carry
-/// ([`Endpoint::argv`] writes the same ones): read into a [`Read`] or a [`MediaRead`] here, without writing a command
-/// line or parsing one (#397). They take only what the command line takes, and read it as clap does; anything else is
-/// [`Refused`]: the server then parses its command line with clap and answers clap's error, as the terminal prints
-/// it (#432), or, when clap takes it, sends the request to a child process. The parameters have passed
-/// [`Endpoint::check`].
+/// 请求的参数，按它们设置的命令参数分组，写成命令行上的文字（与 [`Endpoint::argv`] 写的相同）：
+/// 在这里读成 [`Read`] 或 [`MediaRead`]，不写出也不解析命令行（#397）。
+///
+/// 只接受命令行接受的内容，按 clap 的方式读取；其他的都是 [`Refused`]：服务这时用 clap 解析命令行，
+/// 回答 clap 的错误，与终端打印的相同（#432）；clap 接受时，把请求交给子进程。参数已经通过了 [`Endpoint::check`]。
 pub(super) struct Given {
-    /// The texts of each argument by its name; a switch has one per time it is set.
+    /// 各个参数按名字列出的文字；开关每设置一次就有一项。
     texts: BTreeMap<String, Vec<String>>,
 }
 
-/// A request the typed reads do not take: one the command line refuses, or a part of a command that does not run in
-/// process (`chat detail` without `fast`, `sns timeline` with its media).
+/// 类型化读取不接受的请求：命令行会拒绝的请求，
+/// 或者命令中不在服务进程内执行的部分（不带 `fast` 的 `chat detail`、带媒体的 `sns timeline`）。
 #[derive(Debug)]
 pub(super) struct Refused;
 
 type Taken<T> = Result<T, Refused>;
 
 impl Given {
+    /// 从 `params` 中取出 `endpoint` 的参数；开关只记下设为真的次数。
     pub(super) fn new(endpoint: &Endpoint, params: &Params) -> Self {
         let mut texts: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (key, values) in params {
@@ -257,7 +257,7 @@ impl Given {
         !self.all(name).is_empty()
     }
 
-    /// An argument of one value: absent, or given once (clap refuses it twice).
+    /// 只接受一个值的参数：没有给，或者只给了一次（给两次时 clap 会拒绝）。
     fn one(&self, name: &str) -> Taken<Option<&str>> {
         match self.all(name) {
             [] => Ok(None),
@@ -274,14 +274,14 @@ impl Given {
         self.text(name)?.ok_or(Refused)
     }
 
-    /// A number as clap reads it: Rust's own parsing, so `+3` is 3 and an empty value none.
+    /// 按 clap 的方式读取的数字：用 Rust 自己的解析，所以 `+3` 是 3，空值不是数字，被拒绝。
     fn number<T: std::str::FromStr>(&self, name: &str) -> Taken<Option<T>> {
         self.one(name)?
             .map(|text| text.parse().map_err(|_| Refused))
             .transpose()
     }
 
-    /// A count or a time as `numbers` has clap read it: a negative one is [`Refused`], and clap then says why.
+    /// 计数或时间，读法与 `numbers` 让 clap 读取的相同：负数是 [`Refused`]，由 clap 说明原因。
     fn non_negative<T: std::str::FromStr + Default + PartialOrd>(
         &self,
         name: &str,
@@ -300,7 +300,7 @@ impl Given {
         Ok(self.non_negative(name)?.unwrap_or(default))
     }
 
-    /// A count as `numbers::usize_in` has clap read it: one outside `range` is [`Refused`], and clap then says why.
+    /// 计数，读法与 `numbers::usize_in` 让 clap 读取的相同：超出 `range` 时是 [`Refused`]，由 clap 说明原因。
     fn within_or(
         &self,
         name: &str,
@@ -313,7 +313,7 @@ impl Given {
         }
     }
 
-    /// A switch, set at most once (clap refuses it twice).
+    /// 开关，最多设置一次（设置两次时 clap 会拒绝）。
     fn switch(&self, name: &str) -> Taken<bool> {
         match self.all(name).len() {
             0 => Ok(false),
@@ -326,7 +326,7 @@ impl Given {
         self.all(name).to_vec()
     }
 
-    /// `name`, when given, comes without any of `others` (clap's `conflicts_with`).
+    /// 给了 `name` 时，`others` 都不能给（clap 的 `conflicts_with`）。
     fn without(&self, name: &str, others: &[&str]) -> Taken<()> {
         if self.given(name) && others.iter().any(|o| self.given(o)) {
             return Err(Refused);
@@ -334,7 +334,7 @@ impl Given {
         Ok(())
     }
 
-    /// The [`Read`] of a command of [`COMMANDS`], with the defaults of its arguments.
+    /// [`COMMANDS`] 中的命令对应的 [`Read`]，没有给的参数用命令的默认值。
     pub(super) fn read(&self, command: &str) -> Taken<Read> {
         Ok(match command {
             "chat sessions" => Read::ChatSessions {
@@ -392,7 +392,7 @@ impl Given {
             },
             "chat detail" => {
                 self.without("fast", &["extra"])?;
-                // the rest of the details is slower to read: it runs in a child process
+                // 其余的详情读得慢：在子进程中运行
                 if !self.switch("fast")? {
                     return Err(Refused);
                 }
@@ -418,7 +418,7 @@ impl Given {
                 counts: self.switch("counts")?,
             },
             "sns timeline" => {
-                // the media are downloaded: in a child process
+                // 要下载媒体：在子进程中运行
                 if self.switch("with-media")? {
                     return Err(Refused);
                 }
@@ -482,7 +482,7 @@ impl Given {
             },
             "analytics time" => Read::AnalyticsTime,
             "analytics excluded" => {
-                // the list is saved: in a child process
+                // 要保存名单：在子进程中运行
                 if self.given("set") {
                     return Err(Refused);
                 }
@@ -521,7 +521,7 @@ impl Given {
         })
     }
 
-    /// The file a command of [`MEDIA`] asks for; its `out` is not the request's (the route refuses it).
+    /// [`MEDIA`] 中的命令要取的文件；`out` 不由请求给出（路由会拒绝它）。
     pub(super) fn media(&self, command: &str) -> Taken<Media> {
         Ok(match command {
             "chat image-data" => {
@@ -559,21 +559,21 @@ impl Given {
     }
 }
 
-/// The file an `/api/` media route answers: a message's, or a Moments post's.
+/// `/api/` 媒体路由回答的文件：消息的文件，或者朋友圈帖子的文件。
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Media {
     Chat(MediaRead),
     Sns { url: String, key: Option<String> },
 }
 
-/// The places of an `/api/` request in its [`Line`](super::Line): admitted, and running.
+/// `/api/` 请求在它的 [`Line`](super::Line) 中占的位置：排队的名额和运行的空位。
 pub(super) type Place = (
     tokio::sync::OwnedSemaphorePermit,
     tokio::sync::OwnedSemaphorePermit,
 );
 
-/// Runs `work` holding `place` until it ends, also when the request goes away first (#396, risk 2): a read cannot be
-/// stopped halfway, so its place stays taken while it runs, and `--max-reads` counts every read still running.
+/// 占着 `place` 运行 `work` 直到它结束，请求先断开时也一样（#396 的风险 2）：读取无法中途停止，
+/// 所以运行期间一直占着空位，`--max-reads` 统计的是所有仍在运行的读取。`work` panic 时为 `Err`。
 pub(super) async fn held<T: Send + 'static>(
     place: Place,
     work: impl std::future::Future<Output = T> + Send + 'static,
@@ -585,7 +585,7 @@ pub(super) async fn held<T: Send + 'static>(
     .await
 }
 
-/// The `--json` document and exit code of a [`Read`] run in this process, as a child process would print them.
+/// 在服务进程内执行 [`Read`] 得到的 `--json` 文档和退出码，与子进程打印的相同。
 pub(super) async fn run(hub: &Hub, read: Read) -> (Value, u8) {
     let hub = match hub.get() {
         Ok(hub) => hub,
@@ -598,9 +598,8 @@ pub(super) async fn run(hub: &Hub, read: Read) -> (Value, u8) {
     })
 }
 
-/// Commands whose `/api/` route is a `GET` that answers the file itself, for a page to show: the image, the voice or
-/// the video of a message, or an image or video of a Moments post. The parameters are those of the command, but for
-/// `out`.
+/// `/api/` 路由是直接回答文件本身的 `GET`、供页面显示的命令：消息的图片、语音或视频，或者朋友圈帖子的图片或视频。
+/// 参数与命令相同，只是没有 `out`。
 pub(super) const MEDIA: &[&str] = &[
     "chat image-data",
     "chat voice-data",
@@ -610,8 +609,8 @@ pub(super) const MEDIA: &[&str] = &[
 
 pub(super) use weflow_core::reads::{image_mime, MediaBody, MediaFile};
 
-/// The file of a [`MEDIA`] command, read in this process: the decrypted image, the decoded WAV or the video, or the
-/// `--json` failure document and exit code.
+/// 在服务进程内读取的 [`MEDIA`] 命令的文件：解密后的图片、解码出的 WAV 或视频；
+/// 失败时是 `--json` 的失败文档和退出码。
 pub(super) async fn media(hub: &Hub, media: Media) -> Result<MediaFile, (Value, u8)> {
     let outcome = match media {
         Media::Chat(read) => match hub.get() {
@@ -623,10 +622,9 @@ pub(super) async fn media(hub: &Hub, media: Media) -> Result<MediaFile, (Value, 
     outcome.map_err(|err| crate::reads::json_document(Err(err)))
 }
 
-/// `sns media` for a page (issue #202): an image or a video of a Moments post, fetched from WeChat's servers,
-/// decrypted with `key` and kept in the cache, so it is fetched once. Only addresses of WeChat's media servers are
-/// taken (see [`weflow_core::sns::is_wechat_media_url`]). A video is answered from its cached file, so a player can
-/// ask for a part of it.
+/// 供页面使用的 `sns media`（#202）：朋友圈帖子的图片或视频，从微信的服务器下载，用 `key` 解密后保存在缓存中，
+/// 所以只下载一次。只接受微信媒体服务器的地址（见 [`weflow_core::sns::is_wechat_media_url`]）。
+/// 视频从缓存的文件回答，播放器可以只请求其中的一部分。
 async fn sns_media(hub: &Hub, url: &str, key: Option<&str>) -> AppResult<MediaFile> {
     if !weflow_core::sns::is_wechat_media_url(url) {
         return Err(AppError::usage(
@@ -664,7 +662,7 @@ mod tests {
         let time = std::fs::metadata(&path).unwrap().modified().unwrap();
         let mut stamp = Stamp::of(&path).unwrap();
         assert!(stamp.holds(&path));
-        // another profile of a name as long, written within the same tick: the same time and size
+        // 在同一个刻度内写入名字等长的另一个档案：修改时间和大小都相同
         std::fs::write(&path, r#"{"profile":"bbbb"}"#).unwrap();
         std::fs::File::options()
             .write(true)
@@ -674,7 +672,7 @@ mod tests {
             .unwrap();
         assert!(!stamp.holds(&path));
 
-        // written long ago and stamped since: the time and size tell, the content is not read again
+        // 很久以前写入、之后才记下状态：只看修改时间和大小，不再读取内容
         let old = SystemTime::now() - Duration::from_secs(60);
         std::fs::File::options()
             .write(true)
@@ -694,7 +692,7 @@ mod tests {
             .clone()
     }
 
-    /// The command line parsed by clap, as the child process does.
+    /// 与子进程一样用 clap 解析命令行 `argv`；clap 拒绝时为 `None`。
     fn parse(argv: &[String]) -> Option<crate::cli::Cli> {
         let line = ["weflow", "--json"]
             .into_iter()
@@ -706,8 +704,7 @@ mod tests {
             .and_then(|m| crate::cli::Cli::from_arg_matches(&m).ok())
     }
 
-    /// Commands of [`COMMANDS`] that run in process only with these arguments; without them, `/api/` runs them as
-    /// the route without `/api/` does.
+    /// [`COMMANDS`] 中只有带这些参数时才在服务进程内执行的命令；不带时，`/api/` 按不带 `/api/` 的路由执行它们。
     const ONLY_WITH: &[(&str, &str)] = &[("chat detail", "--fast")];
 
     #[test]
@@ -720,7 +717,7 @@ mod tests {
                 .0
                 .get(*name)
                 .unwrap_or_else(|| panic!("{name} is not a command"));
-            // a command that also writes (`analytics excluded --set`) runs in process only in part
+            // 也会写入的命令（`analytics excluded --set`）只有一部分在服务进程内执行
             let verbs = ep.verbs();
             assert!(
                 verbs == [super::super::Verb::Get]
@@ -728,7 +725,7 @@ mod tests {
                         && IN_PART.iter().any(|(n, ..)| n == name)),
                 "{name} is not a read"
             );
-            // the command with every required argument filled in
+            // 填好所有必需参数的命令
             let mut sub = &root;
             for p in &ep.path {
                 sub = sub.find_subcommand(p).unwrap();
@@ -768,9 +765,10 @@ mod tests {
         }
     }
 
-    /// What an `/api/` read spent on its command line before it ran (#403): writing it from the parameters,
-    /// cloning the command tree and parsing it. A measurement, not a check; run it in a release build with
-    /// `cargo test --release -p weflow-cli --bin weflow clap_round_trip -- --ignored --nocapture`.
+    /// 测量把请求参数读成 `Read` 的两种方式的耗时（#403）：从参数写出命令行、克隆命令树再用 clap 解析，
+    /// 以及 `/api/` 的类型化读取（#397）；克隆命令树的耗时也单独列出。每轮在 stderr 输出各项的平均耗时。
+    /// 这是测量而不是检查，用 release 构建运行：
+    /// `cargo test --release -p weflow-cli --bin weflow clap_round_trip -- --ignored --nocapture`。
     #[test]
     #[ignore]
     fn clap_round_trip() {
@@ -799,7 +797,7 @@ mod tests {
                 let _ = std::hint::black_box(crate::reads::read_of(cli.command));
             }
             let all = begin.elapsed() / RUNS;
-            // what `/api/` does (#397)
+            // `/api/` 的做法（#397）
             let begin = std::time::Instant::now();
             for _ in 0..RUNS {
                 let given = Given::new(ep, std::hint::black_box(&params));
@@ -813,13 +811,14 @@ mod tests {
         }
     }
 
-    /// What a request asks for, as read by clap (the child process's way) or by the typed reads.
+    /// 请求要的读取，由 clap（子进程的读法）或类型化读取读出。
     #[derive(Debug, PartialEq)]
     enum Asked {
         Read(Read),
         Media(Media),
     }
 
+    /// 按子进程的方式读请求：写出命令行再用 clap 解析；clap 拒绝时为 `None`。
     fn by_clap(ep: &Endpoint, params: &Params) -> Option<Asked> {
         let name = ep.command_name();
         let media = MEDIA.contains(&name.as_str());
@@ -845,6 +844,7 @@ mod tests {
         }
     }
 
+    /// 按 `/api/` 的方式读请求：类型化读取；不接受时为 `None`。
     fn by_types(ep: &Endpoint, params: &Params) -> Option<Asked> {
         ep.check(params).ok()?;
         let given = Given::new(ep, params);
@@ -856,8 +856,8 @@ mod tests {
         }
     }
 
-    /// Requests made up from a fixed seed: each parameter of the command absent, given once or twice as text, or as
-    /// a JSON value, under its name or with `_` for `-`.
+    /// 用固定的种子编造 `runs` 个请求，逐个交给 `each`：命令的每个参数可能没有、以文字给出一次或两次，
+    /// 或者给出一个 JSON 值，键用参数名或把 `-` 换成 `_`。
     fn made_up(ep: &Endpoint, runs: usize, mut each: impl FnMut(&Params)) {
         const TEXTS: &[&str] = &[
             "1",
@@ -910,9 +910,9 @@ mod tests {
         }
     }
 
-    /// The typed reads of `/api/` take nothing the command line refuses, and read what they take as clap does: what
-    /// they do not take goes to a child process, whose answer is the terminal's. The only requests clap takes and they
-    /// do not give one positional argument twice and another none, which clap fills in by their order.
+    /// `/api/` 的类型化读取不接受命令行会拒绝的请求，接受的请求读法与 clap 相同：不接受的交给子进程，
+    /// 回答与终端的相同。clap 接受而类型化读取不接受的请求只有一种：某个位置参数给了两次、另一个没有给，
+    /// clap 按顺序把值分给它们。
     #[test]
     fn typed_reads_take_what_clap_takes_and_read_it_the_same() {
         let endpoints = super::super::Endpoints::new();
@@ -944,8 +944,7 @@ mod tests {
         }
     }
 
-    /// `chat detail` takes `fast` or `extra`, not both: the command line refuses them together, and so does
-    /// `/api/chat/detail`.
+    /// `chat detail` 接受 `fast` 或 `extra`，不能同时给：命令行拒绝两者同时出现，`/api/chat/detail` 也一样。
     #[test]
     fn chat_detail_takes_fast_or_extra_but_not_both() {
         use serde_json::json;
@@ -973,7 +972,7 @@ mod tests {
 
     #[test]
     fn the_push_route_is_not_a_command() {
-        // `/api/push/messages` is the event stream
+        // `/api/push/messages` 是事件流，不是命令
         assert!(COMMANDS
             .iter()
             .chain(MEDIA)
@@ -997,7 +996,7 @@ mod tests {
             );
             let mut argv = ep.path.clone();
             argv.extend(["--out=-", "--"].map(String::from));
-            // a message's conversation and id, or a Moments address
+            // 消息的会话 ID 和本地 ID，或者朋友圈的地址
             let positionals: &[&str] = if ep.path[0] == "sns" {
                 &["https://a.qpic.cn/x"]
             } else {

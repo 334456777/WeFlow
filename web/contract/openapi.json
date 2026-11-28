@@ -11419,7 +11419,7 @@
             "items": {
               "type": "string"
             },
-            "description": "The command line it runs, `weflow` first (`weflow --json --progress export messages …`)."
+            "description": "作业运行的命令行，第一项是 `weflow`（如 `weflow --json --progress export messages …`）。"
           },
           "createdAt": {
             "type": "integer",
@@ -11457,10 +11457,10 @@
             "format": "uint16",
             "minimum": 0,
             "maximum": 65535,
-            "description": "The status a synchronous request would have got."
+            "description": "同步请求会得到的 HTTP 状态。"
           },
           "progress": {
-            "description": "The last `progress` event."
+            "description": "最后一个 `progress` 事件。"
           },
           "file": {
             "anyOf": [
@@ -11471,10 +11471,10 @@
                 "type": "null"
               }
             ],
-            "description": "The file of a job started with `return=file`, once it has succeeded: `GET /jobs/{id}/file`."
+            "description": "以 `return=file` 启动的作业成功后写出的文件，用 `GET /jobs/{id}/file` 取得。"
           },
           "result": {
-            "description": "The command's `--json` document; only in `GET /jobs/{id}`."
+            "description": "命令的 `--json` 文档；只出现在 `GET /jobs/{id}`、`DELETE /jobs/{id}` 的回答和 `result` 事件中。"
           }
         },
         "required": [
@@ -11489,7 +11489,7 @@
           "progress",
           "file"
         ],
-        "description": "A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.\nTimes are Unix milliseconds."
+        "description": "`/jobs` 回答的一个作业（`Prefer: respond-async`，#398）：运行的命令、进度和结束的情况。\n时间都是 Unix 毫秒。"
       },
       "JobStatus": {
         "type": "string",
@@ -11508,7 +11508,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "文件名。"
           },
           "size": {
             "type": [
@@ -11517,13 +11518,14 @@
             ],
             "format": "uint64",
             "minimum": 0,
-            "description": "In bytes."
+            "description": "字节数；读不到文件时为 `null`。"
           }
         },
         "required": [
           "name",
           "size"
-        ]
+        ],
+        "description": "作业写出的文件。"
       },
       "Error": {
         "type": "object",
