@@ -273,12 +273,13 @@ impl<'a> MsgXml<'a> {
             .get_or_init(|| app_type_in(self.once(), self.twice()))
     }
 
-    /// [`is_readable_system_message`](super::is_readable_system_message) of the content.
+    /// Whether the message is a system message whose text can be read: of type 10000, or with a `<sysmsg>` in the
+    /// content after its sender.
     pub fn readable_system_once(&self, local_type: i64) -> bool {
         local_type == 10000 || has_sysmsg(self.once())
     }
 
-    /// [`is_readable_system_message`](super::is_readable_system_message) of [`once`](Self::once).
+    /// [`readable_system_once`](Self::readable_system_once) of [`once`](Self::once).
     pub(crate) fn readable_system_twice(&self, local_type: i64) -> bool {
         local_type == 10000 || has_sysmsg(self.twice())
     }
@@ -326,7 +327,8 @@ impl<'a> MsgXml<'a> {
         })
     }
 
-    /// [`extract_quoted_reply_display`](super::extract_quoted_reply_display) of the content.
+    /// What the content replies to, for the text of the reply: its own words, who is quoted and a preview of what
+    /// they said; `None` when it quotes nothing.
     pub fn quoted_display(&self) -> Option<&QuotedDisplay> {
         self.display
             .get_or_init(|| {

@@ -15,12 +15,11 @@ use weflow_native::quote::{reply_text, QUOTE};
 use crate::api::js_parse_int;
 use crate::message::appmsg::{kind_by_keywords, kind_of_app_type, without_quoted};
 use crate::message::emoji::percent_decode;
-use crate::message::quote::{extract_preferred_quoted_text, refermsg_xml};
+use crate::message::quote::refermsg_xml;
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message, pat_text};
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::{
-    decode_text_entities, extract_xml_value, looks_like_wxid, rx, sanitize_quoted_content,
-    strip_sender_line, strip_sender_prefix, xml_text,
+    decode_text_entities, extract_xml_value, rx, strip_sender_line, strip_sender_prefix, xml_text,
 };
 use crate::message::{app_message_text_as, TextForm};
 use crate::xml::decode_entities;
@@ -551,42 +550,13 @@ fn parse_type49_message(content: &str) -> Type49Info {
     r
 }
 
-/// What a reply quotes, as (content, sender).
+/// What a reply quotes, as (content, sender): the preview the exports write after the reply (#1263).
 fn quote_of(content: &str) -> (Option<String>, Option<String>) {
-    let Some(refer_xml) = refermsg_xml(&decode_entities(content)) else {
-        return (None, None);
-    };
-    let refer_xml = refer_xml.as_str();
-    let mut display_name = extract_xml_value(refer_xml, "displayname");
-    if !display_name.is_empty() && looks_like_wxid(&display_name) {
-        display_name.clear();
+    let x = crate::message::xml::MsgXml::new(content);
+    match x.quoted_display() {
+        Some(d) => (Some(d.quoted_preview.clone()), d.quoted_sender.clone()),
+        None => (None, None),
     }
-    let refer_content = extract_xml_value(refer_xml, "content");
-    let refer_type = extract_xml_value(refer_xml, "type");
-    let display_content = match refer_type.as_str() {
-        "1" => extract_preferred_quoted_text(refer_xml),
-        "3" => "[图片]".into(),
-        "34" => "[语音]".into(),
-        "43" => "[视频]".into(),
-        "47" => "[动画表情]".into(),
-        "49" => {
-            let inner = parse_type49_message(&decode_entities(&refer_content));
-            match (inner.xml_type.as_deref(), inner.link_title) {
-                (Some("57"), Some(title)) => title,
-                _ => "[链接]".into(),
-            }
-        }
-        "42" => "[名片]".into(),
-        "48" => "[位置]".into(),
-        _ => {
-            if refer_content.is_empty() || refer_content.contains("wxid_") {
-                "[消息]".into()
-            } else {
-                sanitize_quoted_content(&refer_content)
-            }
-        }
-    };
-    (Some(display_content), opt(display_name))
 }
 
 fn parse_media_quote(content: &str) -> Option<String> {
@@ -1516,6 +1486,50 @@ mod tests {
                 parse_type49_message(xml).app_msg_kind.as_deref(),
                 Some(kind),
                 "{xml}"
+            );
+        }
+    }
+
+    /// What a reply quotes reads the same in the chat window and the exports (#1263): a quoted app message by its own
+    /// XML, a quoted reply by its words, a link by its title, a file by its name.
+    #[test]
+    fn a_quote_is_previewed_alike_everywhere() {
+        let reply = |quoted_type: &str, quoted: &str| {
+            format!(
+                "<msg><appmsg><title>好</title><type>57</type><refermsg><type>{quoted_type}</type>\
+                 <displayname>Bob</displayname><content>{}</content><svrid>1</svrid></refermsg></appmsg></msg>",
+                escaped(quoted)
+            )
+        };
+        for (quoted_type, quoted, preview) in [
+            ("1", "早", "早"),
+            ("3", "<msg><img/></msg>", "[图片]"),
+            ("34", "<msg><voicemsg/></msg>", "[语音消息]"),
+            ("47", "<msg><emoji/></msg>", "[表情]"),
+            (
+                "49",
+                "<msg><appmsg><title>原来那句</title><type>57</type></appmsg></msg>",
+                "原来那句",
+            ),
+            (
+                "49",
+                "<msg><appmsg><title>一篇文章</title><type>5</type></appmsg></msg>",
+                "一篇文章",
+            ),
+            (
+                "49",
+                "<msg><appmsg><title>a.pdf</title><type>6</type></appmsg></msg>",
+                "[文件] a.pdf",
+            ),
+        ] {
+            let xml = reply(quoted_type, quoted);
+            let window = parse_type49_message(&xml);
+            assert_eq!(window.quoted_content.as_deref(), Some(preview), "{quoted}");
+            assert_eq!(window.quoted_sender.as_deref(), Some("Bob"), "{quoted}");
+            assert_eq!(
+                crate::message::parse_message_content(&xml, 49, None, None, None).as_deref(),
+                Some(format!("好[引用 Bob：{preview}]").as_str()),
+                "{quoted}"
             );
         }
     }

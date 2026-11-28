@@ -9,7 +9,8 @@ import {
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { formatFileSize } from '../format';
 import { imagePreview, PlayBadge, reasonOf, videoPlays, Voice, type Preview, type PreviewThumb } from '../MessageMedia';
-import { appLabel, kindOf, withoutLabel } from './messages';
+import { kindOf } from '../messageKind';
+import { appLabel, withoutLabel } from './messages';
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 import { t } from '../i18n';
 import { safeUrl } from '../links';

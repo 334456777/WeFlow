@@ -25,15 +25,21 @@ const REPORT: DualReport = {
 };
 
 describe('dual report', () => {
-  it('names what a message is when it is not text', () => {
+  it('names what a message is when it is not text, an app message by the kind the server gives (#1263)', () => {
+    const app = (localType: number, appMsgKind?: string) => ({ ...message('<msg/>', true, 0, localType), appMsgKind });
     expect(messageText(message('hi', true, 0))).toBe('hi');
     expect(messageText(message('<msg/>', true, 0, 47))).toBe('[表情]');
-    expect(messageText(message('<msg/>', true, 0, 244813135921))).toBe('[引用回复]');
-    // a link and a file: the app message's kind in the high bits of the type
-    expect(messageText(message('<msg/>', true, 0, 49))).toBe('[链接或文件]');
-    expect(messageText(message('<msg/>', true, 0, 5 * 2 ** 32 + 49))).toBe('[链接或文件]');
-    expect(messageText(message('<msg/>', true, 0, 6 * 2 ** 32 + 49))).toBe('[链接或文件]');
-    expect(messageText(message('<msg/>', true, 0, 10000))).toBe('[消息]');
+    expect(messageText(message('<msg/>', true, 0, 10000))).toBe('[系统消息]');
+    expect(messageText(app(244813135921, 'quote'))).toBe('[引用回复]');
+    expect(messageText(app(5 * 2 ** 32 + 49, 'link'))).toBe('[链接]');
+    expect(messageText(app(6 * 2 ** 32 + 49, 'file'))).toBe('[文件]');
+    // a transfer is one however it is kept, and a pat is no card
+    expect(messageText(app(49, 'transfer'))).toBe('[转账]');
+    expect(messageText(app(2000 * 2 ** 32 + 49, 'transfer'))).toBe('[转账]');
+    expect(messageText(app(62 * 2 ** 32 + 49, 'card'))).toBe('[系统消息]');
+    // a kind the chat window shows as text has no label of its own
+    expect(messageText(app(49, 'announcement'))).toBe('[消息]');
+    expect(messageText(app(49))).toBe('[消息]');
   });
 
   it('tells the two of us: how it began, the year, the moments and the words', () => {
