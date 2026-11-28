@@ -72,6 +72,45 @@ fn official_accounts_and_their_pushes_as_the_webui_reads_them() {
 }
 
 #[test]
+fn plain_text_pushes_carry_their_text() {
+    use weflow_native::fixture::{MsgSpec, T0};
+    let root = temp_root("biz-text");
+    let home = account_home_with(&root, |f| {
+        f.message_shard(
+            0,
+            &[(
+                "gh_news",
+                vec![MsgSpec::text(
+                    1,
+                    "gh_news",
+                    T0,
+                    "  A notice from the account  ",
+                )],
+            )],
+        );
+    });
+    let server = start(&home, &["--api-token", TOKEN]);
+
+    let r = server.call(
+        "GET",
+        "/biz/messages?username=gh_news&limit=20&offset=0",
+        "",
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    let fits = misfits(
+        &contract(),
+        &json!({ "$ref": "#/components/schemas/BizMessages" }),
+        &r.json()["data"],
+    );
+    assert!(fits.is_empty(), "{fits:#?}");
+    let pushes = r.json()["data"]["messages"].as_array().unwrap().clone();
+    assert_eq!(pushes.len(), 1);
+    assert_eq!(pushes[0]["text"], "A notice from the account");
+    assert_eq!(pushes[0]["title"], "");
+    assert_eq!(pushes[0]["contentList"], json!([]));
+}
+
+#[test]
 fn wechat_pay_records_come_in_pages_that_say_whether_more_follow() {
     use weflow_native::fixture::{MsgSpec, T0};
     let root = temp_root("pay");

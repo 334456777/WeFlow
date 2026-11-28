@@ -27,6 +27,7 @@
 .biz-lead-cover { width: 100%; aspect-ratio: 2.35 / 1; object-fit: cover; border-radius: var(--radius-md); }
 .biz-lead-title { padding: 0 var(--space-1); font-size: var(--text-md); font-weight: var(--weight-semibold); line-height: var(--leading-md); }
 .biz-lead-summary { padding: 0 var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.biz-text { padding: 0 var(--space-1) var(--space-1); font-size: var(--text-md); line-height: var(--leading-md); white-space: pre-wrap; overflow-wrap: anywhere; }
 .biz-item { align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-1) var(--space-2) var(--space-2); }
 .biz-item-title { flex: 1; min-width: 0; font-size: var(--text-sm); line-height: var(--leading-sm); }
 .biz-item-cover { width: 48px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-sm); }

@@ -1,6 +1,6 @@
-// An official account's pushes (#203): not chat bubbles but a feed of article cards, newest first, from
-// `biz messages`; a card opens its article. WeChat for PC may keep no push of an account on this machine (#113):
-// then it says so.
+// An official account's pushes (#203): not chat bubbles but a feed of article cards and text pushes, newest first,
+// from `biz messages`; a card opens its article. WeChat for PC may keep no push of an account on this machine
+// (#113): then it says so.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Article, ArrowClockwise, CircleNotch, Image as ImageIcon } from '@phosphor-icons/react';
@@ -48,15 +48,19 @@ function PushCard({ push }: { push: BizPush }) {
   const more = push.contentList.filter((item, index) => !(index === 0 && item.url === push.url && item.title === push.title));
   return <article className="biz-push">
     <time className="biz-push-time" dateTime={time.toISOString()}>{formatDayHeading(dayOf(seconds), new Date())} {formatClock(seconds)}</time>
-    <ArticleLink article={push} className="biz-lead">
-      <Cover src={push.cover} className="biz-lead-cover" />
-      <strong className="biz-lead-title clamp-2">{push.title || t('无标题')}</strong>
-      {push.description && <span className="biz-lead-summary clamp-2">{push.description}</span>}
-    </ArticleLink>
-    {more.map((item, index) => <ArticleLink key={index} article={item} className="biz-item">
-      <span className="biz-item-title clamp-2">{item.title || t('无标题')}</span>
-      <Cover src={item.cover} className="biz-item-cover" />
-    </ArticleLink>)}
+    {push.text
+      ? <p className="biz-text">{push.text}</p>
+      : <>
+        <ArticleLink article={push} className="biz-lead">
+          <Cover src={push.cover} className="biz-lead-cover" />
+          <strong className="biz-lead-title clamp-2">{push.title || t('无标题')}</strong>
+          {push.description && <span className="biz-lead-summary clamp-2">{push.description}</span>}
+        </ArticleLink>
+        {more.map((item, index) => <ArticleLink key={index} article={item} className="biz-item">
+          <span className="biz-item-title clamp-2">{item.title || t('无标题')}</span>
+          <Cover src={item.cover} className="biz-item-cover" />
+        </ArticleLink>)}
+      </>}
   </article>;
 }
 

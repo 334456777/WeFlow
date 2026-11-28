@@ -183,13 +183,27 @@ fn without_section(xml: &str, tag: &str) -> String {
     }
 }
 
-/// The pushes of an official account's `messages`, each its lead article and the others sent with it; a message
-/// without content is left out.
+/// The pushes of an official account's `messages`, each its lead article and the others sent with it, or its text;
+/// a message without content is left out.
 pub fn parse_biz_messages(messages: &[MsgRow]) -> Vec<BizMessage> {
     let mut result = Vec::new();
     for msg in messages {
         let content = msg.content.as_str();
         if content.is_empty() {
+            continue;
+        }
+        // a push that is no article: WeChat keeps its text as it is, with no XML around it
+        if !content.trim_start().starts_with('<') {
+            result.push(BizMessage {
+                local_id: Some(msg.local_id),
+                create_time: msg.create_time,
+                text: content.trim().to_string(),
+                title: String::new(),
+                description: String::new(),
+                url: String::new(),
+                cover: String::new(),
+                content_list: Vec::new(),
+            });
             continue;
         }
         // the lead article's own fields, not the first of the other articles listed after it
@@ -206,6 +220,7 @@ pub fn parse_biz_messages(messages: &[MsgRow]) -> Vec<BizMessage> {
         result.push(BizMessage {
             local_id: Some(msg.local_id),
             create_time: msg.create_time,
+            text: String::new(),
             title,
             description: des,
             url,
@@ -345,9 +360,22 @@ mod tests {
         )];
         let parsed = json!(parse_biz_messages(&news));
         assert_eq!(parsed.as_array().unwrap().len(), 1);
+        assert_eq!(parsed[0]["text"], "");
         assert_eq!(parsed[0]["title"], "Daily");
         assert_eq!(parsed[0]["description"], "Digest");
         assert_eq!(parsed[0]["contentList"][0]["title"], "A1");
+    }
+
+    #[test]
+    fn reads_a_plain_text_push_as_its_text() {
+        let texts = [row(9, 1700000002, 1, "  A notice  ")];
+        let parsed = json!(parse_biz_messages(&texts));
+        assert_eq!(parsed.as_array().unwrap().len(), 1);
+        assert_eq!(parsed[0]["text"], "A notice");
+        assert_eq!(parsed[0]["title"], "");
+        assert_eq!(parsed[0]["description"], "");
+        assert_eq!(parsed[0]["url"], "");
+        assert_eq!(parsed[0]["contentList"], json!([]));
     }
 
     #[test]

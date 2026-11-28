@@ -12,7 +12,7 @@ pub struct BizMessages {
     pub messages: Vec<BizMessage>,
 }
 
-/// One push of an official account: its lead article and the others sent with it.
+/// One push of an official account: its lead article and the others sent with it, or its text.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BizMessage {
@@ -20,6 +20,8 @@ pub struct BizMessage {
     pub local_id: Option<i64>,
     /// When it was sent; null when its row does not say.
     pub create_time: Option<i64>,
+    /// The push's text when it is not an article (a plain text message); empty for an article.
+    pub text: String,
     /// The lead article's title; empty when the push has none.
     pub title: String,
     /// The lead article's summary.
