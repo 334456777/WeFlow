@@ -1,4 +1,4 @@
-//! Videos, files and stickers of messages: where their files are, and downloading stickers.
+//! 消息的视频、文件和表情：它们的文件在哪里，以及下载表情。
 
 use std::path::{Path, PathBuf};
 
@@ -8,7 +8,11 @@ use super::{chat, ServiceHub};
 use crate::error::{AppError, AppResult};
 
 impl ServiceHub {
-    /// Where a message's video and its poster are (`video info`).
+    /// 按 md5 找到的消息的视频和封面在哪里（`video info`）。
+    ///
+    /// # Errors
+    ///
+    /// 档案没有数据库路径或账号，或者账号目录不存在时返回配置错误。
     pub fn video_info(
         &self,
         md5: &str,
@@ -34,8 +38,12 @@ impl ServiceHub {
             }))
     }
 
-    /// The files WeChat keeps of a message's video (`msg/video/<yyyy-mm>/<md5>.mp4`, its cover and thumbnail),
-    /// found by the md5 in the message. Not there (WeChat has not downloaded it): a `not_found` failure.
+    /// 微信为一条视频消息保存的文件（`msg/video/<yyyy-mm>/<md5>.mp4` 及其封面和缩略图），按消息中的 md5 查找。
+    ///
+    /// # Errors
+    ///
+    /// 消息 ID 无效或消息不是视频时返回用法错误，视频消息没有 md5 时返回运行时错误；找不到消息，
+    /// 或视频不在本机（微信还没下载）时返回 `not_found`；账号没有配置好时返回配置错误。
     pub fn video_files_for_message(
         &self,
         session_id: &str,
@@ -70,7 +78,7 @@ impl ServiceHub {
             })
     }
 
-    /// WeChat's video folder of the configured account, for finding the videos of many messages.
+    /// 配置的账号的微信视频目录，用来查找许多条消息的视频。
     pub(super) fn video_folder(&self) -> Option<crate::video::VideoFolder> {
         let account_dir = self.account_dir_only().ok()?;
         Some(crate::video::VideoFolder::new(
@@ -78,9 +86,10 @@ impl ServiceHub {
         ))
     }
 
-    /// Path of the on-disk video of a message sent in `month` (`yyyy-mm`), if WeChat stored one: by the first of
-    /// `md5s` in `videos` (see [`VideoFolder::find`](crate::video::VideoFolder::find)), else where WeChat's media
-    /// index puts one of them.
+    /// 在 `month`（`yyyy-mm`）发送的消息在磁盘上的视频的路径，微信没有保存时为 `None`。
+    ///
+    /// 先按 `md5s` 的第一个在 `videos` 中找（见 [`VideoFolder::find`](crate::video::VideoFolder::find)），
+    /// 找不到时用微信的媒体索引给出的其中一个的位置。
     pub(super) fn video_file_path(
         &self,
         videos: &crate::video::VideoFolder,
@@ -97,10 +106,10 @@ impl ServiceHub {
             })
     }
 
-    /// A file message's file on disk, and where an export puts it below `files/`: `<month>/<file name>`, as WeChat
-    /// keeps it in `msg/file/<month>/`, so files of one name sent in different months stay apart. WeChat's media
-    /// index is asked first (by the file's `md5`), then the message's file `name` is looked for in the month it was
-    /// sent (local time).
+    /// 文件消息在磁盘上的文件，以及导出时它在 `files/` 下的位置 `<month>/<file name>`。
+    ///
+    /// 位置与微信在 `msg/file/<month>/` 中的存放方式一致，不同月份发送的同名文件不会混在一起。先按文件的 `md5`
+    /// 查微信的媒体索引，再在发送的月份（本地时间）里找消息中的文件名 `name`。
     pub(super) fn message_file(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -136,13 +145,12 @@ impl ServiceHub {
         })
     }
 
-    // ── Media export ─────────────────────────────────────────────────────────
+    // ── 媒体导出 ─────────────────────────────────────────────────────────
 
-    /// Downloads the stickers of a conversation's latest 500 messages into the folder `out` (`chat emoji`); the ones
-    /// there already are kept.
+    /// 把会话最近 500 条消息中的表情下载到文件夹 `out`（`chat emoji`），`out` 中已有的不重新下载。
     ///
     /// # Errors
-    /// When the messages cannot be read or `out` cannot be made.
+    /// 读不出消息或建不了 `out` 时返回错误。
     pub async fn emoji_download(
         &self,
         session_id: &str,
@@ -177,9 +185,9 @@ impl ServiceHub {
     }
 }
 
-/// The files of the video that WeChat's media index (`hardlink.db`) lists for the first of `md5s` that has one on
-/// disk (#651). The month folders miss a video whose file is named otherwise than the message's md5; the index is
-/// asked only after them, because many videos have no row in it.
+/// 微信的媒体索引（`hardlink.db`）为 `md5s` 中第一个在磁盘上有文件的 md5 列出的视频文件（#651）。
+///
+/// 文件名与消息的 md5 不同的视频在月份目录里找不到；索引放在月份目录之后查，因为许多视频在索引里没有记录。
 fn linked_video(
     wcdb: &weflow_native::wcdb::Wcdb,
     account_dir: &Path,

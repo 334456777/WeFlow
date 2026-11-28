@@ -1,10 +1,8 @@
-//! Message images: locates a message image's `.dat` file in the account's
-//! `msg/attach/<md5(session)>/<yyyy-mm>/Img` folder, decrypts it (V1 / V2 / legacy XOR), unwraps
-//! WXGF with the built-in decoder and keeps the result in `<cache>/Images/<session>/<yyyy-mm>/`.
+//! 消息中的图片：在账号的 `msg/attach/<md5(session)>/<yyyy-mm>/Img` 文件夹中找到消息图片的 `.dat` 文件，
+//! 解密（V1、V2、旧版的 XOR），用内置的解码器解开 WXGF，把结果保存在 `<cache>/Images/<session>/<yyyy-mm>/`。
 //!
-//! The desktop app's events for a page that shows images as they are decrypted, and its
-//! background "better quality available" check, have no counterpart in a CLI, so they are
-//! left out.
+//! 桌面版里供页面边解密边显示图片的事件，以及它在后台检查「有更清晰的版本」的功能，在命令行中没有对应，
+//! 所以没有实现。
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -19,60 +17,60 @@ use crate::fs_atomic::{temporary_sibling, write_atomically};
 use crate::image::{self as img};
 use crate::sync::MutexExt;
 
+/// 图片服务在调用之间保留的状态。
 #[derive(Default)]
 pub struct ImageState {
     resolved: HashMap<String, String>,
-    /// Listings of the `Img` folders searched for `.dat` files (see [`ServiceHub::dir_listing`]).
+    /// 查找 `.dat` 文件时列出的 `Img` 文件夹的内容（见 [`ServiceHub::dir_listing`]）。
     dir_listings: HashMap<PathBuf, Listed>,
-    /// Names in the folders of the decrypted-image cache (see [`ServiceHub::possibly_cached`]).
+    /// 解密图片缓存各文件夹中的文件名（见 [`ServiceHub::possibly_cached`]）。
     cache_dirs: HashMap<PathBuf, CacheDirNames>,
-    /// WeChat's media index of images (see [`ServiceHub::linked_image_index`]).
+    /// 微信的图片媒体索引（见 [`ServiceHub::linked_image_index`]）。
     linked_images: Option<LinkedImages>,
-    /// The account folder, and when it was last found on disk (see [`ServiceHub::account_dir_since`]).
+    /// 账号目录，以及最近一次确认它在磁盘上的时刻（见 [`ServiceHub::account_dir_since`]）。
     account_dir: Option<(PathBuf, Instant)>,
-    /// `Images` in the cache folder (see [`ServiceHub::image_cache_root`]).
+    /// 缓存目录下的 `Images`（见 [`ServiceHub::image_cache_root`]）。
     cache_root: Option<PathBuf>,
 }
 
-/// What a lookup takes on trust: what was checked against the disk at or after this instant (a folder's listing,
-/// WeChat's media index, the account folder, a folder of the image cache) is used without checking it again.
+/// 查找时可以直接相信的内容：在这一时刻或之后对照磁盘检查过的（文件夹的内容、微信的媒体索引、账号目录、
+/// 图片缓存的文件夹）直接使用，不再检查。
 ///
-/// Each check is a system call, and on Windows a system call that opens a file costs tens of microseconds: an
-/// export with images made some fifty per image (issue #1099). A lookup ([`ServiceHub::image_decrypt`]) checks each
-/// at most once, from the instant it starts; an export checks each once for all its images, from the instant it
-/// starts, so the folders are taken as they were then.
+/// 每次检查都是一次系统调用，在 Windows 上打开文件的系统调用要几十微秒：不这样做时，
+/// 带图片的导出每张图片约要五十次（#1099）。一次查找（[`ServiceHub::image_decrypt`]）从开始的时刻起每项最多检查一次；
+/// 一次导出从开始的时刻起，为所有图片每项只检查一次，所以文件夹按那时的状态看待。
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Since(Instant);
 
 impl Since {
-    /// What is checked from now on.
+    /// 从现在起检查过的才可信。
     pub(super) fn now() -> Self {
         Self(Instant::now())
     }
 
-    /// Whether a check made at `checked` can be taken on trust.
+    /// 在 `checked` 时刻做的检查是否可信。
     fn covers(self, checked: Instant) -> bool {
         checked >= self.0
     }
 }
 
-/// A listing of a folder (`None` when there was no such folder) and when it was last found current.
+/// 一个文件夹的内容列表（没有这个文件夹时为 `None`），以及最近一次确认它仍是最新的时刻。
 struct Listed {
     listing: Option<Arc<DirListing>>,
     checked: Instant,
 }
 
-/// The image rows of WeChat's media index (`hardlink.db`), read whole, and the state of its database files when
-/// they were read: a change to the database or to its WAL reads them again.
+/// 整个读出的微信媒体索引（`hardlink.db`）中的图片行，以及读取时它的数据库文件的状态：
+/// 数据库或它的 WAL 有变化时重新读取。
 struct LinkedImages {
     account_dir: PathBuf,
     stamp: [Option<(Option<SystemTime>, u64)>; 2],
     by_md5: Arc<HashMap<String, Vec<PathBuf>>>,
-    /// When `stamp` was last found current.
+    /// 最近一次确认 `stamp` 仍是最新的时刻。
     checked: Instant,
 }
 
-/// The size and modification time of a file.
+/// 文件的大小和修改时间。
 #[derive(Clone, Copy, Debug)]
 struct FileMeta {
     len: u64,
@@ -88,36 +86,35 @@ impl FileMeta {
     }
 }
 
-/// `failureKind` of a WXGF image the built-in decoder cannot convert.
+/// 内置解码器转换不了的 WXGF 图片的 `failureKind`。
 const UNSUPPORTED_IMAGE: &str = "unsupported_image";
-/// `failureKind` of a `.dat` file that decrypts to no image, or to less than a whole one.
+/// 解密后不是图片或不是完整图片的 `.dat` 文件的 `failureKind`。
 const DECRYPT_FAILED: &str = "decrypt_failed";
-/// What an image whose file holds less than the whole picture says (#1112), when no lesser rendition of it can be
-/// shown instead.
+/// 文件不完整的图片给出的提示（#1112），在也没有较差的版本可以代替显示时使用。
 const INCOMPLETE_IMAGE: &str =
     "the image file is incomplete, WeChat may still be downloading it: retry later";
-/// `failureKind` of a payload that names no image, with neither an md5 nor a `.dat` name: a usage error as a
-/// command's answer (#1076).
+/// 既没有 md5 也没有 `.dat` 文件名、指不出图片的请求的 `failureKind`：作为命令的回答是用法错误（#1076）。
 const NO_IDENTIFIER: &str = "invalid_arguments";
 
-/// Directory listings (and cache folders' names) kept at most; past that the cache starts over.
+/// 最多保留的目录列表（及缓存文件夹的文件名）个数；超过时缓存从头开始。
 const MAX_DIR_LISTINGS: usize = 1024;
-/// A listing taken this soon after the folder's last change is not reused: a file added in the same tick of a coarse
-/// timestamp would leave the modification time as it was.
+/// 在文件夹最后一次变化后这么短的时间内列出的内容不再复用：在粗粒度时间戳的同一个刻度内新增的文件不会改变修改时间。
 const LISTING_SETTLE: Duration = Duration::from_secs(2);
 
-/// One folder's entries. An image is searched for in its month's folder, which can hold thousands of files, and an
-/// export with media searches for every image: reading the folder each time made that quadratic (issue #49).
+/// 一个文件夹的条目。
+///
+/// 图片要在它所在月份的文件夹里找，这个文件夹可能有几千个文件，而带媒体的导出要找每一张图片：
+/// 每次都读一遍文件夹会让耗时随图片数平方增长（#49）。
 pub(super) struct DirListing {
     modified: Option<SystemTime>,
     listed_at: SystemTime,
-    /// File names in the order the system listed them.
+    /// 文件名，按系统列出的顺序。
     files: Vec<String>,
-    /// The size and time of each of `files` where listing the folder gave them without a call per file (Windows).
+    /// `files` 中每个文件的大小和时间，只在列出文件夹时不必逐个调用就能得到时才有（Windows）。
     meta: Vec<Option<FileMeta>>,
-    /// (trimmed lower-case name, index into `files`), sorted, to find the names starting with a prefix.
+    /// （去掉首尾空白的小写文件名，在 `files` 中的下标），排好序，用来找以某个前缀开头的文件名。
     keys: Vec<(String, usize)>,
-    /// Subfolder names, in listing order.
+    /// 子文件夹的名字，按列出的顺序。
     dirs: Vec<String>,
 }
 
@@ -133,8 +130,8 @@ impl DirListing {
             let name = entry.file_name().to_string_lossy().to_string();
             if kind.is_file() {
                 files.push(name);
-                // Windows lists each file with its size and times; elsewhere they would cost a call per file, more
-                // than the few files a lookup asks about
+                // Windows 列出每个文件时就带着大小和时间；在其他系统上每个文件都要单独调用一次，
+                // 比一次查找要问的那几个文件的代价还大
                 meta.push(
                     cfg!(windows)
                         .then(|| entry.metadata().ok())
@@ -161,9 +158,9 @@ impl DirListing {
         })
     }
 
-    /// What the listing says of the file `name`: `None` when it lists no file of that name in any case, else its size
-    /// and time when it lists that very name with them (a name listed in another case only may be another file, on a
-    /// file system that tells cases apart).
+    /// 列表中关于文件 `name` 的信息：不论大小写都没有这个名字时为 `None`；
+    /// 否则，列表中有完全相同的名字且带大小和时间时给出它们（只有大小写不同的名字，
+    /// 在区分大小写的文件系统上可能是另一个文件）。
     fn file(&self, name: &str) -> Option<Option<FileMeta>> {
         let key = name.trim().to_lowercase();
         let start = self
@@ -180,7 +177,7 @@ impl DirListing {
         )
     }
 
-    /// Whether `dir` still has these entries: not modified since it was listed, and listed well after its change.
+    /// `dir` 是否仍是这些条目：列出之后没有修改过，而且列出的时刻离它最后一次变化足够远。
     fn current(&self, dir: &Path) -> bool {
         let Some(modified) = self.modified else {
             return false;
@@ -193,7 +190,7 @@ impl DirListing {
                 .is_ok_and(|settled| settled >= LISTING_SETTLE)
     }
 
-    /// Files whose trimmed lower-case name starts with `prefix`, in listing order.
+    /// 去掉首尾空白的小写文件名以 `prefix` 开头的文件，按列出的顺序。
     fn files_starting_with(&self, prefix: &str) -> Vec<&str> {
         let start = self.keys.partition_point(|(key, _)| key.as_str() < prefix);
         let mut found: Vec<usize> = self.keys[start..]
@@ -206,27 +203,28 @@ impl DirListing {
     }
 }
 
-/// The lower-case names in a folder of the decrypted-image cache. Looking an image up tries up to 125 file names in
-/// three folders, and an export with media looks every image up twice while it fills those folders: checking each
-/// name took one metadata call apiece (issue #16). The names are read once, the files this process writes are added,
-/// and the folder is read again when its modification time shows a change made otherwise. A name that is no longer
-/// on disk only costs the check of that one path; a missing name costs a decrypt that was not needed.
+/// 解密图片缓存的一个文件夹中的小写文件名。
+///
+/// 查找一张图片要在三个文件夹里试多达 125 个文件名，带媒体的导出在填这些文件夹时要把每张图片查两次：
+/// 逐个检查文件名，每个都要一次取元数据的调用（#16）。所以文件名只读一次，本进程写的文件随时加进去，
+/// 文件夹的修改时间表明有别的改动时再重新读。已不在磁盘上的名字只多花检查那一个路径的代价；
+/// 漏掉的名字会多做一次不必要的解密。
 struct CacheDirNames {
-    /// The folder's modification time; `None` when there was no such folder.
+    /// 文件夹的修改时间；没有这个文件夹时为 `None`。
     modified: Option<SystemTime>,
     names: HashSet<String>,
-    /// When `modified` was last found current.
+    /// 最近一次确认 `modified` 仍是最新的时刻。
     checked: Instant,
 }
 
-/// What [`ServiceHub::index_cache_dir`] found.
+/// [`ServiceHub::index_cache_dir`] 的结果。
 #[derive(Clone, Copy, PartialEq)]
 enum CacheDir {
-    /// No such folder: none of its paths exist.
+    /// 没有这个文件夹：其中的路径都不存在。
     Missing,
-    /// Its names are in `ImageState::cache_dirs`.
+    /// 它的文件名在 `ImageState::cache_dirs` 中。
     Indexed,
-    /// It could not be listed: any of its paths may exist.
+    /// 列不出来：其中任何路径都可能存在。
     Unlisted,
 }
 
@@ -238,24 +236,24 @@ fn lower_file_name(path: &Path) -> Option<String> {
     path.file_name().map(|n| n.to_string_lossy().to_lowercase())
 }
 
-/// Which of the files WeChat keeps of an image (#194).
+/// 微信为一张图片保存的哪一个文件（#194）。
 ///
-/// `Thumb` is the thumbnail a chat shows (`<md5>_t.dat`); `Normal`, the image opened (`<md5>.dat`); `Hd`, the
-/// original WeChat downloads on View original (`<md5>_h.dat`); `Best`, the best of them on this computer. `Normal`
-/// falls back to the best there is, `Hd` to nothing.
+/// `Thumb` 是聊天中显示的缩略图（`<md5>_t.dat`）；`Normal` 是点开后的图片（`<md5>.dat`）；
+/// `Hd` 是点「查看原图」时微信下载的原图（`<md5>_h.dat`）；`Best` 是本机上其中最好的一个。
+/// `Normal` 没有时退而用现有最好的，`Hd` 没有时为空。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageVariant {
-    /// The best file on this computer.
+    /// 本机上最好的文件。
     Best,
-    /// The thumbnail, `<md5>_t.dat`.
+    /// 缩略图 `<md5>_t.dat`。
     Thumb,
-    /// The image opened, `<md5>.dat`, else the best there is.
+    /// 点开后的图片 `<md5>.dat`，没有时为现有最好的。
     Normal,
-    /// The original, `<md5>_h.dat`, else nothing.
+    /// 原图 `<md5>_h.dat`，没有时为空。
     Hd,
 }
 
-/// The `.dat` file of each rendition of an image, where there is one.
+/// 一张图片各个版本的 `.dat` 文件（有的话）。
 #[derive(Default, Debug)]
 struct DatFiles {
     hd: Option<String>,
@@ -263,7 +261,7 @@ struct DatFiles {
     thumb: Option<String>,
 }
 
-/// What a `.dat` file of an image holds, best first.
+/// 图片的 `.dat` 文件是哪个版本，最好的在前。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Rendition {
     Hd,
@@ -282,8 +280,8 @@ impl Rendition {
         }
     }
 
-    /// The rendition a file of the decrypted-image cache was decrypted from, by the suffix
-    /// [`img::cache_output_path`] gives it: `_hd`, a thumbnail's `_t`, `.t` or `_thumb`, else the original.
+    /// 解密图片缓存中的文件是从哪个版本解密来的，按 [`img::cache_output_path`] 给它的后缀判断：
+    /// `_hd`；缩略图的 `_t`、`.t` 或 `_thumb`；否则为原图。
     fn of_cached(path: &str) -> Self {
         let stem = Path::new(path)
             .file_stem()
@@ -299,28 +297,27 @@ impl Rendition {
     }
 }
 
-/// Which image message's image to decrypt, and how to answer (`image decrypt`, `resolve-cache`, `resolve-batch`).
+/// 要解密哪条图片消息的图片，以及怎样回答（`image decrypt`、`resolve-cache`、`resolve-batch`）。
 #[derive(Default, Clone, Debug)]
 pub struct ImagePayload {
-    /// The conversation's username.
+    /// 会话的用户名。
     pub session_id: Option<String>,
-    /// The image's MD5, as a message's `imageMd5`.
+    /// 图片的 MD5，即消息的 `imageMd5`。
     pub image_md5: Option<String>,
-    /// The name of its `.dat` file, as a message's `imageDatName`.
+    /// 它的 `.dat` 文件名，即消息的 `imageDatName`。
     pub image_dat_name: Option<String>,
-    /// When the message was sent, which narrows the search for the file.
+    /// 消息发送的时间，用来缩小查找文件的范围。
     pub create_time: Option<i64>,
-    /// Answer the decrypted file's path rather than a data URL of it.
+    /// 回答解密后文件的路径，而不是它的 data URL。
     pub prefer_file_path: bool,
-    /// `allowCacheIndex !== false`: whether a file named after the normalized `.dat` name or the MD5 may be taken
-    /// when the exact one is not found.
+    /// `allowCacheIndex !== false`：找不到完全对应的文件时，能否采用以规范化的 `.dat` 文件名或 MD5 命名的文件。
     pub allow_cache_index: Option<bool>,
-    /// Decrypt the original again rather than answer a thumbnail decrypted before.
+    /// 重新解密原图，而不是回答以前解密的缩略图。
     pub force: bool,
 }
 
 impl ImagePayload {
-    /// The payload of a JSON object with the WebUI's `camelCase` keys; a key that is missing or empty is unset.
+    /// 从带 WebUI 的 `camelCase` 键的 JSON 对象读出请求；缺少或为空的键视为没有设置。
     pub fn from_json(v: &Value) -> Self {
         let s = |k: &str| {
             v.get(k)
@@ -344,32 +341,32 @@ impl ImagePayload {
     }
 }
 
-/// Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead: the
-/// command's error, or the row of `image resolve-batch`.
+/// 消息图片解密后的位置（`image decrypt`、`resolve-cache`）；失败时改为说明原因：作为命令的错误，
+/// 或者作为 `image resolve-batch` 的一行。
 #[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageResult {
-    /// The decrypted image: its path, or a data URL of it without `preferFilePath`; left out on failure.
+    /// 解密后的图片：它的路径；没有 `preferFilePath` 时为它的 data URL。失败时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_path: Option<String>,
-    /// What went wrong; left out on success.
+    /// 出了什么错；成功时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Why it failed: `not_found`, `decrypt_failed`, `unsupported_image`, or `invalid_arguments` for a payload with
-    /// neither an md5 nor a `.dat` name.
+    /// 失败的原因：`not_found`、`decrypt_failed`、`unsupported_image`；
+    /// 既没有 md5 也没有 `.dat` 文件名的请求为 `invalid_arguments`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_kind: Option<&'static str>,
-    /// The file is only the thumbnail: the original is not on disk.
+    /// 文件只是缩略图：原图不在磁盘上。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_thumb: Option<bool>,
 }
 
-/// A message image as [`ServiceHub::image_decrypt_data`] finds it.
+/// [`ServiceHub::image_decrypt_data`] 找到的消息图片。
 pub(super) struct DecryptedImage {
-    /// The answer of [`ServiceHub::image_decrypt`]; empty (neither a path nor an error) for an image decrypted just
-    /// now that was not cached ([`CacheWrites::OnlyWxgf`]).
+    /// [`ServiceHub::image_decrypt`] 的回答；刚解密而没有写进缓存的图片（[`CacheWrites::OnlyWxgf`]）
+    /// 为空（既没有路径也没有错误）。
     pub(super) result: ImageResult,
-    /// The image, when it was decrypted just now (not when the cache already held it).
+    /// 刚解密时的图片（缓存里本来就有时没有）。
     pub(super) fresh: Option<FreshImage>,
 }
 
@@ -382,38 +379,39 @@ impl From<ImageResult> for DecryptedImage {
     }
 }
 
-/// How decrypting one rendition of an image went ([`ServiceHub::decrypt_rendition`]).
+/// 解密图片的一个版本的结果（[`ServiceHub::decrypt_rendition`]）。
 enum Attempt {
-    /// The image, or the answer for it.
+    /// 图片，或对它的回答。
     Done(DecryptedImage),
-    /// The answer for a file that holds less than the whole picture: it stops before the end its header or the
-    /// picture's structure gives, or its WXGF stream is damaged. A lesser rendition is shown instead when there is one.
+    /// 文件不是完整图片时的回答：文件在它的文件头或图片结构所示的结尾之前就结束了，或者它的 WXGF 数据已损坏。
+    /// 有较差的版本时改为显示它。
     Incomplete(DecryptedImage),
 }
 
-/// An image decrypted just now ([`DecryptedImage::fresh`]).
+/// 刚解密的图片（[`DecryptedImage::fresh`]）。
 pub(super) struct FreshImage {
-    /// Its bytes.
+    /// 它的字节。
     pub(super) data: Vec<u8>,
-    /// Whether it is a thumbnail, by the name of its file in the cache ([`img::is_thumbnail_path`]).
+    /// 是否是缩略图，按它在缓存中的文件名判断（[`img::is_thumbnail_path`]）。
     pub(super) thumbnail: bool,
 }
 
-/// Which images decrypted just now [`ServiceHub::image_decrypt_data`] writes into the image cache.
+/// [`ServiceHub::image_decrypt_data`] 把哪些刚解密的图片写进图片缓存。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CacheWrites {
-    /// Every one: the answer is its file in the cache.
+    /// 全部：回答的是它在缓存中的文件。
     All,
-    /// Those converted from WXGF, slow to convert again. The others are as quick to decrypt again as to read back
-    /// from the cache, and an export writes their bytes where they go: writing them into the cache too would make
-    /// two files of each, and on Windows making the files is most of what an image costs an export.
+    /// 只写从 WXGF 转换来的图片，它们重新转换很慢。
+    ///
+    /// 其他图片重新解密和从缓存读回一样快，而导出会把它们的字节直接写到目标位置：再写进缓存会让每张图片有两个文件，
+    /// 而在 Windows 上，建文件占了导出每张图片的大部分开销。
     OnlyWxgf,
 }
 
-/// What `image resolve-batch` answers: one result per payload, in their order.
+/// `image resolve-batch` 的回答：每个请求一个结果，顺序与请求一致。
 #[derive(Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 pub struct ImageBatch {
-    /// One result for each payload, in their order: `localPath` when it was found, `error` when not.
+    /// 每个请求一个结果，顺序与请求一致：找到时有 `localPath`，找不到时有 `error`。
     pub rows: Vec<ImageResult>,
 }
 
@@ -433,21 +431,20 @@ impl ImageResult {
         }
     }
 
-    /// The failure of a payload with neither an md5 nor a `.dat` name.
+    /// 既没有 md5 也没有 `.dat` 文件名的请求的失败结果。
     fn no_identifier() -> Self {
         Self::fail("missing image identifier", NO_IDENTIFIER)
     }
 
-    /// Whether the image was found and decrypted.
+    /// 图片是否找到并解密了。
     pub fn is_ok(&self) -> bool {
         self.local_path.is_some()
     }
 
-    /// The result as a command's answer.
+    /// 把结果作为命令的回答。
     ///
     /// # Errors
-    /// A usage error for a payload that names no image; any other failure as a runtime error, with `failureKind`
-    /// (and `isThumb` when known) as its details.
+    /// 请求指不出图片时返回用法错误；其他失败返回运行时错误，`failureKind`（知道时还有 `isThumb`）放在详情中。
     pub fn into_answer(self) -> AppResult<Self> {
         if self.is_ok() {
             return Ok(self);
@@ -464,12 +461,12 @@ impl ImageResult {
     }
 }
 
-/// The error of an image whose file holds less than the whole picture ([`INCOMPLETE_IMAGE`]).
+/// 文件不是完整图片时的错误（[`INCOMPLETE_IMAGE`]）。
 fn incomplete_error() -> AppError {
     AppError::runtime(INCOMPLETE_IMAGE).with_details(json!({ "failureKind": DECRYPT_FAILED }))
 }
 
-/// The bytes of the image [`ServiceHub::image_decrypt`] found, or its failure as an error.
+/// [`ServiceHub::image_decrypt`] 找到的图片的字节；失败时把它的失败作为错误返回。
 fn image_bytes(result: ImageResult) -> AppResult<Vec<u8>> {
     let path = result.local_path.ok_or_else(|| {
         let err = AppError::runtime(
@@ -477,7 +474,7 @@ fn image_bytes(result: ImageResult) -> AppResult<Vec<u8>> {
                 .error
                 .unwrap_or_else(|| "image decrypt failed".into()),
         );
-        // what went wrong, as `chat image` says it: `not_found` is a 404 of the command API
+        // 出错的原因与 `chat image` 的说法一致：`not_found` 是命令 API 的 404
         match result.failure_kind {
             Some(kind) => err.with_details(json!({ "failureKind": kind })),
             None => err,
@@ -486,8 +483,8 @@ fn image_bytes(result: ImageResult) -> AppResult<Vec<u8>> {
     std::fs::read(&path).map_err(|e| AppError::runtime(format!("failed to read {path}: {e}")))
 }
 
-/// What a WXGF image the built-in decoder cannot convert says: the time of its message, when known, so that it can be
-/// found in WeChat, and whether the data is damaged or in a format not supported yet.
+/// 内置解码器转换不了的 WXGF 图片的提示：知道消息时间时写出时间，便于在微信里找到它；
+/// 并说明是数据损坏还是格式还不支持。
 fn unsupported_image_message(create_time: Option<i64>, reason: crate::hevc::Unsupported) -> String {
     let what = match create_time
         .map(crate::message::time::format_timestamp)
@@ -549,7 +546,7 @@ fn local_path_for_payload(path: &str, prefer_file: bool) -> String {
     }
 }
 
-/// The keys a message image may be cached under: its md5 and `.dat` name as given, lower-cased, and without the variant suffix.
+/// 消息图片在缓存中可能用的键：原样的 md5 和 `.dat` 文件名、它们的小写形式，以及去掉版本后缀的形式。
 fn cache_keys(p: &ImagePayload) -> Vec<String> {
     let mut keys: Vec<String> = Vec::new();
     let mut add = |value: &str| {
@@ -579,17 +576,17 @@ fn cache_keys(p: &ImagePayload) -> Vec<String> {
     keys
 }
 
-/// How far `resolve_dat_path` may relax its search for a payload's `.dat` file.
+/// `resolve_dat_path` 查找请求的 `.dat` 文件时可以放宽到什么程度。
 struct DatSearch {
-    /// Accept a thumbnail (`_t`) when no HD file exists.
+    /// 没有高清文件时接受缩略图（`_t`）。
     allow_thumbnail: bool,
-    /// Ignore previously resolved paths and look on disk again.
+    /// 忽略以前找到的路径，重新在磁盘上找。
     skip_resolved_cache: bool,
-    /// Also look for a base derived from the normalized `.dat` name (or the md5), see `lookup_bases`.
+    /// 也按规范化的 `.dat` 文件名（或 md5）得出的基础名查找，见 `lookup_bases`。
     allow_dat_name_fallback: bool,
 }
 
-/// The md5s to look an image up by in WeChat's media index, then the `.dat` names to scan for.
+/// 先是在微信的媒体索引中查找图片用的 md5，然后是要扫描的 `.dat` 文件名。
 fn lookup_bases(
     md5: Option<&str>,
     dat_name: Option<&str>,
@@ -636,7 +633,7 @@ fn lookup_bases(
 }
 
 impl ServiceHub {
-    /// [`Self::account_dir_only`], found on disk at most once for `since`.
+    /// [`Self::account_dir_only`]，在 `since` 之后最多到磁盘上确认一次。
     fn account_dir_since(&self, since: Since) -> AppResult<PathBuf> {
         if let Some((dir, checked)) = &self.image_state.lock_or_panic().account_dir {
             if since.covers(*checked) {
@@ -649,8 +646,7 @@ impl ServiceHub {
         Ok(dir)
     }
 
-    /// The folder of the decrypted images, `Images` in the cache folder. It is made when a decrypted image is first
-    /// written into it.
+    /// 解密图片的文件夹：缓存目录下的 `Images`。第一次往里写解密的图片时才创建。
     pub fn image_cache_root(&self) -> PathBuf {
         if let Some(root) = &self.image_state.lock_or_panic().cache_root {
             return root.clone();
@@ -660,7 +656,7 @@ impl ServiceHub {
         root
     }
 
-    /// Makes `dir`, a folder of the image cache, and the cache folder above it as [`Self::cache_base`] makes it.
+    /// 建好图片缓存的文件夹 `dir`，以及它上面的缓存目录（按 [`Self::cache_base`] 的方式建）。
     fn make_image_cache_dir(&self, dir: &Path) -> io::Result<()> {
         self.cache_base();
         std::fs::create_dir_all(dir)
@@ -690,10 +686,9 @@ impl ServiceHub {
         self.image_state.lock_or_panic().resolved.remove(key);
     }
 
-    /// Whether a cached image can be used: a recognised extension, present, not empty and not a zeroed-out or
-    /// cut-short JPEG. An unusable JPEG is removed.
+    /// 缓存的图片能否使用：扩展名认得出、文件存在、不为空，也不是全为零或被截断的 JPEG。不能用的 JPEG 会被删掉。
     fn usable_image_cache_file(&self, path: &str) -> bool {
-        // an empty file is never an image (an older cache may hold one left half written)
+        // 空文件不会是图片（以前的缓存里可能有写了一半留下的）
         if !img::is_image_file(path) || std::fs::metadata(path).map_or(true, |m| m.len() == 0) {
             return false;
         }
@@ -703,7 +698,7 @@ impl ServiceHub {
             .unwrap_or_default();
         if ext == "jpg" || ext == "jpeg" {
             if let Ok(data) = std::fs::read(path) {
-                // a cut-short one: cached by a build that took a file WeChat was still writing for the image (#1112)
+                // 被截断的文件：早期的版本会把微信还没写完的文件解密进缓存（#1112）
                 if img::is_likely_corrupted_jpeg(&data) || img::ending::is_cut_short(&data) {
                     let _ = std::fs::remove_file(path);
                     return false;
@@ -738,8 +733,8 @@ impl ServiceHub {
         }
     }
 
-    /// The `.dat` files of a message in `msg/attach/<md5(session)>/<yyyy-mm>/Img`, at most 240 directories;
-    /// `<md5(session)>` is the first of [`img::session_dirs_for_storage`] with that month's folder.
+    /// 一条消息在 `msg/attach/<md5(session)>/<yyyy-mm>/Img` 中的 `.dat` 文件，最多查 240 个目录；
+    /// `<md5(session)>` 取 [`img::session_dirs_for_storage`] 中第一个有这个月份文件夹的。
     fn collect_dat_candidates(
         &self,
         account_dir: &Path,
@@ -753,7 +748,7 @@ impl ServiceHub {
         if session.is_empty() || month.is_empty() {
             return Vec::new();
         }
-        // the month's folder in the first of the conversation's folders that has one
+        // 会话的各个文件夹中第一个有这个月份文件夹的
         let Some((root, listing)) = img::session_dirs_for_storage(session)
             .into_iter()
             .map(|session_dir| {
@@ -780,8 +775,8 @@ impl ServiceHub {
             let Some(listing) = listed.or_else(|| self.dir_listing(&dir, since)) else {
                 continue;
             };
-            // every candidate name, lower-cased, starts with `base_md5` (`normalize_dat_base` only drops suffixes),
-            // so only those names are checked; the listing was found current for `since`, so they are on disk
+            // 每个候选名转成小写后都以 `base_md5` 开头（`normalize_dat_base` 只去掉后缀），所以只检查这些名字；
+            // 列表在 `since` 之后确认过是最新的，所以它们都在磁盘上
             for name in listing.files_starting_with(base_md5) {
                 if img::is_hardlink_candidate_name(name, base_md5) {
                     let s = dir.join(name).to_string_lossy().to_string();
@@ -803,8 +798,8 @@ impl ServiceHub {
         out
     }
 
-    /// The entries of `dir` (`None` when there is no such folder), read again only when it changed since it was last
-    /// read, and checked for that at most once for `since`.
+    /// `dir` 的条目（没有这个文件夹时为 `None`）；自上次读取后有变化时才重新读，
+    /// 是否有变化在 `since` 之后最多检查一次。
     fn dir_listing(&self, dir: &Path, since: Since) -> Option<Arc<DirListing>> {
         let cached = self
             .image_state
@@ -829,7 +824,7 @@ impl ServiceHub {
             }
             _ => {}
         }
-        // read without holding the lock: the export's media threads search side by side
+        // 读取时不持有锁：导出的媒体线程是同时查找的
         let listing = DirListing::read(dir).map(Arc::new);
         let mut state = self.image_state.lock_or_panic();
         if state.dir_listings.len() >= MAX_DIR_LISTINGS {
@@ -845,8 +840,8 @@ impl ServiceHub {
         listing
     }
 
-    /// The size and time of the file `path`, `None` when it is not on disk: from the listing of its folder when that
-    /// was found current for `since` (a file it does not list is not there), else from the disk.
+    /// 文件 `path` 的大小和时间，不在磁盘上时为 `None`：
+    /// 它所在文件夹的列表在 `since` 之后确认过是最新的时取自列表（列表中没有的文件就不存在），否则取自磁盘。
     fn file_meta(&self, path: &Path, since: Since) -> Option<FileMeta> {
         let listed = path.parent().and_then(|dir| {
             self.image_state
@@ -857,7 +852,7 @@ impl ServiceHub {
                 .map(|l| l.listing.clone())
         });
         if let (Some(listing), Some(name)) = (listed, path.file_name()) {
-            // no such folder, or a name it does not list: not on disk
+            // 没有这个文件夹，或者列表中没有这个名字：不在磁盘上
             if let Some(meta) = listing?.file(&name.to_string_lossy())? {
                 return Some(meta);
             }
@@ -868,7 +863,7 @@ impl ServiceHub {
             .map(|m| FileMeta::of(&m))
     }
 
-    /// The cache folder of the image decrypted from `dat` ([`img::month_folder`]).
+    /// 从 `dat` 解密出的图片所在的缓存文件夹（[`img::month_folder`]）。
     fn dat_month(&self, dat: &str, since: Since) -> String {
         img::month_folder(
             self.file_meta(Path::new(dat), since)
@@ -876,7 +871,7 @@ impl ServiceHub {
         )
     }
 
-    /// The largest of `paths`: biggest file, then newest, then name.
+    /// `paths` 中最大的：先比文件大小，再比新旧，最后比名字。
     fn pick_largest(&self, paths: &[String], since: Since) -> Option<String> {
         let mut list: Vec<(u64, u128, &String)> = Vec::new();
         for p in paths {
@@ -893,10 +888,10 @@ impl ServiceHub {
         list.first().map(|(_, _, p)| (*p).clone())
     }
 
-    /// The best `.dat` of the image `base_md5`: what the folders of its conversation hold
-    /// ([`Self::select_listed_dat`]), unless WeChat's media index names a better rendition on disk, or the folders
-    /// hold none (#651). The index is only an index: many images have no row in it, so the folders are always
-    /// searched, and what they find is kept when the index has nothing better.
+    /// 图片 `base_md5` 最好的 `.dat`：取它所在会话的文件夹中的（[`Self::select_listed_dat`]），
+    /// 除非微信的媒体索引指出磁盘上有更好的版本，或者文件夹里一个也没有（#651）。
+    ///
+    /// 索引只是索引：许多图片在里面没有记录，所以总是查找文件夹，索引中没有更好的版本时保留文件夹中找到的。
     fn select_best_dat(
         &self,
         account_dir: &Path,
@@ -929,8 +924,8 @@ impl ServiceHub {
         }
     }
 
-    /// The best rendition of `base_md5` that WeChat's media index lists and that is on disk, the newest of equals;
-    /// only an HD one unless `allow_thumbnail`.
+    /// 微信的媒体索引列出、且在磁盘上的 `base_md5` 的最好版本，同等的取最新的；
+    /// 不是 `allow_thumbnail` 时只取高清版。
     fn select_linked_dat(
         &self,
         account_dir: &Path,
@@ -941,12 +936,11 @@ impl ServiceHub {
         self.linked_dats(account_dir, base_md5, since)
             .into_iter()
             .filter(|p| allow_thumbnail || Rendition::of(p) == Rendition::Hd)
-            // the first of equals: the index lists the newest first
+            // 同等的取第一个：索引把最新的列在前面
             .min_by_key(|p| Rendition::of(p))
     }
 
-    /// The `.dat` files of `base_md5` that WeChat's media index (`hardlink.db`) lists and that are on disk, newest
-    /// first.
+    /// 微信的媒体索引（`hardlink.db`）列出、且在磁盘上的 `base_md5` 的 `.dat` 文件，最新的在前。
     fn linked_dats(&self, account_dir: &Path, base_md5: &str, since: Since) -> Vec<String> {
         if !img::looks_like_md5(base_md5) {
             return Vec::new();
@@ -965,8 +959,8 @@ impl ServiceHub {
             .collect()
     }
 
-    /// WeChat's media index of images by md5, read again only when its database changed since it was last read,
-    /// which is checked at most once for `since`. Without the database key it cannot be read, and is empty.
+    /// 以 md5 为键的微信图片媒体索引；自上次读取后数据库有变化时才重新读，是否有变化在 `since` 之后最多检查一次。
+    /// 没有数据库密钥时读不了，为空。
     fn linked_image_index(
         &self,
         account_dir: &Path,
@@ -998,7 +992,7 @@ impl ServiceHub {
             cached.checked = checked;
             return cached.by_md5.clone();
         }
-        // read without holding the lock, as the folders are
+        // 与文件夹一样，读取时不持有锁
         let by_md5 = Arc::new(
             self.open_wcdb()
                 .ok()
@@ -1014,7 +1008,7 @@ impl ServiceHub {
         by_md5
     }
 
-    /// The best `.dat` file of a listing: HD variant in an Img folder, else `<md5>.dat`, else a `_t` thumbnail.
+    /// 列表中最好的 `.dat` 文件：`Img` 文件夹中的高清版，没有时为 `<md5>.dat`，再没有时为 `_t` 缩略图。
     fn select_listed_dat(
         &self,
         account_dir: &Path,
@@ -1106,8 +1100,7 @@ impl ServiceHub {
                 if !allow_thumbnail && !img::is_hd_dat_path(&cached) {
                     continue;
                 }
-                // a thumbnail is what was on disk then: the full image may have been downloaded since (#858), so the
-                // folders are looked at again first
+                // 缩略图只是当时磁盘上有的：之后可能下载了完整的图（#858），所以先重新查看文件夹
                 if Rendition::of(&cached) == Rendition::Thumbnail {
                     thumbnail_found_before.get_or_insert(cached);
                     continue;
@@ -1142,12 +1135,12 @@ impl ServiceHub {
             }
             return Some(selected);
         }
-        // nothing in this message's folders: the thumbnail found before for the same image (through another message,
-        // whose folder holds it) is still the image
+        // 这条消息的文件夹里什么都没有：
+        // 之前（通过另一条消息，在它的文件夹里）为同一张图片找到的缩略图仍然就是这张图片
         thumbnail_found_before
     }
 
-    /// The image decrypted from `dat_path` (whose cache folder is `month`) that the cache holds, when it is usable.
+    /// 缓存中从 `dat_path`（它的缓存文件夹为 `month`）解密出的图片，能用时才返回。
     fn find_cached_output(
         &self,
         dat_path: &str,
@@ -1158,19 +1151,19 @@ impl ServiceHub {
     ) -> Option<String> {
         let root = self.image_cache_root();
         let candidates = img::CacheCandidates::new(&root, dat_path, month, session_id, prefer_hd);
-        // a folder is checked only when the folders before it hold none of the names: most images are found in the
-        // first, and the image's own folder of the older layout is a different one for each image
+        // 前面的文件夹里一个名字都没有时才检查下一个：多数图片在第一个文件夹里就能找到，
+        // 而旧布局下每张图片各有自己的文件夹
         let found = candidates.folders().into_iter().find_map(|folder| {
             self.possibly_cached_in(folder, since)
                 .into_iter()
                 .map(|c| c.to_string_lossy().to_string())
-                // a file that is not there is not usable either
+                // 不存在的文件同样不能用
                 .find(|c| self.usable_image_cache_file(c))
         });
         found
     }
 
-    /// [`Self::possibly_cached`] of the candidates in one folder, making a path only of the names the folder lists.
+    /// 一个文件夹中候选文件的 [`Self::possibly_cached`]，只为文件夹列出的名字拼出路径。
     fn possibly_cached_in(&self, folder: img::CacheFolder<'_>, since: Since) -> Vec<PathBuf> {
         let dir = folder.path();
         let found = self.index_cache_dir(dir, since);
@@ -1179,7 +1172,7 @@ impl ServiceHub {
             return kept;
         }
         let state = self.image_state.lock_or_panic();
-        // an index dropped since (over `MAX_DIR_LISTINGS`) proves nothing
+        // 此后被丢弃的索引（超过 `MAX_DIR_LISTINGS`）说明不了什么
         let names = match found {
             CacheDir::Indexed => state.cache_dirs.get(dir).map(|index| &index.names),
             CacheDir::Missing | CacheDir::Unlisted => None,
@@ -1192,10 +1185,11 @@ impl ServiceHub {
         kept
     }
 
-    /// The `candidates` whose folder lists their name, in order: those that may exist. Costs one metadata call per
-    /// folder, at most once for `since`, instead of one per path; the paths returned still have to be checked.
+    /// `candidates` 中所在文件夹列出了其名字的那些，保持顺序：即可能存在的。
+    ///
+    /// 每个文件夹花一次取元数据的调用（在 `since` 之后最多一次），而不是每个路径一次；返回的路径仍要检查。
     fn possibly_cached(&self, candidates: Vec<PathBuf>, since: Since) -> Vec<PathBuf> {
-        // the few folders of the many candidates, told apart by their bytes: a path's hash walks its components
+        // 众多候选所在的少数几个文件夹，按路径的字节区分：路径的哈希要逐个遍历它的组成部分
         let mut dirs: Vec<(&Path, CacheDir)> = Vec::new();
         let dir_of: Vec<Option<usize>> = candidates
             .iter()
@@ -1216,7 +1210,7 @@ impl ServiceHub {
             })
             .collect();
         let state = self.image_state.lock_or_panic();
-        // each folder's names, looked up once; an index dropped since (over `MAX_DIR_LISTINGS`) proves nothing
+        // 每个文件夹的名字只查一次；此后被丢弃的索引（超过 `MAX_DIR_LISTINGS`）说明不了什么
         let names: Vec<Option<&HashSet<String>>> = dirs
             .iter()
             .map(|(dir, found)| match found {
@@ -1246,7 +1240,7 @@ impl ServiceHub {
             .collect()
     }
 
-    /// Brings the names of the cache folder `dir` up to date, checking it at most once for `since`.
+    /// 更新缓存文件夹 `dir` 的文件名，在 `since` 之后最多检查一次。
     fn index_cache_dir(&self, dir: &Path, since: Since) -> CacheDir {
         if let Some(index) = self
             .image_state
@@ -1279,8 +1273,7 @@ impl ServiceHub {
         {
             let mut state = self.image_state.lock_or_panic();
             if let Some(index) = state.cache_dirs.get_mut(dir) {
-                // a file this process renamed into the folder in between is recorded under the lock
-                // (`write_cache_file`)
+                // 本进程在这期间改名放进文件夹的文件是在锁内记下的（`write_cache_file`）
                 if index.modified.is_some()
                     && (index.modified == Some(modified) || index.modified == modified_time(dir))
                 {
@@ -1289,8 +1282,7 @@ impl ServiceHub {
                 }
             }
         }
-        // read without holding the lock. The time was taken first: a file written meanwhile changes it again, so the
-        // next lookup reads the folder anew
+        // 读取时不持有锁。先取了时间：期间写入的文件会再次改变它，所以下一次查找会重新读文件夹
         let Ok(entries) = std::fs::read_dir(dir) else {
             return CacheDir::Unlisted;
         };
@@ -1310,17 +1302,17 @@ impl ServiceHub {
                 names: HashSet::new(),
                 checked,
             });
-        // added to the names already known, so a file another thread noted in between is not dropped
+        // 加到已知的名字中，期间别的线程记下的文件不会丢掉
         index.names.extend(names);
         index.modified = Some(modified);
         index.checked = checked;
         CacheDir::Indexed
     }
 
-    /// Writes a decrypted image into the cache like [`write_atomically`], and adds it to its folder's names. The
-    /// temporary file is written in `<cache>/Images/.partial`, and the rename is recorded under the lock: otherwise
-    /// the other media threads would see the folder change while it is written and read all its names again. The
-    /// folders are made when the write finds one missing.
+    /// 像 [`write_atomically`] 那样把解密的图片写进缓存，并把它加进所在文件夹的名字。
+    ///
+    /// 临时文件写在 `<cache>/Images/.partial`，改名在锁内记下：否则其他媒体线程会在写入时看到文件夹有变化，
+    /// 重新读一遍它的所有名字。写入时发现文件夹不存在才创建。
     fn write_cache_file(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         let (Some(dir), Some(name)) = (path.parent(), lower_file_name(path)) else {
             return write_atomically(path, bytes);
@@ -1339,7 +1331,7 @@ impl ServiceHub {
             in_folder(dir, &|| std::fs::rename(&tmp, path))?;
             let modified = modified_time(dir);
             match (state.cache_dirs.get_mut(dir), modified) {
-                // a folder known to be missing may have been made and filled by another process since
+                // 已知不存在的文件夹，此后可能已被别的进程建好并写入了文件
                 (Some(index), _) if index.modified.is_none() => {
                     state.cache_dirs.remove(dir);
                 }
@@ -1378,12 +1370,12 @@ impl ServiceHub {
             if s == keep || !img::is_image_file(&s) {
                 continue;
             }
-            // a file that is not there stays not there
+            // 文件不存在时删不掉也无妨
             let _ = std::fs::remove_file(&c);
         }
     }
 
-    /// Swaps `cached`, a usable cached thumbnail, for the HD rendition when one exists.
+    /// 有高清版时，用它替换能用的缓存缩略图 `cached`。
     fn try_promote_thumbnail(
         &self,
         p: &ImagePayload,
@@ -1414,7 +1406,7 @@ impl ServiceHub {
         if let Some(existing) =
             self.find_cached_output(&hd_dat, &month, p.session_id.as_deref(), true, since)
         {
-            // a usable file of the cache, so one on disk
+            // 能用的缓存文件，所以在磁盘上
             if img::is_image_file(&existing) && img::is_hd_path(&existing) {
                 self.cache_resolved_paths(
                     cache_key,
@@ -1454,12 +1446,12 @@ impl ServiceHub {
         Some(path)
     }
 
-    /// Answers from the cache only; never decrypts a missing file.
+    /// 只从缓存回答（`image resolve-cache`），从不解密缺少的文件。
     pub fn image_resolve_cache(&self, p: &ImagePayload) -> ImageResult {
         self.image_resolve_cache_since(p, Since::now())
     }
 
-    /// [`Self::image_resolve_cache`] that takes on trust what was checked for `since`.
+    /// 直接相信 `since` 之后检查过的内容的 [`Self::image_resolve_cache`]。
     pub(super) fn image_resolve_cache_since(&self, p: &ImagePayload, since: Since) -> ImageResult {
         let keys = cache_keys(p);
         let Some(cache_key) = keys.first().cloned() else {
@@ -1473,7 +1465,7 @@ impl ServiceHub {
             let Some(cached) = self.image_state_get(key) else {
                 continue;
             };
-            // a file that is not there is not usable either
+            // 不存在的文件同样不能用
             if !self.usable_image_cache_file(&cached) {
                 self.image_state_remove(key);
                 continue;
@@ -1519,18 +1511,19 @@ impl ServiceHub {
         ImageResult::fail("cached image not found", "not_found")
     }
 
-    /// Decrypts a message image into the cache, or finds it there (`image decrypt`).
+    /// 把消息图片解密进缓存，或者在缓存中找到它（`image decrypt`）。
     pub fn image_decrypt(&self, p: &ImagePayload) -> ImageResult {
         self.image_decrypt_since(p, Since::now())
     }
 
-    /// [`Self::image_decrypt`] that takes on trust what was checked for `since`.
+    /// 直接相信 `since` 之后检查过的内容的 [`Self::image_decrypt`]。
     pub(super) fn image_decrypt_since(&self, p: &ImagePayload, since: Since) -> ImageResult {
         self.image_decrypt_data(p, since, CacheWrites::All).result
     }
 
-    /// [`Self::image_decrypt_since`], with the image when it was decrypted just now: an export writes its bytes
-    /// rather than read the cache file back. `cache` says which images decrypted just now go into the cache.
+    /// [`Self::image_decrypt_since`]，刚解密时同时给出图片：导出直接写出它的字节，而不是再从缓存文件读回。
+    ///
+    /// `cache` 说明哪些刚解密的图片写进缓存。
     pub(super) fn image_decrypt_data(
         &self,
         p: &ImagePayload,
@@ -1546,7 +1539,7 @@ impl ServiceHub {
                 let Some(cached) = self.image_state_get(key) else {
                     continue;
                 };
-                // a file that is not there is not usable either
+                // 不存在的文件同样不能用
                 if !self.usable_image_cache_file(&cached) {
                     self.image_state_remove(key);
                     continue;
@@ -1629,7 +1622,7 @@ impl ServiceHub {
             Attempt::Done(image) => return image,
             Attempt::Incomplete(answer) => answer,
         };
-        // a file WeChat is still writing: a lesser rendition, as when the better one is not there yet
+        // 微信还在写的文件：改用较差的版本，与更好的版本还不存在时一样
         for lesser in self.lesser_renditions(p, &dat, since) {
             if let Attempt::Done(image) =
                 self.decrypt_rendition(p, cache_key, &lesser, since, cache)
@@ -1642,7 +1635,7 @@ impl ServiceHub {
         incomplete
     }
 
-    /// The `.dat` files of `p`'s image in renditions below `dat`'s, best first ([`Self::dat_files`]).
+    /// `p` 的图片中比 `dat` 差的各版本的 `.dat` 文件，最好的在前（[`Self::dat_files`]）。
     fn lesser_renditions(&self, p: &ImagePayload, dat: &str, since: Since) -> Vec<String> {
         let rendition = Rendition::of(dat);
         let files = self.dat_files(p, since).unwrap_or_default();
@@ -1653,7 +1646,7 @@ impl ServiceHub {
             .collect()
     }
 
-    /// Decrypts `dat`, a file of `p`'s image, into the cache (as `cache` says), or finds it there.
+    /// 把 `p` 的图片的一个文件 `dat` 解密进缓存（按 `cache` 的规定），或者在缓存中找到它。
     fn decrypt_rendition(
         &self,
         p: &ImagePayload,
@@ -1696,8 +1689,7 @@ impl ServiceHub {
         if let Some(existing) =
             self.find_cached_output(dat, &month, p.session_id.as_deref(), prefer_hd, since)
         {
-            // a cached output decrypted from a lesser rendition than `dat` (a thumbnail cached before WeChat
-            // downloaded the image, #858) is replaced by decrypting `dat`
+            // 从比 `dat` 差的版本解密出的缓存（微信下载这张图之前缓存的缩略图，#858）改为解密 `dat` 来替换
             if Rendition::of_cached(&existing) <= Rendition::of(dat) {
                 self.cache_resolved_paths(
                     cache_key,
@@ -1739,7 +1731,7 @@ impl ServiceHub {
                 is_thumb: Some(img::is_thumbnail_path(dat)),
                 ..Default::default()
             };
-            // a damaged stream may be one WeChat has not finished writing; its message says it is damaged
+            // 损坏的数据可能是微信还没写完的；它的提示说明数据已损坏
             return if reason.is_damaged() {
                 Attempt::Incomplete(answer.into())
             } else {
@@ -1772,7 +1764,7 @@ impl ServiceHub {
                 fresh: Some(FreshImage { data, thumbnail }),
             });
         }
-        // renamed into place: an export's other media threads may read this cache file as soon as it exists
+        // 写好后改名到位：导出的其他媒体线程一看到这个缓存文件就可能去读它
         if let Err(e) = self.write_cache_file(&output, &data) {
             return done(ImageResult::fail(e.to_string(), "not_found"));
         }
@@ -1801,7 +1793,7 @@ impl ServiceHub {
         })
     }
 
-    /// One result row per payload (duplicates are resolved once), the folders checked once for the whole batch.
+    /// 每个请求一行结果（重复的只查一次），整批只检查一次文件夹。
     pub fn image_resolve_cache_batch(&self, payloads: &[ImagePayload]) -> ImageBatch {
         let since = Since::now();
         let mut memo: HashMap<String, ImageResult> = HashMap::new();
@@ -1828,9 +1820,15 @@ impl ServiceHub {
         ImageBatch { rows }
     }
 
-    /// The decrypted image of a message as bytes.
-    /// The decrypted image of a message; `create_time` tells apart messages of different message databases that
-    /// share the local id (an image is preferred among them anyway).
+    /// 一条消息解密后的图片的字节。
+    ///
+    /// `create_time` 用来区分不同消息库中本地 ID 相同的消息（其中会优先选图片）。
+    ///
+    /// # Errors
+    ///
+    /// 消息 ID 无效或消息不是图片时返回用法错误，找不到消息时返回 `not_found`；
+    /// 图片没有 md5 和 `.dat` 文件名、找不到或解密失败时返回运行时错误（`failureKind` 写在详情中）；
+    /// 账号没有配置好时返回配置错误。
     pub fn image_data_for_message(
         &self,
         session_id: &str,
@@ -1841,8 +1839,8 @@ impl ServiceHub {
         self.image_data_for_payload(&payload)
     }
 
-    /// The thumbnail WeChat keeps of a message's image (`<md5>_t.dat`, a few kilobytes), decrypted in memory; the
-    /// image itself ([`Self::image_data_for_message`]) when there is none.
+    /// 微信为消息图片保存的缩略图（`<md5>_t.dat`，几 KB），在内存中解密；
+    /// 没有缩略图时为图片本身（[`Self::image_data_for_message`]）。
     fn image_thumbnail_for_message(
         &self,
         session_id: &str,
@@ -1856,7 +1854,12 @@ impl ServiceHub {
         }
     }
 
-    /// The image of a message in one of the renditions WeChat keeps: [`ImageVariant`].
+    /// 消息图片在微信保存的某个版本下的内容，见 [`ImageVariant`]。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`Self::image_data_for_message`]；要 [`ImageVariant::Hd`] 而本机没有原图时返回 `not_found`，
+    /// 原图还没写完时返回运行时错误。
     pub fn image_variant_for_message(
         &self,
         session_id: &str,
@@ -1877,9 +1880,8 @@ impl ServiceHub {
                     ..payload.clone()
                 };
                 match (variant, &files.hd, &files.base) {
-                    // the HD file through the usual path, which keeps the HD rendition in the cache; the usual path
-                    // shows a lesser rendition for an HD file WeChat has not finished writing, which this variant
-                    // does not fall back to
+                    // 高清文件走通常的路径，高清版会留在缓存中；对微信还没写完的高清文件，
+                    // 通常的路径会改为显示较差的版本，而这个选项不退而求其次
                     (ImageVariant::Hd, Some(_), _) => {
                         let result = self.image_decrypt(&hd_payload);
                         match result.local_path.as_deref() {
@@ -1890,8 +1892,8 @@ impl ServiceHub {
                     (ImageVariant::Hd, None, _) => Err(AppError::not_found(
                         "the HD original of this image is not on this computer: open the image in WeChat and choose View original",
                     )),
-                    // with no HD file the usual path already gives the image itself (or the thumbnail without it);
-                    // beside an HD file, which the usual path prefers, the image itself is decrypted here
+                    // 没有高清文件时，通常的路径给出的就是图片本身（没有它时为缩略图）；
+                    // 有高清文件时通常的路径会优先用高清文件，所以在这里解密图片本身
                     (_, None, _) => self.image_data_for_payload(&payload),
                     (_, Some(_), Some(base)) => self.decrypt_dat_bytes(Path::new(base), &payload),
                     (_, Some(_), None) => self.image_data_for_payload(&hd_payload),
@@ -1900,8 +1902,12 @@ impl ServiceHub {
         }
     }
 
-    /// Which renditions of a message's image are on this computer (#194), and the sizes WeChat gives for the image
-    /// and its HD original (bytes; the HD one is there even when it has not been downloaded).
+    /// 消息图片的哪些版本在本机上（#194），以及微信给出的图片和高清原图的大小（字节；原图没下载时也有它的大小）。
+    ///
+    /// # Errors
+    ///
+    /// 消息 ID 无效或消息不是图片时返回用法错误，找不到消息时返回 `not_found`，
+    /// 图片没有 md5 和 `.dat` 文件名时返回运行时错误；账号没有配置好时返回配置错误。
     pub fn image_info_for_message(
         &self,
         session_id: &str,
@@ -1933,8 +1939,8 @@ impl ServiceHub {
         })
     }
 
-    /// The `.dat` files of each rendition of `p`'s image, chosen as [`Self::select_best_dat`] chooses among them:
-    /// what the folders hold, and a rendition they lack where WeChat's media index puts one (#651).
+    /// `p` 的图片每个版本的 `.dat` 文件，按 [`Self::select_best_dat`] 的方式挑选：
+    /// 文件夹中有的，以及文件夹中缺少、而微信的媒体索引给出位置的版本（#651）。
     fn dat_files(&self, p: &ImagePayload, since: Since) -> Option<DatFiles> {
         let account_dir = self.account_dir_since(since).ok()?;
         let bases = lookup_bases(
@@ -1952,14 +1958,14 @@ impl ServiceHub {
                     Rendition::Original => &mut files.base,
                     Rendition::Thumbnail => &mut files.thumb,
                 };
-                // the index lists the newest first
+                // 索引把最新的列在前面
                 slot.get_or_insert(linked);
             }
         }
         (files.hd.is_some() || files.base.is_some() || files.thumb.is_some()).then_some(files)
     }
 
-    /// [`Self::dat_files`] in the folders of the conversation only.
+    /// 只在会话的文件夹中查找的 [`Self::dat_files`]。
     fn listed_dat_files(
         &self,
         account_dir: &Path,
@@ -2004,7 +2010,7 @@ impl ServiceHub {
         None
     }
 
-    /// One `.dat` decrypted in memory, an HEVC image (WXGF) converted, without touching the image cache.
+    /// 在内存中解密一个 `.dat`（HEVC 图片 WXGF 会转换），不动图片缓存。
     fn decrypt_dat_bytes(&self, dat: &Path, p: &ImagePayload) -> AppResult<Vec<u8>> {
         let (xor_key, aes_key) = self.image_keys();
         let xor_key =
@@ -2035,7 +2041,7 @@ impl ServiceHub {
         Ok(data)
     }
 
-    /// The `_t.dat` beside the image file of `p`, decrypted, when it is an image a page can show.
+    /// `p` 的图片文件旁边的 `_t.dat`，解密后是页面能显示的图片时才返回。
     fn thumbnail_bytes(&self, p: &ImagePayload) -> Option<Vec<u8>> {
         let since = Since::now();
         let account_dir = self.account_dir_since(since).ok()?;
@@ -2060,12 +2066,12 @@ impl ServiceHub {
         let (xor_key, aes_key) = self.image_keys();
         let decrypted = crate::decrypt::decrypt_file(&thumb, xor_key?, aes_key.as_ref()).ok()?;
         let (data, _) = img::unwrap_wxgf(decrypted.data);
-        // a WXGF that could not be converted, or a cut-short picture, is left to the full path, which says why
+        // 转换不了的 WXGF 或被截断的图片交给完整的流程处理，由它说明原因
         let ext = crate::decrypt::detect_image_extension(&data);
         (ext != ".bin" && ext != ".wxgf" && !img::ending::is_cut_short(&data)).then_some(data)
     }
 
-    /// What [`Self::image_decrypt`] needs to find the image of a message.
+    /// [`Self::image_decrypt`] 找到一条消息的图片所需的请求。
     fn image_payload_for_message(
         &self,
         session_id: &str,
@@ -2077,7 +2083,7 @@ impl ServiceHub {
             .0)
     }
 
-    /// [`Self::image_payload_for_message`], and the message as WeChat keeps it (its XML).
+    /// [`Self::image_payload_for_message`]，以及微信保存的消息原文（它的 XML）。
     fn image_payload_and_content(
         &self,
         session_id: &str,
@@ -2089,7 +2095,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let row = chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(3))?
             .ok_or_else(|| AppError::not_found("message not found"))?;
-        // the lookup prefers an image only among several messages of the id: the one it found may be of any kind
+        // 查找时只在这个 ID 对应多条消息时才优先选图片：找到的那条可能是任何类型
         if row.local_type & 0xFFFF_FFFF != 3 {
             return Err(AppError::usage("the message is not an image"));
         }
@@ -2122,7 +2128,7 @@ impl ServiceHub {
         image_bytes(self.image_decrypt(payload))
     }
 
-    /// Forgets what is known about the decrypted-image cache, for when its files are removed.
+    /// 忘掉关于解密图片缓存的已知信息，在缓存文件被删除时调用。
     pub(super) fn image_forget_cached(&self) {
         let mut state = self.image_state.lock_or_panic();
         state.resolved.clear();
@@ -2154,14 +2160,15 @@ mod tests {
         dir
     }
 
-    /// Sets the folder's modification time an hour back, as for a month folder nothing writes to any more.
+    /// 把文件夹的修改时间往回调一小时，就像不再有人写入的月份文件夹。
     fn age(dir: &Path) {
         let past = SystemTime::now() - Duration::from_secs(3600);
         open_dir_to_set_times(dir).set_modified(past).unwrap();
     }
 
-    /// A folder opened so that its times can be set. Windows opens a folder only with backup semantics, and setting
-    /// times needs the write-attributes right rather than write access.
+    /// 为设置时间而打开的文件夹。
+    ///
+    /// Windows 只能以备份语义打开文件夹，设置时间需要的是写属性的权限，而不是写入权限。
     fn open_dir_to_set_times(dir: &Path) -> std::fs::File {
         #[cfg(windows)]
         {
@@ -2240,7 +2247,7 @@ mod tests {
     fn a_listing_is_reused_until_the_folder_changes() {
         let dir = listing_dir("current");
         std::fs::write(dir.join("a.dat"), b"").unwrap();
-        // just changed: a file added in the same timestamp tick would not show, so it is read again
+        // 刚改过：在同一个时间戳刻度内新增的文件看不出来，所以要重新读
         let fresh = DirListing::read(&dir).unwrap();
         assert!(!fresh.current(&dir));
         age(&dir);

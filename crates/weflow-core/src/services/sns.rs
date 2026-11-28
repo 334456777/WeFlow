@@ -1,5 +1,4 @@
-//! Moments with the network and the databases: timeline queries, stats caches, media download/decrypt, export and
-//! emoji download.
+//! 朋友圈中要用到网络和数据库的部分：时间线查询、统计的缓存、媒体的下载和解密、导出，以及评论表情的下载。
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -33,50 +32,50 @@ pub(crate) struct SnsState {
     last_timeline_fallback: Option<Instant>,
     image_cache: HashMap<String, (String, Instant)>,
     image_order: VecDeque<String>,
-    /// The client for WeChat's media servers, kept so that requests reuse their connections (#202): a page asks
-    /// for a screen of pictures at once, and a new client per picture redid DNS and TLS every time.
+    /// 访问微信媒体服务器的客户端，保留下来让请求复用连接（#202）：一个页面一次要一屏的图片，
+    /// 每张图片新建一个客户端就要每次重新做 DNS 解析和 TLS 握手。
     client: Option<reqwest::Client>,
-    /// The client for the sticker hosts whose certificate names another host (#814), kept as `client` is.
+    /// 访问证书上写着别的主机名的表情主机的客户端（#814），与 `client` 一样保留下来。
     unchecked_client: Option<reqwest::Client>,
 }
 
-/// Which posts `sns timeline` lists.
+/// `sns timeline` 列出哪些动态。
 #[derive(Clone, Debug, Default)]
 pub struct SnsTimelineQuery {
-    /// The most posts.
+    /// 最多的动态数。
     pub limit: i32,
-    /// The posts skipped, newest first.
+    /// 从新到旧跳过的动态数。
     pub offset: i32,
-    /// Only the posts of these wxids; all when empty.
+    /// 只列这些 wxid 的动态；为空时列出所有人的。
     pub usernames: Vec<String>,
-    /// Only the posts holding this text.
+    /// 只列含有这段文字的动态。
     pub keyword: Option<String>,
-    /// Unix seconds: only posts from then on; 0 for no bound.
+    /// Unix 秒：只列从这时起的动态；0 表示不限。
     pub start: i64,
-    /// Unix seconds: only posts up to then; 0 for no bound.
+    /// Unix 秒：只列到这时为止的动态；0 表示不限。
     pub end: i64,
 }
 
-/// What `sns export` writes.
+/// `sns export` 写出什么。
 #[derive(Clone, Debug, Default)]
 pub struct SnsExportOptions {
-    /// The folder the export goes to.
+    /// 导出到的文件夹。
     pub output_dir: PathBuf,
-    /// `json` | `html` | `arkmejson`, in any case; another value is refused.
+    /// `json`、`html` 或 `arkmejson`，不区分大小写；其他值被拒绝。
     pub format: String,
-    /// Only the posts of these wxids; all when empty.
+    /// 只导出这些 wxid 的动态；为空时导出所有人的。
     pub usernames: Vec<String>,
-    /// Only the posts holding this text.
+    /// 只导出含有这段文字的动态。
     pub keyword: Option<String>,
-    /// Also save the pictures, live photos and videos next to the export.
+    /// 同时把图片、实况照片和视频保存在导出文件旁边。
     pub export_media: bool,
-    /// Unix seconds: only posts from then on; 0 for no bound.
+    /// Unix 秒：只导出从这时起的动态；0 表示不限。
     pub start: i64,
-    /// Unix seconds: only posts up to then; 0 for no bound.
+    /// Unix 秒：只导出到这时为止的动态；0 表示不限。
     pub end: i64,
 }
 
-/// The formats `sns export` writes ([`SnsExportOptions::format`]).
+/// `sns export` 能写的格式（[`SnsExportOptions::format`]）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SnsExportFormat {
     Json,
@@ -85,7 +84,7 @@ enum SnsExportFormat {
 }
 
 impl SnsExportFormat {
-    /// The format `name` asks for, in any case.
+    /// `name` 指的格式，不区分大小写。
     fn parse(name: &str) -> AppResult<Self> {
         match name.trim().to_ascii_lowercase().as_str() {
             "json" => Ok(Self::Json),
@@ -97,7 +96,7 @@ impl SnsExportFormat {
         }
     }
 
-    /// The extension of the file it is written to, without the dot.
+    /// 写出的文件的扩展名，不带点。
     fn extension(self) -> &'static str {
         match self {
             Self::Json | Self::ArkmeJson => "json",
@@ -106,7 +105,7 @@ impl SnsExportFormat {
     }
 }
 
-/// What a medium saved by `sns export` may hold: its content type and the extension it is saved under.
+/// `sns export` 保存的媒体可能的内容：内容类型，以及保存时用的扩展名。
 const MEDIA_EXTENSIONS: [(&str, &str); 8] = [
     ("image/jpeg", "jpg"),
     ("image/png", "png"),
@@ -118,8 +117,7 @@ const MEDIA_EXTENSIONS: [(&str, &str); 8] = [
     ("video/mp4", "mp4"),
 ];
 
-/// The extension a medium of `content_type` is saved under; `jpg`, or `mp4` for a video, when the type is none of
-/// [`MEDIA_EXTENSIONS`].
+/// 内容类型为 `content_type` 的媒体保存时用的扩展名；不在 [`MEDIA_EXTENSIONS`] 中时，图片用 `jpg`，视频用 `mp4`。
 fn media_extension(content_type: &str, is_video: bool) -> &'static str {
     MEDIA_EXTENSIONS
         .iter()
@@ -127,8 +125,7 @@ fn media_extension(content_type: &str, is_video: bool) -> &'static str {
         .map_or(if is_video { "mp4" } else { "jpg" }, |(_, ext)| *ext)
 }
 
-/// The file an earlier export saved in `dir` as `stem`, whatever its extension: the name of a medium is known only
-/// once it is fetched.
+/// 以前的导出在 `dir` 中以 `stem` 为名保存的文件，不论扩展名：媒体的扩展名要取到它之后才知道。
 fn saved_media(dir: &Path, stem: &str) -> Option<String> {
     MEDIA_EXTENSIONS
         .iter()
@@ -136,8 +133,7 @@ fn saved_media(dir: &Path, stem: &str) -> Option<String> {
         .find(|name| dir.join(name).exists())
 }
 
-/// Saves a fetched medium in `dir` as `stem` and the extension of what it holds; returns the file's name, or none
-/// when it could not be written.
+/// 把取到的媒体保存到 `dir`，文件名为 `stem` 加上按内容决定的扩展名；返回文件名，写不进去时为 `None`。
 fn save_fetched(dir: &Path, stem: &str, fetched: SnsMediaFetch, is_video: bool) -> Option<String> {
     let name = format!(
         "{stem}.{}",
@@ -152,23 +148,23 @@ fn save_fetched(dir: &Path, stem: &str, fetched: SnsMediaFetch, is_video: bool) 
     written.then_some(name)
 }
 
-/// A Moments image or video fetched ([`ServiceHub::sns_fetch_media`]).
+/// 取到的一张朋友圈图片或一段视频（[`ServiceHub::sns_fetch_media`]）。
 #[derive(Clone, Debug, Default)]
 pub struct SnsMediaFetch {
-    /// The file, decrypted when there was a key; none for a video, which is only kept on disk.
+    /// 文件内容，有密钥时已解密；视频为 `None`，只保存在磁盘上。
     pub data: Option<Vec<u8>>,
-    /// Its MIME type.
+    /// 它的 MIME 类型。
     pub content_type: String,
-    /// Where WeFlow keeps it; none when it was not kept.
+    /// WeFlow 保存它的位置；没有保存时为 `None`。
     pub cache_path: Option<PathBuf>,
 }
 
-/// What the Moments media proxy answers for an address.
+/// 朋友圈媒体代理对一个地址的回答。
 #[derive(Clone, Debug)]
 pub enum SnsProxyResult {
-    /// A picture, as a data URL.
+    /// 图片，写成 data URL。
     DataUrl(String),
-    /// A video, as the file WeFlow keeps it in; none when it was not kept.
+    /// 视频，即 WeFlow 保存它的文件；没有保存时为 `None`。
     VideoPath(Option<PathBuf>),
 }
 
@@ -186,7 +182,7 @@ fn truthy_key(key: Option<&str>) -> Option<&str> {
     key.map(str::trim).filter(|k| !k.is_empty())
 }
 
-/// Whether a cached medium is an image, from its first bytes; a video is not read whole for that.
+/// 按开头的几个字节判断缓存的媒体是不是图片，不必为此读完整个视频。
 fn cached_is_image(path: &Path) -> bool {
     use std::io::Read;
     let mut head = [0u8; 16];
@@ -203,7 +199,7 @@ fn export_stats_value(total_posts: i64, total_friends: i64, my_posts: Option<i64
 }
 
 impl ServiceHub {
-    // ── paths ──
+    // ── 路径 ──
 
     fn sns_cache_dir(&self) -> PathBuf {
         let dir = self.cache_base().join("sns_cache");
@@ -227,7 +223,7 @@ impl ServiceHub {
             .join(format!("{}{}", md5_hex(url.as_bytes()), ext))
     }
 
-    // ── contacts ──
+    // ── 联系人 ──
 
     fn contact_identity(
         &self,
@@ -280,9 +276,13 @@ impl ServiceHub {
         v
     }
 
-    // ── timeline ──
+    // ── 时间线 ──
 
-    /// `snsService.getTimeline`: the posts enriched with fixed URLs, comments, location, avatar.
+    /// 对应桌面版的 `snsService.getTimeline`：补全了修正后的地址、评论、位置和头像的动态。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn sns_timeline_query(&self, q: &SnsTimelineQuery) -> AppResult<Vec<SnsPost>> {
         let wcdb = self.open_wcdb()?;
         self.sns_timeline_with(&wcdb, q)
@@ -332,7 +332,11 @@ impl ServiceHub {
             .collect())
     }
 
-    /// Who has posts in Moments, the one who posted last first (`sns users`).
+    /// 在朋友圈发过动态的人，最近发的在前（`sns users`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn sns_usernames_list(&self) -> AppResult<Vec<String>> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb.sns_usernames().map_err(err_native)?;
@@ -398,7 +402,7 @@ impl ServiceHub {
         Ok(order)
     }
 
-    // ── stats ──
+    // ── 统计 ──
 
     fn export_stats_from_table(
         &self,
@@ -450,8 +454,14 @@ impl ServiceHub {
         ))
     }
 
-    /// The Moments' numbers: returns `{totalPosts, totalFriends, myPosts}`. With
-    /// [`Freshness::Cached`] (`--prefer-cache`), what was kept will do, and the slow fallback over the timeline is skipped.
+    /// 朋友圈的数字：返回 `{totalPosts, totalFriends, myPosts}`。
+    ///
+    /// [`Freshness::Cached`]（`--prefer-cache`）时，保存的结果没过期就直接用，也不走较慢的遍历时间线的后备。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误；
+    /// 表里没有数据、遍历时间线也失败时返回那次失败的错误。
     pub fn sns_export_stats(&self, freshness: Freshness) -> AppResult<SnsStats> {
         let prefer_cache = freshness == Freshness::Cached;
         let allow_fallback = !prefer_cache;
@@ -515,7 +525,13 @@ impl ServiceHub {
         Ok(normalized)
     }
 
-    /// Posts per username, in the order of the usernames.
+    /// 每个用户名的动态数，按用户名排序。
+    ///
+    /// [`Freshness::Cached`] 时用没过期的保存结果；读数据库失败时用上次保存的结果。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误；读取失败且没有保存过结果时返回数据库层的错误。
     pub fn sns_user_post_counts(&self, freshness: Freshness) -> AppResult<BTreeMap<String, i64>> {
         if freshness == Freshness::Cached {
             if let Some((c, at)) = &self.sns_state.lock_or_panic().user_counts {
@@ -544,10 +560,10 @@ impl ServiceHub {
         }
     }
 
-    /// How many posts one person has (`sns post-counts --user`), from the counts kept while they are fresh.
+    /// 一个人有多少条动态（`sns post-counts --user`），保存的计数没过期时直接用。
     ///
     /// # Errors
-    /// A usage error for an empty username; a native error when the posts cannot be counted.
+    /// 用户名为空时返回用法错误；数不出动态时返回数据库层的错误。
     pub fn sns_user_post_stats(&self, username: &str) -> AppResult<UserPosts> {
         let username = username.trim();
         if username.is_empty() {
@@ -560,15 +576,19 @@ impl ServiceHub {
         })
     }
 
-    // ── block-delete trigger / delete ──
+    // ── 缓存与调试 ──
 
-    /// Drops the in-memory image cache and the cached statistics.
+    /// 丢弃内存中的图片缓存、统计缓存和保留的 HTTP 客户端。
     pub fn sns_clear_memory_cache(&self) {
         *self.sns_state.lock_or_panic() = SnsState::default();
     }
 
-    /// Asks the server for the first bytes of a Moments resource the way WeChat does and
-    /// reports the status and the headers that matter for decryption (`x-enc`, `x-time`, length, type).
+    /// 像微信那样向服务器请求朋友圈资源的前几个字节，
+    /// 报告状态码和与解密有关的响应头（`x-enc`、`x-time`、长度、类型）。
+    ///
+    /// # Errors
+    ///
+    /// `url` 为空、建不了 HTTP 客户端或请求失败时返回运行时错误。
     pub async fn sns_debug_resource(&self, url: &str) -> AppResult<SnsResourceProbe> {
         if url.trim().is_empty() {
             return Err(AppError::runtime("url must not be empty"));
@@ -601,11 +621,10 @@ impl ServiceHub {
         })
     }
 
-    // ── media download / decrypt ──
+    // ── 媒体的下载和解密 ──
 
-    /// The client for WeChat's media servers, which checks certificates; or, `unchecked`, the one for the sticker
-    /// hosts whose certificate names another host (`http_client::sticker_certificate_unchecked`, #814). Each is made
-    /// once and kept.
+    /// 访问微信媒体服务器的客户端，校验证书；`unchecked` 时为访问证书上写着别的主机名的表情主机的客户端，
+    /// 见 `http_client::sticker_certificate_unchecked`（#814）。每个只建一次并保留下来。
     fn sns_http_client(&self, unchecked: bool) -> AppResult<reqwest::Client> {
         let kept = |state: &mut SnsState| {
             if unchecked {
@@ -631,7 +650,12 @@ impl ServiceHub {
         Ok(slot.get_or_insert(client).clone())
     }
 
-    /// Downloads a Moments image/video, decrypting with the ISAAC64 key.
+    /// 下载朋友圈的图片或视频，用 ISAAC-64 密钥解密；已缓存的直接读缓存。
+    ///
+    /// # Errors
+    ///
+    /// `url` 为空时返回用法错误；请求失败、服务器回答的状态不是 200 或 206（404、410 时 `failureKind` 为
+    /// `not_found`）、视频写不进缓存或解密后不是图片时返回运行时错误。
     pub async fn sns_fetch_media(&self, url: &str, key: Option<&str>) -> AppResult<SnsMediaFetch> {
         if url.is_empty() {
             return Err(AppError::usage("url must not be empty"));
@@ -640,7 +664,7 @@ impl ServiceHub {
         let cache_path = self.sns_cache_file(url);
 
         if cache_path.exists() {
-            // the cover of a video lives on the video servers too: what was kept tells which it is
+            // 视频的封面也放在视频服务器上：看缓存的内容才知道是哪一种
             if is_video && !cached_is_image(&cache_path) {
                 return Ok(SnsMediaFetch {
                     data: None,
@@ -677,14 +701,14 @@ impl ServiceHub {
             AppError::runtime(if e.is_timeout() {
                 "request timed out".to_string()
             } else {
-                // the address carries the media's token
+                // 地址里带着媒体的 token：报错里不写出地址
                 crate::http_client::failure(e)
             })
         })?;
         let status = resp.status();
         if status.as_u16() != 200 && status.as_u16() != 206 {
             let err = AppError::runtime(format!("HTTP {}", status.as_u16()));
-            // gone from WeChat's servers, as the media of a deleted post are: a 404 for a page, not a failure
+            // 已从微信的服务器上删除，如已删除动态的媒体：对页面来说是 404，而不是失败
             return Err(if matches!(status.as_u16(), 404 | 410) {
                 err.with_details(json!({ "failureKind": "not_found" }))
             } else {
@@ -704,8 +728,7 @@ impl ServiceHub {
             .to_vec();
         let key = truthy_key(key);
 
-        // A video's cover comes from the video servers as a plain image: decrypting it as a video's first bytes
-        // would ruin it, so it goes the way of the images.
+        // 视频的封面从视频服务器以普通图片的形式下载：把它当作视频开头的字节解密会弄坏它，所以按图片处理。
         if is_video && !sns::detect_image_mime(&raw, "").starts_with("image/") {
             if let Some(k) = key {
                 isaac64::xor_in_place(&mut raw, k, Some(VIDEO_HEADER_BYTES));
@@ -713,7 +736,7 @@ impl ServiceHub {
             write_atomically(&cache_path, &raw).map_err(|e| {
                 AppError::runtime(format!("failed to write {}: {e}", cache_path.display()))
             })?;
-            // a video's cover, encrypted with the video's key, is an image once decrypted
+            // 用视频的密钥加密的视频封面，解密后是图片
             let content_type = match sns::detect_image_mime(&raw, "") {
                 image if image.starts_with("image/") => image,
                 _ => "video/mp4".into(),
@@ -727,7 +750,7 @@ impl ServiceHub {
 
         let mut decoded = raw.clone();
         let raw_is_image = sns::detect_image_mime(&raw, "").starts_with("image/");
-        // decrypted whenever there is a key, whatever the `x-enc` header says (as the desktop app does)
+        // 只要有密钥就解密，不看 `x-enc` 响应头（与桌面版相同）
         if let Some(key) = key {
             if key.chars().all(|c| c.is_ascii_digit()) {
                 let mut decrypted = raw.clone();
@@ -751,7 +774,11 @@ impl ServiceHub {
         })
     }
 
-    /// A Moments resource for a page: image → `data:` URL (memoised for 15 minutes), video → local path.
+    /// 给页面用的朋友圈资源：图片给出 `data:` 地址（在内存中保留 15 分钟），视频给出本地路径。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`Self::sns_fetch_media`]；取到的不是图片（密钥不对或缓存损坏）时返回运行时错误。
     pub async fn sns_proxy_image(&self, url: &str, key: Option<&str>) -> AppResult<SnsProxyResult> {
         if url.is_empty() {
             return Err(AppError::usage("url must not be empty"));
@@ -821,10 +848,11 @@ impl ServiceHub {
         Ok(SnsProxyResult::DataUrl(data_url))
     }
 
-    // ── emoji ──
+    // ── 评论表情 ──
 
-    /// The file at `target_url`, saved in `dir` as `<cache_key>.<its kind>`. Certificates are checked but on the
-    /// sticker hosts whose certificate names another host (#814); the client follows redirects itself.
+    /// 下载 `target_url` 的文件，以 `<cache_key>.<its kind>` 为名保存到 `dir`。
+    ///
+    /// 校验证书，只有证书上写着别的主机名的表情主机除外（#814）；客户端自己跟随重定向。
     async fn download_raw(&self, target_url: &str, cache_key: &str, dir: &Path) -> Option<PathBuf> {
         let url = target_url.replace("&amp;", "&");
         let unchecked = crate::http_client::sticker_certificate_unchecked(&url);
@@ -854,7 +882,11 @@ impl ServiceHub {
         Some(path)
     }
 
-    /// The cached download of a comment emoji, decrypting with the AES key when needed.
+    /// 下载评论中的表情，需要时用 AES 密钥解密；已下载过的直接取缓存。
+    ///
+    /// # Errors
+    ///
+    /// `url` 和 `encrypt_url` 都为空时返回用法错误；下载或保存失败时返回运行时错误。
     pub async fn sns_download_emoji(
         &self,
         url: &str,
@@ -935,13 +967,13 @@ impl ServiceHub {
         Err(AppError::runtime("failed to download the emoji"))
     }
 
-    // ── export ──
+    // ── 导出 ──
 
-    /// Writes the timeline as json / html / arkmejson with optional media download.
+    /// 把时间线写成 json、html 或 arkmejson，可选同时下载媒体。
     ///
     /// # Errors
-    /// When the format is none of the three (nothing is made then), when the Moments database cannot be read (the
-    /// posts read so far are not written), or when the folder or a file cannot be written.
+    /// 格式不是这三种之一时返回错误（这时什么都不创建）；朋友圈数据库读不出时返回错误（已读到的动态不写出）；
+    /// 文件夹或文件写不进去时返回错误。
     pub async fn sns_export_timeline(&self, opts: &SnsExportOptions) -> AppResult<SnsExported> {
         use futures::StreamExt;
         let want_media = opts.export_media;
@@ -956,12 +988,11 @@ impl ServiceHub {
         let usernames = &opts.usernames;
         let keyword = opts.keyword.as_deref().filter(|k| !k.is_empty());
 
-        // 1. load every post page by page; the pages follow the timeline's total order
-        // (time, then row id, newest first), so an offset reaches every post, also those
-        // sharing a second or without a time. A post arriving mid-export shifts the later
-        // pages by one, which repeats a post rather than skipping one: the row id drops it.
+        // 1. 逐页读出所有动态；各页按时间线的全序排列（先按时间、再按行 ID，从新到旧），
+        // 所以按偏移能读到每条动态，包括同一秒发的和没有时间的。导出中途新发的动态会让后面的页都后移一条，
+        // 结果是重复一条而不是漏掉一条：按行 ID（`tid`）去掉重复的。
         let wcdb = self.open_wcdb()?;
-        // the export reads the posts, then the names and avatars of their authors from the contacts
+        // 导出先读动态，再从联系人中读作者的名字和头像
         wcdb.prefetch(&[Databases::Moments, Databases::Contacts])
             .map_err(err_native)?;
         let mut posts: Vec<SnsPost> = Vec::new();
@@ -978,7 +1009,7 @@ impl ServiceHub {
                 start: opts.start,
                 end: opts.end,
             };
-            // a page that cannot be read ends the export with its error: the pages read so far are not the timeline
+            // 读不出的一页让导出以它的错误结束：已读到的几页不是完整的时间线
             let batch = self.sns_timeline_with(&wcdb, &q)?;
             if batch.is_empty() {
                 break;
@@ -999,7 +1030,7 @@ impl ServiceHub {
             });
         }
 
-        // 2. media, the files saved of each medium of each post
+        // 2. 媒体：每条动态的每个媒体保存下来的文件
         let media_dir = opts.output_dir.join("media");
         let mut media_count = 0usize;
         let mut saved: Vec<Vec<SavedMedia>> = posts
@@ -1099,7 +1130,7 @@ impl ServiceHub {
             }
         }
 
-        // 2.5 avatars (html only)
+        // 2.5 头像（只用于 html）
         let mut avatar_map: HashMap<String, String> = HashMap::new();
         if format == SnsExportFormat::Html {
             std::fs::create_dir_all(&media_dir).map_err(|e| {
@@ -1141,8 +1172,7 @@ impl ServiceHub {
             }
         }
 
-        // 3. output file
-        // the name carries the local time, as the other exports' pages do; the data says when in UTC
+        // 3. 输出文件：文件名用本地时间，与其他导出的页面一样；数据中的导出时间用 UTC
         let now_utc = chrono::Utc::now();
         let stamp = now_utc
             .with_timezone(&chrono::Local)
@@ -1254,7 +1284,7 @@ impl ServiceHub {
         })
     }
 
-    /// The likes and comments of a post for the arkme export, each with the name and avatar of who left it.
+    /// Arkme 导出用的一条动态的点赞和评论，每一项带着留下它的人的名字和头像。
     fn arkme_interaction_details(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -1461,8 +1491,9 @@ impl ServiceHub {
         (likes_detail, comments_detail)
     }
 
-    /// The timeline with its media fetched (`enrichSnsTimelineMedia`, for `sns timeline --with-media`): `url` and
-    /// `thumb` become the files as data URLs, the server's addresses move to `rawUrl` and `rawThumb`.
+    /// 取到媒体后的时间线（桌面版的 `enrichSnsTimelineMedia`，用于 `sns timeline --with-media`）。
+    ///
+    /// `url` 和 `thumb` 变成 data URL 形式的文件，取不到时变成代理地址；服务器的地址移到 `rawUrl` 和 `rawThumb`。
     pub async fn sns_enrich_timeline_media(&self, mut posts: Vec<SnsPost>) -> Vec<SnsPost> {
         for media in posts.iter_mut().flat_map(|p| p.media.iter_mut()) {
             let raw_url = std::mem::take(&mut media.url);
@@ -1502,8 +1533,9 @@ impl ServiceHub {
         posts
     }
 
-    /// What `raw_url` is shown as, and its proxy address: the file as a data URL, else the proxy address for both.
-    /// The proxy address is the route of `sns media` on `weflow serve` (#663).
+    /// `raw_url` 显示成什么，以及它的代理地址：能取到文件时为 data URL，否则两者都是代理地址。
+    ///
+    /// 代理地址是 `weflow serve` 上 `sns media` 的路由（#663）。
     async fn resolve_media_url(
         &self,
         raw_url: &str,
@@ -1524,10 +1556,10 @@ impl ServiceHub {
     }
 }
 
-/// Where `weflow serve` answers `sns media` in its own process.
+/// `weflow serve` 在自己的进程内回答 `sns media` 的路由。
 const SNS_MEDIA_ROUTE: &str = "/api/sns/media";
 
-/// A media key as text: trimmed, none when empty.
+/// 媒体密钥的文本：去掉首尾空白，为空时为 `None`。
 fn media_key(key: Option<&str>) -> Option<String> {
     let t = key?.trim();
     (!t.is_empty()).then(|| t.to_string())
@@ -1546,8 +1578,7 @@ fn url_encode(s: &str) -> String {
     out
 }
 
-/// A comment of the post itself as the Arkme JSON export lists it: without the usernames, which its XML does not
-/// have.
+/// Arkme JSON 导出中列出的动态自带的一条评论：去掉用户名，因为它的 XML 里没有。
 fn legacy_comment(c: &SnsComment) -> SnsComment {
     SnsComment {
         username: None,
@@ -1556,7 +1587,7 @@ fn legacy_comment(c: &SnsComment) -> SnsComment {
     }
 }
 
-/// One post as written into the JSON and Arkme JSON exports, with the files `saved` of its media.
+/// 写进 JSON 和 Arkme JSON 导出的一条动态，带上它的媒体保存下来的文件 `saved`。
 fn export_post_json(p: &SnsPost, saved: &[SavedMedia], arkme: bool) -> Value {
     let local = |path: &Option<String>| path.clone().filter(|l| !l.is_empty());
     let mut o = Map::new();
@@ -1606,11 +1637,11 @@ fn export_post_json(p: &SnsPost, saved: &[SavedMedia], arkme: bool) -> Value {
 }
 
 impl ServiceHub {
-    /// Downloads the image at `url` (`sns download-image`), decrypted with the image keys when it is a `.dat`
-    /// payload; written to `out`, else answered in base64.
+    /// 下载 `url` 处的图片（`sns download-image`），是 `.dat` 数据时用图片密钥解密；有 `out` 时写进它，
+    /// 否则以 base64 回答。
     ///
     /// # Errors
-    /// When the download fails or `out` cannot be written.
+    /// 下载失败、解密失败或 `out` 写不进去时返回运行时错误；档案不存在时返回配置错误。
     pub async fn sns_download_image(
         &self,
         url: &str,
@@ -1692,7 +1723,11 @@ impl ServiceHub {
         }
     }
 
-    /// The official accounts followed (`biz accounts`), each with the time of its last push.
+    /// 关注的公众号（`biz accounts`），每个带最后一次推送的时间。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn biz_accounts(&self) -> AppResult<Value> {
         let contacts = self.contacts()?;
         let sessions = self.sessions()?;
@@ -1700,7 +1735,11 @@ impl ServiceHub {
         Ok(json!({ "accounts": accounts }))
     }
 
-    /// A page of an official account's pushes, newest first (`biz messages`).
+    /// 公众号推送中的一页，从新到旧（`biz messages`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn biz_messages(
         &self,
         username: &str,
@@ -1714,16 +1753,21 @@ impl ServiceHub {
         })
     }
 
-    /// The WeChat Pay notices among `limit` messages from `offset` on, newest first: the messages of the WeChat Pay
-    /// account and the service notices, where WeChat keeps its cards. Other messages are left out, so a page may
-    /// hold fewer records than `limit`: `hasMore` says whether there are messages past this page.
+    /// 从第 `offset` 条起的 `limit` 条消息中的微信支付通知，从新到旧。
+    ///
+    /// 消息来自微信支付账号的会话，以及微信存放支付卡片的服务通知。其他消息不列出，所以一页可能少于 `limit` 条：
+    /// `hasMore` 说明这一页之后是否还有消息。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn biz_pay_records(
         &self,
         limit: i32,
         offset: i32,
     ) -> AppResult<crate::contract::PayRecords> {
         const PAY_ACCOUNT: &str = "gh_3dfda90e39d6";
-        // the two conversations together are paged here, so each is read up to the end of this page
+        // 两个会话的消息合在一起在这里分页，所以每个会话都要读到这一页的末尾
         let upto = if limit > 0 {
             limit.saturating_add(offset.max(0))
         } else {
