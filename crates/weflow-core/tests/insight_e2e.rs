@@ -500,7 +500,8 @@ async fn footprint_summary_formats_the_prompt() {
     let (_root, hub) = hub_with_ai("ins-foot", &fake, "anthropic", "fake-claude", &[]);
     let payload = json!({
         "range_label": "Last 7 days",
-        "summary": { "private_inbound_people": 5, "private_outbound_people": 4, "private_reply_rate": 0.8, "mention_count": 2, "mention_group_count": 1 },
+        // 账号所有者发过消息的 6 个私聊里，有 2 个对方从没发过消息：回复的人数是双方都发过的 4 个（#1348）
+        "summary": { "private_inbound_people": 5, "private_outbound_people": 6, "private_replied_people": 4, "private_reply_rate": 0.8, "mention_count": 2, "mention_group_count": 1 },
         "private_segments": [{ "display_name": "Bob", "incoming_count": 3, "outgoing_count": 2, "message_count": 5, "replied": true }],
         "mention_groups": [{ "display_name": "Team", "count": 2 }]
     });
@@ -508,7 +509,12 @@ async fn footprint_summary_formats_the_prompt() {
     assert!(r.insight.unwrap().contains("steady pace"));
     let body = fake.requests()[0].json().unwrap();
     let user = body["messages"][0]["content"].as_str().unwrap();
+    // 回复率 = 回复的人数 / 有聊天的人数 = 4 / 5
+    assert!(user.contains("People chatted with: 5\n"), "{user}");
+    assert!(user.contains("People I replied to: 4\n"), "{user}");
     assert!(user.contains("Reply rate: 80.0%"), "{user}");
+    assert!(user.contains("@-mentions of me: 2\n"), "{user}");
+    assert!(user.contains("Groups involved: 1\n"), "{user}");
     assert!(
         user.contains("1. Bob (in 3/out 2/total 5/replied)"),
         "{user}"

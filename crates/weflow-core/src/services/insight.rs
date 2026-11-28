@@ -509,10 +509,10 @@ impl ServiceHub {
                 "{people}",
                 &crate::num::saturating_i64(num(summary.get("private_inbound_people"))).to_string(),
             )
+            // 双方都发过消息的私聊数，即回复率的分子；`private_outbound_people` 还算上对方从没发过消息的会话（#1348）
             .replace(
                 "{replied_people}",
-                &crate::num::saturating_i64(num(summary.get("private_outbound_people")))
-                    .to_string(),
+                &crate::num::saturating_i64(num(summary.get("private_replied_people"))).to_string(),
             )
             .replace(
                 "{reply_rate}",
