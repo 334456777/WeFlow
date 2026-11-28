@@ -116,11 +116,18 @@ describe('AI settings', () => {
     fireEvent.click(sent);
     expect(count.disabled).toBe(false);
     const save = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
-    for (const bad of ['0', '-3', '2.5', 'abc']) {
+    // the bounds `config set` takes
+    for (const bad of ['0', '-3', '2.5', 'abc', '1001']) {
       fireEvent.change(count, { target: { value: bad } });
       expect(save.disabled).toBe(true);
     }
-    expect(screen.getByText('要填正整数。')).toBeTruthy();
+    expect(screen.getByText('要填 1 到 1000 的整数。')).toBeTruthy();
+    const tokens = screen.getByPlaceholderText('默认 4096');
+    for (const bad of ['0', '2000001']) {
+      fireEvent.change(tokens, { target: { value: bad } });
+      expect(screen.getByText('要填 1 到 2000000 的整数。')).toBeTruthy();
+    }
+    fireEvent.change(tokens, { target: { value: '' } });
     fireEvent.change(count, { target: { value: '80' } });
     fireEvent.click(save);
     await act(async () => {});

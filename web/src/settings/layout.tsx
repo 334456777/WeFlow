@@ -9,6 +9,18 @@ import { t } from '../i18n';
 /** What the server said went wrong, else `fallback`. */
 export const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 
+/**
+ * Whether `text` is empty or a whole number from `min` to `max`: the bounds `config set` takes for the key it is for
+ * (`crates/weflow-core/src/config/keys.rs`).
+ */
+export const wholeIn = (text: string, min: number, max: number) => {
+  const typed = text.trim();
+  return !typed || (/^\d+$/.test(typed) && Number(typed) >= min && Number(typed) <= max);
+};
+
+/** The warning under a number field that is not a whole number from `min` to `max`. */
+export const wholeWarning = (min: number, max: number) => t('要填 {min} 到 {max} 的整数。', { min, max });
+
 /** How an action went; an error is announced. */
 export type Note = { text: string; error?: boolean } | null;
 /** The line that says a note; nothing without one. */

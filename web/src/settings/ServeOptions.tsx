@@ -7,7 +7,7 @@ import { ArrowRight, CircleNotch } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { getSetting, setSetting, unsetSetting } from '../api/settings';
 import { GridSkeleton } from '../Skeleton';
-import { SaveBar, SettingRow, SettingsGroup, Toggle } from './layout';
+import { SaveBar, SettingRow, SettingsGroup, Toggle, wholeIn, wholeWarning } from './layout';
 import { msg, t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
@@ -15,11 +15,15 @@ type Note = { text: string; error?: boolean } | null;
 
 /** The whole numbers, with their labels and what the server uses when none is saved; shown through t(). */
 const NUMBERS = [
-  { key: 'serve_port', label: msg('端口'), fallback: '18108' },
-  { key: 'serve_max_tasks', label: msg('同时运行的任务'), fallback: '1' },
-  { key: 'serve_max_reads', label: msg('同时运行的其他命令'), fallback: msg('CPU 核数') },
-  { key: 'serve_max_media', label: msg('同时解码的图片和语音'), fallback: msg('CPU 核数') },
+  // 0 has the system pick a free port
+  { key: 'serve_port', label: msg('端口'), fallback: '18108', min: 0 },
+  { key: 'serve_max_tasks', label: msg('同时运行的任务'), fallback: '1', min: 1 },
+  { key: 'serve_max_reads', label: msg('同时运行的其他命令'), fallback: msg('CPU 核数'), min: 1 },
+  { key: 'serve_max_media', label: msg('同时解码的图片和语音'), fallback: msg('CPU 核数'), min: 1 },
 ] as const;
+
+/** The greatest number of each, as `config set` takes it (`crates/weflow-core/src/config/keys.rs`). */
+const MOST = 65535;
 
 /** The switches, with what the server does when none is saved; shown through t(). */
 const SWITCHES = [
@@ -33,7 +37,6 @@ const KEYS = ['serve_host', ...NUMBERS.map(n => n.key), ...SWITCHES.map(s => s.k
 /** Each key's saved value as text: `''` when none is saved. */
 type Form = Record<string, string>;
 
-const wholeNumber = (text: string) => !text.trim() || (/^\d+$/.test(text.trim()) && Number(text) >= 1 && Number(text) <= 65535);
 /** A listen address only this machine reaches. */
 const loopback = (host: string) => !host || host === 'localhost' || host.startsWith('127.') || host === '::1' || host === '[::1]';
 
@@ -52,7 +55,7 @@ export function ServeOptions({ onAi }: { onAi(): void }) {
     return () => controller.abort();
   }, []);
   const set = (key: string, value: string) => setForm(old => (old ? { ...old, [key]: value } : old));
-  const bad = form ? NUMBERS.filter(n => !wholeNumber(form[n.key])).map(n => n.key) : [];
+  const bad = form ? NUMBERS.filter(n => !wholeIn(form[n.key], n.min, MOST)).map(n => n.key) : [];
   const changed = Boolean(form && saved && KEYS.some(k => form[k].trim() !== saved[k]));
 
   const save = async (event: FormEvent) => {
@@ -88,7 +91,7 @@ export function ServeOptions({ onAi }: { onAi(): void }) {
   }
   const number = (n: (typeof NUMBERS)[number]) => <label key={n.key} className="console-field"><span className="console-field-name">{t(n.label)}</span>
     <input className="console-input" type="text" inputMode="numeric" placeholder={t(n.fallback)} value={form[n.key]} onChange={e => set(n.key, e.target.value)} />
-    {bad.includes(n.key) && <small className="setting-warning">{t('要填 1 到 65535 的整数。')}</small>}</label>;
+    {bad.includes(n.key) && <small className="setting-warning">{wholeWarning(n.min, MOST)}</small>}</label>;
   const switchRow = (s: (typeof SWITCHES)[number], text?: string, more?: ReactNode) => {
     const on = form[s.key] ? form[s.key] === 'true' : s.fallback;
     // the server's default is saved as nothing

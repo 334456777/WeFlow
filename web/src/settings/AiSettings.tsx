@@ -10,11 +10,15 @@ import { AI_KEYS, getInsightSessions, getSetting, listModels, sameSessions, setI
 import type { Profile } from '../api/setup';
 import { GridSkeleton } from '../Skeleton';
 import { InsightSessions } from './InsightSessions';
-import { NoteLine, reason, SaveBar, SettingRow, SettingsGroup, Toggle, type Note } from './layout';
+import { NoteLine, reason, SaveBar, SettingRow, SettingsGroup, Toggle, wholeIn, wholeWarning, type Note } from './layout';
 import { endpointOf, formatInfo, formatOf, FORMATS, SUGGESTED_MODELS } from './modelApi';
 import { t } from '../i18n';
 
 type AiForm = Record<(typeof AI_KEYS)[number], string> & { key: string };
+
+// the bounds `config set` takes and what the server reads with none set (`crates/weflow-core/src/config/keys.rs`)
+const TOKENS = { min: 1, max: 2_000_000, fallback: 4096 };
+const CONTEXT = { min: 1, max: 1000, fallback: 40 };
 
 /** How the last test went. */
 type Test = { running: true } | { probe: ModelProbe } | { error: string };
@@ -55,9 +59,8 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
     return () => controller.abort();
   }, []);
   const set = (key: keyof AiForm, value: string) => setForm(old => (old ? { ...old, [key]: value } : old));
-  const tokensBad = Boolean(form?.ai_model_api_max_tokens.trim()) && !/^\d+$/.test(form!.ai_model_api_max_tokens.trim());
-  // the server takes a count below 1 as its default
-  const countBad = Boolean(form?.ai_insight_context_count.trim()) && !/^[1-9]\d*$/.test(form!.ai_insight_context_count.trim());
+  const tokensBad = !wholeIn(form?.ai_model_api_max_tokens ?? '', TOKENS.min, TOKENS.max);
+  const countBad = !wholeIn(form?.ai_insight_context_count ?? '', CONTEXT.min, CONTEXT.max);
   const sessionsChanged = Boolean(sessions && savedSessions && (sessions.mode !== savedSessions.mode || !sameSessions(sessions.list, savedSessions.list)));
   const changed = sessionsChanged || Boolean(form && saved && (form.key.trim() || AI_KEYS.some(k => form[k].trim() !== saved[k])));
   const format = formatOf(form?.ai_model_api_format);
@@ -152,9 +155,9 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
       </SettingRow>
       <div className="settings-fields">
         <label className="console-field"><span className="console-field-name">{t('发送的条数')}</span>
-          <input className="console-input" type="text" inputMode="numeric" disabled={!chatSent} placeholder={t('默认 40')} aria-label={t('发送的条数')}
+          <input className="console-input" type="text" inputMode="numeric" disabled={!chatSent} placeholder={t('默认 {n}', { n: CONTEXT.fallback })} aria-label={t('发送的条数')}
             value={form.ai_insight_context_count} onChange={e => set('ai_insight_context_count', e.target.value)} />
-          {countBad ? <small className="setting-warning">{t('要填正整数。')}</small> : <small>{t('条数越多，模型看到的越完整，每次请求也越长。')}</small>}</label>
+          {countBad ? <small className="setting-warning">{wholeWarning(CONTEXT.min, CONTEXT.max)}</small> : <small>{t('条数越多，模型看到的越完整，每次请求也越长。')}</small>}</label>
       </div>
     </SettingsGroup>
 
@@ -176,8 +179,8 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
           <span className="token-input"><Key size={16} aria-hidden="true" /><input type="password" autoComplete="off" spellCheck={false} aria-label="API Key"
             placeholder={profile?.aiKey ? t('已设置；留空则不修改') : t('还没有设置')} value={form.key} onChange={e => set('key', e.target.value)} /></span></label>
         <label className="console-field"><span className="console-field-name">{t('单次回复的最多 token')}</span>
-          <input className="console-input" type="text" inputMode="numeric" placeholder={t('默认 4096')} value={form.ai_model_api_max_tokens} onChange={e => set('ai_model_api_max_tokens', e.target.value)} />
-          {tokensBad ? <small className="setting-warning">{t('要填整数。')}</small> : <small>{t('模型先推理时，推理也算在内。')}</small>}</label>
+          <input className="console-input" type="text" inputMode="numeric" placeholder={t('默认 {n}', { n: TOKENS.fallback })} value={form.ai_model_api_max_tokens} onChange={e => set('ai_model_api_max_tokens', e.target.value)} />
+          {tokensBad ? <small className="setting-warning">{wholeWarning(TOKENS.min, TOKENS.max)}</small> : <small>{t('模型先推理时，推理也算在内。')}</small>}</label>
         <div className="console-field wide">
           <label className="console-field-name" htmlFor={suggestions + '-model'}>{t('模型')}</label>
           <div className="ai-model-line">
