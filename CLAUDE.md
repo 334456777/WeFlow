@@ -41,7 +41,7 @@ Linux、macOS、Windows 都可以开发。命令里的 `VAR=1 命令` 是 POSIX 
   - `cipher_vfs`/`sqlcipher` 负责按页解密，`db` 是账号句柄（`Account`），`wxkey` 处理密钥
   - `msg`、`contact`、`sns`、`media`、`stats`、`report` 按领域（消息、联系人、朋友圈、媒体、统计、报告）查询，[`wcdb.rs`](crates/weflow-native/src/wcdb.rs) 是给上层用的门面，每个调用都是带类型参数的方法
 - [`weflow-core`](crates/weflow-core)：业务层
-  - [`services/`](crates/weflow-core/src/services) 下按领域划分，每个领域一个 `impl ServiceHub`；联系人的显示名、群昵称、会话种类和账号路径只在 `identity.rs`（[#1266](https://github.com/334456777/WeFlow/issues/1266)）
+  - [`services/`](crates/weflow-core/src/services) 下按领域划分，每个领域一个 `impl ServiceHub`；各领域共用的账号、文件路径和联系人的显示名只在 `identity.rs`，会话种类只在 `session_kind.rs`，群昵称的规则只在 `export_msg/names.rs`（[#1266](https://github.com/334456777/WeFlow/issues/1266)）
   - `reads`：CLI 与命令 API 共用的类型化读取（[#397](https://github.com/334456777/WeFlow/issues/397)）
   - `contract/`：命令 API 的契约类型，按领域划分（[#399](https://github.com/334456777/WeFlow/issues/399)），见下面的[命令 API 的契约](#命令-api-的契约)
   - 导出（`export*`）：`message/` 按消息种类解析，`export_msg/` 每种格式一个模块
