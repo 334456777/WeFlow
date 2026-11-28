@@ -654,29 +654,4 @@ impl ServiceHub {
         });
         Ok(contacts.into_iter().map(|c| c.0).collect())
     }
-
-    /// Display names and avatar URLs of `usernames`, each map holding the ones the account knows.
-    pub(super) fn names_and_avatars_pub(
-        &self,
-        wcdb: &weflow_native::wcdb::Wcdb,
-        usernames: &[String],
-    ) -> (HashMap<String, String>, HashMap<String, String>) {
-        let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
-            v.ok()
-                .and_then(|v| v.as_object().cloned())
-                .map(|m| {
-                    m.into_iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        if usernames.is_empty() {
-            return (HashMap::new(), HashMap::new());
-        }
-        (
-            to_map(wcdb.display_names(usernames)),
-            to_map(wcdb.avatar_urls(usernames)),
-        )
-    }
 }

@@ -319,27 +319,6 @@ impl ServiceHub {
         r.map_err(|e| AppError::native(format!("{e:#}")))
     }
 
-    fn names_and_avatars(
-        &self,
-        wcdb: &weflow_native::wcdb::Wcdb,
-        usernames: &[String],
-    ) -> (HashMap<String, String>, HashMap<String, String>) {
-        let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
-            v.ok()
-                .and_then(|v| v.as_object().cloned())
-                .map(|m| {
-                    m.into_iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        (
-            to_map(wcdb.display_names(usernames)),
-            to_map(wcdb.avatar_urls(usernames)),
-        )
-    }
-
     fn members_of(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,

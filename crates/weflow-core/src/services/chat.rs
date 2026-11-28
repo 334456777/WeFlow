@@ -170,10 +170,6 @@ pub struct ResourceQuery {
 const RESOURCE_TYPES: [&str; 4] = ["image", "video", "voice", "file"];
 
 impl ServiceHub {
-    pub(super) fn my_wxid_cleaned(&self) -> String {
-        clean_account_dir_name(&self.configured_wxid().unwrap_or_default())
-    }
-
     fn normalize_row(&self, rows: Vec<MsgRow>, session_id: &str) -> Vec<ExportMsg> {
         let my = self.my_wxid_cleaned();
         collect_rows(
@@ -754,26 +750,6 @@ impl ServiceHub {
             }
             _ => None,
         }
-    }
-
-    fn session_display_names(
-        &self,
-        wcdb: &weflow_native::wcdb::Wcdb,
-        ids: &[String],
-    ) -> HashMap<String, String> {
-        let mut out = HashMap::new();
-        if ids.is_empty() {
-            return out;
-        }
-        let map = wcdb.display_names(ids).ok();
-        if let Some(map) = map {
-            for (k, v) in map.as_object().into_iter().flatten() {
-                if let Some(name) = v.as_str().filter(|s| !s.is_empty()) {
-                    out.insert(k.clone(), name.to_string());
-                }
-            }
-        }
-        out
     }
 
     /// What the chat window calls each of `usernames` (a conversation's own username among them names the
@@ -1383,10 +1359,6 @@ impl ServiceHub {
             "nicknames": nicknames,
             "count": count
         }))
-    }
-
-    pub(super) fn wmy(&self) -> String {
-        self.my_wxid_cleaned()
     }
 
     /// One ascending cursor batch starting at `min_time`.

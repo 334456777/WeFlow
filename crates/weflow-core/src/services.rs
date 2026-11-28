@@ -19,6 +19,7 @@ mod export_stream;
 pub use cleanup::disk_usage;
 mod footprint;
 mod group;
+mod identity;
 mod image;
 mod insight;
 pub use image::{ImageBatch, ImagePayload, ImageResult, ImageVariant};

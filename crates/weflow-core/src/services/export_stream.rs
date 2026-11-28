@@ -291,9 +291,9 @@ impl PageSource<'_> {
             })
             .collect();
         let mut msgs = crate::message::collect_rows(rows, self.opts);
-        if msgs.iter().any(super::export::is_sticker) {
+        if msgs.iter().any(is_sticker) {
             let table = self.captions.get_or_init(self.load_captions);
-            super::export::attach_emoji_captions(table, &mut msgs);
+            attach_emoji_captions(table, &mut msgs);
         }
         Ok(ParsedPage {
             scanned,
@@ -301,6 +301,32 @@ impl PageSource<'_> {
             fetch,
             parse: t.elapsed() - fetch,
         })
+    }
+}
+
+/// A sticker: a plain emoji message, or an appmsg of type 8 (a sticker sent as an attachment).
+fn is_sticker(m: &ExportMsg) -> bool {
+    m.local_type == 47 || m.sticker_md5.is_some()
+}
+
+/// Looks up each sticker's caption and writes it into `emoji_caption`, which the export shows as `[表情：caption]`.
+///
+/// The caption is the user's own text for the sticker, else the store sticker's Chinese description. The table
+/// (md5 → caption) is read whole at once, see `emoticon_captions`.
+fn attach_emoji_captions(
+    table: &HashMap<String, String>,
+    messages: &mut [ExportMsg],
+) {
+    for m in messages.iter_mut() {
+        let md5 = match m.local_type {
+            47 => m.emoji_md5.clone(),
+            _ => m.sticker_md5.clone(),
+        };
+        let Some(md5) = md5 else { continue };
+        m.emoji_caption = table
+            .get(&md5.to_lowercase())
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty());
     }
 }
 
