@@ -1,7 +1,7 @@
 /**
- * The address a link may open, when it is a web page's: `http:` or `https:`. The addresses of link cards, articles
- * and shared posts come from the records, not from WeFlow, and the page holds the token of the command API, so a
- * `javascript:` address, a `file:` one or a scheme that wakes a program on this computer is shown without a link
- * (#818). Preact, which renders the released page, passes any address to `href` as it is.
+ * 链接可以打开的地址：网页的地址（`http:` 或 `https:`）原样返回，其他地址返回 `undefined`。
+ * 聊天里的链接卡片、公众号文章和朋友圈分享的链接来自读到的记录而不是 WeFlow，而页面持有命令 API 的 token，所以
+ * `javascript:`、`file:` 和会唤起本机程序的协议都只显示文字、不加链接（#818）。
+ * 渲染发布版页面的 Preact 会把任何地址原样交给 `href`。
  */
 export const safeUrl = (url?: string | null): string | undefined => (url && /^https?:\/\//i.test(url) ? url : undefined);

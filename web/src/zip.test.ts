@@ -22,7 +22,7 @@ describe('zip', () => {
     const u16 = (at: number) => view.getUint16(at, true);
     const u32 = (at: number) => view.getUint32(at, true);
     expect(u32(0)).toBe(0x04034b50);
-    // the check value of CRC-32
+    // CRC-32 的标准校验值，即 `123456789` 的 CRC-32
     expect(u32(14)).toBe(0xcbf43926);
     expect(u32(22)).toBe(9);
     const end = archive.length - 22;
@@ -36,7 +36,7 @@ describe('zip', () => {
     const second = central + 46 + 5;
     expect(u32(second)).toBe(0x02014b50);
     expect(u32(u32(second + 42))).toBe(0x04034b50);
-    // the year of the stamp, from 1980
+    // 修改时间里的年份，从 1980 年算起
     expect((u16(12) >> 9) + 1980).toBe(new Date().getFullYear());
   });
 });

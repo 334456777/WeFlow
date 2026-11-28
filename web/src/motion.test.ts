@@ -35,7 +35,7 @@ describe('contentIn', () => {
       [{ opacity: 0, transform: 'translateY(calc(.5 * 6px))' }, { opacity: 1, transform: 'none' }],
       { duration: 200, easing: 'cubic-bezier(.165, .84, .44, 1)' },
     );
-    // reduced motion sets the durations to 0
+    // 减少动画时时长被设为 0
     root.setProperty('--duration-base', '0ms');
     contentIn([element]);
     expect(animate).toHaveBeenCalledTimes(1);
@@ -53,14 +53,14 @@ describe('pageIn', () => {
     const { unmount } = renderHook(() => { turned(usePageTurn()); });
     const turns = () => turned.mock.lastCall![0] as PageTurns;
     const start = turns();
-    // so many turns and pages since the start
+    // 从开始算起又过了几次换页、几页
     const since = (turn: number, page: number) => ({ turn: start.turn + turn, page: start.page + page });
 
     act(() => pageIn([element]));
     expect(animate).toHaveBeenCalledTimes(1);
     expect(turns()).toEqual(since(1, 1));
 
-    // the skin's animation, played from its start, and given back to the style sheets when it ends
+    // 皮肤自己的动画：从头播放，结束后交还给样式表
     root.setProperty('--page-in', 'paper-in 200ms steps(3)');
     act(() => pageIn([element]));
     expect(animate).toHaveBeenCalledTimes(1);
@@ -72,17 +72,17 @@ describe('pageIn', () => {
     element.dispatchEvent(new Event('animationend'));
     expect(element.style.animation).toBe('');
 
-    // content that comes in without turning a page
+    // 内容进入，但不记换页
     act(() => pageIn([element], { turn: false }));
     expect(element.style.animation).toBe('paper-in 200ms steps(3)');
     expect(turns()).toEqual(since(2, 2));
 
-    // another item's detail in the same page: a turn, but no other page
+    // 同一页面里换成另一项的详情：记一次换页，但页数不变
     act(() => pageIn([element], { detail: true }));
     expect(turns()).toEqual(since(3, 2));
 
-    // another page before it ends: the browser cancels it to start it again and says so once it runs again, which
-    // stops nothing; cancelled for good (the element hidden), it is given back
+    // 动画结束前换进另一个页面：浏览器为了重新开始而取消动画，等它重新运行后才发出取消事件，这不结束任何东西；
+    // 真正取消时（元素被隐藏），动画交还给样式表
     act(() => pageIn([element]));
     const cancel = () => element.dispatchEvent(Object.assign(new Event('animationcancel'), { animationName: 'paper-in' }));
     const runs = (playState: string) => { element.getAnimations = () => [{ animationName: 'paper-in', playState }] as unknown as Animation[]; };

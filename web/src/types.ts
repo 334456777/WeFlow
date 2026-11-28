@@ -1,19 +1,16 @@
-// Types the pages share: the pages of the navigation, and the result of an export made in the page.
+// 各页面共用的类型：导航里的页面，以及在网页里完成的导出的结果。
 
-/**
- * What a page belongs to: Moments and the payment records are their own, every other page is the chat's. The
- * settings show the cards of the one opened last.
- */
+/** 页面所属的类别：朋友圈和支付记录各自一类，其余页面都属于聊天。设置页显示最后打开的那一类的卡片。 */
 export type Category = 'chat' | 'moments' | 'payments';
-/** Every page of the navigation. */
+/** 导航里的全部页面。 */
 export type Navigation = Category | 'contacts' | 'resources' | 'analytics' | 'reports' | 'footprint' | 'insights' | 'export' | 'backup' | 'settings';
-/** The formats of an export the page writes itself (the payment records). */
+/** 网页自己写出的导出（支付记录）的格式。 */
 export type ExportFormat = 'HTML' | 'JSON' | 'Excel';
 
-/** A finished export, offered as a download. */
+/** 完成的导出，供下载。 */
 export interface ExportResult {
   fileName: string;
-  /** How many records it holds. */
+  /** 其中的记录数。 */
   count: number;
   downloadUrl: string;
 }

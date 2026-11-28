@@ -1,12 +1,12 @@
-// One read of `weflow serve` that a view shows as it comes: loading, the answer, or why it failed.
+// 视图随进展显示的一次 `weflow serve` 读取：读取中、读到的回答，或者失败的原因。
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from './api/client';
 import { t } from './i18n';
 
-/** Where a read stands: loading, its answer, or why it failed, in words. */
+/** 一次读取的状态：读取中、读到的回答，或者用文字写的失败原因。 */
 export type Read<T> = { status: 'loading' } | { status: 'ready'; value: T } | { status: 'error'; message: string };
 
-/** What `read` answers, read again when `key` changes or `retry` is called. */
+/** `read` 读取的状态和重读的函数；`key` 变化或调用重读的函数时重新读取。 */
 export function useRead<T>(key: string, read: (signal: AbortSignal) => Promise<T>): [Read<T>, () => void] {
   const [state, setState] = useState<Read<T>>({ status: 'loading' });
   const [round, setRound] = useState(0);
@@ -15,7 +15,7 @@ export function useRead<T>(key: string, read: (signal: AbortSignal) => Promise<T
   useEffect(() => {
     const controller = new AbortController();
     setState({ status: 'loading' });
-    // an answer for a key since left, as of a read shared with others that is not cancelled, is not shown
+    // 已经换掉的 key 的回答不显示：与别处共用的读取不会随中止而取消，它的回答仍会到来
     latest.current(controller.signal).then(value => { if (!controller.signal.aborted) setState({ status: 'ready', value }); }, problem => {
       if (!controller.signal.aborted) setState({ status: 'error', message: (problem instanceof ApiError && problem.message) || t('读取失败') });
     });

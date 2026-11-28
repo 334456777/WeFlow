@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from '#test';
 import { applySkin, DEFAULT_SKIN, savedSkin, SKIN_KEY, SKINS, type Skin, useSkin } from './skin';
 
 const root = document.documentElement;
-/** The skins this page has; each test's own come after them and go after it. */
+/** 页面自带的皮肤数；每个测试自己的皮肤加在它们后面，测试结束后移除。 */
 const BUILT_IN = SKINS.length;
 
-/** Another skin, whose sheet arrives or fails when told to; each test names its own, as a sheet is fetched once. */
+/** 另一个皮肤，样式表按指令到达或失败；样式表只下载一次，所以每个测试的皮肤各用自己的名字。 */
 function another(id: string, shapes?: boolean) {
   let loads = 0;
   let settle: { resolve(): void; reject(): void } | null = null;

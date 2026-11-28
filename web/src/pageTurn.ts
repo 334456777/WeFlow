@@ -1,21 +1,20 @@
-// The page turns (#832): each time another page comes in, or another item's detail in a page (motion.ts pageIn), the
-// count of turns goes up by one, for the skin's decoration (Backdrop.tsx) to change with it; the count of pages only
-// when another page comes in, for what the skin sticks on the page itself, which stays on while a detail changes
-// under it. Both stay as they are with reduced motion, where pageIn plays nothing.
+// 换页的计数（#832）：每次换进另一个页面，或者在页面里换成另一项的详情（motion.ts 的 pageIn），换页次数加一，
+// 皮肤的装饰层（Backdrop.tsx）随之轮换；页数只在换进另一个页面时加一，供皮肤贴在页面上的东西使用，
+// 这些东西在详情变化时留在原处。减少动画时 pageIn 不播放，两个计数都不变。
 import { useSyncExternalStore } from 'react';
 
-/** The two counts of page turns. */
+/** 换页的两个计数。 */
 export interface PageTurns {
-  /** Turns so far: pages and details. */
+  /** 到目前为止的换页次数，换页面和换详情都算。 */
   turn: number;
-  /** Pages so far: turns that brought in another page, not another item's detail in the same page. */
+  /** 到目前为止的页数：只算换进另一个页面的换页，不算同一页面里换成另一项的详情。 */
   page: number;
 }
 
 let turns: PageTurns = { turn: 0, page: 0 };
 const listeners = new Set<() => void>();
 
-/** One turn more: another page, or with `detail` another item's detail in the same page. */
+/** 记一次换页：换进另一个页面；带 `detail` 时是同一页面里换成另一项的详情。 */
 export function turnPage({ detail = false }: { detail?: boolean } = {}): void {
   turns = { turn: turns.turn + 1, page: turns.page + (detail ? 0 : 1) };
   for (const listener of listeners) listener();
@@ -27,5 +26,5 @@ const subscribe = (listener: () => void) => {
 };
 const current = () => turns;
 
-/** The turns so far. */
+/** 到目前为止的两个换页计数。 */
 export const usePageTurn = (): PageTurns => useSyncExternalStore(subscribe, current, current);

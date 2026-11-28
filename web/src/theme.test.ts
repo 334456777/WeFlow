@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
 import { savedTheme, THEME_KEY, themeOf, useTheme } from './theme';
 
-/** A system in light or dark mode, which can switch while the page is open. */
+/** 处于浅色或深色模式的系统，页面打开期间可以切换。 */
 function system(dark: boolean) {
   const listeners = new Set<() => void>();
   const query = {
@@ -34,7 +34,7 @@ describe('the colour theme (#252)', () => {
     act(() => result.current[1]('dark'));
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(localStorage.getItem(THEME_KEY)).toBe('dark');
-    // a chosen theme stops listening to the system
+    // 选定了主题后停止监听系统的变化
     expect(os.listeners.size).toBe(0);
     act(() => os.switchTo(true));
     act(() => result.current[1]('light'));
