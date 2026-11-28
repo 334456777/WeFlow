@@ -1,5 +1,5 @@
-//! `?return=file`: the file a command wrote, sent back in the response next to a JSON result
-//! (`multipart/form-data` with a `result` and a `file` part).
+//! `?return=file`：命令写出的文件与 JSON 结果一起放在回答里送回（`multipart/form-data`，含 `result` 和 `file`
+//! 两部分）；作业的文件由 [`attachment`] 单独发送。
 
 use std::path::{Path, PathBuf};
 
@@ -11,9 +11,10 @@ use tokio::io::AsyncReadExt;
 
 use super::endpoints::{find_param, flag_value, texts, Endpoint, Params};
 
-/// Commands that write one file, with the `--out` used when the request gives none (inside the request's folder;
-/// empty = the folder itself, the command names the file) and the field of the result holding the written path
-/// (`None`: the file is `--out` itself).
+/// 只写出一个文件的命令，及其默认的 `--out` 和结果中保存写出的路径的字段。
+///
+/// 默认的 `--out` 在请求没有给 `--out` 时使用，位于请求自己的文件夹里；为空时就是这个文件夹，由命令给文件取名。
+/// 字段为 `None` 时，文件就是 `--out` 本身。
 pub(super) const FILE_COMMANDS: &[(&str, &str, Option<&str>)] = &[
     ("chat voice-data", "voice.wav", Some("path")),
     ("chat image-data", "image", Some("path")),
@@ -29,6 +30,7 @@ pub(super) const FILE_COMMANDS: &[(&str, &str, Option<&str>)] = &[
     ("backup create", "backup.zip", Some("out")),
 ];
 
+/// 命令 `name` 在 [`FILE_COMMANDS`] 中的默认 `--out` 和路径字段；不只写出一个文件的命令为 `None`。
 pub(super) fn file_command(name: &str) -> Option<(&'static str, Option<&'static str>)> {
     FILE_COMMANDS
         .iter()
@@ -36,8 +38,8 @@ pub(super) fn file_command(name: &str) -> Option<(&'static str, Option<&'static 
         .map(|(_, out, field)| (*out, *field))
 }
 
-/// Why `?return=file` cannot send what `command` writes with these parameters, told before it runs: `export
-/// messages` in several formats writes a folder unless `zip` packs it.
+/// 命令运行之前说明 `?return=file` 为什么不能发送 `command` 用这些参数写出的东西：`export messages`
+/// 导出多种格式时写出一个文件夹，除非用 `zip` 打包。能发送时为 `None`。
 pub(super) fn not_one_file(
     command: &str,
     endpoint: &Endpoint,
@@ -53,7 +55,7 @@ pub(super) fn not_one_file(
             continue;
         };
         match param.name.as_str() {
-            // comma separated on the command line too
+            // 命令行上也可以用逗号分隔
             "format" => {
                 let named = texts(param, values);
                 for format in named
@@ -77,8 +79,8 @@ pub(super) fn not_one_file(
     )
 }
 
-/// The file a successful run wrote: the result's path field, or `--out`; relative paths are taken from the
-/// server's working folder, which the command shared.
+/// 成功运行写出的文件：结果中的路径字段，没有时是 `--out`；相对路径按服务的工作目录解析，
+/// 命令与服务使用同一个工作目录。
 pub(super) fn written_file(doc: &Value, field: Option<&str>, out: &str) -> PathBuf {
     let path = field
         .and_then(|f| doc["data"][f].as_str())
@@ -87,7 +89,7 @@ pub(super) fn written_file(doc: &Value, field: Option<&str>, out: &str) -> PathB
     std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path))
 }
 
-/// Gives a file named by the server without an extension (`image`) the one its content shows.
+/// 服务端取名的、没有扩展名的文件（如 `image`），按内容加上扩展名；认不出内容或改名失败时保持原名。
 pub(super) fn add_extension(path: &Path) -> PathBuf {
     if path.extension().is_some() {
         return path.to_path_buf();
@@ -106,7 +108,7 @@ pub(super) fn add_extension(path: &Path) -> PathBuf {
     }
 }
 
-/// The extension of a few media formats, from their first bytes.
+/// 按开头的字节认出几种媒体格式，返回扩展名。
 fn sniff(head: &[u8]) -> Option<&'static str> {
     if let Some(picture) = weflow_core::image::ImageFormat::of(head) {
         return Some(picture.extension().trim_start_matches('.'));
@@ -127,6 +129,7 @@ fn sniff(head: &[u8]) -> Option<&'static str> {
     })
 }
 
+/// 按扩展名确定的 `Content-Type`，文本格式加上 `charset=utf-8`。
 fn content_type(path: &Path) -> String {
     let ext = path
         .extension()
@@ -146,8 +149,8 @@ fn content_type(path: &Path) -> String {
     }
 }
 
-/// `<kind>; filename="…"` (UTF-8 as browsers read it, quotes and control characters replaced) and RFC 5987
-/// `filename*`. A control character, which a Linux file name may hold, is not allowed in a header value.
+/// `<kind>; filename="…"`（按浏览器读取的方式写成 UTF-8，引号、反斜杠和控制字符换成 `_`），再加上 RFC 5987 的
+/// `filename*`。头的值里不能有控制字符，而 Linux 的文件名里可能有。
 fn disposition(kind: &str, name: &str) -> String {
     let plain: String = name
         .chars()
@@ -168,7 +171,7 @@ fn disposition(kind: &str, name: &str) -> String {
     format!("{kind}; filename=\"{plain}\"; filename*=UTF-8''{encoded}")
 }
 
-/// The file at `path`, opened, with its length and name.
+/// 打开 `path` 处的文件，连同它的长度和文件名一起返回；打不开或不是文件时，`Err` 是说明。
 async fn open(path: &Path) -> Result<(tokio::fs::File, u64, String), String> {
     let file = tokio::fs::File::open(path)
         .await
@@ -187,8 +190,8 @@ async fn open(path: &Path) -> Result<(tokio::fs::File, u64, String), String> {
     Ok((file, meta.len(), name))
 }
 
-/// `head`, then the file read from disk as it is sent, then `tail`. `folder`, the request's own, goes with the
-/// answer: removed once the file is sent and closed, or when the client goes before.
+/// 先发送 `head`，再边读边发送磁盘上的文件，最后发送 `tail`。请求自己的文件夹 `folder` 跟着回答走：
+/// 文件发完并关闭后删除，客户端提前断开时也删除。
 fn between(
     head: String,
     mut file: tokio::fs::File,
@@ -210,7 +213,7 @@ fn between(
                 }
             }
         }
-        // closed before its folder goes
+        // 先关闭文件，再删除它所在的文件夹
         drop(file);
         drop(folder);
         if !tail.is_empty() {
@@ -219,8 +222,8 @@ fn between(
     })
 }
 
-/// The `multipart/form-data` answer: `{"success": true, "data": {"path": …}}`, then the file read from disk as it is
-/// sent; `folder`, the request's own, is removed once it is sent.
+/// `multipart/form-data` 的回答：先是 `{"success": true, "data": {"path": …}}`，然后是边读边发送的文件；
+/// 请求自己的文件夹 `folder` 在文件发完后删除。
 pub(super) async fn multipart(
     path: &Path,
     folder: Option<super::RequestFolder>,
@@ -246,7 +249,7 @@ pub(super) async fn multipart(
         .map_err(|e| format!("cannot answer with {}: {e}", path.display()))
 }
 
-/// The file alone, to be saved (`GET /jobs/{id}/file`): its type from its extension, its name as an attachment.
+/// 只发送文件，供客户端保存（`GET /jobs/{id}/file`）：类型按扩展名确定，文件名作为附件的名字。
 pub(super) async fn attachment(path: &Path) -> Result<Response, String> {
     let (file, length, name) = open(path).await?;
     Response::builder()

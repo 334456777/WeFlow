@@ -1,6 +1,6 @@
-//! `GET /openapi.json`: an OpenAPI 3.1 description of the API, built from the command tree and [`METHODS`] the
-//! same way the routes are, so it always matches the running binary. Help texts are in the server's language, as
-//! every answer is (#433).
+//! `GET /openapi.json`：命令 API 的 OpenAPI 3.1 描述，与路由一样从命令树和 [`METHODS`] 生成，
+//! 所以总与运行中的程序一致。帮助文字与其他回答一样用服务端的语言（#433）。
+//! 契约（#399）也在这里生成，测试把它的快照和样本写在 `web/contract/` 里。
 
 use std::any::TypeId;
 
@@ -12,10 +12,12 @@ use super::endpoints::{api_args, param_of, Kind};
 use super::rules::{Rule, Verb, HIDDEN, METHODS};
 use super::{files, in_process, API_VERSION};
 
+/// `zh` 时取中文 `cn`，否则取英文 `en`。
 fn pick(zh: bool, en: &str, cn: &str) -> String {
     if zh { cn } else { en }.to_string()
 }
 
+/// clap 的帮助文字，去掉首尾的空白；没有时为空。
 fn text(s: Option<&StyledStr>) -> String {
     s.map(|s| s.to_string().trim().to_string())
         .unwrap_or_default()
@@ -30,7 +32,7 @@ fn verb_name(verb: Verb) -> &'static str {
     }
 }
 
-/// The description, in Chinese when `zh`.
+/// `/openapi.json` 的内容，`zh` 时用中文。
 pub(super) fn document(zh: bool) -> Value {
     let mut cmd = crate::cli::Cli::command();
     if zh {
@@ -76,6 +78,7 @@ pub(super) fn document(zh: bool) -> Value {
     })
 }
 
+/// 把 `cmd` 下每个叶子命令的路由加进 `paths`：不带 `/api/` 的路由，以及 `/api/` 下的读取或媒体路由（如果有）。
 fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String, Value>) {
     let subs: Vec<&Command> = cmd
         .get_subcommands()
@@ -108,8 +111,7 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
     }
 }
 
-/// The `/api/` twin of a command's path item: the same parameters and answer, without what only a child process
-/// does (`std`, `return=file`, jobs).
+/// 命令的路径项在 `/api/` 下的对应项：参数和回答相同，去掉只有子进程才做的部分（`std`、`return=file`、作业）。
 fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
     let mut item = item.clone();
     for op in item
@@ -134,7 +136,7 @@ fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
             None => note.into(),
         };
         if let Some(params) = op["parameters"].as_array_mut() {
-            // of the parameters every route has, only `fields` applies to /api/
+            // 每个路由都有的参数中，只有 `fields` 适用于 `/api/`
             params.retain(|p| {
                 p.get("$ref")
                     .is_none_or(|r| r == "#/components/parameters/fields")
@@ -147,7 +149,7 @@ fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
     item
 }
 
-/// The `/api/` route of a media command: a `GET` with the command's parameters but `out`, answering the file.
+/// 媒体命令的 `/api/` 路由：带命令除 `out` 以外的参数的 `GET`，回答文件本身。
 fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
     let mut op = operation(cmd, path, Verb::Get, &Variant::All, false, None, zh);
     if let Some(id) = op["operationId"].as_str().map(|id| format!("api_{id}")) {
@@ -212,17 +214,18 @@ fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
     Value::Object(item)
 }
 
-/// What one operation of a command whose method depends on an argument covers.
+/// 方法取决于某个参数的命令，一个操作（operation）覆盖的情形。
 #[derive(Clone)]
 enum Variant {
-    /// The command has one method.
+    /// 命令只有一种方法。
     All,
-    /// The argument is not given.
+    /// 没有给这个参数。
     Without(&'static str),
-    /// The argument is given.
+    /// 给了这个参数。
     With(&'static str),
 }
 
+/// 命令的路径项：每种方法一个操作。
 fn path_item(cmd: &Command, path: &[String], rule: Rule, zh: bool) -> Value {
     let (variants, note) = match rule {
         Rule::Fixed(v) => (vec![(v, Variant::All)], None),
@@ -254,6 +257,8 @@ fn path_item(cmd: &Command, path: &[String], rule: Rule, zh: bool) -> Value {
     Value::Object(item)
 }
 
+/// 命令用 `verb` 方法时的操作：参数（`POST`、`PUT` 写在 JSON 请求体里，其他方法写在查询字符串里）、摘要、说明和回答；
+/// `variant` 说明这个操作覆盖哪种情形，`many` 表示命令有不止一种方法，`note` 加在说明的末尾。
 fn operation(
     cmd: &Command,
     path: &[String],
@@ -342,7 +347,7 @@ fn operation(
     op
 }
 
-/// The schema of one value of an argument, from its value parser.
+/// 参数的一个值的 schema，按它的值解析器确定。
 fn value_schema(arg: &Arg) -> Value {
     let id = arg.get_value_parser().type_id();
     let is = |types: &[TypeId]| types.iter().any(|t| id == *t);
@@ -379,6 +384,7 @@ fn value_schema(arg: &Arg) -> Value {
     json!({ "type": ty })
 }
 
+/// 参数的 schema：开关是布尔值，接受多个值的参数是数组；单值参数带上它的默认值。
 fn schema_of(arg: &Arg, kind: Kind) -> Value {
     let mut schema = match kind {
         Kind::Flag => json!({ "type": "boolean" }),
@@ -397,8 +403,9 @@ fn schema_of(arg: &Arg, kind: Kind) -> Value {
     schema
 }
 
+/// 命令的回答：`200` 的 `--json` 文档（`file` 时还可以是 `multipart/form-data`）、`202` 的作业和错误。
 fn command_responses(name: &str, file: bool, zh: bool) -> Value {
-    // the contract (#399) says what `data` holds for the commands it describes
+    // 契约（#399）描述了的命令，`data` 的内容按契约写
     let schema = match contract().data.get(name) {
         Some(data) => {
             json!({ "oneOf": [success_of(data.clone()), { "$ref": "#/components/schemas/Failure" }] })
@@ -428,13 +435,16 @@ fn command_responses(name: &str, file: bool, zh: bool) -> Value {
     })
 }
 
-/// The contract (#399): what `data` holds for the commands it describes, and the types those schemas refer to, for
-/// `components/schemas`. The types are those of `weflow_core::contract`, which the commands answer with.
+/// 契约（#399）：契约描述的命令的 `data` 是什么，以及这些 schema 引用的、放进 `components/schemas` 的类型。
+/// 类型就是 `weflow_core::contract` 中的类型，命令也用它们回答。
 pub(super) struct Contract {
+    /// 命令名到它的 `data` 的 schema。
     pub data: std::collections::BTreeMap<&'static str, Value>,
+    /// 这些 schema 引用的类型，按名字排列。
     pub schemas: Map<String, Value>,
 }
 
+/// 契约，第一次用到时生成。
 pub(super) fn contract() -> &'static Contract {
     static CONTRACT: std::sync::OnceLock<Contract> = std::sync::OnceLock::new();
     CONTRACT.get_or_init(|| {
@@ -493,7 +503,7 @@ pub(super) fn contract() -> &'static Contract {
             }),
         );
         data.insert("chat resources", of(generator.subschema_for::<ResourcePage>()));
-        // a map of the ids asked for
+        // 以请求的 ID 为键的对象
         let by_id = |value: Value, what: &str| {
             json!({ "type": "object", "description": what, "additionalProperties": value })
         };
@@ -695,7 +705,7 @@ pub(super) fn contract() -> &'static Contract {
             data.insert("chat voice-preload", of(generator.subschema_for::<VoicesPrepared>()));
             data.insert("chat emoji", of(generator.subschema_for::<EmojisDownloaded>()));
             data.insert("chat group-hint", of(generator.subschema_for::<GroupHint>()));
-            // the command routes of the media: the `/api/` routes answer the file itself
+            // 媒体命令不带 `/api/` 的路由；`/api/` 的路由直接回答文件本身
             for command in ["chat image-data", "chat video-data"] {
                 data.insert(command, of(generator.subschema_for::<MediaWritten>()));
             }
@@ -747,7 +757,7 @@ pub(super) fn contract() -> &'static Contract {
         for command in ["insight test", "insight trigger", "insight footprint-summary"] {
             data.insert(command, of(generator.subschema_for::<InsightReply>()));
         }
-        // referred to by the server's own routes and by Failure
+        // 服务自己的路由和 Failure 引用的类型
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();
         let mut schemas = generator.take_definitions(true);
@@ -765,8 +775,8 @@ pub(super) fn contract() -> &'static Contract {
     })
 }
 
-/// An optional field of the contract is left out when it has no value (`skip_serializing_if`), never `null`; schemars
-/// writes the `null` of its `Option` all the same, which is taken out here.
+/// 契约中的可选字段没有值时不写出（`skip_serializing_if`），而不是写成 `null`；
+/// schemars 仍会为它的 `Option` 写上 `null`，这里把它去掉。
 fn left_out_not_null(schema: &mut Value) {
     let required: Vec<String> = schema["required"]
         .as_array()
@@ -805,8 +815,9 @@ fn left_out_not_null(schema: &mut Value) {
     }
 }
 
-/// The contract alone (#399), as `web/contract/openapi.json` keeps it for the WebUI's types: the `/api/` routes it
-/// describes and their types. It has no help texts nor anything of the build, so it changes only with the contract.
+/// 只含契约的文档（#399），即 `web/contract/openapi.json` 为网页的类型保存的内容：
+/// 契约描述的每条命令的路由（有 `/api/` 路由的写 `/api/` 路由）、`/jobs/{id}` 和它们的类型。
+/// 其中没有帮助文字，也没有与构建相关的内容，所以只随契约变化。
 #[cfg(test)]
 fn contract_document() -> Value {
     let c = contract();
@@ -864,6 +875,7 @@ fn json_content(schema: Value) -> Value {
     json!({ "application/json": { "schema": schema } })
 }
 
+/// `data` 的 schema 为 `data` 的成功回答。
 fn success_of(data: Value) -> Value {
     json!({
         "type": "object",
@@ -872,6 +884,7 @@ fn success_of(data: Value) -> Value {
     })
 }
 
+/// 服务自己的路由：`/health`、`/health/events`、`/openapi.json`、`/jobs` 及其下的路由和 `/api/push/messages`。
 fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
     let error = json!({ "$ref": "#/components/responses/Error" });
     let job = json!({ "$ref": "#/components/schemas/Job" });
@@ -1165,6 +1178,7 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
     );
 }
 
+/// `components`：鉴权方式、各路由共用的参数、头和回答，以及契约的类型。
 fn components(zh: bool) -> Value {
     let mut components = json!({
         "securitySchemes": {
@@ -1283,7 +1297,7 @@ fn components(zh: bool) -> Value {
             },
         },
     });
-    // the types of the contract, Error and Job among them
+    // 契约的类型，其中包括 Error 和 Job
     if let Some(schemas) = components["schemas"].as_object_mut() {
         schemas.extend(contract().schemas.clone());
     }
@@ -1318,7 +1332,7 @@ mod tests {
         }
     }
 
-    /// Every command says what its `data` holds (#430), but two whose answer is any value.
+    /// 每条命令都描述了它的 `data`（#430），只有两条命令例外，它们的回答可以是任何值。
     #[test]
     fn every_answer_is_described() {
         let undescribed: Vec<String> = super::super::Endpoints::new()
@@ -1327,12 +1341,11 @@ mod tests {
             .filter(|name| !contract().data.contains_key(name.as_str()))
             .cloned()
             .collect();
-        // a contact's row of WeChat's table, and the value of any key of the config
+        // 联系人在微信的表中的行，以及配置中任意一个键的值
         assert_eq!(undescribed, ["chat contact", "config get"]);
     }
 
-    /// `web/contract/openapi.json` is the contract the code answers with (#399), from which the WebUI's types are
-    /// generated.
+    /// `web/contract/openapi.json` 是代码实际回答所用的契约（#399），网页的类型由它生成。
     #[test]
     fn contract_snapshot_is_current() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1343,7 +1356,7 @@ mod tests {
             std::fs::write(&path, now).unwrap();
             return;
         }
-        // a checkout may have turned its line ends into CRLF
+        // 检出时换行符可能被改成了 CRLF
         let kept = std::fs::read_to_string(&path)
             .unwrap_or_default()
             .replace("\r\n", "\n");
@@ -1355,10 +1368,9 @@ mod tests {
         );
     }
 
-    /// One answer or more of each type of the contract, from fixed rows: what `web/contract/samples.json` keeps for
-    /// the WebUI's tests (#400), which hand them to the page's own code. Each says something a client may get wrong:
-    /// an id past 2^53 or past i64, a row that does not say who sent it, a day that turns at midnight, a page that
-    /// ends or goes on, an optional field left out, a job in each state.
+    /// 契约的每种类型的一个或多个回答，由固定的行构造：即 `web/contract/samples.json` 为网页的测试保存的内容（#400），
+    /// 测试把它们交给页面自己的代码。每个样本都带着客户端可能读错的地方：超过 2^53 或超过 i64 的 ID、没写发送者的行、
+    /// 跨午夜的日期、结束或还有下一页的分页、省略的可选字段、各种状态的作业。
     fn samples() -> Value {
         use weflow_core::contract::*;
         use weflow_native::msg::MsgPos;
@@ -1399,9 +1411,9 @@ mod tests {
                     0,
                 )
             },
-            // the last second of 2023 in UTC
+            // UTC 时间 2023 年的最后一秒
             row(4, None, 1704067199, 10000, 1704067199000, "\"Bob\" 撤回了一条消息", 1),
-            // the next second, in another database, with the same sort_seq as the row before
+            // 下一秒，在另一个数据库中，`sort_seq` 与上一行相同
             MsgRow {
                 is_send: true,
                 sender: Some("wxid_me".into()),
@@ -1419,8 +1431,7 @@ mod tests {
         let cursors: Vec<String> = rows.iter().map(|row| row.pos().token()).collect();
         let mut messages =
             weflow_core::chat_msg::map_msg_rows(rows.to_vec(), "wxid_bob", "wxid_me");
-        // an id past i64, which no row holds but the answer's string can, and a message that says neither who sent
-        // it nor whether I did
+        // 超过 i64 的 ID，任何行都存不下，但回答中的字符串可以；以及一条既没写发送者、也没写是不是我发的消息
         messages[1].server_id_raw = "18446744073709551615".into();
         messages[3].is_send = None;
         let parsed: Vec<ParsedMessage> = messages
@@ -1430,7 +1441,7 @@ mod tests {
             .map(|(i, (message, cursor))| ParsedMessage {
                 message,
                 cursor: Some(cursor),
-                // the first is a hit of `chat search`
+                // 第一条是 `chat search` 的命中结果
                 session_id: (i == 0).then(|| "wxid_bob".to_string()),
             })
             .collect();
@@ -1462,7 +1473,7 @@ mod tests {
             self_wxid: "wxid_me".into(),
             ..Session::default()
         };
-        // an official account WeChat lists without a conversation
+        // 微信列出、但没有会话的公众号
         let official = Session {
             username: "gh_news".into(),
             summary: "查看公众号历史消息".into(),
@@ -1538,13 +1549,13 @@ mod tests {
         let newest = resource(&image, 1700000180000, ResourceKind::Image);
         let next_cursor = Some(newest.cursor.clone());
         let pages = [
-            // the first page of one, more to come
+            // 只有一条的第一页，后面还有
             ResourcePage {
                 items: vec![newest],
                 has_more: true,
                 next_cursor,
             },
-            // the last page
+            // 最后一页
             ResourcePage {
                 items: vec![resource(&file, 1700000060000, ResourceKind::File)],
                 has_more: false,
@@ -1556,8 +1567,8 @@ mod tests {
                 next_cursor: None,
             },
         ];
-        // the rows of `chat messages` without `parsed` (#492): a text, an app message without a sender, and one with
-        // neither a server id nor a sort_seq
+        // 不带 `parsed` 时 `chat messages` 的行（#492）：一条文字、一条没有发送者的 app 消息，
+        // 以及一条既没有服务器 ID 也没有 `sort_seq` 的消息
         let message_rows = [
             MessageRow {
                 local_id: 1,
@@ -1655,7 +1666,7 @@ mod tests {
             ]
             .map(String::from)
             .into(),
-            // milliseconds, unlike the times of messages
+            // 毫秒，与消息的时间不同
             created_at: 1700000000000,
             started_at: None,
             finished_at: None,
@@ -1682,7 +1693,7 @@ mod tests {
                 progress: Some(
                     json!({ "type": "progress", "stage": "messages", "current": 3, "total": 3 }),
                 ),
-                // a path without a file name
+                // 没有文件名的路径
                 file: Some(JobFile {
                     name: None,
                     size: Some(5120),
@@ -1698,7 +1709,7 @@ mod tests {
                 result: Some(json!({ "success": false, "error": errors[2] })),
                 ..job("a1b2c3d4e5f60004", Status::Failed)
             },
-            // cancelled while it waited for a place
+            // 排队等待空位时被取消
             JobView {
                 finished_at: Some(1700000000200),
                 http_status: Some(499),
@@ -1720,8 +1731,8 @@ mod tests {
         })
     }
 
-    /// `web/contract/samples.json` is what [`samples`] answers. Rewrite it with
-    /// `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_`.
+    /// `web/contract/samples.json` 就是 [`samples`] 的结果。要重写时运行
+    /// `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_`。
     #[test]
     fn contract_samples_are_current() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1741,7 +1752,7 @@ mod tests {
         );
     }
 
-    /// The errors of `value` against the schema `name` of the contract's components, as `path: error`.
+    /// `value` 不符合契约中名为 `name` 的 schema 的地方，每条写成 `path: error`。
     fn misfits(name: &str, value: &Value) -> Vec<String> {
         let root = json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1755,8 +1766,8 @@ mod tests {
             .collect()
     }
 
-    /// Each sample fits its schema, and breaking what a client relies on makes it not fit: the contract's schemas
-    /// say enough to catch a change of the answers (#400).
+    /// 每个样本都符合它的 schema，破坏客户端依赖的地方后就不符合：
+    /// 契约的 schema 描述得足够细，能发现回答的变化（#400）。
     #[test]
     fn the_samples_fit_the_contract_and_broken_ones_do_not() {
         let samples = samples();
@@ -1775,22 +1786,22 @@ mod tests {
             let errors = misfits(name, &value);
             assert!(!errors.is_empty(), "{name} fits when broken: {value}");
         };
-        // an id as a number would lose its last digits in JavaScript
+        // 写成数字的 ID 在 JavaScript 中会丢掉最后几位
         broken("ParsedMessage", 0, &|v| {
             v["serverId"] = json!(9007199254740993u64);
         });
-        // the cursor of a page is what the next page is asked from
+        // 一页的游标是请求下一页的依据
         broken("ParsedMessage", 0, &|v| v["_cursor"] = json!(1));
         broken("ParsedMessage", 1, &|v| {
             v.as_object_mut().unwrap().remove("messageKey");
         });
-        // an optional field is left out, never null; a nullable one is there
+        // 可选字段省略，从不写成 null；可为空的字段一定出现
         broken("ParsedMessage", 1, &|v| v["fileName"] = Value::Null);
         broken("ParsedMessage", 3, &|v| {
             v.as_object_mut().unwrap().remove("isSend");
         });
         broken("ParsedMessage", 0, &|v| v["isSend"] = json!(false));
-        // times are whole seconds
+        // 时间是整数秒
         broken("ParsedMessage", 0, &|v| {
             v["createTime"] = json!("2023-11-14");
         });
@@ -1803,7 +1814,7 @@ mod tests {
         });
         broken("Contact", 0, &|v| v["type"] = json!("stranger"));
         broken("Contact", 0, &|v| v["labels"] = json!("Family"));
-        // a page says whether more follow and where they start
+        // 一页要说明后面还有没有、下一页从哪里开始
         broken("ResourcePage", 1, &|v| {
             v.as_object_mut().unwrap().remove("nextCursor");
         });
@@ -1844,7 +1855,7 @@ mod tests {
         broken("Job", 2, &|v| v["finishedAt"] = json!("1700000003000"));
     }
 
-    /// The WebUI asks for the API the server answers with, and its types are those of this API's contract.
+    /// 网页要求的 API 版本与服务端的相同，网页的类型也来自这个版本的契约。
     #[test]
     fn the_webui_and_the_contract_have_the_server_s_api_version() {
         let package =
@@ -1884,7 +1895,7 @@ mod tests {
         ] {
             assert!(schemas[name].is_object(), "{name}");
         }
-        // a big id is a string, a page's cursor nullable
+        // 大的 ID 是字符串，一页的游标可以为空
         assert_eq!(
             schemas["ParsedMessage"]["properties"]["serverId"]["type"],
             "string"
@@ -1894,8 +1905,7 @@ mod tests {
             .unwrap()
             .iter()
             .any(|r| r == "nextCursor"));
-        // other commands keep the generic answer
-        // `config get` answers the value of any key
+        // 其他命令保持通用的回答：`config get` 回答任意一个键的值
         assert_eq!(ok("/config/get")["$ref"], "#/components/schemas/Result");
     }
 
@@ -1910,7 +1920,7 @@ mod tests {
         let limit = params.iter().find(|p| p["name"] == "limit").unwrap();
         assert_eq!(limit["schema"]["type"], "integer");
 
-        // POST takes a JSON body, and file commands may ask for the file
+        // POST 的参数在 JSON 请求体中，写出文件的命令可以要求回答文件
         let op = &doc["paths"]["/backup/create"]["post"];
         assert!(
             op["requestBody"]["content"]["application/json"]["schema"]["properties"]["out"]
@@ -1923,7 +1933,7 @@ mod tests {
             .any(|p| p["$ref"] == "#/components/parameters/return"));
         assert!(op["responses"]["200"]["content"]["multipart/form-data"].is_object());
 
-        // a method chosen by an argument: one operation per method
+        // 方法由参数决定的命令：每种方法一个操作
         let item = &doc["paths"]["/analytics/excluded"];
         assert!(!item["get"]["parameters"]
             .as_array()
@@ -1947,7 +1957,7 @@ mod tests {
                 format!("api_{}", plain["operationId"].as_str().unwrap())
             );
             assert_eq!(own["x-weflow-command"], *name);
-            // of the parameters of every route, only `fields`
+            // 每个路由都有的参数中只有 `fields`
             let shared: Vec<&Value> = own["parameters"]
                 .as_array()
                 .unwrap()
@@ -1987,13 +1997,13 @@ mod tests {
                 "{name}: {params:?}"
             );
             assert!(!params.contains(&"out"), "{name}");
-            // the route without /api/ is unchanged
+            // 不带 `/api/` 的路由不变
             assert!(
                 doc["paths"][format!("/{name}")]["post"].is_object(),
                 "{name}"
             );
         }
-        // the media of a Moments post (#202): its address and key, no `out`
+        // 朋友圈帖子的媒体（#202）：地址和密钥，没有 `out`
         let op = &doc["paths"]["/api/sns/media"]["get"];
         assert!(op["responses"]["200"]["content"]["video/mp4"].is_object());
         assert!(op["responses"]["200"]["content"]["image/*"].is_object());

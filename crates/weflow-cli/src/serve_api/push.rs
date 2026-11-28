@@ -1,7 +1,6 @@
-//! `GET /api/push/messages` (issue #140): new and recalled messages as server-sent events, for a page that would
-//! otherwise poll `chat messages`. WeFlow's desktop app's engine (`weflow_core::push`) finds them on the hub of the
-//! in-process routes; it runs only while someone listens, checking once a second whether the account's session and
-//! message databases changed.
+//! `GET /api/push/messages`（#140）：以服务器发送事件推送新消息和撤回的消息，网页不必轮询 `chat messages`。
+//! 移植自桌面版的推送引擎（`weflow_core::push`）在进程内路由的 `Hub` 上查找这些消息；引擎只在有人监听时运行，
+//! 每秒检查一次账号的会话库和消息库是否变化。
 
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
@@ -19,9 +18,10 @@ use weflow_core::services::ServiceHub;
 use super::in_process;
 use super::status::{self, Farewell, Status};
 
-/// How often the engine looks for new messages while someone listens.
+/// 有人监听时，引擎每隔多久检查一次新消息。
 const INTERVAL: Duration = Duration::from_secs(1);
 
+/// `/api/push/messages` 的状态：给事件编号并保存事件的 broker、监听者的数量，以及引擎的线程是否在运行。
 pub(super) struct Push {
     broker: Arc<PushBroker>,
     listeners: Arc<AtomicUsize>,
@@ -31,7 +31,8 @@ pub(super) struct Push {
 impl Default for Push {
     fn default() -> Self {
         Self {
-            // ids from now on, so a page that comes back after a restart misses nothing
+            // 事件 ID 从当前的 Unix 毫秒时间起编号：带着上次运行的 `Last-Event-ID`
+            // 回到重启后的服务的页面不会漏掉事件
             broker: PushBroker::from_now(),
             listeners: Default::default(),
             running: Default::default(),
@@ -39,14 +40,15 @@ impl Default for Push {
     }
 }
 
-/// The folders of `db_storage` WeChat writes to when a message comes or is recalled.
+/// 收到或撤回消息时微信写入的 `db_storage` 子文件夹。
 const WATCHED: &[&str] = &["session", "message"];
-/// A full look even when no file changed, in case a file system reports a change late.
+/// 即使没有文件变化，也每隔这么久完整查找一次，以防文件系统迟报变化。
 const FULL_ROUND: Duration = Duration::from_secs(30);
 
-/// Each file of the [`WATCHED`] folders with its time and size; a new message changes one of them.
+/// [`WATCHED`] 文件夹中每个文件的修改时间和大小；新消息会改变其中之一。
 type Stamp = Vec<(PathBuf, Option<SystemTime>, u64)>;
 
+/// 账号目录 `account` 的 [`Stamp`]，按路径排序。
 fn stamp(account: &Path) -> Stamp {
     let mut files = Vec::new();
     for dir in WATCHED {
@@ -54,8 +56,7 @@ fn stamp(account: &Path) -> Stamp {
             continue;
         };
         for path in entries.flatten().map(|e| e.path()) {
-            // not the entry's own metadata: on Windows that is the folder listing's copy, which lags behind the
-            // writes to a file another program holds open
+            // 不用目录项自带的元数据：Windows 上那是目录列表里的副本，另一个程序打开着文件写入时，它会滞后
             if let Ok(meta) = std::fs::metadata(&path) {
                 files.push((path, meta.modified().ok(), meta.len()));
             }
@@ -65,8 +66,8 @@ fn stamp(account: &Path) -> Stamp {
     files
 }
 
-/// The engine of one hub. Looking for new messages reads every conversation's latest messages, about a tenth of a
-/// second on a large account, so it is skipped while none of the watched files changed.
+/// 一个 `Hub` 的推送引擎。查找新消息要读取每个会话的最新消息，大账号上约需 0.1 秒，
+/// 所以监视的文件都没有变化时跳过查找。
 struct Watcher {
     engine: PushEngine,
     generation: u64,
@@ -76,9 +77,10 @@ struct Watcher {
 }
 
 impl Watcher {
+    /// 以 `hub` 中现有的内容为基线启动引擎；读不出基线时为 `None`。
     fn start(hub: ServiceHub, generation: u64) -> Option<Self> {
         let account = hub.account_dir().ok();
-        // taken first: a change while the baseline is read shows on the next round
+        // 先记下文件的状态：读取基线期间发生的变化会在下一轮看到
         let stamp = account.as_deref().map(stamp).unwrap_or_default();
         let mut engine = PushEngine::new(hub);
         engine.bootstrap().then(|| Self {
@@ -90,7 +92,7 @@ impl Watcher {
         })
     }
 
-    /// The events of one round: none when nothing changed.
+    /// 一轮查找得到的事件：没有变化时为空。
     fn round(&mut self) -> Vec<serde_json::Value> {
         if let Some(account) = &self.account {
             let now = stamp(account);
@@ -104,7 +106,7 @@ impl Watcher {
     }
 }
 
-/// One open stream; the engine stops once the last one is gone.
+/// 一个打开的事件流；最后一个关闭后，引擎停止。
 struct Listener(Arc<AtomicUsize>);
 
 impl Drop for Listener {
@@ -114,7 +116,7 @@ impl Drop for Listener {
 }
 
 impl Push {
-    /// Starts the engine's thread unless it runs already.
+    /// 引擎的线程还没运行时启动它。
     fn watch(&self, hub: Arc<in_process::Hub>) {
         if self.running.swap(true, Ordering::SeqCst) {
             return;
@@ -129,13 +131,13 @@ impl Push {
             loop {
                 if listeners.load(Ordering::SeqCst) == 0 {
                     running.store(false, Ordering::SeqCst);
-                    // a stream opened meanwhile found the thread still running and did not start another
+                    // 这期间打开的事件流可能看到线程仍在运行，因而没有另起一个：这时由这个线程继续运行
                     if listeners.load(Ordering::SeqCst) == 0 || running.swap(true, Ordering::SeqCst)
                     {
                         return;
                     }
                 }
-                // not configured yet, or the account cannot be read: try again on the next round
+                // 还没有配置，或者读不了账号：下一轮再试
                 if let Ok((current, generation)) = hub.hub_and_generation() {
                     match &mut watcher {
                         Some(w) if w.generation == generation => {
@@ -143,7 +145,7 @@ impl Push {
                                 broker.broadcast(&payload);
                             }
                         }
-                        // a new hub (another account or key): start from what it has now
+                        // 换了新的 `Hub`（另一个账号或密钥）：以它现在的内容为基线重新开始
                         _ => watcher = Watcher::start(current, generation),
                     }
                 }
@@ -152,8 +154,8 @@ impl Push {
         });
     }
 
-    /// The event stream: `hello` (see `status`), `ready`, the kept events after `last_id` (all of them for 0), then
-    /// each new one, with a `heartbeat` when it is quiet; `bye` when the server stops.
+    /// 事件流：`hello`（见 `status`）、`ready`、`last_id` 之后保存的事件（为 0 时是全部），然后是每个新事件；
+    /// 没有事件时发送 `heartbeat`，服务停止时发送 `bye`。
     pub(super) fn stream(
         &self,
         hub: Arc<in_process::Hub>,
@@ -202,12 +204,12 @@ impl Push {
     }
 }
 
-/// An event of the broker: its id and its text as the stream sends it.
+/// broker 的一个事件：ID 和事件流发送的文字。
 type Kept = (u64, Arc<String>);
 
-/// The broker's events a stream sends next, each newer than `highest` (which follows them): the next one `rx` gets,
-/// or, when `rx` fell behind the broker's channel, those the broker kept that it missed. Empty when `rx` got one
-/// already sent; `None` once the broker is gone.
+/// 事件流接下来要发送的 broker 事件，每个都比 `highest` 新（`highest` 随之更新）：通常是 `rx` 收到的下一个；
+/// `rx` 落后于 broker 的通道时，是 broker 保存的、`rx` 错过的那些。`rx` 收到已经发过的事件时为空；
+/// broker 不在了时为 `None`。
 async fn next_events(
     broker: &PushBroker,
     rx: &mut broadcast::Receiver<Kept>,
@@ -236,13 +238,13 @@ async fn next_events(
 mod tests {
     use super::*;
 
-    /// A stream whose receiver falls behind the broker's channel sends the events it missed from those the broker
-    /// kept, then goes on with the new ones, each once and in order.
+    /// 接收端落后于 broker 通道的事件流，从 broker 保存的事件中补发错过的，再接着发送新事件，
+    /// 每个只发一次，顺序不变。
     #[tokio::test]
     async fn a_stream_that_falls_behind_misses_no_event() {
         let broker = PushBroker::new();
         let mut rx = broker.subscribe();
-        // more than the channel holds, fewer than the broker keeps
+        // 比通道能容纳的多，比 broker 保存的少
         let count = 600u64;
         for n in 0..count {
             broker.broadcast(&json!({ "n": n }));
@@ -257,7 +259,7 @@ mod tests {
         }
         assert_eq!(sent, (1..=count).collect::<Vec<_>>());
 
-        // what the channel still holds was sent already; the next new event comes once
+        // 通道里还留着的事件都已发过；下一个新事件只来一次
         broker.broadcast(&json!({ "n": count }));
         let mut after = Vec::new();
         while after.is_empty() {

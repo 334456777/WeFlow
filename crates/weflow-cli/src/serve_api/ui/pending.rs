@@ -1,23 +1,25 @@
-//! What `/ui/` answers while there is no page yet (issue #946): the version wanted is downloaded beside the server,
-//! or that failed. A browser gets a short page in the server's language, which reloads itself while the download
-//! runs; a program tells the two by `X-WeFlow-Error-Code` (`webui_downloading`, `webui_unavailable`).
+//! 还没有页面时 `/ui/` 的回答（#946）：要显示的版本在服务启动后正在下载，或者下载失败了。
+//! 浏览器收到一个用服务端的语言写的简短页面，下载期间它会自动刷新；
+//! 程序按 `X-WeFlow-Error-Code`（`webui_downloading`、`webui_unavailable`）区分这两种情况。
 
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use weflow_core::locale::tr;
 
-/// Why `/ui/` has no page, for now.
+/// `/ui/` 暂时没有页面的原因。
 #[derive(Clone, Debug)]
 pub enum Pending {
-    /// This version is downloaded beside the server, and shown once it is in place.
+    /// 正在下载这个版本，下载完成后显示。
     Downloading { version: String },
-    /// This version could not be downloaded, and why (in the server's language).
+    /// 这个版本下载失败，以及失败的原因（用服务端的语言）。
     Failed { version: String, error: String },
 }
 
-/// Seconds the page waits before it asks again while the WebUI downloads: a download takes a few seconds.
+/// 下载网页期间，页面隔几秒重新请求一次：下载通常只要几秒。
 const RETRY_SECONDS: u32 = 3;
 
+/// 还没有页面时 `/ui/` 的回答：`503` 和一个简短的页面，`X-WeFlow-Error-Code` 说明原因；
+/// 下载期间带 `Retry-After`，页面每隔 [`RETRY_SECONDS`] 秒自动刷新。
 pub(super) fn answer(pending: &Pending, method: &Method) -> Response {
     if method != Method::GET && method != Method::HEAD {
         let mut resp = super::super::error_response(
@@ -79,7 +81,7 @@ pub(super) fn answer(pending: &Pending, method: &Method) -> Response {
         (header::CONTENT_TYPE, "text/html; charset=utf-8"),
         (header::CACHE_CONTROL, "no-store"),
         (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
-        // the address holds the token
+        // 地址里有令牌
         (header::REFERRER_POLICY, "no-referrer"),
         (
             header::CONTENT_SECURITY_POLICY,
@@ -96,7 +98,7 @@ pub(super) fn answer(pending: &Pending, method: &Method) -> Response {
     resp
 }
 
-/// `text` as HTML text.
+/// 把 `text` 转义成 HTML 的文字。
 fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
