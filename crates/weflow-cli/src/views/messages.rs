@@ -59,7 +59,7 @@ fn words_of(message: &Value) -> String {
 
 /// What a reply quotes, on a grey line of its own: `└ 引用 小测.：几点开周会？`.
 fn quote(message: &Value, style: &Style) -> Option<Text> {
-    let quoted = without_server_id(text(message, "quotedContent"));
+    let quoted = text(message, "quotedContent").trim();
     let who = one_line(text(message, "quotedSender"));
     if quoted.is_empty() && who.is_empty() {
         return None;
@@ -70,20 +70,9 @@ fn quote(message: &Value, style: &Style) -> Option<Text> {
         if !who.is_empty() {
             line.push_str(style.colon());
         }
-        line.push_str(&one_line(&quoted));
+        line.push_str(&one_line(quoted));
     }
     Some(Text::styled(Role::Muted, line))
-}
-
-/// `quoted` without the `__SVRID__<server id>__` a quote of a picture, video or voice names it by.
-fn without_server_id(quoted: &str) -> String {
-    let mut out = quoted.to_string();
-    while let Some(start) = out.find("__SVRID__") {
-        let after = start + "__SVRID__".len();
-        let end = out[after..].find("__").map_or(out.len(), |e| after + e + 2);
-        out.replace_range(start..end, "");
-    }
-    out.trim().to_string()
 }
 
 /// How a chat log is laid out: whether it has a sender column and how wide it is, and how many lines a message may
@@ -557,11 +546,5 @@ mod tests {
             around("Hello World", "world", 40).plain_text(),
             "Hello World"
         );
-    }
-
-    #[test]
-    fn a_quote_of_a_picture_drops_its_server_id() {
-        assert_eq!(without_server_id("__SVRID__123__"), "");
-        assert_eq!(without_server_id("看 __SVRID__9__这个"), "看 这个");
     }
 }

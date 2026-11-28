@@ -13,9 +13,10 @@ use weflow_native::msg_row::MsgRow;
 use weflow_native::quote::{reply_text, QUOTE};
 
 use crate::api::js_parse_int;
-use crate::message::appmsg::{kind_by_keywords, kind_of_app_type, row_kept_in, without_quoted};
+use crate::message::appmsg::{
+    is_non_app_type, kind_by_keywords, kind_of_app_type, row_kept_in, without_quoted,
+};
 use crate::message::emoji::percent_decode;
-use crate::message::quote::refermsg_xml;
 use crate::message::system::{extract_readable_system_message_text, parse_voip_message, pat_text};
 use crate::message::transfer::is_same_wxid;
 use crate::message::xml::{
@@ -596,11 +597,6 @@ fn quote_of(content: &str) -> (Option<String>, Option<String>) {
     }
 }
 
-fn parse_media_quote(content: &str) -> Option<String> {
-    let svrid = extract_xml_value(&refermsg_xml(&decode_entities(content))?, "svrid");
-    (!svrid.is_empty()).then(|| format!("__SVRID__{svrid}__"))
-}
-
 // ───────────────────────── media token helpers ─────────────────────────
 
 /// The token that names a video's file in `value`, a name or path: lowercase hex of 16 to 64 digits, with the `_raw`
@@ -756,8 +752,8 @@ pub struct ChatMessage {
     /// A sticker's MD5.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_md5: Option<String>,
-    /// What a reply quotes, as the chat window shows it; an image, video or voice that answers a message has
-    /// `__SVRID__<server id>__` naming it.
+    /// What a reply quotes, as the exports preview it: a reply's or an image's, voice message's, video's, sticker's
+    /// or place's that answers a message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quoted_content: Option<String>,
     /// The name of whom a reply quotes.
@@ -1069,15 +1065,12 @@ fn chat_message(
         m.image_dat_name = packed_info
             .and_then(crate::message::media::dat_name_in_packed_info)
             .or_else(|| crate::message::media::extract_image_dat_name(&content));
-        m.quoted_content = parse_media_quote(&content);
     } else if local_type == 43 {
         m.video_md5 = packed_info.and_then(video_token_in_packed).or_else(|| {
             video_md5_from_content(&content).and_then(|m| normalize_video_file_token(&m))
         });
-        m.quoted_content = parse_media_quote(&content);
     } else if local_type == 34 && !content.is_empty() {
         m.voice_duration_seconds = parse_voice_duration_seconds(&content);
-        m.quoted_content = parse_media_quote(&content);
     } else if local_type == 42 && !content.is_empty() {
         m.card_username = opt(xml_attr(&content, "msg", "username"));
         m.card_nickname = opt(attr_text(&content, "msg", "nickname"));
@@ -1112,9 +1105,14 @@ fn chat_message(
     } else if local_type == 244813135921 || content.contains("<type>57</type>") {
         (m.quoted_content, m.quoted_sender) = quote_of(&content);
     }
+    // a picture, voice message, video, sticker or place that answers a message: what it quotes, as the exports
+    // preview it (#1263)
+    if is_non_app_type(local_type) {
+        (m.quoted_content, m.quoted_sender) = quote_of(&content);
+    }
 
     // a media message or a location is no app message: an `<appmsg>` in it is the message its `<refermsg>` quotes
-    let has_appmsg = !crate::message::appmsg::is_non_app_type(local_type)
+    let has_appmsg = !is_non_app_type(local_type)
         && (content.contains("<appmsg") || content.contains("&lt;appmsg"));
     if has_appmsg && app_message {
         // `t49` is the parse of this content already: only the location it names is not the message's yet
@@ -2205,7 +2203,12 @@ mod tests {
                    <displayname>Me Nick</displayname></refermsg></appmsg></msg>";
         let (_, sender) = quote_of(xml);
         assert_eq!(sender.as_deref(), Some("Me Nick"));
-        assert_eq!(parse_media_quote(xml).as_deref(), Some("__SVRID__9__"));
+        assert_eq!(
+            crate::message::xml::MsgXml::new(xml)
+                .reply_to_message_id()
+                .as_deref(),
+            Some("9")
+        );
     }
 
     #[test]
@@ -2289,15 +2292,19 @@ mod tests {
         assert_eq!(encode_uri_component("a b/é"), "a%20b%2F%C3%A9");
     }
 
+    /// A picture, voice message, video, sticker or place that answers a message is no app message, and quotes what
+    /// the exports say it quotes (#1263).
     #[test]
     fn a_media_reply_takes_no_app_fields_from_the_app_message_it_quotes() {
-        let quote = "<refermsg><type>49</type><svrid>9</svrid><content>&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;t\
-                     &lt;/title&gt;&lt;type&gt;5&lt;/type&gt;&lt;/appmsg&gt;&lt;/msg&gt;</content></refermsg>";
+        let quote = "<refermsg><type>49</type><svrid>9</svrid><displayname>Bob</displayname>\
+                     <content>&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;t&lt;/title&gt;&lt;type&gt;5&lt;/type&gt;\
+                     &lt;/appmsg&gt;&lt;/msg&gt;</content></refermsg>";
         for (local_type, media) in [
             (3, "<img md5=\"x\"/>"),
             (34, "<voicemsg length=\"1000\"/>"),
             (43, "<videomsg md5=\"x\"/>"),
             (47, "<emoji md5=\"x\"/>"),
+            (48, "<location x=\"1\" y=\"2\"/>"),
         ] {
             let content = format!("<msg>{media}<extcommoninfo>{quote}</extcommoninfo></msg>");
             let row = MsgRow {
@@ -2312,13 +2319,24 @@ mod tests {
                 crate::message::appmsg::app_message_kind(&content, local_type),
                 None
             );
-            if local_type != 47 {
-                assert_eq!(
-                    m.quoted_content.as_deref(),
-                    Some("__SVRID__9__"),
-                    "{content}"
-                );
-            }
+            let meta = crate::message::appmsg::extract_arkme_app_message_meta_in(
+                &crate::message::xml::MsgXml::new(&content),
+                local_type,
+            )
+            .unwrap();
+            assert_eq!(
+                (m.quoted_content.as_deref(), m.quoted_sender.as_deref()),
+                (Some("t"), Some("Bob")),
+                "{content}"
+            );
+            assert_eq!(
+                (
+                    meta["quotedContent"].as_str(),
+                    meta["quotedSender"].as_str()
+                ),
+                (Some("t"), Some("Bob")),
+                "{content}"
+            );
         }
     }
 

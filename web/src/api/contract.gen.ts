@@ -62,8 +62,8 @@ export interface ParsedMessage {
   /** A sticker's MD5. */
   emojiMd5?: string;
   /**
-   * What a reply quotes, as the chat window shows it; an image, video or voice that answers a message has
-   * `__SVRID__<server id>__` naming it.
+   * What a reply quotes, as the exports preview it: a reply's or an image's, voice message's, video's, sticker's
+   * or place's that answers a message.
    */
   quotedContent?: string;
   /** The name of whom a reply quotes. */
@@ -716,8 +716,8 @@ export interface ChatMessage {
   /** A sticker's MD5. */
   emojiMd5?: string;
   /**
-   * What a reply quotes, as the chat window shows it; an image, video or voice that answers a message has
-   * `__SVRID__<server id>__` naming it.
+   * What a reply quotes, as the exports preview it: a reply's or an image's, voice message's, video's, sticker's
+   * or place's that answers a message.
    */
   quotedContent?: string;
   /** The name of whom a reply quotes. */
