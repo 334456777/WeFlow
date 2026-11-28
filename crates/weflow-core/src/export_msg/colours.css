@@ -1,12 +1,10 @@
-/* ============================================================ colours
-   The colours of every page the HTML export writes (the chat, the lists, Moments): build.mjs puts this file in place of a
-   template's comment that says only @colours. Light; dark when the system is dark and the page is not set to light, or when the
-   page is set to dark (the chat page's theme, kept in the browser). The dark set is written twice: plain custom
-   properties only, which old browsers read too.
-   --me the user's bubble; --them the others' bubbles, and the box of likes and comments; --accent a field in focus;
-   --pick under a button picked or pointed at, one green in both: white on it (light) is 4.56:1, black (dark) 4.61:1;
-   --link names and places; --sel a row picked; --stripe every other row of a table; --flash a message or post jumped
-   to */
+/* ============================================================ 配色
+   HTML 导出写出的每个页面（聊天记录、列表、朋友圈）共用的配色：build.mjs 用这个文件替换模板里只写着 @colours 的注释。
+   默认是浅色；系统为深色且页面没有设成浅色，或者页面设成深色（聊天记录页的主题，保存在浏览器里）时是深色。
+   深色的一套按这两种情况写了两遍，只用普通的自定义属性，旧浏览器也能读。
+   --me 用户自己的气泡；--them 其他人的气泡，以及点赞和评论的框；--accent 获得焦点的输入框的边框；
+   --pick 选中或指向的按钮的底色，浅色和深色共用一种绿色：浅色时上面的白字对比度为 4.56:1，深色时的黑字为 4.61:1；
+   --link 名字和地点；--sel 选中的行；--stripe 表格的隔行底色；--flash 跳转到的消息或动态 */
 :root{--bg:#fafafa;--fg:#000;--muted:#8a8a8e;--line:#00000014;--them:#eeeef0;--me:#9df29f;--card:#fff;--card-line:#0000000f;
   --chip:#0000000d;--bar:#fafafadb;--side:#f2f2f4;--field:#fff;--hover:#0000000d;--stripe:#00000008;--sel:#07c16014;--mark:#ffe066;
   --flash:#07c1602e;--accent:#07c160;--pick:#048842;--on-pick:#fff;--link:#576b95;--red:#fa5151;color-scheme:light}

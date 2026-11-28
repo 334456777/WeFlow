@@ -1,4 +1,4 @@
-//! The Arkme JSON export: the detailed JSON with a sender table and compact messages.
+//! Arkme JSON 导出：带发送者表、消息写得更紧凑的详细 JSON。
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -16,7 +16,7 @@ use super::spool::{SenderTally, Spool};
 use super::Exporter;
 
 impl Exporter<'_, '_> {
-    /// [`ark_group_members_of`](Self::ark_group_members_of) the senders of `msgs`.
+    /// 对 `msgs` 的发送者调用 [`ark_group_members_of`](Self::ark_group_members_of)。
     #[cfg(test)]
     pub(super) fn ark_group_members(&mut self, msgs: &[ExportMsg]) -> Vec<ArkGroupMember> {
         let mut tally = SenderTally::default();
@@ -26,8 +26,8 @@ impl Exporter<'_, '_> {
         self.ark_group_members_of(tally)
     }
 
-    /// `groupMembers` of the arkme export, from a tally of the senders (see [`SenderTally`]): every sender plus the
-    /// group's member list, busiest first.
+    /// 由发送者的统计（见 [`SenderTally`]）得出 arkme 导出的 `groupMembers`：每个发送者加上群成员列表，
+    /// 发言多的在前，消息数相同的按名字排序。
     pub(super) fn ark_group_members_of(&mut self, tally: SenderTally) -> Vec<ArkGroupMember> {
         let SenderTally { order, counts, .. } = tally;
         let ids: Vec<String> = {
@@ -82,10 +82,9 @@ impl Exporter<'_, '_> {
         members
     }
 
-    /// arkme-json written from a stream of messages (oldest first). Each message is serialized as soon as it is
-    /// read and put in a spool file; the header (which has the totals) and the sender table and member list (which
-    /// have the senders) are written around it at the end. With no messages nothing is written unless
-    /// `write_if_empty`.
+    /// 从消息流（从旧到新）写出 arkme-json。每条消息读到后立即序列化，放进暂存文件；
+    /// 文件头（含总数）、发送者表和成员列表（含发送者）最后再写在它的前后。
+    /// 没有消息时不写文件，除非 `write_if_empty` 为真。
     pub(super) fn stream_arkme_json<I>(
         &mut self,
         msgs: I,
@@ -128,8 +127,7 @@ impl Exporter<'_, '_> {
     }
 }
 
-/// One message of the arkme-json export: a [`JsonMessage`] with the sender replaced by its number in the sender
-/// table and only the keys arkme keeps.
+/// arkme-json 导出中的一条消息：发送者换成它在发送者表中的编号、只保留 arkme 需要的键的 [`JsonMessage`]。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ArkMessage<'m> {
@@ -160,8 +158,8 @@ pub(super) struct ArkMessage<'m> {
     tail: ArkTail<'m>,
 }
 
-/// The keys of an arkme-json message after the location, in [`ArkTail::KEYS`] order: the sticker fields and the
-/// kept keys of [`JsonMessage::extra`].
+/// arkme-json 消息中位于位置字段之后的键，按 [`ArkTail::KEYS`] 的顺序排列：表情的字段和 [`JsonMessage::extra`]
+/// 中保留的键。
 struct ArkTail<'m> {
     emoji_md5: Option<&'m str>,
     emoji_cdn_url: Option<&'m str>,
@@ -242,7 +240,7 @@ impl Serialize for ArkTail<'_> {
     }
 }
 
-/// One entry of the arkme-json sender table.
+/// arkme-json 发送者表中的一项。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ArkSender {
@@ -257,7 +255,7 @@ pub(super) struct ArkSender {
     group_nickname: Option<String>,
 }
 
-/// One entry of `groupMembers` in the arkme-json export of a group.
+/// 群聊的 arkme-json 导出中 `groupMembers` 的一项。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ArkGroupMember {
@@ -273,7 +271,7 @@ pub(super) struct ArkGroupMember {
 }
 
 impl ArkGroupMember {
-    /// The name members with the same number of messages are ordered by.
+    /// 消息数相同的成员按这个名字排序：显示的名字，为空时用 wxid。
     fn sort_name(&self) -> &str {
         if self.display_name.is_empty() {
             &self.wxid
@@ -283,7 +281,7 @@ impl ArkGroupMember {
     }
 }
 
-/// Turns detailed-JSON messages into arkme-json's compact form and numbers the senders on first sight.
+/// 把详细 JSON 的消息转成 arkme-json 的紧凑形式，发送者第一次出现时给它编号。
 #[derive(Default)]
 pub(super) struct ArkCompact {
     sender_ids: HashMap<String, usize>,
@@ -291,7 +289,7 @@ pub(super) struct ArkCompact {
 }
 
 impl ArkCompact {
-    /// `profile_of(sender)` supplies the sender's name data the first time that sender appears.
+    /// 把一条消息转成紧凑形式；发送者第一次出现时，由 `profile_of(sender)` 提供它的名字资料。
     pub(super) fn compact<'m>(
         &mut self,
         message: JsonMessage<'m>,
@@ -312,7 +310,7 @@ impl ArkCompact {
                 } else {
                     p.display_name
                 };
-                // without a nickname, the name shown stands in for it
+                // 没有昵称时用显示的名字代替
                 let nickname = if p.nickname.is_empty() {
                     display_name.clone()
                 } else {

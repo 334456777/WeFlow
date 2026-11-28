@@ -1,10 +1,9 @@
-//! The HTML page of a list (`export sessions`, `export contacts` with `--format html`): `list.{zh,en}.html`, which
-//! build.mjs makes from `list.html`, with the list as JSON in its `#wf-data`:
+//! 列表的 HTML 页面（带 `--format html` 的 `export sessions`、`export contacts`）：build.mjs 由 `list.html` 生成的
+//! `list.{zh,en}.html`，列表以 JSON 写在其中的 `#wf-data` 里：
 //!
-//! `{v, lang, kind, exported, columns, rows, avatars}`: `kind` is `"sessions"` or `"contacts"`; `exported` the time
-//! of the export in unix seconds; `columns` the names of the columns and `rows` a list of each row's values in that
-//! order (the table the other formats write, see [`crate::export::list_table`]); `avatars` the path, from the page,
-//! of each avatar written beside it, by username.
+//! `{v, lang, kind, exported, columns, rows, avatars}`：`kind` 为 `"sessions"` 或 `"contacts"`；`exported` 是导出的
+//! Unix 时间（秒）；`columns` 是列名，`rows` 是各行按这个顺序给出的值（即其他格式写出的表格，见
+//! [`crate::export::list_table`]）；`avatars` 按用户名给出写在页面旁边的每个头像相对页面的路径。
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, Write};
@@ -18,17 +17,17 @@ use crate::locale;
 const LIST_ZH: &str = include_str!("list.zh.html");
 const LIST_EN: &str = include_str!("list.en.html");
 
-/// What a list page shows: how it draws the rows, and its title.
+/// 列表页面显示什么：决定各行的画法和页面的标题。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListKind {
-    /// The conversations (`export sessions`).
+    /// 会话（`export sessions`）。
     Sessions,
-    /// The contacts (`export contacts`).
+    /// 联系人（`export contacts`）。
     Contacts,
 }
 
 impl ListKind {
-    /// The name the page knows it by, which is also the export's file name.
+    /// 页面用来识别它的名字，也是导出文件的文件名。
     pub fn name(self) -> &'static str {
         match self {
             Self::Sessions => "sessions",
@@ -46,24 +45,27 @@ impl ListKind {
     }
 }
 
-/// A list to write as a page.
+/// 要写成页面的列表。
 #[derive(Debug)]
 pub struct ListPage<'a> {
-    /// Which list it is.
+    /// 哪一种列表。
     pub kind: ListKind,
-    /// The names of the columns, as the other formats of the export name them.
+    /// 列名，与导出的其他格式中的列名相同。
     pub columns: &'a [String],
-    /// The rows, one value for each column.
+    /// 各行，每列一个值。
     pub rows: &'a [Vec<Value>],
-    /// `{ username: path from the page }` of the avatars written beside the page; the rows of the others show their
-    /// name's first character.
+    /// 写在页面旁边的头像：`{ 用户名: 相对页面的路径 }`；没有头像的行显示名字的第一个字。
     pub avatars: &'a HashMap<String, String>,
-    /// When the list was exported, in unix seconds.
+    /// 导出列表的时间，Unix 时间（秒）。
     pub exported_at: i64,
 }
 
 impl ListPage<'_> {
-    /// Writes the page, in the language of the program.
+    /// 按程序的语言写出页面。
+    ///
+    /// # Errors
+    ///
+    /// 写入 `w` 失败时返回错误。
     pub fn write(&self, w: &mut impl Write) -> io::Result<()> {
         let lang = locale::current();
         let (template, lang_name, page_lang) = match lang {
@@ -78,7 +80,7 @@ impl ListPage<'_> {
                 .replacen("__WF_TITLE__", &html_escape(self.kind.title(lang)), 1)
                 .as_bytes(),
         )?;
-        // sorted, so the same list writes the same page
+        // 排好序，同一个列表总是写出相同的页面
         let avatars: BTreeMap<&str, String> = self
             .avatars
             .iter()
@@ -105,7 +107,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// The page's `#wf-data`, read back.
+    /// 读回页面的 `#wf-data`。
     fn data(page: &str) -> Value {
         let start = page
             .find(r#"<script id="wf-data" type="application/json">"#)
@@ -139,7 +141,7 @@ mod tests {
         let mut out = Vec::new();
         page.write(&mut out).unwrap();
         let out = String::from_utf8(out).unwrap();
-        // a text never ends the data's script
+        // 文字不会提前结束数据所在的 script 元素
         assert_eq!(out.matches("</script>").count(), 2, "{out}");
         assert!(!out.contains("__WF_"), "a placeholder is left");
         let d = data(&out);

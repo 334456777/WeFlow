@@ -1,7 +1,7 @@
-//! CSV files: UTF-8 that starts with a byte order mark, for every CSV the program writes (#1075).
+//! CSV 文件：程序写出的每个 CSV 都是以字节顺序标记（BOM）开头的 UTF-8（#1075）。
 //!
-//! Excel opens a CSV without the mark in the system's code page (GBK on a Chinese Windows), so every Chinese header,
-//! name and message in it is garbled; with the mark it reads the file as UTF-8.
+//! Excel 按系统代码页打开没有 BOM 的 CSV（中文 Windows 上是 GBK），其中的中文表头、名字和消息都会变成乱码；
+//! 有 BOM 时 Excel 按 UTF-8 读取。
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -9,14 +9,14 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-/// The UTF-8 byte order mark (`EF BB BF`) every CSV file starts with.
+/// 每个 CSV 文件开头的 UTF-8 字节顺序标记（`EF BB BF`）。
 const BOM: &str = "\u{feff}";
 
-/// `out` created to be written as a CSV file: buffered, its folder made first, the [`BOM`] already written.
+/// 创建要写成 CSV 的 `out`：先创建所在的文件夹，返回带缓冲的写入器，[`BOM`] 已经写入。
 ///
 /// # Errors
 ///
-/// When the folder or the file cannot be made, or the mark cannot be written; the error names the folder or file.
+/// 无法创建文件夹或文件，或者无法写入 BOM 时返回错误，报错里写出文件夹或文件的路径。
 pub(super) fn create_csv(out: &Path) -> Result<BufWriter<File>> {
     let mut writer = super::create_output(out)?;
     writer
@@ -25,12 +25,11 @@ pub(super) fn create_csv(out: &Path) -> Result<BufWriter<File>> {
     Ok(writer)
 }
 
-/// Writes the CSV file `out`: the UTF-8 byte order mark, then `text`, its lines as they are; the folder of `out` is
-/// made first.
+/// 写出 CSV 文件 `out`：先是 UTF-8 的 BOM，然后原样写入 `text` 的各行；先创建 `out` 所在的文件夹。
 ///
 /// # Errors
 ///
-/// When the folder or the file cannot be made or written; the error names the folder or file.
+/// 无法创建或写入文件夹、文件时返回错误，报错里写出文件夹或文件的路径。
 pub fn write_csv(out: &Path, text: &str) -> Result<()> {
     let mut writer = create_csv(out)?;
     writer
@@ -60,7 +59,7 @@ mod tests {
     #[test]
     fn a_csv_file_that_cannot_be_made_names_it() {
         let dir = TestDir::new("csv-blocked");
-        // a file where the folder should be
+        // 文件夹的位置上是一个文件
         let blocked = dir.path().join("blocked");
         std::fs::write(&blocked, b"").unwrap();
         let err = write_csv(&blocked.join("list.csv"), "a\n").unwrap_err();

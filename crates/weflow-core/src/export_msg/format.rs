@@ -1,18 +1,17 @@
-//! Serializing and escaping: the JSON formatters and the escapes of HTML, CSV and SQL.
+//! 序列化和转义：JSON 的格式化器，以及 HTML、CSV 和 SQL 的转义。
 
 use std::io;
 
 use serde::Serialize;
 use serde_json::ser::Formatter;
 
-/// `serde_json`'s compact format with every `<` inside a string written as `\u003c`. The HTML tokenizer then sees no
-/// `<` in the JSON at all: no `</script` that would close the `<script>` element it is embedded in, and no `<!--`
-/// followed by `<script` that would put the element in its double-escaped state, where the page's own `</script>`
-/// no longer closes it.
+/// 把字符串里每个 `<` 写成 `\u003c` 的 `serde_json` 紧凑格式。这样 HTML 的分词器在 JSON 里完全看不到 `<`：
+/// 没有会提前结束所在 `<script>` 元素的 `</script`，也没有 `<!--` 加 `<script`，后者会让元素进入双重转义状态，
+/// 页面自己的 `</script>` 就不再能结束它。
 struct ScriptSafe;
 
 impl Formatter for ScriptSafe {
-    // outside strings JSON has no `<`; inside them serde_json never escapes it, so it reaches this method
+    // 字符串以外的 JSON 里没有 `<`；字符串里的 `<` serde_json 从不转义，所以都会经过这个方法
     fn write_string_fragment<W: ?Sized + io::Write>(
         &mut self,
         writer: &mut W,
@@ -30,7 +29,7 @@ impl Formatter for ScriptSafe {
     }
 }
 
-/// Writes `value` as compact JSON that is safe inside a `<script>` element (see [`ScriptSafe`]).
+/// 把 `value` 写成可以安全放进 `<script>` 元素的紧凑 JSON（见 [`ScriptSafe`]）。
 pub(super) fn write_script_json(
     writer: &mut impl io::Write,
     value: &impl Serialize,
@@ -39,8 +38,8 @@ pub(super) fn write_script_json(
     value.serialize(&mut serializer).map_err(io::Error::from)
 }
 
-/// `serde_json`'s pretty printing (two-space indent) for a value that sits `base` spaces deep in a document written
-/// piece by piece: every line after the first is indented by `base` more spaces.
+/// `serde_json` 的美化输出（缩进两格），用于逐段写出的文档中缩进 `base` 个空格的值：
+/// 第一行之后的每一行再多缩进 `base` 个空格。
 struct NestedPretty {
     base: usize,
     depth: usize,
@@ -135,8 +134,8 @@ impl Formatter for NestedPretty {
     }
 }
 
-/// Writes `value` pretty-printed like `serde_json::to_string_pretty`, with every line after the first indented by
-/// `indent` spaces, for a value nested that deep in a document written piece by piece.
+/// 像 `serde_json::to_string_pretty` 那样美化输出 `value`，第一行之后的每一行多缩进 `indent` 个空格，
+/// 用于逐段写出的文档中嵌套到这个深度的值。
 pub(super) fn write_pretty(
     writer: &mut impl io::Write,
     value: &impl Serialize,
@@ -146,6 +145,7 @@ pub(super) fn write_pretty(
     value.serialize(&mut serializer).map_err(io::Error::from)
 }
 
+/// 转义 HTML 中的 `&`、`<`、`>`、`"` 和 `'`。
 pub fn html_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for c in value.chars() {
@@ -161,11 +161,9 @@ pub fn html_escape(value: &str) -> String {
     out
 }
 
-/// A CSV cell (`escapeCsvValue`): in quotes, with its quotes doubled, when it holds a quote, a comma or a line
-/// break; as it is otherwise.
+/// CSV 的一个单元格（`escapeCsvValue`）：含引号、逗号或换行时加上引号，其中的引号写两遍；否则原样写出。
 ///
-/// The cell keeps the text exactly, for CSV a program reads (WeClone's). CSV a person opens in a spreadsheet writes
-/// its text with [`csv_text_cell`].
+/// 单元格原样保留文字，用于给程序读的 CSV（WeClone 的）。给人在电子表格里打开的 CSV 用 [`csv_text_cell`] 写文字。
 pub fn csv_cell(value: &str) -> String {
     if value.contains(['"', ',', '\r', '\n']) {
         format!("\"{}\"", value.replace('"', "\"\""))
@@ -174,11 +172,10 @@ pub fn csv_cell(value: &str) -> String {
     }
 }
 
-/// A CSV cell for text a person opens in a spreadsheet: [`csv_cell`] of the text after a `'` when it starts with `=`,
-/// `+`, `-`, `@`, a tab or a carriage return and is not a number, [`csv_cell`] of the text otherwise.
+/// 给人在电子表格里打开的 CSV 的一个文字单元格：文字以 `=`、`+`、`-`、`@`、制表符或回车开头且不是数字时，
+/// 先在前面加一个 `'` 再写成 [`csv_cell`]，否则直接写成 [`csv_cell`]。
 ///
-/// Excel reads a cell that starts so as a formula even in quotes; after the `'` it shows the text, and numbers such
-/// as `-5` stay numbers (#1219).
+/// Excel 把这样开头的单元格当成公式，加了引号也一样；前面有 `'` 时显示文字。`-5` 这样的数字仍是数字（#1219）。
 pub fn csv_text_cell(value: &str) -> String {
     if value.starts_with(['=', '+', '-', '@', '\t', '\r']) && !is_plain_number(value) {
         csv_cell(&format!("'{value}"))
@@ -187,7 +184,7 @@ pub fn csv_text_cell(value: &str) -> String {
     }
 }
 
-/// Whether `value` is a decimal number: an optional sign, digits with at most one `.`, and an optional exponent.
+/// `value` 是否为十进制数：可选的正负号、最多带一个 `.` 的数字，以及可选的指数。
 fn is_plain_number(value: &str) -> bool {
     let all_digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
     let unsigned = value.strip_prefix(['+', '-']).unwrap_or(value);
@@ -206,6 +203,7 @@ fn is_plain_number(value: &str) -> bool {
         && exponent_ok
 }
 
+/// 转义 SQL 字符串字面量里的单引号（写两遍）。
 pub fn sql_escape(value: &str) -> String {
     value.replace('\'', "''")
 }
@@ -220,8 +218,7 @@ mod tests {
         assert_eq!(sql_escape("it's"), "it''s");
     }
 
-    /// Text that Excel would read as a formula gets a `'` in front, and reads back as the same text without it;
-    /// numbers and other text stay as they are (#1219).
+    /// Excel 会当成公式的文字前面加一个 `'`，去掉它就是原来的文字；数字和其他文字保持原样（#1219）。
     #[test]
     fn a_text_cell_that_starts_like_a_formula_gets_an_apostrophe() {
         for text in [
@@ -259,8 +256,7 @@ mod tests {
         String::from_utf8(out).unwrap()
     }
 
-    /// Script-safe JSON is compact JSON with every `<` written as `\u003c`, also next to escaped characters, and
-    /// reads back as the same value.
+    /// 脚本安全的 JSON 是把每个 `<` 都写成 `\u003c` 的紧凑 JSON，紧挨着转义字符的也是，读回来是同一个值。
     #[test]
     fn script_json_escapes_every_opening_angle_bracket() {
         for text in [
@@ -288,8 +284,8 @@ mod tests {
         }
     }
 
-    /// `<!--` and then `<script` in a message would put the page's `<script>` element in its double-escaped state,
-    /// where the page's own `</script>` does not close it: neither reaches the page.
+    /// 消息里先有 `<!--` 再有 `<script` 时，页面的 `<script>` 元素会进入双重转义状态，
+    /// 页面自己的 `</script>` 结束不了它：两者都不会出现在页面里。
     #[test]
     fn script_json_never_opens_a_comment_or_a_script() {
         let text = "<!--<script>alert(1)</script>-->";

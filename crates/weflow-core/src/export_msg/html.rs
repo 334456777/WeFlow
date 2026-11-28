@@ -1,25 +1,27 @@
-//! The HTML export: one page, the template for the CLI language with the chat in it as JSON.
+//! HTML 导出：一个页面，即按命令行的语言选择的模板，聊天记录以 JSON 写在其中。
 //!
-//! The template is `template.html` beside this file, made small by `build.mjs` into `template.zh.html` and
-//! `template.en.html`, which are embedded here. It has three placeholders: `__WF_LANG__`, `__WF_TITLE__` and
-//! `__WF_DATA__`, the last inside a `<script type="application/json">` element.
+//! 模板是这个文件旁边的 `template.html`，由 `build.mjs` 压缩成 `template.zh.html` 和 `template.en.html`，
+//! 嵌入这里。模板里有三个占位符：`__WF_LANG__`、`__WF_TITLE__` 和 `__WF_DATA__`，最后一个在
+//! `<script type="application/json">` 元素里。
 //!
-//! The data (version 1):
+//! 数据（版本 1）：
 //!
 //! ```text
-//! { v: 1, lang: "zh" | "en", title, kind: "group" | "private" | "official", me: the user's index in users (-1: none),
-//!   exported: unix seconds, users: [[name, avatar path ("": none)]], msgs }
-//! msgs[i] = { t: unix seconds, u: index into users (-1: none), k: kind, ...the kind's fields }
-//!   0 system {x}  1 text {x}  2 picture {s,w,h}  3 voice {s,d}  4 video {s,w,h,d}  5 sticker {s,w,h}
-//!   6 file {n,z,e,s}  7 link {ti,x,l,f}  8 quote {x,qn,qx,r | rq}  9 chat history {ti,it: [[name, time, text]]}
-//!   10 transfer {a,x,st}  11 red packet {ti}  12 location {ti,x,la,lo}  13 contact card {n}  14 call {v,x}
-//!   15 music {ti,x,l}  16 mini program {ti,f}  17 channels {ti,f}  18 announcement {x}  19 other app message {ti,x,l,f}
+//! { v: 1, lang: "zh" | "en", title, kind: "group" | "private" | "official", me, exported, users, msgs }
+//!   me: 用户自己在 users 中的下标，-1 表示没有
+//!   exported: 导出的时间，Unix 时间（秒）
+//!   users: [[name, avatar]]，即名字和头像路径，没有头像时 avatar 为 ""
+//! msgs[i] = { t, u, k, ...该种类的字段 }
+//!   t: Unix 时间（秒）；u: 在 users 中的下标，-1 表示没有；k: 种类，各种类的编号和字段如下
+//!   0 系统消息 {x}  1 文字 {x}  2 图片 {s,w,h}  3 语音 {s,d}  4 视频 {s,w,h,d}  5 表情 {s,w,h}
+//!   6 文件 {n,z,e,s}  7 链接 {ti,x,l,f}  8 引用 {x,qn,qx,r | rq}  9 聊天记录 {ti,it: [[name, time, text]]}
+//!   10 转账 {a,x,st}  11 红包 {ti}  12 位置 {ti,x,la,lo}  13 名片 {n}  14 通话 {v,x}
+//!   15 音乐 {ti,x,l}  16 小程序 {ti,f}  17 视频号 {ti,f}  18 群公告 {x}  19 其他应用消息 {ti,x,l,f}
 //! ```
 //!
-//! `s` is a media file's path relative to the page (missing: the file is not there); `w`, `h` its size when its
-//! header gives it. A quote's `r` is the index of the message it quotes; a quote of a message that comes later in
-//! the export names it by `rq` instead, and that message carries the same `id`. The messages are in the export's
-//! order; the page shows times in the time zone of the computer that opens it.
+//! `s` 是媒体文件相对页面的路径，没有这个字段表示文件不在；`w`、`h` 是文件头里给出的尺寸，没有给出时省略。
+//! 引用的 `r` 是被引用消息的下标；被引用的消息在导出中排在后面时，引用改用 `rq` 指明它，那条消息带着相同的 `id`。
+//! 消息按导出的顺序排列；页面按打开它的电脑所在的时区显示时间。
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -44,7 +46,7 @@ use crate::message::ExportMsg;
 const TEMPLATE_ZH: &str = include_str!("template.zh.html");
 const TEMPLATE_EN: &str = include_str!("template.en.html");
 
-/// The kinds of message (`k`), as the page numbers them.
+/// 消息的种类（`k`），编号与页面上的相同。
 #[derive(Clone, Copy)]
 enum Kind {
     System = 0,
@@ -69,7 +71,7 @@ enum Kind {
     App = 19,
 }
 
-/// One message of the page's data; a field the kind does not have is left out.
+/// 页面数据中的一条消息；这种消息没有的字段省略。
 #[derive(Serialize, Default)]
 struct PageMsg {
     t: i64,
@@ -121,29 +123,29 @@ struct PageMsg {
     v: Option<u8>,
 }
 
-/// What the page's data needs from the messages before them, collected as they are read.
+/// 页面数据需要从前面的消息中得到的信息，在读取消息时收集。
 #[derive(Default)]
 struct PageState {
-    /// The folder the page is written in, which the media paths start from.
+    /// 页面所在的文件夹，媒体路径相对它计算。
     dir: PathBuf,
-    /// [name, avatar path] of each sender, in order of first appearance.
+    /// 每个发送者的名字和头像路径，按第一次出现的顺序排列。
     users: Vec<(String, String)>,
-    /// A sender's index in `users`, by [`user_key`].
+    /// 发送者在 `users` 中的下标，键为 [`user_key`]。
     user_ix: HashMap<String, usize>,
-    /// A message's index by its server id.
+    /// 按服务器 ID 查消息的下标。
     ids: HashMap<u64, usize>,
-    /// The server ids quoted before their message came.
+    /// 在消息出现之前就被引用的服务器 ID。
     wanted: HashSet<u64>,
 }
 
-/// The key of a message's sender among the page's users: "" for the user.
+/// 消息的发送者在页面的 users 中的键：用户自己为 ""。
 fn user_key<'m>(ex: &Exporter<'_, '_>, msg: &'m ExportMsg) -> &'m str {
     if msg.is_send {
         ""
     } else if ex.session.is_group {
         &msg.sender_username
     } else {
-        // the other side of a private chat; any id but ""
+        // 私聊的对方；任何不是 "" 的键都可以
         "\u{1}"
     }
 }
@@ -160,7 +162,7 @@ fn meta_str(meta: &Map<String, Value>, key: &str) -> Option<String> {
 }
 
 impl Exporter<'_, '_> {
-    /// The page for messages already in memory: what the tests hold the streamed file against.
+    /// 用已在内存中的消息生成页面，测试拿流式写出的文件与它比较。
     #[cfg(test)]
     pub(super) fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
         let mut state = PageState::default();
@@ -170,7 +172,7 @@ impl Exporter<'_, '_> {
                 data.push(b',');
             }
             let item = self.page_msg(&mut state, msg, i);
-            // a Vec takes every write
+            // 写进 Vec 不会失败
             let _ = write_script_json(&mut data, &item);
         }
         let mut page = Vec::new();
@@ -178,9 +180,8 @@ impl Exporter<'_, '_> {
         String::from_utf8(page).unwrap_or_default()
     }
 
-    /// HTML written from a stream of messages: each message's data goes to a spool file as it is read, and the page
-    /// around them (whose data opens with the senders) is written at the end. With no messages nothing is written
-    /// unless `write_if_empty`.
+    /// 从消息流写出 HTML：每条消息读到后，它的数据写进暂存文件；页面的其余部分（数据以发送者开头）最后再写。
+    /// 没有消息时不写文件，除非 `write_if_empty` 为真。
     pub(super) fn stream_html<I>(
         &mut self,
         msgs: I,
@@ -217,17 +218,17 @@ impl Exporter<'_, '_> {
         Ok(count)
     }
 
-    /// Writes `msgs` to `out` as one HTML page, written even without messages.
+    /// 把 `msgs` 写成一个 HTML 页面 `out`，没有消息时也写。
     ///
     /// # Errors
-    /// When the page or its spool file cannot be written.
+    ///
+    /// 无法写入页面或它的暂存文件时返回错误。
     pub fn write_html(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
         self.stream_html(msgs, out, true)?;
         Ok(())
     }
 
-    /// The page: the template with its language and title filled in, and the data, whose messages `write_msgs`
-    /// writes (comma-separated).
+    /// 写出页面：填好语言和标题的模板，以及数据，其中的消息由 `write_msgs` 写出（以逗号分隔）。
     fn write_page<W: Write>(
         &self,
         w: &mut W,
@@ -274,7 +275,7 @@ impl Exporter<'_, '_> {
         w.write_all(tail.as_bytes())
     }
 
-    /// The sender's index in the page's users, adding the sender on first sight.
+    /// 发送者在页面 users 中的下标；发送者第一次出现时把它加进去。
     fn page_user(&mut self, state: &mut PageState, msg: &ExportMsg) -> i64 {
         let key = user_key(self, msg);
         if let Some(&i) = state.user_ix.get(key) {
@@ -313,14 +314,14 @@ impl Exporter<'_, '_> {
         crate::num::count_i64(i)
     }
 
-    /// One message of the page's data; `index` is the number of messages before it.
+    /// 页面数据中的一条消息；`index` 是它前面的消息数。
     fn page_msg(&mut self, state: &mut PageState, msg: &ExportMsg, index: usize) -> PageMsg {
         let x = MsgXml::of_export(msg);
         let mut m = PageMsg {
             t: msg.create_time,
             ..Default::default()
         };
-        // a message quoted before it came carries its id
+        // 在它出现之前就被引用的消息带上自己的 ID
         let id = msg
             .platform_message_id()
             .and_then(|s| s.parse::<u64>().ok());
@@ -331,7 +332,7 @@ impl Exporter<'_, '_> {
             }
         }
         let low = msg.local_type & 0xFFFF_FFFF;
-        // a quote first: one of a system message holds the system message's XML; a pat (app type 62) is a system line
+        // 先看是不是引用：引用系统消息时，引用里是那条系统消息的 XML；拍一拍（app 类型 62）显示为一行系统消息
         let quoted = self
             .quoted_with_names(msg.local_type, &x)
             .or_else(|| quote_of_system(&x));
@@ -342,7 +343,7 @@ impl Exporter<'_, '_> {
         {
             m.u = -1;
             m.k = Kind::System as u8;
-            // a system message's line keeps the entities of its XML; a pat's is decoded already (#1196)
+            // 系统消息的文字带着 XML 里的实体，这里解码；拍一拍的文字已经解码过（#1196）
             let text = self.html_message_text(msg, &x);
             m.x = Some(if x.app_type_twice() == "62" {
                 text
@@ -354,7 +355,7 @@ impl Exporter<'_, '_> {
         m.u = self.page_user(state, msg);
         if let Some(q) = quoted {
             m.k = Kind::Quote as u8;
-            // the quoted message shows under the reply, not in it too
+            // 被引用的消息显示在回复下方，回复的文字里不再重复
             m.x = opt(q.reply_text);
             m.qn = q.quoted_sender.filter(|s| !s.is_empty());
             m.qx = opt(q.quoted_preview);
@@ -379,7 +380,7 @@ impl Exporter<'_, '_> {
             };
             m.s = Some(url_path(&media.relative_path));
             if matches!(kind, Kind::File) {
-                // its name, size and extension come from the app message, as when the file is not copied
+                // 文件名、大小和扩展名取自 app 消息，与文件没有复制时相同
                 return self.app_msg(m, msg, &x);
             }
             let file = state.dir.join(&media.relative_path);
@@ -413,7 +414,7 @@ impl Exporter<'_, '_> {
         self.fill_kind(m, kind, msg, &x)
     }
 
-    /// The fields of a message of a kind its local type names.
+    /// 由 `local_type` 确定种类的消息：填好这个种类的字段。
     fn fill_kind(
         &mut self,
         mut m: PageMsg,
@@ -454,7 +455,7 @@ impl Exporter<'_, '_> {
                     .strip_prefix('[')
                     .and_then(|t| t.split_once("] "))
                     .map_or("", |(_, r)| r.trim());
-                // a length on its own says what it is
+                // 只有时长的文字前面加上「通话时长」
                 m.x = if rx(r"^\d+(:\d{2}){1,2}$").is_match(rest) {
                     Some(format!("{}{rest}", chrome("通话时长 ", "Duration ")))
                 } else {
@@ -467,7 +468,7 @@ impl Exporter<'_, '_> {
         m
     }
 
-    /// An app message (or anything else), by the kind its XML names.
+    /// app 消息（或其他消息）：按 XML 里写的种类填写字段。
     fn app_msg(&mut self, mut m: PageMsg, msg: &ExportMsg, x: &MsgXml<'_>) -> PageMsg {
         let Some(meta) = extract_arkme_app_message_meta_in(x, msg.local_type) else {
             m.k = Kind::Text as u8;
@@ -481,7 +482,7 @@ impl Exporter<'_, '_> {
         let app_type = meta.get("appMsgType").and_then(Value::as_str).unwrap_or("");
         let kind = match (kind, app_type) {
             (_, "8") => Kind::Sticker,
-            // a video link (4) is a link too, and a chat history can be of app type 24
+            // 视频链接（4）也是链接；app 类型 24 也可能是聊天记录
             (_, "4") => Kind::Link,
             (_, "24") => Kind::History,
             ("file", _) => Kind::File,
@@ -533,7 +534,7 @@ impl Exporter<'_, '_> {
             Kind::Music => {
                 m.ti = meta_str(&meta, "musicTitle").or(title);
                 m.x = meta_str(&meta, "musicSinger").or_else(|| meta_str(&meta, "appMsgDesc"));
-                // the song's page when it has no address of its own to play, as WeChat keeps most songs (#1170)
+                // 没有自己的播放地址时用歌曲页面，微信保存的歌曲大多是这样（#1170）
                 m.l = meta_str(&meta, "musicUrl").or_else(|| tag("url"));
             }
             Kind::MiniProgram => {
@@ -567,8 +568,7 @@ impl Exporter<'_, '_> {
     }
 }
 
-/// A quote (app type 57) of a system message, which the quote reading leaves out: the quoted text is the system
-/// message's readable line.
+/// 引用了系统消息的引用（app 类型 57），读取引用的通用逻辑不处理这种：被引用的文字取那条系统消息可读的一行。
 fn quote_of_system(x: &MsgXml<'_>) -> Option<QuotedDisplay> {
     if x.app_type_twice() != "57" {
         return None;
@@ -578,7 +578,7 @@ fn quote_of_system(x: &MsgXml<'_>) -> Option<QuotedDisplay> {
     if !quoted.contains("<sysmsg") {
         return None;
     }
-    // a revoke says what happened in its replacemsg
+    // 撤回消息的 replacemsg 里写着发生了什么
     let line = opt(extract_xml_value(&quoted, "replacemsg"))
         .unwrap_or_else(|| clean_system_message(&quoted));
     Some(QuotedDisplay {
@@ -588,9 +588,8 @@ fn quote_of_system(x: &MsgXml<'_>) -> Option<QuotedDisplay> {
     })
 }
 
-/// A relative path as a URL path: the ASCII characters a URL path cannot hold as they are (a space, `%`, `#`, `?`,
-/// quotes, angle brackets, backslashes and control characters) percent-encoded; other text, Chinese included, kept,
-/// which a page's UTF-8 carries.
+/// 把相对路径写成 URL 路径：URL 路径里不能原样出现的 ASCII 字符（空格、`%`、`#`、`?`、引号、尖括号、反斜杠、
+/// 反引号、`{`、`}`、`|`、`^` 和控制字符）写成百分号编码；其他文字（包括中文）原样保留，页面的 UTF-8 能承载它们。
 pub(super) fn url_path(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
     for c in path.chars() {
@@ -603,23 +602,22 @@ pub(super) fn url_path(path: &str) -> String {
     out
 }
 
-/// The tag of a chat history's item that has no text of its own, by its data type.
+/// 聊天记录中没有文字的一项按数据类型显示的标签。
 fn record_tag(datatype: i64) -> &'static str {
     match RecordKind::of(datatype) {
-        // the words the page translates
+        // 页面的英文表里是「[语音]」，不用 `tag()` 的「[语音消息]」
         RecordKind::Voice => "[语音]",
         RecordKind::Text | RecordKind::Other => "",
         kind => kind.tag(),
     }
 }
 
-// ───────────────────────────── sizes from media headers ─────────────────────────────
+// ───────────────────────────── 从媒体文件头读尺寸 ─────────────────────────────
 
-/// How much of a picture is read for its size: a JPEG's frame header comes after its metadata, which a camera's
-/// thumbnail can make long.
+/// 为取图片尺寸读取的字节数：JPEG 的帧头在元数据之后，相机生成的缩略图能让元数据很长。
 const IMAGE_HEAD: u64 = 256 * 1024;
 
-/// [width, height] of a PNG, GIF, WebP or JPEG from its header.
+/// 从文件头读出 PNG、GIF、WebP 或 JPEG 的宽和高。
 fn image_size(path: &Path) -> Option<(u32, u32)> {
     let mut b = Vec::new();
     File::open(path)
@@ -630,6 +628,7 @@ fn image_size(path: &Path) -> Option<(u32, u32)> {
     image_size_of(&b)
 }
 
+/// 图片开头的字节 `b` 里写着的宽和高；不是认得的格式或字节不够时为 `None`。
 fn image_size_of(b: &[u8]) -> Option<(u32, u32)> {
     let u16be = |i: usize| {
         b.get(i..i + 2)
@@ -672,7 +671,7 @@ fn image_size_of(b: &[u8]) -> Option<(u32, u32)> {
                 continue;
             }
             let marker = b[i + 1];
-            // a frame header (SOF0..SOF15, not DHT, JPG or DAC)
+            // 帧头（SOF0 到 SOF15，不含 DHT、JPG 和 DAC）
             if (0xc0..=0xcf).contains(&marker) && !matches!(marker, 0xc4 | 0xc8 | 0xcc) {
                 return Some((u16be(i + 7)?, u16be(i + 5)?));
             }
@@ -682,7 +681,7 @@ fn image_size_of(b: &[u8]) -> Option<(u32, u32)> {
     None
 }
 
-/// Size and length of a video.
+/// 视频的尺寸和时长。
 #[derive(Debug, PartialEq)]
 struct VideoInfo {
     width: u32,
@@ -690,12 +689,12 @@ struct VideoInfo {
     seconds: i64,
 }
 
-/// How much of an MP4's `moov` box is read: it holds the tables of every sample, a few megabytes for a long video.
+/// 读取 MP4 的 `moov` box 的上限：它保存每个采样的表，长视频的有几 MB。
 const MOOV_MAX: u64 = 32 * 1024 * 1024;
 
-/// [`VideoInfo`] of an MP4 from its `moov` box, wherever in the file it is. The boxes are walked by the sizes the
-/// file gives (0: the last box, up to the end of the file), each at least as long as its header, so every step moves
-/// forward; a size shorter than the header or one that runs past the largest offset ends the walk.
+/// 从 MP4 的 `moov` box 读出 [`VideoInfo`]，不论它在文件的什么位置。按文件给出的大小逐个走过各个 box（大小为 0
+/// 表示最后一个 box，一直到文件末尾），每个至少和它的头一样长，所以每一步都向前走；
+/// 大小比头短，或者位置超出 u64 的上限时停止。
 fn mp4_info(path: &Path) -> Option<VideoInfo> {
     let mut f = File::open(path).ok()?;
     let len = f.metadata().ok()?.len();
@@ -727,7 +726,7 @@ fn mp4_info(path: &Path) -> Option<VideoInfo> {
     None
 }
 
-/// [`VideoInfo`] from the bytes of a `moov` box: the first track with a size, and the movie's length.
+/// 从 `moov` box 的字节读出 [`VideoInfo`]：第一个有尺寸的轨道，以及影片的时长。
 fn mp4_info_of(b: &[u8]) -> Option<VideoInfo> {
     let u32at = |i: usize| {
         b.get(i..i + 4)
@@ -784,7 +783,7 @@ fn mp4_info_of(b: &[u8]) -> Option<VideoInfo> {
 mod tests {
     use super::*;
 
-    /// The tags of a chat record's items in the page, by the record's own `datatype` numbers (#1171).
+    /// 页面上聊天记录各项的标签，按记录自己的 `datatype` 编号确定（#1171）。
     #[test]
     fn a_record_item_is_tagged_by_its_datatype() {
         for (datatype, tag) in [
@@ -823,7 +822,7 @@ mod tests {
         assert_eq!(image_size_of(&png), Some((640, 480)));
         let gif = [b"GIF89a".as_slice(), &[0x20, 0x01, 0x10, 0x00]].concat();
         assert_eq!(image_size_of(&gif), Some((288, 16)));
-        // a JPEG: an APP0 segment, then a baseline frame header
+        // JPEG：一个 APP0 段，然后是基线帧头
         let jpeg = [
             [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00].as_slice(),
             &[0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0xe0, 0x02, 0x80, 0x03],
@@ -836,7 +835,7 @@ mod tests {
 
     #[test]
     fn video_size_and_length_from_moov() {
-        // mvhd (version 0): time scale 1000, duration 6500; tkhd (version 0, 92 bytes) ending in 360 x 640
+        // mvhd（版本 0）：时间刻度 1000，时长 6500；tkhd（版本 0，92 字节）末尾是 360 x 640
         let mut mvhd = vec![0u8; 108];
         mvhd[..4].copy_from_slice(&108u32.to_be_bytes());
         mvhd[4..8].copy_from_slice(b"mvhd");
@@ -865,7 +864,7 @@ mod tests {
                 seconds: 6
             })
         );
-        // in a file, after the media data
+        // 文件里的 moov 在媒体数据之后
         let dir = weflow_native::fixture::TestDir::new("weflow-mp4");
         let path = dir.join("v.mp4");
         let mdat = [24u32.to_be_bytes().as_slice(), b"mdat", &[7u8; 16]].concat();
@@ -878,12 +877,12 @@ mod tests {
         let dir = weflow_native::fixture::TestDir::new("weflow-mp4-bad");
         let path = dir.join("bad.mp4");
         let free = [16u32.to_be_bytes().as_slice(), b"free", &[0u8; 8]].concat();
-        // at offset 16 a 64-bit size that brings the next box back to offset 0
+        // 偏移量 16 处是一个 64 位的大小，会让下一个 box 回到偏移量 0
         let back_to_start = (u64::MAX - 15).to_be_bytes();
         let wrapping = [1u32.to_be_bytes().as_slice(), b"free", &back_to_start].concat();
         std::fs::write(&path, [free.as_slice(), &wrapping, &[0u8; 16]].concat()).unwrap();
         assert_eq!(mp4_info(&path), None);
-        // a 64-bit size shorter than its header
+        // 比自己的头还短的 64 位大小
         let short = [1u32.to_be_bytes().as_slice(), b"free", &8u64.to_be_bytes()].concat();
         std::fs::write(&path, [short.as_slice(), &[0u8; 16]].concat()).unwrap();
         assert_eq!(mp4_info(&path), None);

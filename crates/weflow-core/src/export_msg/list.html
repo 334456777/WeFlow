@@ -1,14 +1,13 @@
 <!DOCTYPE html>
 <!--
-  WeFlow list export page (`export sessions`, `export contacts` in HTML). One self-contained file: the styles and the
-  script below, and the list itself as JSON in #wf-data (the data model: see list_html.rs). build.mjs makes this file
-  small, one copy for each language (list.zh.html, list.en.html, which the program embeds), with the colours of every
-  page (colours.css) in place of the @colours comment; the export fills in the three placeholders: __WF_LANG__,
-  __WF_TITLE__ and __WF_DATA__.
+  WeFlow 的列表导出页面（HTML 格式的 `export sessions`、`export contacts`）。整个页面是一个自包含的文件：
+  下面的样式和脚本，以及以 JSON 写在 #wf-data 里的列表本身（数据模型见 list_html.rs）。
+  build.mjs 把这个文件压缩成每种语言一份的副本（list.zh.html、list.en.html，由程序嵌入），
+  并用所有页面共用的配色（colours.css）替换 @colours 注释；导出时填入三个占位符：__WF_LANG__、__WF_TITLE__ 和
+  __WF_DATA__。
 
-  The page: a header bar (title, count, list or table, search), filters, then the rows as a chat list (sessions), a
-  directory in sections (contacts) or a table of every column; a row clicked shows all its fields in a panel beside
-  the list.
+  页面依次是标题栏（标题、数量、列表或表格的切换、搜索）、筛选，然后是各行：会话显示成聊天列表，
+  联系人显示成分组的通讯录，也可以显示成包含所有列的表格；点击一行时，在列表旁的面板里显示它的全部字段。
 -->
 <html lang="__WF_LANG__">
 <head>
@@ -20,7 +19,7 @@
 <style>
 /* @colours */
 
-/* ============================================================ base */
+/* ============================================================ 基础 */
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;overflow:hidden}
@@ -35,7 +34,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .ib:hover{background:var(--hover)}
 .ib svg{width:18px;height:18px}
 
-/* ============================================================ header bar and filters */
+/* ============================================================ 标题栏和筛选 */
 .bar{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--bar);border-bottom:1px solid var(--line);backdrop-filter:saturate(1.6) blur(16px)}
 .ttl{flex:1;min-width:0}
 .ttl h1{margin:0;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -57,7 +56,7 @@ button.sort:hover{background:var(--hover)}
 .body{flex:1;overflow:auto}
 .none{padding:48px 16px;text-align:center;color:var(--muted)}
 
-/* ============================================================ rows: avatar, name, a line under it */
+/* ============================================================ 行：头像、名字和下面的一行 */
 .av{width:40px;height:40px;border-radius:5px;flex:none;display:grid;place-items:center;color:#fff;font-size:16px;font-weight:600}
 .av.room{font-size:13px}
 img.av{object-fit:cover;background:var(--chip)}
@@ -74,11 +73,11 @@ img.av{object-fit:cover;background:var(--chip)}
 .dir .row .sm{font-size:12px}
 .badge{flex:none;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;display:grid;place-items:center}
 .tag{flex:none;font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}
-/* contacts: a section heading for each kind, held at the top while its rows scroll */
+/* 联系人：每种联系人一个分组标题，滚动这一组的行时标题固定在顶部 */
 .sec{position:sticky;top:0;z-index:1;max-width:860px;margin:0 auto;padding:6px 24px;font-size:12px;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--line)}
 .sec+.dir{padding-top:6px}
 
-/* ============================================================ the table: every column with a value, sorted by a header */
+/* ============================================================ 表格：有值的每一列，点表头排序 */
 table{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
 th,td{padding:7px 12px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line);max-width:320px;overflow:hidden;text-overflow:ellipsis}
 th{position:sticky;top:0;z-index:1;background:var(--side);font-weight:500;color:var(--muted);cursor:pointer;user-select:none}
@@ -91,7 +90,7 @@ tbody tr{cursor:pointer}
 tbody tr:hover td{background:var(--hover)}
 tbody tr.sel td{background:var(--sel)}
 
-/* ============================================================ the panel of a row's fields */
+/* ============================================================ 一行的字段面板 */
 .side{width:340px;flex:none;background:var(--side);border-left:1px solid var(--line);display:flex;flex-direction:column}
 .side header{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)}
 .side header .av{width:32px;height:32px;font-size:14px}
@@ -103,7 +102,7 @@ tbody tr.sel td{background:var(--sel)}
 .kv .e dd{color:var(--muted)}
 .side .foot{flex:none;padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
 
-/* ============================================================ narrow screens: the panel over the list */
+/* ============================================================ 窄屏：面板盖住列表 */
 @media (max-width:760px){
   .bar{gap:6px;padding:0 10px}
   .search{width:auto;flex:1 1 120px}
@@ -132,15 +131,15 @@ tbody tr.sel td{background:var(--sel)}
 </div>
 <script id="wf-data" type="application/json">__WF_DATA__</script>
 <script>
-/* ============================================================ data
-   {v, lang, kind: "sessions" | "contacts", exported: unix seconds, columns: [name], rows: [[value for each column]],
-   avatars: {username: path from the page}}. The rows are those of the export's other formats: the database's rows,
-   or for `export contacts --parsed` the contacts as `chat contacts --parsed` lists them. */
+/* ============================================================ 数据
+   `{v, lang, kind, exported, columns, rows, avatars}`：`kind` 为 `"sessions"` 或 `"contacts"`，
+   `exported` 是 Unix 时间（秒），`columns` 是列名，`rows` 的每一行按列的顺序给出值，
+   `avatars` 把用户名映射到头像相对于页面的路径。这些行与导出的其他格式相同：数据库的行，
+   `export contacts --parsed` 时则是 `chat contacts --parsed` 列出的联系人 */
 const D = JSON.parse(document.getElementById("wf-data").textContent);
 const COLS = D.columns || [], ROWS = (D.rows || []).map(r => Object.fromEntries(COLS.map((k, i) => [k, r[i]])));
 const AV = D.avatars || {}, EN_PAGE = D.lang === "en";
-// the words of the page are written in Chinese; these are their English. A Chinese page leaves them out (build.mjs
-// cuts what is between the two markers)
+// 页面的文字用中文写，这里是它们的英文。中文页面不带这些（build.mjs 去掉两个标记之间的内容）
 const EN = /*EN*/{"会话列表":"Sessions","联系人":"Contacts","个会话":"sessions","位联系人":"contacts","导出于":"exported","列表":"List","表格":"Table",
   "搜索任意字段":"Search any field","全部":"All","私聊":"Private","群聊":"Groups","公众号":"Official","有未读":"Unread","好友":"Friends","其他":"Others",
   "其他联系人":"Others","曾经的好友":"Former friends","按最后消息时间":"By last message","按未读数":"By unread","按名称":"By name",
@@ -148,14 +147,14 @@ const EN = /*EN*/{"会话列表":"Sessions","联系人":"Contacts","个会话":"
   "微信号：":"WeChat ID: ","没有结果":"No results","群":"G"}/*EN*/;
 const T = s => EN[s] || s;
 
-/* ============================================================ helpers */
+/* ============================================================ 辅助函数 */
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 const hue = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.codePointAt(0)) % 360; return h; };
 const empty = v => v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length);
 const pad = n => String(n).padStart(2, "0");
 const full = t => { const d = new Date(t * 1000); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
-// a time in the list: the hour today, the day this year, else the date
+// 列表中的时间：今天的显示几点几分，今年的显示几月几日，更早的显示年月日
 function when(t) {
   if (!t) return "";
   const d = new Date(t * 1000), now = new Date();
@@ -163,25 +162,25 @@ function when(t) {
   if (d.getFullYear() === now.getFullYear()) return EN_PAGE ? d.toLocaleDateString("en", { month: "short", day: "numeric" }) : (d.getMonth() + 1) + "月" + d.getDate() + "日";
   return d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate();
 }
-// the columns holding unix seconds, shown as dates
+// 保存 Unix 时间（秒）的列，显示成日期
 const TIME = new Set(["last_timestamp", "sort_timestamp", "last_clear_unread_timestamp"]);
 const text = (k, v) => empty(v) ? "—" : TIME.has(k) && typeof v === "number" && v > 0 ? full(v) : typeof v === "object" ? JSON.stringify(v) : String(v);
-// the first letter, digit or CJK character of a name; names of symbols only sort after the others
+// 名字中的第一个字母、数字或汉字；只由符号组成的名字排在其他名字后面
 const initial = n => (String(n || "").match(/[\p{L}\p{N}]/u) || ["?"])[0].toUpperCase();
 const lead = /^[\p{L}\p{N}]/u;
 const byName = (a, b) => { const x = lead.test(a), y = lead.test(b); return x === y ? a.localeCompare(b, EN_PAGE ? "en" : "zh") : x ? -1 : 1; };
 const kindOf = u => String(u).endsWith("@chatroom") ? "room" : String(u).startsWith("gh_") ? "gh" : "user";
 const first = (r, ...ks) => { for (const k of ks) if (!empty(r[k])) return String(r[k]); return ""; };
-// the exported avatar, else the name's first character on a colour of the username's own
+// 导出的头像；没有时在用户名自己的颜色上写名字的第一个字，群写「群」
 function avatar(name, u) {
   if (AV[u]) return '<img class="av" src="' + esc(AV[u]) + '" alt="" loading="lazy">';
   const room = kindOf(u) === "room";
   return '<div class="av' + (room ? " room" : "") + '" style="background:hsl(' + hue(u) + ',45%,58%)">' + esc(room ? T("群") : initial(name)) + "</div>";
 }
 
-/* ============================================================ the two lists
-   name: what a row is called; filters: [label, test]; sorts: [label, compare] for the list (the table sorts by a
-   header); section (contacts): the heading a row goes under; row: the two lines beside the avatar */
+/* ============================================================ 两种列表
+   name：一行的名字；filters：筛选，每项是标签和判断函数；sorts：列表的排序方式，每项是标签和比较函数（表格按表头排序）；
+   section（联系人）：一行所属分组的标题；row：头像旁的两行文字 */
 const PAGES = {
   sessions: {
     title: "会话列表", unit: "个会话",
@@ -196,7 +195,7 @@ const PAGES = {
   },
   contacts: {
     title: "联系人", unit: "位联系人",
-    // the database's rows (remark, nick_name, local_type…) or the parsed contacts (displayName, nickname, type…)
+    // 数据库的行（remark、nick_name、local_type……）或解析过的联系人（displayName、nickname、type……）
     name: r => first(r, "displayName", "remark", "nick_name", "nickname", "alias", "username"),
     section: r => {
       switch (r.type) {
@@ -217,13 +216,13 @@ const PAGES = {
   },
 };
 const PAGE = PAGES[D.kind] || PAGES.sessions;
-// the sections in their order; the filters of contacts are their sections
+// 各分组按这个顺序排列；联系人的筛选就是这些分组
 const SECTIONS = ["好友", "群聊", "公众号", "曾经的好友", "其他联系人"];
 if (PAGE.section) PAGE.filters = [["全部", () => true]].concat(SECTIONS.filter(s => ROWS.some(r => PAGE.section(r) === s)).map(s => [s === "其他联系人" ? "其他" : s, r => PAGE.section(r) === s]));
 
-/* ============================================================ state */
+/* ============================================================ 状态 */
 const store = (k, v) => { try { v === undefined ? (v = localStorage.getItem("wf." + k)) : localStorage.setItem("wf." + k, v); } catch (e) { v = null; } return v; };
-// the theme the chat page was set to
+// 聊天记录页设置的主题
 const theme = store("theme");
 if (theme === "light" || theme === "dark") document.documentElement.setAttribute("data-theme", theme);
 let filter = 0, sort = 0, view = store("list-view") === "table" ? "table" : "list", query = "", sel = -1, tsort = null, showEmpty = false;
@@ -235,10 +234,10 @@ for (const el of document.querySelectorAll("[data-t]")) el.textContent = T(el.da
 $("q").placeholder = T("搜索任意字段");
 $("close").title = T("关闭");
 
-/* ============================================================ drawing */
-// the rows a search keeps: any field, or the name, holds the words
+/* ============================================================ 绘制 */
+// 搜索留下的行：名字或任意一个字段包含搜索的文字
 const match = r => !query || PAGE.name(r).toLowerCase().includes(query) || COLS.some(k => !empty(r[k]) && text(k, r[k]).toLowerCase().includes(query));
-// text with the first match of the search marked
+// 标出第一处搜索匹配的文字
 function hl(s) {
   s = String(s);
   const i = query ? s.toLowerCase().indexOf(query) : -1;
@@ -278,7 +277,7 @@ function draw() {
   for (const x of rows) { const s = PAGE.section(x[0]); if (!groups.has(s)) groups.set(s, []); groups.get(s).push(x); }
   body.innerHTML = SECTIONS.filter(s => groups.has(s)).map(s => '<div class="sec">' + esc(T(s)) + " · " + groups.get(s).length.toLocaleString() + '</div><div class="dir">' + groups.get(s).map(item).join("") + "</div>").join("");
 }
-// the panel of the selected row's fields, in the order of the columns
+// 选中的行的字段面板，按列的顺序排列
 function detail() {
   const side = $("side");
   if (sel < 0) { side.hidden = true; return; }
@@ -295,7 +294,7 @@ function select(i) {
   detail();
 }
 
-/* ============================================================ what clicks and keys do */
+/* ============================================================ 点击和按键 */
 $("tools").onclick = e => {
   const b = e.target.closest("[data-f]");
   if (b) { filter = +b.dataset.f; draw(); return; }

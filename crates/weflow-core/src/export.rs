@@ -1,4 +1,4 @@
-//! Tables and archives of the exports other than chat records: tables as SQL or Excel, list pages, zip folders.
+//! 聊天记录以外的导出用到的表格和压缩包：SQL 或 Excel 格式的表格、列表页面、打包成 zip 的文件夹。
 
 use std::fs;
 use std::path::Path;
@@ -9,10 +9,9 @@ use serde_json::{json, Value};
 use crate::export_msg::sql_escape;
 use crate::locale::{self, Lang};
 
-/// The footprint (`export footprint`) as a timeline, for CSV and Excel (#315).
+/// 把足迹（`export footprint`）排成时间线，用于 CSV 和 Excel（#315）。
 ///
-/// It gives the column names, and a row for each private-chat segment and each message that @-mentions me, oldest
-/// first. `names` gives conversations' and senders' names by username.
+/// 返回列名，以及每个私聊片段、每条 @ 账号所有者的消息各一行，从早到晚排列。`names` 按用户名给出会话和发送者的名字。
 pub fn footprint_timeline(
     data: &Value,
     names: &std::collections::HashMap<String, String>,
@@ -82,7 +81,7 @@ pub fn footprint_timeline(
         let id = text(m, "session_id");
         let from = text(m, "sender_username");
         let at = m["create_time"].as_i64().unwrap_or(0);
-        // a group message is stored as "<sender>:\n<text>"
+        // 群消息存储为 `<sender>:\n<text>`，这里去掉发送者的前缀
         let body = text(m, "message_content");
         let body = body
             .strip_prefix(&format!("{from}:\n"))
@@ -110,10 +109,10 @@ pub fn footprint_timeline(
     )
 }
 
-/// A list of objects (`export sessions`, `export contacts`) as a table (#659).
+/// 把对象的列表（`export sessions`、`export contacts`）转成表格（#659）。
 ///
-/// The columns are the rows' keys in the order they first appear, and a row has `Null` in the columns it has no key
-/// for. What is not a list of objects gives no columns and no rows.
+/// 列是各行的键，按第一次出现的顺序排列；一行没有某个键时，那一列为 `Null`。`list` 不是数组时没有列也没有行，
+/// 数组中不是对象的元素跳过。
 pub fn list_table(list: &Value) -> (Vec<String>, Vec<Vec<Value>>) {
     let objects: Vec<&serde_json::Map<String, Value>> = list
         .as_array()
@@ -141,7 +140,7 @@ pub fn list_table(list: &Value) -> (Vec<String>, Vec<Vec<Value>>) {
     (columns, rows)
 }
 
-/// A cell as text: a string as it is, nothing for `Null`, anything else as JSON.
+/// 单元格的文字：字符串原样，`Null` 为空，其他值写成 JSON。
 fn cell_text(value: &Value) -> std::borrow::Cow<'_, str> {
     match value {
         Value::String(text) => text.into(),
@@ -150,18 +149,25 @@ fn cell_text(value: &Value) -> std::borrow::Cow<'_, str> {
     }
 }
 
-/// A list as its HTML page (see [`crate::export_msg::ListPage`]).
+/// 把列表写成 HTML 页面（见 [`crate::export_msg::ListPage`]）。
+///
+/// # Errors
+///
+/// 无法创建 `out` 所在的目录或写入文件时返回错误。
 pub fn export_list_html(page: &crate::export_msg::ListPage<'_>, out: &Path) -> Result<()> {
     let mut html = Vec::new();
     page.write(&mut html)?;
     write_file(out, html)
 }
 
-/// Writes a table to `out` as SQL in SQLite's dialect.
+/// 把表格以 SQLite 方言的 SQL 写到 `out`。
 ///
-/// The file has `CREATE TABLE` with a column for each header, then an `INSERT` for each row. A column that holds
-/// only whole numbers and booleans is `INTEGER` (a boolean is 1 or 0), one that holds only
-/// numbers and booleans `REAL`, any other `TEXT`; `Null` is `NULL`. A table without columns is a comment saying so.
+/// 文件先是 `CREATE TABLE`，每个表头一列，然后每行一条 `INSERT`。只含整数和布尔值的列为 `INTEGER`（布尔值写成
+/// 1 或 0），只含数字和布尔值的列为 `REAL`，其他列为 `TEXT`；`Null` 写成 `NULL`。没有列的表格只写一行注释说明这一点。
+///
+/// # Errors
+///
+/// 无法创建 `out` 所在的目录或写入文件时返回错误。
 pub fn export_table_sql(
     table: &str,
     headers: &[impl AsRef<str>],
@@ -203,7 +209,7 @@ fn table_sql(table: &str, headers: &[impl AsRef<str>], rows: &[Vec<Value>]) -> S
     sql
 }
 
-/// The type of a column of [`table_sql`].
+/// [`table_sql`] 中一列的类型。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SqlType {
     Integer,
@@ -212,7 +218,7 @@ enum SqlType {
 }
 
 impl SqlType {
-    /// The type that holds every one of `values`; `Text` when there is none but `Null`.
+    /// 能容纳 `values` 中每一个值的类型；除了 `Null` 没有别的值时为 `Text`。
     fn of<'a>(values: impl Iterator<Item = &'a Value>) -> Self {
         let mut found = None;
         for value in values {
@@ -237,7 +243,7 @@ impl SqlType {
         }
     }
 
-    /// `value` as a literal of a column of this type.
+    /// 把 `value` 写成这种类型的列中的字面量。
     fn literal(self, value: &Value) -> String {
         match (value, self) {
             (Value::Null, _) => "NULL".into(),
@@ -248,11 +254,11 @@ impl SqlType {
     }
 }
 
-/// Most characters WeFlow writes in a cell of a workbook. Excel holds 32 767 and the writer refuses a longer string,
-/// failing the whole workbook, so a longer text (the XML of a forwarded chat, for one) is cut to this many.
+/// WeFlow 在工作簿的一个单元格里最多写入的字符数。Excel 的一个单元格最多容纳 32767 个字符，
+/// 写入库遇到更长的字符串时报错，整个工作簿都会失败，所以更长的文字（例如转发的聊天记录的 XML）截断到这么多个字符。
 pub(crate) const CELL_CHARS: usize = 32_000;
 
-/// `text` as it goes into a cell of a workbook: its first [`CELL_CHARS`] characters.
+/// 写进工作簿单元格的 `text`：它的前 [`CELL_CHARS`] 个字符。
 pub(crate) fn fit_cell(text: &str) -> std::borrow::Cow<'_, str> {
     match text.char_indices().nth(CELL_CHARS) {
         Some((end, _)) => std::borrow::Cow::Owned(text[..end].to_string()),
@@ -260,7 +266,11 @@ pub(crate) fn fit_cell(text: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
-/// A table as a worksheet: the bold header, then a line for each row.
+/// 把表格写成工作表：先是加粗的表头，然后每行数据一行。
+///
+/// # Errors
+///
+/// 行数或列数超出工作表的上限，或者无法保存到 `out` 时返回错误。
 pub fn export_table_excel(
     headers: &[impl AsRef<str>],
     rows: &[Vec<Value>],
@@ -287,7 +297,7 @@ pub fn export_table_excel(
     Ok(())
 }
 
-/// `YYYY-MM-DD HH:MM:SS` in the machine's local time zone, like WeFlow's desktop app.
+/// 按本机时区写成 `YYYY-MM-DD HH:MM:SS`，与桌面版一致；时间戳不是正数时为空。
 fn format_timestamp(ts: i64) -> String {
     if ts <= 0 {
         String::new()
@@ -296,6 +306,7 @@ fn format_timestamp(ts: i64) -> String {
     }
 }
 
+/// 把 `content` 写到 `path`，需要时先创建所在的目录。
 fn write_file(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
@@ -303,8 +314,8 @@ fn write_file(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     fs::write(path, content).with_context(|| format!("write {}", path.display()))
 }
 
-/// The name of `path` in the zip [`zip_folder`] makes of `dir`: its path from `dir`, the parts joined with `/` on every
-/// platform. A path that is not under `dir` is named by its whole path.
+/// [`zip_folder`] 把 `dir` 打包成 zip 时 `path` 的条目名：`path` 相对 `dir` 的路径，在各平台上都用 `/` 连接各部分。
+/// 不在 `dir` 下的路径用它的完整路径命名。
 pub fn zip_entry_name(dir: &Path, path: &Path) -> String {
     path.strip_prefix(dir)
         .unwrap_or(path)
@@ -314,8 +325,12 @@ pub fn zip_entry_name(dir: &Path, path: &Path) -> String {
         .join("/")
 }
 
-/// Packs everything under `dir` into the zip `out` (#342), paths relative to `dir` with `/`; pictures, videos and
-/// other files that are compressed already are stored as they are.
+/// 把 `dir` 下的全部文件打包成 zip 文件 `out`（#342），条目名是相对 `dir`、以 `/` 分隔的路径；
+/// 图片、视频等已经压缩过的文件不再压缩，原样存入。
+///
+/// # Errors
+///
+/// 无法读取 `dir`、读取其中的文件或写入 `out` 时返回错误。
 pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
     use std::io::Write;
     use zip::write::SimpleFileOptions;
@@ -356,7 +371,7 @@ pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
                     .map(|m| m.len() >= u64::from(u32::MAX))
                     .unwrap_or(false),
             )
-            // the file's own time, in local time as a zip keeps it (#1215)
+            // 文件自己的修改时间，按 zip 的保存方式写成本地时间（#1215）
             .last_modified_time(crate::zip_time::file_zip_time(&path));
         zip.start_file(&name, options)
             .with_context(|| format!("zip {name}"))?;
@@ -371,8 +386,7 @@ pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
 mod tests {
     use super::*;
 
-    /// A text a cell holds is kept as it is; a longer one is cut to its first [`CELL_CHARS`] characters, counted as
-    /// characters and not bytes (#1136).
+    /// 单元格放得下的文字原样保留；更长的截断到前 [`CELL_CHARS`] 个字符，按字符而不是字节计数（#1136）。
     #[test]
     fn a_text_longer_than_a_cell_is_cut() {
         assert!(matches!(
@@ -385,7 +399,7 @@ mod tests {
         let cut = fit_cell(&long);
         assert_eq!(cut.chars().count(), CELL_CHARS);
         assert_eq!(cut, full.as_str());
-        // a table with such a text is still written
+        // 含这样的文字的表格仍能写出
         let dir = weflow_native::fixture::TestDir::new("weflow-table-long-cell");
         let out = dir.join("t.xlsx");
         export_table_excel(&["a"], &[vec![Value::String(long)]], &out).unwrap();
@@ -402,13 +416,12 @@ mod tests {
             zip_entry_name(&dir, &dir.join("media").join("chat")),
             "media/chat"
         );
-        // not under the folder: named by the whole path
+        // 不在文件夹下：用完整路径命名
         let elsewhere = Path::new("elsewhere").join("chat.txt");
         assert_eq!(zip_entry_name(&dir, &elsewhere), "elsewhere/chat.txt");
     }
 
-    /// A zipped file keeps its own time, in local time as a zip keeps it, whatever the time zone of the computer
-    /// (#1215).
+    /// 不论电脑在哪个时区，打包进 zip 的文件都保留自己的时间，按 zip 的保存方式写成本地时间（#1215）。
     #[test]
     fn a_zipped_file_keeps_its_local_time() {
         use chrono::Timelike as _;
@@ -462,7 +475,7 @@ mod tests {
         let (columns, rows) = footprint_timeline(&data, &names);
         assert_eq!(columns.len(), 9);
         assert!(rows.iter().all(|r| r.len() == columns.len()));
-        // oldest first: the replied segment, the mention, the later segment
+        // 从早到晚：回复过的片段、@ 消息、较晚的片段
         let at: Vec<&str> = rows.iter().map(|r| r[8].as_str().unwrap()).collect();
         assert_eq!(at, ["wxid_bob", "room@chatroom", "wxid_bob"]);
         assert_eq!(
@@ -471,7 +484,7 @@ mod tests {
         );
         assert!(["是", "yes"].contains(&rows[0][6].as_str().unwrap()));
         assert!(["否", "no"].contains(&rows[2][6].as_str().unwrap()));
-        // the mention: the group's and the sender's names (the sender unknown here: the username), the text alone
+        // @ 消息：群名和发送者的名字（这里不知道发送者的名字，用用户名），以及去掉前缀的文字
         assert_eq!(
             (&rows[1][2], &rows[1][3], &rows[1][7]),
             (&json!("The room"), &json!("wxid_amy"), &json!("@me look"))
@@ -487,7 +500,7 @@ mod tests {
             "not an object",
         ]);
         let (columns, rows) = list_table(&list);
-        // serde_json keeps an object's keys sorted, or in the order written with `preserve_order`
+        // serde_json 的对象按键排序，开启 `preserve_order` 时按写入的顺序，所以按列名找位置
         let at = |name: &str| columns.iter().position(|c| c == name).unwrap();
         assert_eq!(columns.len(), 3);
         assert_eq!(rows.len(), 2);

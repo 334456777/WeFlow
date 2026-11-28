@@ -1,16 +1,15 @@
 #!/usr/bin/env bun
-// Makes the HTML export's templates small, one copy of each for each language, which the program embeds. CI runs it
-// when a template or this script changes on a branch, and commits what it writes to that branch
-// (.github/workflows/html-template.yml).
+// 把 HTML 导出的模板压缩成程序嵌入的副本，每个模板每种语言一份。分支上的模板或这个脚本有改动时，CI 运行它，
+// 并把写出的副本提交到该分支（.github/workflows/html-template.yml）。
 //
-//   template.html  the chat page (html.rs)                          -> template.zh.html, template.en.html
-//   list.html      the list of sessions or contacts (list_html.rs)  -> list.zh.html, list.en.html
-//   moments.html   Moments (moments_html.rs)                        -> moments.zh.html, moments.en.html
+//   模板           嵌入的模块       页面                   副本
+//   template.html  html.rs          聊天记录页          -> template.zh.html、template.en.html
+//   list.html      list_html.rs     会话或联系人的列表  -> list.zh.html、list.en.html
+//   moments.html   moments_html.rs  朋友圈              -> moments.zh.html、moments.en.html
 //
-// colours.css, the colours of every page, goes in place of each template's `@colours` comment. The .zh copy leaves
-// the English words out (the pages' words are written in Chinese); the .en copy keeps them. Each copy: the CSS and the
-// script minified by Bun, the comments and the space between the tags dropped. The three placeholders (__WF_LANG__,
-// __WF_TITLE__, __WF_DATA__) stay as they are.
+// colours.css 是所有页面共用的配色，替换每个模板里的 `@colours` 注释。.zh 副本去掉两个 `/*EN*/` 之间的英文译文
+// （页面上的文字本来就用中文写），.en 副本保留。每份副本的 CSS 和脚本由 Bun 压缩，注释和标签之间的空白都去掉；
+// 三个占位符（__WF_LANG__、__WF_TITLE__、__WF_DATA__）原样保留。
 
 import fs from "node:fs";
 import os from "node:os";
@@ -18,11 +17,11 @@ import path from "node:path";
 
 const HERE = import.meta.dir;
 const TEMPLATES = ["template", "list", "moments"];
-// read with LF line ends, whatever the checkout wrote (core.autocrlf), so the copies are the same everywhere
+// 不论检出时写成哪种换行符（core.autocrlf），都按 LF 读取，各处生成的副本才相同
 const read = file => fs.readFileSync(path.join(HERE, file), "utf8").replace(/\r\n?/g, "\n");
 const COLOURS = read("colours.css").trim();
 
-/** The template `name` with the colours in it. */
+/** 填入配色后的模板 `name`。 */
 function source(name) {
   const t = read(name + ".html");
   const parts = t.split("/* @colours */");
@@ -30,10 +29,10 @@ function source(name) {
   return parts[0] + COLOURS + parts[1];
 }
 
-/** The template `source` made small for one language. */
+/** 把填入配色后的模板 `source` 压缩成语言 `lang` 的副本。 */
 async function minified(source, lang) {
   const t = lang === "en" ? source : source.replace(/\/\*EN\*\/[\s\S]*?\/\*EN\*\//, "{}");
-  // Bun minifies from files
+  // Bun.build 只从文件压缩，先把 CSS 和脚本写进临时目录
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "weflow-template-"));
   try {
     const min = async (ext, code) => {
