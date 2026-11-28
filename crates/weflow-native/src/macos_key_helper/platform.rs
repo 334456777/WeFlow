@@ -1,15 +1,10 @@
-//! Attaching to WeChat, locating the database-key sink and reading the key.
+//! 附加到微信、找到数据库密钥的 sink 并读出密钥。
 //!
-//! The original helper set a Mach exception port and got the breakpoint that
-//! way. This rewrite keeps the same scan, breakpoint and register rules but
-//! lets `ptrace` report the breakpoint: WeChat stops for the few instructions
-//! that read the key, then continues. Every exit path restores the patched
-//! instruction and detaches.
+//! 桌面版的辅助程序设置 Mach 异常端口来接收断点；这里用同样的扫描、断点和寄存器规则，但由 `ptrace` 报告断点：
+//! 微信只在读取密钥的几条指令期间停下，然后继续运行。每一条退出路径都会恢复被改写的指令并解除附加。
 //!
-//! x86_64 `key db` does not use this path: the hardened runtime kills a process
-//! that changes another process's thread state or code, so `dtrace.rs` reads the
-//! key from WeChat's call to `CCKeyDerivationPBKDF` instead. The breakpoint code
-//! here serves ARM64.
+//! x86_64 的 `key db` 不走这条路径：强化运行时会结束修改其他进程线程状态或代码的进程，所以 x86_64 上由
+//! `dtrace.rs` 从微信对 `CCKeyDerivationPBKDF` 的调用中读出密钥。这里的断点代码供 ARM64 使用。
 
 use std::ffi::CStr;
 use std::slice;
@@ -41,8 +36,7 @@ extern "C" {
 }
 
 pub(super) fn this_task() -> mach_port_t {
-    // SAFETY: `mach_task_self_` is the process's task port, initialized by
-    // libSystem before `main`.
+    // SAFETY: `mach_task_self_` 是本进程的 task 端口，由 libSystem 在 `main` 之前初始化。
     unsafe { mach_task_self_ }
 }
 
@@ -67,7 +61,7 @@ const X86_THREAD_STATE64_COUNT: mach_msg_type_number_t = 42;
 
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 
-/// Ends a running capture from another thread, like Ctrl+C.
+/// 从另一个线程结束正在进行的捕获，效果与 Ctrl+C 相同。
 pub fn interrupt() {
     INTERRUPTED.store(true, Ordering::Release);
 }
@@ -80,13 +74,12 @@ fn mach_error(kr: i32) -> String {
     if kr == KERN_SUCCESS {
         return String::new();
     }
-    // SAFETY: `mach_error_string` returns a NUL-terminated string owned by
-    // libSystem, or null; it is copied at once.
+    // SAFETY: `mach_error_string` 返回 libSystem 拥有的、以 NUL 结尾的字符串或空指针；返回后立即复制。
     let text = unsafe { libc::mach_error_string(kr) };
     if text.is_null() {
         format!("kr={kr}")
     } else {
-        // SAFETY: the pointer is a live NUL-terminated string returned above.
+        // SAFETY: 指针指向上面返回的、有效的以 NUL 结尾的字符串。
         unsafe { CStr::from_ptr(text) }
             .to_string_lossy()
             .into_owned()
@@ -95,8 +88,7 @@ fn mach_error(kr: i32) -> String {
 
 pub(super) fn task_port(pid: u32) -> Result<task_t, String> {
     let mut task = 0;
-    // SAFETY: `this_task()` is this process's task port and `task` is a
-    // live local that receives the new right.
+    // SAFETY: `this_task()` 是本进程的 task 端口，`task` 是接收新端口权限的存活局部变量。
     let kr = unsafe { libc::task_for_pid(this_task(), pid as libc::pid_t, &raw mut task) };
     if kr != KERN_SUCCESS {
         return Err(format!("task_for_pid({kr}): {}", mach_error(kr)));
@@ -105,16 +97,14 @@ pub(super) fn task_port(pid: u32) -> Result<task_t, String> {
 }
 
 pub(super) fn deallocate_task(task: task_t) {
-    // SAFETY: `task` is a send right obtained from `task_for_pid` or
-    // `mach_task_self`, and is deallocated once.
+    // SAFETY: `task` 是从 `task_for_pid` 或 `mach_task_self` 得到的发送权限，只释放一次。
     let _ = unsafe { mach_port_deallocate(this_task(), task) };
 }
 
 pub(super) fn read_memory(task: task_t, address: u64, size: usize) -> Result<Vec<u8>, String> {
     let mut buffer = vec![0u8; size];
     let mut read = 0u64;
-    // SAFETY: `buffer` is `size` writable bytes and `read` a live local;
-    // `mach_vm_read_overwrite` writes at most `size` bytes into it.
+    // SAFETY: `buffer` 有 `size` 个可写字节，`read` 是存活的局部变量；`mach_vm_read_overwrite` 最多写入 `size` 字节。
     let kr = unsafe {
         mach_vm_read_overwrite(
             task,
@@ -143,9 +133,8 @@ fn read_cstring(task: task_t, address: u64, max: usize) -> Result<String, String
 }
 
 fn write_memory(task: task_t, address: u64, bytes: &[u8]) -> Result<(), String> {
-    // SAFETY: `bytes` is a live slice of `bytes.len()` bytes, passed to
-    // `mach_vm_write` with that length; the target page is made writable by
-    // `write_word` before this is called.
+    // SAFETY: `bytes` 是长 `bytes.len()` 字节的有效切片，以这个长度传给 `mach_vm_write`；
+    // 调用之前 `write_word` 已把目标页设为可写。
     let kr = unsafe {
         mach_vm_write(
             task,
@@ -161,18 +150,17 @@ fn write_memory(task: task_t, address: u64, bytes: &[u8]) -> Result<(), String> 
 }
 
 fn page_size() -> u64 {
-    // SAFETY: `sysconf` has no pointer arguments and returns the page size.
+    // SAFETY: `sysconf` 没有指针参数，返回页大小。
     let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
     u64::try_from(size).unwrap_or(4096)
 }
 
-/// Protects the page of `address` and writes `word`; then restores `r-x`.
+/// 把 `address` 所在的页设为可写，写入 `word`，再恢复成 `r-x`。
 fn write_word(task: task_t, address: u64, word: u32) -> Result<(), String> {
     let page = address & !(page_size() - 1);
     let size = page_size();
-    // SAFETY: both calls protect the page containing `address`, which belongs
-    // to the target task; the protection values are the Mach `VM_PROT_*`
-    // flags.
+    // SAFETY: 两次调用都设置含有 `address` 的页的保护属性，这一页属于目标 task；
+    // 保护值是 Mach 的 `VM_PROT_*` 标志。
     let made_writable = unsafe {
         mach_vm_protect(
             task,
@@ -189,7 +177,7 @@ fn write_word(task: task_t, address: u64, word: u32) -> Result<(), String> {
         ));
     }
     let written = write_memory(task, address, &word.to_le_bytes());
-    // SAFETY: as above, put the page back to read and execute only.
+    // SAFETY: 同上，把这一页恢复成只读加可执行。
     let restored = unsafe {
         mach_vm_protect(
             task,
@@ -210,16 +198,15 @@ fn write_word(task: task_t, address: u64, word: u32) -> Result<(), String> {
 }
 
 fn ptrace(request: libc::c_int, pid: u32, address: *mut libc::c_char, data: libc::c_int) -> bool {
-    // SAFETY: `request` selects the operation; `pid` is the traced process,
-    // `address` a kernel-defined address, and `data` the signal or value the
-    // request takes. The callers below pass those.
+    // SAFETY: `request` 选择操作；`pid` 是被跟踪的进程，`address` 是内核规定的地址，
+    // `data` 是这个请求接受的信号或值。下面的调用方都按此传参。
     unsafe { libc::ptrace(request, pid as libc::pid_t, address, data) == 0 }
 }
 
 fn wait_status(pid: u32) -> Option<libc::c_int> {
     let mut status = 0;
     loop {
-        // SAFETY: `status` is a live local and the options are plain integers.
+        // SAFETY: `status` 是存活的局部变量，选项是普通的整数。
         let result = unsafe { libc::waitpid(pid as libc::pid_t, &raw mut status, libc::WNOHANG) };
         if result == 0 {
             return None;
@@ -246,15 +233,14 @@ fn stopped_signal(status: libc::c_int) -> Option<libc::c_int> {
 fn thread_states(task: task_t) -> Result<Vec<thread_t>, String> {
     let mut threads: thread_act_array_t = std::ptr::null_mut();
     let mut count: mach_msg_type_number_t = 0;
-    // SAFETY: the out parameters are live locals; on success `task_threads`
-    // returns an array of `count` send rights allocated by the kernel.
+    // SAFETY: 输出参数都是存活的局部变量；成功时 `task_threads` 返回内核分配的、含 `count` 个发送权限的数组。
     let kr = unsafe { mach2::task::task_threads(task, &raw mut threads, &raw mut count) };
     if kr != KERN_SUCCESS {
         return Err(format!("task_threads({kr}): {}", mach_error(kr)));
     }
-    // SAFETY: `task_threads` returned `count` live thread ports at `threads`.
+    // SAFETY: `task_threads` 在 `threads` 处返回了 `count` 个有效的线程端口。
     let ports = unsafe { slice::from_raw_parts(threads, count as usize) }.to_vec();
-    // SAFETY: the array itself is kernel memory returned by `task_threads`.
+    // SAFETY: 数组本身是 `task_threads` 返回的内核内存。
     unsafe {
         libc::vm_deallocate(
             this_task(),
@@ -267,12 +253,12 @@ fn thread_states(task: task_t) -> Result<Vec<thread_t>, String> {
 
 fn deallocate_threads(threads: &[thread_t]) {
     for thread in threads {
-        // SAFETY: each entry is a send right returned by `task_threads`.
+        // SAFETY: 每一项都是 `task_threads` 返回的发送权限。
         let _ = unsafe { mach_port_deallocate(this_task(), *thread) };
     }
 }
 
-/// The values the two architectures use for the key pointer and length.
+/// 两种架构分别用来传递密钥指针和长度的值。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct KeyArguments {
     pub pointer: u64,
@@ -309,8 +295,7 @@ fn set_instruction_pointer(state: &mut arm_thread_state64_t, value: u64) {
 fn read_state(thread: thread_t) -> Result<arm_thread_state64_t, String> {
     let mut state = arm_thread_state64_t::default();
     let mut count = ARM_THREAD_STATE64_COUNT;
-    // SAFETY: `state` is `count` words of writable memory and the flavor names
-    // the structure it receives.
+    // SAFETY: `state` 是 `count` 个字的可写内存，flavor 指明了它接收的结构体。
     let kr = unsafe {
         thread_get_state(
             thread,
@@ -326,7 +311,7 @@ fn read_state(thread: thread_t) -> Result<arm_thread_state64_t, String> {
 
 #[cfg(target_arch = "aarch64")]
 fn write_state(thread: thread_t, state: &arm_thread_state64_t) -> Result<(), String> {
-    // SAFETY: `state` is the full structure named by the flavor.
+    // SAFETY: `state` 是 flavor 所指的完整结构体。
     let kr = unsafe {
         thread_set_state(
             thread,
@@ -369,8 +354,7 @@ fn set_instruction_pointer(state: &mut x86_thread_state64_t, value: u64) {
 fn read_state(thread: thread_t) -> Result<x86_thread_state64_t, String> {
     let mut state = x86_thread_state64_t::default();
     let mut count = X86_THREAD_STATE64_COUNT;
-    // SAFETY: `state` is `count` words of writable memory and the flavor names
-    // the structure it receives.
+    // SAFETY: `state` 是 `count` 个字的可写内存，flavor 指明了它接收的结构体。
     let kr = unsafe {
         thread_get_state(
             thread,
@@ -386,7 +370,7 @@ fn read_state(thread: thread_t) -> Result<x86_thread_state64_t, String> {
 
 #[cfg(target_arch = "x86_64")]
 fn write_state(thread: thread_t, state: &x86_thread_state64_t) -> Result<(), String> {
-    // SAFETY: `state` is the full structure named by the flavor.
+    // SAFETY: `state` 是 flavor 所指的完整结构体。
     let kr = unsafe {
         thread_set_state(
             thread,
@@ -446,7 +430,7 @@ fn hex(bytes: &[u8]) -> String {
     text
 }
 
-/// A target task with the database-key location.
+/// 对目标进程的一次捕获：持有它的 task 端口和数据库密钥 sink 的地址，断点设在那里。
 #[derive(Debug)]
 pub struct Hook {
     pid: u32,
@@ -467,7 +451,13 @@ enum Hit {
 }
 
 impl Hook {
-    /// Attaches to `pid`, finds the database-key sink and sets the breakpoint.
+    /// 附加到 `pid`，找到数据库密钥的 sink 并设置断点。
+    ///
+    /// # Errors
+    ///
+    /// `task_for_pid` 失败时返回 `attach:…`，找不到 sink 时返回 `scan:…`；
+    /// 附加、读取原指令或写入断点失败时返回对应的报错，如 `ptrace_attach_failed:…`、`attach_wait_timeout`、
+    /// `patch_breakpoint_failed:…`。
     pub fn start(pid: u32, timeout: Duration) -> Result<Self, String> {
         tracing::debug!("SearchForHookAddress start...");
         let task = match task_port(pid) {
@@ -609,8 +599,7 @@ impl Hook {
         }
     }
 
-    /// Restores the original instruction, runs it once and puts the breakpoint
-    /// back, so a call with another length does not trap forever.
+    /// 恢复原指令，单步执行一次，再放回断点，这样长度不对的调用不会一直卡在断点上。
     fn step_over(&mut self) -> Result<(), String> {
         self.restore_instruction()?;
         if !ptrace(libc::PT_STEP, self.pid, std::ptr::null_mut(), 0) {
@@ -639,7 +628,12 @@ impl Hook {
         self.patch_instruction()
     }
 
-    /// Waits for the breakpoint, checks the registers and reads the key.
+    /// 等待断点命中，检查寄存器并读出密钥。
+    ///
+    /// # Errors
+    ///
+    /// 被中断时返回 `interrupted by user`，超时返回 `HOOK_TIMEOUT:no_breakpoint_hit`，微信退出时返回
+    /// `process_died_while_waiting`；单步执行或读取密钥失败时返回对应的报错。
     pub fn wait(&mut self, on_tick: &mut dyn FnMut(u64)) -> Result<String, String> {
         let timeout = self.timeout;
         let started = Instant::now();
@@ -697,8 +691,8 @@ impl Hook {
         }
     }
 
-    /// Handles one stop: `Some(key)` when this was the 32-byte call, `None`
-    /// for an unrelated trap that was resumed.
+    /// 处理一次停止：是长度为 32 字节的调用时为 `Hit::Key`，命中断点但参数不符时为 `Hit::Skip`，
+    /// 与断点无关的陷阱为 `Hit::Unrelated`。
     fn hit(&mut self) -> Result<Hit, String> {
         let threads = thread_states(self.task)?;
         let mut result = Hit::Unrelated;
@@ -754,16 +748,15 @@ impl Hook {
         }
     }
 
-    /// Restores the instruction and detaches; safe to call more than once.
+    /// 恢复原指令并解除附加；可以多次调用。
     pub fn cleanup(&mut self) {
         if self.done {
             return;
         }
         self.done = true;
         if self.attached && !self.stopped {
-            // The process is running after a timeout: stop it before putting
-            // the original instruction back.
-            // SAFETY: `kill` sends a signal to a process this hook may trace.
+            // 超时后进程还在运行：先让它停下，再放回原指令。
+            // SAFETY: `kill` 只是向这个捕获可能在跟踪的进程发送信号。
             unsafe { libc::kill(self.pid as libc::pid_t, libc::SIGSTOP) };
             let deadline = Instant::now() + Duration::from_secs(1);
             while Instant::now() < deadline {
@@ -840,11 +833,8 @@ fn locate(pid: u32, task: task_t) -> Result<u64, String> {
     scan_module(task, &selected, known_rva)
 }
 
-/// `bytes` in MiB, for the log.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "a module's size, far below 2^53 bytes"
-)]
+/// 把 `bytes` 换算成 MiB，供日志使用。
+#[expect(clippy::cast_precision_loss, reason = "模块的大小，远小于 2^53 字节")]
 fn mib(bytes: u64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0)
 }
@@ -864,8 +854,8 @@ fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<
         let mut object: mach_port_t = 0;
         let mut info = vm_region_basic_info_64::default();
         let mut count = vm_region_basic_info_64::count();
-        // SAFETY: all out parameters are live locals of the types the flavor
-        // writes; `address` starts at the region to query.
+        // SAFETY: 所有输出参数都是存活的局部变量，类型与这个查询类别（flavor）写入的一致；
+        // `address` 是要查询的区域的起点。
         let kr = unsafe {
             mach_vm_region(
                 task,
@@ -881,7 +871,7 @@ fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<
             break;
         }
         if object != 0 {
-            // SAFETY: the object right was returned by `mach_vm_region`.
+            // SAFETY: 这个对象的端口权限是 `mach_vm_region` 返回的。
             let _ = unsafe { mach_port_deallocate(this_task(), object) };
         }
         if info.protection & (libc::VM_PROT_READ | libc::VM_PROT_EXECUTE)
@@ -946,8 +936,7 @@ fn scan_module(task: task_t, module: &module::Module, known_rva: u64) -> Result<
 fn list_modules(task: task_t) -> Result<Vec<module::Module>, String> {
     let mut info = task_dyld_info::default();
     let mut count = TASK_DYLD_INFO_COUNT;
-    // SAFETY: `info` is the structure of the requested flavor and `count` its
-    // size in words on entry and the returned size on exit.
+    // SAFETY: `info` 是所请求的 flavor 对应的结构体，`count` 进入时是它以字为单位的大小，返回时是实际写入的大小。
     let kr = unsafe {
         task_info(
             task,
@@ -1006,8 +995,8 @@ fn list_modules(task: task_t) -> Result<Vec<module::Module>, String> {
     Ok(modules)
 }
 
-/// The size of a loaded Mach-O image, from the `LC_SEGMENT_64` ranges; the
-/// original ignored `__PAGEZERO` and took the span of the rest.
+/// 已加载的 Mach-O 映像的大小，由各个 `LC_SEGMENT_64` 的范围算出：
+/// 与桌面版一样忽略 `__PAGEZERO`，取其余段覆盖的跨度。
 fn module_size(task: task_t, base: u64) -> Option<u64> {
     let header = read_memory(task, base, 32).ok()?;
     let magic = u32::from_le_bytes(header.get(0..4)?.try_into().ok()?);
@@ -1046,7 +1035,11 @@ fn module_size(task: task_t, base: u64) -> Option<u64> {
     (highest > lowest).then_some(highest - lowest)
 }
 
-/// The address `GetDbKey` returns: the sink, as 16 lowercase hex digits.
+/// 与桌面版 `GetDbKey` 返回的相同的地址：sink 的地址，写成 16 位小写十六进制。
+///
+/// # Errors
+///
+/// `task_for_pid` 失败或者找不到 sink 时返回错误。
 pub fn get_db_key_target(pid: u32) -> Result<String, String> {
     let task = task_port(pid)?;
     let result = locate(pid, task).map(|target| format!("{target:016x}"));

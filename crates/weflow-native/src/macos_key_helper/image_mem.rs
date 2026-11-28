@@ -1,5 +1,4 @@
-//! The memory scan of `key image-mem`: find the 16-byte image AES key among WeChat's writable pages (see
-//! [`crate::image_key_scan`]).
+//! `key image-mem` 的内存扫描：在微信可写的页中找出 16 字节的图片 AES 密钥（见 [`crate::image_key_scan`]）。
 
 use mach2::kern_return::KERN_SUCCESS;
 use mach2::mach_port::mach_port_deallocate;
@@ -14,12 +13,13 @@ use crate::image_key_scan::{find_key, Block, MemoryScanError, READ_OVERLAP};
 const CHUNK: usize = 4 * 1024 * 1024;
 const MAX_MAPPING: u64 = 0x320_0001;
 
-/// The first key in WeChat's readable and writable regions that decrypts one of `ciphertexts` into the start of an
-/// image and that `accept` takes; `Ok(None)` when no such key is there.
+/// 微信可读写的区域中第一个能把 `ciphertexts` 之一解密成图片开头、且被 `accept` 接受的密钥；
+/// 没有这样的密钥时为 `Ok(None)`。
 ///
 /// # Errors
 ///
-/// [`MemoryScanError::PermissionDenied`] when `task_for_pid` refuses WeChat's task port, as it does without root.
+/// 没有 root 权限等原因使 `task_for_pid` 拒绝给出微信的 task 端口时，
+/// 返回 [`MemoryScanError::PermissionDenied`]。
 pub fn scan_image_key(
     pid: u32,
     ciphertexts: &[Block],
@@ -42,8 +42,8 @@ fn scan(
         let mut object: mach_port_t = 0;
         let mut info = vm_region_basic_info_64::default();
         let mut count = vm_region_basic_info_64::count();
-        // SAFETY: all out parameters are live locals of the types the flavor
-        // writes; `address` starts at the region to query.
+        // SAFETY: 所有输出参数都是存活的局部变量，类型与这个查询类别（flavor）写入的一致；
+        // `address` 是要查询的区域的起点。
         let kr = unsafe {
             mach_vm_region(
                 task,
@@ -59,7 +59,7 @@ fn scan(
             break;
         }
         if object != 0 {
-            // SAFETY: the object right was returned by `mach_vm_region`.
+            // SAFETY: 这个对象的端口权限是 `mach_vm_region` 返回的。
             let _ = unsafe { mach_port_deallocate(this_task(), object) };
         }
         if info.protection & (libc::VM_PROT_READ | libc::VM_PROT_WRITE)

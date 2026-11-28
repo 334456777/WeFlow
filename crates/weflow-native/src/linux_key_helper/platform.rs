@@ -1,6 +1,6 @@
-//! Database-key capture of `xkey_helper_linux`, with the one allowed change:
-//! threads are seized and interrupted instead of attached and SIGSTOPed, so
-//! cleanup never group-stops WeChat.
+//! `xkey_helper_linux` 的数据库密钥捕获，与桌面版只有一处不同：
+//! 用 `PTRACE_SEIZE` 和 `PTRACE_INTERRUPT` 接管并中断线程，而不是附加后发送 SIGSTOP，
+//! 所以清理时不会让微信整体进入组停止（group-stop）。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -18,7 +18,7 @@ const WAIT_STEP: Duration = Duration::from_millis(10);
 
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 
-/// Ends a running capture from another thread, like Ctrl+C.
+/// 从另一个线程结束正在进行的捕获，效果与 Ctrl+C 相同。
 pub fn interrupt() {
     INTERRUPTED.store(true, Ordering::Release);
 }
@@ -49,9 +49,8 @@ fn wevent(status: libc::c_int) -> libc::c_int {
 }
 
 fn ptrace(request: libc::c_uint, tid: libc::pid_t, address: usize, data: usize) -> io::Result<()> {
-    // SAFETY: `request` selects the operation; its arguments are the thread it
-    // applies to, a kernel-defined address or zero, and a pointer or value of
-    // the type that request expects. All callers below pass matching arguments.
+    // SAFETY: `request` 选择操作，其余参数依次是作用的线程、内核规定的地址或 0，
+    // 以及这个请求所要求类型的指针或值。下面的调用方都传入相符的参数。
     let result = unsafe {
         libc::ptrace(
             request,
@@ -70,8 +69,7 @@ fn ptrace(request: libc::c_uint, tid: libc::pid_t, address: usize, data: usize) 
 fn waitpid_now(tid: libc::pid_t) -> io::Result<Option<libc::c_int>> {
     loop {
         let mut status = 0;
-        // SAFETY: `status` is a live local and `tid` and the options are plain
-        // integers.
+        // SAFETY: `status` 是存活的局部变量，`tid` 和选项是普通的整数。
         let result = unsafe { libc::waitpid(tid, &raw mut status, libc::__WALL | libc::WNOHANG) };
         if result == 0 {
             return Ok(None);
@@ -157,8 +155,7 @@ fn attach(tid: libc::pid_t, target: usize) -> io::Result<()> {
                 Some(libc::EINVAL | libc::EPERM | libc::EBUSY)
             ) =>
         {
-            // A thread created while its parent was being seized is already
-            // attached by TRACECLONE and waits for its initial stop.
+            // 父线程被接管期间新建的线程已经由 TRACECLONE 附加，正在等待它的初始停止。
             match waitpid_now(tid) {
                 Ok(Some(status)) if wifstopped(status) => ptrace(
                     libc::PTRACE_SETOPTIONS,
@@ -210,7 +207,7 @@ struct Thread {
     stopped: bool,
 }
 
-/// WeChat's threads attached with `ptrace`, each with a hardware breakpoint where the database key is taken.
+/// 用 `ptrace` 附加的微信线程，每个线程都在接收数据库密钥的位置设了硬件断点。
 #[derive(Debug)]
 pub struct Hook {
     pid: u32,
@@ -220,8 +217,12 @@ pub struct Hook {
 }
 
 impl Hook {
-    /// Reads WeChat's ELF image, finds the hook point and attaches to every
-    /// thread. The returned error is the helper's message.
+    /// 读取微信的 ELF 映像，找到挂点，附加到每个线程。返回的错误是辅助程序的报错文字。
+    ///
+    /// # Errors
+    ///
+    /// 被中断、找不到挂点（`CANNOT_GET_EXEC_PATH`、`CANNOT_GET_BASE_ADDR` 或扫描器的报错），
+    /// 或者附加不到任何线程（`Failed to attach to any thread; permission may be denied.`）时返回错误。
     pub fn start(pid: u32) -> Result<Self, String> {
         if interrupted() {
             return Err("interrupted by user".into());
@@ -285,8 +286,12 @@ impl Hook {
         Ok(hook)
     }
 
-    /// Waits for the key, calling `on_tick` once per second with the remaining
-    /// whole seconds. The helper's messages are returned on failure.
+    /// 等待密钥，每秒用剩余的整秒数调用一次 `on_tick`。失败时返回辅助程序的报错文字。
+    ///
+    /// # Errors
+    ///
+    /// 被中断、超时（`Timeout waiting for 32-byte key`）、
+    /// 微信的线程全部退出（`All threads exited or crashed.`），或者 ptrace 操作失败时返回错误。
     pub fn wait(
         &mut self,
         timeout: Duration,
@@ -390,7 +395,7 @@ impl Hook {
                 }
             }
         }
-        // The helper suppresses SIGSTOP; other signals belong to WeChat.
+        // 与桌面版的辅助程序一样吞掉 SIGSTOP；其他信号属于微信，照常转交。
         let signal = if signal == libc::SIGSTOP { 0 } else { signal };
         self.resume_thread(tid, signal)?;
         Ok(Polled::Event)
@@ -425,7 +430,7 @@ impl Hook {
     fn single_step(&mut self, tid: libc::pid_t) -> Result<(), String> {
         let _ = set_breakpoint(tid, self.target, false);
         ptrace(libc::PTRACE_SINGLESTEP, tid, 0, 0).map_err(|error| error.to_string())?;
-        // The helper waits without WNOHANG here; the step itself is short.
+        // 桌面版的辅助程序在这里不带 WNOHANG 地阻塞等待；单步本身很短，限时等待即可。
         let _ = wait_stop(tid, STOP_TIMEOUT);
         let _ = set_breakpoint(tid, self.target, true);
         self.resume_thread(tid, 0)?;
@@ -469,10 +474,11 @@ impl Hook {
         }
     }
 
-    /// Removes the breakpoint from every thread and detaches; a thread that has exited is passed over.
+    /// 清除每个线程的断点并解除附加；已退出的线程跳过。
     ///
     /// # Errors
-    /// The first failure to stop, clear or detach a thread; the others are still tried.
+    ///
+    /// 返回第一个停止、清除断点或解除附加失败的错误；其余线程仍会继续处理。
     pub fn cleanup(&mut self) -> Result<(), String> {
         if !self.attached {
             return Ok(());
@@ -546,11 +552,9 @@ impl Hook {
 }
 
 fn get_regs(tid: libc::pid_t) -> io::Result<libc::user_regs_struct> {
-    // SAFETY: `user_regs_struct` consists of integer fields, so all zeroes is a
-    // valid value; PTRACE_GETREGS overwrites it immediately.
+    // SAFETY: `user_regs_struct` 只由整数字段组成，全 0 是合法的值；PTRACE_GETREGS 随即覆盖它。
     let mut regs = unsafe { std::mem::zeroed::<libc::user_regs_struct>() };
-    // SAFETY: `regs` is a live `user_regs_struct` and PTRACE_GETREGS fills one
-    // for the stopped thread.
+    // SAFETY: `regs` 是存活的 `user_regs_struct`，PTRACE_GETREGS 为停下的线程填写一个这样的结构体。
     ptrace(
         libc::PTRACE_GETREGS,
         tid,
@@ -562,8 +566,7 @@ fn get_regs(tid: libc::pid_t) -> io::Result<libc::user_regs_struct> {
 
 fn event_message(tid: libc::pid_t) -> io::Result<libc::pid_t> {
     let mut message = 0u64;
-    // SAFETY: PTRACE_GETEVENTMSG writes one unsigned long to the live local
-    // pointed to by `data`.
+    // SAFETY: PTRACE_GETEVENTMSG 向 `data` 指向的存活局部变量写入一个 unsigned long。
     ptrace(
         libc::PTRACE_GETEVENTMSG,
         tid,

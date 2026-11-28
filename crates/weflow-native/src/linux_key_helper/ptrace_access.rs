@@ -1,28 +1,28 @@
-//! Whether this process may attach to WeChat with `ptrace`, known before WeChat is restarted for the hook: Yama's
-//! `ptrace_scope` and the effective capabilities of this process decide it.
+//! 本进程能否用 `ptrace` 附加到微信，在为挂钩重启微信之前就能知道：
+//! 由 Yama 的 `ptrace_scope` 和本进程的有效能力集决定。
 
-/// Where Yama's setting is; the file is missing when the kernel has no Yama.
+/// Yama 设置所在的文件；内核没有启用 Yama 时这个文件不存在。
 const PTRACE_SCOPE: &str = "/proc/sys/kernel/yama/ptrace_scope";
 
-/// The bit of `CAP_SYS_PTRACE` in the capability masks of `/proc/<pid>/status`.
+/// `CAP_SYS_PTRACE` 在 `/proc/<pid>/status` 的能力掩码中的位。
 const CAP_SYS_PTRACE: u32 = 19;
 
-/// Whether `ptrace` may attach to another process of the same user.
+/// `ptrace` 能否附加到同一用户的其他进程。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PtraceAccess {
-    /// Attaching is allowed, or could not be ruled out.
+    /// 允许附加，或者无法排除附加的可能。
     Allowed,
-    /// `ptrace_scope` (1 or 2) allows attaching only with `CAP_SYS_PTRACE`, which this process does not have:
-    /// running as root, or setting the scope to 0, allows it.
+    /// `ptrace_scope`（1 或 2）只允许有 `CAP_SYS_PTRACE` 的进程附加，而本进程没有：
+    /// 以 root 运行，或者把它设为 0，就能附加。
     NeedsCapability {
-        /// The value of `ptrace_scope`.
+        /// `ptrace_scope` 的值。
         scope: u8,
     },
-    /// `ptrace_scope` is 3: no process may attach, root included, until the system restarts.
+    /// `ptrace_scope` 为 3：重启系统之前任何进程（包括 root）都不能附加。
     Disabled,
 }
 
-/// The access this process has now, from `/proc/sys/kernel/yama/ptrace_scope` and `/proc/self/status`.
+/// 根据 `/proc/sys/kernel/yama/ptrace_scope` 和 `/proc/self/status` 判断本进程现在的权限。
 #[must_use]
 pub fn ptrace_access() -> PtraceAccess {
     let scope = std::fs::read_to_string(PTRACE_SCOPE).ok();
@@ -33,8 +33,7 @@ pub fn ptrace_access() -> PtraceAccess {
     )
 }
 
-/// The access that a `ptrace_scope` of `scope` (`None` without Yama) and the capability `sys_ptrace` (`None` when
-/// unknown) give.
+/// `ptrace_scope` 为 `scope`（没有 Yama 时为 `None`）、有无 `sys_ptrace` 能力（未知时为 `None`）时对应的权限。
 fn decide(scope: Option<u8>, sys_ptrace: Option<bool>) -> PtraceAccess {
     match (scope, sys_ptrace) {
         (Some(3), _) => PtraceAccess::Disabled,
@@ -43,7 +42,7 @@ fn decide(scope: Option<u8>, sys_ptrace: Option<bool>) -> PtraceAccess {
     }
 }
 
-/// Whether the effective capabilities (`CapEff`) in the text of `/proc/<pid>/status` include `CAP_SYS_PTRACE`.
+/// `/proc/<pid>/status` 的文本中，有效能力集（`CapEff`）是否包含 `CAP_SYS_PTRACE`。
 fn has_sys_ptrace(status: &str) -> Option<bool> {
     let mask = status
         .lines()

@@ -1,10 +1,7 @@
-//! The ELF scanner of `xkey_helper_linux`, ported step for step.
+//! `xkey_helper_linux` 的 ELF 扫描器，按桌面版的实现逐步移植。
 //!
-//! It reads the whole target file, uses 64-byte section headers and the
-//! section-name table, finds `com.Tencent.WCDB.Config.Cipher` in `.rodata`,
-//! follows the two `lea rsi` references and the `lea rdi` between them, then
-//! scans back for the `55 41 57` function prologue. The first match of each
-//! kind wins, exactly as in the original binary.
+//! 读取整个目标文件，借助 64 字节的节头和节名表，在 `.rodata` 中找到 `com.Tencent.WCDB.Config.Cipher`，跟随两处
+//! `lea rsi` 引用和它们之间的 `lea rdi`，再向前搜索函数序言 `55 41 57`。每一类都取第一个匹配，与桌面版相同。
 
 const ANCHOR: &[u8] = b"com.Tencent.WCDB.Config.Cipher";
 const LEA_RSI: [u8; 3] = [0x48, 0x8d, 0x35];
@@ -55,8 +52,7 @@ fn section(bytes: &[u8], header: usize) -> Option<Section> {
 }
 
 fn find_sections(bytes: &[u8]) -> Result<(Section, Section), &'static str> {
-    // 0x7f 'E' 'L' 'F' in the first byte and the ELFCLASS64 / ELFDATA2LSB
-    // bytes, as checked by the original scanner.
+    // 与桌面版扫描器一样只检查魔数 `\x7fELF` 的第一个字节 0x7f，以及 ELFCLASS64、ELFDATA2LSB 这两个字节
     if bytes.len() < 8 || bytes[0] != 0x7f || bytes[4] != 2 || bytes[5] != 1 {
         return Err(MISSING_SECTIONS);
     }
@@ -112,7 +108,7 @@ fn anchor(bytes: &[u8], rodata: Section) -> Result<usize, &'static str> {
     }
 }
 
-/// The address of the first `lea rsi` in `.text` whose target is `target`.
+/// `.text` 中第一条目标为 `target` 的 `lea rsi` 在节内的偏移。
 fn first_lea_rsi(bytes: &[u8], text: Section, target: usize) -> Option<usize> {
     let data = &bytes[text.offset..text.offset + text.size];
     let last = data.len().checked_sub(7)?;
@@ -148,8 +144,7 @@ fn prologue(bytes: &[u8], text: Section, offset: usize) -> Option<usize> {
     None
 }
 
-/// Locates the hook point in an ELF image; the returned address is the
-/// section-relative virtual address before the process load base is added.
+/// 在 ELF 映像中找到挂点；返回的是加上进程加载基址之前、按节计算的虚拟地址。
 pub(super) fn locate(bytes: &[u8]) -> Result<usize, &'static str> {
     let (rodata, text) = find_sections(bytes)?;
     let anchor = anchor(bytes, rodata)?;
@@ -183,7 +178,7 @@ pub(super) fn locate(bytes: &[u8]) -> Result<usize, &'static str> {
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "the synthetic ELF fixture values are small"
+    reason = "合成的 ELF 测试数据中的数值都很小"
 )]
 mod tests {
     use super::*;

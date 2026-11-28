@@ -1,12 +1,10 @@
-//! The ARM64 scanner of `xkey_helper`, ported instruction for instruction.
+//! `xkey_helper` 的 ARM64 扫描器，按桌面版的实现逐条移植。
 //!
-//! The original looked for the anchor `mov x3, x2; mov x2, x1`, stepped back
-//! `0x10` bytes and accepted the candidate only when the six instructions and
-//! a nearby unconditional branch had the expected shape. A second, stricter
-//! check read the branch target (the database sink). This module keeps those
-//! pure byte checks; `platform` supplies the memory.
+//! 寻找锚点 `mov x3, x2; mov x2, x1`，后退 `0x10` 字节得到候选，
+//! 只有它的六条指令和附近的一条无条件跳转都符合预期的形态时才接受；第二道更严格的检查读取跳转目标（数据库 sink）。
+//! 这个模块只做这些纯字节的检查，内存由 `platform` 提供。
 
-/// `mov x3, x2; mov x2, x1`, as the original searched for it.
+/// 锚点 `mov x3, x2; mov x2, x1`，与桌面版搜索的字节相同。
 pub(super) const ANCHOR: [u8; 8] = [0xe3, 0x03, 0x02, 0xaa, 0xe2, 0x03, 0x01, 0xaa];
 const ANCHOR_BACK: u64 = 0x10;
 const WINDOW: usize = 0x80;
@@ -22,9 +20,8 @@ fn register(value: u32) -> u32 {
     value & 0x1f
 }
 
-/// The six instructions the original required at `candidate`: `ADRP`, `LDR`,
-/// `CBZ`, `BR`, `mov x3, x2`, `mov x2, x1`, with one register throughout, and
-/// an unconditional `B` in the following `0x80` bytes.
+/// 候选处要求的六条指令（与桌面版相同）：`ADRP`、`LDR`、`CBZ`、`BR`、`mov x3, x2`、`mov x2, x1`，
+/// 前四条用同一个寄存器，且从候选开始的 `0x80` 字节内有一条无条件的 `B`。
 pub(super) fn initial_shape(bytes: &[u8]) -> bool {
     if bytes.len() < WINDOW {
         return false;
@@ -65,8 +62,8 @@ fn has_unconditional_branch(bytes: &[u8]) -> bool {
         .any(|index| word(bytes, index).is_some_and(|word| word & 0xfc00_0000 == 0x1400_0000))
 }
 
-/// The database sink: `ADRP`, `LDR`, two 64-bit `CBZ`s and `cbz x0`,
-/// `cbz x2`, `cbz w3`, with the ADRP/LDR/CBZ registers agreeing.
+/// 数据库 sink 的形态：`ADRP`、`LDR`、两条 64 位的 `CBZ`，以及 `cbz x0`、`cbz x2`、`cbz w3`，
+/// 其中 ADRP、LDR、CBZ 的寄存器一致。
 pub(super) fn strict_sink(bytes: &[u8]) -> bool {
     if bytes.len() < SINK_WINDOW {
         return false;
@@ -118,8 +115,7 @@ pub(super) fn strict_sink(bytes: &[u8]) -> bool {
     true
 }
 
-/// The next instruction to run when the candidate is `address`, for each
-/// unconditional `B` in its `0x80`-byte window.
+/// 候选位于 `address` 时，它的 `0x80` 字节窗口中每条无条件 `B` 的跳转目标。
 pub(super) fn branch_targets(bytes: &[u8], address: u64) -> Vec<u64> {
     let mut targets = Vec::new();
     for index in 0..WINDOW / 4 {
@@ -136,7 +132,7 @@ pub(super) fn branch_targets(bytes: &[u8], address: u64) -> Vec<u64> {
     targets
 }
 
-/// The anchor offsets in `bytes`; the caller adds the region base.
+/// 锚点在 `bytes` 中的偏移；调用方再加上区域的起始地址。
 pub(super) fn anchor_offsets(bytes: &[u8]) -> Vec<usize> {
     bytes
         .windows(ANCHOR.len())
@@ -145,13 +141,12 @@ pub(super) fn anchor_offsets(bytes: &[u8]) -> Vec<usize> {
         .collect()
 }
 
-/// The candidate address of an anchor at `anchor`: `anchor - 0x10`.
+/// 位于 `anchor` 的锚点对应的候选地址：`anchor - 0x10`。
 pub(super) fn candidate(anchor: u64) -> Option<u64> {
     anchor.checked_sub(ANCHOR_BACK)
 }
 
-/// The strict candidate closest to `module_base + known_rva`, as the original
-/// chose it.
+/// 最接近 `module_base + known_rva` 的严格候选，与桌面版的选法相同。
 pub(super) fn pick(candidates: &[u64], module_base: u64, known_rva: u64) -> Option<u64> {
     let wanted = module_base.wrapping_add(known_rva);
     candidates

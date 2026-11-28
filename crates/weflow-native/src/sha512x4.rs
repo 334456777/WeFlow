@@ -1,23 +1,22 @@
-//! SHA-512 of four messages at once in the four 64-bit lanes of AVX2 registers (multi-buffer hashing), for the
-//! HMAC-SHA512 every page read checks (#1101), and the HMAC pieces the derivation of page keys shares ([`crate::kdf`]).
+//! 在 AVX2 寄存器的四个 64 位通道里同时计算四条消息的 SHA-512（多缓冲区哈希），
+//! 用于每次读页时校验的 HMAC-SHA512（#1101），以及与页密钥派生（[`crate::kdf`]）共用的 HMAC 部件。
 //!
-//! A SHA-512 is a chain: each of its 80 rounds waits for the one before, and the CPU spends most of a scalar round
-//! waiting. Four independent messages of the same length are hashed in the lanes of 256-bit registers instead, each
-//! instruction doing one step of all four; AVX2 has no 64-bit rotation, so a rotation is two shifts and an or. Where
-//! the CPU has no AVX2 the caller hashes the messages one by one with `sha2`, which is also what this is tested
-//! against.
+//! SHA-512 是一条链：80 轮中的每一轮都要等前一轮算完，标量计算时 CPU 的大部分时间花在等待上。
+//! 这里改为在 256 位寄存器的各个通道里计算四条长度相同、互不相关的消息，每条指令同时完成四条消息的一步；
+//! AVX2 没有 64 位循环移位，所以一次循环移位用两次移位和一次或运算完成。CPU 没有 AVX2 时，调用方用 `sha2`
+//! 逐条计算，测试也以 `sha2` 的结果为对照。
 
 use sha2::block_api::compress512;
 use sha2::{Digest, Sha512};
 
-/// How many messages [`hmac4`] hashes at once.
+/// [`hmac4`] 一次计算的消息条数。
 pub(crate) const LANES: usize = 4;
-/// SHA-512's block, in bytes.
+/// SHA-512 的块大小（字节）。
 pub(crate) const BLOCK: usize = 128;
-/// SHA-512's output, in bytes.
+/// SHA-512 的输出长度（字节）。
 pub(crate) const OUT: usize = 64;
 
-/// SHA-512's initial hash value (FIPS 180-4, 5.3.5).
+/// SHA-512 的初始哈希值（FIPS 180-4，5.3.5 节）。
 const IV: [u64; 8] = [
     0x6a09_e667_f3bc_c908,
     0xbb67_ae85_84ca_a73b,
@@ -29,7 +28,7 @@ const IV: [u64; 8] = [
     0x5be0_cd19_137e_2179,
 ];
 
-/// HMAC-SHA512 keyed once (RFC 2104): the SHA-512 states after the inner and after the outer padded key.
+/// 只写入一次密钥的 HMAC-SHA512（RFC 2104）：处理完内部和外部填充密钥后的两个 SHA-512 状态。
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HmacKey {
     pub(crate) inner: [u64; 8],
@@ -37,7 +36,7 @@ pub(crate) struct HmacKey {
 }
 
 impl HmacKey {
-    /// The states for `key`: a key longer than a block is hashed first, a shorter one padded with zeros.
+    /// `key` 对应的状态：比一个块长的密钥先做哈希，较短的用 0 填充。
     pub(crate) fn new(key: &[u8]) -> Self {
         let mut padded = [0u8; BLOCK];
         if key.len() > BLOCK {
@@ -61,7 +60,7 @@ impl HmacKey {
     }
 }
 
-/// The eight big-endian words of a SHA-512 output.
+/// SHA-512 输出的八个大端字。
 pub(crate) fn words(bytes: &[u8; OUT]) -> [u64; 8] {
     let mut out = [0u64; 8];
     for (w, chunk) in out.iter_mut().zip(bytes.as_chunks::<8>().0) {
@@ -70,18 +69,19 @@ pub(crate) fn words(bytes: &[u8; OUT]) -> [u64; 8] {
     out
 }
 
-/// `state`'s eight words, big-endian, into the first 64 bytes of `out`.
+/// 把 `state` 的八个字按大端写进 `out` 的前 64 字节。
 pub(crate) fn put_words(out: &mut [u8], state: &[u64; 8]) {
     for (chunk, w) in out.as_chunks_mut::<8>().0.iter_mut().zip(state) {
         *chunk = w.to_be_bytes();
     }
 }
 
-/// The HMAC-SHA512 tags with `key` of four messages of the same length, message `l` being `bodies[l]` followed by
-/// `tails[l]`; `None` when the CPU has no AVX2, and the messages are to be hashed one by one.
+/// 用 `key` 计算四条长度相同的消息的 HMAC-SHA512 标签，第 `l` 条消息是 `bodies[l]` 后接 `tails[l]`；CPU 没有
+/// AVX2 时为 `None`，这时消息要逐条计算。
 ///
 /// # Panics
-/// When the bodies, or the tails, are not all of the same length.
+///
+/// `bodies` 或 `tails` 的长度不全相同时 panic。
 pub(crate) fn hmac4(
     key: &HmacKey,
     bodies: [&[u8]; LANES],
@@ -94,10 +94,10 @@ pub(crate) fn hmac4(
     );
     #[cfg(target_arch = "x86_64")]
     if std::arch::is_x86_feature_detected!("avx2") {
-        // SAFETY: the CPU has AVX2, which `avx2::hmac4` is compiled for
+        // SAFETY: CPU 支持 AVX2，`avx2::hmac4` 正是为它编译的
         return Some(unsafe { avx2::hmac4(key, bodies, tails) });
     }
-    // elsewhere the callers hash the messages one by one (on aarch64 with the CPU's SHA-512 instructions)
+    // 其他架构上由调用方逐条计算（aarch64 上用 CPU 的 SHA-512 指令）
     #[cfg(not(target_arch = "x86_64"))]
     let _ = key;
     None
@@ -109,7 +109,7 @@ mod avx2 {
 
     use super::{HmacKey, BLOCK, LANES, OUT};
 
-    /// SHA-512's round constants (FIPS 180-4, 4.2.3).
+    /// SHA-512 的轮常量（FIPS 180-4，4.2.3 节）。
     #[rustfmt::skip]
     const K: [u64; 80] = [
         0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
@@ -134,10 +134,10 @@ mod avx2 {
         0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
     ];
 
-    /// Four SHA-512 states: word `i` of the four in element `i`, lane `l` holding message `l`'s.
+    /// 四个 SHA-512 状态：第 `i` 个元素存放四个状态的第 `i` 个字，第 `l` 个通道属于第 `l` 条消息。
     type State = [__m256i; 8];
 
-    /// [`super::hmac4`], the lengths checked.
+    /// [`super::hmac4`] 的实现，长度已经检查过。
     #[target_feature(enable = "avx2")]
     pub(super) fn hmac4(
         key: &HmacKey,
@@ -145,8 +145,8 @@ mod avx2 {
         tails: [&[u8]; LANES],
     ) -> [[u8; OUT]; LANES] {
         let (body, tail) = (bodies[0].len(), tails[0].len());
-        // the inner hash: the blocks wholly in the bodies straight from them, the rest copied out with the tail and
-        // the padding (a 1 bit, zeros, and the length in bits of the key's block and the message)
+        // 内部哈希：完全落在 `bodies` 里的块直接从中读取，其余部分连同 `tails` 和填充（一个 1 位、若干 0，
+        // 以及密钥块加消息的位长度）复制出来
         let mut state = splat(&key.inner);
         let whole = body / BLOCK;
         for b in 0..whole {
@@ -173,7 +173,7 @@ mod avx2 {
         }
         let inner = unsplat(&state);
 
-        // the outer hash of the inner one: one block
+        // 对内部哈希做外部哈希：只有一个块
         let mut blocks = [[0u8; BLOCK]; LANES];
         for (block, inner) in blocks.iter_mut().zip(&inner) {
             super::put_words(block, inner);
@@ -189,26 +189,26 @@ mod avx2 {
         })
     }
 
-    /// The 128 bytes of `m` from `at`.
+    /// `m` 中从 `at` 开始的 128 字节。
     fn block_at(m: &[u8], at: usize) -> &[u8; BLOCK] {
         m[at..]
             .first_chunk::<BLOCK>()
             .unwrap_or_else(|| unreachable!("a whole block of the message"))
     }
 
-    /// The same state in all four lanes.
+    /// 把同一个状态放进全部四个通道。
     #[target_feature(enable = "avx2")]
     fn splat(words: &[u64; 8]) -> State {
         words.map(|w| _mm256_set1_epi64x(w.cast_signed()))
     }
 
-    /// The four lanes' states.
+    /// 取出四个通道各自的状态。
     #[target_feature(enable = "avx2")]
     fn unsplat(state: &State) -> [[u64; 8]; LANES] {
         let mut lanes = [[0u64; 8]; LANES];
         for (i, word) in state.iter().enumerate() {
             let mut four = [0u64; LANES];
-            // SAFETY: `four` holds the 32 bytes stored
+            // SAFETY: `four` 正好容纳写入的 32 字节
             unsafe { _mm256_storeu_si256(four.as_mut_ptr().cast(), *word) };
             for (lane, w) in lanes.iter_mut().zip(four) {
                 lane[i] = w;
@@ -217,7 +217,7 @@ mod avx2 {
         lanes
     }
 
-    /// Rotation right of the four 64-bit lanes by `$n` bits.
+    /// 把四个 64 位通道各循环右移 `$n` 位。
     macro_rules! rotr {
         ($x:expr, $n:literal) => {
             _mm256_or_si256(
@@ -227,19 +227,18 @@ mod avx2 {
         };
     }
 
-    /// SHA-512's compression of block `blocks[l]` into lane `l` of `state`.
+    /// SHA-512 压缩：把 `blocks[l]` 压缩进 `state` 的第 `l` 个通道。
     #[target_feature(enable = "avx2")]
     fn compress(state: &mut State, blocks: [&[u8; BLOCK]; LANES]) {
-        // the big-endian words of each 64-bit lane in the CPU's order
+        // 把每个 64 位通道中的大端字换成 CPU 的字节序
         let swap = _mm256_setr_epi8(
             7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, //
             7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8,
         );
-        // the message words, word `i` of the four blocks in `w[i]`: four words of each block loaded at a time and
-        // transposed
+        // 消息字：四个块的第 `i` 个字放在 `w[i]` 中；每次从每个块读入四个字，再做转置
         let mut w = [_mm256_setzero_si256(); 16];
         for g in 0..4 {
-            // SAFETY: bytes 32 * g .. 32 * g + 32 of a 128-byte block
+            // SAFETY: 读取的是 128 字节块中的 `32 * g .. 32 * g + 32` 字节
             let r = blocks.map(|b| unsafe { _mm256_loadu_si256(b.as_ptr().add(32 * g).cast()) });
             let t0 = _mm256_unpacklo_epi64(r[0], r[1]);
             let t1 = _mm256_unpackhi_epi64(r[0], r[1]);
@@ -325,7 +324,7 @@ mod avx2 {
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "test bytes and shifts are meant to wrap"
+    reason = "测试数据的字节和移位有意回绕"
 )]
 mod tests {
     use super::*;
@@ -343,7 +342,7 @@ mod tests {
     fn the_keyed_states_are_hmacs_ipad_and_opad_blocks() {
         for key in [&b""[..], &[7u8; 32], &[9u8; 128], &[1u8; 129]] {
             let keyed = HmacKey::new(key);
-            // an HMAC of nothing: the inner hash of the key's block alone, then the outer
+            // 空消息的 HMAC：内部哈希只处理密钥块，再做外部哈希
             let mut inner = keyed.inner;
             let mut block = [0u8; BLOCK];
             block[0] = 0x80;
@@ -387,7 +386,7 @@ mod tests {
             "hashed side by side exactly where the CPU has AVX2"
         );
         let Some(tags) = tags else {
-            return; // hashed one by one by the callers: nothing to compare
+            return; // 由调用方逐条计算：没有可比较的
         };
         for l in 0..LANES {
             assert_eq!(tags[l], reference(&key, bodies[l], tails[l]), "lane {l}");
@@ -406,11 +405,11 @@ mod tests {
             })
             .collect();
         let all: Vec<(u32, &[u8])> = pages.iter().map(|(p, b)| (*p, b.as_slice())).collect();
-        // every number of pages: groups of four, and one, two or three left over (two or three hashed as four)
+        // 每一种页数：四页一组，以及剩下的一、二、三页（剩两三页时按四页计算）
         for n in 0..=all.len() {
             let refs = &all[..n];
             cipher.verify_each(refs).unwrap();
-            // a page damaged in each place
+            // 依次损坏每个位置上的页
             for bad in 0..n {
                 let mut damaged = pages[bad].1.clone();
                 damaged[100] ^= 1;
@@ -431,7 +430,7 @@ mod tests {
             }
         }
         let refs = all;
-        // a page checked as another page number fails too
+        // 按另一个页号校验的页同样失败
         let mut swapped = refs.clone();
         swapped[1].0 = 99;
         assert!(cipher.verify_each(&swapped).is_err());
@@ -440,7 +439,7 @@ mod tests {
     proptest! {
         #![proptest_config(crate::property_cases(64))]
 
-        /// Any key, any four bodies of one length (lengths around the block boundaries too) and tails of one length.
+        /// 任意的密钥、任意四个长度相同的消息主体（包括块边界附近的长度），以及长度相同的尾部。
         #[test]
         fn any_four_messages_hash_as_one_by_one(
             key in proptest::collection::vec(any::<u8>(), 0..200),

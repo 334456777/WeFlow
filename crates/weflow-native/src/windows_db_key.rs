@@ -1,8 +1,7 @@
-//! Windows x64 database-key capture.
+//! Windows x64 上的数据库密钥捕获。
 //!
-//! Version signatures, offsets and the RDX argument layout were checked against the original `wx_key` binary and
-//! `ycccccccy/wx_key` (MIT). Capture uses Windows debugging APIs; no client instructions are patched and no vendor
-//! helper is loaded.
+//! 各版本的特征码、偏移和 RDX 参数结构已与原版 `wx_key` 的二进制及 `ycccccccy/wx_key`（MIT，许可证见本目录中的
+//! `LICENSE`）核对。捕获使用 Windows 调试 API：不改写微信的指令，也不加载厂商的辅助库。
 
 mod locator;
 #[cfg(all(windows, target_arch = "x86_64"))]

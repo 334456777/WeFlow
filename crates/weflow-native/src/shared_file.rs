@@ -1,19 +1,18 @@
-//! A file read from several threads at once, each read through a handle no other thread is using.
+//! 由多个线程同时读取的文件，每次读取都通过没有其他线程在用的句柄。
 //!
-//! On Windows a handle opened for synchronous I/O, as `File::open` opens one, serializes every read and query made
-//! through it behind a lock of its file object: threads reading the same handle wait for one another, and each wait
-//! is a context switch (#1105). A reader there takes a handle of its own, reopened from the first one so that it is
-//! the same file whatever happened to its path, and leaves it for the next reader. Elsewhere positional reads and
-//! queries through one handle do not wait for one another, and every reader uses the first.
+//! 在 Windows 上，以同步 I/O 打开的句柄（`File::open` 就是这样打开的）对通过它进行的每次读取和查询，
+//! 都要逐个取得文件对象的锁：读同一个句柄的线程互相等待，每次等待都是一次上下文切换（#1105）。
+//! 因此 Windows 上每个读取者用自己的句柄：它从第一个句柄重新打开，无论路径后来怎样变化都指向同一个文件，
+//! 用完后留给下一个读取者。其他系统上通过同一个句柄的按位置读取和查询不互相等待，所有读取者都用第一个句柄。
 
 use std::fs::File;
 #[cfg(windows)]
 use std::sync::Mutex;
 
-/// One file and, on Windows, the handles readers left for the next ones.
+/// 一个文件，以及（Windows 上）读取者留给后来者的句柄。
 pub(crate) struct SharedFile {
     first: File,
-    /// Handles of the same file that no reader is using now.
+    /// 同一个文件的、当前没有读取者在用的句柄。
     #[cfg(windows)]
     spare: Mutex<Vec<File>>,
 }
@@ -27,8 +26,8 @@ impl SharedFile {
         }
     }
 
-    /// `f` with a handle of the file that no other thread is reading through, on Windows; the first handle when
-    /// another cannot be opened (the file is being deleted), and on other systems.
+    /// 用文件的句柄运行 `f`：Windows 上是没有其他线程在用的句柄，另开不了（文件正在被删除）时用第一个句柄；
+    /// 其他系统上一律用第一个句柄。
     pub(crate) fn with<T>(&self, f: impl FnOnce(&File) -> T) -> T {
         #[cfg(windows)]
         {
@@ -45,8 +44,7 @@ impl SharedFile {
     }
 }
 
-/// A new handle, with a file object of its own, to the file `file` is open on, for reading; `None` when it cannot be
-/// opened.
+/// 为 `file` 所打开的文件另开一个用于读取的新句柄，它有自己的文件对象；打不开时为 `None`。
 #[cfg(windows)]
 fn reopen(file: &File) -> Option<File> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
@@ -54,8 +52,8 @@ fn reopen(file: &File) -> Option<File> {
     use windows_sys::Win32::Storage::FileSystem::{
         ReOpenFile, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
     };
-    // SAFETY: the handle is open for as long as `file` is borrowed. The share mode is the one `File::open` opens
-    // with, so WeChat can go on writing, renaming and deleting the file.
+    // SAFETY: 借用 `file` 期间句柄一直打开。共享模式与 `File::open` 打开时的相同，
+    // 所以微信仍能写入、重命名和删除这个文件。
     let handle = unsafe {
         ReOpenFile(
             file.as_raw_handle(),
@@ -67,7 +65,7 @@ fn reopen(file: &File) -> Option<File> {
     if handle == INVALID_HANDLE_VALUE {
         return None;
     }
-    // SAFETY: `ReOpenFile` returned a handle that is open and that nothing else owns or closes
+    // SAFETY: `ReOpenFile` 返回的句柄是打开的，没有其他地方拥有或关闭它
     Some(unsafe { File::from_raw_handle(handle) })
 }
 

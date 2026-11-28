@@ -1,4 +1,4 @@
-//! The `image_mem` mode: search WeChat's writable memory for the image AES key.
+//! `image_mem` 模式：在微信可写的内存中搜索图片 AES 密钥。
 
 use crate::image_key_scan::{find_key, Block, MemoryScanError, READ_OVERLAP};
 
@@ -7,14 +7,13 @@ use super::process;
 const CHUNK: usize = 4 * 1024 * 1024;
 const MAX_MAPPING: usize = 0x3200001;
 
-/// The first key in WeChat's private writable mappings that decrypts one of `ciphertexts` into the start of an
-/// image and that `accept` takes (see [`crate::image_key_scan`]); `Ok(None)` when no such key is there.
+/// 微信私有的可写映射中第一个能把 `ciphertexts` 之一解密成图片开头、且被 `accept` 接受的密钥（见
+/// [`crate::image_key_scan`]）；没有这样的密钥时为 `Ok(None)`。
 ///
 /// # Errors
 ///
-/// [`MemoryScanError::PermissionDenied`] when the system refuses every read of the process's memory, as it does
-/// without root while `/proc/sys/kernel/yama/ptrace_scope` is 1 or more; [`MemoryScanError::Failed`] when the
-/// memory map cannot be read.
+/// 系统拒绝读取这个进程的任何内存时返回 [`MemoryScanError::PermissionDenied`]，没有 root 权限且
+/// `/proc/sys/kernel/yama/ptrace_scope` 为 1 或更大时就是这样；读不了内存映射时返回 [`MemoryScanError::Failed`]。
 pub fn image_mem(
     pid: u32,
     ciphertexts: &[Block],
@@ -42,7 +41,7 @@ pub fn image_mem(
                         return Ok(Some(key));
                     }
                 }
-                // the same refusal applies to every address of the process
+                // 同样的拒绝适用于这个进程的每个地址
                 Err(error) if !read_any && error.kind() == std::io::ErrorKind::PermissionDenied => {
                     return Err(MemoryScanError::PermissionDenied(format!(
                         "cannot read the memory of process {pid}: {error}"

@@ -1,6 +1,5 @@
-//! The command line of `xkey_helper`: `<pid> [timeout_ms]`, its JSON answers
-//! and its exit codes. The parsing keeps the C `strtol` rules the original
-//! used, so a pid such as `12abc` still names process 12.
+//! `xkey_helper` 的命令行 `<pid> [timeout_ms]`、它输出的 JSON 和退出码。解析沿用桌面版所用的 C `strtol` 规则，
+//! 所以 `12abc` 这样的 pid 仍表示进程 12。
 
 const USAGE: &str = "{\"success\":false,\"result\":\"ERROR:USAGE: helper <pid> [timeout_ms]\"}\n";
 const INVALID_PID: &str = "{\"success\":false,\"result\":\"ERROR:INVALID_PID\"}\n";
@@ -55,7 +54,7 @@ fn json_failure(prefix: &str, reason: &str) -> String {
     )
 }
 
-/// Escapes the characters the original helper escaped in its JSON strings.
+/// 转义桌面版辅助程序在 JSON 字符串中转义的那些字符。
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for c in value.chars() {
@@ -71,8 +70,7 @@ fn json_escape(value: &str) -> String {
     out
 }
 
-/// The `strtol` prefix of `value` in base 10: optional white space and sign,
-/// then digits; `0` when there is no digit.
+/// 按十进制取 `value` 中能被 `strtol` 解析的前缀：可选的空白和正负号，之后是数字；没有数字时为 `0`。
 fn strtol(value: &str) -> i64 {
     let value = value.trim_start();
     let (negative, digits) = match value.as_bytes().first() {
@@ -96,7 +94,7 @@ fn strtol(value: &str) -> i64 {
     }
 }
 
-/// `args` includes the program name, as `argv` does.
+/// 解析命令行，得到 pid 和超时的毫秒数；`args` 与 `argv` 一样含有程序名。
 pub(super) fn parse(args: &[String]) -> Result<(u32, u64), Outcome> {
     let Some(pid) = args.get(1) else {
         return Err(Outcome::Usage);
@@ -114,12 +112,12 @@ pub(super) fn parse(args: &[String]) -> Result<(u32, u64), Outcome> {
     Ok((u32::try_from(pid).unwrap_or(0), timeout))
 }
 
-/// Runs the helper on its command line `args` (`<pid> [timeout_ms]`): its JSON answer and its exit code.
+/// 按命令行 `args`（`<pid> [timeout_ms]`）运行辅助程序，返回它输出的 JSON 和退出码。
 pub fn run_helper(args: &[String]) -> (String, i32) {
     run_helper_at(args)
 }
 
-/// The same answer for scripted tests: `platform` is only available on macOS.
+/// 与 [`run_helper`] 的结果相同，供脚本化的测试调用；`platform` 只在 macOS 上可用。
 pub fn run_helper_at(args: &[String]) -> (String, i32) {
     match parse(args) {
         Ok((pid, timeout_ms)) => {
