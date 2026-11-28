@@ -6,6 +6,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
+use crate::export_msg::sql_escape;
 use crate::locale::{self, Lang};
 
 /// The footprint (`export footprint`) as a timeline, for CSV and Excel (#315).
@@ -295,10 +296,6 @@ fn format_timestamp(ts: i64) -> String {
     }
 }
 
-fn sql_escape(s: &str) -> String {
-    s.replace('\'', "''")
-}
-
 fn write_file(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
@@ -393,11 +390,6 @@ mod tests {
         let out = dir.join("t.xlsx");
         export_table_excel(&["a"], &[vec![Value::String(long)]], &out).unwrap();
         assert!(out.is_file());
-    }
-
-    #[test]
-    fn sql_escapes() {
-        assert_eq!(sql_escape("it's"), "it''s");
     }
 
     #[test]

@@ -215,6 +215,11 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn sql_escapes() {
+        assert_eq!(sql_escape("it's"), "it''s");
+    }
+
     /// Text that Excel would read as a formula gets a `'` in front, and reads back as the same text without it;
     /// numbers and other text stay as they are (#1219).
     #[test]
