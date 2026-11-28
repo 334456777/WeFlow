@@ -121,7 +121,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("invalid value '{}' for {}; use a number from {} to {}", "{1} 的值 '{0}' 无效；请使用 {2} 到 {3} 之间的数"),
     ("invalid value for {}; use a JSON array of conversation ids, such as [\"wxid_a\",\"123@chatroom\"]", "{} 的值无效；请使用会话 ID 的 JSON 数组，例如 [\"wxid_a\",\"123@chatroom\"]"),
     ("invalid value for {}; use a JSON object keyed by conversation id", "{} 的值无效；请使用以会话 ID 为键的 JSON 对象"),
-    ("invalid value '{}' for {}; use an IP address such as 127.0.0.1, 0.0.0.0 or [::1]", "{1} 的值 '{0}' 无效；请使用 IP 地址，例如 127.0.0.1、0.0.0.0 或 [::1]"),
+    ("invalid value '{}' for {}; use an IP address such as 127.0.0.1, 0.0.0.0 or [::1], or a host name", "{1} 的值 '{0}' 无效；请使用 IP 地址（例如 127.0.0.1、0.0.0.0 或 [::1]）或主机名"),
     ("failed to update {}: {}", "更新 {} 失败：{}"),
     ("a profile name cannot be empty", "档案名称不能为空"),
     ("invalid profile name '{}'; a name cannot hold a dot, a slash, a backslash or a control character", "档案名称 '{}' 无效；不能包含点、斜杠、反斜杠或控制字符"),

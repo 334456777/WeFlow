@@ -31,7 +31,7 @@ pub(crate) enum ConfigSubcommand {
     /// Set a key
     Set {
         #[arg(
-            help = "Key name; `<profile>.<key>`, such as `work.wxid`, sets the key in another existing profile, which `current_profile` makes\n  db_path                  WeChat data directory; `db detect` finds it\n  wxid                     Account wxid; `db wxid` prints it\n  decrypt_key              Database key in hex; `key db` prints it\n  image_xor_key            Image XOR key, a number; `key image` prints it, and on Linux x64 and macOS `key image-mem` without --ciphertext may too\n  image_aes_key            Image AES key; the same commands print it\n  cache_path               Folder for cached images, voices, stickers and Moments; default: `cache` next to the config file\n  http_api_token           Access token of the HTTP API of `serve`\n  ai_model_api_format      openai or anthropic: the API format of the AI model API used by `insight`, OpenAI's Chat Completions or Anthropic's Messages; default: openai\n  ai_model_api_base_url    Base URL of the AI model API; default: the service of the format\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name; `insight models` lists them\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  auto_download_whitelist  JSON array of the conversation ids the image auto-download takes originals for\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears; default 5, and 0 shows it at once\nSettings of the AI insights, the message push and the statistics, in the profile as well:\n  ai_insight_filter_mode   whitelist or blacklist: insights for the conversations of ai_insight_filter_list only, or for all but them; default: whitelist\n  ai_insight_filter_list   JSON array of conversation ids\n  ai_insight_silence_days  Days without a message before a conversation counts as silent, 1 to 365; default 3\n  ai_insight_scan_interval_hours  Hours between two scans for silent conversations, 0.1 to 168; default 4\n  ai_insight_cooldown_minutes  Minutes before new messages of a conversation are asked about again, 0 to 10080; default 120, and 0 does not wait\n  ai_insight_notification_enabled  true or false: false keeps `serve --insight` from printing the insights; default: true\n  ai_insight_allow_context  true or false: send the recent messages with the question; default: false\n  ai_insight_context_count  Messages sent, 1 to 1000; default 40\n  ai_insight_allow_moments_context  true or false: send the Moments of the conversations ai_insight_moments_bindings turns on; default: false\n  ai_insight_moments_bindings  JSON object such as {\"<conversation id>\": {\"enabled\": true}}\n  ai_insight_moments_context_count  Moments posts sent, 1 to 20; default 5\n  ai_insight_allow_social_context  true or false: send the public Weibo posts of the UIDs in ai_insight_weibo_bindings; default: false\n  ai_insight_weibo_bindings  JSON object such as {\"<conversation id>\": {\"uid\": \"<Weibo UID>\"}}\n  ai_insight_weibo_cookie  Cookie used to read Weibo\n  ai_insight_social_context_count  Weibo posts sent, 1 to 5; default 3\n  ai_insight_system_prompt  Prompt used instead of the default one of the insights\n  ai_insight_telegram_enabled  true or false: also send the insights to Telegram; default: false\n  ai_insight_telegram_token  Telegram bot token\n  ai_insight_telegram_chat_ids  Telegram chat ids, separated by commas\n  ai_footprint_enabled     true or false: let `insight footprint-summary` ask the model; default: false\n  ai_footprint_system_prompt  Prompt used instead of the default one of the footprint summary\n  message_push_filter_mode  all, whitelist or blacklist: push every conversation, those of message_push_filter_list only, or all but them; default: all\n  message_push_filter_list  JSON array of conversation ids\n  analytics_excluded_usernames  JSON array of the conversations the statistics leave out, as `analytics excluded --set` keeps it\nSettings of the config file itself, stored in that file and not in a profile; each config file has its own:\n  lang                     Output language, en or zh, the same as `weflow lang`\n  current_profile          Active profile name, created when it does not exist; it cannot be empty, hold a dot, a slash or a backslash, or be the name of a key; default: default\nOptions of `serve`, used when its command line does not give them:\n  serve_host               Listen address, as --host\n  serve_port               Listen port, as --port\n  serve_max_tasks          Tasks run at once, as --max-tasks\n  serve_max_reads          Other commands run at once, as --max-reads\n  serve_max_media          Images and voices decoded at once, as --max-media\n  serve_log_requests       true or false: true logs each request, as --log-requests\n  serve_insight            true or false: true runs the AI insight engine, as --insight\n  serve_image_auto_download  true or false: turn the image auto-download hook on or off; default: on\n  serve_open_browser       true or false: false does not open the WebUI at the start, as --no-browser\nWhich config file is used, kept next to the default location and not in any config file:\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
+            help = "Key name; `<profile>.<key>`, such as `work.wxid`, sets the key in another existing profile, which `current_profile` makes\n  db_path                  WeChat data directory; `db detect` finds it\n  wxid                     Account wxid; `db wxid` prints it\n  decrypt_key              Database key in hex; `key db` prints it\n  image_xor_key            Image XOR key, a number; `key image` prints it, and on Linux x64 and macOS `key image-mem` without --ciphertext may too\n  image_aes_key            Image AES key; the same commands print it\n  cache_path               Folder for cached images, voices, stickers and Moments; default: `cache` next to the config file\n  http_api_token           Access token of the HTTP API of `serve`\n  ai_model_api_format      openai or anthropic: the API format of the AI model API used by `insight`, OpenAI's Chat Completions or Anthropic's Messages; default: openai\n  ai_model_api_base_url    Base URL of the AI model API; default: the service of the format\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name; `insight models` lists them\n  ai_model_api_max_tokens  Most tokens in one AI reply, 1 to 2000000; default 4096\n  ai_insight_enabled       true or false: turn AI insight on or off\n  auto_download_whitelist  JSON array of the conversation ids the image auto-download takes originals for\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears; default 5, and 0 shows it at once\nSettings of the AI insights, the message push and the statistics, in the profile as well:\n  ai_insight_filter_mode   whitelist or blacklist: insights for the conversations of ai_insight_filter_list only, or for all but them; default: whitelist\n  ai_insight_filter_list   JSON array of conversation ids\n  ai_insight_silence_days  Days without a message before a conversation counts as silent, 1 to 365; default 3\n  ai_insight_scan_interval_hours  Hours between two scans for silent conversations, 0.1 to 168; default 4\n  ai_insight_cooldown_minutes  Minutes before new messages of a conversation are asked about again, 0 to 10080; default 120, and 0 does not wait\n  ai_insight_notification_enabled  true or false: false keeps `serve --insight` from printing the insights; default: true\n  ai_insight_allow_context  true or false: send the recent messages with the question; default: false\n  ai_insight_context_count  Messages sent, 1 to 1000; default 40\n  ai_insight_allow_moments_context  true or false: send the Moments of the conversations ai_insight_moments_bindings turns on; default: false\n  ai_insight_moments_bindings  JSON object such as {\"<conversation id>\": {\"enabled\": true}}\n  ai_insight_moments_context_count  Moments posts sent, 1 to 20; default 5\n  ai_insight_allow_social_context  true or false: send the public Weibo posts of the UIDs in ai_insight_weibo_bindings; default: false\n  ai_insight_weibo_bindings  JSON object such as {\"<conversation id>\": {\"uid\": \"<Weibo UID>\"}}\n  ai_insight_weibo_cookie  Cookie used to read Weibo\n  ai_insight_social_context_count  Weibo posts sent, 1 to 5; default 3\n  ai_insight_system_prompt  Prompt used instead of the default one of the insights\n  ai_insight_telegram_enabled  true or false: also send the insights to Telegram; default: false\n  ai_insight_telegram_token  Telegram bot token\n  ai_insight_telegram_chat_ids  Telegram chat ids, separated by commas\n  ai_footprint_enabled     true or false: let `insight footprint-summary` ask the model; default: false\n  ai_footprint_system_prompt  Prompt used instead of the default one of the footprint summary\n  message_push_filter_mode  all, whitelist or blacklist: push every conversation, those of message_push_filter_list only, or all but them; default: all\n  message_push_filter_list  JSON array of conversation ids\n  analytics_excluded_usernames  JSON array of the conversations the statistics leave out, as `analytics excluded --set` keeps it\nSettings of the config file itself, stored in that file and not in a profile; each config file has its own:\n  lang                     Output language, en or zh, the same as `weflow lang`\n  current_profile          Active profile name, created when it does not exist; it cannot be empty, hold a dot, a slash or a backslash, or be the name of a key; default: default\nOptions of `serve`, used when its command line does not give them:\n  serve_host               Listen address, as --host\n  serve_port               Listen port, as --port\n  serve_max_tasks          Tasks run at once, as --max-tasks\n  serve_max_reads          Other commands run at once, as --max-reads\n  serve_max_media          Images and voices decoded at once, as --max-media\n  serve_log_requests       true or false: true logs each request, as --log-requests\n  serve_insight            true or false: true runs the AI insight engine, as --insight\n  serve_image_auto_download  true or false: turn the image auto-download hook on or off; default: on\n  serve_open_browser       true or false: false does not open the WebUI at the start, as --no-browser\nWhich config file is used, kept next to the default location and not in any config file:\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
         )]
         key: String,
         /// Value to store: as typed for paths, keys, tokens and names; as JSON for numbers, true/false and arrays
@@ -63,9 +63,9 @@ pub(crate) fn apply_progress_settings(
     config: &ConfigStore,
     progress: weflow_core::output::ProgressMode,
 ) {
-    // `ConfigStore::load` has given both settings the type `set_key` keeps them in
+    // `ConfigStore::load` has given `progress_delay_seconds` the type `set_key` keeps it in
     if progress == weflow_core::output::ProgressMode::Auto
-        && config.get_key(None, "no_progress") == Value::Bool(true)
+        && config.setting(None, &weflow_core::config::keys::NO_PROGRESS)
     {
         weflow_core::output::set_progress_mode(weflow_core::output::ProgressMode::Off);
     }
@@ -187,4 +187,114 @@ fn confirm_profile_removal(name: &str, yes: bool) -> AppResult<bool> {
         "将要从配置文件中删除档案 '{name}'，连同其中的账号设置和密钥；缓存会保留。\n确认删除？输入 y 确认，其他输入取消：",
     );
     ask_yes(&question.replace("{name}", &name.escape_debug().to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+    use weflow_core::config::keys;
+
+    /// The lines of `config set --help` that name a key, in English and in Chinese.
+    fn key_lines() -> Vec<(String, String)> {
+        let cli = crate::cli::Cli::command();
+        let set = cli
+            .find_subcommand("config")
+            .and_then(|c| c.find_subcommand("set"))
+            .expect("config set");
+        let help = set
+            .get_arguments()
+            .find(|a| a.get_id() == "key")
+            .and_then(|a| a.get_help())
+            .expect("the help of the key")
+            .to_string();
+        let zh = crate::i18n::tr_str(&help).expect("the Chinese help of the key");
+        let named = |text: &str| -> Vec<String> {
+            text.lines()
+                .filter(|line| line.starts_with("  "))
+                .map(str::to_string)
+                .collect()
+        };
+        named(&help).into_iter().zip(named(&zh)).collect()
+    }
+
+    /// `config set --help` lists every key `config set` knows and no other, and writes the bounds and defaults of the
+    /// keys with a description as their descriptions say, in both languages (#1265).
+    #[test]
+    fn the_help_lists_every_key_with_its_bounds_and_default() {
+        let lines = key_lines();
+        let named = |line: &str| {
+            line.split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .to_string()
+        };
+        let mut listed: Vec<String> = lines.iter().map(|(en, _)| named(en)).collect();
+        let mut known: Vec<String> = weflow_core::config::known_keys()
+            .chain(["config_path".to_string()])
+            .collect();
+        listed.sort();
+        known.sort();
+        assert_eq!(listed, known);
+        for (en, zh) in &lines {
+            assert_eq!(
+                named(en),
+                named(zh),
+                "the Chinese help lists the keys in the same order"
+            );
+        }
+
+        let line_of = |key: &str| {
+            lines
+                .iter()
+                .find(|(en, _)| named(en) == key)
+                .unwrap_or_else(|| panic!("{key} is not listed"))
+                .clone()
+        };
+        let says = |key: &str, en_text: &str, zh_text: &str| {
+            let (en, zh) = line_of(key);
+            assert!(en.contains(en_text), "{key}: `{en_text}` not in {en:?}");
+            assert!(zh.contains(zh_text), "{key}: `{zh_text}` not in {zh:?}");
+        };
+        for count in keys::COUNTS {
+            says(
+                count.name,
+                &format!("{} to {}", count.min, count.max),
+                &format!("{}～{}", count.min, count.max),
+            );
+            says(
+                count.name,
+                &format!("default {}", count.default),
+                &format!("默认 {}", count.default),
+            );
+        }
+        for number in keys::NUMBERS {
+            says(
+                number.name,
+                &format!("{} to {}", number.least, number.most),
+                &format!("{}～{}", number.least, number.most),
+            );
+            says(
+                number.name,
+                &format!("default {}", number.default),
+                &format!("默认 {}", number.default),
+            );
+        }
+        for choice in keys::CHOICES {
+            says(
+                choice.name,
+                &format!("default: {}", choice.default),
+                &format!("默认 {}", choice.default),
+            );
+        }
+        for switch in keys::SWITCHES {
+            let (en, _) = line_of(switch.name);
+            if en.contains("default:") {
+                says(
+                    switch.name,
+                    &format!("default: {}", switch.default),
+                    &format!("默认 {}", switch.default),
+                );
+            }
+        }
+    }
 }

@@ -31,7 +31,8 @@ fn prescan_lang() {
     }
 }
 
-fn tr_str(text: &str) -> Option<String> {
+/// The Chinese help of the English help text `text`; `None` when it has none.
+pub(crate) fn tr_str(text: &str) -> Option<String> {
     translate_with(HELP, text)
 }
 

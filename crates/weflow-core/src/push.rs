@@ -8,6 +8,7 @@ use serde_json::{json, Map, Value};
 use tokio::sync::broadcast;
 
 use crate::chat_msg::{self, ChatMessage};
+use crate::config::keys::{self, Setting};
 use crate::message::xml::rx;
 use crate::services::ServiceHub;
 use crate::sync::MutexExt;
@@ -309,8 +310,8 @@ impl PushEngine {
     }
 
     fn filter_allows(&self, session_id: &str) -> bool {
-        let mode = self.hub.config_value("message_push_filter_mode");
-        let mode = mode.as_str().unwrap_or("all");
+        let filter = keys::MESSAGE_PUSH_FILTER_MODE;
+        let mode = filter.read(&self.hub.config_value(filter.name));
         if mode != "whitelist" && mode != "blacklist" {
             return true;
         }

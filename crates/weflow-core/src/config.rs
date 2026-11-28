@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 use crate::error::{AppError, AppResult};
 
 mod extra_keys;
+pub mod keys;
 mod legacy_keys;
 pub use legacy_keys::refuse_renamed;
 
@@ -175,17 +176,18 @@ impl ServeSettings {
         match key {
             "host" => {
                 let host = as_string(value)?.trim().to_string();
-                if format!("{host}:0").parse::<std::net::SocketAddr>().is_err() {
+                // what `serve --host` takes, which resolves a host name when it starts
+                if keys::listen_host(&host).is_err() {
                     return Err(AppError::usage(format!(
-                        "invalid value '{host}' for {name}; use an IP address such as 127.0.0.1, 0.0.0.0 or [::1]"
+                        "invalid value '{host}' for {name}; use an IP address such as 127.0.0.1, 0.0.0.0 or [::1], or a host name"
                     )));
                 }
                 self.host = Some(host);
             }
-            "port" => self.port = Some(as_int_in(value, &name, 1, u16::MAX)?),
-            "max_tasks" => self.max_tasks = Some(as_int_in(value, &name, 1, u16::MAX)?),
-            "max_reads" => self.max_reads = Some(as_int_in(value, &name, 1, u16::MAX)?),
-            "max_media" => self.max_media = Some(as_int_in(value, &name, 1, u16::MAX)?),
+            "port" => self.port = Some(as_bounded(value, &keys::SERVE_PORT)?),
+            "max_tasks" => self.max_tasks = Some(as_bounded(value, &keys::SERVE_MAX_TASKS)?),
+            "max_reads" => self.max_reads = Some(as_bounded(value, &keys::SERVE_MAX_READS)?),
+            "max_media" => self.max_media = Some(as_bounded(value, &keys::SERVE_MAX_MEDIA)?),
             "log_requests" => self.log_requests = Some(as_bool(value, &name)?),
             "insight" => self.insight = Some(as_bool(value, &name)?),
             "image_auto_download" => self.image_auto_download = Some(as_bool(value, &name)?),
@@ -470,6 +472,12 @@ impl ConfigStore {
         target.get_key(&key)
     }
 
+    /// The key `setting` of the profile `profile`, else of the current one, as the key reads it ([`keys::Setting`]):
+    /// its default when it is not set or holds what the key does not take.
+    pub fn setting<S: keys::Setting>(&self, profile: Option<&str>, setting: &S) -> S::Value {
+        setting.read(&self.get_key(profile, setting.name()))
+    }
+
     /// Sets `key` from the text a command line gives (`config set`, #813): as it is for the keys that hold text
     /// (paths, keys, tokens, names), so that `123456789012345678901234567890` or `1e5` stays what was typed; read as
     /// JSON for the others (numbers, `true`/`false`, and the arrays and objects of the keys the WebUI keeps).
@@ -562,7 +570,7 @@ impl ConfigStore {
             "decrypt_key" => target.decrypt_key = Some(as_string(value)?),
             "wxid" => target.wxid = Some(as_string(value)?),
             "image_xor_key" => {
-                target.image_xor_key = Some(as_int_in(value, &key, 0, u8::MAX.into())?);
+                target.image_xor_key = Some(as_bounded(value, &keys::IMAGE_XOR_KEY)?);
             }
             "image_aes_key" => target.image_aes_key = Some(as_string(value)?),
             "cache_path" => target.cache_path = Some(as_string(value)?),
@@ -583,7 +591,9 @@ impl ConfigStore {
             "ai_model_api_key" => target.ai_model_api_key = Some(as_string(value)?),
             "ai_model_api_model" => target.ai_model_api_model = Some(as_string(value)?),
             "ai_model_api_max_tokens" => {
-                target.ai_model_api_max_tokens = Some(as_int_in(value, &key, 1, u32::MAX)?);
+                let tokens = keys::AI_MODEL_API_MAX_TOKENS;
+                target.ai_model_api_max_tokens =
+                    Some(as_int_in(value, tokens.name, tokens.min, tokens.max)?);
             }
             "ai_insight_enabled" => target.ai_insight_enabled = Some(as_bool(value, &key)?),
             other => {
@@ -933,23 +943,25 @@ pub fn is_account_dir(path: &Path) -> bool {
     path.join("db_storage").is_dir()
 }
 
+/// The fields of a profile ([`ProfileConfig`]), as `config set` names them.
+const PROFILE_KEYS: &[&str] = &[
+    "db_path",
+    "decrypt_key",
+    "wxid",
+    "image_xor_key",
+    "image_aes_key",
+    "cache_path",
+    "http_api_token",
+    "ai_model_api_format",
+    "ai_model_api_base_url",
+    "ai_model_api_key",
+    "ai_model_api_model",
+    "ai_model_api_max_tokens",
+    "ai_insight_enabled",
+];
+
 fn is_profile_key(key: &str) -> bool {
-    matches!(
-        key,
-        "db_path"
-            | "decrypt_key"
-            | "wxid"
-            | "image_xor_key"
-            | "image_aes_key"
-            | "cache_path"
-            | "http_api_token"
-            | "ai_model_api_format"
-            | "ai_model_api_base_url"
-            | "ai_model_api_key"
-            | "ai_model_api_model"
-            | "ai_model_api_max_tokens"
-            | "ai_insight_enabled"
-    )
+    PROFILE_KEYS.contains(&key)
 }
 
 /// The keys that hold text: taken as they are typed, never read as a number (#813).
@@ -974,6 +986,18 @@ fn holds_text(key: &str) -> bool {
 
 /// The keys of the file's own settings and of `serve`'s, besides the profiles' keys.
 const FILE_KEYS: &[&str] = &["lang", "current_profile"];
+
+/// Every key `config set --help` lists but `config_path`, which is kept beside the config file: the fields of a
+/// profile, its other keys WeFlow reads, the file's own settings and those of `serve`.
+pub fn known_keys() -> impl Iterator<Item = String> {
+    // in this order `near_known_key` prefers one of two keys a slip is as near to
+    PROFILE_KEYS
+        .iter()
+        .chain(FILE_KEYS)
+        .chain(extra_keys::KEYS.iter().map(|(k, _)| k))
+        .map(|k| (*k).to_string())
+        .chain(ServeSettings::KEYS.iter().map(|k| format!("serve_{k}")))
+}
 
 /// Whether `key` (without a profile) is one `config set --help` lists.
 fn is_known_key(key: &str) -> bool {
@@ -1001,32 +1025,7 @@ pub fn near_known_key(key: &str) -> Option<String> {
             .collect()
     };
     let typed = plain(bare);
-    let serve: Vec<String> = ServeSettings::KEYS
-        .iter()
-        .map(|k| format!("serve_{k}"))
-        .collect();
-    let snake = [
-        "db_path",
-        "decrypt_key",
-        "wxid",
-        "image_xor_key",
-        "image_aes_key",
-        "cache_path",
-        "http_api_token",
-        "ai_model_api_format",
-        "ai_model_api_base_url",
-        "ai_model_api_key",
-        "ai_model_api_model",
-        "ai_model_api_max_tokens",
-        "ai_insight_enabled",
-        "lang",
-        "current_profile",
-    ];
-    snake
-        .iter()
-        .chain(extra_keys::KEYS.iter().map(|(k, _)| k))
-        .map(|k| (*k).to_string())
-        .chain(serve)
+    known_keys()
         .map(|k| {
             let known = plain(&k);
             // one slip in five letters at most, so that a short key of one's own (`name`) is not taken for `lang`
@@ -1096,13 +1095,9 @@ fn as_i64(value: Value) -> AppResult<i64> {
     }
 }
 
-/// A whole number from `min` to `max`, as the type of the field it sets; anything outside is refused rather than
-/// wrapped by a later `as` cast.
-fn as_int_in<T>(value: Value, key: &str, min: T, max: T) -> AppResult<T>
-where
-    T: Copy + Into<i64> + TryFrom<i64>,
-{
-    let (min, max) = (min.into(), max.into());
+/// A whole number from `min` to `max` for the key `key`, as the type of the field it sets; anything outside is refused
+/// rather than wrapped by a later `as` cast.
+fn as_int_in<T: TryFrom<i64>>(value: Value, key: &str, min: i64, max: i64) -> AppResult<T> {
     let n = as_i64(value)?;
     T::try_from(n)
         .ok()
@@ -1112,6 +1107,11 @@ where
                 "invalid value {n} for {key}; use a whole number from {min} to {max}"
             ))
         })
+}
+
+/// A whole number in the bounds of `bounds`, as the type of the field it sets ([`as_int_in`]).
+fn as_bounded<T: TryFrom<i64>>(value: Value, bounds: &keys::Bounds) -> AppResult<T> {
+    as_int_in(value, bounds.name, bounds.min, bounds.max)
 }
 
 /// A switch for the key `key`: `true` or `false`, or `1`/`0`, `yes`/`no`, `on`/`off`, in any case.
@@ -1524,7 +1524,9 @@ mod tests {
     fn numeric_keys_refuse_out_of_range_values() {
         let mut store = ConfigStore::default();
         for (key, bad) in [
+            ("ai_model_api_max_tokens", json!(2_000_001)),
             ("ai_model_api_max_tokens", json!(4294967296_i64)),
+            ("ai_model_api_max_tokens", json!(0)),
             ("ai_model_api_max_tokens", json!(-1)),
             ("image_xor_key", json!(256)),
             ("image_xor_key", json!("-1")),
@@ -1541,7 +1543,7 @@ mod tests {
             );
         }
         for (key, good) in [
-            ("ai_model_api_max_tokens", 4294967295_i64),
+            ("ai_model_api_max_tokens", 2_000_000_i64),
             ("image_xor_key", 0),
             ("image_xor_key", 255),
         ] {
@@ -1568,9 +1570,13 @@ mod tests {
         assert!(store.profile(None).unwrap().extra.is_empty());
 
         for (key, bad) in [
-            ("serve_port", json!(0)),
+            ("serve_port", json!(65536)),
+            ("serve_port", json!(-1)),
+            ("serve_max_tasks", json!(0)),
             ("serve_max_tasks", json!(65536)),
-            ("serve_host", json!("localhost")),
+            ("serve_host", json!("")),
+            ("serve_host", json!("a/b")),
+            ("serve_host", json!("[::1")),
             ("serve_insight", json!("maybe")),
         ] {
             assert!(
@@ -1579,6 +1585,19 @@ mod tests {
             );
         }
         assert_eq!(store.get_key(None, "serve_insight"), Value::Null);
+        // what `serve --host` and `--port` take (#1265): a host name, an IPv6 address without brackets, a free port
+        for (key, good) in [
+            ("serve_host", json!("localhost")),
+            ("serve_host", json!("::1")),
+            ("serve_port", json!(0)),
+        ] {
+            store.set_key(None, key, good.clone()).unwrap();
+            assert_eq!(store.get_key(None, key), good, "{key}");
+        }
+        store
+            .set_key(None, "serve_host", json!(" 0.0.0.0 "))
+            .unwrap();
+        store.set_key(None, "serve_port", json!(8080)).unwrap();
 
         store.unset_key(None, "serve_port").unwrap();
         assert_eq!(store.get_key(None, "serve_port"), Value::Null);
