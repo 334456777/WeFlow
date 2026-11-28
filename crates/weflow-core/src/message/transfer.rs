@@ -1,15 +1,17 @@
-//! Transfers: their text and their two sides.
+//! 转账：文字和收付双方。
 
 use super::xml::{extract_xml_value, normalize_app_message_content, xml_text};
 
-/// Whether two identifiers are the same person, by the database layer's rule ([`weflow_native::db::same_identity`]).
+/// 两个标识是否为同一个人，按只读数据库层的规则（[`weflow_native::db::same_identity`]）。
 ///
-/// The comparison is case-insensitive, and a bare wxid matches its account folder name (`wxid_abc` and
-/// `wxid_abc_1a2b`), so the export and the database agree on who sent what.
+/// 不区分大小写，裸 wxid 与它的账号目录名（`wxid_abc` 与 `wxid_abc_1a2b`）算同一个，
+/// 所以导出与数据库层对谁发了哪条消息的判断一致。
 pub fn is_same_wxid(lhs: &str, rhs: &str) -> bool {
     weflow_native::db::same_identity(lhs, rhs)
 }
 
+/// 转账文字开头的方向：`[转账]` 或 `[转账收款]`。取自 `paysubtype`（1 为转账，3 为收款）；
+/// 没有时按发送者是收款方还是付款方判断，再按本账号；都判断不出时为 `[转账]`。
 pub(super) fn get_transfer_prefix(
     content: &str,
     my_wxid: Option<&str>,
@@ -47,8 +49,8 @@ pub(super) fn get_transfer_prefix(
     "[转账]"
 }
 
-/// A transfer's text, the same in the exports and the chat window (#1185): its side ([`get_transfer_prefix`]), then
-/// the amount (`<feedesc>`) and the note (`<pay_memo>`); only the side when there is no amount.
+/// 转账的文字，导出与聊天窗口相同（#1185）：方向（[`get_transfer_prefix`]），
+/// 然后是金额（`<feedesc>`）和备注（`<pay_memo>`）；没有金额时只写方向。
 pub(crate) fn transfer_text(
     content: &str,
     my_wxid: Option<&str>,
@@ -65,12 +67,12 @@ pub(crate) fn transfer_text(
     }
 }
 
-/// Whether an export's text of a message is a transfer's: it starts with `[转账]` or `[转账收款]`.
+/// 导出的消息文字是否为转账的：以 `[转账]` 或 `[转账收款]` 开头。
 pub fn is_transfer_export_content(content: &str) -> bool {
     content.starts_with("[转账]") || content.starts_with("[转账收款]")
 }
 
-/// A transfer's text with `desc` in parentheses after its `[转账]` or `[转账收款]`.
+/// 在转账文字的 `[转账]` 或 `[转账收款]` 后面加上括在括号里的 `desc`。
 pub fn append_transfer_desc(content: &str, desc: &str) -> String {
     let prefix = if content.starts_with("[转账收款]") {
         "[转账收款]"
@@ -80,7 +82,7 @@ pub fn append_transfer_desc(content: &str, desc: &str) -> String {
     content.replacen(prefix, &format!("{prefix} ({desc})"), 1)
 }
 
-/// Payer/receiver usernames of a transfer message, when the XML has both.
+/// 转账消息的付款方和收款方的用户名；XML 中缺少其中一个，或 `<type>` 不是 2000 时为 `None`。
 pub fn transfer_parties(content: &str) -> Option<(String, String)> {
     let normalized = normalize_app_message_content(content);
     if normalized.is_empty() {

@@ -1,4 +1,4 @@
-//! App messages: their kind, the Arkme metadata of each kind and contact cards.
+//! app 消息：种类、各种类的 Arkme 元数据，以及名片的元数据。
 
 use serde_json::{json, Map, Value};
 
@@ -8,6 +8,7 @@ use super::xml::{
     extract_xml_value, normalize_app_message_content, rx, xml_attr_text, xml_text, MsgXml,
 };
 
+/// `<finderFeed>` 之后第一个 `<desc>` 的文字，即视频号的描述；没有时为空字符串。
 fn extract_finder_feed_desc(content: &str) -> String {
     rx(r"(?is)<finderFeed.*?<desc>.*?</desc>")
         .find(content)
@@ -15,7 +16,7 @@ fn extract_finder_feed_desc(content: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The text of the first of `tags` that `n` has, for people to read ([`xml_text`], #1199).
+/// `n` 中 `tags` 里第一个有文字的元素的文字，解码成给人读的形式（[`xml_text`]，#1199）。
 fn first_non_empty(n: &str, tags: &[&str]) -> String {
     tags.iter()
         .map(|t| xml_text(n, t))
@@ -23,34 +24,34 @@ fn first_non_empty(n: &str, tags: &[&str]) -> String {
         .unwrap_or_default()
 }
 
-/// What [`extract_arkme_app_message_meta_in`] works out before it reads any field.
+/// [`extract_arkme_app_message_meta_in`] 在读取各字段之前求出的判定。
 struct AppMessageClass {
-    /// The normalized content.
+    /// 规范化后的内容。
     n: String,
-    /// `<type>` of the app message, or empty.
+    /// app 消息的 `<type>`，没有时为空。
     xml_type: String,
     is_finder: bool,
     is_music: bool,
-    /// The `appMsgKind` of the meta.
+    /// 元数据的 `appMsgKind`。
     kind: Option<&'static str>,
 }
 
-/// What an app message's own `<type>` makes it: one row of the one table that the chat window, the exports, the
-/// text of both, the exports' type names and ChatLab read (#1165, #1180).
+/// app 消息自己的 `<type>` 决定的类型，是一张表中的一行：聊天窗口、导出、两者的文字、导出的类型名和 ChatLab
+/// 都读这一张表（#1165、#1180）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct AppType {
-    /// Its `appMsgKind`; `None` for a type with no kind of its own (a sticker, a note), whose kind
-    /// [`kind_by_keywords`] guesses, as for a type not in the table.
+    /// `appMsgKind`；没有自己的种类的类型（表情、笔记、拍一拍）为 `None`，它们的种类与表中没有的类型一样按 XML
+    /// 推断（[`kind_by_keywords`]）。
     pub(crate) kind: Option<&'static str>,
-    /// The tag the text of such a message starts with.
+    /// 这种消息的文字开头的标签。
     pub(crate) tag: &'static str,
-    /// The name of its type in the exports (json, excel, sql).
+    /// 导出（json、excel、sql）中的类型名。
     pub(crate) name: &'static str,
-    /// Its ChatLab type.
+    /// ChatLab 的 `type`。
     pub(crate) chatlab: i64,
 }
 
-/// The row of `xml_type` (an app message's own `<type>`), or `None` for a type the table does not know.
+/// `xml_type`（app 消息自己的 `<type>`）在表中的那一行；表中没有这个类型时为 `None`。
 pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
     let row = |kind, tag, name, chatlab| AppType {
         kind,
@@ -59,9 +60,9 @@ pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
         chatlab,
     };
     Some(match xml_type {
-        // 76 is the newer music share, with the same fields as 3 (#1167)
+        // 76 是较新的音乐分享，字段与 3 相同（#1167）
         "3" | "76" => row(Some("music"), "[音乐]", "音乐消息", 7),
-        // 4 is a video's link
+        // 4 是视频的链接
         "4" | "5" | "49" => row(Some("link"), "[链接]", "链接消息", 7),
         "6" => row(Some("file"), "[文件]", "文件消息", 4),
         "8" => row(None, "[表情]", "动画表情", 7),
@@ -71,7 +72,7 @@ pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
         "51" => row(Some("finder"), "[视频号]", "视频号消息", 7),
         "53" => row(Some("solitaire"), "[接龙]", "接龙", 7),
         "57" => row(Some("quote"), "[引用消息]", "引用消息", 25),
-        // a pat, which the exports keep as a system message (#1196)
+        // 拍一拍，导出时按系统消息写（#1196）
         "62" => row(None, "[拍一拍]", "系统消息", 80),
         "87" => row(Some("announcement"), "[群公告]", "群公告", 7),
         "2000" => row(Some("transfer"), "[转账]", "转账消息", 99),
@@ -80,9 +81,8 @@ pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
     })
 }
 
-/// The row of the `<type>` that `local_type` keeps above its low 32 bits, as WeChat 4 stores an app message
-/// (`(<type> << 32) | 49`), for what is told by the local type alone (#1263); `None` for a local type that keeps no
-/// `<type>` (49 itself, a message that is no app message) or one the table does not know.
+/// `local_type` 在低 32 位之上保存的 `<type>` 在表中的那一行（微信 4 把 app 消息存为 `(<type> << 32) | 49`），
+/// 供只按 `local_type` 判断的地方用（#1263）；没有保存 `<type>` 的（49 本身、不是 app 消息的）和表中没有的为 `None`。
 pub(crate) fn row_kept_in(local_type: i64) -> Option<AppType> {
     let kept = local_type >> 32;
     if local_type & 0xFFFF_FFFF != 49 || kept == 0 {
@@ -91,14 +91,13 @@ pub(crate) fn row_kept_in(local_type: i64) -> Option<AppType> {
     app_type(&kept.to_string())
 }
 
-/// The row of the types whose kind is `kind` ([`type_of_kind`]), for a message whose kind its XML gives rather than
-/// its `<type>`; `None` for a kind with no row (a card, a gift, a place).
+/// 种类为 `kind` 的类型在表中的那一行（[`type_of_kind`]），用于种类由 XML 而不是 `<type>` 判出的消息；
+/// 没有对应行的种类（`card`、`gift`、`location`）为 `None`。
 pub(crate) fn row_of_kind(kind: &str) -> Option<AppType> {
     app_type(type_of_kind(kind)?)
 }
 
-/// A `<type>` of the table whose kind is `kind` (an official account's article is a link); `None` for a kind with no
-/// row (a card, a gift, a place).
+/// 表中种类为 `kind` 的一个 `<type>`（公众号文章算链接）；没有对应行的种类（`card`、`gift`、`location`）为 `None`。
 pub(crate) fn type_of_kind(kind: &str) -> Option<&'static str> {
     Some(match kind {
         "music" => "3",
@@ -116,27 +115,25 @@ pub(crate) fn type_of_kind(kind: &str) -> Option<&'static str> {
     })
 }
 
-/// The kind an app message's own `<type>` gives it (`finder`, `music`, `quote`, …), the same for the chat window,
-/// the exports and the text of both (#1165); `None` for a type that does not say, whose kind
-/// [`kind_by_keywords`] guesses.
+/// app 消息自己的 `<type>` 给出的种类（`finder`、`music`、`quote` 等），聊天窗口、导出和两者的文字都相同（#1165）；
+/// 类型没有给出种类时为 `None`，种类由 [`kind_by_keywords`] 推断。
 pub(crate) fn kind_of_app_type(xml_type: &str) -> Option<&'static str> {
     app_type(xml_type).and_then(|row| row.kind)
 }
 
-/// An app message's XML without the messages it quotes: a reply's `<refermsg>` holds the quoted message's XML, whose
-/// words say what the quoted message is, not the reply.
+/// 去掉被引用消息后的 app 消息 XML：回复的 `<refermsg>` 里是被引用消息的 XML，其中的词说明的是被引用的消息，
+/// 不是回复本身。
 pub(crate) fn without_quoted(xml: &str) -> std::borrow::Cow<'_, str> {
     crate::xml::remove_blocks(xml, "<refermsg", "</refermsg>")
 }
 
-/// The kind an app message whose `<type>` says nothing looks like by its own XML (`own`, [`without_quoted`]): a
-/// Channels video by its `<finderFeed>` or a non-empty `<finderUsername>` or `<finderObjectID>`, a red packet by the
-/// address WeChat opens it with, a song by a non-empty `<musicurl>` or `<playurl>`. `<dataurl>` is no sign of a song,
-/// as links and files have it too, often empty; nor are empty finder elements (`<finderGuarantee>`,
-/// `<finderUsername></finderUsername>`) a sign of a video, as the XML of a sticker or a mini program has them too
-/// (#1241).
+/// `<type>` 没有给出种类的 app 消息，按它自己的 XML（`own`，[`without_quoted`]）推断种类：有 `<finderFeed>`，
+/// 或 `<finderUsername>`、`<finderObjectID>` 不为空的是视频号；`<nativeurl>` 是微信打开红包的地址的是红包；
+/// `<musicurl>` 或 `<playurl>` 不为空的是音乐。`<dataurl>` 不算音乐的标志，链接和文件也有它，而且常常为空；
+/// 空的视频号元素（`<finderGuarantee>`、`<finderUsername></finderUsername>`）也不算视频号的标志，表情和小程序的
+/// XML 里也有它们（#1241）。
 pub(crate) fn kind_by_keywords(own: &str) -> Option<&'static str> {
-    // tags match in any case; the content is read as it is, as a lowered `<![cdata[` would be text
+    // 标签不区分大小写；内容按原样读，不先转成小写，因为转成小写的 `<![cdata[` 会被当作文字
     if crate::xml::find_ci(own, 0, "<finderfeed").is_some()
         || ["finderusername", "finderobjectid"]
             .iter()
@@ -160,8 +157,8 @@ pub(crate) fn kind_by_keywords(own: &str) -> Option<&'static str> {
     None
 }
 
-/// The place an app message's own XML (`own`, [`without_quoted`]) names: the `label`, else the `poiname`, of its
-/// `<location>`, as an attribute or an element; empty when it names none.
+/// app 消息自己的 XML（`own`，[`without_quoted`]）中的地点：依次取 `<location>` 的 `label`、`poiname` 属性，
+/// 再取 `<label>`、`<poiname>` 元素；没有地点时为空字符串。
 pub(crate) fn location_label(own: &str) -> String {
     [
         xml_attr_text(own, "location", "label"),
@@ -174,8 +171,8 @@ pub(crate) fn location_label(own: &str) -> String {
     .unwrap_or_default()
 }
 
-/// Whether a link (`<type>` 5 or 49) is an official account's article: it names an official account as its source
-/// (`gh_…`), its app as one, or a source at all.
+/// 链接（`<type>` 5 或 49）是否为公众号文章：来源是公众号（`sourceusername` 为 `gh_…`）、应用名含「公众号」，
+/// 或者有来源名（`sourcename`）。
 fn is_official_article(n: &str, xml_type: &str) -> bool {
     matches!(xml_type, "5" | "49")
         && (xml_text(n, "sourceusername").starts_with("gh_")
@@ -183,25 +180,24 @@ fn is_official_article(n: &str, xml_type: &str) -> bool {
             || !xml_text(n, "sourcename").is_empty())
 }
 
-/// Whether `kind` is a link's, an official account's article among them.
+/// `kind` 是否为链接，包括公众号文章。
 pub(crate) fn is_link_kind(kind: Option<&str>) -> bool {
     matches!(kind, Some("link" | "official-link"))
 }
 
-/// `appMsgKind` of [`extract_arkme_app_message_meta_in`], without reading the other fields; `None` for an image, a
-/// voice message, a video, a sticker and a location, which are not app messages.
+/// [`extract_arkme_app_message_meta_in`] 的 `appMsgKind`，不读其他字段；图片、语音、视频、表情和位置不是 app 消息，
+/// 为 `None`。
 pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> {
     app_message_kind_in(&MsgXml::new(content), local_type)
 }
 
-/// [`app_message_kind`] of a message's [`MsgXml`].
+/// 用消息已有的 [`MsgXml`] 求 [`app_message_kind`]。
 pub(crate) fn app_message_kind_in(x: &MsgXml<'_>, local_type: i64) -> Option<&'static str> {
     classify_app_message(x, local_type)?.kind
 }
 
-/// The app-message fields of a message's [`MsgXml`]: extra structured fields for `arkme-json` / `json`. An image, a
-/// voice message, a video, a sticker or a location has none of them: when it replies to a message, only the fields of
-/// what it quotes.
+/// 从消息的 [`MsgXml`] 中取出的 app 消息字段，即 `arkme-json` 和 `json` 额外带的结构化字段。图片、语音、视频、
+/// 表情和位置没有这些字段，它们回复某条消息时只带被引用消息的字段。
 pub fn extract_arkme_app_message_meta_in(
     x: &MsgXml<'_>,
     local_type: i64,
@@ -212,8 +208,8 @@ pub fn extract_arkme_app_message_meta_in(
     app_message_fields(classify_app_message(x, local_type)?, local_type, x)
 }
 
-/// [`extract_arkme_app_message_meta_in`] of a quote, a link, or a reply that is an image, a voice message, a video,
-/// a sticker or a location; `None` for every other message, whose fields are not read.
+/// 只对引用、链接，以及图片、语音、视频、表情和位置的回复求 [`extract_arkme_app_message_meta_in`]；
+/// 其他消息为 `None`，不读它们的字段。
 pub fn quote_or_link_app_message_meta_in(
     x: &MsgXml<'_>,
     local_type: i64,
@@ -222,10 +218,9 @@ pub fn quote_or_link_app_message_meta_in(
         return reply_quote_fields(x);
     }
     let content = x.content();
-    // A quote has a `<refermsg>`, the quote's local type or `<type>` 57, a link a `<type>` (4, 5, 49). Those words
-    // survive normalizing (see normalized_may_contain), and cutting `<refermsg>` and `<patmsg>` blocks out of
-    // the `<appmsg>` can join text into a `<type>` only where those words are: without any of the three, the
-    // message is neither.
+    // 引用有 `<refermsg>`、引用的 `local_type` 或 `<type>` 57，链接有 `<type>`（4、5、49）。
+    // 这几个词在规范化后仍在（见 `normalized_may_contain`）；从 `<appmsg>` 中切掉 `<refermsg>`、`<patmsg>` 块时，
+    // 拼出的 `<type>` 也只会出现在有这些词的地方：三个词都没有时，消息既不是引用也不是链接。
     if local_type != 244813135921
         && ["type", "refermsg", "patmsg"]
             .iter()
@@ -240,19 +235,19 @@ pub fn quote_or_link_app_message_meta_in(
     app_message_fields(class, local_type, x)
 }
 
-/// The base types (the low 32 bits of the local type) of an image, a voice message, a video, a sticker and a location.
+/// 图片、语音、视频、表情和位置的基本类型（`local_type` 的低 32 位）。
 const NON_APP_TYPES: [i64; 5] = [3, 34, 43, 47, 48];
 
-/// Whether `local_type` is an image's, a voice message's, a video's, a sticker's or a location's: never an app
-/// message, though its XML is a `<msg>` as an app message's is, and the `<refermsg>` of a reply can quote one.
+/// `local_type` 是否为图片、语音、视频、表情或位置：它们的 XML 与 app 消息一样是 `<msg>`，也可能带回复的
+/// `<refermsg>`，但它们不是 app 消息。
 pub(crate) fn is_non_app_type(local_type: i64) -> bool {
     NON_APP_TYPES.contains(&(local_type & 0xFFFF_FFFF))
 }
 
-/// The meta of a message of [`is_non_app_type`] that replies to a message (an image answering one, say): only the
-/// fields of what its `<refermsg>` quotes, as an app message's quote has them; `None` for one that replies to none.
+/// [`is_non_app_type`] 的消息回复某条消息时（如用图片回复）的元数据：只有它的 `<refermsg>` 所引用消息的字段，
+/// 与 app 消息的引用相同；不是回复时为 `None`。
 fn reply_quote_fields(x: &MsgXml<'_>) -> Option<Map<String, Value>> {
-    // `refermsg` survives normalizing (see normalized_may_contain): without it, there is no `<refermsg>` to read
+    // `refermsg` 这个词在规范化后仍在（见 `normalized_may_contain`）：原文中没有它，就没有 `<refermsg>` 可读
     if !x.content().contains("refermsg") || !x.once().contains("<refermsg>") {
         return None;
     }
@@ -261,14 +256,14 @@ fn reply_quote_fields(x: &MsgXml<'_>) -> Option<Map<String, Value>> {
     (!meta.is_empty()).then_some(meta)
 }
 
-/// Puts `value` under `key` in `meta`, unless it is empty.
+/// `value` 不为空时把它放进 `meta` 的 `key`。
 fn put(meta: &mut Map<String, Value>, key: &str, value: String) {
     if !value.is_empty() {
         meta.insert(key.into(), Value::String(value));
     }
 }
 
-/// Puts what `x` quotes in `meta`: `quotedContent`, `quotedSender`, `quotedType` and `quotedSvrid`, those it has.
+/// 把 `x` 引用的消息放进 `meta`：`quotedContent`、`quotedSender`、`quotedType`、`quotedSvrid`，有哪项放哪项。
 fn put_quote(meta: &mut Map<String, Value>, x: &MsgXml<'_>) {
     let q = x.quote_twice().clone();
     put(meta, "quotedContent", q.content.unwrap_or_default());
@@ -277,9 +272,8 @@ fn put_quote(meta: &mut Map<String, Value>, x: &MsgXml<'_>) {
     put(meta, "quotedSvrid", q.svrid.unwrap_or_default());
 }
 
-/// The first part of [`extract_arkme_app_message_meta_in`] for an app message; `None` when the message has no
-/// app-message meta at all, as one of [`is_non_app_type`] has none. Its kind is the only one an app message has: the
-/// chat window, the command API and the exports all read it (#1263).
+/// [`extract_arkme_app_message_meta_in`] 对 app 消息的第一步：判出种类；消息完全没有 app 消息的元数据时为 `None`，
+/// [`is_non_app_type`] 的消息就没有。这里判出的种类是 app 消息唯一的种类，聊天窗口、命令 API 和导出都读它（#1263）。
 fn classify_app_message(x: &MsgXml<'_>, local_type: i64) -> Option<AppMessageClass> {
     if x.content().is_empty() || is_non_app_type(local_type) {
         return None;
@@ -290,7 +284,7 @@ fn classify_app_message(x: &MsgXml<'_>, local_type: i64) -> Option<AppMessageCla
     let replies = has_refer || local_type == 244813135921;
     let xml_type = x.app_type_twice().to_string();
     let own = without_quoted(&n);
-    // the message's own `<type>` first; the words of its own XML only when the type says nothing (#1165)
+    // 先看消息自己的 `<type>`；类型没有给出种类时才看它自己的 XML 里的词（#1165）
     let kind = match kind_of_app_type(&xml_type) {
         Some("link") if replies => Some("quote"),
         Some(kind) => Some(kind),
@@ -301,8 +295,7 @@ fn classify_app_message(x: &MsgXml<'_>, local_type: i64) -> Option<AppMessageCla
             None => None,
         },
     };
-    // what the chat window shows apart: a gift, a place, an official account's article; the exports name them the
-    // same (#1263)
+    // 聊天窗口单独显示的几种：礼物、位置、公众号文章；导出的叫法相同（#1263）
     let kind = match kind {
         Some("finder" | "red-packet") => kind,
         _ if xml_type == "115" => Some("gift"),
@@ -324,7 +317,7 @@ fn classify_app_message(x: &MsgXml<'_>, local_type: i64) -> Option<AppMessageCla
     })
 }
 
-/// The fields of [`extract_arkme_app_message_meta_in`] for a message `class` describes.
+/// 按 `class` 的判定取出 [`extract_arkme_app_message_meta_in`] 的各字段。
 fn app_message_fields(
     class: AppMessageClass,
     local_type: i64,
@@ -397,7 +390,7 @@ fn app_message_fields(
         put(
             &mut meta,
             "musicUrl",
-            // not `<songalbumurl>`, the cover, which is `musicAlbumUrl` (#1170)
+            // 不取 `<songalbumurl>`：它是封面，写在 `musicAlbumUrl`（#1170）
             first_non_empty(&n, &["musicurl", "playurl"]),
         );
         put(
@@ -479,6 +472,8 @@ fn app_message_fields(
     }
 }
 
+/// 名片消息（`local_type` 42）的 Arkme 元数据：`cardKind` 为 `contact-card`，以及名片上的用户名、昵称、备注、
+/// 地区、签名、头像和性别；各项取 `<msg>` 的属性，没有时取同名元素。不是名片时为 `None`。
 pub fn extract_arkme_contact_card_meta(
     content: &str,
     local_type: i64,
@@ -598,7 +593,7 @@ mod tests {
                 "<msg><appmsg><title>ok</title><refermsg><svrid>1</svrid></refermsg></appmsg></msg>",
                 "quote",
             ),
-            // an app message of a type it has no kind of, or whose XML names none
+            // 类型没有种类，或 XML 没有写出类型的 app 消息
             (
                 49,
                 "<msg><appmsg><title>t</title><type>999</type></appmsg></msg>",
@@ -626,15 +621,15 @@ mod tests {
     fn a_media_reply_has_the_fields_of_its_quote_and_no_app_fields() {
         let refers = [
             "<refermsg><type>1</type><svrid>9001</svrid><displayname>Bob</displayname><content>hi there</content></refermsg>",
-            // a quote of an app message, whose XML would make the reply look like one
+            // 引用的是 app 消息，它的 XML 会让回复看起来像 app 消息
             "<refermsg><type>49</type><svrid>9003</svrid><displayname>Bob</displayname><content>&lt;msg&gt;&lt;appmsg&gt;\
              &lt;title&gt;A&lt;/title&gt;&lt;des&gt;d&lt;/des&gt;&lt;type&gt;5&lt;/type&gt;&lt;/appmsg&gt;&lt;/msg&gt;</content></refermsg>",
-            // a quote of an image, whose `<type>` would make it music
+            // 引用的是图片，它的 `<type>`（3）会让回复被当成音乐
             "<refermsg><type>3</type><svrid>9002</svrid><displayname>Bob</displayname><content>&lt;msg&gt;&lt;img/&gt;&lt;/msg&gt;</content></refermsg>",
             "<refermsg><svrid>9005</svrid></refermsg>",
         ];
         for refer in refers {
-            // an app message's quote of the same message has the same fields
+            // app 消息引用同一条消息时字段相同
             let quote =
                 format!("<msg><appmsg><title>ok</title><type>57</type>{refer}</appmsg></msg>");
             let mut want = extract_arkme_app_message_meta_in(&MsgXml::new(&quote), 49).unwrap();
@@ -702,7 +697,7 @@ mod tests {
             "57", "5", "49", "6", "3", "51", "2001", "33", "19", "2000", "87", "53", "8", "",
         ];
         const LOCAL_TYPES: &[i64] = &[1, 3, 47, 49, 10000, 244813135921, 21474836529];
-        // a `<type>` and `</type>` that only exist once the `<patmsg>` blocks are cut out
+        // 切掉 `<patmsg>` 块之后才出现的 `<type>` 和 `</type>`
         let joined =
             "<msg><appmsg><ty<patmsg>a</patmsg>pe>5</ty<patmsg>b</patmsg>pe></appmsg></msg>";
         assert_eq!(app_message_kind(joined, 1), Some("link"));
@@ -736,7 +731,7 @@ mod tests {
                     "{s:?} as {t}: {whole:?}"
                 );
             }
-            // a media reply's meta is its quote: the detailed JSON keeps it too
+            // 媒体回复的元数据就是它的引用：`json` 导出也保留它
             let quote_or_link =
                 whole.filter(|_| kind == Some("quote") || is_link_kind(kind) || is_non_app_type(t));
             assert_eq!(

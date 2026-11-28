@@ -1,13 +1,11 @@
-//! The messages of a conversation as the chat commands and the command API give them ([`ChatMessage`]).
+//! 聊天命令和命令 API 给出的会话消息（[`ChatMessage`]）。
 //!
-//! It turns typed message rows into messages with parsed display text, media tokens, links and quotes.
-//! This one backs the HTTP API, the chat commands and the analytics code; the exporter has its own model in
-//! `message.rs`, whose text differs on purpose: a chat window's line (`[链接] title`,
-//! `[语音消息]`) against an export's (`[引用 …]`, a transfer's direction, a sticker's caption).
+//! 把类型化的消息行转换成带解析好的显示文字、媒体标识、链接和引用的消息。HTTP API、聊天命令和统计代码都用它；
+//! 导出在 `message.rs` 中有自己的模型，两者的文字不同：聊天窗口写一行（`[链接] 标题`、`[语音消息]`），
+//! 导出写全文（`[引用 …]`、表情的描述）。
 //!
-//! What a row means is read the same way by both, with `message.rs`'s functions: the sender prefix of a group
-//! message, the `<refermsg>` of a quote and its text, a system message's XML. Only what the chat window words
-//! differently is here.
+//! 两者用 `message.rs` 的同一批函数读出一行的含义：群消息的发送者前缀、引用的 `<refermsg>` 及其文字、
+//! 系统消息的 XML。这里只有聊天窗口写法不同的部分。
 
 use weflow_native::msg_row::MsgRow;
 use weflow_native::quote::{reply_text, QUOTE};
@@ -25,9 +23,9 @@ use crate::message::xml::{
 use crate::message::{app_message_text_as, TextForm};
 use crate::xml::decode_entities;
 
-// ───────────────────────── text helpers ─────────────────────────
+// ───────────────────────── 文字的辅助函数 ─────────────────────────
 
-/// `input` without the C0 and C1 control characters, but for tab, line feed and carriage return.
+/// 去掉 `input` 中的 C0、C1 控制字符和 DEL，保留制表符、换行和回车。
 pub fn clean_utf16(input: &str) -> String {
     if input.is_empty() {
         return String::new();
@@ -38,6 +36,7 @@ pub fn clean_utf16(input: &str) -> String {
         .collect()
 }
 
+/// 内容开头 `<发送者>:` 加换行（或 `<br>`）中的发送者，名字至少 4 个字符；没有时为 `None`。
 fn extract_sender_from_content(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
@@ -47,7 +46,7 @@ fn extract_sender_from_content(content: &str) -> Option<String> {
     Some(caps[1].trim().to_string()).filter(|s| !s.is_empty())
 }
 
-/// The attribute `attr` of the first `<tag>` of `xml`: single or double quotes, whitespace before the name.
+/// `xml` 中第一个 `<tag>` 的属性 `attr`：单引号、双引号都可以，属性名前面要有空白。
 fn xml_attr(xml: &str, tag: &str, attr: &str) -> String {
     let re = rx(&format!(
         r#"(?i)<{}[^>]*\s{}\s*=\s*['"]([^'"]*)['"]"#,
@@ -59,7 +58,7 @@ fn xml_attr(xml: &str, tag: &str, attr: &str) -> String {
         .unwrap_or_default()
 }
 
-/// [`xml_attr`] for people to read: its entities decoded once (#1199).
+/// 解码成给人读的文字的 [`xml_attr`]：实体解码一次（#1199）。
 fn attr_text(xml: &str, tag: &str, attr: &str) -> String {
     decode_text_entities(&xml_attr(xml, tag, attr)).into_owned()
 }
@@ -76,9 +75,9 @@ fn opt(s: String) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-/// The label the chat window shows for a message of `local_type` without text, such as `[图片]`, as its text with one
-/// is labelled: an app message kept as `(<type> << 32) | 49` by the tag of its `<type>` in the one table, as one
-/// kept as 49 for a `<type>` the table does not know (#1263); `[消息]` for a type it does not name.
+/// 聊天窗口给没有内容的 `local_type` 消息显示的标签，如 `[图片]`，与有内容时文字开头的标签相同：
+/// 存为 `(<type> << 32) | 49` 的 app 消息取表中这个 `<type>` 的标签，表中没有时与存为 49 的一样为 `[链接]`（#1263）；
+/// 不认识的类型为 `[消息]`。
 pub fn message_type_label(local_type: i64) -> &'static str {
     if local_type & 0xFFFF_FFFF == 49 {
         return row_kept_in(local_type).map_or("[链接]", |row| row.tag);
@@ -97,11 +96,10 @@ pub fn message_type_label(local_type: i64) -> &'static str {
     }
 }
 
-/// The one line that stands for a message where there is room for nothing else: the last message of an official
-/// account's conversation in the session list, and a message push (#1263). An app message, kept as 49 or as
-/// `(<type> << 32) | 49`, says its link's title or its file's name, else its line in the chat window; a medium its
-/// label; any other message its line in the chat window, else its content without the line naming its sender. A
-/// leading `[视频号]` is left out. `None` when nothing is left.
+/// 只放得下一行时代表一条消息的文字：会话列表中公众号会话的最后一条消息，以及消息推送（#1263）。
+/// app 消息不论存为 49 还是 `(<type> << 32) | 49`，写链接的标题或文件名，没有时写聊天窗口的一行；
+/// 名片写昵称；图片、语音、视频、表情和位置写标签；其他消息写聊天窗口的一行，没有时写去掉发送者行的内容。
+/// 开头的 `[视频号]` 不写。什么都不剩时为 `None`。
 pub fn summary_line(m: &ChatMessage) -> Option<String> {
     let non_empty = |s: &str| (!s.trim().is_empty()).then(|| s.to_string());
     let line = match m.local_type {
@@ -118,7 +116,7 @@ pub fn summary_line(m: &ChatMessage) -> Option<String> {
             .or_else(|| non_empty(&m.parsed_content))
             .unwrap_or_else(|| "[消息]".into()),
         _ if !m.parsed_content.trim().is_empty() => m.parsed_content.clone(),
-        // the content itself, without the line naming its sender (but not a link's `https:`)
+        // 内容本身，去掉写着发送者的一行（链接的 `https:` 不算发送者）
         _ => match rx(r"(?i)^\s*([a-zA-Z0-9_@-]+):(?:\s*(?:\r?\n|<br\s*/?>)\s*|\s*)")
             .find(&m.raw_content)
         {
@@ -139,9 +137,8 @@ pub fn summary_line(m: &ChatMessage) -> Option<String> {
     non_empty(shown)
 }
 
-/// The line of a system message: what its `<sysmsg>` says in plain text, else the notice the export reads out of
-/// its XML ([`crate::message::system::clean_system_message`]: a revoke's notice, a template with its names filled in,
-/// a title), with the entities decoded and the sender and the XML declaration in front of it dropped.
+/// 系统消息的一行：`<sysmsg>` 中的纯文字；没有时为导出从 XML 中读出的提示，即撤回提示、填上名字的模板或标题，
+/// 见 [`crate::message::system::clean_system_message`]。读之前解码实体，并去掉前面的发送者和 XML 声明。
 fn system_message_text(content: &str) -> String {
     if content.is_empty() {
         return "[系统消息]".into();
@@ -155,16 +152,16 @@ fn system_message_text(content: &str) -> String {
     crate::message::system::clean_system_message(&rx(r"(?i)<\?xml[^?]*\?>").replace_all(&body, ""))
 }
 
-// ───────────────────────── type 49 ─────────────────────────
+// ───────────────────────── 类型 49 ─────────────────────────
 
-/// An app message's own `<type>`, read as the exports read it (#1241).
+/// app 消息自己的 `<type>`，读法与导出相同（#1241）。
 fn app_xml_type(content: &str) -> String {
     crate::message::xml::MsgXml::new(content)
         .app_type_twice()
         .to_string()
 }
 
-/// The place a location names, read from content whose entities are decoded already.
+/// 位置中的地点，从已解码实体的内容中读。
 fn location_label_of(content: &str) -> String {
     location_label_by(
         |a| xml_attr(content, "location", a),
@@ -172,8 +169,8 @@ fn location_label_of(content: &str) -> String {
     )
 }
 
-/// The place a location names: the `label`, else the `poiname`, of its `<location>` (read by `attr`) or as an element
-/// (read by `text`).
+/// 位置中的地点：依次取 `<location>` 的 `label`、`poiname` 属性（由 `attr` 读），再取 `<label>`、`<poiname>`
+/// 元素（由 `text` 读）。
 fn location_label_by(attr: impl Fn(&str) -> String, text: impl Fn(&str) -> String) -> String {
     first_non_empty(&[
         attr("label"),
@@ -183,9 +180,9 @@ fn location_label_by(attr: impl Fn(&str) -> String, text: impl Fn(&str) -> Strin
     ])
 }
 
-/// The line the chat window shows for an app message: the exports' text of it ([`app_message_text_as`]) in
-/// [`TextForm::Line`], so a reply is its own words and a chat record or a note its title (#1263); `sender` and
-/// `my_wxid` tell a transfer's side (#1185). Its title, else `[消息]`, for a type and a kind the table does not know.
+/// 聊天窗口给 app 消息显示的一行：导出的文字（[`app_message_text_as`]）的 [`TextForm::Line`] 写法，
+/// 所以回复写它本身的文字，聊天记录和笔记写标题（#1263）；`sender` 和 `my_wxid` 用来判断转账的方向（#1185）。
+/// `<type>` 和种类在表中都没有对应的行时写标题，没有标题时为 `[消息]`。
 fn parse_type49(content: &str, sender: Option<&str>, my_wxid: Option<&str>) -> String {
     let x = crate::message::xml::MsgXml::new(content);
     app_message_text_as(&x, 49, my_wxid, sender, TextForm::Line).unwrap_or_else(|| {
@@ -198,9 +195,9 @@ fn parse_type49(content: &str, sender: Option<&str>, my_wxid: Option<&str>) -> S
     })
 }
 
-/// The line the chat window shows for any message
-/// ([`ChatMessage::parsed_content`]), `sender` the message's ([`ChatMessage::sender_username`]) and `my_wxid` the
-/// account's. The exports word theirs in [`crate::message::parse_message_content`].
+/// 聊天窗口给任意消息显示的一行（[`ChatMessage::parsed_content`]）。
+/// `sender` 是消息的发送者（[`ChatMessage::sender_username`]），`my_wxid` 是账号的 wxid；
+/// 导出的文字见 [`crate::message::parse_message_content`]。
 fn parsed_content(
     content: &str,
     local_type: i64,
@@ -218,15 +215,15 @@ fn parsed_content(
             t
         };
     }
-    // a pat, worded as in the exports (#1196)
+    // 拍一拍，写法与导出相同（#1196）
     if local_type == 266287972401 {
         return pat_text(content);
     }
-    // a text is kept as it was typed, not escaped: `&lt;` in it is what was typed, as the exports have it (#1208)
+    // 文本按输入的原样保留，不做反转义：其中的 `&lt;` 就是输入的文字，与导出相同（#1208）
     if local_type == 1 {
         return strip_sender_line(&clean_utf16(content), sender);
     }
-    // an app message is read as the exports read it, its entities decoded once (#1263)
+    // app 消息的读法与导出相同，实体解码一次（#1263）
     let raw = clean_utf16(content);
     let content = clean_utf16(&decode_entities(content));
     let xml_type = extract_xml_value(&content, "type");
@@ -236,7 +233,7 @@ fn parsed_content(
         34 => "[语音消息]".into(),
         42 => "[名片]".into(),
         43 => "[视频]".into(),
-        // the exports' tag, without the caption the chat window does not read (#1263)
+        // 导出的标签，不带聊天窗口不读的表情描述（#1263）
         47 => crate::message::emoji::format_emoji_semantic_text(None),
         48 => {
             let label = location_label_of(&content);
@@ -249,9 +246,9 @@ fn parsed_content(
         49 => parse_type49(&raw, sender, my_wxid),
         50 => parse_voip_message(&content),
         10000 => system_message_text(&content),
-        // an app message kept as `(<type> << 32) | 49` reads as one kept as 49 (#1180)
+        // 存为 `(<type> << 32) | 49` 的 app 消息与存为 49 的读法相同（#1180）
         l if l & 0xFFFF_FFFF == 49 && looks_app => parse_type49(&raw, sender, my_wxid),
-        // one without an `<appmsg>` by the tag of the type it is kept as
+        // 没有 `<appmsg>` 的按存下的类型写标签
         l if row_kept_in(l).is_some() => message_type_label(l).into(),
         _ => {
             if xml_type == "87" {
@@ -290,128 +287,128 @@ fn parsed_content(
     }
 }
 
-/// What the XML of an app message (type 49) and a few others say, as the chat window shows it. Only what is found
-/// is serialized.
+/// app 消息（类型 49）和其他几种消息的 XML 中的信息，取聊天窗口显示的那些。只输出找到的字段。
 #[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Type49Info {
-    /// The `<type>` of the `<appmsg>`: `5` a link, `6` a file, `19` a chat record, `33`/`36` a mini program, `57` a
-    /// quote, `2000` a transfer, `2001` a red packet…
+    /// `<appmsg>` 的 `<type>`：`5` 链接，`6` 文件，`19` 聊天记录，`33`、`36` 小程序，`57` 引用，`2000` 转账，
+    /// `2001` 红包等。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub xml_type: Option<String>,
-    /// The message's own, serialized by [`ChatMessage`].
+    /// 消息自己的字段，由 [`ChatMessage`] 输出。
     #[serde(skip)]
     pub quoted_content: Option<String>,
-    /// The message's own, serialized by [`ChatMessage`].
+    /// 消息自己的字段，由 [`ChatMessage`] 输出。
     #[serde(skip)]
     pub quoted_sender: Option<String>,
-    /// The title: a link's or a mini program's, a file's name, a transfer's memo.
+    /// 标题：链接或小程序的标题、文件名、转账的备注（没有备注时为金额）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_title: Option<String>,
-    /// The address it opens.
+    /// 点开时打开的地址。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_url: Option<String>,
-    /// The address of its thumbnail.
+    /// 缩略图的地址。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_thumb: Option<String>,
-    /// What it is: `link`, `official-link`, `file`, `music`, `location`, `miniapp`, `chat-record`, `transfer`,
-    /// `red-packet`, `gift`, `finder`, `quote`, `announcement`, `solitaire` or `card`.
+    /// 种类：`link`、`official-link`、`file`、`music`、`location`、`miniapp`、`chat-record`、`transfer`、
+    /// `red-packet`、`gift`、`finder`、`quote`、`announcement`、`solitaire` 或 `card`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_kind: Option<String>,
-    /// Its description (`<des>`).
+    /// 描述（`<des>`，没有时为 `<description>`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_desc: Option<String>,
-    /// The name of the app that sent it (`<appname>`).
+    /// 发出它的应用的名称（`<appname>`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_app_name: Option<String>,
-    /// The name of the account it comes from (`<sourcename>`), such as an official account's.
+    /// 来源账号的名称（`<sourcename>`），如公众号的名称。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_source_name: Option<String>,
-    /// The username of the account it comes from (`<sourceusername>`).
+    /// 来源账号的用户名（`<sourceusername>`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_source_username: Option<String>,
-    /// The address of its thumbnail or cover.
+    /// 缩略图或封面的地址。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_thumb_url: Option<String>,
-    /// The address of a song (`<musicurl>`, `<playurl>`).
+    /// 歌曲的地址（`<musicurl>`、`<playurl>`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_music_url: Option<String>,
-    /// The address of its data (`<dataurl>`, `<lowurl>`).
+    /// 数据的地址（`<dataurl>`、`<lowurl>`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_data_url: Option<String>,
-    /// The label of a location it names.
+    /// 消息自己的 XML 中写的地点（`<location>` 的 `label` 或 `poiname`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_location_label: Option<String>,
-    /// The name of a Channels account.
+    /// 视频号账号的名称。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_nickname: Option<String>,
-    /// The username of a Channels account.
+    /// 视频号账号的用户名。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_username: Option<String>,
-    /// A Channels video's cover.
+    /// 视频号视频的封面。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_cover_url: Option<String>,
-    /// The address of a Channels account's avatar.
+    /// 视频号账号头像的地址。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_avatar: Option<String>,
-    /// A Channels video's length, in seconds.
+    /// 视频号视频的时长，单位为秒。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_duration: Option<i64>,
-    /// The message's own, serialized by [`ChatMessage`].
+    /// 消息自己的字段，由 [`ChatMessage`] 输出。
     #[serde(skip)]
     pub location_lat: Option<f64>,
-    /// The message's own, serialized by [`ChatMessage`].
+    /// 消息自己的字段，由 [`ChatMessage`] 输出。
     #[serde(skip)]
     pub location_lng: Option<f64>,
-    /// The message's own, serialized by [`ChatMessage`].
+    /// 消息自己的字段，由 [`ChatMessage`] 输出。
     #[serde(skip)]
     pub location_poiname: Option<String>,
-    /// The message's own, serialized by [`ChatMessage`].
+    /// 消息自己的字段，由 [`ChatMessage`] 输出。
     #[serde(skip)]
     pub location_label: Option<String>,
-    /// A song's album cover.
+    /// 歌曲的专辑封面。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub music_album_url: Option<String>,
-    /// A song's address to play.
+    /// 歌曲的播放地址：依次取 `<musicurl>`、`<playurl>`、`<dataurl>`、`<lowurl>`、`<url>`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub music_url: Option<String>,
-    /// A gift's picture.
+    /// 礼物的图片。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_image_url: Option<String>,
-    /// A gift's wish.
+    /// 礼物的祝福语。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_wish: Option<String>,
-    /// A gift's price, as the message writes it.
+    /// 礼物的价格，即消息中写的原文。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_price: Option<String>,
-    /// A file's name.
+    /// 文件名。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
-    /// A file's size, in bytes.
+    /// 文件大小，单位为字节。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_size: Option<i64>,
-    /// A file's extension, without its dot.
+    /// 文件的扩展名，不带点。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_ext: Option<String>,
-    /// A file's MD5, in lowercase.
+    /// 文件的 MD5，小写。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_md5: Option<String>,
-    /// Who pays a transfer.
+    /// 转账的付款方。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_payer_username: Option<String>,
-    /// Who receives a transfer.
+    /// 转账的收款方。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_receiver_username: Option<String>,
-    /// A chat record's title; 「聊天记录」 when it has none.
+    /// 聊天记录的标题；没有时为「聊天记录」。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_record_title: Option<String>,
 }
 
+/// 像 JavaScript 的 `parseFloat` 一样读出开头的数字。
 fn parse_js_float(s: &str) -> Option<f64> {
     crate::sns::parse_float(s)
 }
 
-/// `parseType49Message`
+/// 对应桌面版的 `parseType49Message`：从 app 消息的 XML 中读出 [`Type49Info`]。
 fn parse_type49_message(content: &str) -> Type49Info {
     let mut r = Type49Info::default();
     if content.is_empty() {
@@ -419,14 +416,14 @@ fn parse_type49_message(content: &str) -> Type49Info {
     }
     let xml_type = app_xml_type(content);
     if xml_type.is_empty() {
-        // no `<type>`: the kind the words of its XML give it, as the exports read it (#1263)
+        // 没有 `<type>`：按 XML 里的词判定种类，与导出相同（#1263）
         r.app_msg_kind = crate::message::appmsg::app_message_kind(content, 49).map(Into::into);
         if r.app_msg_kind.as_deref() == Some("quote") {
             (r.quoted_content, r.quoted_sender) = quote_of(content);
         }
         return r;
     }
-    // the fields are text for people to read, with their entities decoded (#1199)
+    // 各字段是给人读的文字，实体已解码（#1199）
     let ev = |t: &str| xml_text(content, t);
     let title = ev("title");
     let url = ev("url");
@@ -441,10 +438,10 @@ fn parse_type49_message(content: &str) -> Type49Info {
         ev("coverurl"),
         ev("thumb_url"),
     ]);
-    // a song's own address only: `<songalbumurl>` is its cover, kept as `musicAlbumUrl` (#1170)
+    // 只取歌曲本身的地址：`<songalbumurl>` 是封面，放在 `musicAlbumUrl`（#1170）
     let music_url = first_non_empty(&[ev("musicurl"), ev("playurl")]);
     let data_url = first_non_empty(&[ev("dataurl"), ev("lowurl")]);
-    // the place of the message itself, not of one a reply quotes (#1165)
+    // 消息本身的地点，不是回复所引用的消息的（#1165）
     let own = without_quoted(content);
     let location_label =
         location_label_by(|a| attr_text(&own, "location", a), |t| xml_text(&own, t));
@@ -454,7 +451,7 @@ fn parse_type49_message(content: &str) -> Type49Info {
         ev("finderuser"),
     ]);
     let finder_nickname = first_non_empty(&[ev("findernickname"), ev("finder_nickname")]);
-    // the same table as the exports', and for a type that says nothing the same words of its own XML (#1165, #1241)
+    // 与导出用同一张表；类型没有给出种类时，同样看消息自己的 XML 里的词（#1165、#1241）
     let typed = kind_of_app_type(&xml_type).or_else(|| kind_by_keywords(&own));
     let is_finder = typed == Some("finder");
     let is_music = typed == Some("music");
@@ -518,7 +515,7 @@ fn parse_type49_message(content: &str) -> Type49Info {
         r.gift_price = opt(ev("skuprice"));
     }
 
-    // the one kind the exports give it too (#1263)
+    // 与导出判出的是同一个种类（#1263）
     let kind = crate::message::appmsg::app_message_kind(content, 49).unwrap_or("card");
     if kind == "quote" {
         (r.quoted_content, r.quoted_sender) = quote_of(content);
@@ -593,7 +590,7 @@ fn parse_type49_message(content: &str) -> Type49Info {
     r
 }
 
-/// What a reply quotes, as (content, sender): the preview the exports write after the reply (#1263).
+/// 回复所引用的内容和发送者 `(content, sender)`：即导出写在回复后面的预览（#1263）。
 fn quote_of(content: &str) -> (Option<String>, Option<String>) {
     let x = crate::message::xml::MsgXml::new(content);
     match x.quoted_display() {
@@ -602,10 +599,9 @@ fn quote_of(content: &str) -> (Option<String>, Option<String>) {
     }
 }
 
-// ───────────────────────── media token helpers ─────────────────────────
+// ───────────────────────── 媒体标识的辅助函数 ─────────────────────────
 
-/// The token that names a video's file in `value`, a name or path: lowercase hex of 16 to 64 digits, with the `_raw`
-/// of an original kept; `None` when there is none.
+/// `value`（文件名或路径）中视频文件的标识：16～64 位的小写十六进制，原视频的 `_raw` 后缀保留；没有时为 `None`。
 pub fn normalize_video_file_token(value: &str) -> Option<String> {
     let mut text = value.trim().to_lowercase();
     if text.is_empty() {
@@ -623,7 +619,7 @@ pub fn normalize_video_file_token(value: &str) -> Option<String> {
             c.get(2).map(|m| m.as_str()).unwrap_or("")
         ));
     }
-    // `([a-f0-9]{32})(?![a-f0-9])`, then the generic 16–64 variant, emulated on hex runs
+    // 先按 `([a-f0-9]{32})(?![a-f0-9])`，再按 16～64 位的通用写法，在成段的十六进制上模拟这两个正则
     let runs: Vec<&str> = rx(r"[a-f0-9]+")
         .find_iter(&text)
         .map(|m| m.as_str())
@@ -642,7 +638,7 @@ pub fn normalize_video_file_token(value: &str) -> Option<String> {
     None
 }
 
-/// A video's file token in a row's packed info: a run of 32 hex digits, else one of 16 to 64.
+/// 行的 `packed_info` 中视频文件的标识（小写）：长 32 的一段十六进制数字，没有时取长 16～64 的一段。
 fn video_token_in_packed(bytes: &[u8]) -> Option<String> {
     let mut candidates: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -666,6 +662,7 @@ fn video_token_in_packed(bytes: &[u8]) -> Option<String> {
         .map(|c| c.to_lowercase())
 }
 
+/// 视频消息的 MD5（小写）：`<videomsg>` 的 `md5` 属性，没有时取 `rawmd5` 属性，再没有时取 `<md5>` 元素。
 fn video_md5_from_content(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
@@ -681,6 +678,8 @@ fn video_md5_from_content(content: &str) -> Option<String> {
     opt(extract_xml_value(content, "md5")).map(|m| m.to_lowercase())
 }
 
+/// 语音的时长（整秒）：取第一个出现的 `voicelength`、`length`、`time` 或 `playlength` 属性，
+/// 大于 1000 的值按毫秒算；读不出时为 `None`。
 pub(crate) fn parse_voice_duration_seconds(content: &str) -> Option<i64> {
     let caps =
         rx(r#"(?i)(voicelength|length|time|playlength)\s*=\s*['"]?([0-9]+(?:\.[0-9]+)?)['"]?"#)
@@ -696,12 +695,14 @@ pub(crate) fn parse_voice_duration_seconds(content: &str) -> Option<i64> {
     })
 }
 
+/// 表情消息的地址和 MD5。
 #[derive(Default)]
 struct EmojiInfo {
     cdn_url: Option<String>,
     md5: Option<String>,
 }
 
+/// 从表情消息的 XML 中读出 `cdnurl`（解码 `&amp;` 和百分号转义）和 `md5`。
 fn parse_emoji_info(content: &str) -> EmojiInfo {
     let grab = |name: &str| -> Option<String> {
         let quoted = rx(&format!(r#"(?i){name}\s*=\s*['"]([^'"]+)['"]"#)).captures(content);
@@ -720,129 +721,127 @@ fn parse_emoji_info(content: &str) -> EmojiInfo {
     }
 }
 
-// ───────────────────────── the model ─────────────────────────
+// ───────────────────────── 消息的模型 ─────────────────────────
 
-/// A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399).
+/// 聊天窗口显示的一条消息（`chat messages --parsed` 和其他解析过的读取，#399）。
 ///
-/// It holds its text and the keys of its media, links, cards and so on, parsed from the row. An optional field is
-/// left out when the message has none; times are Unix seconds.
+/// 其中有从行中解析出的文字，以及媒体、链接、卡片等的标识。消息没有的可选字段不输出；时间都是 Unix 秒。
 #[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
-    /// The message's id in its conversation's table; with `createTime`, the key of `chat message`.
+    /// 本地 ID，即消息在所在分片的会话表中的行号；与 `createTime` 一起是 `chat message` 的键。
     pub local_id: i64,
-    /// WeChat's id of the message as a number; not serialized, `serverId` is its decimal string.
+    /// 数字形式的服务器 ID；不输出，输出的是十进制字符串 `serverId`。
     #[serde(skip)]
     pub server_id: i64,
-    /// WeChat's id of the message, in decimal: a string, as it may pass 2^53.
+    /// 十进制的服务器 ID：可能超过 2^53，所以是字符串。
     #[serde(rename = "serverId")]
     pub server_id_raw: String,
-    /// WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…).
+    /// 消息类型（1 文本、3 图片、34 语音、43 视频、47 表情、49 app 消息、10000 系统消息等）。
     pub local_type: i64,
-    /// When it was sent.
+    /// 发送时间。
     pub create_time: i64,
-    /// WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little.
+    /// 消息在聊天窗口中的排序位置，通常是毫秒的发送时间加一个计数。
     pub sort_seq: i64,
-    /// 1 when I sent it, 0 when I received it; null when the row does not say.
+    /// 账号自己发的为 1，收到的为 0；行中没有时为 null。
     pub is_send: Option<i64>,
-    /// Who sent it; null when the row does not say.
+    /// 发送者：取行的发送者列，没有时取内容开头的 `<发送者>:`；都没有时为 null。
     pub sender_username: Option<String>,
-    /// The text the chat window shows.
+    /// 聊天窗口显示的文字。
     pub parsed_content: String,
-    /// The message as WeChat keeps it (often XML).
+    /// 微信保存的消息原文（常是 XML）。
     pub raw_content: String,
-    /// A sticker's address on WeChat's servers.
+    /// 表情在微信服务器上的地址。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_cdn_url: Option<String>,
-    /// A sticker's MD5.
+    /// 表情的 MD5。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_md5: Option<String>,
-    /// What a reply quotes, as the exports preview it: a reply's or an image's, voice message's, video's, sticker's
-    /// or place's that answers a message.
+    /// 回复所引用的内容，与导出写的预览相同：回复，以及回复某条消息的图片、语音、视频、表情和位置都有这一项。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quoted_content: Option<String>,
-    /// The name of whom a reply quotes.
+    /// 被引用的人的名字。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quoted_sender: Option<String>,
-    /// An image's MD5, as its XML gives it.
+    /// 图片的 MD5，取自它的 XML。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_md5: Option<String>,
-    /// The name of an image's `.dat` file, from the row's packed info or the XML.
+    /// 图片的 `.dat` 文件名，取自行的 `packed_info` 或 XML。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_dat_name: Option<String>,
-    /// The MD5 that names a video's file, in lowercase.
+    /// 视频的 MD5（小写），视频文件以它命名。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_md5: Option<String>,
-    /// A voice's length in seconds, rounded.
+    /// 语音的时长，四舍五入到秒。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_duration_seconds: Option<i64>,
-    /// An image's AES key on WeChat's servers (`<img aeskey>`).
+    /// 图片在微信服务器上的 AES 密钥（`<img aeskey>`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aes_key: Option<String>,
-    /// An image's `encrypver`.
+    /// 图片的 `encrypver`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encryp_ver: Option<i64>,
-    /// The address of an image's or a sticker's thumbnail on WeChat's servers.
+    /// 图片或表情的缩略图在微信服务器上的地址。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cdn_thumb_url: Option<String>,
-    /// The username a contact card shares.
+    /// 名片分享的用户名。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card_username: Option<String>,
-    /// The nickname a contact card shows.
+    /// 名片上显示的昵称。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card_nickname: Option<String>,
-    /// The address of a contact card's avatar.
+    /// 名片头像的地址。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card_avatar_url: Option<String>,
-    /// A location's latitude.
+    /// 位置的纬度。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_lat: Option<f64>,
-    /// A location's longitude.
+    /// 位置的经度。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_lng: Option<f64>,
-    /// The name of a location's place.
+    /// 位置的地点名称（`poiname`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_poiname: Option<String>,
-    /// A location's label, its address as WeChat shows it.
+    /// 位置的标签（`label`），即微信显示的地址。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_label: Option<String>,
-    /// Only app messages and a few others have these: boxed, the others are smaller (#505).
+    /// 只有 app 消息和其他几种消息有这些字段：放在 `Box` 里，其他消息占的内存更小（#505）。
     #[serde(flatten)]
     pub t49: Option<Box<Type49Info>>,
-    /// The message's key: the same message has the same key on every machine. It is opaque; only compare it.
+    /// 消息的键：同一条消息在每台机器上的键都相同。键的内容不透明，只用来比较。
     pub message_key: String,
 }
 
-// one per message of a page of parsed messages or search hits: its size changes only on purpose (#505)
+// 一页解析过的消息或搜索结果中每条消息各占一个：断言它的大小，使大小只在有意修改时改变（#505）
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(size_of::<ChatMessage>() == 584);
 
 impl ChatMessage {
-    /// [`Type49Info::link_title`], when the message has one.
+    /// 消息的 [`Type49Info::link_title`]；没有时为 `None`。
     pub fn link_title(&self) -> Option<&str> {
         self.t49.as_ref()?.link_title.as_deref()
     }
-    /// [`Type49Info::file_name`], when the message has one.
+    /// 消息的 [`Type49Info::file_name`]；没有时为 `None`。
     pub fn file_name(&self) -> Option<&str> {
         self.t49.as_ref()?.file_name.as_deref()
     }
-    /// [`Type49Info::file_md5`], when the message has one.
+    /// 消息的 [`Type49Info::file_md5`]；没有时为 `None`。
     pub fn file_md5(&self) -> Option<&str> {
         self.t49.as_ref()?.file_md5.as_deref()
     }
-    /// [`Type49Info::xml_type`], when the message has one.
+    /// 消息的 [`Type49Info::xml_type`]；没有时为 `None`。
     pub fn xml_type(&self) -> Option<&str> {
         self.t49.as_ref()?.xml_type.as_deref()
     }
-    /// [`Type49Info::app_msg_kind`], when the message has one.
+    /// 消息的 [`Type49Info::app_msg_kind`]；没有时为 `None`。
     pub fn app_msg_kind(&self) -> Option<&str> {
         self.t49.as_ref()?.app_msg_kind.as_deref()
     }
 }
 
-// ───────────────────────── message keys ─────────────────────────
+// ───────────────────────── 消息的键 ─────────────────────────
 
-/// JS `encodeURIComponent`
+/// 相当于 JavaScript 的 `encodeURIComponent`，编码前先去掉首尾空白。
 fn encode_uri_component(s: &str) -> String {
     let mut out = String::new();
     for b in s.trim().bytes() {
@@ -865,13 +864,13 @@ fn encode_uri_component(s: &str) -> String {
     out
 }
 
-/// Where a message is kept: its database by name (`message_0`), never by path (#443), and its table.
+/// 消息保存的位置：数据库的名字（`message_0`，不用路径，#443）和表名。
 struct SourceInfo {
     db_name: String,
     table_name: String,
 }
 
-/// The key of a message, scoped by the database's name (`message_0`) instead of its path.
+/// 消息的键，以数据库的名字（`message_0`）而不是路径限定范围。
 fn build_message_key(
     local_id: i64,
     server_id: i64,
@@ -888,8 +887,7 @@ fn build_message_key(
         sort_seq.max(0),
     );
     let sender = encode_uri_component(sender.unwrap_or(""));
-    // The database's name, not its path as WeFlow's desktop app has it: the path would tell the client this
-    // machine's directories and change the key on another one (#443).
+    // 用数据库的名字，不像桌面版那样用路径：路径会把本机的目录告诉客户端，换一台机器键也会变（#443）
     let scope = &src.db_name;
     if local_id > 0 && !scope.is_empty() && !src.table_name.is_empty() {
         return format!(
@@ -921,11 +919,10 @@ fn build_message_key(
     )
 }
 
-// ───────────────────────── isSend / sender ─────────────────────────
+// ───────────────────────── isSend 与发送者 ─────────────────────────
 
-/// A message whose sender is the account itself ([`is_same_wxid`]) is sent whatever its
-/// stored flag says; otherwise the flag stands, a missing one meaning received. Without a sender or an account the
-/// flag is kept as it is.
+/// 发送者就是账号本身（[`is_same_wxid`]）的消息，不论保存的标志是什么都算自己发的；否则按标志，没有标志时算收到的。
+/// 没有发送者或账号时标志保持原样。
 fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) -> Option<i64> {
     let sender = sender.unwrap_or("").trim();
     if sender.is_empty() || my_wxid.trim().is_empty() {
@@ -938,13 +935,13 @@ fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) -> Opt
     }
 }
 
-/// The columns [`chat_message`] turns into a message.
+/// [`chat_message`] 转换成消息的各列。
 struct RowFields {
     content: String,
     local_type: i64,
-    /// `is_send` as stored, before it is checked against the sender.
+    /// 保存的 `is_send`，还没有与发送者核对。
     raw_is_send: Option<i64>,
-    /// The sender's username from its column (trimmed, none when empty).
+    /// 发送者列中的用户名（去掉首尾空白，为空时为 `None`）。
     sender: Option<String>,
     create_time: i64,
     local_id: i64,
@@ -953,8 +950,7 @@ struct RowFields {
     sort_seq: i64,
 }
 
-/// The messages (the model fields the API and CLI use) of the typed rows of one conversation, which it
-/// takes: their text moves into the messages.
+/// 把一个会话的类型化消息行转换成消息（API 和 CLI 用的模型字段）；行的所有权交给它，行的文字直接移进消息。
 pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
     let table_name = weflow_native::msg::table_name_for(session_id);
     rows.into_iter()
@@ -962,15 +958,14 @@ pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<C
         .collect()
 }
 
-/// One row of [`map_msg_rows`], for callers that map rows one at a time; `table_name` is the conversation's
-/// (`table_name_for`).
+/// 转换一行，同 [`map_msg_rows`]，供逐行转换的调用方用；`table_name` 是会话的表名（`table_name_for`）。
 pub fn map_msg_row(mut row: MsgRow, table_name: &str, my_wxid: &str) -> ChatMessage {
     let fields = typed_fields(&mut row);
     let src = typed_source(&row, table_name);
     chat_message(fields, row.packed_info.as_deref(), src, my_wxid)
 }
 
-/// The fields of a typed row, its text moved out; a row without a `sort_seq` is ordered by its send time.
+/// 类型化的行的各字段，文字从行中移出；没有 `sort_seq` 的行按发送时间排序。
 fn typed_fields(row: &mut MsgRow) -> RowFields {
     let create_time = crate::message::msg_row_timestamp(row);
     let server_id = row.server_id.unwrap_or(0);
@@ -995,6 +990,7 @@ fn typed_fields(row: &mut MsgRow) -> RowFields {
     }
 }
 
+/// 行所在分片的名字和会话的表名。
 fn typed_source(row: &MsgRow, table_name: &str) -> SourceInfo {
     SourceInfo {
         db_name: weflow_native::msg::shard_name(row.shard),
@@ -1002,7 +998,7 @@ fn typed_source(row: &MsgRow, table_name: &str) -> SourceInfo {
     }
 }
 
-/// The location an app message names, on a message that has none of its own.
+/// 消息自己没有的位置字段，填上 app 消息中写的位置。
 fn fill_location(m: &mut ChatMessage, t: &Type49Info) {
     if m.location_lat.is_none() {
         m.location_lat = t.location_lat;
@@ -1018,7 +1014,7 @@ fn fill_location(m: &mut ChatMessage, t: &Type49Info) {
     }
 }
 
-/// A message of a row's columns; `packed_info` is the row's, the only place besides its text a media file is named.
+/// 由一行的各列组成的消息；`packed_info` 是这一行的，除了文字之外只有它里面写着媒体文件的名字。
 fn chat_message(
     fields: RowFields,
     packed_info: Option<&[u8]>,
@@ -1049,6 +1045,7 @@ fn chat_message(
         sender_username: sender_raw,
         ..Default::default()
     };
+    // 8589934592049 即 `(2000 << 32) | 49`，存成组合类型的转账
     let app_message = (local_type == 49 || local_type == 8589934592049) && !content.is_empty();
 
     if local_type == 47 && !content.is_empty() {
@@ -1110,17 +1107,16 @@ fn chat_message(
     } else if local_type == 244813135921 || content.contains("<type>57</type>") {
         (m.quoted_content, m.quoted_sender) = quote_of(&content);
     }
-    // a picture, voice message, video, sticker or place that answers a message: what it quotes, as the exports
-    // preview it (#1263)
+    // 回复某条消息的图片、语音、视频、表情或位置：被引用的内容，与导出写的预览相同（#1263）
     if is_non_app_type(local_type) {
         (m.quoted_content, m.quoted_sender) = quote_of(&content);
     }
 
-    // a media message or a location is no app message: an `<appmsg>` in it is the message its `<refermsg>` quotes
+    // 媒体消息和位置不是 app 消息：其中的 `<appmsg>` 是它的 `<refermsg>` 所引用的消息
     let has_appmsg = !is_non_app_type(local_type)
         && (content.contains("<appmsg") || content.contains("&lt;appmsg"));
     if has_appmsg && app_message {
-        // `t49` is the parse of this content already: only the location it names is not the message's yet
+        // `t49` 已经是这段内容的解析结果：只有其中写的位置还没有填到消息上
         if let Some(t) = m.t49.take() {
             fill_location(&mut m, &t);
             m.t49 = Some(t);
@@ -1197,7 +1193,7 @@ mod tests {
     use super::*;
     use crate::message::appmsg::app_type;
 
-    /// The chat window's text of a message, read without the account's wxid.
+    /// 不带账号的 wxid 读出的聊天窗口文字。
     fn parsed_content(content: &str, local_type: i64, sender: Option<&str>) -> String {
         super::parsed_content(content, local_type, sender, None)
     }
@@ -1211,8 +1207,7 @@ mod tests {
         assert_eq!(extract_sender_from_content("wxid_abcd:hello"), None);
     }
 
-    /// WeChat keeps a text as it was typed, not escaped: what looks like an entity in it is what was typed, and the
-    /// chat window shows it as the exports write it (#1208).
+    /// 微信按输入的原样保存文本，不做转义：其中像实体的文字就是输入的内容，聊天窗口显示的与导出写的相同（#1208）。
     #[test]
     fn a_text_message_is_shown_as_it_was_typed() {
         for (content, sender, text) in [
@@ -1231,14 +1226,14 @@ mod tests {
         }
     }
 
-    /// `xml` escaped once, as WeChat puts a quoted message's XML in a reply's `<refermsg><content>`.
+    /// 转义一次的 `xml`，与微信放在回复的 `<refermsg><content>` 里的被引用消息的 XML 一样。
     fn escaped(xml: &str) -> String {
         xml.replace('&', "&amp;")
             .replace('<', "&lt;")
             .replace('>', "&gt;")
     }
 
-    /// A reply saying 好看 to `quoted`, of `<type>` 57.
+    /// 对 `quoted` 说「好看」的回复，`<type>` 为 57。
     fn reply_to(quoted: &str) -> String {
         format!(
             "<msg><appmsg appid=\"\" sdkver=\"0\"><title>好看</title><type>57</type><refermsg><type>49</type>\
@@ -1261,9 +1256,8 @@ mod tests {
     const LOCATION: &str =
         "<msg><location x=\"31.2\" y=\"121.4\" label=\"外滩\" poiname=\"外滩\"/></msg>";
 
-    /// The kind of an app message is the one its own `<type>` gives it, wherever it is read: the words of its XML do
-    /// not make a link a song or a red packet, and those of the message a reply quotes do not make the reply one
-    /// (#1165).
+    /// app 消息的种类在哪里读都是它自己的 `<type>` 给出的：XML 里的词不会让链接变成音乐或红包，
+    /// 回复所引用的消息里的词也不会让回复变成那一种（#1165）。
     #[test]
     fn an_app_message_is_of_the_kind_its_type_says() {
         let link = |extra: &str| {
@@ -1273,7 +1267,7 @@ mod tests {
         };
         let hongbao_title = "<msg><appmsg><title>抢 HongBao 的攻略</title><type>5</type>\
             <url>https://a</url></appmsg></msg>";
-        // a link: the chat window's text, the exports' text and both kinds agree
+        // 链接：聊天窗口的文字、导出的文字和两边的种类都一致
         for (xml, text) in [
             (hongbao_title.to_string(), "[链接] 抢 HongBao 的攻略"),
             (link("<dataurl>https://a</dataurl>"), "[链接] 一篇文章"),
@@ -1296,8 +1290,7 @@ mod tests {
                 "{xml}"
             );
         }
-        // a reply, kept as either local type, to a Channels video, a song, a link with a `<dataurl>`, a red packet
-        // and a place
+        // 回复视频号、音乐、带 `<dataurl>` 的链接、红包和位置的消息，两种 `local_type` 都试
         for quoted in [FINDER, MUSIC, DATAURL_LINK, RED_PACKET, LOCATION] {
             let xml = reply_to(quoted);
             for local_type in [49, QUOTE] {
@@ -1321,7 +1314,7 @@ mod tests {
                 "{quoted}"
             );
         }
-        // the messages themselves are still what they are
+        // 被引用的消息本身仍是原来的种类
         for (xml, kind, text) in [
             (FINDER, "finder", "[视频号] 一段视频"),
             (MUSIC, "music", "[音乐] 一首歌"),
@@ -1339,10 +1332,9 @@ mod tests {
         }
     }
 
-    /// Every `<type>` from 0 to 2100, kept as `local_type` 49 or as `(<type> << 32) | 49`, has one kind, one type
-    /// name and one ChatLab type wherever it is read. One of the table has its row's, whose tag starts the chat
-    /// window's text and the exports' alike (#1180); one the table does not know is a card, or a gift for 115, read
-    /// the same however it is kept (#1263).
+    /// 0 到 2100 的每个 `<type>`，不论存为 `local_type` 49 还是 `(<type> << 32) | 49`，在哪里读都只有一个种类、
+    /// 一个类型名和一个 ChatLab 类型。表中有的取那一行，聊天窗口的文字和导出的文字都以那一行的标签开头（#1180）；
+    /// 表中没有的算 `card`（115 算 `gift`），不论怎样存读法都相同（#1263）。
     #[test]
     fn every_app_type_reads_the_same_everywhere() {
         let mut known = 0;
@@ -1379,9 +1371,9 @@ mod tests {
                     crate::message::parse_message_content(&xml, local_type, None, None, None)
                         .unwrap();
                 match ty {
-                    // a forwarded record's items are the exports' own
+                    // 转发的聊天记录的条目只有导出写
                     "19" => {}
-                    // a transfer without an amount is its side alone
+                    // 没有金额的转账只写方向
                     "2000" => {
                         assert_eq!((chat.as_str(), export.as_str()), (row.tag, row.tag), "{at}");
                     }
@@ -1392,7 +1384,7 @@ mod tests {
                         );
                     }
                     "57" => assert_eq!((chat.as_str(), export.as_str()), ("T", "T"), "{at}"),
-                    // a pat kept as `(62 << 32) | 49` is its title alone, as a system message (#1196)
+                    // 存为 `(62 << 32) | 49` 的拍一拍按系统消息只写标题（#1196）
                     "62" if local_type == kept_as => {
                         assert_eq!((chat.as_str(), export.as_str()), ("T", "T"), "{at}");
                     }
@@ -1427,12 +1419,12 @@ mod tests {
                 );
             }
         }
-        // the table's rows, read from the table itself
+        // 表中的行取自表本身
         assert!(known > 10, "{known} types");
     }
 
-    /// Elements of an app message's XML for the property test: those whose words tell a kind when the `<type>` tells
-    /// none (a Channels video, a red packet, a song, #1241) and some that tell none, empty ones among them.
+    /// 性质测试用的 app 消息 XML 元素：`<type>` 没有给出种类时，能凭其中的词判出种类的（视频号、红包、音乐，
+    /// #1241），以及判不出的，其中有空的元素。
     const WORDS: &[&str] = &[
         "<finderFeed><objectId>1</objectId></finderFeed>",
         "<finderUsername>v2_x@finder</finderUsername>",
@@ -1449,15 +1441,15 @@ mod tests {
         "<url>https://a</url>",
     ];
 
-    /// An app message as the property test makes it: its own `<type>` (one of the table, one it does not know, or
-    /// none), some of [`WORDS`], and what it quotes, if it replies: the quoted message's `<type>` and words.
+    /// 性质测试生成的 app 消息：它自己的 `<type>`（表中有的、表中没有的，或者没有），[`WORDS`] 中的几个元素，
+    /// 以及回复时所引用的消息的 `<type>` 和元素。
     type AppParts = (Option<i64>, Vec<&'static str>, Option<Quoted>);
 
-    /// What an [`AppParts`] quotes: the quoted message's `<type>` and words, and whether its XML is escaped in the
-    /// `<content>` of the `<refermsg>`, as WeChat writes it, or not.
+    /// [`AppParts`] 所引用的消息：被引用消息的 `<type>` 和元素，
+    /// 以及它的 XML 在 `<refermsg>` 的 `<content>` 中是否像微信那样转义。
     type Quoted = (i64, Vec<&'static str>, bool);
 
-    /// The strategy of [`AppParts`].
+    /// 生成 [`AppParts`] 的策略。
     fn app_message() -> impl proptest::strategy::Strategy<Value = AppParts> {
         use proptest::prelude::*;
         let known: Vec<i64> = (1..=2100)
@@ -1474,7 +1466,7 @@ mod tests {
         (ty, words(), quoted)
     }
 
-    /// The XML of an [`AppParts`].
+    /// [`AppParts`] 对应的 XML。
     fn app_xml(ty: Option<i64>, words: &[&str], quoted: Option<&Quoted>) -> String {
         let ty = ty.map_or(String::new(), |n| format!("<type>{n}</type>"));
         let refer = quoted.map_or(String::new(), |(n, words, escaped)| {
@@ -1497,7 +1489,7 @@ mod tests {
         )
     }
 
-    /// The `[…]` an app message's text starts with, if any.
+    /// app 消息文字开头的 `[…]`；没有时为 `None`。
     fn tag_of(text: &str) -> Option<&str> {
         let end = text.find(']')?;
         (text.starts_with('[') && end <= 30).then(|| &text[..=end])
@@ -1506,9 +1498,8 @@ mod tests {
     proptest::proptest! {
         #![proptest_config(crate::property_cases(512))]
 
-        /// Any app message has one kind, type name and tag however it is kept and wherever it is read: the kind its
-        /// own `<type>` gives it, else the one the words of its own XML give it, never those of what it quotes
-        /// (#1165, #1241, #1263).
+        /// 任意 app 消息不论怎样存、在哪里读，都只有一个种类、类型名和标签：种类取它自己的 `<type>` 给出的，
+        /// 没有时取它自己的 XML 里的词给出的，从不取被引用消息的（#1165、#1241、#1263）。
         #[test]
         fn any_app_message_has_one_kind_wherever_it_is_read(
             (ty, words, quoted) in app_message(),
@@ -1519,7 +1510,7 @@ mod tests {
             let kind = crate::message::appmsg::app_message_kind(&xml, 49);
             let chat_kind = parse_type49_message(&xml).app_msg_kind;
             prop_assert_eq!(chat_kind.as_deref(), kind, "{}", xml);
-            // the type first, the words of the message's own XML only when the type tells no kind
+            // 先看类型，类型没有给出种类时才看消息自己的 XML 里的词
             let replies = quoted.is_some();
             let want = match ty.and_then(|n| kind_of_app_type(&n.to_string())) {
                 Some("link") if replies => "quote",
@@ -1533,20 +1524,19 @@ mod tests {
                 _ => want,
             };
             prop_assert_eq!(kind, Some(want), "{}", xml);
-            // what it quotes says nothing of it
+            // 被引用的消息不影响它的种类
             if let Some((n, _, escaped)) = &quoted {
                 let bare = app_xml(ty, &words, Some(&(*n, Vec::new(), *escaped)));
                 prop_assert_eq!(crate::message::appmsg::app_message_kind(&bare, 49), kind, "{}", xml);
             }
-            // the chat window's line and the exports' text start with the same tag, but for a forwarded chat
-            // record, whose items the exports write after a tag of their own
+            // 聊天窗口的一行和导出的文字以同样的标签开头；转发的聊天记录除外，导出在它的标签后面还写其中的条目
             let chat = parsed_content(&xml, 49, None);
             let export = crate::message::parse_message_content(&xml, 49, None, None, None)
                 .unwrap_or_default();
             if kind != Some("chat-record") {
                 prop_assert_eq!(tag_of(&chat), tag_of(&export), "{}: {} / {}", xml, chat, export);
             }
-            // however it is kept
+            // 不论怎样存
             if let Some(n) = ty {
                 let kept = (n << 32) | 49;
                 prop_assert_eq!(crate::message::appmsg::app_message_kind(&xml, kept), kind, "{}", xml);
@@ -1564,8 +1554,7 @@ mod tests {
         }
     }
 
-    /// A transfer reads the same in the chat window and the exports, kept either way, from either side: its side,
-    /// amount and note, never its title (#1185).
+    /// 转账在聊天窗口和导出中的文字相同，不论怎样存、从哪一方看：写方向、金额和备注，不写标题（#1185）。
     #[test]
     fn a_transfer_reads_the_same_in_the_chat_and_the_exports() {
         let transfer = |subtype: &str, memo: &str| {
@@ -1577,10 +1566,10 @@ mod tests {
             )
         };
         let cases = [
-            // the subtype tells the side
+            // `paysubtype` 决定方向
             ("1", "", None, None, "[转账] ￥12.34"),
             ("3", "饭钱", None, None, "[转账收款] ￥12.34 饭钱"),
-            // without it, the sender does, then the account
+            // 没有时按发送者，再按本账号
             ("", "", Some("wxid_payer"), None, "[转账收款] ￥12.34"),
             ("", "", Some("wxid_receiver"), None, "[转账] ￥12.34"),
             ("", "", None, Some("wxid_payer"), "[转账收款] ￥12.34"),
@@ -1605,8 +1594,8 @@ mod tests {
         }
     }
 
-    /// Whatever a reply quotes, and whatever the type of an app message, its kind is the one of its `<type>`, the same
-    /// for the chat window and the exports (#1165): every type of the table, against every kind of quoted message.
+    /// 不论回复引用了什么、app 消息是什么类型，它的种类都是它的 `<type>` 给出的，聊天窗口与导出相同（#1165）：
+    /// 表中的每个类型对每种被引用的消息都试一遍。
     #[test]
     fn the_quoted_message_never_decides_the_kind() {
         let quoted = [
@@ -1628,7 +1617,7 @@ mod tests {
                      <svrid>7</svrid><content>{}</content></refermsg></appmsg></msg>",
                     escaped(q)
                 );
-                // a link with a quote in it is read as the quote, in the chat window too (#1263)
+                // 带引用的链接算引用，聊天窗口也一样（#1263）
                 let kind = if by_type == "link" { "quote" } else { by_type };
                 assert_eq!(
                     crate::message::appmsg::app_message_kind(&xml, 49),
@@ -1641,8 +1630,7 @@ mod tests {
         }
     }
 
-    /// A gift, a place, an official account's article and a link without an address have one kind in the chat window
-    /// and the exports (#1263).
+    /// 礼物、位置、公众号文章和没有地址的链接，在聊天窗口和导出中是同一个种类（#1263）。
     #[test]
     fn the_chat_window_and_the_exports_name_each_app_message_alike() {
         for (xml, kind) in [
@@ -1682,8 +1670,8 @@ mod tests {
         }
     }
 
-    /// A message with no text is labelled as one with text is, an app message kept as `(<type> << 32) | 49` by its
-    /// `<type>` in the one table: a sticker or a note kept so is no file (#1263).
+    /// 没有内容的消息的标签与有内容的相同，存为 `(<type> << 32) | 49` 的 app 消息按表中这个 `<type>` 的标签：
+    /// 这样存的表情或笔记不会被当成文件（#1263）。
     #[test]
     fn a_label_is_the_tag_of_the_type_kept() {
         let kept = |ty: i64| (ty << 32) | 49;
@@ -1707,8 +1695,7 @@ mod tests {
         }
     }
 
-    /// The session list and the message push say an app message the same way, kept as 49 or as
-    /// `(<type> << 32) | 49` (#1263).
+    /// 会话列表和消息推送对 app 消息的写法相同，不论存为 49 还是 `(<type> << 32) | 49`（#1263）。
     #[test]
     fn a_summary_is_the_same_however_the_message_is_kept() {
         let transfer = "<msg><appmsg><title>微信转账</title><type>2000</type><wcpayinfo>\
@@ -1730,8 +1717,8 @@ mod tests {
         assert_eq!(summary_line(&voice).as_deref(), Some("[语音消息]"));
     }
 
-    /// What a reply quotes reads the same in the chat window and the exports (#1263): a quoted app message by its own
-    /// XML, a quoted reply by its words, a link by its title, a file by its name.
+    /// 回复所引用的内容在聊天窗口和导出中相同（#1263）：被引用的 app 消息按它自己的 XML 写，
+    /// 回复写它的文字，链接写标题，文件写文件名。
     #[test]
     fn a_quote_is_previewed_alike_everywhere() {
         let reply = |quoted_type: &str, quoted: &str| {
@@ -1774,8 +1761,8 @@ mod tests {
         }
     }
 
-    /// The chat window words an app message as the exports do, by the one table (#1263), in one line: a reply by its
-    /// own words, a chat record and a note by their titles.
+    /// 聊天窗口按同一张表写 app 消息的文字，与导出相同（#1263），但只写一行：回复写它本身的文字，
+    /// 聊天记录和笔记写标题。
     #[test]
     fn the_chat_window_words_app_messages_as_the_exports_do() {
         let export = |xml: &str| crate::message::parse_message_content(xml, 49, None, None, None);
@@ -1792,7 +1779,7 @@ mod tests {
                 "<type> {ty}"
             );
         }
-        // a type the table does not know, by the kind its XML gives it
+        // 表中没有的类型按 XML 判出的种类写
         let finder = "<msg><appmsg><title>直播</title><type>63</type>\
                       <finderUsername>v2_x</finderUsername></appmsg></msg>";
         assert_eq!(
@@ -1800,7 +1787,7 @@ mod tests {
             "[视频号] 直播"
         );
         assert_eq!(export(finder).as_deref(), Some("[视频号] 直播"));
-        // one line in the chat window, all of it in the exports
+        // 聊天窗口写一行，导出写全文
         let record = "<msg><appmsg><title>群聊的聊天记录</title><type>19</type><recorditem>\
                       &lt;recordinfo&gt;&lt;datalist&gt;&lt;dataitem datatype=\"1\"&gt;&lt;sourcename&gt;A\
                       &lt;/sourcename&gt;&lt;datadesc&gt;早&lt;/datadesc&gt;&lt;/dataitem&gt;&lt;/datalist&gt;\
@@ -1818,9 +1805,9 @@ mod tests {
         );
     }
 
-    /// The chat window and the exports give an app message the same kind as WeChat keeps it (#1241): a `<type>` in
-    /// CDATA, a `<type>` after the whole XML of a quoted file or after a chat record's items, empty finder elements
-    /// of a sticker's or another type's template, a type the table does not know, and a sticker that replies.
+    /// 对微信实际保存的几种写法，聊天窗口和导出判出的种类相同（#1241）：写在 CDATA 里的 `<type>`，
+    /// 写在被引用文件的整段 XML 或聊天记录的条目之后的 `<type>`，表情或其他类型的模板里空的视频号元素，
+    /// 表中没有的类型，以及回复某条消息的表情。
     #[test]
     fn an_app_message_has_one_kind_however_its_xml_is_written() {
         let finder_template = "<finderGuarantee><scene><![CDATA[0]]></scene></finderGuarantee>\
@@ -1895,8 +1882,8 @@ mod tests {
         }
     }
 
-    /// A message whose `<type>` says nothing is told by the words of its own XML only: a non-empty `<musicurl>`, not
-    /// a `<dataurl>`; a red packet's address, not `hongbao` in its text (#1165).
+    /// `<type>` 没有给出种类的消息只按它自己的 XML 里的词判定：看不为空的 `<musicurl>`，不看 `<dataurl>`；
+    /// 看红包的地址，不看文字里的 `hongbao`（#1165）。
     #[test]
     fn a_message_without_a_type_is_told_by_its_own_words() {
         let app = |inner: &str| format!("<msg><appmsg><title>T</title>{inner}</appmsg></msg>");
@@ -1917,12 +1904,12 @@ mod tests {
                 "{inner}"
             );
         }
-        // the words of what it quotes do not count
+        // 被引用消息里的词不算
         for quoted in [FINDER, MUSIC, RED_PACKET] {
             let own = format!("<appmsg><title>好看</title><refermsg><content>{quoted}</content></refermsg></appmsg>");
             assert_eq!(kind_by_keywords(&without_quoted(&own)), None, "{quoted}");
         }
-        // nor in the chat window's text, for a reply to a Channels video, neither of them with a `<type>`
+        // 聊天窗口的文字也不受影响：回复一段视频号视频，两者都没有 `<type>`
         let video = "<msg><appmsg><title>一段视频</title><finderFeed><finderusername>v2_x@finder</finderusername>\
             </finderFeed></appmsg></msg>";
         let own = format!(
@@ -1932,9 +1919,8 @@ mod tests {
         assert_eq!(parsed_content(&own, 49, None), "好看");
     }
 
-    /// A song shared as `<type>` 3 or 76, as WeChat keeps them: a `<musicShareItem>` and a `<dataurl>`, no
-    /// `<musicurl>` or `<songname>`. Both are music in the chat window, in the exports and in the text of each
-    /// (#1167).
+    /// 以 `<type>` 3 或 76 分享的歌曲，按微信保存的样子：有 `<musicShareItem>` 和 `<dataurl>`，没有 `<musicurl>`
+    /// 和 `<songname>`。两者在聊天窗口、导出和各自的文字中都是音乐（#1167）。
     #[test]
     fn a_song_is_music_by_either_type() {
         for ty in ["3", "76"] {
@@ -1982,8 +1968,7 @@ mod tests {
                 Some("https://m/c.jpg"),
                 "{ty}"
             );
-            // the address of the song is never its cover (#1170): it has none of its own to play, so it is the
-            // file, and the exports have none
+            // 歌曲的地址从不是封面（#1170）：它没有自己的播放地址，所以聊天窗口取音频文件，导出没有这一项
             assert_eq!(window.app_msg_music_url, None, "{ty}");
             assert_eq!(window.music_url.as_deref(), Some("https://m/a.mp3"), "{ty}");
             let meta = crate::message::appmsg::extract_arkme_app_message_meta_in(
@@ -1994,7 +1979,7 @@ mod tests {
             assert!(!meta.contains_key("musicUrl"), "{ty}: {meta:?}");
             assert_eq!(meta["musicDataUrl"], "https://m/a.mp3", "{ty}");
             assert_eq!(meta["musicAlbumUrl"], "https://m/c.jpg", "{ty}");
-            // one that has its own address to play is linked to it everywhere
+            // 有自己的播放地址的，各处都链接到它
             let playable = xml.replace("</url>", "</url><musicurl>https://m/play</musicurl>");
             let window = parse_type49_message(&playable);
             assert_eq!(window.app_msg_music_url.as_deref(), Some("https://m/play"));
@@ -2051,11 +2036,11 @@ mod tests {
                  <refermsg><type>1</type><content>hi</content></refermsg></appmsg></msg>"
             )
         };
-        // the other forms of a quote's title are tested in `weflow_native::quote`
+        // 引用标题的其他写法在 `weflow_native::quote` 中测试
         for (title, said) in [
             ("好的 &amp; 收到", "好的 & 收到"),
             ("<![CDATA[好的]]>", "好的"),
-            // a reply that writes a tag is that text, not the end of the title
+            // 回复里写的标签是文字，不是标题的结束
             ("写 &lt;/title&gt; 就行", "写 </title> 就行"),
         ] {
             assert_eq!(
@@ -2072,11 +2057,11 @@ mod tests {
 
     #[test]
     fn text_that_starts_like_a_sender_keeps_its_start() {
-        // only `name:` and a line break, or an id, is a sender: a time, a score or a label is the text itself
+        // 只有 `名字:` 加换行，或者像 ID 的名字，才是发送者：时间、比分或标签是正文本身
         for text in ["4:1", "1:3-1:6", "10:1 abc", "PS: see you", "http://x"] {
             assert_eq!(parsed_content(text, 1, None), text);
         }
-        // only a line naming the message's sender is its sender line (#656)
+        // 只有写着这条消息发送者的一行才是发送者行（#656）
         assert_eq!(
             parsed_content("PS:\nsee you", 1, Some("wxid_bob")),
             "PS:\nsee you"
@@ -2139,15 +2124,14 @@ mod tests {
         assert_eq!(m.location_label.as_deref(), Some("Bund"));
     }
 
-    /// The text a reply quotes is escaped twice inside its `<refermsg>`, a line break as `&#x0A;` or `&#10;` escaped
-    /// once more: the chat window, the exports' text and Arkme all show it decoded, the line break as a space, and a
-    /// literal `&amp;` the person typed decoded no further (#1212).
+    /// 回复所引用的文字在 `<refermsg>` 中转义了两次，换行写成又转义了一层的 `&#x0A;` 或 `&#10;`：
+    /// 聊天窗口、导出的文字和 Arkme 都显示解码后的文字，换行显示为空格，用户输入的 `&amp;` 不再多解码（#1212）。
     #[test]
     fn a_quoted_text_with_line_breaks_reads_the_same_everywhere() {
         use crate::message::appmsg::extract_arkme_app_message_meta_in;
         use crate::message::xml::MsgXml;
 
-        // as WeChat keeps a quote: the quoted message's own msgsource, escaped, beside its text
+        // 微信保存的引用：被引用消息自己的 msgsource 转义后放在它的文字旁边
         let reply = |quoted: &str| {
             format!(
                 "<msg><appmsg><title>好的</title><type>57</type><refermsg><type>1</type><svrid>7</svrid>\
@@ -2159,12 +2143,12 @@ mod tests {
             ("第一行&amp;#x0A;第二行", "第一行 第二行"),
             ("a&amp;#10;b", "a b"),
             ("R&amp;amp;amp;D", "R&amp;D"),
-            // as the quotes on a real account that keep them escaped once more still: a line break and a space
+            // 与实际数据中换行和空格还多转义了一层的引用一样
             (
                 "第一行&amp;amp;#x0A;第二行&amp;amp;#x20;三",
                 "第一行 第二行 三",
             ),
-            // a line break kept as it is, as most quotes do
+            // 多数引用的换行保持原样
             ("第一行\n第二行", "第一行 第二行"),
         ] {
             let xml = reply(quoted);
@@ -2190,9 +2174,9 @@ mod tests {
         }
     }
 
-    /// The fields of a link, a file, a contact card and a location are text for people to read, in the chat window,
-    /// the exports' text and Arkme alike: their entities decoded once (`&amp;amp;` is `&amp;`), the text of a CDATA
-    /// section kept as it is, whether the app message is kept as `local_type` 49 or as `(<type> << 32) | 49` (#1199).
+    /// 链接、文件、名片和位置的字段在聊天窗口、导出的文字和 Arkme 中都是给人读的文字：
+    /// 实体解码一次（`&amp;amp;` 得到 `&amp;`），CDATA 里的文字原样保留，
+    /// 不论 app 消息存为 `local_type` 49 还是 `(<type> << 32) | 49`（#1199）。
     #[test]
     fn the_fields_of_a_message_have_their_entities_decoded_once() {
         use crate::message::appmsg::extract_arkme_app_message_meta_in;
@@ -2261,7 +2245,7 @@ mod tests {
                     Some("https://mp.example/s?__biz=X&mid=1"),
                     "{at}"
                 );
-                // a CDATA section is text as it is
+                // CDATA 里的文字按原样保留
                 let m = read(local_type, cdata);
                 assert_eq!(m.link_title(), Some("a &amp; b"), "{at}");
                 assert_eq!(export(local_type, cdata), "[链接] a &amp; b", "{at}");
@@ -2296,8 +2280,8 @@ mod tests {
     }
     #[test]
     fn a_text_message_loses_only_the_line_naming_its_sender() {
-        // as the chat model reads a row: a private message whose first line is `PS:` keeps it, a group message
-        // somebody else sent loses the line naming them (#656)
+        // 与聊天模型读一行时一样（#656）：私聊中第一行是 `PS:` 的消息保留这一行，
+        // 群里别人发的消息去掉写着发送者的一行
         let row = |content: &str, sender: &str| MsgRow {
             local_type: 1,
             content: content.into(),
@@ -2333,7 +2317,7 @@ mod tests {
             parsed_content("<?xml version=\"1.0\"?><a>你已添加了 Bob</a>", 10000, None),
             "你已添加了 Bob"
         );
-        // as the database keeps a revoke: its time is not part of the notice
+        // 数据库中保存的撤回：撤回时间不属于提示
         assert_eq!(
             parsed_content(
                 "<?xml version=\"1.0\"?><sysmsg type=\"revokemsg\"><revokemsg><content>\"Bob\" 撤回了一条消息</content>\
@@ -2343,7 +2327,7 @@ mod tests {
             ),
             "\"Bob\" 撤回了一条消息"
         );
-        // a notice in plain text is itself, digits at its end included
+        // 纯文字的提示就是它本身，末尾的数字也保留
         assert_eq!(
             parsed_content("群聊人数已达 100", 10000, None),
             "群聊人数已达 100"
@@ -2353,8 +2337,7 @@ mod tests {
 
     #[test]
     fn a_quote_of_a_message_that_quotes_keeps_its_own_sender() {
-        // the quoted message's content holds a `<refermsg>` of its own, decoded: the block ends at the last
-        // closing tag, not at the inner one
+        // 被引用消息的内容里有它自己的（已解码的）`<refermsg>`：块到最后一个结束标签为止，不是里面那个
         let xml = "<msg><appmsg><title>好看</title><type>57</type><refermsg><type>1</type><svrid>9</svrid>\
                    <content>原话&lt;refermsg&gt;&lt;svrid&gt;7&lt;/svrid&gt;&lt;/refermsg&gt;</content>\
                    <displayname>Me Nick</displayname></refermsg></appmsg></msg>";
@@ -2394,13 +2377,13 @@ mod tests {
         );
         assert_eq!(resolve_is_send(None, Some("wxid_bob"), "wxid_me"), Some(0));
         assert_eq!(resolve_is_send(None, None, "wxid_me"), None);
-        // the account folder's `_<4 chars>` suffix, either way round
+        // 账号目录名的 `_<4 个字符>` 后缀，哪一边带都算
         assert_eq!(
             resolve_is_send(Some(0), Some("WXID_ME_1a2b"), "wxid_me"),
             Some(1)
         );
         assert_eq!(resolve_is_send(Some(0), Some("john"), "john_1a2b"), Some(1));
-        // a custom WeChat id is no prefix of another person's
+        // 自定义的微信号不当作别人的微信号的前缀
         assert_eq!(
             resolve_is_send(Some(0), Some("john_smith"), "john"),
             Some(0)
@@ -2449,8 +2432,7 @@ mod tests {
         assert_eq!(encode_uri_component("a b/é"), "a%20b%2F%C3%A9");
     }
 
-    /// A picture, voice message, video, sticker or place that answers a message is no app message, and quotes what
-    /// the exports say it quotes (#1263).
+    /// 回复某条消息的图片、语音、视频、表情或位置不是 app 消息，引用的内容与导出写的相同（#1263）。
     #[test]
     fn a_media_reply_takes_no_app_fields_from_the_app_message_it_quotes() {
         let quote = "<refermsg><type>49</type><svrid>9</svrid><displayname>Bob</displayname>\
@@ -2471,7 +2453,7 @@ mod tests {
             };
             let m = map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0);
             assert!(m.t49.is_none(), "{content}");
-            // nor has it an app kind as a resource or in arkme-json
+            // 作为资源或在 arkme-json 中也没有 app 消息的种类
             assert_eq!(
                 crate::message::appmsg::app_message_kind(&content, local_type),
                 None

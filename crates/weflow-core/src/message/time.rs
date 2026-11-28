@@ -1,10 +1,10 @@
-//! Times: local midnights and the formats of timestamps.
+//! 时间：本地的零点和时间戳的格式。
 
 use super::xml::rx;
 use chrono::{Local, TimeZone};
 
-/// Unix time of 00:00 on a calendar date in the machine's local time zone. A date whose midnight does not exist
-/// (a daylight-saving jump at 00:00) starts at the first moment that does.
+/// 本机时区中某个日期 00:00 的 Unix 时间。零点不存在的日期（夏令时在 00:00 跳过）从当天第一个存在的时刻算起；
+/// 日期无效时为 `None`。
 pub fn local_midnight(year: i32, month: u32, day: u32) -> Option<i64> {
     let midnight = chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(0, 0, 0)?;
     (0..=3 * 60)
@@ -16,7 +16,7 @@ pub fn local_midnight(year: i32, month: u32, day: u32) -> Option<i64> {
         .map(|t| t.timestamp())
 }
 
-/// Unix time of 00:00 on the day after a calendar date, local time zone.
+/// 本机时区中某个日期的下一天 00:00 的 Unix 时间，算法同 [`local_midnight`]。
 pub fn local_midnight_after(year: i32, month: u32, day: u32) -> Option<i64> {
     let next = chrono::NaiveDate::from_ymd_opt(year, month, day)?.succ_opt()?;
     local_midnight(
@@ -26,7 +26,7 @@ pub fn local_midnight_after(year: i32, month: u32, day: u32) -> Option<i64> {
     )
 }
 
-/// `YYYY-MM-DD HH:MM:SS` in the local time zone (same as WeFlow's desktop app).
+/// Unix 秒 `ts` 在本机时区的 `YYYY-MM-DD HH:MM:SS`，与桌面版相同；无法表示的时间为空字符串。
 pub fn format_timestamp(ts: i64) -> String {
     match Local.timestamp_opt(ts, 0).single() {
         Some(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -34,8 +34,7 @@ pub fn format_timestamp(ts: i64) -> String {
     }
 }
 
-/// The Unix seconds `ts` in ISO 8601 UTC with milliseconds, `2026-09-30T07:04:05.000Z`; empty for a time that
-/// cannot be.
+/// Unix 秒 `ts` 的 ISO 8601 UTC 写法，带毫秒，如 `2026-09-30T07:04:05.000Z`；无法表示的时间为空字符串。
 pub fn format_iso_timestamp(ts: i64) -> String {
     match chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0) {
         Some(dt) => dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
@@ -43,8 +42,7 @@ pub fn format_iso_timestamp(ts: i64) -> String {
     }
 }
 
-/// A time in seconds, milliseconds or finer as Unix seconds: divided by 1000 until it is not past 10^10; 0 for one
-/// that is not a positive number.
+/// 以秒、毫秒或更细的单位表示的时间换算成 Unix 秒：取整后反复除以 1000，直到不超过 10^10；不是正数时为 0。
 pub fn normalize_timestamp_seconds(value: f64) -> i64 {
     if !value.is_finite() || value <= 0.0 {
         return 0;
@@ -56,6 +54,8 @@ pub fn normalize_timestamp_seconds(value: f64) -> i64 {
     n
 }
 
+/// 本机时区的紧凑日期 `YYYYMMDD`、`YYYYMMDDhhmm` 或 `YYYYMMDDhhmmss` 的 Unix 秒；格式不对、年份不在 1990～2200
+/// 之间或日期时间无效时为 0。
 pub(super) fn parse_compact_datetime(raw: &str) -> i64 {
     let raw = raw.trim();
     if !rx(r"^\d{8}(?:\d{4}(?:\d{2})?)?$").is_match(raw) {
