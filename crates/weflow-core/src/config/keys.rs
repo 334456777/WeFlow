@@ -215,12 +215,13 @@ pub const AI_MODEL_API_FORMAT: ApiFormat = ApiFormat {
     name: "ai_model_api_format",
 };
 
-/// `ai_model_api_max_tokens`: the most tokens of one answer. The default leaves room for a short answer and for the
-/// reasoning a model may do first, which counts against the same limit.
+/// `ai_model_api_max_tokens`: the most tokens of one answer, up to 2,000,000, far above what a model answers with. The
+/// default leaves room for a short answer and for the reasoning a model may do first, which counts against the same
+/// limit.
 pub const AI_MODEL_API_MAX_TOKENS: Count = Count {
     name: "ai_model_api_max_tokens",
     min: 1,
-    max: u32::MAX as i64,
+    max: 2_000_000,
     default: 4096,
 };
 
@@ -522,6 +523,18 @@ mod tests {
             .set_key_from_text(None, AI_MODEL_API_MAX_TOKENS.name, "512")
             .unwrap();
         assert_eq!(store.setting(None, &AI_MODEL_API_MAX_TOKENS), 512);
+        store
+            .set_key_from_text(None, AI_MODEL_API_MAX_TOKENS.name, "2000000")
+            .unwrap();
+        assert_eq!(store.setting(None, &AI_MODEL_API_MAX_TOKENS), 2_000_000);
+        for refused in ["0", "2000001", "abc"] {
+            assert!(
+                store
+                    .set_key_from_text(None, AI_MODEL_API_MAX_TOKENS.name, refused)
+                    .is_err(),
+                "{refused}"
+            );
+        }
     }
 
     /// A listen address is an IP address, an IPv6 one with or without brackets, or a host name.

@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 
 use super::session_kind::{is_private_session, session_kind, SessionKind};
 use super::*;
+use crate::config::keys;
 use crate::contract::{
     InsightClearPlan, InsightCleared, InsightMarked, InsightRecords, InsightReply,
     InsightTodayStat, ModelList, ModelProbe, Session,
@@ -19,13 +20,6 @@ use crate::locale::tr;
 use crate::model_api::{ModelApi, Prompt};
 use crate::num::i64_f64;
 use crate::sync::MutexExt;
-
-/// The most tokens of one answer when `ai_model_api_max_tokens` is not set: room for a short answer and for the
-/// reasoning a model may do first, which counts against the same limit.
-const DEFAULT_MAX_TOKENS: u64 = 4096;
-
-/// The largest `ai_model_api_max_tokens` taken; a larger one is cut to it.
-const LARGEST_MAX_TOKENS: u64 = 2_000_000;
 
 /// How long one request of `insight test` and `insight models` may take.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -45,22 +39,6 @@ pub struct InsightState {
     /// its messages after then, not for those it had when the engine started (#1140).
     activity_since: Option<i64>,
     session_cache: Option<(Vec<Session>, Instant)>,
-}
-
-/// `ai_model_api_max_tokens` as a number of tokens: a number or a numeric text, floored and kept between 1 and
-/// [`LARGEST_MAX_TOKENS`]; [`DEFAULT_MAX_TOKENS`] when it is not set or not a number.
-fn max_tokens_of(value: &Value) -> u64 {
-    let n = match value {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.trim().parse::<f64>().ok(),
-        _ => None,
-    };
-    match n {
-        Some(n) if n.is_finite() => crate::num::saturating_i64(n.floor())
-            .clamp(1, i64::try_from(LARGEST_MAX_TOKENS).unwrap_or(i64::MAX))
-            .unsigned_abs(),
-        _ => DEFAULT_MAX_TOKENS,
-    }
 }
 
 /// Why `api` cannot be asked yet, in the words of the settings: a model is needed, and a key unless the base URL
@@ -141,15 +119,10 @@ fn start_of_day() -> i64 {
         .unwrap_or(0)
 }
 
-/// The time between two silence scans for the setting `hours`: 4 hours when it is not a number above 0, and at
-/// least 0.1 hours. `config set` takes 0.1 to 168 (#1149); a file written by hand may hold anything else.
-fn scan_interval(hours: &Value) -> Duration {
-    const DEFAULT: Duration = Duration::from_secs(4 * 3600);
-    let hours = hours
-        .as_f64()
-        .filter(|h| *h > 0.0)
-        .map_or(4.0, |h| h.max(0.1));
-    Duration::try_from_secs_f64(hours * 3600.0).unwrap_or(DEFAULT)
+/// The time between two silence scans for `hours` of `ai_insight_scan_interval_hours` as it reads, which is within its
+/// bounds ([`keys::AI_INSIGHT_SCAN_INTERVAL_HOURS`]).
+fn scan_interval(hours: f64) -> Duration {
+    Duration::from_secs_f64(hours * 3600.0)
 }
 
 /// Whether the silence scan and `insight trigger` without a conversation may pick `id` themselves: a chat with
@@ -186,58 +159,52 @@ impl ServiceHub {
         let c = self.insight_cfg();
         let p = &self.profile_name;
         ModelApi {
-            format: cfg_str(&c, p, "ai_model_api_format")
-                .parse()
-                .unwrap_or_default(),
+            format: c.setting(Some(p), &keys::AI_MODEL_API_FORMAT),
             base_url: cfg_str(&c, p, "ai_model_api_base_url"),
             key: cfg_str(&c, p, "ai_model_api_key"),
             model: cfg_str(&c, p, "ai_model_api_model"),
-            max_tokens: max_tokens_of(&c.get_key(Some(p), "ai_model_api_max_tokens")),
+            max_tokens: c
+                .setting(Some(p), &keys::AI_MODEL_API_MAX_TOKENS)
+                .unsigned_abs(),
         }
     }
 
     /// Whether the profile turned the AI insights on (`ai_insight_enabled`).
     pub fn insight_enabled(&self) -> bool {
         self.insight_cfg()
-            .get_key(Some(&self.profile_name), "ai_insight_enabled")
-            == Value::Bool(true)
+            .setting(Some(&self.profile_name), &keys::AI_INSIGHT_ENABLED)
     }
 
-    /// Whether `serve --insight` prints the insights it writes (`ai_insight_notification_enabled`, on unless it is
-    /// `false`), read from the config file each time like the other insight settings, so a change made while `serve`
-    /// runs counts from its next round.
+    /// Whether `serve --insight` prints the insights it writes (`ai_insight_notification_enabled`), read from the
+    /// config file each time like the other insight settings, so a change made while `serve` runs counts from its next
+    /// round.
     pub fn insight_notifies(&self) -> bool {
-        self.insight_cfg()
-            .get_key(Some(&self.profile_name), "ai_insight_notification_enabled")
-            != Value::Bool(false)
-    }
-
-    /// The time between two silence scans of `serve --insight` (`ai_insight_scan_interval_hours`, 4 hours unless it
-    /// is a number above 0, and at least 0.1 hours), read from the config file each time.
-    pub fn insight_scan_interval(&self) -> Duration {
-        scan_interval(
-            &self
-                .insight_cfg()
-                .get_key(Some(&self.profile_name), "ai_insight_scan_interval_hours"),
+        self.insight_cfg().setting(
+            Some(&self.profile_name),
+            &keys::AI_INSIGHT_NOTIFICATION_ENABLED,
         )
     }
 
-    /// Whether the recent messages go to the model with the question (`ai_insight_allow_context`, off by default).
+    /// The time between two silence scans of `serve --insight` (`ai_insight_scan_interval_hours`), read from the
+    /// config file each time.
+    pub fn insight_scan_interval(&self) -> Duration {
+        scan_interval(self.insight_cfg().setting(
+            Some(&self.profile_name),
+            &keys::AI_INSIGHT_SCAN_INTERVAL_HOURS,
+        ))
+    }
+
+    /// Whether the recent messages go to the model with the question (`ai_insight_allow_context`).
     fn insight_sends_chat(&self) -> bool {
         self.insight_cfg()
-            .get_key(Some(&self.profile_name), "ai_insight_allow_context")
-            == Value::Bool(true)
+            .setting(Some(&self.profile_name), &keys::AI_INSIGHT_ALLOW_CONTEXT)
     }
 
     fn insight_filter(&self) -> (String, Vec<String>) {
         let c = self.insight_cfg();
-        let mode = cfg_str(&c, &self.profile_name, "ai_insight_filter_mode").to_lowercase();
         (
-            if mode == "blacklist" {
-                "blacklist".into()
-            } else {
-                "whitelist".into()
-            },
+            c.setting(Some(&self.profile_name), &keys::AI_INSIGHT_FILTER_MODE)
+                .to_string(),
             ins::normalize_session_id_list(
                 &c.get_key(Some(&self.profile_name), "ai_insight_filter_list"),
             ),
@@ -418,7 +385,7 @@ impl ServiceHub {
     pub async fn insight_footprint_summary(&self, params: &Value) -> AppResult<InsightReply> {
         let c = self.insight_cfg();
         let p = &self.profile_name;
-        if c.get_key(Some(p), "ai_footprint_enabled") != Value::Bool(true) {
+        if !c.setting(Some(p), &keys::AI_FOOTPRINT_ENABLED) {
             return Err(AppError::runtime(tr(
                 "Please turn on \"AI Footprint summary\" in Settings first",
                 "请先在设置中开启「AI 足迹总结」",
@@ -636,7 +603,7 @@ impl ServiceHub {
     async fn insight_moments_section(&self, session_id: &str) -> String {
         let c = self.insight_cfg();
         let p = &self.profile_name;
-        if c.get_key(Some(p), "ai_insight_allow_moments_context") != Value::Bool(true) {
+        if !c.setting(Some(p), &keys::AI_INSIGHT_ALLOW_MOMENTS_CONTEXT) {
             return String::new();
         }
         if c.get_key(Some(p), "ai_insight_moments_bindings")
@@ -647,15 +614,7 @@ impl ServiceHub {
         {
             return String::new();
         }
-        let raw = c
-            .get_key(Some(p), "ai_insight_moments_context_count")
-            .as_f64()
-            .unwrap_or(5.0);
-        let count = if raw.floor() >= 1.0 {
-            crate::num::saturating_i64(raw.floor()).clamp(1, 20)
-        } else {
-            5
-        };
+        let count = c.setting(Some(p), &keys::AI_INSIGHT_MOMENTS_CONTEXT_COUNT);
         let Ok(posts) = self.sns_timeline_query(&SnsTimelineQuery {
             limit: crate::num::saturating_i32(count),
             offset: 0,
@@ -729,7 +688,7 @@ impl ServiceHub {
     async fn insight_social_section(&self, session_id: &str) -> String {
         let c = self.insight_cfg();
         let p = &self.profile_name;
-        if c.get_key(Some(p), "ai_insight_allow_social_context") != Value::Bool(true) {
+        if !c.setting(Some(p), &keys::AI_INSIGHT_ALLOW_SOCIAL_CONTEXT) {
             return String::new();
         }
         let cookie = cfg_str(&c, p, "ai_insight_weibo_cookie");
@@ -744,15 +703,7 @@ impl ServiceHub {
         if uid.is_empty() {
             return String::new();
         }
-        let raw = c
-            .get_key(Some(p), "ai_insight_social_context_count")
-            .as_f64()
-            .unwrap_or(3.0);
-        let count = if raw.floor() >= 1.0 {
-            crate::num::saturating_i64(raw.floor()).clamp(1, 5)
-        } else {
-            3
-        };
+        let count = c.setting(Some(p), &keys::AI_INSIGHT_SOCIAL_CONTEXT_COUNT);
         let Ok(posts) = crate::weibo::fetch_recent_posts(&uid, &cookie, count).await else {
             return String::new();
         };
@@ -811,16 +762,9 @@ impl ServiceHub {
         let c = self.insight_cfg();
         let p = &self.profile_name;
         let allow_context = self.insight_sends_chat();
-        let ctx_raw = c
-            .get_key(Some(p), "ai_insight_context_count")
-            .as_f64()
-            .unwrap_or(0.0);
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "a message count from settings, at least 1; `as` saturates"
-        )]
-        let context_count = if ctx_raw >= 1.0 { ctx_raw as usize } else { 40 };
+        // 1 to 1000, which a `usize` holds
+        let context_count =
+            usize::try_from(c.setting(Some(p), &keys::AI_INSIGHT_CONTEXT_COUNT)).unwrap_or(1);
         let name = self.insight_display_name(session_id, display_name).await;
         let avatar = self
             .chat_contact_avatar(session_id)
@@ -906,7 +850,7 @@ impl ServiceHub {
         let record = self
             .record_store_add(session_id, &name, avatar, reason.as_str(), &insight, log)
             .map_err(AppError::into_message)?;
-        if c.get_key(Some(p), "ai_insight_telegram_enabled") == Value::Bool(true) {
+        if c.setting(Some(p), &keys::AI_INSIGHT_TELEGRAM_ENABLED) {
             let token = cfg_str(&c, p, "ai_insight_telegram_token");
             let chat_ids = cfg_str(&c, p, "ai_insight_telegram_chat_ids");
             if !token.is_empty() && !chat_ids.is_empty() {
@@ -1056,14 +1000,8 @@ impl ServiceHub {
             return 0;
         }
         let c = self.insight_cfg();
-        let days_raw = c
-            .get_key(Some(&self.profile_name), "ai_insight_silence_days")
-            .as_f64()
-            .unwrap_or(0.0);
-        // `config set` takes 1 to 365 (#1149); 0 or less in a file written by hand would make every conversation
-        // silent
-        let days = if days_raw > 0.0 { days_raw } else { 3.0 };
-        let threshold_ms = days * 86_400_000.0;
+        let days = c.setting(Some(&self.profile_name), &keys::AI_INSIGHT_SILENCE_DAYS);
+        let threshold_ms = i64_f64(days) * 86_400_000.0;
         let now = i64_f64(ins::now_millis());
         let sessions = self.insight_sessions(true);
         let records = self.record_store();
@@ -1121,11 +1059,8 @@ impl ServiceHub {
             return;
         }
         let c = self.insight_cfg();
-        let cooldown_min = c
-            .get_key(Some(&self.profile_name), "ai_insight_cooldown_minutes")
-            .as_f64()
-            .unwrap_or(120.0);
-        let cooldown_ms = crate::num::saturating_i64(cooldown_min * 60_000.0);
+        let cooldown_ms =
+            c.setting(Some(&self.profile_name), &keys::AI_INSIGHT_COOLDOWN_MINUTES) * 60_000;
         let now = ins::now_millis();
         let since = *self
             .insight_state
@@ -1263,16 +1198,6 @@ mod tests {
     }
 
     #[test]
-    fn max_tokens_are_read_and_clamped() {
-        assert_eq!(max_tokens_of(&json!(0)), 1);
-        assert_eq!(max_tokens_of(&json!("abc")), DEFAULT_MAX_TOKENS);
-        assert_eq!(max_tokens_of(&Value::Null), DEFAULT_MAX_TOKENS);
-        assert_eq!(max_tokens_of(&json!(9_999_999_999i64)), LARGEST_MAX_TOKENS);
-        assert_eq!(max_tokens_of(&json!(512.9)), 512);
-        assert_eq!(max_tokens_of(&json!(" 300 ")), 300);
-    }
-
-    #[test]
     fn a_key_or_an_own_service_and_a_model_are_needed() {
         let api = |base: &str, key: &str, model: &str| ModelApi {
             base_url: base.into(),
@@ -1287,22 +1212,26 @@ mod tests {
         assert!(model_api_missing(&api("http://127.0.0.1:11434/v1", "", "m")).is_none());
     }
 
-    /// The scan interval of a file written by hand: a number above 0, at least 0.1 hours; anything else, or a number
-    /// too large for a time, is the default 4 hours (#1149).
+    /// The scan interval is the hours set; a file written by hand with what `config set` does not take (0, too many
+    /// hours, a number too large for a time) scans every 4 hours (#1149, #1265).
     #[test]
-    fn the_scan_interval_is_a_number_above_0() {
+    fn the_scan_interval_is_the_hours_set() {
+        use crate::config::keys::Setting;
         let hours = |h: f64| Duration::from_secs_f64(h * 3600.0);
         for (set, interval) in [
             (json!(1), hours(1.0)),
             (json!(0.5), hours(0.5)),
-            (json!(0.01), hours(0.1)),
+            (json!("2"), hours(2.0)),
+            (json!(168), hours(168.0)),
+            (json!(0.01), hours(4.0)),
             (json!(0), hours(4.0)),
             (json!(-1), hours(4.0)),
-            (json!("2"), hours(4.0)),
+            (json!(169), hours(4.0)),
             (Value::Null, hours(4.0)),
             (json!(1e300), hours(4.0)),
         ] {
-            assert_eq!(scan_interval(&set), interval, "{set}");
+            let read = keys::AI_INSIGHT_SCAN_INTERVAL_HOURS.read(&set);
+            assert_eq!(scan_interval(read), interval, "{set}");
         }
     }
 

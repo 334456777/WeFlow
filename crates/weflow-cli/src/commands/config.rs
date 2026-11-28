@@ -63,9 +63,9 @@ pub(crate) fn apply_progress_settings(
     config: &ConfigStore,
     progress: weflow_core::output::ProgressMode,
 ) {
-    // `ConfigStore::load` has given both settings the type `set_key` keeps them in
+    // `ConfigStore::load` has given `progress_delay_seconds` the type `set_key` keeps it in
     if progress == weflow_core::output::ProgressMode::Auto
-        && config.get_key(None, "no_progress") == Value::Bool(true)
+        && config.setting(None, &weflow_core::config::keys::NO_PROGRESS)
     {
         weflow_core::output::set_progress_mode(weflow_core::output::ProgressMode::Off);
     }

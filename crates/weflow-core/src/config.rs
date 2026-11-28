@@ -1534,7 +1534,9 @@ mod tests {
     fn numeric_keys_refuse_out_of_range_values() {
         let mut store = ConfigStore::default();
         for (key, bad) in [
+            ("ai_model_api_max_tokens", json!(2_000_001)),
             ("ai_model_api_max_tokens", json!(4294967296_i64)),
+            ("ai_model_api_max_tokens", json!(0)),
             ("ai_model_api_max_tokens", json!(-1)),
             ("image_xor_key", json!(256)),
             ("image_xor_key", json!("-1")),
@@ -1551,7 +1553,7 @@ mod tests {
             );
         }
         for (key, good) in [
-            ("ai_model_api_max_tokens", 4294967295_i64),
+            ("ai_model_api_max_tokens", 2_000_000_i64),
             ("image_xor_key", 0),
             ("image_xor_key", 255),
         ] {
