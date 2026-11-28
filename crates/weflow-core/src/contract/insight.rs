@@ -1,311 +1,315 @@
-//! The footprint and the AI insights.
+//! 足迹和 AI 见解。
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// My footprint over a range of days (`insight footprint`).
+/// 账号所有者在一段日期内的足迹（`insight footprint`）。
 ///
-/// It says who I talked with and replied to, and where I was @-mentioned. Its keys are the native layer's, in
-/// `snake_case`. Times are Unix seconds, 0 where there is none.
+/// 说明和谁聊过、回复过谁、在哪里被 @。键沿用只读数据库层的写法，为 `snake_case`。时间为 Unix 秒，没有时为 0。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Footprint {
-    /// The counts over the range.
+    /// 整个范围内的计数。
     pub summary: FootprintSummary,
-    /// The private chats with a message in the range, the latest first.
+    /// 范围内有消息的私聊，最近的在前。
     pub private_sessions: Vec<FootprintSession>,
-    /// The stretches of each private chat, in time order: a new one begins after a long pause.
+    /// 各私聊的分段，按开始的时间排列：静默超过 1 小时后开始新的一段。
     pub private_segments: Vec<FootprintSegment>,
-    /// The group messages that @-mention me, the latest first.
+    /// 群里 @ 了账号所有者的消息，最新的在前；`@所有人` 也算。
     pub mentions: Vec<FootprintMention>,
-    /// The groups of those, the one with the most first.
+    /// 这些消息所在的群，@ 得多的在前。
     pub mention_groups: Vec<MentionGroup>,
-    /// How it was read.
+    /// 读取的情况。
     pub diagnostics: FootprintDiagnostics,
 }
 
 impl Footprint {
-    /// The native layer's answer, read into the contract's types: a field they do not know fails here rather than
-    /// leave the answer unseen.
+    /// 把只读数据库层的回答读进契约类型：有契约类型不认识的字段时在这里失败，不会把没有描述的内容传出去。
+    ///
+    /// # Errors
+    ///
+    /// 回答不符合契约类型（多出或缺少字段、类型不对）时返回运行时错误。
     pub fn of(value: serde_json::Value) -> crate::error::AppResult<Self> {
         serde_json::from_value(value)
             .map_err(|err| crate::error::AppError::runtime(format!("the footprint: {err}")))
     }
 }
 
-/// The counts of the footprint.
+/// 足迹的计数。
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintSummary {
-    /// The people who wrote to me.
+    /// 在私聊中给账号所有者发过消息的人数。
     pub private_inbound_people: u64,
-    /// Those of them I answered.
+    /// 其中账号所有者也发过消息的人数。
     pub private_replied_people: u64,
-    /// The people I wrote to.
+    /// 账号所有者在私聊中发过消息的人数。
     pub private_outbound_people: u64,
-    /// Replied over inbound, from 0 to 1.
+    /// `private_replied_people` 除以 `private_inbound_people`，0 到 1；没有人发来消息时为 0。
     pub private_reply_rate: f64,
-    /// The mentions listed.
+    /// 列出的 @ 的条数。
     pub mention_count: u64,
-    /// The groups of those.
+    /// 这些 @ 所在的群数。
     pub mention_group_count: u64,
 }
 
-/// A private chat of the footprint.
+/// 足迹中的一个私聊。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintSession {
-    /// The other party's wxid.
+    /// 对方的 wxid。
     pub session_id: String,
-    /// The messages they sent in the range.
+    /// 范围内对方发的消息数。
     pub incoming_count: i64,
-    /// The messages I sent in the range.
+    /// 范围内账号所有者发的消息数。
     pub outgoing_count: i64,
-    /// Whether both of us wrote.
+    /// 双方是否都发过消息。
     pub replied: bool,
-    /// The time of their first message.
+    /// 对方第一条消息的时间。
     pub first_incoming_ts: i64,
-    /// The time of my first message after it.
+    /// 在那之后账号所有者第一条消息的时间。
     pub first_reply_ts: i64,
-    /// The time of the last message.
+    /// 最后一条消息的时间。
     pub latest_ts: i64,
-    /// The message to open the chat at, the last one, by its local id and time.
+    /// 打开聊天时定位到的消息（最后一条）的本地 ID。
     pub anchor_local_id: i64,
-    /// The time of that message.
+    /// 那条消息的时间，与 `latest_ts` 相同。
     pub anchor_create_time: i64,
 }
 
-/// A stretch of a private chat.
+/// 私聊中的一段。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintSegment {
-    /// The other party's wxid.
+    /// 对方的 wxid。
     pub session_id: String,
-    /// Its place among the chat's stretches, from 1.
+    /// 这一段在这个私聊的各段中的序号，从 1 开始。
     pub segment_index: i64,
-    /// The time of its first message.
+    /// 第一条消息的时间。
     pub start_ts: i64,
-    /// The time of its last message.
+    /// 最后一条消息的时间。
     pub end_ts: i64,
-    /// From the first message to the last, in seconds.
+    /// 从第一条消息到最后一条的秒数。
     pub duration_sec: i64,
-    /// The messages they sent.
+    /// 对方发的消息数。
     pub incoming_count: i64,
-    /// The messages I sent.
+    /// 账号所有者发的消息数。
     pub outgoing_count: i64,
-    /// All its messages.
+    /// 这一段的全部消息数。
     pub message_count: i64,
-    /// Whether both of us wrote.
+    /// 双方是否都发过消息。
     pub replied: bool,
-    /// The time of their first message.
+    /// 对方第一条消息的时间。
     pub first_incoming_ts: i64,
-    /// The time of my first message after it.
+    /// 在那之后账号所有者第一条消息的时间。
     pub first_reply_ts: i64,
-    /// As `end_ts`.
+    /// 与 `end_ts` 相同。
     pub latest_ts: i64,
-    /// The message to open the chat at, the first one, by its local id and time.
+    /// 打开聊天时定位到的消息（这一段的第一条）的本地 ID。
     pub anchor_local_id: i64,
-    /// As `start_ts`.
+    /// 与 `start_ts` 相同。
     pub anchor_create_time: i64,
 }
 
-/// A group message that @-mentions me.
+/// 群里 @ 了账号所有者的一条消息。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintMention {
-    /// The group's id, `…@chatroom`.
+    /// 群的 ID，`…@chatroom`。
     pub session_id: String,
-    /// The message's id in its conversation's table.
+    /// 消息的本地 ID。
     pub local_id: i64,
-    /// When it was sent.
+    /// 发送时间。
     pub create_time: i64,
-    /// Who sent it; empty when the row does not say.
+    /// 发送者；消息行中没有时为空。
     pub sender_username: String,
-    /// Its text as WeChat keeps it.
+    /// 微信保存的消息文字。
     pub message_content: String,
-    /// The message's `source` XML, which lists who it mentions.
+    /// 消息的 `source` XML，其中列出了 @ 的人。
     pub source: String,
 }
 
-/// A group I was @-mentioned in.
+/// 账号所有者被 @ 过的一个群。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MentionGroup {
-    /// The group's id, `…@chatroom`.
+    /// 群的 ID，`…@chatroom`。
     pub session_id: String,
-    /// The mentions listed in it.
+    /// 其中列出的 @ 的条数。
     pub count: i64,
-    /// The time of the last of them.
+    /// 其中最后一条的时间。
     pub latest_ts: i64,
 }
 
-/// How the footprint was read.
+/// 读取足迹的情况。
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FootprintDiagnostics {
-    /// Whether a list was cut at its limit.
+    /// 是否有列表因为达到上限而截断，即下面两项之一为 `true`。
     pub truncated: bool,
-    /// Whether the private chats were cut at their limit.
+    /// 私聊是否因为达到上限而截断；`insight footprint` 不设上限。
     pub private_truncated: bool,
-    /// Whether the mentions were cut at their limit.
+    /// @ 是否因为达到上限而截断；`insight footprint` 不设上限。
     pub mention_truncated: bool,
-    /// The message databases of the account.
+    /// 账号的消息库个数。
     pub scanned_dbs: u64,
-    /// How long the reading took.
+    /// 读取所用的毫秒数。
     pub elapsed_ms: u64,
-    /// The private chats looked through.
+    /// 查看过的私聊数。
     pub private_session_count: u64,
-    /// The groups looked through.
+    /// 查看过的群聊数。
     pub group_session_count: u64,
 }
 
-/// One insight record (`insight get`); a record not found is a failure of the command.
+/// 一条见解记录（`insight get`）；找不到记录时命令失败。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightLookup {
-    /// The record.
+    /// 这条记录。
     pub record: crate::insight::InsightRecord,
 }
 
-/// An insight record as lists and events name it, without its log.
+/// 列表和事件中的一条见解记录，不含它的日志。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightSummary {
-    /// The record's id, as `insight get` takes it.
+    /// 记录的 ID，即 `insight get` 接受的写法。
     pub id: String,
-    /// Unix milliseconds.
+    /// 写下记录的时间，Unix 毫秒。
     pub created_at: i64,
-    /// The conversation it is about.
+    /// 记录所说的会话。
     pub session_id: String,
-    /// The conversation's name.
+    /// 写下记录时会话的名字。
     pub display_name: String,
-    /// The address of the conversation's avatar; left out when there is none.
+    /// 会话头像的地址；没有时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
-    /// Why it was written: `activity`, `silence`, `test`, …
+    /// 写下它的原因：`activity`、`silence`、`test` 等。
     pub trigger_reason: String,
-    /// What the model wrote.
+    /// 模型写的见解。
     pub insight: String,
-    /// Whether it was marked read.
+    /// 是否已标为已读。
     pub read: bool,
 }
 
-/// A page of the account's insight records (`insight records`), the newest first, with counts over all of them.
+/// 账号见解记录中的一页（`insight records`），最新的在前，并带上全部记录的计数。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRecords {
-    /// The records of the page.
+    /// 这一页的记录。
     pub records: Vec<InsightSummary>,
-    /// The records the filters match.
+    /// 符合筛选条件的记录数。
     pub total: usize,
-    /// The account's records written today.
+    /// 账号今天写下的记录数，不论筛选条件。
     pub today_count: usize,
-    /// The account's records not read yet.
+    /// 账号还没读的记录数，不论筛选条件。
     pub unread_count: usize,
-    /// Everyone with a record, the most records first.
+    /// 所有有记录的会话，记录多的在前，不论筛选条件。
     pub contacts: Vec<InsightContact>,
 }
 
-/// A conversation with insight records.
+/// 一个有见解记录的会话。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightContact {
-    /// The conversation's username.
+    /// 会话的用户名。
     pub session_id: String,
-    /// The conversation's name.
+    /// 会话的名字，取自它的一条记录。
     pub display_name: String,
-    /// Its records.
+    /// 它的记录数。
     pub count: usize,
-    /// The address of its avatar; left out when there is none.
+    /// 头像的地址；没有时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
 }
 
-/// How often the engine wrote about a conversation today (`insight today-stats`).
+/// 见解引擎今天为一个会话写了几条见解（`insight today-stats`）。
+///
+/// 计数只保存在运行引擎的进程的内存中：`serve --insight` 由服务进程回答，其他情况下为空。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightTodayStat {
-    /// The conversation's username.
+    /// 会话的用户名。
     pub session_id: String,
-    /// The records written about it today.
+    /// 今天为它写下的记录数。
     pub count: usize,
-    /// When, `HH:MM` local time.
+    /// 写下的时间，服务端所在时区的 `HH:MM`。
     pub times: Vec<String>,
 }
 
-/// What `insight mark-read` answers; a record not found is a failure of the command.
+/// `insight mark-read` 的回答；找不到记录时命令失败。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightMarked {
-    /// The record marked read.
+    /// 标为已读的记录。
     pub id: String,
 }
 
-/// What `insight clear` answers.
+/// `insight clear` 的回答。
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct InsightCleared {
-    /// The records removed.
+    /// 删除的记录数。
     pub removed: usize,
 }
 
-/// What `insight clear` would remove (`--dry-run`), for a page that asks first.
+/// `insight clear` 将要删除多少（`--dry-run`），供页面在删除前询问。
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightClearPlan {
-    /// Always true.
+    /// 总是 `true`。
     pub dry_run: bool,
-    /// The records it would remove.
+    /// 将要删除的记录数。
     pub records: usize,
 }
 
-/// What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the
-/// command fails with what happened instead.
+/// `insight test`、`trigger` 和 `footprint-summary` 的回答；没有设置 AI 或 AI 没有回答时，命令改为失败，
+/// 报错中写明发生了什么。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightReply {
-    /// What happened, in the server's language.
+    /// 发生了什么，使用服务端的语言。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
-    /// The record written (`trigger`).
+    /// 写下的记录（`trigger`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record: Option<InsightSummary>,
-    /// The summary written (`footprint-summary`).
+    /// 写出的总结（`footprint-summary`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub insight: Option<String>,
-    /// Where the question went and what came back (`test`).
+    /// 问题发到了哪里、得到了什么回答（`test`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub probe: Option<ModelProbe>,
 }
 
-/// What `insight test` asked of the model API and what it answered.
+/// `insight test` 向模型接口问了什么、它回答了什么。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelProbe {
-    /// The API format asked in.
+    /// 请求所用的接口格式。
     pub format: crate::model_api::ModelApiFormat,
-    /// The address asked.
+    /// 请求的地址。
     pub endpoint: String,
-    /// The model that answered, as the service names it, else the one asked for.
+    /// 回答的模型，按服务给出的名字；服务没有给出时为请求的模型。
     pub model: String,
-    /// The answer, trimmed.
+    /// 回答，去掉了首尾空白。
     pub reply: String,
-    /// From the request to the answer, retries included.
+    /// 从请求到回答的毫秒数，包括重试。
     pub duration_ms: u64,
-    /// The requests tried again after a transient failure.
+    /// 暂时失败后重试的次数。
     pub retries: u32,
 }
 
-/// The models the model API offers (`insight models`), as the service lists them.
+/// 模型接口提供的模型（`insight models`），按服务列出的样子。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelList {
-    /// The API format asked in.
+    /// 请求所用的接口格式。
     pub format: crate::model_api::ModelApiFormat,
-    /// The address asked.
+    /// 请求的地址，即模型列表的地址。
     pub endpoint: String,
-    /// The models, in the service's order.
+    /// 这些模型，按服务给出的顺序。
     pub models: Vec<crate::model_api::ModelInfo>,
 }
 
 impl InsightReply {
-    /// An answer that says `message`.
+    /// 只带 `message` 的回答。
     pub fn done(message: impl Into<String>) -> Self {
         Self {
             message: Some(message.into()),
@@ -316,11 +320,11 @@ impl InsightReply {
     }
 }
 
-/// What `insight scan` answers: the insights the silence scan wrote.
+/// `insight scan` 的回答：静默扫描写下的见解。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightScan {
-    /// How many it wrote.
+    /// 写下的条数。
     pub generated: usize,
-    /// The records written.
+    /// 写下的记录。
     pub records: Vec<InsightSummary>,
 }

@@ -1,4 +1,4 @@
-//! Group chats and the analytics of the private chats: members, rankings, hours, kinds of messages.
+//! 群聊，以及私聊的统计：成员、排行、时段和消息的种类。
 
 use indexmap::IndexMap;
 use schemars::JsonSchema;
@@ -6,268 +6,266 @@ use serde::{Deserialize, Serialize};
 
 use crate::chat_msg::ChatMessage;
 
-/// A group chat of `group list`, the largest first.
+/// `group list` 中的一个群聊，成员多的在前。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupChat {
-    /// The group's id, `…@chatroom`.
+    /// 群的 ID，`…@chatroom`。
     pub username: String,
-    /// Its name, else its id.
+    /// 群的备注，没有时依次用群名和群的 ID。
     pub display_name: String,
-    /// How many members it has.
+    /// 成员数。
     pub member_count: i64,
-    /// The address of its avatar; left out when it has none.
+    /// 群头像的地址；没有时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
 }
 
-/// The members of a group (`group members`): the owner first,
-/// then friends, then by how many messages they sent.
+/// 群的成员（`group members`）：群主在前，其次是好友，再按发的消息数从多到少，最后按名字排列。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupMembers {
-    /// The group's id, `…@chatroom`.
+    /// 群的 ID，`…@chatroom`。
     pub chatroom_id: String,
-    /// How many members there are.
+    /// 成员数。
     pub count: usize,
-    /// When the panel was built, in Unix milliseconds.
+    /// 生成成员面板的时间，Unix 毫秒。
     pub updated_at: i64,
-    /// The members.
+    /// 这些成员。
     pub members: Vec<GroupMember>,
 }
 
-/// A member of a group's members panel.
+/// 群成员面板中的一个成员。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupMember {
-    /// The member's wxid.
+    /// 成员的 wxid。
     pub username: String,
-    /// Their name as WeChat shows it in the group.
+    /// 成员在账号中的显示名：备注，没有时依次用昵称、微信号和用户名本身（群昵称见 `groupNickname`）。
     pub display_name: String,
-    /// The nickname of their contact; empty when they are not a contact.
+    /// 联系人中的昵称；不在联系人中时为空。
     pub nickname: String,
-    /// The WeChat ID of their contact; empty when they are not a contact or chose none.
+    /// 联系人中的微信号；不在联系人中或没有设置时为空。
     pub alias: String,
-    /// My remark for them; empty when they are not a contact or have none.
+    /// 账号所有者给对方的备注；不在联系人中或没有备注时为空。
     pub remark: String,
-    /// The name they gave themselves in this group; empty when none.
+    /// 对方在这个群里给自己起的群昵称；没有时为空。
     pub group_nickname: String,
-    /// The address of their avatar; left out when there is none.
+    /// 头像的地址；没有时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
-    /// Whether they own the group.
+    /// 是否为群主。
     pub is_owner: bool,
-    /// Whether they are my friend.
+    /// 是否为账号所有者的好友。
     pub is_friend: bool,
-    /// How many messages they sent in the group; 0 unless `counts=true`.
+    /// 在群里发的消息数；不带 `counts=true` 时为 0。
     pub message_count: i64,
 }
 
-/// Who sent how many messages in a group (`group ranking`), the most first.
+/// 群里谁发了多少条消息（`group ranking`），多的在前。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupRank {
-    /// Who.
+    /// 成员。
     pub member: RankedMember,
-    /// How many messages they sent in the range asked for.
+    /// 在请求的时间范围内发的消息数。
     pub message_count: i64,
 }
 
-/// A member of a ranking.
+/// 排行中的一个成员。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RankedMember {
-    /// The member's wxid.
+    /// 成员的 wxid。
     pub username: String,
-    /// Their name as WeChat shows it in the group.
+    /// 成员在账号中的显示名：备注，没有时依次用昵称、微信号和用户名本身。
     pub display_name: String,
-    /// The address of their avatar; left out when there is none.
+    /// 头像的地址；没有时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
 }
 
-/// How many messages a group has in each hour of the day (`group hours`).
+/// 群在一天中每个小时的消息数（`group hours`）。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupHours {
-    /// By the hour, `"0"` to `"23"`, in the server's time zone.
+    /// 按小时计数，键为 `"0"` 到 `"23"`，按服务端所在的时区。
     pub hourly_distribution: IndexMap<String, i64>,
 }
 
-/// How many messages of each kind a group has (`group media`), the most first.
+/// 群里各种消息的数量（`group media`），多的在前。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupMedia {
-    /// The kinds of message, the most first.
+    /// 各种消息，多的在前；没有消息的种类不列出。
     pub type_counts: Vec<MediaCount>,
-    /// All the messages counted.
+    /// 计入的全部消息数。
     pub total: i64,
 }
 
-/// One kind of message and how many there are.
+/// 一种消息及其数量。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct MediaCount {
-    /// WeChat's type of the message, as `localType`; -1 for all the others together.
+    /// 消息类型：文本 1、图片 3、语音 34、视频 43、表情 47、链接和文件 49；其余类型合在一起为 -1。
     #[serde(rename = "type")]
     pub kind: i64,
-    /// Its name in Chinese.
+    /// 种类的中文名，如「文本」「其他」。
     pub name: String,
-    /// How many messages of it there are.
+    /// 这种消息的数量。
     pub count: i64,
 }
 
-/// What one member of a group sent (`group member`).
+/// 群里一个成员发的消息（`group member`）。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberAnalytics {
-    /// The numbers of their messages.
+    /// 各类消息的数量。
     pub statistics: MemberStatistics,
-    /// By the hour, `"0"` to `"23"`, in the server's time zone.
+    /// 按小时计数，键为 `"0"` 到 `"23"`，按服务端所在的时区。
     pub time_distribution: IndexMap<String, i64>,
-    /// What they said most, the most first, up to 10.
+    /// 说得最多的话，多的在前，最多 10 条。
     pub common_phrases: Vec<PhraseCount>,
-    /// The WeChat emojis (`[微笑]` and the like) in their text, the most used first, up to 10.
+    /// 文字中的微信表情（`[微笑]` 之类），用得多的在前，最多 10 个。
     pub common_emojis: Vec<EmojiCount>,
 }
 
-/// The numbers of a member's messages.
+/// 一个成员各类消息的数量。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberStatistics {
-    /// All their messages.
+    /// 全部消息数。
     pub total_messages: i64,
-    /// Text, quotes included.
+    /// 文字消息数，包括引用。
     pub text_messages: i64,
-    /// Images.
+    /// 图片数。
     pub image_messages: i64,
-    /// Voice messages.
+    /// 语音消息数。
     pub voice_messages: i64,
-    /// Videos.
+    /// 视频数。
     pub video_messages: i64,
-    /// Stickers.
+    /// 表情数。
     pub emoji_messages: i64,
-    /// Every other kind.
+    /// 其他各种消息的数量。
     pub other_messages: i64,
-    /// The time of their first message; null when they sent none.
+    /// 第一条消息的时间；没有发过时为 `null`。
     pub first_message_time: Option<i64>,
-    /// The time of their last message; null when they sent none.
+    /// 最后一条消息的时间；没有发过时为 `null`。
     pub last_message_time: Option<i64>,
-    /// The days, in the server's time zone, with a message of theirs.
+    /// 发过消息的天数，按服务端所在的时区。
     pub active_days: usize,
-    /// By WeChat's type of the message, as `localType`.
+    /// 按消息类型（与 `localType` 相同）计数。
     pub message_type_counts: IndexMap<String, i64>,
 }
 
-/// A phrase and how often it was said.
+/// 一句话和它被说了几次。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PhraseCount {
-    /// A text message of at most 20 characters, counted whole.
+    /// 一条完整的文字消息（不超过 20 个字符），按完全相同计数。
     pub phrase: String,
-    /// How many times it was sent.
+    /// 发了几次。
     pub count: i64,
 }
 
-/// An emoji and how often it was sent.
+/// 一个表情和它被发了几次。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct EmojiCount {
-    /// The emoji as the text writes it, `[微笑]`.
+    /// 表情在文字中的写法，如 `[微笑]`。
     pub emoji: String,
-    /// How many times it was used.
+    /// 用了几次。
     pub count: i64,
 }
 
-/// A page of a member's messages in a group (`group member-messages`), newest first.
+/// 一个成员在群里的消息中的一页（`group member-messages`），从新到旧。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberMessages {
-    /// The messages of the page.
+    /// 这一页的消息。
     pub messages: Vec<ChatMessage>,
-    /// Whether there are messages past this page.
+    /// 这一页之后是否还有消息。
     pub has_more: bool,
-    /// Pass it as `cursor` for the next page.
+    /// 作为 `cursor` 传入就能读下一页。
     pub next_cursor: usize,
 }
 
-/// The private chats counted together (`analytics overall`), but for the people left out.
+/// 排除名单以外的全部私聊合在一起的统计（`analytics overall`）。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OverallStatistics {
-    /// All the messages.
+    /// 全部消息数。
     pub total_messages: i64,
-    /// Text, quotes included.
+    /// 文字消息数，包括引用。
     pub text_messages: i64,
-    /// Images.
+    /// 图片数。
     pub image_messages: i64,
-    /// Voice messages.
+    /// 语音消息数。
     pub voice_messages: i64,
-    /// Videos.
+    /// 视频数。
     pub video_messages: i64,
-    /// Stickers.
+    /// 表情数。
     pub emoji_messages: i64,
-    /// Every other kind.
+    /// 其他各种消息的数量。
     pub other_messages: i64,
-    /// The ones I sent.
+    /// 账号所有者发出的消息数。
     pub sent_messages: i64,
-    /// The ones I received.
+    /// 账号所有者收到的消息数。
     pub received_messages: i64,
-    /// The time of the first message; null without messages.
+    /// 第一条消息的时间；没有消息时为 `null`。
     pub first_message_time: Option<i64>,
-    /// The time of the last message; null without messages.
+    /// 最后一条消息的时间；没有消息时为 `null`。
     pub last_message_time: Option<i64>,
-    /// The days with a message.
+    /// 有消息的天数。
     pub active_days: i64,
-    /// By WeChat's type of the message, as `localType`.
+    /// 按消息类型（与 `localType` 相同）计数。
     pub message_type_counts: IndexMap<String, i64>,
 }
 
-/// A private chat of `analytics rankings`, the one with the most messages first.
+/// `analytics rankings` 中的一个私聊，消息最多的在前；不含排除名单中的人。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ContactRank {
-    /// The other party's wxid.
+    /// 对方的 wxid。
     pub username: String,
-    /// The remark, else the nickname, else the WeChat ID, else the username.
+    /// 备注，没有时依次用昵称、微信号和用户名本身。
     pub display_name: String,
-    /// The address of their avatar; left out when there is none.
+    /// 头像的地址；没有时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
-    /// The WeChat ID they chose, else the username when it is not a `wxid_…`; else empty.
+    /// 对方设置的微信号；没有时，用户名不以 `wxid_` 开头则为用户名，否则为空。
     pub wechat_id: String,
-    /// The messages of the chat in the range asked for.
+    /// 请求的时间范围内这个私聊的消息数。
     pub message_count: i64,
-    /// The ones I sent.
+    /// 其中账号所有者发出的消息数。
     pub sent_count: i64,
-    /// The ones I received.
+    /// 其中账号所有者收到的消息数。
     pub received_count: i64,
-    /// The time of the last message; null without messages.
+    /// 最后一条消息的时间；没有消息时为 `null`。
     pub last_message_time: Option<i64>,
 }
 
-/// When the private chats' messages were sent (`analytics time`), in the server's time zone.
+/// 排除名单以外的私聊的消息在什么时候发出（`analytics time`），按服务端所在的时区。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeDistribution {
-    /// By the hour, `"0"` to `"23"`.
+    /// 按小时计数，键为 `"0"` 到 `"23"`。
     pub hourly_distribution: IndexMap<String, i64>,
-    /// By the day of the week, `"1"` (Monday) to `"7"` (Sunday).
+    /// 按星期计数，键为 `"1"`（星期一）到 `"7"`（星期日）。
     pub weekday_distribution: IndexMap<String, i64>,
-    /// By the month, `YYYY-MM`.
+    /// 按月份计数，键为 `YYYY-MM`。
     pub monthly_distribution: IndexMap<String, i64>,
 }
 
-/// Someone who may be left out of the analytics (`analytics exclude-candidates`): the private chats, and those left
-/// out already.
+/// 可以从统计中排除的人（`analytics exclude-candidates`）：各个私聊的对方，以及已经排除的人。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExcludeCandidate {
-    /// The other party's wxid.
+    /// 对方的 wxid。
     pub username: String,
-    /// The remark, else the nickname, else the WeChat ID, else the username.
+    /// 备注，没有时依次用昵称、微信号和用户名本身。
     pub display_name: String,
-    /// The address of their avatar; left out when there is none.
+    /// 头像的地址；没有时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
-    /// As in a ranking.
+    /// 写法与 `analytics rankings` 的 `wechatId` 相同。
     pub wechat_id: String,
 }

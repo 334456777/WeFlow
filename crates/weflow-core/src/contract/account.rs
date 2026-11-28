@@ -1,225 +1,227 @@
-//! The account and its setup: profiles, where `weflow` keeps its files, WeChat's data directory and keys,
-//! backups and the configuration.
+//! 账号及其设置：配置的档案，微信的数据目录、账号和进程，密钥，备份，以及配置文件和语言。
 
 use std::path::PathBuf;
 
 use schemars::JsonSchema;
 use serde::Serialize;
 
-/// A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys.
+/// 配置中的一个档案（`config profiles`）：它的账号和设置到了哪一步，不含密钥。
+///
+/// 密钥只说明设置了没有，只有空白的值算作没有设置。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileSummary {
-    /// The profile's name, as `config set current_profile` takes it.
+    /// 档案的名字，即 `config set current_profile` 接受的写法。
     pub name: String,
-    /// Whether the commands read it.
+    /// 是否为当前档案（`current_profile`），命令读取的就是它。
     pub current: bool,
-    /// The account's wxid; null when it is not set.
+    /// 账号的 wxid（`wxid`）；没有设置时为 `null`。
     pub wxid: Option<String>,
-    /// The WeChat data directory.
+    /// 微信的数据目录（`db_path`）；没有设置时为 `null`。
     pub db_path: Option<String>,
-    /// Whether the database key is set.
+    /// 是否设置了数据库密钥。
     pub decrypt_key: bool,
-    /// Whether both image keys are set.
+    /// 两个图片密钥是否都已设置。
     pub image_keys: bool,
-    /// Whether the key of the AI model API is set.
+    /// 是否设置了 AI 模型接口的密钥。
     pub ai_key: bool,
-    /// Whether it can open the databases: the data directory and the database key are set.
+    /// 能否打开数据库，即数据目录和数据库密钥都已设置。
     pub complete: bool,
 }
 
-/// The default places of WeChat's data directory (`db detect`).
+/// 微信数据目录的默认位置（`db detect`）。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbCandidates {
-    /// The places WeChat keeps it by default on this system, whether they exist or not.
+    /// 本系统上微信默认存放数据目录的位置，不论是否存在。
     pub candidates: Vec<DbCandidate>,
 }
 
-/// A place WeChat's data directory may be.
+/// 微信数据目录可能在的一个位置。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbCandidate {
-    /// The directory, with the home directory expanded.
+    /// 目录，主目录已展开。
     pub path: PathBuf,
-    /// Whether it exists.
+    /// 是否存在。
     pub exists: bool,
 }
 
-/// The accounts in WeChat's data directory (`db wxid`).
+/// 微信数据目录中的账号（`db wxid`）。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbAccounts {
-    /// The account folders found in it.
+    /// 其中找到的账号目录。
     pub accounts: Vec<DbAccount>,
 }
 
-/// An account of WeChat's data directory.
+/// 微信数据目录中的一个账号。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbAccount {
-    /// As `config set wxid` takes it, without the suffix of its folder's name.
+    /// 写成 `config set wxid` 接受的形式，即去掉账号目录名的后缀。
     pub wxid: String,
-    /// Its folder.
+    /// 账号目录。
     pub path: PathBuf,
 }
 
-/// That the databases open with the configured key (`db test`); a failure is an error instead.
+/// 数据库能用配置的密钥打开（`db test`）；打不开时回答错误。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DbConnection {
-    /// The account's folder whose databases were opened.
+    /// 打开了其中数据库的账号目录。
     pub account_dir: PathBuf,
 }
 
-/// The accounts `db scan` found under a folder: those with a `db_storage` folder.
+/// `db scan` 在一个文件夹下找到的账号，即含 `db_storage` 文件夹的子文件夹。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbScan {
-    /// The folder scanned, with the home directory expanded.
+    /// 扫描的文件夹，主目录已展开。
     pub root: PathBuf,
-    /// Its subfolders that are account folders; empty when it cannot be read.
+    /// 其中是账号目录的子文件夹；文件夹读不了时为空。
     pub accounts: Vec<ScannedAccount>,
 }
 
-/// An account folder `db scan` found.
+/// `db scan` 找到的一个账号目录。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ScannedAccount {
-    /// The folder's name.
+    /// 文件夹的名字，没有去掉后缀。
     pub wxid: String,
-    /// The folder.
+    /// 文件夹。
     pub path: PathBuf,
 }
 
-/// The database key `key db` read from WeChat.
+/// `key db` 从微信读到的数据库密钥。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbKey {
-    /// Left out with `save`: it went to the profile instead.
+    /// 数据库密钥；带 `save` 时写进了档案，这里省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decrypt_key: Option<String>,
-    /// Always `wx_key`: WeChat hooked by the binary's own implementation.
+    /// 总是 `wx_key`，即用 weflow 自带的实现挂钩微信。
     pub method: String,
-    /// The WeChat process hooked (`wx_key`).
+    /// 挂钩的微信进程的 ID。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
-    /// With `save`: the profile keys written.
+    /// 带 `save` 时写入的档案键；不带时省略。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub saved: Vec<String>,
 }
 
-/// The image keys `key image` derived from the `kvcomm` cache and checked against the account's images.
+/// `key image` 从 `kvcomm` 缓存推导、并用账号的图片校验过的图片密钥。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ImageKeys {
-    /// The XOR key; left out with `save`, where it went to the profile instead.
+    /// XOR 密钥；带 `save` 时写进了档案，这里省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_xor_key: Option<u8>,
-    /// The AES key, 16 hex characters; left out with `save`, where it went to the profile instead.
+    /// AES 密钥，16 个十六进制字符；带 `save` 时写进了档案，这里省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_aes_key: Option<String>,
-    /// Both keys were checked: the AES key on an image header and the XOR key on a whole image.
+    /// 两个密钥是否都校验过：AES 密钥能把缩略图的文件头解密成图片，并且有一张缩略图用这对密钥解码成完整的 JPEG；
+    /// 为 `false` 时只校验了 AES 密钥。
     pub verified: bool,
-    /// Whether a thumbnail decoded as a whole JPEG with both keys; as `verified`.
+    /// 是否有一张缩略图用这对密钥解码成完整的 JPEG，与 `verified` 相同。
     pub xor_verified: bool,
-    /// How: `jpeg_decode_and_xor_tail` or `aes_header_only`.
+    /// 校验的方式：`jpeg_decode_and_xor_tail` 或 `aes_header_only`。
     pub verification: String,
-    /// The `kvcomm` files the keys came from.
+    /// 推导出密钥的 code 来自哪些 `kvcomm` 文件。
     pub sources: Vec<crate::image_keys::CandidateSource>,
-    /// What was read of the `kvcomm` folders.
+    /// 读取 `kvcomm` 文件夹的情况：能列出的文件夹数 `readable_directories`、候选 code 的个数 `candidate_codes`，
+    /// 以及读不了的路径 `errors`。
     pub collection: serde_json::Value,
-    /// What was read of the account's images.
+    /// 扫描账号图片的情况：查看的目录项数 `entries_scanned`、可用的缩略图数 `valid_templates` 等。
     pub scan: serde_json::Value,
-    /// With `save`: the profile keys written.
+    /// 带 `save` 时写入的档案键；不带时省略。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub saved: Vec<String>,
 }
 
-/// What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any.
+/// `key image-mem`（Linux x64 和 macOS）的回答：在微信的内存中找到的 AES 密钥。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ImageMemKey {
-    /// The 16-byte AES key as 32 hex characters; left out when nothing matched.
+    /// 16 字节的 AES 密钥，写成 32 个十六进制字符；没有找到，或带 `save` 写进了档案时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_aes_key: Option<String>,
-    /// `key image-mem` without `--ciphertext`: the XOR key a thumbnail of the account decodes with together with the
-    /// AES key; left out when no thumbnail has an XOR tail that verifies.
+    /// 不带 `--ciphertext` 时，账号的一张缩略图与 AES 密钥一起解码所用的 XOR 密钥；
+    /// 没有一张缩略图的 XOR 尾部通过校验，或带 `save` 写进了档案时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_xor_key: Option<u8>,
-    /// How the AES key was confirmed, when one was found: `jpeg_decode_and_xor_tail` (a thumbnail of the account
-    /// decodes as a whole JPEG with both keys), `sample_first_blocks` (the first blocks of two or more thumbnails
-    /// decrypt into image headers) or `first_block` (only the given ciphertext was checked).
+    /// 找到 AES 密钥时确认它的方式：`jpeg_decode_and_xor_tail`（账号的一张缩略图用这对密钥解码成完整的 JPEG）、
+    /// `sample_first_blocks`（两张以上缩略图的第一个块解密成图片文件头）或 `first_block`（只检查了给出的密文）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification: Option<String>,
-    /// The WeChat process whose memory was read.
+    /// 读取了内存的微信进程的 ID。
     pub pid: u32,
-    /// With `save`: the profile keys written.
+    /// 带 `save` 时写入的档案键；不带时省略。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub saved: Vec<String>,
 }
 
-/// What `key processes` (macOS) answers: the running WeChat clients, the main application first.
+/// `key processes`（macOS）的回答：正在运行的微信客户端，主程序在前。
 ///
-/// Helper, `WeChatAppEx` and crashpad processes are left out.
+/// 不含 helper、`WeChatAppEx` 和 crashpad 进程。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct WeChatProcesses {
-    /// The processes; empty when WeChat is not running.
+    /// 这些进程；微信没有运行时为空。
     pub processes: Vec<WeChatProcess>,
 }
 
-/// A running WeChat client.
+/// 一个正在运行的微信客户端。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct WeChatProcess {
-    /// The process id.
+    /// 进程 ID。
     pub pid: u32,
-    /// The process's name.
+    /// 进程名。
     pub name: String,
-    /// The executable.
+    /// 可执行文件的路径。
     pub path: PathBuf,
-    /// Whether it is the main client rather than a helper.
+    /// 是否为应用包的主程序（`…/Contents/MacOS/WeChat`）。
     pub main: bool,
 }
 
-/// The backup `backup create` wrote.
+/// `backup create` 写出的备份。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupCreated {
-    /// The backup file written: the `.zip` file given as `out`, or the `weflow-backup-YYYYMMDD-HHMMSS.zip` written into
-    /// the folder given.
+    /// 写出的备份文件：`out` 给出的 `.zip` 文件，或者写在 `out` 给出的文件夹中的
+    /// `weflow-backup-YYYYMMDD-HHMMSS.zip`。
     pub out: PathBuf,
-    /// The files in it.
+    /// 其中的文件数。
     pub entries: usize,
-    /// The account backed up.
+    /// 备份的账号，即账号目录的名字（带后缀）。
     pub wxid: String,
-    /// Unix seconds.
+    /// 创建备份的时间，Unix 秒。
     pub created_at: u64,
-    /// Files of the media and stickers that could not be read and are not in it; left out when there are none.
+    /// 读不了、因而不在备份中的媒体和表情文件；没有时省略。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub skipped: Vec<crate::backup::SkippedFile>,
-    /// Databases WeChat kept writing to while they were copied, whose main file and WAL in the backup may be of two
-    /// moments; left out when there are none.
+    /// 复制期间微信仍在写入的数据库，备份中它们的主文件和 WAL 可能来自两个时刻；没有时省略。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unsettled: Vec<String>,
 }
 
-/// Where `backup restore` put the files.
+/// `backup restore` 把文件放到了哪里。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupRestored {
-    /// The folder the backup was restored into.
+    /// 恢复到的文件夹。
     pub restored_to: PathBuf,
-    /// WeFlow's sticker cache, where the stickers of the backup went; left out when it held none.
+    /// WeFlow 的表情缓存，备份中的表情放回了这里；备份中没有表情时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stickers_restored_to: Option<PathBuf>,
 }
 
-/// The config file a `config` change was written to.
+/// `config` 的修改写入的配置文件。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigWritten {
-    /// Null when `config unset config_path` finds no default place for it.
+    /// 写入的配置文件；`config set config_path` 和 `config unset config_path` 时为此后使用的配置文件，
+    /// 后者找不到默认位置时为 `null`。
     pub config_path: Option<PathBuf>,
-    /// For `config set` of a key WeFlow does not read but spelt almost as one it does (`decrypt_ky`), that one:
-    /// the key was saved as it was typed all the same. Left out otherwise.
+    /// `config set` 的键 WeFlow 不读取、但与一个读取的键只差一点（如 `decrypt_ky`）时，为那个读取的键；
+    /// 键仍按输入的写法保存。其他情况省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub did_you_mean: Option<String>,
 }
 
-/// The language `weflow lang` saved: `en` or `zh`.
+/// `weflow lang` 保存的语言：`en` 或 `zh`。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct LangSaved {
-    /// `en` or `zh`.
+    /// `en` 或 `zh`。
     pub lang: String,
 }
