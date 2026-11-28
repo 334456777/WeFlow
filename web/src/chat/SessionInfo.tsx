@@ -9,7 +9,7 @@ import { getMembers, type GroupMember } from '../api/messages';
 import { useGathered, useLive } from '../api/live';
 import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
-import { kindLabels, kindOf } from './sessions';
+import { kindLabels, kindOf } from '../sessionKind';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { locale, t } from '../i18n';
 

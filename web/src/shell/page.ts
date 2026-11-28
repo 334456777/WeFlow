@@ -5,7 +5,7 @@ import type { Backend, Health } from '../api/backend';
 import type { ChatSession } from '../api/chat';
 import type { Profile } from '../api/setup';
 import type { Card } from '../CardStack';
-import type { Preview } from '../chat/MessageView';
+import type { Preview } from '../MessageMedia';
 import type { SessionsState } from '../chat/useSessions';
 import type { JobsState } from '../jobs/useJobs';
 

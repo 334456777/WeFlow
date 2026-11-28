@@ -6,7 +6,7 @@ import { ArrowClockwise, CircleNotch, Heart, ImageBroken, LinkSimple, MapPin, Pl
 import { ApiError } from '../api/client';
 import { getTimeline, isVideo, isWechatMedia, snsMediaUrl, SNS_PAGE, type SnsFilter, type SnsMedia, type SnsPost } from '../api/sns';
 import { Avatar } from '../Avatar';
-import type { Preview } from '../chat/MessageView';
+import type { Preview } from '../MessageMedia';
 import { dayOf, formatClock, formatDayHeading } from '../format';
 import { MomentsSkeleton } from '../Skeleton';
 import { t } from '../i18n';

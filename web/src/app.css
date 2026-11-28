@@ -311,6 +311,10 @@ time, .num { font-variant-numeric: tabular-nums; }
 .analytics-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .analytics-block .card-note { margin-top: 0; }
 .chart { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--well-shadow); }
+.chart-columns { display: flex; align-items: flex-end; gap: 2px; height: 140px; }
+.chart-column { display: flex; flex: 1 1 0; align-items: flex-end; min-width: 0; height: 100%; }
+.chart-column > span { display: block; width: 100%; min-height: 1px; border-radius: 2px 2px 0 0; background: var(--fg-muted); }
+.chart-column:hover > span { background: var(--fg); }
 .chart-ticks { display: flex; gap: 2px; overflow: hidden; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
 .chart-ticks > span { flex: 1 1 0; min-width: 0; overflow: visible; white-space: nowrap; }
 .muted-num { color: var(--fg-subtle); text-align: right; }

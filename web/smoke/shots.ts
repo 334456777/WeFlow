@@ -145,7 +145,11 @@ async function shoot(name: string, only: string[], skin: string | undefined): Pr
  */
 function pinned(built: string): string {
   const path = join(out, basename(built));
-  if (!existsSync(path)) copyFileSync(built, path);
+  if (!existsSync(path)) {
+    // a target directory no set was shot in yet has no target/web-shots/
+    mkdirSync(out, { recursive: true });
+    copyFileSync(built, path);
+  }
   return path;
 }
 

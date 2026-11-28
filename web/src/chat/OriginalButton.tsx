@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { CircleNotch, FrameCorners } from '@phosphor-icons/react';
 import { getImageInfo, type ImageInfo } from '../api/messages';
 import { formatFileSize } from '../format';
-import type { PreviewHd } from './MessageView';
+import type { PreviewHd } from '../MessageMedia';
 import { t } from '../i18n';
 
 type State = { status: 'loading' } | { status: 'ready'; info: ImageInfo } | { status: 'error' };

@@ -15,7 +15,7 @@ import { Segmented } from '../Segmented';
 import { loadMembers, memberName, membersKnown } from './LiveMessages';
 import { dayOf, formatClock } from '../format';
 import { isMine } from './messages';
-import { kindOf } from './sessions';
+import { kindOf } from '../sessionKind';
 import { useDateCounts } from './useDateCounts';
 import { useSearch, type SearchState } from './useSearch';
 import { t } from '../i18n';

@@ -8,32 +8,11 @@ import {
 } from '@phosphor-icons/react';
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { formatFileSize } from '../format';
+import { imagePreview, PlayBadge, reasonOf, videoPlays, type Preview, type PreviewThumb } from '../MessageMedia';
 import { appLabel, formatDuration, kindOf, withoutLabel } from './messages';
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 import { t } from '../i18n';
 import { safeUrl } from '../links';
-
-/** What the preview dialog shows: an image or a video, and how to go through the others of its gallery. */
-export type Preview =
-  | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb; hd?: PreviewHd }
-  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb };
-
-/** The original WeChat downloads on View original (`_h.dat`) of a picture the preview shows as opened (`.dat`), to
- * show instead once it is on this computer (#194); `shown` once asked for, `loading` until it has come, `opened` the
- * image it took the place of, to go back to (#338). */
-export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean; loading?: boolean; opened?: string }
-
-/** A picture message as the preview opens it: the image WeChat shows when it is opened, with its original beside. */
-export function imagePreview(sessionId: string, message: ParsedMessage, title: string): Extract<Preview, { type: 'image' }> {
-  return {
-    type: 'image', src: mediaUrl('image-data', sessionId, message, { variant: 'normal' }), title,
-    hd: { src: mediaUrl('image-data', sessionId, message, { variant: 'hd' }), sessionId, localId: message.localId, createTime: message.createTime },
-  };
-}
-
-/** The thumbnail a preview opened from (#194): the preview takes its shape at once and shows it until the picture
- * comes, so the picture that flies in from it has a place to land and does not move again when it loads. */
-export interface PreviewThumb { src: string; aspect: number }
 
 /** The size of a picture of that shape in the preview: as wide as fits, as the preview's own rules allow. */
 export function previewSize(thumb: PreviewThumb): CSSProperties {
@@ -44,9 +23,6 @@ export function previewSize(thumb: PreviewThumb): CSSProperties {
     background: 'url(' + JSON.stringify(thumb.src) + ') center / contain no-repeat',
   };
 }
-
-/** The pictures and videos of the conversation read so far, the one shown at `index` (#194). */
-export interface Gallery { items: Preview[]; index: number }
 
 /** What a picture or video message opens in the preview; null for other messages. */
 export function mediaPreview(sessionId: string, message: ParsedMessage): Preview | null {
@@ -206,50 +182,6 @@ export function MessageView({ sessionId, message, onPreview }: {
   }
 }
 
-/** The first byte of a media address, which says whether its file is there. */
-const firstByte = (src: string) => fetch(src, { headers: { Range: 'bytes=0-0' } });
-
-/** What a failed answer says: the server answers its error as JSON. */
-async function failureIn(response: Response): Promise<string> {
-  try {
-    const doc = await response.json();
-    return doc?.error?.message || t('无法读取（HTTP {status}）', { status: response.status });
-  } catch {
-    return t('无法读取');
-  }
-}
-
-/** Why a media address failed: the server answers its error as JSON (a video not downloaded yet, an image in a format not supported yet…). */
-async function reasonOf(src: string): Promise<string> {
-  try {
-    return await failureIn(await firstByte(src));
-  } catch {
-    return t('无法读取');
-  }
-}
-
-/** Whether the video at `src` is there to play, asked for its first byte; when not, why. */
-async function videoPlays(src: string): Promise<{ plays: boolean; reason: string }> {
-  try {
-    const answer = await firstByte(src);
-    if (!answer.ok) return { plays: false, reason: await failureIn(answer) };
-    await answer.body?.cancel();
-    return { plays: true, reason: '' };
-  } catch {
-    return { plays: false, reason: t('无法读取') };
-  }
-}
-
-/** Why the thumbnail at `src` failed, and with `video`, the address of the video it stands for, whether that still
- * plays. A video not on this computer answers why for itself and its thumbnail alike, so it is asked first. */
-export async function thumbFailure(src: string, video?: string): Promise<{ reason: string; plays: boolean }> {
-  if (video) {
-    const answer = await videoPlays(video);
-    if (!answer.plays) return answer;
-  }
-  return { plays: Boolean(video), reason: await reasonOf(src) };
-}
-
 function MediaError({ src, what }: { src: string; what: string }) {
   const [reason, setReason] = useState('');
   useEffect(() => { let live = true; reasonOf(src).then(r => { if (live) setReason(r); }); return () => { live = false; }; }, [src]);
@@ -270,11 +202,6 @@ export function PreviewVideo({ src, poster, thumb }: { src: string; poster?: str
   return failed
     ? <MediaError src={src} what={t('视频')} />
     : <video className="preview-video" src={src} poster={poster} controls autoPlay playsInline onError={() => setFailed(true)} style={thumb && previewSize(thumb)} />;
-}
-
-/** The play button drawn on a video's thumbnail; on a thumbnail that failed, in place of the warning. */
-export function PlayBadge({ size }: { size: number }) {
-  return <span className="play-badge" aria-hidden="true"><Play size={size} weight="fill" /></span>;
 }
 
 /** A thumbnail from the server, with `badge` over it; when it cannot be decoded, a placeholder that says so instead

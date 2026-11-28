@@ -7,7 +7,7 @@ import { ApiError } from '../api/client';
 import { clearInsights, getInsightLog, reasonLabel, triggerInsight, type InsightContact, type InsightLog, type InsightRecord } from '../api/insights';
 import { getInsightSessions, noSessionAllowed } from '../api/settings';
 import { Avatar } from '../Avatar';
-import { formatSessionTime } from '../chat/sessions';
+import { formatSessionTime } from '../sessionKind';
 import { HoverTrack } from '../HoverTrack';
 import { GridSkeleton, ListSkeleton, MomentsSkeleton } from '../Skeleton';
 import type { InsightsState } from './useInsights';
