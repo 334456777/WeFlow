@@ -1,9 +1,9 @@
-/** A label set bold when it is chosen, which takes the width of its bold text all the time (`.steady-label`). */
+/** 选中时加粗的标签，始终按粗体文字的宽度占位（`.steady-label`）。 */
 export function SteadyLabel({ text }: { text: string }) {
   return <span className="steady-label" data-label={text}>{text}</span>;
 }
 
-/** A choice chip: pressed, its label turns bold without making the chip wider, so the chips after it stay put. */
+/** 可选的芯片：按下后标签变粗，但芯片不变宽，后面的芯片不会被挤动。 */
 export function Chip({ label, pressed, onClick }: { label: string; pressed: boolean; onClick(): void }) {
   return <button type="button" className="chip" aria-pressed={pressed} onClick={onClick}><SteadyLabel text={label} /></button>;
 }

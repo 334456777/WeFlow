@@ -1,27 +1,27 @@
-// The navigation on a phone (#335): a tab bar along the bottom with the pages used most, and 「更多」, which opens the
-// others in a sheet from the bottom, with the connection state. The sidebar takes its place on wider screens.
+// 手机上的导航（#335）：底部的标签栏放最常用的几个页面，「更多」从底部打开一个面板，里面是其他页面和连接状态。
+// 屏幕更宽时由侧栏代替它。
 import { useEffect, useLayoutEffect, useRef, type ComponentType, type ReactNode } from 'react';
 import { ArrowLeft, DotsThreeOutline, type IconProps } from '@phosphor-icons/react';
 import { usePresence } from './motion';
 import { t } from './i18n';
 
-/** A page the navigation offers. */
+/** 导航里的一个页面。 */
 export interface NavItem<Id extends string> {
   id: Id;
   label: string;
   icon: ComponentType<IconProps>;
-  /** The tab's own label where the full one is too long. */
+  /** 完整的名称太长时，标签栏上用的短名称。 */
   short?: string;
 }
 
-/** The tab bar and its 「更多」 sheet. */
+/** 标签栏和它的「更多」面板。 */
 export function MobileNav<Id extends string>({ items, tabs, current, onSelect, status, open, onOpen }: {
   items: readonly NavItem<Id>[];
-  /** The pages on the bar itself; the others are under 「更多」. */
+  /** 直接放在标签栏上的页面；其他页面在「更多」里。 */
   tabs: readonly Id[];
   current: Id;
   onSelect(id: Id): void;
-  /** The connection state, shown in the sheet. */
+  /** 显示在面板里的连接状态。 */
   status: ReactNode;
   open: boolean;
   onOpen(open: boolean): void;
@@ -74,7 +74,7 @@ function NavSheet<Id extends string>({ items, current, open, status, onSelect, o
   </dialog>;
 }
 
-/** The bar over a page's detail on a phone (#335): back to its list, and what is shown. Hidden on wider screens. */
+/** 手机上页面详情顶部的栏（#335）：返回列表的按钮和正在显示的内容的标题。屏幕更宽时隐藏。 */
 export function MobileBar({ label, title, onBack }: { label: string; title: string; onBack(): void }) {
   return <div className="mobile-bar">
     <button type="button" className="icon-button" aria-label={label} title={label} onClick={onBack}><ArrowLeft size={18} /></button>

@@ -24,7 +24,7 @@ describe('Backdrop (#832)', () => {
     act(() => { turnPage(); turnPage(); });
     expect(turnOf()).toBe(before);
 
-    // another item's detail turns the decoration, but not the page
+    // 换到另一项的详情时换装饰，但不算换页
     const pageOf = () => Number(layer().dataset.page);
     const page = pageOf();
     const shown = layer();
@@ -39,7 +39,7 @@ describe('Backdrop (#832)', () => {
   it('is not there for a skin without decorations, and comes with a skin that has them', async () => {
     const { container } = render(<Backdrop />);
     expect(container.querySelector('.backdrop')).toBeNull();
-    // a skin whose sheet (here, the root's own style) has two
+    // 一个有两个装饰的皮肤（这里用根元素自己的样式代替它的样式表）
     const decorated = { id: 'decorated', label: 'decorated', themes: ['light'] as const };
     SKINS.push(decorated);
     try {

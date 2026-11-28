@@ -1,5 +1,5 @@
-// The requests the page makes in the flows people go through most (#403). Each step lists what the page asked the
-// server for, in order (`fields` left out, as it only picks columns); a change of these lists is a change of the page's requests, to be explained in its PR (see #403).
+// 常用流程中网页发出的请求（#403）。每一步按顺序列出网页向服务端请求了什么（不列 `fields`，它只是选择返回哪些列）；
+// 这些列表变了就是网页的请求变了，要在 PR 里说明（见 #403）。
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { App } from './App';
@@ -16,19 +16,19 @@ afterEach(() => {
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 
-/** Two accounts of one server, told apart by the `data` of `/health/events` (see api/scope.ts). */
+/** 同一个服务端的几个账号，靠 `/health/events` 的 `data` 区分（见 api/scope.ts）。 */
 const ACCOUNTS: Record<string, { username: string; displayName: string }[]> = {
   a: [{ username: 'wxid_lin', displayName: '林沐' }, { username: 'wxid_zhou', displayName: '周舟' }],
   b: [{ username: 'wxid_qin', displayName: '秦川' }],
   g: [{ username: 'team@chatroom', displayName: '设计群' }],
 };
 
-/** Whether 新同学 joined the group of account `g` (and 林沐 renamed themselves in it), after its first page. */
+/** 账号 `g` 的群在第一页之后是否有新同学加入（林沐也在群里改了群昵称）。 */
 let joined = false;
 
 let account = 'a';
 let log: string[] = [];
-/** Whether the first page of a conversation is a full one, so that older pages are left to read. */
+/** 会话的第一页是否是满的一页，这样还有更早的页可以读。 */
 let long = false;
 const streams: FakeEventSource[] = [];
 
@@ -71,7 +71,7 @@ function answer(url: string): Response {
     case '/api/chat/messages': {
       const session = params.get('session-id') ?? '';
       if (session === 'team@chatroom') {
-        // 林沐's two messages; once 新同学 joined, theirs after them
+        // 林沐的两条消息；新同学加入后，他的消息排在后面
         const said = (localId: number, sender: string) => ({ ...message(session, localId), senderUsername: sender });
         if (params.has('after')) return json({ success: true, data: joined && params.get('after') !== `${session}.3` ? [said(3, 'wxid_new')] : [] });
         return json({ success: true, data: [said(2, 'wxid_lin'), said(1, 'wxid_lin')] });
@@ -102,7 +102,7 @@ function answer(url: string): Response {
   throw new TypeError('unexpected ' + url);
 }
 
-/** A request as the lists show it: the method and the address without `fields`. */
+/** 列表里一个请求的写法：方法和去掉 `fields` 的地址。 */
 function shown(url: string, init?: RequestInit): string {
   const [path, query = ''] = url.split('?');
   const params = new URLSearchParams(query);
@@ -123,7 +123,7 @@ function serve(late?: (url: string) => boolean) {
   return { release: () => held.splice(0).forEach(resolve => resolve()) };
 }
 
-/** The requests of `step`, from when it starts until the page is quiet. */
+/** `step` 发出的请求，从它开始到页面安静下来为止。 */
 async function requestsOf(step: () => void): Promise<string[]> {
   log = [];
   await act(async () => { step(); });
@@ -132,7 +132,7 @@ async function requestsOf(step: () => void): Promise<string[]> {
   return log;
 }
 
-/** The server says its data changed: the configuration names account `next` now. */
+/** 服务端告知数据变了：配置现在指向账号 `next`。 */
 function switchAccount(next: string) {
   account = next;
   for (const stream of streams.filter(s => !s.closed && !s.url.startsWith('/jobs/'))) stream.emit('heartbeat', { data: next });
@@ -150,7 +150,7 @@ describe('requests of the chat page', () => {
 
     expect(await requestsOf(() => { render(<App />); })).toEqual([
       'stream /api/push/messages',
-      // the token check, and whether the account is set up
+      // 检查令牌，以及账号是否已经配置好
       'GET /jobs',
       'GET /api/config/profiles',
       'GET /api/chat/sessions',
@@ -160,14 +160,14 @@ describe('requests of the chat page', () => {
     expect(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); })).toEqual([
       `GET /api/chat/messages?session-id=wxid_zhou&${PAGE}`,
     ]);
-    // a conversation opened before is kept
+    // 之前打开过的会话保留在缓存里
     expect(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择林沐' })); })).toEqual([]);
     expect(await requestsOf(() => {
       fireEvent.change(screen.getByRole('searchbox', { name: '搜索此会话的消息' }), { target: { value: '消息' } });
       fireEvent.click(screen.getByRole('button', { name: '搜索' }));
     })).toEqual([`GET /api/chat/search?keyword=消息&session=wxid_lin&limit=20&offset=0&parsed=true`]);
 
-    // nothing of the account before is asked of the new one: no conversation is open until its list is read (#402)
+    // 不向新账号请求旧账号的任何内容：读到新账号的会话列表之前不打开任何会话（#402）
     expect(await requestsOf(() => switchAccount('b'))).toEqual([
       'GET /jobs',
       'GET /api/config/profiles',
@@ -186,7 +186,7 @@ describe('requests of the chat page', () => {
     await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); });
     await requestsOf(() => switchAccount('b'));
     expect(conversations()).toEqual(['秦川']);
-    // 周舟's page of account a comes back now
+    // 账号 a 里周舟的那一页现在才回来
     await requestsOf(() => server.release());
     expect(conversations()).toEqual(['秦川']);
     expect(messages().length).toBeGreaterThan(0);
@@ -200,7 +200,7 @@ describe('requests of the chat page', () => {
     await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); });
     await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择林沐' })); });
     const pages = (requests: string[]) => requests.filter(request => request.startsWith('GET /api/chat/messages'));
-    // a message comes to 周舟, kept but not open: nothing is read for it until it is opened
+    // 周舟（缓存着但没有打开）来了一条消息：打开之前不为它读取任何内容
     expect(pages(await requestsOf(() => streams.find(s => s.url.startsWith('/api/push/messages'))!.emit('message.new', { sessionId: 'wxid_zhou' })))).toEqual([]);
     expect(pages(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); }))).toEqual([
       `GET /api/chat/messages?session-id=wxid_zhou&${PAGE}`,
@@ -215,7 +215,7 @@ describe('requests of the chat page', () => {
     await requestsOf(() => switchAccount('b'));
     await requestsOf(() => switchAccount('a'));
     expect(conversations()).toEqual(['林沐', '周舟']);
-    // account b's list and messages come back now
+    // 账号 b 的会话列表和消息现在才回来
     await requestsOf(() => server.release());
     expect(conversations()).toEqual(['林沐', '周舟']);
     expect(messages().length).toBeGreaterThan(0);
@@ -245,7 +245,7 @@ describe('requests of the chat page', () => {
     const server = serve(url => url.includes('before='));
     await requestsOf(() => { render(<App />); });
     expect(messages()).toHaveLength(50);
-    // scrolled to the top: the page before is asked for, and comes after the account changed
+    // 滚到顶部：请求更早的一页，它在换了账号之后才回来
     expect(await requestsOf(() => { fireEvent.scroll(document.querySelector('.message-pane')!); })).toEqual([
       `GET /api/chat/messages?session-id=wxid_lin&limit=50&before=wxid_lin.51&parsed=true`,
     ]);
@@ -275,14 +275,14 @@ describe('requests of an open group (#1148)', () => {
       await act(async () => {});
       return log;
     };
-    // a message of another conversation reads nothing for this one
+    // 其他会话的消息不会为这个会话读取任何内容
     await requestsOf(() => live('other@chatroom'));
     expect(members(await gathered())).toEqual([]);
 
-    // 新同学 joins and speaks, 林沐 renames themselves in the group: the burst reads the members once, after a while
+    // 新同学进群发言，林沐改了群昵称：这一串消息过一会儿之后只读一次群成员
     joined = true;
     expect(members(await requestsOf(() => { live('team@chatroom'); live('team@chatroom'); live('team@chatroom'); }))).toEqual([]);
-    // the new message is shown before that: the names known stay meanwhile
+    // 在那之前新消息先显示出来，这期间沿用已知的名字
     expect(senders()).toEqual(['小林', 'wxid_new']);
     expect(members(await gathered())).toEqual(['GET /api/group/members?chatroom-id=team@chatroom']);
     expect(senders()).toEqual(['林林', '新同学']);
@@ -297,14 +297,14 @@ describe('requests of the pages that name people (#402)', () => {
     account = 'a';
     serve();
     await requestsOf(() => { render(<App />); });
-    // the footprint names people in its page and in its AI card: one request for both
+    // 足迹在页面里和 AI 总结卡片里都要显示人名：两处共用一次请求
     expect(contacts(await requestsOf(open('我的足迹')))).toEqual(['GET /api/chat/contacts?parsed=true']);
     expect(contacts(await requestsOf(open('通讯录')))).toEqual([]);
-    // Moments names its posters from the whole table, read once too
+    // 朋友圈按整张联系人表显示发布者的名字，这张表也只读一次
     expect(contacts(await requestsOf(open('朋友圈')))).toEqual(['GET /api/chat/contacts']);
     expect(contacts(await requestsOf(open('我的足迹')))).toEqual([]);
     expect(contacts(await requestsOf(open('朋友圈')))).toEqual([]);
-    // another account: Moments, open, names its posters from the new table at once, and the list is read again
+    // 换了账号：打开着的朋友圈立即按新的联系人表显示发布者，联系人列表也重新读取
     expect(contacts(await requestsOf(() => switchAccount('b')))).toEqual(['GET /api/chat/contacts']);
     expect(contacts(await requestsOf(open('通讯录')))).toEqual(['GET /api/chat/contacts?parsed=true']);
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['秦川']);

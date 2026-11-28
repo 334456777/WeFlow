@@ -4,7 +4,7 @@ import { HoverTrack } from './HoverTrack';
 
 afterEach(cleanup);
 
-/** Gives the group and its items boxes: items 40 high, 4 apart, from the group's top. */
+/** 给这一组和它的项设定位置和大小：每项高 40、相隔 4，从这一组的顶部开始排。 */
 function layout(group: HTMLElement) {
   group.getBoundingClientRect = () => ({ left: 10, top: 100, width: 200, height: 300, right: 210, bottom: 400, x: 10, y: 100, toJSON() {} });
   group.querySelectorAll<HTMLElement>('.item').forEach((item, i) => {
@@ -32,14 +32,14 @@ describe('HoverTrack', () => {
     expect(hollow.style.translate).toBe('0px 0px');
     expect(hollow.style.height).toBe('40px');
 
-    // the gap between two items keeps it where it is
+    // 指针在两项之间的空隙里时凹陷留在原处
     fireEvent.pointerOver(group);
     expect(hollow.dataset.state).toBe('on');
     expect(hollow.style.translate).toBe('0px 0px');
 
     fireEvent.pointerOver(items[2]);
     expect(hollow.style.translate).toBe('0px 88px');
-    // sliding: the transition is the stylesheet's, not switched off
+    // 滑动：过渡用样式表里的，没有关掉
     expect(hollow.style.transition).toBe('');
 
     fireEvent.pointerLeave(group);
@@ -51,10 +51,10 @@ describe('HoverTrack', () => {
     fireEvent.pointerOver(items[0]);
     fireEvent.pointerDown(items[0], { button: 0 });
     expect(hollow.dataset.pressed).toBe('');
-    // released outside the group too
+    // 在这一组外面松开也算松开
     fireEvent.pointerUp(window);
     expect(hollow.dataset.pressed).toBeUndefined();
-    // the selection takes its own press; another button, or moving on, does not press
+    // 选中的项自己显示按下；按其他鼠标键或者移到别处都不算按下
     fireEvent.pointerOver(items[1]);
     fireEvent.pointerDown(items[1], { button: 0 });
     expect(hollow.dataset.pressed).toBeUndefined();

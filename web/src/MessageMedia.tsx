@@ -1,23 +1,23 @@
-// A message's pictures, videos and voices outside the chat window too: what the preview dialog opens (the chat
-// window, the resources and the Moments open it), the play badge on a video, why a thumbnail cannot be shown, and the
-// button that plays a voice (the chat window and the resources).
+// 聊天窗口之外也用到的消息的图片、视频和语音：预览对话框打开的内容（聊天窗口、资源浏览和朋友圈都会打开它）、
+// 视频上的播放标记、缩略图显示不了的原因，以及播放语音的按钮（聊天窗口和资源浏览）。
 import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, Warning } from '@phosphor-icons/react';
 import { mediaUrl, type ParsedMessage } from './api/messages';
 import { formatDuration } from './format';
 import { t } from './i18n';
 
-/** What the preview dialog shows: an image or a video, and how to go through the others of its gallery. */
+/** 预览对话框显示的内容：一张图片或一个视频，以及怎样切换到同一组里的其他图片和视频。 */
 export type Preview =
   | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb; hd?: PreviewHd }
   | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb };
 
-/** The original WeChat downloads on View original (`_h.dat`) of a picture the preview shows as opened (`.dat`), to
- * show instead once it is on this computer (#194); `shown` once asked for, `loading` until it has come, `opened` the
- * image it took the place of, to go back to (#338). */
+/**
+ * 预览按打开时的样子（`.dat`）显示的图片的原图：微信点「查看原图」时下载的 `_h.dat`，下载到本机后改为显示它（#194）。
+ * 请求过之后 `shown` 为 true，到达之前 `loading` 为 true，`opened` 是被它替换的图片，用来换回去（#338）。
+ */
 export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean; loading?: boolean; opened?: string }
 
-/** A picture message as the preview opens it: the image WeChat shows when it is opened, with its original beside. */
+/** 预览打开图片消息时的内容：微信打开图片时显示的那一张，以及它的原图。 */
 export function imagePreview(sessionId: string, message: ParsedMessage, title: string): Extract<Preview, { type: 'image' }> {
   return {
     type: 'image', src: mediaUrl('image-data', sessionId, message, { variant: 'normal' }), title,
@@ -25,17 +25,19 @@ export function imagePreview(sessionId: string, message: ParsedMessage, title: s
   };
 }
 
-/** The thumbnail a preview opened from (#194): the preview takes its shape at once and shows it until the picture
- * comes, so the picture that flies in from it has a place to land and does not move again when it loads. */
+/**
+ * 打开预览时的缩略图（#194）：预览立即按它的形状排版，在图片到达之前显示它，
+ * 这样从缩略图飞出的图片有落脚的位置，加载出来后也不会再移动。
+ */
 export interface PreviewThumb { src: string; aspect: number }
 
-/** The pictures and videos of the conversation read so far, the one shown at `index` (#194). */
+/** 同一组里已经读到的图片和视频（如一个会话里的），当前显示的是第 `index` 个（#194）。 */
 export interface Gallery { items: Preview[]; index: number }
 
-/** The first byte of a media address, which says whether its file is there. */
+/** 请求媒体地址的第一个字节，从回答知道文件在不在。 */
 const firstByte = (src: string) => fetch(src, { headers: { Range: 'bytes=0-0' } });
 
-/** What a failed answer says: the server answers its error as JSON. */
+/** 失败的回答里的原因：服务端以 JSON 回答错误。 */
 async function failureIn(response: Response): Promise<string> {
   try {
     const doc = await response.json();
@@ -45,7 +47,7 @@ async function failureIn(response: Response): Promise<string> {
   }
 }
 
-/** Why a media address failed: the server answers its error as JSON (a video not downloaded yet, an image in a format not supported yet…). */
+/** 媒体地址读取失败的原因：服务端以 JSON 回答错误（如视频还没下载、图片的格式不支持）。 */
 export async function reasonOf(src: string): Promise<string> {
   try {
     return await failureIn(await firstByte(src));
@@ -54,7 +56,7 @@ export async function reasonOf(src: string): Promise<string> {
   }
 }
 
-/** Whether the video at `src` is there to play, asked for its first byte; when not, why. */
+/** `src` 的视频能不能播放（请求它的第一个字节）；不能时给出原因。 */
 export async function videoPlays(src: string): Promise<{ plays: boolean; reason: string }> {
   try {
     const answer = await firstByte(src);
@@ -66,8 +68,10 @@ export async function videoPlays(src: string): Promise<{ plays: boolean; reason:
   }
 }
 
-/** Why the thumbnail at `src` failed, and with `video`, the address of the video it stands for, whether that still
- * plays. A video not on this computer answers why for itself and its thumbnail alike, so it is asked first. */
+/**
+ * `src` 的缩略图失败的原因；给了 `video`（缩略图代表的视频的地址）时，还给出这个视频是否仍能播放。
+ * 不在本机的视频，它自己和缩略图的失败原因相同，所以先问视频。
+ */
 export async function thumbFailure(src: string, video?: string): Promise<{ reason: string; plays: boolean }> {
   if (video) {
     const answer = await videoPlays(video);
@@ -76,15 +80,15 @@ export async function thumbFailure(src: string, video?: string): Promise<{ reaso
   return { plays: Boolean(video), reason: await reasonOf(src) };
 }
 
-/** The play button drawn on a video's thumbnail; on a thumbnail that failed, in place of the warning. */
+/** 画在视频缩略图上的播放标记；缩略图失败时代替警告图标。 */
 export function PlayBadge({ size }: { size: number }) {
   return <span className="play-badge" aria-hidden="true"><Play size={size} weight="fill" /></span>;
 }
 
-/** One voice plays at a time across the page. */
+/** 整个页面同时只播放一段语音。 */
 let playing: { audio: HTMLAudioElement; stop(): void } | null = null;
 
-/** A voice message's bubble, which plays it, decoded on the server, when pressed. */
+/** 语音消息的气泡，按下时播放在服务端解码的语音。 */
 export function Voice({ sessionId, message, className = 'message-bubble voice-bubble' }: { sessionId: string; message: ParsedMessage; className?: string }) {
   const [state, setState] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -105,7 +109,7 @@ export function Voice({ sessionId, message, className = 'message-bubble voice-bu
     sound.currentTime = 0;
     sound.play().catch(() => setState('error'));
   };
-  // Longer voices make a longer bubble, as in WeChat.
+  // 语音越长，气泡越长（最长 220px）。
   const width = Math.min(220, 72 + seconds * 4);
   return <button type="button" className={className + ' ' + state} style={className.includes('voice-bubble') ? { width } : undefined} onClick={toggle}
     aria-label={state === 'playing' ? t('暂停语音，{duration}', { duration: formatDuration(seconds) }) : t('播放语音，{duration}', { duration: formatDuration(seconds) })}>
