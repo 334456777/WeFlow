@@ -1,14 +1,12 @@
 <!DOCTYPE html>
 <!--
-  WeFlow chat export page. One self-contained file: the styles and the script below, and the chat itself as JSON in
-  #wf-data (the data model: see html.rs). build.mjs makes this file small, one copy for each language
-  (template.zh.html, template.en.html, which the program embeds), with the colours of every page (colours.css) in
-  place of the @colours comment; the export fills in the three placeholders: __WF_LANG__, __WF_TITLE__ and
-  __WF_DATA__.
+  WeFlow 的聊天记录导出页面。整个页面是一个自包含的文件：下面的样式和脚本，以及以 JSON 写在 #wf-data
+  里的聊天记录本身（数据模型见 html.rs）。build.mjs 把这个文件压缩成每种语言一份的副本（template.zh.html、
+  template.en.html，由程序嵌入），并用所有页面共用的配色（colours.css）替换 @colours 注释；导出时填入三个占位符：
+  __WF_LANG__、__WF_TITLE__ 和 __WF_DATA__。
 
-  The page: a chat column (header bar, messages, a time rail at its left edge and a scrollbar of its own at its right
-  edge) and a sidebar (search, filters, theme) that folds away; over them, a media viewer and a dialog for chat
-  histories and announcements.
+  页面由聊天栏（标题栏、消息、左边缘的时间轴和右边缘自己的滚动条）和可以收起的侧栏（搜索、筛选、主题）组成；
+  它们上面是媒体查看器，以及显示转发的聊天记录和群公告的对话框。
 -->
 <html lang="__WF_LANG__">
 <head>
@@ -20,7 +18,7 @@
 <style>
 /* @colours */
 
-/* ============================================================ base */
+/* ============================================================ 基础 */
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;overflow:hidden}
@@ -30,9 +28,8 @@ a{color:#576b95}
 svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 [hidden]{display:none!important}
 
-/* ============================================================ shared text treatments
-   one line cut with an ellipsis; a few lines cut; line breaks kept; long words broken anywhere; small grey text;
-   a rule under a section */
+/* ============================================================ 共用的文字样式
+   单行截断并加省略号；多行截断；保留换行；长单词可以在任意处断开；灰色小字；区块下方的分隔线 */
 .bar h1,.nm,.card .ft,.rec .lines div,.hit .h1 b,.dlg header span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .q,.card .t1,.card .t2,.hit .h2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .card .t2{-webkit-line-clamp:3}
@@ -41,13 +38,13 @@ svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-l
 .sub,.nm,.lbl,.hit .h1,.ri .h1{font-size:12px;color:var(--muted)}
 .sh,.sb,.rs,.ri,.dlg header{border-bottom:1px solid var(--line)}
 
-/* ============================================================ page layout: the chat column and the sidebar */
+/* ============================================================ 页面布局：聊天栏和侧栏 */
 .app{display:flex;height:100%}
 .main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
 .bar{height:52px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bar);border-bottom:1px solid var(--line);-webkit-backdrop-filter:saturate(1.6) blur(16px);backdrop-filter:saturate(1.6) blur(16px);z-index:2}
 .ttl{flex:1;min-width:0;text-align:center}
 .bar h1{margin:0;font-size:16px;font-weight:600}
-/* icon buttons; a hidden one balances the bar so the title stays centred */
+/* 图标按钮；一个隐藏的按钮占住标题栏另一侧的位置，让标题保持居中 */
 .ib{width:36px;height:36px;border:0;border-radius:8px;background:none;display:grid;place-items:center;flex:none}
 .ib:hover{background:var(--hover)}
 .ib svg{width:20px;height:20px}
@@ -57,17 +54,16 @@ svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-l
 .side{width:var(--sw,340px);flex:none;background:var(--side);border-left:1px solid var(--line);display:flex;flex-direction:column;position:relative;min-width:260px;max-width:70vw}
 .grip{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3}
 
-/* ============================================================ the chat's scrollbar
-   the chat's own (see the script) in place of the browser's: a thin thumb, wider while the pointer is on it */
+/* ============================================================ 聊天栏的滚动条
+   用页面自己的滚动条（见脚本）代替浏览器的：滑块很细，指针放在上面时变宽 */
 #chat{scrollbar-width:none}
 #chat::-webkit-scrollbar{display:none}
 .sbar{position:absolute;right:0;top:52px;bottom:0;width:14px;z-index:2;touch-action:none}
 .sbar i{position:absolute;right:3px;top:0;width:6px;border-radius:3px;background:var(--muted);opacity:.4;transition:width .15s,opacity .15s}
 .sbar:hover i,.sbar.drag i{width:8px;opacity:.7}
 
-/* ============================================================ messages
-   others on the left and the user on the right: an avatar, then a column with the name (in a group) and the bubble;
-   the avatar lines up with the top of the bubble */
+/* ============================================================ 消息
+   其他人的在左边，用户自己的在右边：先是头像，旁边一列是名字（群聊中）和气泡；头像与气泡的顶部对齐 */
 .m{display:flex;align-items:flex-start;padding:6px 16px;gap:10px}
 .me,.me .voice,.me .bk{flex-direction:row-reverse}
 .av{width:40px;height:40px;border-radius:5px;flex:none;object-fit:cover;display:grid;place-items:center;color:#fff;font-size:16px;font-weight:600;overflow:hidden;user-select:none}
@@ -75,36 +71,35 @@ svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-l
 .me .col{align-items:flex-end}
 .nm{line-height:16px;margin:0 0 3px;max-width:100%}
 .named>.av{margin-top:19px}
-/* the bubble: others' arrow points at the middle of their avatar (the avatar is 40px, level with the bubble's top),
-   the user's at the middle of the bubble's side */
+/* 气泡：其他人气泡的箭头指向头像的中间（头像高 40px，与气泡的顶部齐平），用户自己的指向气泡侧边的中间 */
 .b{position:relative;padding:9px 12px;border-radius:6px;background:var(--them);min-height:40px}
 .me .b{background:var(--me);color:#000}
 .b:before{content:"";position:absolute;top:20px;margin-top:-6px;left:-5px;border:6px solid transparent;border-left:0;border-right-color:var(--them)}
 .me .b:before{top:50%;left:auto;right:-5px;border-right:0;border-left:6px solid var(--me)}
 .me .b a{color:inherit}
-/* the quoted message under a reply */
+/* 回复下方的被引用消息 */
 .q{margin-top:4px;max-width:100%;padding:5px 9px;border:0;border-radius:5px;background:var(--chip);color:var(--muted);font-size:13px;text-align:left}
 .q:hover{color:var(--fg)}
-/* system lines and time chips */
+/* 系统消息和时间标签 */
 .sys,.tm{display:flex;justify-content:center;padding:4px 40px}
 .tm{padding:10px 16px 4px}
 .sys span,.tm span{font-size:12px;color:var(--muted);text-align:center;max-width:600px}
 .tm span{background:var(--chip);padding:2px 8px;border-radius:4px}
-/* a message jumped to flashes; after a jump from a quote, it carries a button back */
+/* 跳转到的消息闪一下；从引用跳转过来时，它旁边带一个返回的按钮 */
 .flash{animation:flash 2s ease-out}
 @keyframes flash{0%,40%{background:var(--flash)}to{background:#0000}}
-/* the button sits beside what the message shows, level with its middle; a reply's quote goes under both */
+/* 返回按钮放在消息内容的旁边，与内容的中间齐平；回复的引用放在两者下方 */
 .bk{display:flex;align-items:center;gap:8px;max-width:100%}
 .bk>:first-child{min-width:0}
 .back{flex:none;width:36px;height:22px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--muted);display:grid;place-items:center;padding:0;animation:pop .3s cubic-bezier(.2,.8,.2,1)}
 .back:hover{background:var(--pick);border-color:var(--pick);color:var(--on-pick)}
 .back svg{width:15px;height:15px;stroke-width:2}
 @keyframes pop{0%{opacity:0;transform:scale(.6)}}
-/* search matches */
+/* 搜索匹配的文字 */
 mark{background:var(--mark);color:inherit;border-radius:2px}
 
-/* ============================================================ message contents */
-/* pictures, videos and stickers; a missing file shows as a placeholder */
+/* ============================================================ 消息的内容 */
+/* 图片、视频和表情；文件缺失时显示占位块 */
 .media{display:block;border-radius:6px;background:var(--chip);cursor:zoom-in;max-width:100%;height:auto}
 .vid{position:relative;display:block;border-radius:6px;overflow:hidden;background:#000;border:0;padding:0}
 .vid video{display:block;width:100%;height:100%;object-fit:cover;pointer-events:none}
@@ -114,7 +109,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .gone svg{width:28px;height:28px;stroke-width:1.5}
 .emo{display:block;max-width:140px;max-height:140px;width:auto;height:auto;cursor:zoom-in}
 .emo.gone{display:flex;width:80px;height:80px;cursor:default}
-/* voice (its waves blink while it plays) and calls */
+/* 语音（播放时声波闪烁）和通话 */
 .voice,.call{display:flex;align-items:center;gap:6px}
 .voice{user-select:none}
 .voice i{width:18px;height:18px;flex:none;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M6 12h.01M10 8a6 6 0 0 1 0 8M14 5a10 10 0 0 1 0 14'/%3E%3C/svg%3E") 50%/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M6 12h.01M10 8a6 6 0 0 1 0 8M14 5a10 10 0 0 1 0 14'/%3E%3C/svg%3E") 50%/contain no-repeat}
@@ -123,7 +118,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .voice.na{cursor:default;opacity:.7}
 @keyframes blink{50%{opacity:.35}}
 .call svg{width:18px;height:18px}
-/* cards: files, links and app messages, payments, locations, chat histories, contact cards */
+/* 卡片：文件、链接和应用消息、转账和红包、位置、聊天记录、名片 */
 .card{display:block;width:260px;max-width:100%;border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;overflow:hidden;border:1px solid var(--card-line);text-align:left;padding:0}
 .card .in{padding:10px 12px;display:flex;gap:10px}
 .tx{flex:1;min-width:0}
@@ -144,48 +139,43 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .map svg{width:28px;height:28px;fill:#f35543;stroke:none}
 .lines{margin-top:4px;font-size:12px;color:var(--muted);line-height:1.5}
 
-/* ============================================================ time rail
-   Collapsed: ticks at the left edge, one a year (or a month, when the chat is all in one year), the one the chat is
-   at marked; the edge hints when the pointer comes near. Open: a panel with the years, then the months, then the days
-   side by side, each column centred on the rail's middle (the script places the columns and rolls one longer than
-   the window), the chat under them shaded */
+/* ============================================================ 时间轴
+   收起时：左边缘的刻度，每年一个（聊天都在同一年时每月一个），标出聊天当前所在的一个；指针靠近边缘时刻度变长作为提示。
+   展开时：一个面板，年、月、日三列并排，每列以时间轴的中点为中心（脚本摆放各列，比窗口长的一列由脚本滚动），
+   各列下方的聊天淡化 */
 .edge,.cal{position:absolute;left:0;top:52px;bottom:0;z-index:3}
 .edge{width:32px}
 .cal{display:flex;align-items:center;z-index:4;pointer-events:none}
-/* collapsed: the ticks (an item's tick in the open rail has the same shape) */
+/* 收起时的刻度；展开后每一项的刻度与它形状相同 */
 .ticks{pointer-events:auto;display:flex;flex-direction:column;gap:9px;padding:14px 16px 14px 8px;cursor:pointer;transition:opacity .2s}
 .ticks i,.cc button:before{height:2px;width:8px;border-radius:1px;opacity:.45}
 .ticks i{background:var(--muted);transition:width .3s cubic-bezier(.2,.8,.2,1) var(--d,0s),opacity .3s var(--d,0s)}
 .ticks .on{width:16px;background:var(--fg);opacity:.9}
 .hint .ticks i{width:14px;opacity:.8}
 .hint .ticks .on{width:24px;opacity:1}
-/* open: the panel takes the ticks' place */
+/* 展开时面板取代刻度的位置 */
 .calp{position:absolute;inset:0;pointer-events:none}
 .open .ticks{opacity:0;pointer-events:none}
-/* the columns: each fades in as it fills, a rolling one fades out at its ends; open, they take the pointer, but not
-   an `old` copy (a column going) */
+/* 各列：填入内容时淡入，滚动的一列在两端渐隐；展开时各列接受指针，`old` 副本（正在离开的一列）除外 */
 .cc{position:absolute;overflow:hidden;touch-action:none;opacity:0;transition:opacity .16s}
 .cc.in{opacity:1}
 .cc:empty{display:none}
 .rolls{-webkit-mask-image:linear-gradient(#0000,#000 30px,#000 calc(100% - 30px),#0000);mask-image:linear-gradient(#0000,#000 30px,#000 calc(100% - 30px),#0000)}
 .open .cc{pointer-events:auto}
 .open .cc.old{pointer-events:none}
-/* coming and going: the panel slides in from the left as the rail opens and back out as it closes; so does the months
-   column, or the days column, as it appears and as it goes (the years come with the panel). A column that only
-   changes what it holds stays where it is */
+/* 出现和离开：时间轴展开时面板从左边滑入，收起时滑回；月列或日列出现和离开时也一样（年列随面板一起出现）。
+   只换了内容的一列留在原处 */
 .calp,.cc+.cc{opacity:0;transform:translateX(-12px);transition:opacity .18s,transform .24s cubic-bezier(.2,.8,.2,1)}
 .open .calp,.cc+.cc.in{opacity:1;transform:none}
-/* the shade over the chat under the columns, so the labels read; the rest of the chat stays as it is. It comes and
-   goes with the panel (--dim) and follows how far the columns reach (--cols) as they come and go; `shade` keeps the
-   mask on while it shows. Browsers without @property change it at once */
+/* 淡化各列下方的聊天，让标签看得清，其余的聊天不变。淡化随面板出现和消失（--dim），
+   范围随各列的出现和离开跟到各列伸到的位置（--cols）；显示期间由 `shade` 保持遮罩。不支持 @property 的浏览器立即切换 */
 @property --dim{syntax:"<number>";inherits:true;initial-value:0}
 @property --cols{syntax:"<length>";inherits:true;initial-value:0px}
 .main{transition:--dim .18s,--cols .24s cubic-bezier(.2,.8,.2,1)}
 .dim{--dim:1}
 .shade #chat{-webkit-mask-image:linear-gradient(90deg,rgb(0 0 0/calc(1 - .9*var(--dim))) calc(var(--cols) - 10px),#000 calc(var(--cols) + 70px));mask-image:linear-gradient(90deg,rgb(0 0 0/calc(1 - .9*var(--dim))) calc(var(--cols) - 10px),#000 calc(var(--cols) + 70px))}
-/* an item: like a collapsed tick, a tick and its label, no background; the label keeps a halo of the page colour so
-   it reads over the chat. The picked year and month are marked like a hovered item. The numbers sit in boxes of
-   their own, so that they line up digit under digit */
+/* 一项：与收起时的刻度一样，是一个刻度加标签，没有底色；标签带一圈页面底色的光晕，在聊天上方也看得清。
+   选中的年和月与悬停的项标得一样。数字放在各自的框里，上下逐位对齐 */
 .cc button{position:absolute;left:6px;top:0;width:var(--bw);display:flex;align-items:center;gap:8px;border:0;background:none;padding:3px 8px 3px 26px;font-size:13px;line-height:18px;color:var(--muted);white-space:nowrap;text-align:left;text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 0 8px var(--bg),0 0 12px var(--bg)}
 .cc button:before{content:"";position:absolute;left:6px;top:50%;margin-top:-1px;background:currentColor;box-shadow:0 0 0 2px var(--bg);transition:width .2s cubic-bezier(.2,.8,.2,1),opacity .2s}
 .cc button:hover,.cc .sel{color:var(--fg)}
@@ -193,7 +183,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .cc .n{display:inline-block;min-width:2ch;text-align:right;font-style:normal;font-variant-numeric:tabular-nums}
 .cc small{margin-left:2px;font-size:11px;font-weight:400;opacity:.6}
 
-/* ============================================================ sidebar: search, filters, results, theme, about */
+/* ============================================================ 侧栏：搜索、筛选、结果、主题、导出信息 */
 .sh{height:52px;flex:none;display:flex;align-items:center;padding:0 8px 0 16px;font-weight:600}
 .sh span,.rs span{flex:1}
 .sb{padding:12px 16px;display:flex;flex-direction:column;gap:10px}
@@ -218,7 +208,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .empty{padding:24px 16px;text-align:center;color:var(--muted);font-size:13px}
 .info{padding:10px 16px 14px;font-size:12px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line)}
 
-/* ============================================================ overlays: the media viewer and the dialog */
+/* ============================================================ 浮层：媒体查看器和对话框 */
 .lb,.dlg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
 .lb{background:#000000eb;z-index:10;overflow:hidden;touch-action:none}
 .lb img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
@@ -235,7 +225,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 .bd{overflow-y:auto;padding:8px 0}
 .ri{padding:8px 16px}
 
-/* ============================================================ narrow windows: the sidebar covers the page */
+/* ============================================================ 窄窗口：侧栏盖住整个页面 */
 @media (max-width:760px){
   .side{position:fixed;inset:0;width:100%!important;max-width:none;z-index:5;border:0}
   .grip{display:none}
@@ -285,16 +275,16 @@ mark{background:var(--mark);color:inherit;border-radius:2px}
 <script>
 (() => {
 "use strict";
-/* The script, in order: the data and the words of the page; helpers; the page around the chat (header, sidebar,
-   theme); the messages (how one is drawn, the blocks that draw only those near the view, the scrollbar); search; the
-   time rail; the media viewer, the dialog and voice; what clicks and keys do; the start, at the latest message. */
+/* 脚本依次是：数据和页面的文字；辅助函数；聊天以外的页面部分（标题栏、侧栏、主题）；
+   消息（一条消息怎样绘制、只绘制视口附近消息的分块、滚动条）；搜索；时间轴；媒体查看器、对话框和语音；
+   点击和按键的处理；启动，停在最新的一条消息 */
 
-/* ============================================================ data
-   msgs[i] = {t: unix seconds, u: index into users (-1: none), k: kind, ...the kind's fields}; the order is WeChat's
-   sort order, so times are not always rising. Times show in the time zone of the computer that opens the page. */
+/* ============================================================ 数据
+   `msgs[i]` 是 `{t, u, k, ...}`：`t` 是 Unix 时间（秒），`u` 是 `users` 中的下标（-1 表示没有），`k` 是种类，
+   其余是该种类的字段。顺序是微信的排序，所以时间不一定递增。时间按打开页面的电脑所在的时区显示 */
 const D = JSON.parse(document.getElementById("wf-data").textContent);
 const M = D.msgs, U = D.users, ME = D.me, GROUP = D.kind === "group", EN_PAGE = D.lang === "en";
-// a quote whose message comes later in the export names that message by id (rq), and that message carries the id
+// 被引用的消息在导出中排在后面时，引用用 ID（`rq`）指明它，那条消息带着 `id`；这里换成它的下标 `r`
 {
   let ids = null;
   for (const m of M) if (m.rq) {
@@ -303,8 +293,7 @@ const M = D.msgs, U = D.users, ME = D.me, GROUP = D.kind === "group", EN_PAGE = 
   }
 }
 const K = {SYS:0,TEXT:1,IMG:2,VOICE:3,VIDEO:4,EMOJI:5,FILE:6,LINK:7,QUOTE:8,RECORD:9,TRANSFER:10,PACKET:11,LOC:12,CARD:13,CALL:14,MUSIC:15,MINI:16,FINDER:17,NOTICE:18,APP:19};
-// the words of the page are written in Chinese; these are their English. A Chinese page leaves them out (build.mjs
-// cuts what is between the two markers)
+// 页面的文字用中文写，这里是它们的英文。中文页面不带这些（build.mjs 去掉两个标记之间的内容）
 const EN = /*EN*/{"搜索与筛选":"Search & filter","搜索":"Search","外观":"Theme","自动":"Auto","浅色":"Light","深色":"Dark",
   "全部":"All","图片与视频":"Photos & videos","文件":"Files","链接":"Links","语音":"Voice","聊天记录":"Chat history","转账与红包":"Payments","所有人":"Everyone",
   "群聊":"Group chat","私聊":"Private chat","公众号":"Official account","条消息":" messages","条结果":" results","定位到聊天":"Show in chat","返回引用处":"Back to the reply","图片已丢失":"Image missing",
@@ -316,11 +305,11 @@ const EN = /*EN*/{"搜索与筛选":"Search & filter","搜索":"Search","外观"
   "[视频号]":"[Channels]","[群公告]":"[Announcement]","[应用消息]":"[App message]"}/*EN*/;
 const T = s => EN[s] || s;
 
-/* ============================================================ helpers */
+/* ============================================================ 辅助函数 */
 const $ = id => document.getElementById(id);
 const chat = $("chat"), list = $("list"), main = chat.parentNode;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
-// the address of a card from the records, when it is a web page's: no javascript:, file: or app scheme to click (#818)
+// 记录里的卡片地址只在是网页地址时才使用，不让点到 javascript:、file: 或应用自己的协议（#818）
 const web = u => (/^https?:\/\//i.test(u || "") ? u : "");
 const clamp =(v, a, b) => Math.max(a, Math.min(b, v));
 const pad = n => (n < 10 ? "0" : "") + n;
@@ -331,11 +320,11 @@ const ymd = t => { const d = new Date(t * 1000); return EN_PAGE ? d.getFullYear(
 const full = t => ymd(t) + " " + hm(t);
 const size = n => n == null ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : n < 1073741824 ? (n / 1048576).toFixed(1) + " MB" : (n / 1073741824).toFixed(2) + " GB";
 const dur = s => Math.floor(s / 60) + ":" + pad(Math.floor(s % 60));
-/** A sender's name; in a private chat the user's own name may be empty. */
+/** 发送者的名字；私聊中用户自己的名字可能为空，这时显示「我」。 */
 const name = u => u < 0 ? "" : u === ME && !GROUP ? (U[u][0] || T("我")) : U[u][0];
-/** A hue of its own for a name or a file extension. */
+/** 名字或文件扩展名各自对应的色相。 */
 const hue = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h) % 360; };
-// icons: the inside of a 24×24 svg each; an element with data-i="name" gets that icon
+// 图标：每项是一个 24×24 的 svg 的内容；带 `data-i="<名称>"` 的元素填入对应的图标
 const SVG = {};
 for (const [k, v] of Object.entries({
   img: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',
@@ -350,18 +339,18 @@ for (const [k, v] of Object.entries({
   up: '<path d="m6 15 6-6 6 6"/>', down: '<path d="m6 9 6 6 6-6"/>', left: '<path d="m15 6-6 6 6 6"/>', right: '<path d="m9 6 6 6-6 6"/>'
 })) SVG[k] = '<svg viewBox="0 0 24 24">' + v + "</svg>";
 for (const el of document.querySelectorAll("[data-i]")) el.innerHTML = SVG[el.dataset.i];
-// what is kept in the browser: the theme, whether the sidebar is open, and its width
+// 保存在浏览器里的：主题、侧栏是否打开和侧栏的宽度
 const store = (k, v) => { try { v === undefined ? (v = localStorage.getItem("wf." + k)) : localStorage.setItem("wf." + k, v); } catch (e) { v = null; } return v; };
 
-/* ============================================================ the page around the chat */
-/* header: the title, the kind of chat and how many messages; the words of the page in its language */
+/* ============================================================ 聊天以外的页面部分 */
+/* 标题栏：标题、聊天的种类和消息数；页面上的文字换成页面的语言 */
 const KIND = { group: "群聊", private: "私聊", official: "公众号" };
 document.title = D.title || document.title;
 $("ttl").textContent = D.title || "";
 $("sub").textContent = [T(KIND[D.kind] || ""), M.length.toLocaleString() + T("条消息")].filter(Boolean).join(" · ");
 for (const el of document.querySelectorAll("[data-t]")) el.textContent = T(el.dataset.t);
 $("q").placeholder = T("搜索");
-/* sidebar: opened by the header's button, or by typing on the page; its width set by dragging its edge */
+/* 侧栏：点标题栏的按钮或在页面上打字时打开；拖动它的边缘调整宽度 */
 const side = $("side");
 function openSide(on) { side.hidden = !on; store("side", on ? "1" : "0"); if (on) $("q").focus(); }
 $("tgl").onclick = () => openSide(side.hidden);
@@ -373,12 +362,12 @@ $("grip").onpointerdown = e => {
   g.onpointermove = ev => side.style.setProperty("--sw", Math.max(260, Math.min(innerWidth * 0.7, innerWidth - ev.clientX)) + "px");
   g.onpointerup = () => { g.onpointermove = g.onpointerup = null; store("sw", parseInt(side.style.getPropertyValue("--sw"))); };
 };
-/* about: how many messages, the time they span, when they were exported */
+/* 导出信息：消息数、时间范围和导出时间 */
 if (M.length) {
   let lo = Infinity, hi = -Infinity; for (const m of M) { if (m.t < lo) lo = m.t; if (m.t > hi) hi = m.t; }
   $("info").innerHTML = esc(T("消息数")) + ": " + M.length.toLocaleString() + "<br>" + esc(T("时间范围")) + ": " + esc(ymd(lo)) + " – " + esc(ymd(hi)) + (D.exported ? "<br>" + esc(T("导出时间")) + ": " + esc(full(D.exported)) : "");
 }
-/* theme: automatic (the system's), light or dark */
+/* 主题：自动（跟随系统）、浅色或深色 */
 const THEMES = [["auto", "自动"], ["light", "浅色"], ["dark", "深色"]];
 function setTheme(v) {
   v === "auto" ? document.documentElement.removeAttribute("data-theme") : document.documentElement.setAttribute("data-theme", v);
@@ -389,8 +378,8 @@ $("theme").innerHTML = THEMES.map(([v, l]) => '<button data-v="' + v + '">' + es
 $("theme").onclick = e => { const v = e.target.dataset && e.target.dataset.v; if (v) setTheme(v); };
 setTheme(store("theme") || "auto");
 
-/* ============================================================ messages: how one is drawn */
-/* text: search matches are marked as it is drawn; links in it can be followed */
+/* ============================================================ 消息：一条消息怎样绘制 */
+/* 文字：绘制时标出搜索匹配的部分；其中的链接可以点开 */
 let Q = "";
 function hl(s) {
   s = s == null ? "" : String(s);
@@ -406,7 +395,7 @@ function rich(s) {
   while ((m = URL_RE.exec(s))) { out += hl(s.slice(i, m.index)) + '<a href="' + esc(m[0]) + '" target="_blank" rel="noopener noreferrer">' + hl(m[0]) + "</a>"; i = m.index + m[0].length; }
   return out + hl(s.slice(i));
 }
-/* plain text: what search matches and what the result list shows; a kind without words shows as a tag */
+/* 纯文字：搜索匹配和结果列表显示的内容；没有文字的种类显示成标签 */
 const PRE = { [K.IMG]:"[图片]",[K.VOICE]:"[语音]",[K.VIDEO]:"[视频]",[K.EMOJI]:"[表情]",[K.FILE]:"[文件]",[K.LINK]:"[链接]",[K.RECORD]:"[聊天记录]",[K.TRANSFER]:"[转账]",
   [K.PACKET]:"[红包]",[K.LOC]:"[位置]",[K.CARD]:"[名片]",[K.CALL]:"[通话]",[K.MUSIC]:"[音乐]",[K.MINI]:"[小程序]",[K.FINDER]:"[视频号]",[K.NOTICE]:"[群公告]",[K.APP]:"[应用消息]" };
 function plain(m) {
@@ -424,7 +413,7 @@ function plain(m) {
     default: return T(PRE[m.k] || "");
   }
 }
-/* time chips: one after a gap of five minutes, and one with the date whenever the day changes */
+/* 时间标签：与上一条消息相隔五分钟以上时加一个，换了一天时加一个带日期的 */
 const CHIP = new Array(M.length);
 {
   let last = -1e12, lastDay = 0;
@@ -435,31 +424,30 @@ const CHIP = new Array(M.length);
     last = t; lastDay = d;
   }
 }
-/* avatars: the picture, or the first character of the name on a colour of its own (also when the picture does not
-   load: see "files that do not load") */
+/* 头像：图片，或者在名字自己的颜色上写名字的第一个字；图片加载失败时也这样显示，见「加载失败的文件」一节 */
 function avatar(u) {
   const a = U[u][1];
   if (a) return '<img class="av" data-u="' + u + '" src="' + esc(a) + '" alt="" loading="lazy" decoding="async">';
   return initial(U[u][0]);
 }
 function initial(n) { n = n || "?"; return '<div class="av" style="background:hsl(' + hue(n) + ',45%,58%)">' + esc(Array.from(n.trim())[0] || "?") + "</div>"; }
-/** A picture's shown size: within mw × mh, its shape kept, no side under 40. */
+/** 图片显示的尺寸：不超过 mw × mh，保持宽高比，每边至少 40。 */
 function fit(w, h, mw, mh) { if (!w || !h) return [mw, mh]; const r = Math.min(1, mw / w, mh / h); return [Math.max(40, Math.round(w * r)), Math.max(40, Math.round(h * r))]; }
-/** The quoted message under a reply, which goes to it. */
+/** 回复下方的被引用消息，点击后跳转到那条消息。 */
 function quote(m) { return '<button class="q" data-go="' + (m.r ?? "") + '">' + hl((m.qn ? m.qn + ": " : "") + (m.qx || "")) + "</button>"; }
-/** A card: a link when it opens a page or a file, a button when it opens the dialog, else a box. */
+/** 卡片：打开网页或文件时是链接，打开对话框时是按钮，否则是普通的框。 */
 function card(cls, inner, foot, attrs) {
   const tag = attrs && attrs.indexOf("href=") === 0 ? "a" : attrs ? "button" : "div";
   return "<" + tag + ' class="card ' + cls + '" ' + (attrs || "") + ">" + inner + (foot ? '<div class="ft">' + esc(foot) + "</div>" : "") + "</" + tag + ">";
 }
-/** What a message shows, by its kind. */
+/** 按种类生成一条消息显示的内容。 */
 function body(m, i) {
   switch (m.k) {
     case K.TEXT: return '<div class="b">' + rich(m.x) + "</div>";
     case K.QUOTE: return '<div class="b">' + rich(m.x) + "</div>" + quote(m);
     case K.IMG: {
       if (!m.s) return '<div class="gone">' + SVG.img + esc(T("图片已丢失")) + "</div>";
-      // a picture of unknown size takes its own, within the same bounds
+      // 不知道尺寸的图片按自己的尺寸显示，上限相同
       const [w, h] = fit(m.w, m.h, 240, 240), box = m.w && m.h ? 'width="' + w + '" height="' + h + '" style="width:' + w + "px;height:" + h + 'px"' : 'style="max-width:240px;max-height:240px"';
       return '<img class="media" data-lb="' + i + '" src="' + esc(m.s) + '" ' + box + ' alt="" loading="lazy" decoding="async">';
     }
@@ -503,12 +491,11 @@ function body(m, i) {
     default: return '<div class="b">' + hl(m.x || T(PRE[m.k] || "")) + "</div>";
   }
 }
-// the jumps from quotes, each from the quote at `from` to the message at `to`: the message the last one reached
-// carries a button back to its `from`, where the jump before it shows its button again. A quote on the message just
-// reached adds a jump; a quote elsewhere starts the jumps again
+// 从引用发起的跳转，每次从 `from` 处的引用跳到 `to` 处的消息：最后一次跳到的消息带一个返回按钮，回到它的 `from`，
+// 回去后前一次跳转的返回按钮重新出现。在刚跳到的消息上点引用时增加一次跳转，在别处点引用时跳转从头记起
 const BACK = [];
 const lastJump = () => BACK[BACK.length - 1];
-/** A message: its time chip, then a system line, or the avatar, the name in a group and what it shows. */
+/** 一条消息：先是时间标签，然后是系统消息，或者头像、群聊中的名字和消息的内容。 */
 function msg(i) {
   const m = M[i];
   let h = CHIP[i] ? '<div class="tm"><span>' + esc(CHIP[i]) + "</span></div>" : "";
@@ -516,19 +503,19 @@ function msg(i) {
   const me = m.u === ME, named = GROUP && !me;
   let b = body(m, i);
   if (lastJump()?.to === i) {
-    // the button beside what the message shows; a reply's quote (the end of its body) under both
+    // 返回按钮放在消息内容的旁边；回复的引用（内容的末尾部分）放在两者下方
     const q = m.k === K.QUOTE ? quote(m) : "";
     b = '<div class="bk">' + b.slice(0, b.length - q.length) + '<button class="back" data-back title="' + esc(T("返回引用处")) + '">' + SVG.back + "</button></div>" + q;
   }
   return h + '<div class="m' + (me ? " me" : "") + (named ? " named" : "") + '" id="m' + i + '" title="' + full(m.t) + '">' + avatar(m.u) + '<div class="col">' + (named ? '<div class="nm">' + esc(U[m.u][0]) + "</div>" : "") + b + "</div></div>";
 }
 
-/* ============================================================ messages: blocks
-   The messages go in blocks of N. Only the blocks near the view hold their messages; the others keep their height:
-   the one they had when shown, or an estimate. */
+/* ============================================================ 消息：分块
+   消息每 N 条分成一块。只有视口附近的块装着它们的消息，其他块只保留高度：
+   显示过的保留显示时的高度，没有显示过的用估计值 */
 const N = 40, NB = Math.ceil(M.length / N), BL = [];
 for (let b = 0; b < NB; b++) { const el = document.createElement("div"); el.className = "blk"; el.dataset.b = b; list.appendChild(el); BL.push({ el, on: false, h: 0, est: 0 }); }
-/** Estimates the height of each block from the size of its messages at the list's width. */
+/** 按列表的宽度和消息的大小估计每一块的高度。 */
 function estimate() {
   const width = Math.min(560, (Math.min(list.clientWidth || chat.clientWidth, 900) - 100) * 0.72);
   for (let b = 0; b < NB; b++) {
@@ -551,7 +538,7 @@ function estimate() {
     if (!BL[b].on) BL[b].el.style.height = (BL[b].h || h) + "px";
   }
 }
-/** Fills a block; one above the view keeps what is in view where it is. */
+/** 填充一块；填充视口上方的块时，保持视口里的内容不动。 */
 function show(b) {
   const B = BL[b]; if (!B || B.on) return;
   const before = B.el.offsetHeight, above = B.el.offsetTop + before <= chat.scrollTop + 1;
@@ -560,24 +547,24 @@ function show(b) {
   const after = B.el.offsetHeight; B.h = after;
   if (above && after !== before) chat.scrollTop += after - before;
 }
-/** Empties a block, keeping its height. */
+/** 清空一块，保留它的高度。 */
 function hide(b) {
   const B = BL[b]; if (!B.on) return;
   B.h = B.el.offsetHeight; B.el.style.height = B.h + "px"; B.el.textContent = ""; B.on = false;
 }
 const io = new IntersectionObserver(es => { for (const e of es) { const b = +e.target.dataset.b; e.isIntersecting ? show(b) : hide(b); } }, { root: chat, rootMargin: "1500px 0px" });
-/** Draws a shown block again, after what its messages show changed. */
+/** 消息显示的内容变了以后，重新绘制显示着的一块。 */
 function redo(b) { const B = BL[b]; if (!B || !B.on) return; B.on = false; B.el.style.height = B.el.offsetHeight + "px"; show(b); }
 function redraw() { for (let b = 0; b < NB; b++) redo(b); }
-/** Empties the blocks away from block b: those shown by an earlier jump may never have crossed the observer's margin. */
+/** 清空离第 b 块较远的块：之前跳转时显示的块可能从未进入观察器的边距范围，观察器不会清空它们。 */
 function only(b) { for (let x = 0; x < NB; x++) if (BL[x].on && Math.abs(x - b) > 1) hide(x); }
-/** Brings message i to the middle of the view, flashing it if asked. */
+/** 把第 i 条消息移到视口中间，`flash` 为真时让它闪一下。 */
 function jump(i, flash) {
   if (i == null || i < 0 || i >= M.length) return;
   const b = Math.floor(i / N);
   only(b); show(b);
   const el = $("m" + i); if (!el) return;
-  // a neighbouring block is drawn first only when the view will reach into it: a block is mostly taller than the view
+  // 只有视口会伸进相邻的块时才先绘制它：一块通常比视口高
   const into = el.offsetTop - BL[b].el.offsetTop, half = chat.clientHeight / 2;
   if (into < half) show(b - 1);
   if (BL[b].el.offsetHeight - into - el.offsetHeight < half) show(b + 1);
@@ -586,17 +573,16 @@ function jump(i, flash) {
 }
 function toEnd() { only(NB - 1); show(NB - 1); show(NB - 2); chat.scrollTop = chat.scrollHeight; }
 
-/* ============================================================ messages: the scrollbar
-   The chat draws its own. Its thumb stands for where the view is among the messages, not among the pixels (most
-   blocks' heights are estimates until drawn), so it stays under the pointer while dragged. A position is a message's
-   index plus how far into it; the thumb is at a / (messages - span), a being the position at the top of the view and
-   span how many messages the view holds, so it reaches both ends. */
+/* ============================================================ 消息：滚动条
+   聊天栏自己绘制滚动条。滑块表示视口在消息中的位置，而不是在像素中的位置（多数块在绘制之前只有估计的高度），
+   所以拖动时滑块一直在指针下面。位置是消息的下标加上在这条消息内的比例（0 到 1）；滑块位于
+   `a / (M.length - SPAN)`，其中 `a` 是视口顶部的位置，`SPAN` 是视口能容纳的消息数，这样滑块能到达两端 */
 const sbar = $("sbar"), thumb = sbar.firstElementChild;
-// SPAN: how many messages the view holds; TH: the thumb's height, sized for a scrollbar SIZED pixels high
+// SPAN：视口能容纳的消息数；TH：滑块的高度，按高 SIZED 像素的滚动条算出
 let SPAN = 1, TH = 28, SIZED = 0, dragging = false;
 
-/* ---------- the view moves the thumb ---------- */
-/** Puts the thumb where the view is (left alone while it is dragged); no scrollbar when everything is in view. */
+/* ---------- 视口带动滑块 ---------- */
+/** 把滑块放到视口所在的位置（拖动时不动它）；全部内容都在视口里时不显示滚动条。 */
 function track() {
   sbar.hidden = chat.scrollHeight <= chat.clientHeight;
   if (sbar.hidden) return;
@@ -604,9 +590,9 @@ function track() {
   const a = measure();
   if (!dragging) setThumb(M.length > SPAN ? a / (M.length - SPAN) : 0);
 }
-/** The position at the top of the view; SPAN set to how many messages the view holds. */
+/** 视口顶部的位置；同时把 SPAN 设为视口能容纳的消息数。 */
 function measure() { const a = posAt(chat.scrollTop); SPAN = posAt(chat.scrollTop + chat.clientHeight) - a; return a; }
-/** The position at y in the list (pixels from its top): by the block there, and the message in it when it is drawn. */
+/** 列表中 y 处（距列表顶部的像素）的位置：按那里的块算，块已绘制时再按其中的消息算。 */
 function posAt(y) {
   let lo = 0, hi = NB - 1;
   while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (BL[mid].el.offsetTop <= y) lo = mid; else hi = mid - 1; }
@@ -617,7 +603,7 @@ function posAt(y) {
   const t = els[k].offsetTop, end = k + 1 < els.length ? els[k + 1].offsetTop : bottom;
   return first + k + clamp((y - t) / (end - t || 1), 0, 1);
 }
-/** The thumb's height: the share of the messages a view holds, as the estimates have it, but not under 28 pixels. */
+/** 滑块的高度：视口占全部消息的比例（按估计的高度算），不低于 28 像素。 */
 function sizeThumb() {
   let h = 0; for (const B of BL) h += B.h || B.est;
   SIZED = sbar.clientHeight;
@@ -627,24 +613,23 @@ function sizeThumb() {
 function setThumb(f) { thumb.style.transform = "translateY(" + (f * (sbar.clientHeight - TH)).toFixed(1) + "px)"; }
 let trackQ = 0; chat.addEventListener("scroll", () => { if (!trackQ) trackQ = requestAnimationFrame(() => { trackQ = 0; track(); }); }, { passive: true });
 
-/* ---------- the thumb moves the view ---------- */
-/** Brings the view to thumb position f (0 to 1); the span is measured again where it lands, and the view placed
- * again by it, so that letting go leaves the thumb where it is. */
+/* ---------- 滑块带动视口 ---------- */
+/** 把视口移到滑块位置 f（0 到 1）；在落到的地方重新测量 SPAN，再按它重新放置视口，这样松开时滑块留在原处。 */
 function seekThumb(f) {
   if (f === 1) return toEnd();
   for (let k = 0; k < 2; k++) { const span = SPAN; seek(f * Math.max(0, M.length - span)); measure(); if (Math.abs(SPAN - span) < 0.01) break; }
 }
-/** Brings position a to the top of the view, drawing what it needs. */
+/** 把位置 a 移到视口顶部，并绘制需要的块。 */
 function seek(a) {
   const i = clamp(Math.floor(a), 0, M.length - 1), b = Math.floor(i / N);
   only(b); show(b);
   const B = BL[b].el, el = $("m" + i), next = i % N < N - 1 && $("m" + (i + 1));
   if (B.offsetTop + B.offsetHeight - el.offsetTop < chat.clientHeight) show(b + 1);
   const t = el.offsetTop, end = next ? next.offsetTop : B.offsetTop + B.offsetHeight;
-  // at the very start, the first message's time chip and the list's top show too
+  // 在最开头时，第一条消息的时间标签和列表的顶部也显示出来
   chat.scrollTop = a <= 0 ? 0 : t + clamp(a - i, 0, 1) * (end - t);
 }
-// the thumb follows the pointer, held where it was grabbed; a press on the track brings the thumb's middle there
+// 滑块跟随指针，保持被抓住的位置；在轨道上按下时，滑块的中间移到按下的地方
 sbar.onpointerdown = e => {
   e.preventDefault(); sbar.setPointerCapture(e.pointerId);
   const r = sbar.getBoundingClientRect(), on = e.target === thumb, grab = on ? e.clientY - thumb.getBoundingClientRect().top : TH / 2;
@@ -654,14 +639,14 @@ sbar.onpointerdown = e => {
   sbar.onpointermove = ev => to(ev.clientY);
   sbar.onpointerup = sbar.onpointercancel = () => { sbar.onpointermove = sbar.onpointerup = sbar.onpointercancel = null; dragging = false; sbar.classList.remove("drag"); track(); };
 };
-// the wheel over the scrollbar scrolls the chat
+// 在滚动条上转动滚轮时滚动聊天
 sbar.addEventListener("wheel", e => { chat.scrollTop += e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? chat.clientHeight : 1); }, { passive: true });
 
-/* ============================================================ search
-   A keyword (matched in a message's plain text and its sender's name), a kind and, in a group, a sender. The results
-   list newest first, a hundred at a time; picking one brings it to the view. */
+/* ============================================================ 搜索
+   按关键词（在消息的纯文字和发送者的名字中匹配）、种类和发送者（群聊中）搜索。结果从最新的开始列出，每次列一百条；
+   选中一条时把它移到视口里 */
 const KINDS = [["", "全部"], ["media", "图片与视频", [K.IMG, K.VIDEO]], ["file", "文件", [K.FILE]], ["link", "链接", [K.LINK, K.MUSIC, K.MINI, K.FINDER, K.APP]], ["voice", "语音", [K.VOICE]], ["rec", "聊天记录", [K.RECORD]], ["pay", "转账与红包", [K.TRANSFER, K.PACKET]]];
-// HAY: each message's searchable text in lower case, made on the first search
+// HAY：每条消息可搜索的文字（小写），第一次搜索时生成
 let kindSet = null, who = -1, hits = [], cur = -1, shown = 0, HAY = null;
 $("kinds").innerHTML = KINDS.map(([v, l]) => '<button data-v="' + v + '" aria-pressed="' + !v + '">' + esc(T(l)) + "</button>").join("");
 $("kinds").onclick = e => {
@@ -669,7 +654,7 @@ $("kinds").onclick = e => {
   for (const b of $("kinds").children) b.setAttribute("aria-pressed", b.dataset.v === v);
   const k = KINDS.find(x => x[0] === v); kindSet = k[2] ? new Set(k[2]) : null; run();
 };
-// in a group, the senders, most messages first
+// 群聊中的发送者，消息多的在前
 if (GROUP) {
   const cnt = new Map(); for (const m of M) if (m.u >= 0) cnt.set(m.u, (cnt.get(m.u) || 0) + 1);
   const opts = [...cnt].sort((a, b) => b[1] - a[1]).map(([u, n]) => '<option value="' + u + '">' + esc(U[u][0]) + " (" + n + ")</option>");
@@ -677,7 +662,7 @@ if (GROUP) {
   $("who").onchange = () => { who = +$("who").value; run(); };
 } else $("whoBox").hidden = true;
 let qt; $("q").oninput = () => { clearTimeout(qt); qt = setTimeout(() => { Q = $("q").value.trim().toLowerCase(); run(); }, 120); };
-/** Finds the results, lists them and draws the shown messages again with the keyword marked. */
+/** 找出结果并列出，再重新绘制显示着的消息，标出关键词。 */
 function run() {
   if (!HAY && Q) HAY = M.map(m => (plain(m) + "\u0001" + (m.u >= 0 ? U[m.u][0] : "")).toLowerCase());
   hits = [];
@@ -695,13 +680,13 @@ function count() {
   $("cnt").textContent = !any ? "" : hits.length ? (cur >= 0 ? cur + 1 + " / " : "") + hits.length.toLocaleString() + T("条结果") : T("没有结果");
   if (!any) $("res").innerHTML = '<div class="empty">' + esc(T("输入关键词或选择类型")) + "</div>";
 }
-/** A result's line of text, starting near the keyword. */
+/** 结果的一行文字，从关键词附近开始。 */
 function snippet(m) {
   let s = plain(m).replace(/\s+/g, " ");
   if (Q) { const j = s.toLowerCase().indexOf(Q); if (j > 24) s = "…" + s.slice(j - 16); }
   return s.slice(0, 160);
 }
-/** Lists the next hundred results. */
+/** 再列出一百条结果。 */
 function more() {
   if (shown >= hits.length) return;
   const end = Math.min(hits.length, shown + 100); let h = "";
@@ -712,7 +697,7 @@ function more() {
   shown = end; $("res").insertAdjacentHTML("beforeend", h);
 }
 $("res").onscroll = () => { const r = $("res"); if (r.scrollTop + r.clientHeight > r.scrollHeight - 300) more(); };
-/** Picks result n (in chat order): marks it in the list, listing down to it, and brings it to the view. */
+/** 选中第 n 条结果（按聊天的顺序）：在列表中标出它（还没列到它时先列到它），并把它移到视口里。 */
 function pick(n) {
   if (!hits.length) return;
   cur = (n + hits.length) % hits.length; count();
@@ -723,18 +708,17 @@ function pick(n) {
   if (innerWidth <= 760) openSide(false);
 }
 $("res").onclick = e => { const b = e.target.closest(".hit"); if (b) pick(+b.dataset.n); };
-// up and Enter go to older results, down and Shift+Enter to newer ones; either way the first pick is the newest result
+// 向上的按钮和 Enter 转到更早的结果，向下的按钮和 Shift+Enter 转到更新的结果；第一次选中的总是最新的结果
 const stepHit = d => pick(cur < 0 ? hits.length - 1 : cur + d);
 $("q").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); stepHit(e.shiftKey ? 1 : -1); } };
 $("prev").onclick = () => stepHit(-1);
 $("next").onclick = () => stepHit(1);
 
-/* ============================================================ time rail
-   Collapsed, ticks at the chat's left edge mark the year (or the month) the chat is at. The pointer on them opens
-   the rail, showing the years alone; the pointer on a year shows its months beside it, on a month its days, and on a
-   day the chat goes there at once. A click goes to the first message of what is clicked and closes the rail. On a
-   touch screen, a tap opens the next column and a second tap goes there. */
-// year -> month -> day, each with its first message (in chat order) and how many messages it has
+/* ============================================================ 时间轴
+   收起时，聊天栏左边缘的刻度标出聊天当前所在的年（或月）。指针放在刻度上时展开时间轴，只显示年；
+   指针放在某一年上时在旁边显示它的月，放在某个月上时显示它的日，放在某一天上时聊天立即转到那一天。
+   点击转到所点项的第一条消息并收起时间轴。触摸屏上，点一下打开下一列，再点一下转到那里 */
+// 年 -> 月 -> 日，每项记下它的第一条消息（按聊天的顺序）和消息数
 const CAL = new Map();
 for (let i = 0; i < M.length; i++) {
   const d = new Date(M[i].t * 1000), y = d.getFullYear(), mo = d.getMonth() + 1, dd = d.getDate();
@@ -746,7 +730,7 @@ for (let i = 0; i < M.length; i++) {
 const sorted = m => [...m.keys()].sort((a, b) => a - b);
 const YEARS = sorted(CAL);
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-// the numbers in boxes of their own, so that they line up digit under digit
+// 数字放在各自的框里，上下逐位对齐
 const num = n => '<i class="n">' + n + "</i>";
 const label = {
   y: y => num(y) + (EN_PAGE ? "" : "年"),
@@ -755,13 +739,13 @@ const label = {
 };
 const cal = $("cal"), ticks = $("ticks"), cy = $("cy"), cm = $("cm"), cd = $("cd");
 const HOVER = matchMedia("(hover: hover)").matches;
-// openY, openM: the year whose months show and the month whose days show (0: none); hoverDay: the day the chat went to
+// openY、openM：显示着月的那一年和显示着日的那个月（0 表示没有）；hoverDay：聊天转到的那一天
 let openY = 0, openM = 0, hoverDay = 0;
 
-/* ---------- collapsed: the ticks ---------- */
+/* ---------- 收起时：刻度 ---------- */
 const TOP = YEARS.length > 1 ? YEARS.map(y => [y]) : YEARS.length ? sorted(CAL.get(YEARS[0]).sub).map(m => [YEARS[0], m]) : [];
 ticks.innerHTML = TOP.map((_, n) => '<i style="--d:' + Math.min(n, 12) * 18 + 'ms"></i>').join("");
-// at: the year, month and day of the message near the top of the view
+// at：视口顶部附近那条消息的年、月、日
 let at = [0, 0, 0];
 function where() {
   const r = chat.getBoundingClientRect();
@@ -771,7 +755,7 @@ function where() {
   }
   return at;
 }
-/** Marks the tick of where the chat is. */
+/** 标出聊天当前所在位置的刻度。 */
 function mark() {
   const w = where(); if (w[0] === at[0] && w[1] === at[1] && w[2] === at[2]) return;
   at = w;
@@ -779,16 +763,14 @@ function mark() {
 }
 let markQ = 0; chat.addEventListener("scroll", () => { if (!markQ) markQ = requestAnimationFrame(() => { markQ = 0; mark(); }); }, { passive: true });
 
-/* ---------- opening and closing
-   The ticks open the rail when the pointer has rested on them a moment, or on a click. Open, the three boxes take the
-   pointer, and so does the safe zone: the hull of the point where the pointer left the boxes and the months and the
-   days (the years, when neither shows), since the pointer cuts corners going from one column to the next. The rail
-   closes a moment after the pointer is out of both, or once it has rested in the safe zone for DWELL. Opening under
-   the pointer takes the ticks away from it, which counts as leaving the boxes there. ---------- */
+/* ---------- 展开和收起
+   指针在刻度上停留片刻或点击刻度时展开时间轴。展开后，三个框接受指针，安全区也接受：
+   安全区是指针离开框的那一点与月列和日列（两者都没显示时为年列）围成的凸包，因为指针从一列移到下一列时会抄近路。
+   指针离开框和安全区片刻之后，或者在安全区里停留了 DWELL 毫秒之后，时间轴收起。
+   在指针下展开时，刻度从指针下消失，这算作指针在那里离开了框 ---------- */
 const DWELL = 400;
-// pointer: where the pointer is; calT: the pending opening or closing; shadeT: the shade's mask going after a close;
-// SAFE: the safe zone, while the pointer is in it; HELD: where the pointer rested when the rail closed under it, the
-// ticks there opening the rail only once it moves
+// pointer：指针的位置；calT：等待中的展开或收起；shadeT：收起后移除淡化遮罩的计时器；
+// SAFE：指针在安全区里时的安全区；HELD：时间轴在指针下收起时指针停留的位置，那里的刻度要等指针移动后才展开时间轴
 let pointer = [0, 0], calT, shadeT, SAFE = null, HELD = null;
 function openCal() {
   clearTimeout(calT); HELD = null; if (cal.classList.contains("open") || !YEARS.length) return;
@@ -796,34 +778,34 @@ function openCal() {
   fill(cm, ""); fill(cd, ""); years();
   still = pointer.slice(); lastHover = null;
   cal.classList.add("open"); cal.classList.remove("hint"); main.classList.add("shade", "dim");
-  // opened under a pointer that is on none of the boxes: it leaves them there and then (a still pointer's hover is
-  // updated late, so the browser would say so only later)
+  // 展开时指针不在任何一个框上：当作指针此时就在这里离开了框（指针静止时悬停状态更新得晚，
+  // 浏览器要过一会儿才会报告）
   if (HOVER) { const el = document.elementFromPoint(pointer[0], pointer[1]); if (!(el && el.closest(".cc"))) { SAFE = safeZone(pointer[0], pointer[1]); closeCal(DWELL, true); } }
 }
-/** Closes the rail after `delay`; `held`, under a resting pointer. */
+/** 在 `delay` 之后收起时间轴；`held` 表示在静止的指针下收起。 */
 function closeCal(delay, held) {
   clearTimeout(calT);
   calT = setTimeout(() => {
     SAFE = null; if (held) HELD = pointer.slice();
     cal.classList.remove("open", "hint"); main.classList.remove("dim");
-    // the shade fades with the panel; then its mask goes, unless the rail opened again
+    // 淡化随面板一起消失，之后移除遮罩，除非时间轴又展开了
     clearTimeout(shadeT); shadeT = setTimeout(() => { if (!cal.classList.contains("open")) main.classList.remove("shade"); }, 180);
   }, delay || 0);
 }
-/** The safe zone after the pointer left the boxes at (x, y). */
+/** 指针在 (x, y) 离开框之后的安全区。 */
 function safeZone(x, y) {
   const p = [[x, y]];
   for (const col of cm.children.length ? [cm, cd] : [cy]) if (col.children.length) { const r = col.getBoundingClientRect(); p.push([r.left, r.top], [r.right, r.top], [r.left, r.bottom], [r.right, r.bottom]); }
   return hull(p);
 }
-/** The convex hull of some points, each edge turning the same way round (monotone chain). */
+/** 一组点的凸包，各边沿同一方向环绕（单调链算法）。 */
 function hull(p) {
   const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
   const half = q => { const h = []; for (const x of q) { while (h.length > 1 && cross(h[h.length - 2], h[h.length - 1], x) <= 0) h.pop(); h.push(x); } h.pop(); return h; };
   p.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   return half(p).concat(half(p.slice().reverse()));
 }
-/** Whether a point is in a hull, or within a pixel of it (a hull of fewer than three points holds nothing). */
+/** 点是否在凸包内或离它不到一个像素（少于三个点的凸包不包含任何点）。 */
 function within(poly, x, y) {
   if (poly.length < 3) return false;
   for (let k = 0; k < poly.length; k++) {
@@ -832,7 +814,7 @@ function within(poly, x, y) {
   }
   return true;
 }
-// the edge and the ticks hint that the rail is there
+// 指针进入边缘或刻度时给出提示，表明这里有时间轴
 $("edge").onmouseenter = () => { if (!cal.classList.contains("open")) cal.classList.add("hint"); };
 $("edge").onmouseleave = e => { if (!cal.contains(e.relatedTarget)) cal.classList.remove("hint"); };
 ticks.onmouseenter = e => {
@@ -843,7 +825,7 @@ ticks.onclick = openCal;
 cal.onmouseleave = e => {
   const open = cal.classList.contains("open");
   if (!open && e.relatedTarget && e.relatedTarget.id === "edge") return;
-  // (off the boxes since opening, the browser's late word of it changes nothing)
+  // 展开时指针就不在框上的，安全区已经建好，浏览器迟来的离开事件不再改变什么
   if (open && e.relatedTarget) { if (!SAFE) { SAFE = safeZone(e.clientX, e.clientY); closeCal(DWELL, true); } return; }
   closeCal(open ? 80 : 0);
 };
@@ -853,17 +835,16 @@ document.addEventListener("mousemove", e => {
   if (SAFE) within(SAFE, e.clientX, e.clientY) ? closeCal(DWELL, true) : (SAFE = null, closeCal(80));
   if (HELD && Math.hypot(e.clientX - HELD[0], e.clientY - HELD[1]) > 3) { HELD = null; if (e.target.closest && e.target.closest("#ticks")) ticks.onmouseenter(e); }
 }, { passive: true });
-// out of the window altogether
+// 指针完全移出窗口
 document.addEventListener("mouseout", e => { if (!e.relatedTarget && SAFE) { SAFE = null; closeCal(80); } });
 document.addEventListener("pointerdown", e => { if (cal.classList.contains("open") && !cal.contains(e.target)) closeCal(); });
 
-/* ---------- open: the columns and what they hold ---------- */
+/* ---------- 展开时：各列和其中的项 ---------- */
 function item(kind, key, html, n) {
   return '<button data-' + kind + '="' + key + '"><span>' + html + "</span>" + (n != null ? "<small>" + n.toLocaleString() + "</small>" : "") + "</button>";
 }
-/** Fills a column (or empties it, with "") and lays the columns out again. A column appearing comes in (see .cc.in);
- * one going, in the open rail, goes out the way it came in, as a copy left where it was; one that stays only changes
- * what it holds. */
+/** 填充一列（`html` 为 "" 时清空），再重新排列各列。出现的一列以进入动画出现（见 .cc.in）；
+ * 时间轴展开时离开的一列在原处留下一个副本，按进来的方式反向离开；留下的一列只换内容。 */
 function fill(col, html) {
   const was = col.children.length > 0;
   if (was && !html && cal.classList.contains("open")) {
@@ -877,29 +858,28 @@ function fill(col, html) {
   layCols();
 }
 function years() { fill(cy, YEARS.map(y => item("y", y, label.y(y), null)).join("")); }
-/** Shows year y's months, the year marked. */
+/** 显示 y 年的各月，并标出这一年。 */
 function months(y) {
   openY = y; openM = 0; fill(cd, "");
   for (const b of cy.children) b.classList.toggle("sel", +b.dataset.y === y);
   const Y = CAL.get(y); fill(cm, sorted(Y.sub).map(m => item("m", m, label.m(m), Y.sub.get(m).n)).join(""));
 }
-/** Shows month m's days, the month marked. */
+/** 显示 m 月的各日，并标出这个月。 */
 function days(m) {
   openM = m; hoverDay = 0;
   for (const b of cm.children) b.classList.toggle("sel", +b.dataset.m === m);
   const Mo = CAL.get(openY).sub.get(m);
   fill(cd, sorted(Mo.sub).map(d => item("d", d, label.d(openY, m, d), Mo.sub.get(d).n)).join(""));
 }
-/** Hides the days, the pointer being back on the years. */
+/** 指针回到年列时隐藏日列。 */
 function noDays() { if (!openM) return; openM = 0; fill(cd, ""); for (const b of cm.children) b.classList.remove("sel"); }
 
-/* ---------- open: layout and rolling
-   The columns stand side by side, each centred on the rail's middle; a column's box is where it takes the pointer,
-   and the boxes touch. A column longer than the window rolls: after the pointer along it (where the pointer is along
-   its box is where the column is along its list), the wheel, or a finger. A column's roll s is the item at its box's
-   middle; at sMin the first item is at the top, at sMax the last at the bottom. ---------- */
+/* ---------- 展开时：布局和滚动
+   各列并排，每列以时间轴的中点为中心；一列的框是它接受指针的范围，相邻的框互相紧挨。
+   比窗口长的一列会滚动：跟随指针在框中的位置（指针在框中的相对位置即列在列表中的相对位置）、滚轮或手指。
+   一列的滚动量 s 是位于框中间的项；s 为 sMin 时第一项在顶部，为 sMax 时最后一项在底部 ---------- */
 let COLS = new Map(), rollQ = 0;
-/** Sizes and places the shown columns; the same items keep their roll, new ones start at the top. */
+/** 确定显示着的各列的大小和位置；项没变的列保持滚动量，新的列从顶部开始。 */
 function layCols() {
   const H = cal.clientHeight, c = H / 2, PAD = 6, old = COLS;
   COLS = new Map();
@@ -909,7 +889,7 @@ function layCols() {
     if (!items.length) continue;
     col.style.removeProperty("--bw");
     for (const b of items) b.style.transform = "";
-    // room for the longer tick of a hovered item
+    // 给悬停的项变长的刻度留出位置
     let w = 12; for (const b of items) w = Math.max(w, b.offsetWidth + 12);
     const n = items.length, ih = items[0].offsetHeight, full = n * ih + 2 * PAD, h = Math.min(full, H), rolls = full > H;
     const sMin = rolls ? (h / 2 - PAD) / ih - 0.5 : (n - 1) / 2, sMax = rolls ? n - 1 - sMin : sMin;
@@ -921,15 +901,15 @@ function layCols() {
     seat(col);
     x += w + 2 * PAD;
   }
-  // how far the columns reach: the chat fades up to there
+  // 各列伸到的位置：聊天淡化到这里
   main.style.setProperty("--cols", x + "px");
 }
-/** Puts a column's items where its roll has them. */
+/** 按一列的滚动量摆放其中的项。 */
 function seat(col) {
   const g = COLS.get(col);
   g.items.forEach((b, k) => { b.style.transform = "translateY(" + (g.h / 2 + (k - g.s - 0.5) * g.ih).toFixed(1) + "px)"; });
 }
-/** Rolls a column to `target`: at once (`now`: the pointer or a finger leads), else eased over a few frames (the wheel). */
+/** 把一列滚动到 `target`：`now` 为真时（由指针或手指带动）立即到位，否则（滚轮）在几帧内缓动过去。 */
 function rollTo(col, target, now) {
   const g = COLS.get(col); if (!g || g.sMax <= g.sMin) return;
   g.target = clamp(target, g.sMin, g.sMax);
@@ -948,7 +928,7 @@ function roll() {
   if (moving) rollQ = requestAnimationFrame(roll);
   probe();
 }
-/** The column under the pointer rolls so that where the pointer is along its box is where it is along the list. */
+/** 滚动指针下的一列，让指针在框中的相对位置就是列在列表中的相对位置。 */
 function steer(e) {
   for (const [col, g] of COLS) {
     if (g.sMax <= g.sMin) continue;
@@ -959,7 +939,7 @@ function steer(e) {
 }
 for (const col of [cy, cm, cd]) {
   col.addEventListener("wheel", e => { const g = COLS.get(col); if (!g) return; e.preventDefault(); rollTo(col, g.target + e.deltaY / g.ih * 0.6); }, { passive: false });
-  // a finger rolls a column by dragging it; a drag is not a tap
+  // 手指拖动一列时滚动它；拖动不算点击
   let drag = null;
   col.addEventListener("pointerdown", e => { const g = COLS.get(col); if (e.pointerType !== "mouse" && g) drag = { y: e.clientY, s: g.target, ih: g.ih, moved: false }; });
   col.addEventListener("pointermove", e => { if (!drag) return; const d = e.clientY - drag.y; if (Math.abs(d) > 6) drag.moved = true; rollTo(col, drag.s - d / drag.ih, true); });
@@ -967,19 +947,19 @@ for (const col of [cy, cm, cd]) {
   col.addEventListener("click", e => { if (col.dataset.dragged) { delete col.dataset.dragged; e.stopPropagation(); } }, true);
 }
 
-/* ---------- open: the pointer on the items
-   The rail opens under a still pointer, and the browser reports what is then under it as hovered: hovering counts
-   once the pointer has moved (`still`, where it was on opening). ---------- */
+/* ---------- 展开时：指针在项上
+   时间轴在静止的指针下展开，浏览器会把这时指针下的项报告为悬停：
+   指针移动之后才算悬停，`still` 是展开时指针所在的位置 ---------- */
 let still = null, lastHover = null;
 function hover(target) {
   const b = target.closest && target.closest("button"); if (!b) return;
   if (b.dataset.y) { const y = +b.dataset.y; y !== openY ? months(y) : noDays(); }
   else if (b.dataset.m) { const m = +b.dataset.m; if (m !== openM) days(m); }
-  // a day under the pointer: the chat goes there at once (the browser reports each day once, as the pointer enters it)
+  // 指针下的一天：聊天立即转到那一天（指针进入每一天时浏览器只报告一次）
   else if (b.dataset.d && +b.dataset.d !== hoverDay && openM) { hoverDay = +b.dataset.d; jump(CAL.get(openY).sub.get(openM).sub.get(hoverDay).i, false); }
   if (!b.dataset.d) hoverDay = 0;
 }
-/** A column rolled under a still pointer: what is under it now is what it hovers. */
+/** 一列在静止的指针下滚动时，指针现在所在的项就是它悬停的项。 */
 function probe() {
   if (!cal.classList.contains("open") || !HOVER || still) return;
   const el = document.elementFromPoint(pointer[0], pointer[1]), b = el && el.closest && el.closest(".cc button");
@@ -1000,9 +980,8 @@ cal.onclick = e => {
   closeCal(); jump(i, true);
 };
 
-/* ============================================================ media viewer
-   Pictures, videos and stickers of the whole chat, one after another; a picture zooms with the wheel or a double
-   click and moves by dragging. */
+/* ============================================================ 媒体查看器
+   依次查看整个聊天的图片、视频和表情；图片用滚轮或双击缩放，拖动移动 */
 let GAL = null, gi = -1, sc = 1, tx = 0, ty = 0, node = null;
 const lb = $("lb");
 function gallery() { if (!GAL) { GAL = []; for (let i = 0; i < M.length; i++) if (M[i].s && (M[i].k === K.IMG || M[i].k === K.VIDEO || M[i].k === K.EMOJI)) GAL.push(i); } return GAL; }
@@ -1031,7 +1010,7 @@ lb.onpointerdown = e => {
 };
 lb.ondblclick = e => { if (!node || node.tagName !== "IMG") return; if (sc < 0.99 || sc > 1.01) { tx = e.clientX - (e.clientX - tx) / sc; ty = e.clientY - (e.clientY - ty) / sc; sc = 1; place(); } else fitView(); };
 
-/* ============================================================ dialog: a chat history or an announcement in full */
+/* ============================================================ 对话框：完整显示一份聊天记录或一条群公告 */
 function dialog(i) {
   const m = M[i];
   $("dlt").textContent = m.k === K.NOTICE ? T("群公告") : m.ti || T("聊天记录");
@@ -1042,7 +1021,7 @@ function dialog(i) {
 $("dlx").onclick = () => { $("dlg").hidden = true; };
 $("dlg").onclick = e => { if (e.target === $("dlg")) $("dlg").hidden = true; };
 
-/* ============================================================ voice: one plays at a time; a second click stops it */
+/* ============================================================ 语音：同时只播放一条，再点一次停止 */
 const audio = new Audio(); let playing = null;
 audio.onended = audio.onpause = () => { if (playing) playing.classList.remove("on"); playing = null; };
 function voice(el) {
@@ -1052,9 +1031,9 @@ function voice(el) {
   audio.src = m.s; audio.play().then(() => { playing = el; el.classList.add("on"); }, () => {});
 }
 
-/* ============================================================ files that do not load
-   A picture, video or sticker that is there but does not load shows as missing; an avatar, as the initial, which the
-   sender's other messages then draw straight away. */
+/* ============================================================ 加载失败的文件
+   存在但加载失败的图片、视频或表情显示为已丢失；加载失败的头像显示成名字的第一个字，
+   这个发送者的其他消息随后也直接这样绘制 */
 list.addEventListener("error", e => {
   const t = e.target;
   if (t.matches && t.matches("img.av[data-u]")) { const u = +t.dataset.u; U[u][1] = ""; t.outerHTML = initial(U[u][0]); return; }
@@ -1063,9 +1042,9 @@ list.addEventListener("error", e => {
   el.outerHTML = emo ? '<div class="gone emo">' + esc(T("表情")) + "</div>" : '<div class="gone">' + (video ? SVG.cam : SVG.img) + esc(T(video ? "视频已丢失" : "图片已丢失")) + "</div>";
 }, true);
 
-/* ============================================================ clicks and keys */
-// in the chat: media open the viewer, voice plays, a quote goes to the message it quotes (which then carries the way
-// back), a chat history or an announcement opens the dialog
+/* ============================================================ 点击和按键 */
+// 聊天中：点媒体打开查看器，点语音播放，点引用转到被引用的消息（那条消息随后带上返回按钮），
+// 点聊天记录或群公告打开对话框
 list.onclick = e => {
   const t = e.target;
   const lbEl = t.closest("[data-lb]"); if (lbEl) return view(+lbEl.dataset.lb);
@@ -1090,9 +1069,8 @@ list.onclick = e => {
   }
   const d = t.closest("[data-dlg]"); if (d) return dialog(+d.dataset.dlg);
 };
-// Escape closes the viewer, the dialog or the rail; the arrows step through the viewer; Ctrl+F and typing anywhere
-// go to the search box (focused during keydown, the box takes the character itself; "Process" is the first key of an
-// input method)
+// Escape 关闭查看器、对话框或时间轴；左右方向键在查看器里切换；Ctrl+F 和在任意处打字都转到搜索框（在 keydown
+// 时获得焦点，由搜索框自己接收这个字符；`Process` 是输入法输入的第一个键）
 addEventListener("keydown", e => {
   if (!lb.hidden) { if (e.key === "Escape") closeView(); else if (e.key === "ArrowLeft") step(-1); else if (e.key === "ArrowRight") step(1); return; }
   if (!$("dlg").hidden && e.key === "Escape") { $("dlg").hidden = true; return; }
@@ -1104,15 +1082,14 @@ addEventListener("keydown", e => {
   }
 });
 
-/* ============================================================ start: at the latest message */
+/* ============================================================ 启动：停在最新的一条消息 */
 estimate();
 for (const B of BL) io.observe(B.el);
 toEnd();
 count();
 mark();
 track();
-// a new size: the viewer fits its picture again, the open rail lays out again, the blocks are estimated again when
-// the width changed by more than a little, and the scrollbar follows
+// 窗口大小变化时：查看器重新适配图片，展开的时间轴重新布局，宽度变化超过 40 像素时重新估计各块的高度，滚动条随之更新
 addEventListener("resize", () => { if (!lb.hidden) fitView(); });
 addEventListener("resize", () => { if (cal.classList.contains("open")) layCols(); });
 let rw = innerWidth; addEventListener("resize", () => { if (Math.abs(innerWidth - rw) > 40) { rw = innerWidth; estimate(); SIZED = 0; } track(); });
