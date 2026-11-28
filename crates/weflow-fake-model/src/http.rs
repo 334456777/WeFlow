@@ -1,28 +1,27 @@
-//! Just enough HTTP/1.1 for the fake: one request per connection, its body by `Content-Length`, and an answer that
-//! closes the connection.
+//! 假服务够用的 HTTP/1.1：每个连接一个请求，请求体按 `Content-Length` 读取，回答后关闭连接。
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 
-/// The largest request body read; a larger one is refused.
+/// 读取的请求体的上限，超过时拒绝。
 const LARGEST_BODY: usize = 16 << 20;
 
-/// A request the fake received.
+/// 假服务收到的一个请求。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Request {
-    /// The HTTP method.
+    /// HTTP 方法。
     pub method: String,
-    /// The path without its query.
+    /// 不含查询参数的路径。
     pub path: String,
-    /// The query, without its `?`; empty when there is none.
+    /// 不含 `?` 的查询参数；没有时为空。
     pub query: String,
-    /// The headers, their names in lower case.
+    /// 请求头，名称为小写。
     pub headers: Vec<(String, String)>,
-    /// The body, read as UTF-8 with invalid bytes replaced.
+    /// 请求体，按 UTF-8 读取，无效的字节被替换。
     pub body: String,
 }
 
 impl Request {
-    /// The first header named `name` (in lower case).
+    /// 第一个名为 `name`（小写）的请求头。
     pub fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
@@ -30,13 +29,13 @@ impl Request {
             .map(|(_, v)| v.as_str())
     }
 
-    /// The body read as JSON.
+    /// 按 JSON 解析的请求体；不是 JSON 时为 `None`。
     pub fn json(&self) -> Option<serde_json::Value> {
         serde_json::from_str(&self.body).ok()
     }
 }
 
-/// An answer to write.
+/// 要写出的回答。
 #[derive(Clone, Debug)]
 pub struct Response {
     pub status: u16,
@@ -45,6 +44,7 @@ pub struct Response {
 }
 
 impl Response {
+    /// 状态码为 `status`、内容为 `body` 的 JSON 回答。
     pub fn json(status: u16, body: &serde_json::Value) -> Self {
         Self {
             status,
@@ -53,6 +53,7 @@ impl Response {
         }
     }
 
+    /// 状态码为 `status`、内容为 `body` 的 HTML 回答，模拟网关返回的错误页。
     pub fn text(status: u16, body: &str) -> Self {
         Self {
             status,
@@ -61,13 +62,14 @@ impl Response {
         }
     }
 
+    /// 加上一个回答头。
     pub fn with_header(mut self, name: &str, value: impl Into<String>) -> Self {
         self.headers.push((name.to_string(), value.into()));
         self
     }
 }
 
-/// Read one request from `stream`; `None` when the connection closed before one came.
+/// 从 `stream` 读取一个请求；连接在请求到来前关闭时为 `None`。
 pub fn read_request(stream: &TcpStream) -> io::Result<Option<Request>> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
@@ -115,6 +117,7 @@ pub fn read_request(stream: &TcpStream) -> io::Result<Option<Request>> {
     }))
 }
 
+/// 把 `response` 写到 `stream`，并告诉客户端随后关闭连接。
 pub fn write_response(mut stream: &TcpStream, response: &Response) -> io::Result<()> {
     let mut head = format!(
         "HTTP/1.1 {} {}\r\ncontent-length: {}\r\nconnection: close\r\n",

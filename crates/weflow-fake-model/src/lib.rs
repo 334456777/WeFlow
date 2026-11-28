@@ -1,13 +1,15 @@
-//! A fake model API on 127.0.0.1, for weflow's tests and the WebUI's dev server: OpenAI's Chat Completions
-//! (`POST /v1/chat/completions`) and Anthropic's Messages (`POST /v1/messages`), each with `GET /v1/models`, built from
-//! the two services' documents. It checks a request as they do (the key, the version header, the required fields),
-//! answers in their shapes and with their errors, and keeps every request for a test to look at. Its models
-//! ([`MODELS`]) each answer one way: an answer, reasoning first, a refusal, a rate limit, an overload that passes,
-//! a used-up quota, a server error.
+//! 监听 127.0.0.1 的假模型服务，供 weflow 的测试和 WebUI 的开发服务器使用：按两家服务的接口文档实现 OpenAI 的
+//! Chat Completions（`POST /v1/chat/completions`）和 Anthropic 的 Messages（`POST /v1/messages`），两种格式各有
+//! `GET /v1/models`。它像真实的服务一样检查请求（密钥、版本头、必填字段），按它们的格式回答、返回它们的错误，
+//! 并保存收到的每个请求供测试查看。每个模型（[`MODELS`]）只有一种回答方式：正常回答、先推理再回答、拒绝回答、
+//! 限流、过一次就好的过载、额度用完、服务器错误。
 //!
 //! ```no_run
 //! let fake = weflow_fake_model::FakeModel::start()?;
-//! // ai_model_api_base_url = fake.openai_base_url(), ai_model_api_key = weflow_fake_model::KEY, ai_model_api_model = "fake-chat"
+//! // 让 weflow 使用它的配置：
+//! // ai_model_api_base_url = fake.openai_base_url()
+//! // ai_model_api_key = weflow_fake_model::KEY
+//! // ai_model_api_model = "fake-chat"
 //! # Ok::<(), std::io::Error>(())
 //! ```
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -23,10 +25,10 @@ mod scenario;
 pub use http::Request;
 pub use scenario::{Behaviour, FakeModelInfo, MODELS, REASONING_TOKENS, SLOW_ANSWER};
 
-/// The key the fake takes unless it is started with another.
+/// 默认接受的密钥；用 [`FakeModel::start_on`] 启动时可以另给一个。
 pub const KEY: &str = "sk-fake-weflow";
 
-/// What the connections share: the key, the counters and the requests received.
+/// 各个连接共用的状态：密钥、计数器和收到的请求。
 pub(crate) struct Shared {
     key: String,
     served: AtomicU64,
@@ -36,24 +38,24 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
-    /// The number of the next answer, from 1: in ids and in the choice of an answer.
+    /// 下一个回答的序号，从 1 开始，用在 ID 里，也用来挑选回答。
     pub(crate) fn next(&self) -> u64 {
         self.served.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    /// Whether this request of a [`Behaviour::Flaky`] model fails: the first, the third and so on.
+    /// [`Behaviour::Flaky`] 模型的这次请求是否失败：第 1、3、5……次失败。
     pub(crate) fn flaky_fails(&self) -> bool {
         self.flaky.fetch_add(1, Ordering::Relaxed).is_multiple_of(2)
     }
 }
 
-/// A running fake; it stops taking connections when dropped.
+/// 运行中的假服务，丢弃时停止接受连接。
 pub struct FakeModel {
     addr: SocketAddr,
     shared: Arc<Shared>,
 }
 
-/// Where it listens.
+/// 只显示监听的地址。
 impl std::fmt::Debug for FakeModel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FakeModel")
@@ -63,20 +65,20 @@ impl std::fmt::Debug for FakeModel {
 }
 
 impl FakeModel {
-    /// Start on a free port of 127.0.0.1, taking [`KEY`].
+    /// 在 127.0.0.1 的空闲端口上启动，接受 [`KEY`]。
     ///
     /// # Errors
     ///
-    /// The port cannot be bound.
+    /// 无法绑定端口。
     pub fn start() -> std::io::Result<Self> {
         Self::start_on("127.0.0.1:0", KEY)
     }
 
-    /// Start on `addr`, taking `key`.
+    /// 在 `addr` 上启动，接受 `key`。
     ///
     /// # Errors
     ///
-    /// `addr` cannot be bound.
+    /// 无法绑定 `addr`。
     pub fn start_on(addr: &str, key: &str) -> std::io::Result<Self> {
         let listener = TcpListener::bind(addr)?;
         let addr = listener.local_addr()?;
@@ -101,22 +103,22 @@ impl FakeModel {
         Ok(Self { addr, shared })
     }
 
-    /// The address it listens on, with the port the system gave when it was asked for port 0.
+    /// 监听的地址；启动时给的是端口 0 时，这里是系统分配的端口。
     pub fn addr(&self) -> SocketAddr {
         self.addr
     }
 
-    /// The base URL of the OpenAI side, `http://127.0.0.1:<port>/v1`, as OpenAI's own ends in `/v1`.
+    /// OpenAI 格式的基础地址 `http://127.0.0.1:<port>/v1`，与 OpenAI 官方的基础地址一样以 `/v1` 结尾。
     pub fn openai_base_url(&self) -> String {
         format!("http://{}/v1", self.addr)
     }
 
-    /// The base URL of the Anthropic side, `http://127.0.0.1:<port>`, as Anthropic's own has no path.
+    /// Anthropic 格式的基础地址 `http://127.0.0.1:<port>`，与 Anthropic 官方的基础地址一样不带路径。
     pub fn anthropic_base_url(&self) -> String {
         format!("http://{}", self.addr)
     }
 
-    /// The requests received so far, the first first.
+    /// 到目前为止收到的请求，按收到的先后排列。
     pub fn requests(&self) -> Vec<Request> {
         self.shared
             .requests
@@ -129,7 +131,7 @@ impl FakeModel {
 impl Drop for FakeModel {
     fn drop(&mut self) {
         self.shared.stopped.store(true, Ordering::Relaxed);
-        // wake the accepting thread so that it sees the flag
+        // 连一次自己，唤醒等待连接的线程，让它看到停止的标志
         let _ = TcpStream::connect(self.addr);
     }
 }
@@ -148,6 +150,7 @@ fn serve(stream: &TcpStream, shared: &Shared) {
 }
 
 fn route(request: &Request, shared: &Shared) -> http::Response {
+    // 两种格式的 `GET /v1/models` 路径相同，按 Anthropic 要求必带的 `anthropic-version` 头区分
     let anthropic = request.header("anthropic-version").is_some();
     match (request.method.as_str(), request.path.as_str()) {
         ("POST", "/v1/chat/completions") => openai::chat(request, shared),

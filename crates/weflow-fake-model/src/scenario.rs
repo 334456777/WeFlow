@@ -1,44 +1,44 @@
-//! The fake's models: each answers in its own way, so that a client can be tried against every case the documents
-//! describe by the model it names. The same models answer in both formats.
+//! 假服务的模型：每个模型有自己的回答方式，客户端按名字选模型，就能试遍接口文档描述的每种情况。两种格式共用同一组
+//! 模型。
 
-/// What a model does with a request.
+/// 模型对请求的回答方式。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Behaviour {
-    /// Answers the question.
+    /// 回答问题。
     Answer,
-    /// Reasons first ([`REASONING_TOKENS`] tokens, counted against the limit), then answers; refuses OpenAI's
-    /// deprecated `max_tokens` and a `temperature` other than 1, as reasoning models do.
+    /// 先推理（[`REASONING_TOKENS`] 个 token，计入上限）再回答；与推理模型一样，拒绝 OpenAI 已弃用的 `max_tokens`
+    /// 和不等于 1 的 `temperature`。
     Reason,
-    /// Answers `SKIP`, as an insight model does when it has nothing to say.
+    /// 回答 `SKIP`，即见解模型没有可说的内容时的回答。
     Skip,
-    /// Declines: `refusal` in OpenAI's message, `stop_reason: "refusal"` in Anthropic's.
+    /// 拒绝回答：OpenAI 格式在消息里给出 `refusal`，Anthropic 格式给出 `stop_reason: "refusal"`。
     Refuse,
-    /// 429 with `retry-after: 0`, every time.
+    /// 每次都返回 429 和 `retry-after: 0`。
     RateLimit,
-    /// 429 for a used-up quota: `insufficient_quota` in OpenAI's error, no `retry-after` in Anthropic's.
+    /// 额度用完的 429：OpenAI 格式的错误带 `insufficient_quota`，Anthropic 格式不带 `retry-after`。
     Quota,
-    /// 503 (OpenAI) or 529 (Anthropic) with `retry-after: 0`, every time.
+    /// 每次都返回 503（OpenAI）或 529（Anthropic）和 `retry-after: 0`。
     Overloaded,
-    /// Overloaded on every other request, from the first: one retry gets the answer.
+    /// 从第一个请求起每隔一个请求过载一次：重试一次就能得到回答。
     Flaky,
-    /// 500 with a body that is not JSON.
+    /// 返回 500，响应体不是 JSON。
     ServerError,
-    /// Answers after [`SLOW_ANSWER`].
+    /// 等待 [`SLOW_ANSWER`] 后再回答。
     Slow,
 }
 
-/// A model of the fake.
+/// 假服务的一个模型。
 #[derive(Clone, Copy, Debug)]
 pub struct FakeModelInfo {
-    /// The model's name, which picks its behaviour.
+    /// 模型名，决定回答方式。
     pub id: &'static str,
-    /// The name `GET /v1/models` shows.
+    /// `GET /v1/models` 显示的名称。
     pub display_name: &'static str,
-    /// How it answers.
+    /// 回答方式。
     pub behaviour: Behaviour,
 }
 
-/// The fake's models, in the order `GET /v1/models` lists them.
+/// 假服务的全部模型，顺序与 `GET /v1/models` 列出的一致。
 pub const MODELS: &[FakeModelInfo] = &[
     FakeModelInfo {
         id: "fake-chat",
@@ -97,24 +97,24 @@ pub const MODELS: &[FakeModelInfo] = &[
     },
 ];
 
-/// The tokens [`Behaviour::Reason`] spends before it answers.
+/// [`Behaviour::Reason`] 在回答前花费的 token 数。
 pub const REASONING_TOKENS: u64 = 512;
 
-/// How long [`Behaviour::Slow`] takes.
+/// [`Behaviour::Slow`] 回答前等待的时间。
 pub const SLOW_ANSWER: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// 名为 `id` 的模型；没有这个模型时为 `None`。
 pub fn model(id: &str) -> Option<&'static FakeModelInfo> {
     MODELS.iter().find(|m| m.id == id)
 }
 
-/// The tokens of `text`, as the fake counts them: one a character.
+/// 假服务计算的 `text` 的 token 数：每个字符算一个。
 pub fn tokens(text: &str) -> u64 {
     u64::try_from(text.chars().count()).unwrap_or(u64::MAX)
 }
 
-/// The answer of a model that behaves as `behaviour` to `user` (with the instructions `system`), the `n`-th the fake
-/// gives: `SKIP`, the words a connection test asks for, a footprint review, or one of a few insights in the language
-/// of the question.
+/// 回答方式为 `behaviour` 的模型对 `user`（系统指令为 `system`）的回答，是假服务给出的第 `n` 个回答：`SKIP`、
+/// 连接测试要求回复的文字、一段足迹的总结，或者用提问的语言写的几条见解之一。
 pub fn answer(behaviour: Behaviour, system: &str, user: &str, n: u64) -> String {
     if behaviour == Behaviour::Skip {
         return "SKIP".into();

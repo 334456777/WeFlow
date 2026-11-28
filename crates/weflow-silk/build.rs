@@ -1,4 +1,4 @@
-//! Compiles the vendored Skype SILK SDK (`vendor/`) into the static library the decoder links.
+//! 把内置的 Skype SILK SDK（`vendor/`）编译成解码器链接的静态库。
 
 use std::error::Error;
 use std::path::PathBuf;

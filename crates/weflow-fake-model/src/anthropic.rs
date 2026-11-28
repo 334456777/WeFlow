@@ -1,16 +1,16 @@
-//! Anthropic's side of the fake: `POST /v1/messages` and `GET /v1/models`, with the checks, answers and errors of
-//! Anthropic's API reference: `anthropic-version` required, the key in `x-api-key` or `Authorization: Bearer`,
-//! `max_tokens` required, alternating turns that end with the user's, no sampling parameters in version 2026-10-21.
+//! 假服务的 Anthropic 格式：`POST /v1/messages` 和 `GET /v1/models`，检查、回答和错误按 Anthropic 的 API 参考实现：
+//! 必须有 `anthropic-version`，密钥在 `x-api-key` 或 `Authorization: Bearer` 里，必须有 `max_tokens`，对话轮流
+//! 进行并以用户的一轮结束，2026-10-21 版不接受采样参数。
 use serde_json::{json, Value};
 
 use crate::http::{Request, Response};
 use crate::scenario::{self, Behaviour};
 use crate::Shared;
 
-/// The API version that refuses `temperature`, `top_p` and `top_k`.
+/// 从这个 API 版本起拒绝 `temperature`、`top_p` 和 `top_k`。
 const SAMPLING_REMOVED: &str = "2026-10-21";
 
-/// `{"type": "error", "error": {"type", "message"}, "request_id"}` with `status`.
+/// 状态码为 `status` 的错误：`{"type": "error", "error": {"type", "message"}, "request_id"}`。
 fn error(status: u16, kind: &str, message: &str, request_id: &str) -> Response {
     Response::json(
         status,
@@ -19,7 +19,7 @@ fn error(status: u16, kind: &str, message: &str, request_id: &str) -> Response {
     .with_header("request-id", request_id)
 }
 
-/// The version and the key, or the error Anthropic answers without them.
+/// 检查版本头和密钥，返回请求的 API 版本；缺少版本头或密钥不对时返回 Anthropic 的错误。
 fn admit<'r>(request: &'r Request, shared: &Shared, request_id: &str) -> Result<&'r str, Response> {
     let Some(version) = request.header("anthropic-version") else {
         return Err(error(
@@ -45,6 +45,7 @@ fn admit<'r>(request: &'r Request, shared: &Shared, request_id: &str) -> Result<
     }
 }
 
+/// `GET /v1/models`：列出全部模型，一页列完。
 pub fn models(request: &Request, shared: &Shared) -> Response {
     let request_id = format!("req_fake{:06}", shared.next());
     if let Err(denied) = admit(request, shared, &request_id) {
@@ -66,6 +67,8 @@ pub fn models(request: &Request, shared: &Shared) -> Response {
     .with_header("request-id", request_id)
 }
 
+/// `POST /v1/messages`：检查请求，再按模型的回答方式回答；回答超出 `max_tokens` 时截断，`stop_reason` 为
+/// `max_tokens`。
 pub fn messages(request: &Request, shared: &Shared) -> Response {
     let n = shared.next();
     let request_id = format!("req_fake{n:06}");
@@ -133,7 +136,7 @@ pub fn messages(request: &Request, shared: &Shared) -> Response {
     };
     let mut content = Vec::new();
     if reasoning > 0 {
-        // thinking is not shown by default: an empty text and a signature
+        // 推理的内容默认不显示：只有空的文字和签名
         content.push(json!({ "type": "thinking", "thinking": "", "signature": "fake-signature" }));
     }
     let answer = scenario::answer(model.behaviour, &system, &user, n);
@@ -172,7 +175,7 @@ pub fn messages(request: &Request, shared: &Shared) -> Response {
     Response::json(200, &message).with_header("request-id", request_id)
 }
 
-/// The error a failing model answers with, if it fails this time.
+/// 会失败的模型这次失败时返回的错误；这次不失败时为 `None`。
 fn scenario_failure(behaviour: Behaviour, shared: &Shared, request_id: &str) -> Option<Response> {
     let overloaded =
         || error(529, "overloaded_error", "Overloaded", request_id).with_header("retry-after", "0");
@@ -186,7 +189,7 @@ fn scenario_failure(behaviour: Behaviour, shared: &Shared, request_id: &str) -> 
             )
             .with_header("retry-after", "0"),
         ),
-        // a spend limit: no retry-after, it fails until the limit is lifted
+        // 用量上限：不带 retry-after，上限解除之前一直失败
         Behaviour::Quota => Some(error(
             429,
             "rate_limit_error",
@@ -207,7 +210,7 @@ fn scenario_failure(behaviour: Behaviour, shared: &Shared, request_id: &str) -> 
     }
 }
 
-/// The text of `content` or `system`: a string, or the `text` blocks of an array.
+/// `content` 或 `system` 里的文字：字符串本身，或者数组中 `text` 块的文字。
 fn blocks_text(content: &Value) -> String {
     match content {
         Value::String(text) => text.clone(),
