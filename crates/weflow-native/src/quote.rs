@@ -1,17 +1,16 @@
-//! Quote messages (local type [`QUOTE`]): replies that quote an earlier message, and the text they say.
+//! 引用消息（`local_type` 为 [`QUOTE`]）：引用之前一条消息的回复，以及取出回复的文字。
 
 use std::borrow::Cow;
 
 use crate::entities::decode_entities;
 
-/// WeChat's local type of a quote: an app message of type 57, whose `<appmsg>` XML has the reply as its `<title>`
-/// and the quoted message in `<refermsg>`.
+/// 引用消息的 `local_type`：子类型为 57 的 app 消息，它的 `<appmsg>` XML 中 `<title>` 是回复的文字，
+/// `<refermsg>` 是被引用的消息。
 pub const QUOTE: i64 = 244_813_135_921;
 
-/// What a quote says, from its `content`: the text of the first `<title>` of its XML (ASCII case-insensitive), the
-/// CDATA markers removed, entities decoded, control characters but tab and line breaks removed and trimmed; empty
-/// when it has none. Only the title is decoded, so an escaped `</title>` in the reply is part of it; XML escaped as
-/// a whole (no `<title>` before decoding) is decoded first.
+/// 从引用消息的 `content` 取出回复的文字：XML 里第一个 `<title>`（不区分 ASCII 大小写）的内容，去掉 CDATA 标记、
+/// 解码实体、去掉制表符和换行符以外的控制字符，再去掉首尾空白；没有 `<title>` 时为空。只解码标题的内容，
+/// 所以回复里转义过的 `</title>` 属于回复的文字；整段 XML 都被转义时（解码前没有 `<title>`）先解码整段。
 pub fn reply_text(content: &str) -> String {
     match title(content) {
         Some(raw) => without_controls(&decode_entities(&without_cdata(raw)))
@@ -26,7 +25,7 @@ pub fn reply_text(content: &str) -> String {
     }
 }
 
-/// The text between the first `<title>` and the first `</title>` after it, tags compared ASCII case-insensitively.
+/// 第一个 `<title>` 与其后第一个 `</title>` 之间的文字，标签不区分 ASCII 大小写。
 fn title(xml: &str) -> Option<&str> {
     const OPEN: &str = "<title>";
     const CLOSE: &str = "</title>";
@@ -35,8 +34,8 @@ fn title(xml: &str) -> Option<&str> {
     Some(&xml[start..end])
 }
 
-/// Byte offset of the first ASCII case-insensitive `tag` (which starts with `<`) in `xml[from..]`. A match starts
-/// at a `<`, so the offset is a `char` boundary.
+/// `xml` 中从 `from` 起第一个 `tag`（以 `<` 开头，不区分 ASCII 大小写）的字节偏移。
+/// 匹配从 `<` 开始，所以偏移落在 `char` 的边界上。
 fn find_tag(xml: &str, from: usize, tag: &str) -> Option<usize> {
     let bytes = xml.as_bytes();
     xml[from..]
@@ -49,7 +48,7 @@ fn find_tag(xml: &str, from: usize, tag: &str) -> Option<usize> {
         })
 }
 
-/// `text` without the `<![CDATA[` and `]]>` markers, wherever they are. Does not copy when it has none.
+/// 去掉所有 `<![CDATA[` 和 `]]>` 标记的 `text`，不论标记在哪里。没有标记时不复制。
 fn without_cdata(text: &str) -> Cow<'_, str> {
     if text.contains("<![CDATA[") || text.contains("]]>") {
         Cow::Owned(text.replace("<![CDATA[", "").replace("]]>", ""))
@@ -58,7 +57,7 @@ fn without_cdata(text: &str) -> Cow<'_, str> {
     }
 }
 
-/// `text` without the C0 and C1 control characters, but for tab, line feed and carriage return.
+/// 去掉 C0 和 C1 控制字符的 `text`，保留制表符、换行符和回车符。
 fn without_controls(text: &str) -> String {
     text.chars()
         .filter(|c| !matches!(*c as u32, 0x00..=0x08 | 0x0B | 0x0C | 0x0E..=0x1F | 0x7F..=0x9F))
@@ -83,7 +82,7 @@ mod tests {
             ("好的 &amp; 收到", "好的 & 收到"),
             ("<![CDATA[好的]]>", "好的"),
             ("  <![CDATA[ 好的 ]]>\n", "好的"),
-            // a reply that writes a tag is that text, not the end of the title
+            // 回复里写出的标签是回复的文字，不是标题的结尾
             ("写 &lt;/title&gt; 就行", "写 </title> 就行"),
             ("好\u{1}的\t呀", "好的\t呀"),
             ("", ""),
@@ -94,7 +93,7 @@ mod tests {
             reply_text("<msg><appmsg><TITLE>好的</Title></appmsg></msg>"),
             "好的"
         );
-        // the first title is the reply, not the quoted message's
+        // 第一个标题是回复，不是被引用的消息的标题
         assert_eq!(
             reply_text(
                 "<appmsg><title>回复</title><refermsg><title>原文</title></refermsg></appmsg>"

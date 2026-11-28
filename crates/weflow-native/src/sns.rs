@@ -1,7 +1,7 @@
-//! Moments (`sns.db`): timeline posts parsed from their `TimelineObject` XML, plus user and year statistics.
+//! 朋友圈（`sns.db`）：从 `TimelineObject` XML 解析出的动态，以及按用户和按年的统计。
 //!
-//! `SnsTimeLine(tid, user_name, content, pack_info_buf)` holds one XML document per post. `tid` is an
-//! unsigned 64-bit snowflake stored as a signed integer, so it is always printed as `tid as u64`.
+//! `SnsTimeLine(tid, user_name, content, pack_info_buf)` 每行是一条动态的 XML 文档。
+//! `tid` 是无符号 64 位的雪花 ID（snowflake），按有符号整数存储，所以输出时一律写成 `tid as u64`。
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
@@ -13,7 +13,7 @@ use serde_json::{json, Map, Value};
 use crate::db::{same_identity, Account};
 use crate::entities::decode_entities;
 
-#[expect(clippy::expect_used, reason = "callers pass only static patterns")]
+#[expect(clippy::expect_used, reason = "调用方只传入固定的正则")]
 fn re(p: &str) -> Regex {
     Regex::new(p).expect("static regex")
 }
@@ -33,7 +33,7 @@ static R_LIKE_ITEM: LazyLock<Regex> = LazyLock::new(|| {
 static R_LIVE: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<livePhoto>(.*?)</livePhoto>"));
 static R_ENC_KEY: LazyLock<Regex> = LazyLock::new(|| re(r#"(?i)<enc\s+key="(\d+)""#));
 
-/// Decode the XML entities WeChat uses (and unwrap CDATA).
+/// 解码微信用的 XML 实体（并去掉 CDATA 的包裹）。
 fn decode(s: &str) -> String {
     let s = s.trim();
     let s = s
@@ -43,9 +43,8 @@ fn decode(s: &str) -> String {
     decode_entities(s).trim().to_string()
 }
 
-/// Each opening `<name>` or `<name ...>` tag: (where its attributes begin, where they end, just after the tag).
-/// Read with plain string search: a post is parsed for every field of every one shown, and a regex built per
-/// call cost a millisecond a post.
+/// 每个开始标签 `<name>` 或 `<name ...>`：（属性的起点，属性的终点，标签之后的位置）。
+/// 用普通的字符串查找读取：显示的每条动态的每个字段都要解析，每次调用都建一个正则时每条动态要多花一毫秒。
 fn open_tags<'a>(xml: &'a str, name: &'a str) -> impl Iterator<Item = (usize, usize, usize)> + 'a {
     let open = format!("<{name}");
     xml.match_indices(open.as_str())
@@ -65,7 +64,7 @@ fn open_tags<'a>(xml: &'a str, name: &'a str) -> impl Iterator<Item = (usize, us
         })
 }
 
-/// Text of the first `<name ...>text</name>`.
+/// 第一个 `<name ...>text</name>` 中的文字（已解码）。
 fn tag_text(xml: &str, name: &str) -> Option<String> {
     let close = format!("</{name}>");
     open_tags(xml, name)
@@ -73,7 +72,7 @@ fn tag_text(xml: &str, name: &str) -> Option<String> {
         .map(decode)
 }
 
-/// Attribute string of the first opening `<name ...>` tag.
+/// 第一个开始标签 `<name ...>` 的属性字符串。
 fn tag_attrs(xml: &str, name: &str) -> Option<String> {
     let open = format!("<{name}");
     xml.match_indices(open.as_str()).find_map(|(at, _)| {
@@ -89,10 +88,10 @@ fn tag_attrs(xml: &str, name: &str) -> Option<String> {
     })
 }
 
-/// The value of `name="value"` (any case) in an attribute string, decoded; `None` when empty.
+/// 属性字符串中 `name="value"`（不区分大小写）的值，已解码；为空时为 `None`。
 fn attr(attrs: &str, name: &str) -> Option<String> {
     let word = |c: char| c.is_alphanumeric() || c == '_';
-    // ASCII lowering keeps every byte where it was
+    // 只转换 ASCII 的大小写，每个字节的位置不变
     let lower = attrs.to_ascii_lowercase();
     let wanted = name.to_ascii_lowercase();
     lower
@@ -100,7 +99,7 @@ fn attr(attrs: &str, name: &str) -> Option<String> {
         .find_map(|(at, _)| {
             let before = attrs[..at].chars().next_back();
             let first = name.chars().next()?;
-            // `\b` before the name: between a word character and another kind
+            // 名称前的 `\b`：单词字符与其他字符之间的边界
             if before.is_some_and(word) == word(first) {
                 return None;
             }
@@ -113,27 +112,27 @@ fn attr(attrs: &str, name: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// A picture or video of a post (`<media>`), or the moving part of a live photo (`<livePhoto>`), as its XML names it.
+/// 动态中的一张图片或一段视频（`<media>`），或者实况照片会动的部分（`<livePhoto>`），各字段是 XML 中的原值。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SnsMedia {
-    /// The text of `<url>`: the address of the picture or video.
+    /// `<url>` 的文字：图片或视频的地址。
     pub url: String,
-    /// The text of `<thumb>`: the address of its thumbnail.
+    /// `<thumb>` 的文字：缩略图的地址。
     pub thumb: String,
-    /// The attributes of `<url>`, else of `<thumb>`; `md5` is `<url>`'s only.
+    /// `token` 属性。`token`、`key`、`enc_idx` 先取 `<url>` 的，没有时取 `<thumb>` 的；`md5` 只取 `<url>` 的。
     pub token: Option<String>,
-    /// The `key` attribute: what decrypts the file.
+    /// `key` 属性：解密文件用的密钥。
     pub key: Option<String>,
-    /// The `md5` attribute of `<url>`.
+    /// `<url>` 的 `md5` 属性。
     pub md5: Option<String>,
-    /// The `enc_idx` attribute.
+    /// `enc_idx` 属性。
     pub enc_idx: Option<String>,
-    /// The `<livePhoto>` of a picture that moves.
+    /// 实况照片的 `<livePhoto>`。
     pub live_photo: Option<Box<SnsMedia>>,
 }
 
 impl SnsMedia {
-    /// The fragment's media.
+    /// 从一段 XML 片段读出的媒体。
     fn of(frag: &str) -> Self {
         let (url_attrs, thumb_attrs) = (
             tag_attrs(frag, "url").unwrap_or_default(),
@@ -152,32 +151,32 @@ impl SnsMedia {
     }
 }
 
-/// A Moments post, read from its row of `SnsTimeLine`.
+/// 一条朋友圈动态，从它在 `SnsTimeLine` 中的行读出。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SnsPost {
-    /// WeChat's id of the post, `tid` when the XML has none.
+    /// 微信给动态的 ID；XML 里没有时取 `tid`。
     pub id: String,
-    /// The row's id, the unsigned snowflake in decimal.
+    /// 行的 ID：十进制的无符号雪花 ID。
     pub tid: String,
-    /// The row's `user_name`, else the XML's `<username>`.
+    /// 行的 `user_name`；为空时取 XML 的 `<username>`。
     pub username: String,
-    /// `<createTime>`, 0 when there is none.
+    /// `<createTime>`；没有时为 0。
     pub create_time: i64,
-    /// `<contentDesc>`: the text of the post.
+    /// `<contentDesc>`：动态的文字。
     pub content_desc: String,
-    /// `<ContentObject><type>`, 1 when there is none.
+    /// `<ContentObject><type>`；没有时为 1。
     pub kind: i64,
-    /// The post's XML as the row keeps it.
+    /// 行里保存的动态 XML 原文。
     pub raw_xml: String,
-    /// The `<media>` of its `<mediaList>`, in order.
+    /// `<mediaList>` 中的各个 `<media>`，按原顺序。
     pub media: Vec<SnsMedia>,
-    /// The nicknames of those who liked it.
+    /// 点赞者的昵称。
     pub likes: Vec<String>,
-    /// The `<enc key>` that opens the post's video.
+    /// 解密动态视频的 `<enc key>`。
     pub video_key: Option<String>,
 }
 
-/// `<createTime>` of a post, `0` when it has none.
+/// 动态的 `<createTime>`；没有时为 `0`。
 fn post_time(xml: &str) -> i64 {
     R_CREATE
         .captures(xml)
@@ -185,7 +184,7 @@ fn post_time(xml: &str) -> i64 {
         .unwrap_or(0)
 }
 
-/// `<ContentObject><type>` of a post, `1` when it has none.
+/// 动态的 `<ContentObject><type>`；没有时为 `1`。
 fn post_type(xml: &str) -> i64 {
     R_TYPE
         .captures(xml)
@@ -193,7 +192,7 @@ fn post_type(xml: &str) -> i64 {
         .unwrap_or(1)
 }
 
-/// One timeline row → its post.
+/// 把 `SnsTimeLine` 的一行解析成动态。
 pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> SnsPost {
     let tid_text = tid.cast_unsigned().to_string();
     let id = R_ID
@@ -242,7 +241,7 @@ pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> SnsPost {
     }
 }
 
-/// Usernames that liked the post (from `<like_user_list>`).
+/// 点赞者的用户名（取自 `<like_user_list>`）。
 fn liker_usernames(xml: &str) -> Vec<String> {
     R_LIKES
         .captures(xml)
@@ -272,7 +271,7 @@ impl Account {
         self.db_path("sns/sns.db")
     }
 
-    /// Every post `(tid, username, xml)` — cheap: one row per post.
+    /// 每条动态的 `(tid, username, xml)`（`usernames` 不为空时只取这些用户的），开销小：每条动态只读一行。
     fn sns_rows(&self, usernames: &[String]) -> Result<Vec<(i64, String, String)>> {
         let rows = if usernames.is_empty() {
             self.query(
@@ -303,7 +302,13 @@ impl Account {
             .collect())
     }
 
-    /// Newest-first page of posts. `keyword` matches the post text; `start`/`end` are seconds (`0` = unbounded).
+    /// 最新在前的一页动态：跳过 `offset` 条，最多取 `limit` 条（不大于 0 时取全部）。
+    /// `usernames` 不为空时只取这些用户的动态，`keyword` 匹配动态的文字（不区分大小写），
+    /// `start`、`end` 为秒（`0` 表示不限）。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `sns.db`（打开、解密或查询失败）。
     pub fn sns_timeline(
         &self,
         limit: i32,
@@ -316,7 +321,7 @@ impl Account {
         let needle = keyword
             .map(|k| k.trim().to_lowercase())
             .filter(|k| !k.is_empty());
-        // only the time and the text of every post, to filter and order them; the page alone is parsed whole
+        // 每条动态只取时间和文字，用来筛选和排序；只有这一页的动态才完整解析
         let mut posts: Vec<(i64, u64, String, String)> = self
             .sns_rows(usernames)?
             .into_iter()
@@ -345,7 +350,11 @@ impl Account {
         })
     }
 
-    /// Distinct usernames that have posts, most recent poster first.
+    /// 发过动态的用户名（不重复），最近发过的在前。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `sns.db`（打开、解密或查询失败）。
     pub fn sns_usernames(&self) -> Result<Value> {
         let mut last: BTreeMap<String, i64> = BTreeMap::new();
         for (tid, user, xml) in self.sns_rows(&[])? {
@@ -361,8 +370,12 @@ impl Account {
         Ok(Value::Array(v.into_iter().map(|(u, _)| json!(u)).collect()))
     }
 
-    /// `{ username: posts }`: the poster of each post is its `user_name`, or the `<username>` of its XML when
-    /// that is empty, as in [`parse_post`]. Counted from the table, without parsing the posts.
+    /// `{ username: posts }`：每条动态的发布者是它的 `user_name`，为空时取 XML 的 `<username>`，与 [`parse_post`]
+    /// 一致。直接从表中计数，不解析动态。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `sns.db`（打开、解密或查询失败）。
     pub fn sns_post_counts(&self) -> Result<Value> {
         let mut counts: BTreeMap<String, i64> = BTreeMap::new();
         for (_, user, xml) in self.sns_rows(&[])? {
@@ -379,7 +392,11 @@ impl Account {
         Ok(json!(counts))
     }
 
-    /// `{ total_posts, total_friends, my_posts }` (`my_posts` only when `my_wxid` is given).
+    /// `{ total_posts, total_friends, my_posts }`（只有给出 `my_wxid` 时才有 `my_posts`）。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `sns.db`（打开、解密或查询失败）。
     pub fn sns_export_stats(&self, my_wxid: Option<&str>) -> Result<Value> {
         let rows = self.sns_rows(&[])?;
         let users: BTreeSet<&str> = rows
@@ -394,8 +411,12 @@ impl Account {
         Ok(o)
     }
 
-    /// Year statistics of the account owner: own post count and types, friends who liked the most,
-    /// and friends whose posts the owner liked the most.
+    /// 账号所有者的年度朋友圈统计：自己的动态数和各类型的数量、给自己点赞最多的好友，
+    /// 以及自己点赞最多的好友。`begin`、`end` 为秒，0 表示不限。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `sns.db`（打开、解密或查询失败）。
     pub fn sns_annual_stats(&self, begin: i64, end: i64) -> Result<Value> {
         let mut total = 0i64;
         let mut types: BTreeMap<i64, i64> = BTreeMap::new();
@@ -658,7 +679,7 @@ mod fixture_tests {
             a.sns_export_stats(Some("wxid_nobody")).unwrap()["my_posts"],
             0
         );
-        // the posts of each poster, as the parsed timeline has them
+        // 解析出的时间线中每个发布者的动态数
         let mut from_timeline = BTreeMap::<String, i64>::new();
         for p in a.sns_timeline(0, 0, &[], None, 0, 0).unwrap() {
             *from_timeline.entry(p.username).or_default() += 1;

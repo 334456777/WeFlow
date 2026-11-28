@@ -1,5 +1,4 @@
-//! Cursors over a conversation's messages: their keys, read from the rows or the `sort_seq` index, and their
-//! pages.
+//! 会话消息的游标：游标的键（从行或 `sort_seq` 索引读取）和游标的分页。
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -13,23 +12,23 @@ use super::{int, sort_keys, Key, MsgTable, Order};
 use crate::db::Account;
 use crate::msg_row::{Columns, MsgRow};
 
-/// Tables whose `create_time` turned out not to be `sort_seq / 1000`: export cursors read their keys from the table.
+/// 已经发现 `create_time` 不等于 `sort_seq / 1000` 的表：导出游标从表的行读取它们的键。
 static EXACT_KEY_TABLES: LazyLock<Mutex<HashSet<(PathBuf, String)>>> =
     LazyLock::new(Mutex::default);
 
-/// Which messages a cursor lists, and how it reads their keys.
+/// 游标列出哪些消息，以及怎样读取它们的键。
 enum CursorKeys<'a> {
-    /// Every message, keys read from the rows.
+    /// 全部消息，键从行读取。
     All,
-    /// The messages of some senders (see [`Account::open_message_cursor_for_senders`]).
+    /// 部分发送者的消息（见 [`Account::open_message_cursor_for_senders`]）。
     Senders(SenderFilter<'a>),
-    /// Every message, keys from the `sort_seq` index (see [`Account::open_export_cursor`]).
+    /// 全部消息，键从 `sort_seq` 索引读取（见 [`Account::open_export_cursor`]）。
     Export,
 }
 
 #[cfg(test)]
 thread_local! {
-    /// Tables this thread read every key of ([`Account::table_keys`]).
+    /// 这个线程读取了全部键的表的个数（[`Account::table_keys`]）。
     static TABLE_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
@@ -44,15 +43,14 @@ struct MessageCursor {
     keys: Vec<Key>,
     pos: usize,
     batch: usize,
-    /// The columns its pages read.
+    /// 游标的页读取的列。
     columns: Columns,
-    /// Per table: whether its keys came from the `sort_seq` index ([`Account::open_export_cursor`]) and are
-    /// still to be checked against the rows.
+    /// 每张表一项：它的键是否来自 `sort_seq` 索引（[`Account::open_export_cursor`]），还要与读到的行核对。
     derived: Vec<bool>,
     range: (i64, i64),
     order: Order,
-    /// Held while keys are read again from the rows ([`Account::rekey`]): workers whose pages find the same
-    /// table's keys wrong at once wait for one scan of it instead of each scanning the whole table.
+    /// 从行重新读取键（[`Account::rekey`]）期间持有：几个线程的页同时发现同一张表的键不对时，
+    /// 等待同一次扫描，而不是各自扫描整张表。
     rekeying: Arc<Mutex<()>>,
 }
 
@@ -63,8 +61,11 @@ pub struct Cursors {
 }
 
 impl Account {
-    /// Open a cursor over `[begin, end]` (seconds; `0` = unbounded) whose pages read `columns`. Only sort keys are
-    /// held in memory.
+    /// 打开一个游标，范围是 `[begin, end]`（秒；`0` 表示不限），它的页读取 `columns`。内存中只保存排序键。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败），或者游标的锁已中毒。
     pub fn open_message_cursor(
         &self,
         session_id: &str,
@@ -84,15 +85,18 @@ impl Account {
         )
     }
 
-    /// The cursor of an export: oldest first, full rows but the `source` column, which exports do not use.
+    /// 导出用的游标：最早的在前，读取除 `source` 以外的整行，导出用不到 `source`。
     ///
-    /// It pages like [`open_message_cursor`](Self::open_message_cursor). Without time bounds, collecting its keys
-    /// reads only the `sort_seq` index instead of every row of the table, taking `create_time` as `sort_seq / 1000`,
-    /// which is how WeChat makes `sort_seq` (`create_time` in milliseconds plus a counter). The pages check that
-    /// against the rows they read: when a table does not follow it, the keys are read from the table's rows, the table
-    /// is remembered for the next exports, and when that changes the pages, [`KEYS_CHANGED`] tells the export to start
-    /// over (issue #39). Bounded cursors read exact `create_time` keys: index-derived bounds could exclude an in-range
-    /// row entirely, so no fetched page could detect its wrong key.
+    /// 分页方式与 [`open_message_cursor`](Self::open_message_cursor) 相同。没有时间范围时，收集键只读 `sort_seq`
+    /// 索引，不读表的每一行，并把 `create_time` 当作 `sort_seq / 1000`，因为微信的 `sort_seq` 就是毫秒的
+    /// `create_time` 加一个计数。读到的每一页都用行核对这一点：某张表不符合时，从表的行重新读取它的键，
+    /// 并记住这张表留给之后的导出；重读改变了分页时，[`KEYS_CHANGED`] 通知导出从头开始（#39）。
+    /// 有时间范围的游标读取准确的 `create_time` 作键：由索引推出的时间可能把范围内的行整个排除在外，
+    /// 读到的页里就没有它，也就发现不了它的键不对。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败），或者游标的锁已中毒。
     pub fn open_export_cursor(
         &self,
         session_id: &str,
@@ -110,10 +114,14 @@ impl Account {
         )
     }
 
-    /// Like [`open_message_cursor`](Self::open_message_cursor) over `range` = `(begin, end)`, but only over messages
-    /// whose sender `senders.0` accepts (plus the account owner's own messages when `senders.1` is true). Messages
-    /// whose sender cannot be resolved from `Name2Id` are always kept, so callers that look at the text prefix still
-    /// see them. This lets a per-member scan of a huge group read only that member's rows.
+    /// 与 `range` = `(begin, end)` 的 [`open_message_cursor`](Self::open_message_cursor) 相同，但只列出发送者被
+    /// `senders.0` 接受的消息（`senders.1` 为真时再加上账号所有者自己的消息）。
+    /// 发送者无法从 `Name2Id` 查出的消息总是保留，让按文字开头的前缀判断发送者的调用方仍能看到它们。
+    /// 这样按成员扫描大群时只读这个成员的行。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败），或者游标的锁已中毒。
     pub fn open_message_cursor_for_senders(
         &self,
         session_id: &str,
@@ -176,9 +184,9 @@ impl Account {
                     } else {
                         format!("real_sender_id in ({}) or ", wanted.join(","))
                     };
-                    // senders `Name2Id` does not know are placed by the content later, so they are kept too. Each
-                    // term is one SQLite answers from the sender index (WeChat's `<table>_SENDERID`): the unknown
-                    // ones are the distinct senders of that index, not rows of the table (#576)
+                    // `Name2Id` 里没有的发送者之后由内容判断，所以也保留。
+                    // 每一项都能由 SQLite 从发送者索引（微信的 `<table>_SENDERID`）直接回答：
+                    // 未知的发送者取这个索引里不同的发送者，不逐行读表（#576）
                     format!(
                         " and ({known}real_sender_id is null or real_sender_id in (select distinct real_sender_id \
                          from \"{table}\" where real_sender_id not in (select rowid from Name2Id)))",
@@ -212,7 +220,7 @@ impl Account {
         Ok(id)
     }
 
-    /// The keys of `t` in `create_time` range `(begin, end)` read from its rows (`where` clause extra: `who`).
+    /// 从行读取 `t` 中 `create_time` 在 `(begin, end)` 范围内的键（`who` 是附加的 `where` 条件）。
     fn table_keys(
         &self,
         t: &MsgTable,
@@ -229,10 +237,9 @@ impl Account {
         self.collect_keys(t, idx, &sql, &[&begin, &end], false)
     }
 
-    /// The keys of every message of `t` (as [`table_keys`](Self::table_keys) without a range lists them) from the
-    /// `sort_seq` index alone (`local_id` is the rowid, so the index covers the query): `create_time` is taken as
-    /// `sort_seq / 1000`. Rows whose `sort_seq` says nothing about the time (0, negative or none) are read from the
-    /// table, as [`typed_row_key`](super::typed_row_key) does.
+    /// 只从 `sort_seq` 索引读出 `t` 中每条消息的键（与不带范围的 [`table_keys`](Self::table_keys) 列出的相同；
+    /// `local_id` 是 rowid，所以这个索引覆盖了查询），`create_time` 取 `sort_seq / 1000`。
+    /// `sort_seq` 不反映时间（0、负数或没有）的行从表中读取，与 [`typed_row_key`](super::typed_row_key) 的做法一致。
     fn index_keys(&self, t: &MsgTable, idx: usize) -> Result<Vec<Key>> {
         let sql = format!(
             "select sort_seq, local_id from \"{}\" where sort_seq > 0",
@@ -256,14 +263,14 @@ impl Account {
         from_index: bool,
     ) -> Result<Vec<Key>> {
         self.with_db(&t.db, |conn| {
-            // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
+            // 每次重试都用新的向量：过期的快照不会留下不完整或重复的键。
             let mut keys = Vec::new();
             let mut stmt = conn
                 .prepare(sql)
                 .with_context(|| format!("bad query: {sql}"))?;
             let mut rows = stmt.query(params)?;
             while let Some(row) = rows.next()? {
-                // Match int(): only SQLite integers count; nulls and other storage types become zero.
+                // 与 int() 一致：只有 SQLite 的整数算数，null 和其他存储类型都算作 0。
                 let integer = |column: usize| -> rusqlite::Result<i64> {
                     Ok(match row.get_ref(column)? {
                         rusqlite::types::ValueRef::Integer(i) => i,
@@ -284,15 +291,14 @@ impl Account {
         })
     }
 
-    /// The rows of a page showed that the keys the tables `fix` (indexes) took from the `sort_seq` index are not the
-    /// real ones: reads the keys of those tables from their rows and remembers the tables; the other tables keep
-    /// theirs and are still checked. Fails with [`KEYS_CHANGED`] when that changes the pages.
+    /// 某一页的行表明 `fix`（表的序号）中各表从 `sort_seq` 索引得到的键与实际不符：从这些表的行重新读取键，
+    /// 并记住这些表；其他表保留原来的键，仍然继续核对。重读改变了分页时返回 [`KEYS_CHANGED`]。
     fn rekey(&self, cursor: i64, fix: &[usize]) -> Result<()> {
         let rekeying = self.cursor_field(cursor, |c| c.rekeying.clone())?;
         let _one_at_a_time = rekeying
             .lock()
             .map_err(|_| anyhow!("rekey lock poisoned"))?;
-        // tables another page fixed while this one waited are done
+        // 等待期间别的页已经修正过的表不再处理
         let (tables, range, order, fix) = self.cursor_field(cursor, |c| {
             let fix: Vec<usize> = fix.iter().copied().filter(|&idx| c.derived[idx]).collect();
             (c.tables.clone(), c.range, c.order, fix)
@@ -317,9 +323,8 @@ impl Account {
             .open
             .get_mut(&cursor)
             .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
-        // The rows are read from a snapshot that may be newer than the cursor: rows WeChat added since stay out, and a
-        // row it deleted keeps its key (no page finds it), as when the keys are read at open. So only an order the
-        // index got wrong changes the pages.
+        // 行是从可能比游标更新的快照读出的：之后微信新加的行不加入，被删除的行保留原来的键（哪一页都读不到它），
+        // 与打开游标时读取键的结果一致。所以只有索引给错的顺序才会改变分页。
         for (idx, table) in &mut exact {
             let listed: HashMap<i64, Key> = c
                 .keys
@@ -360,7 +365,7 @@ impl Account {
         }
     }
 
-    /// `read` of the open cursor `cursor`.
+    /// 对打开的游标 `cursor` 调用 `read`。
     fn cursor_field<T>(&self, cursor: i64, read: impl FnOnce(&MessageCursor) -> T) -> Result<T> {
         let cursors = self
             .cursors
@@ -373,7 +378,11 @@ impl Account {
         Ok(read(c))
     }
 
-    /// Next batch of rows and whether more remain.
+    /// 下一批行，以及后面是否还有。
+    ///
+    /// # Errors
+    ///
+    /// 游标没有打开或游标的锁已中毒，某个消息库无法读取，或者导出游标重读键后分页改变（[`KEYS_CHANGED`]）。
     pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Vec<MsgRow>, bool)> {
         let (tables, chunk, columns, more, derived) = {
             let mut cursors = self
@@ -402,7 +411,11 @@ impl Account {
         Ok((rows, more))
     }
 
-    /// (messages, batch size) of a cursor: the batches are the messages in cursor order, `batch size` at a time.
+    /// 游标的消息数和每批的条数：按游标的顺序，每批取这么多条消息。
+    ///
+    /// # Errors
+    ///
+    /// 游标没有打开，或者游标的锁已中毒。
     pub fn message_cursor_len(&self, cursor: i64) -> Result<(usize, usize)> {
         let cursors = self
             .cursors
@@ -415,9 +428,12 @@ impl Account {
         Ok((c.keys.len(), c.batch))
     }
 
-    /// Batch number `page` of a cursor (the rows [`fetch_message_batch`](Self::fetch_message_batch) returns on its
-    /// `page + 1`-th call), without moving the cursor: threads can read different batches of one cursor at once.
-    /// Past the end it is empty.
+    /// 游标的第 `page` 批（即第 `page + 1` 次调用 [`fetch_message_batch`](Self::fetch_message_batch) 返回的行），
+    /// 不移动游标：几个线程可以同时读同一个游标的不同批。超出末尾时为空。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`fetch_message_batch`](Self::fetch_message_batch)。
     pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Vec<MsgRow>> {
         let (tables, chunk, columns, derived) = {
             let cursors = self
@@ -444,8 +460,7 @@ impl Account {
         Ok(rows)
     }
 
-    /// The rows of `keys`, in that order, and the tables whose keys came from the `sort_seq` index (`derived`) and
-    /// have a row with another key than the one it was listed under.
+    /// 按 `keys` 的顺序读出的行，以及键来自 `sort_seq` 索引（`derived`）、且有某一行的键与列出它时的键不同的表。
     fn rows_for_keys(
         &self,
         tables: &[MsgTable],
@@ -487,7 +502,11 @@ impl Account {
         Ok((rows, mismatched))
     }
 
-    /// Drops the cursor and the sort keys it holds; closing one that is not open does nothing.
+    /// 丢弃游标和它保存的排序键；关闭没有打开的游标时什么也不做。
+    ///
+    /// # Errors
+    ///
+    /// 游标的锁已中毒。
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
         self.cursors
             .lock()
@@ -501,7 +520,7 @@ impl Account {
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "test values are known to fit, or are meant to wrap"
+    reason = "测试用的值已知放得下，或者本来就要回绕"
 )]
 mod tests {
     use super::*;
@@ -511,7 +530,7 @@ mod tests {
     use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
     use crate::sqlcipher::PageCipher;
 
-    /// An account with `shards` of `wxid_bob`'s messages, each in its own directory.
+    /// `wxid_bob` 的消息分在 `shards` 各个分片里的账号，每次调用用自己的目录。
     fn export_world(tag: &str, shards: &[Vec<crate::fixture::MsgSpec>]) -> (TestDir, Account) {
         use crate::fixture::{Fixture, SessionSpec, T0};
         let root = TestDir::new(&format!("weflow-keys-{tag}"));
@@ -554,7 +573,7 @@ mod tests {
         let fixture = crate::fixture::Fixture::new(&root, "wxid_synthetic_ab12");
         let table = table_name_for("wxid_bob");
         let plain = plain_db_with(|conn| {
-            // No affinity on sort_seq: exercise all SQLite storage classes, including an integral REAL.
+            // sort_seq 列没有类型亲和性（affinity）：覆盖 SQLite 的每种存储类型，包括值为整数的 REAL。
             conn.execute_batch(&format!(
                 "create table Name2Id(user_name text);
                  insert into Name2Id values ('wxid_bob');
@@ -641,8 +660,8 @@ mod tests {
     fn export_cursor_keys_from_the_index_are_the_keys_of_the_rows() {
         use crate::fixture::{MsgSpec, T0};
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
-        // WeChat's rule (`sort_seq` = `create_time` in ms + a counter), ties in `sort_seq`, a row without `sort_seq`,
-        // two shards with overlapping local ids
+        // 符合微信规则的行（`sort_seq` = 毫秒的 `create_time` + 计数）、相同的 `sort_seq`、没有 `sort_seq` 的行、
+        // 本地 ID 重叠的两个分片
         let (_dir, acct) = export_world(
             "rule",
             &[
@@ -700,7 +719,7 @@ mod tests {
         let id = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
         let scans = || TABLE_SCANS.with(std::cell::Cell::get);
         let before = scans();
-        // two pages found the table off the rule at once: the second waited for the first one's scan
+        // 两页同时发现这张表不符合规则：第二页等待第一页的扫描
         acct.rekey(id, &[0]).unwrap();
         acct.rekey(id, &[0]).unwrap();
         assert_eq!(scans() - before, 1, "the table was read once");
@@ -712,8 +731,7 @@ mod tests {
     fn a_table_off_the_rule_is_read_again_and_remembered() {
         use crate::fixture::{MsgSpec, T0};
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
-        // message 2's sort_seq says T0 + 50 but it was sent at T0 + 1: the order stays the same. The second shard
-        // follows the rule
+        // 消息 2 的 sort_seq 表示 T0 + 50，但它在 T0 + 1 发送：顺序不变。第二个分片符合规则
         let (_dir, acct) = export_world(
             "off",
             &[
@@ -750,7 +768,7 @@ mod tests {
     fn a_table_off_the_rule_that_changes_the_pages_tells_the_export_to_start_over() {
         use crate::fixture::{MsgSpec, T0};
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
-        // the same sort_seq, but message 2 was sent first: the rows order them 2, 1 and the index 1, 2
+        // sort_seq 相同，但消息 2 先发送：按行排是 2、1，按索引排是 1、2
         let seq = (T0 + 1) * 1000;
         let (_dir, acct) = export_world(
             "pages",
@@ -780,7 +798,7 @@ mod tests {
             unread: 0,
             last_msg_type: 1,
         }]);
-        // message 2 is off the rule (the table is read again at the first page), in the order of the index
+        // 消息 2 不符合规则（读第一页时重读这张表），但按索引排的顺序没有错
         let off = |extra: Vec<MsgSpec>| {
             let mut msgs = vec![
                 text(1, T0),
@@ -793,7 +811,7 @@ mod tests {
         f.message_shard(0, &[("wxid_bob", off(vec![]))]);
         let acct = Account::new(f.db_storage(), &f.key_hex()).unwrap();
         let id = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
-        // WeChat writes two messages, one between the listed ones, before the first page is read
+        // 读第一页之前，微信又写了两条消息，其中一条在已列出的消息之间
         f.message_shard(
             0,
             &[("wxid_bob", off(vec![text(4, T0 + 30), text(5, T0 + 90)]))],
@@ -819,8 +837,8 @@ mod tests {
         assert_eq!(page_ids(&acct, again).unwrap(), vec![1, 4, 2, 3, 5]);
     }
 
-    /// Equal keys of different databases (a message both of them keep) come by ascending database number in a
-    /// cursor of either direction, as the pages by offset list them.
+    /// 不同数据库中相同的键（两个数据库都保存的同一条消息）在两个方向的游标里都按数据库编号升序出现，
+    /// 与按偏移的分页一致。
     #[test]
     fn equal_keys_of_two_databases_come_in_database_order_both_ways() {
         let row = vec![(1, "null".to_string(), (T0 + 5).to_string())];
@@ -846,8 +864,8 @@ mod tests {
         );
     }
 
-    /// Each column typed, the content inflated, the sender resolved and whether the owner sent it, the database by its
-    /// shard; lite rows of a cursor leave out the source and the packed info, an export's the source only.
+    /// 每一列都按类型读出，内容已解压，发送者和是否由账号所有者发送已查出，数据库用分片号表示；
+    /// 游标的精简行不含 `source` 和 `packed_info`，导出的行只不含 `source`。
     #[test]
     fn rows_carry_typed_columns_sender_and_inflated_content() {
         let (_dir, acct) = account("rows");
@@ -877,7 +895,7 @@ mod tests {
             [
                 row(2, 4, 34, "wxid_bob", "voice", 1),
                 row(1, 3, 1, "wxid_me", "fourth", 1),
-                // stored as a zstd blob
+                // 以 zstd 压缩的 blob 存储
                 row(3, 2, 1, "wxid_bob", "third", 0),
                 row(2, 1, 3, "wxid_me", "img", 0),
                 row(1, 0, 1, "wxid_bob", "hello", 0),
@@ -897,7 +915,7 @@ mod tests {
             })
             .collect();
         assert_eq!(lite, unpacked);
-        // oldest first
+        // 最早的在前
         let export = acct.open_export_cursor("wxid_bob", 100, 0, 0).unwrap();
         let (exported, _) = acct.fetch_message_batch(export).unwrap();
         let sourceless: Vec<MsgRow> = rows
@@ -937,14 +955,14 @@ mod tests {
             .open_message_cursor("wxid_bob", 2, Order::OldestFirst, 0, 0, Columns::All)
             .unwrap();
         assert_eq!(acct.message_cursor_len(c).unwrap(), (5, 2));
-        // out of order, repeated and past the end
+        // 乱序、重复和超出末尾的读取
         let page = |i| texts(&acct.fetch_message_page(c, i).unwrap());
         assert_eq!(page(2), ["voice"]);
         assert_eq!(page(0), ["hello", "img"]);
         assert_eq!(page(1), ["third", "fourth"]);
         assert_eq!(page(1), ["third", "fourth"]);
         assert!(page(3).is_empty());
-        // the sequential reads still start at the beginning
+        // 顺序读取仍从开头开始
         let (rows, more) = acct.fetch_message_batch(c).unwrap();
         assert_eq!(
             (texts(&rows), more),
@@ -984,7 +1002,7 @@ mod tests {
     #[test]
     fn cursor_honours_time_range_direction_and_lite() {
         let (_dir, acct) = account("range");
-        // [day1, day3] inclusive, newest first, lite rows
+        // [day1, day3]（含两端），最新的在前，精简行
         let (begin, end) = ((T0 + DAY) as i32, (T0 + DAY * 3) as i32);
         let c = acct
             .open_message_cursor(
@@ -1023,7 +1041,7 @@ mod tests {
             acct.close_message_cursor(c).unwrap();
             texts(&rows)
         };
-        // wxid_bob wrote messages 1, 3 and 5 (in time order), wxid_me the others
+        // wxid_bob 写了按时间排的第 1、3、5 条消息，其余的是 wxid_me 写的
         assert_eq!(
             read(&|n| n == "wxid_bob", false),
             ["hello", "third", "voice"]

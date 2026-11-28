@@ -1,4 +1,4 @@
-//! Messages found by type, by local id or by server id.
+//! 按类型、本地 ID 或服务器 ID 查找消息。
 
 use anyhow::{anyhow, Result};
 
@@ -7,9 +7,12 @@ use crate::db::Account;
 use crate::msg_row::MsgRow;
 
 impl Account {
-    /// Every message of one `local_type` in the chat's order, oldest or newest first: by `sort_seq` (`create_time *
-    /// 1000` without one), then `create_time` and `local_id`; equal keys of different databases by ascending
-    /// database either way.
+    /// 会话中一种 `local_type` 的全部消息，按聊天窗口的顺序，最早或最新的在前：先按 `sort_seq`（没有时用
+    /// `create_time * 1000`），再按 `create_time` 和 `local_id`；两个方向下不同分片的相同键都按分片号升序。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn messages_by_type(
         &self,
         session_id: &str,
@@ -21,7 +24,7 @@ impl Account {
             let sql = Self::select_sql(&t, "where m.local_type = ?1");
             rows.extend(self.read_rows(&t, &sql, &[&local_type])?);
         }
-        // stable: equal keys keep the order of the databases
+        // 稳定排序：相同的键保持数据库的顺序
         match order {
             Order::OldestFirst => rows.sort_by_key(MsgRow::key),
             Order::NewestFirst => rows.sort_by_key(|r| std::cmp::Reverse(r.key())),
@@ -29,9 +32,12 @@ impl Account {
         Ok(rows)
     }
 
-    /// Every message of a session with this `local_id`, newest shard first: the id is only unique within one
-    /// `message_N.db`, so different messages in different shards can share it. `create_time` (seconds) keeps only
-    /// the one sent then.
+    /// 会话中 `local_id` 为这个值的全部消息，最新的分片在前：本地 ID 只在一个 `message_N.db` 内唯一，
+    /// 不同分片里的不同消息可能相同。给出 `create_time`（秒）时只保留那一刻发送的消息。
+    ///
+    /// # Errors
+    ///
+    /// 某个消息库无法读取（打开、解密或查询失败）。
     pub fn messages_by_local_id(
         &self,
         session_id: &str,
@@ -56,7 +62,11 @@ impl Account {
         Ok(out)
     }
 
-    /// One message by server id (a decimal string, may exceed 2^53).
+    /// 按服务器 ID（十进制字符串，可能超过 2^53）查找一条消息。
+    ///
+    /// # Errors
+    ///
+    /// `server_id` 不是整数，或者某个消息库无法读取（打开、解密或查询失败）。
     pub fn message_by_server_id(
         &self,
         session_id: &str,
@@ -109,7 +119,7 @@ mod tests {
             .messages_by_type("wxid_bob", 999, Order::NewestFirst)
             .unwrap()
             .is_empty());
-        // local_id 1 exists in both shards: the newest shard first
+        // 两个分片里都有 local_id 1：最新的分片在前
         assert_eq!(
             texts(&acct.messages_by_local_id("wxid_bob", 1, None).unwrap()),
             ["fourth", "hello"]
@@ -136,8 +146,8 @@ mod tests {
         assert!(acct.message_by_server_id("wxid_bob", "abc").is_err());
     }
 
-    /// A message without a `sort_seq` takes its place from its time, as in the chat; a message two databases hold is
-    /// listed from the lower one first, either way.
+    /// 没有 `sort_seq` 的消息按时间排位置，与聊天窗口一致；
+    /// 两个数据库都存了的消息，两个方向下都先列编号小的数据库中的那条。
     #[test]
     fn messages_by_type_follow_the_chat_order() {
         let row = |id: i64, seq: String, create: i64| (id, seq, create.to_string());

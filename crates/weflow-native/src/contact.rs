@@ -1,9 +1,8 @@
-//! Contacts, display names, avatars and group membership on top of `contact.db`.
+//! 基于 `contact.db` 的联系人、显示名、头像和群成员。
 //!
-//! Layout (verified on a real account): `contact.id == name2id.rowid`, `chat_room.id` is the room's
-//! contact id, `chatroom_member(room_id, member_id)` links `chat_room.id` to member contact ids, and
-//! `chat_room.owner` holds the owner's username. Per-member group nicknames live in the protobuf-like
-//! `chat_room.ext_buffer`.
+//! 表的结构（在真实账号上核对过）：`contact.id == name2id.rowid`，`chat_room.id` 是群的联系人 ID，
+//! `chatroom_member(room_id, member_id)` 把 `chat_room.id` 和成员的联系人 ID 关联起来，`chat_room.owner`
+//! 是群主的用户名。每个成员的群昵称保存在类似 protobuf 的 `chat_room.ext_buffer` 里。
 
 use std::collections::BTreeMap;
 
@@ -14,9 +13,9 @@ use serde_json::{json, Map, Value};
 
 use crate::db::Account;
 
-/// Accounts that are not people, excluded from "private" counts.
+/// 不是个人的账号，不计入 `private` 的数量。
 const NOT_PRIVATE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
-/// Rows per `IN (...)` query (well below SQLite's variable limit).
+/// 每次 `IN (...)` 查询的行数（远低于 SQLite 的变量个数上限）。
 const CHUNK: usize = 400;
 
 fn text(row: &Value, key: &str) -> String {
@@ -41,7 +40,7 @@ fn placeholders(n: usize) -> String {
     vec!["?"; n].join(",")
 }
 
-/// The distinct, non-empty usernames of `names`, trimmed, in their order.
+/// `names` 中去掉首尾空白后互不相同、不为空的用户名，保持原来的顺序。
 pub fn distinct_usernames(names: &[impl AsRef<str>]) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     names
@@ -78,11 +77,10 @@ fn is_member_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '@' | '-'))
 }
 
-/// Extract `username -> group nickname` pairs from a `chat_room.ext_buffer`.
+/// 从 `chat_room.ext_buffer` 中取出「用户名 → 群昵称」的对应。
 ///
-/// The buffer is a protobuf-style stream whose member entries look like
-/// `0x0a <len> <username> 0x12 <len> <nickname> ...`; like WeFlow's desktop app we scan for that shape
-/// instead of relying on the (undocumented) outer message layout.
+/// 这段数据是类似 protobuf 的字节流，其中成员的条目形如 `0x0a <len> <username> 0x12 <len> <nickname> ...`；
+/// 与桌面版一样按这个形状扫描，不依赖（没有文档的）外层消息结构。
 fn parse_group_nicknames(buf: &[u8]) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let mut i = 0;
@@ -139,7 +137,7 @@ impl Account {
         self.db_path("contact/contact.db")
     }
 
-    /// Contact rows (plus `stranger` rows for ids missing from `contact`) for the given usernames.
+    /// 给定用户名的联系人行（`contact` 里没有的再从 `stranger` 里找）。
     fn contact_rows(&self, usernames: &[String]) -> Result<Vec<Value>> {
         let mut rows = Vec::new();
         let mut found = std::collections::HashSet::new();
@@ -160,7 +158,11 @@ impl Account {
         Ok(rows)
     }
 
-    /// Every row of `contact`.
+    /// `contact` 的全部行。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn contacts(&self) -> Result<Value> {
         Ok(Value::Array(self.query(
             &self.contact_db(),
@@ -169,9 +171,13 @@ impl Account {
         )?))
     }
 
-    /// The rows of `contact`, in its order, whose `username` holds `gh_`, or `weixin` or `@openim` in any ASCII case,
-    /// or is not text: every official account, `weixin…` and `@openim` contact, and others the caller tells apart.
-    /// Only these are made into rows, rather than every contact as [`contacts`](Self::contacts) does.
+    /// `contact` 中 `username` 含有 `gh_`、含有不区分 ASCII 大小写的 `weixin` 或 `@openim`，或者不是文字的行，
+    /// 按表中的顺序：包括全部公众号、`weixin…` 和 `@openim` 联系人，以及其他由调用方区分的行。
+    /// 只把这些行转换成结果，不像 [`contacts`](Self::contacts) 那样转换每个联系人。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn contacts_maybe_special(&self) -> Result<Value> {
         Ok(Value::Array(self.query(
             &self.contact_db(),
@@ -181,7 +187,11 @@ impl Account {
         )?))
     }
 
-    /// Rows for the given usernames; an empty list means every contact.
+    /// 给定用户名的联系人行；列表为空时返回全部联系人。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn contacts_compact(&self, usernames: &[String]) -> Result<Value> {
         if usernames.is_empty() {
             return self.contacts();
@@ -189,7 +199,11 @@ impl Account {
         Ok(Value::Array(self.contact_rows(usernames)?))
     }
 
-    /// One contact row, or `{}` when unknown.
+    /// 一个联系人的行；不认识这个用户名时为 `{}`。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn contact(&self, username: &str) -> Result<Value> {
         Ok(self
             .contact_rows(&[username.to_string()])?
@@ -198,8 +212,12 @@ impl Account {
             .unwrap_or_else(|| json!({})))
     }
 
-    /// `{ "private": n, "group": n, "official": n, "former_friend": n }`. The account's own row, kept as a friend's
-    /// (`local_type` 1), is not counted (#1079).
+    /// 各类联系人的数量 `{ "private": n, "group": n, "official": n, "former_friend": n }`。
+    /// 账号自己的行按好友保存（`local_type` 为 1），不计入（#1079）。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn contact_type_counts(&self) -> Result<Value> {
         let (mut private, mut group, mut official, mut former) = (0, 0, 0, 0);
         let rows = self.query(
@@ -227,7 +245,11 @@ impl Account {
         )
     }
 
-    /// `{ username: name }`: remark, else nickname, else alias, else the username itself.
+    /// `{ username: name }`：依次取备注、昵称、微信号，都没有时为用户名本身。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn display_names(&self, usernames: &[String]) -> Result<Value> {
         let mut map: Map<String, Value> = Map::new();
         for r in self.contact_rows(usernames)? {
@@ -241,8 +263,12 @@ impl Account {
         Ok(Value::Object(map))
     }
 
-    /// The avatar WeChat keeps on this computer for `username` (`head_image/head_image.db`): the picture's bytes,
-    /// `None` when there is none or no such database.
+    /// 微信在本机为 `username` 保存的头像（`head_image/head_image.db`）：
+    /// 图片的字节；没有头像或没有这个数据库时为 `None`。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `head_image.db`（打开、解密或查询失败）。
     pub fn head_image(&self, username: &str) -> Result<Option<Vec<u8>>> {
         let db = self.db_path("head_image/head_image.db");
         if username.is_empty() || !db.is_file() {
@@ -253,7 +279,7 @@ impl Account {
                 conn.prepare("select image_buffer from head_image where username = ?1")?;
             let mut rows = stmt.query([username])?;
             while let Some(row) = rows.next()? {
-                // the picture's bytes as stored (a zstd frame inflated); a text cell as the hex it spells
+                // 按存储的字节取图片（zstd 帧先解压）；文字单元格按其中的十六进制解码
                 let bytes = match row.get_ref(0)? {
                     ValueRef::Blob(b) => crate::db::inflate_blob(b).into_owned(),
                     ValueRef::Text(t) => std::str::from_utf8(t).map(decode_hex).unwrap_or_default(),
@@ -267,7 +293,11 @@ impl Account {
         })
     }
 
-    /// `{ username: url }` for contacts that have one (big avatar preferred).
+    /// 有头像地址的联系人的 `{ username: url }`（优先取大头像）。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn avatar_urls(&self, usernames: &[String]) -> Result<Value> {
         let mut map = Map::new();
         for r in self.contact_rows(usernames)? {
@@ -279,7 +309,11 @@ impl Account {
         Ok(Value::Object(map))
     }
 
-    /// `{ username: alias }` for contacts with a WeChat id set.
+    /// 设了微信号的联系人的 `{ username: alias }`。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn contact_alias_map(&self, usernames: &[String]) -> Result<Value> {
         let mut map = Map::new();
         for r in self.contact_rows(usernames)? {
@@ -291,10 +325,14 @@ impl Account {
         Ok(Value::Object(map))
     }
 
-    /// `{ username: { isFolded, isMuted, isPinned } }`.
+    /// 各联系人的折叠、免打扰和置顶状态 `{ username: { isFolded, isMuted, isPinned } }`。
     ///
-    /// WeChat keeps these in `contact.flag` bits (folded group chats: bit 28; muted single chats: bit 9; pinned
-    /// conversations of any kind: bit 11, #885) and, for group chats, in `chat_room_notify` (1 = notifications off).
+    /// 微信把它们保存在 `contact.flag` 的位里（折叠的群聊：第 28 位；免打扰的单聊：第 9 位；任何会话的置顶：
+    /// 第 11 位，#885），群聊的免打扰还保存在 `chat_room_notify` 里（1 表示关闭通知）。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn contact_status(&self, usernames: &[String]) -> Result<Value> {
         let mut map = Map::new();
         for r in self.contact_rows(usernames)? {
@@ -319,8 +357,11 @@ impl Account {
         Ok(rows.into_iter().next())
     }
 
-    /// Members of a group in the shape WeFlow's desktop app uses:
-    /// `[{ username, nickName, remark, alias, avatarUrl?, isOwner? }]`.
+    /// 群的成员，格式与桌面版相同：`[{ username, nickName, remark, alias, avatarUrl?, isOwner? }]`。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn group_members(&self, chatroom_id: &str) -> Result<Value> {
         let Some(room) = self.room(chatroom_id)? else {
             return Ok(json!([]));
@@ -352,7 +393,11 @@ impl Account {
         Ok(Value::Array(members))
     }
 
-    /// `{ "count": n }`: the members `chatroom_member` lists for a group; 0 for a group it does not know.
+    /// `{ "count": n }`：`chatroom_member` 中这个群的成员数；不认识的群为 0。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn group_member_count(&self, chatroom_id: &str) -> Result<Value> {
         let Some(room) = self.room(chatroom_id)? else {
             return Ok(json!({ "count": 0 }));
@@ -365,7 +410,11 @@ impl Account {
         Ok(json!({ "count": int(&rows[0], "n") }))
     }
 
-    /// `{ chatroom: count }` for each requested group.
+    /// 每个给定的群的 `{ chatroom: count }`。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn group_member_counts(&self, chatroom_ids: &[String]) -> Result<Value> {
         let mut map = Map::new();
         for id in chatroom_ids {
@@ -375,7 +424,11 @@ impl Account {
         Ok(Value::Object(map))
     }
 
-    /// `{ username: group nickname }` parsed from the room's `ext_buffer`.
+    /// 从群的 `ext_buffer` 解析出的 `{ username: group nickname }`。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn group_nicknames(&self, chatroom_id: &str) -> Result<Value> {
         let Some(room) = self.room(chatroom_id)? else {
             return Ok(json!({}));
@@ -389,7 +442,11 @@ impl Account {
         ))
     }
 
-    /// `{ "ext_buffer": "<hex>" }`, empty object when the room is unknown.
+    /// `{ "ext_buffer": "<hex>" }`；不认识这个群时为空对象。
+    ///
+    /// # Errors
+    ///
+    /// 无法读取 `contact.db`（打开、解密或查询失败）。
     pub fn chat_room_ext_buffer(&self, chatroom_id: &str) -> Result<Value> {
         Ok(match self.room(chatroom_id)? {
             Some(room) => json!({ "ext_buffer": text(&room, "ext_buffer") }),
@@ -398,10 +455,9 @@ impl Account {
     }
 }
 
-/// The bytes a hex string spells, pairs that are not hex left out; empty for a string that is not ASCII or has an odd
-/// length.
+/// 十六进制字符串表示的字节，不是十六进制的字符对略过；字符串不是 ASCII 或长度为奇数时为空。
 fn decode_hex(s: &str) -> Vec<u8> {
-    // ASCII first: a slice of two bytes must not cut a character
+    // 先检查 ASCII：每次取两个字节的切片不能切开一个字符
     if !s.is_ascii() || !s.len().is_multiple_of(2) {
         return Vec::new();
     }
@@ -413,7 +469,7 @@ fn decode_hex(s: &str) -> Vec<u8> {
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "test values are known to fit, or are meant to wrap"
+    reason = "测试用的值已知放得下，或者本来就要回绕"
 )]
 mod tests {
     use super::*;
@@ -423,7 +479,7 @@ mod tests {
     use crate::sqlcipher::PageCipher;
     use rusqlite::{params, Connection};
 
-    /// One member entry as stored in `ext_buffer`: field 1 wrapping `0x0a id 0x12 nick 0x18 0`.
+    /// `ext_buffer` 中保存的一个成员条目：字段 1 包着 `0x0a id 0x12 nick 0x18 0`。
     fn entry(id: &str, nick: &str) -> Vec<u8> {
         let mut inner = vec![0x0a, id.len() as u8];
         inner.extend(id.as_bytes());
@@ -452,7 +508,7 @@ mod tests {
                  create table chatroom_member(room_id integer, member_id integer);",
             )
             .unwrap();
-            // (id, username, local_type, alias, flag, remark, nick, quan_pin, big, small, notify)
+            // 各列依次为 (id, username, local_type, alias, flag, remark, nick, quan_pin, big, small, notify)
             type Row = (
                 i64,
                 &'static str,
@@ -486,7 +542,7 @@ mod tests {
                     "wxid_eve",
                     3,
                     "",
-                    // pinned, and in a contact list (bits 0 and 1), as WeChat 4.x keeps a pinned friend
+                    // 置顶，并且在通讯录里（第 0、1 位），与微信 4.x 保存置顶好友的方式一致
                     (1 << 11) | 0b11,
                     "",
                     "Eve",
@@ -536,8 +592,8 @@ mod tests {
         (dir, acct)
     }
 
-    /// The contacts that may be special are those of every contact whose username holds `gh_`, or `weixin` or
-    /// `@openim` in any ASCII case, or is not text, in the table's order.
+    /// 可能特殊的联系人，就是全部联系人中用户名含有 `gh_`、含有不区分 ASCII 大小写的 `weixin` 或 `@openim`，
+    /// 或者不是文字的那些，按表中的顺序。
     #[test]
     fn contacts_that_may_be_special_are_found_among_all() {
         let dir = TestDir::new("weflow-contact-special");
@@ -570,7 +626,7 @@ mod tests {
             .collect();
         let found = a.contacts_maybe_special().unwrap();
         assert_eq!(found.as_array().unwrap().iter().collect::<Vec<_>>(), want);
-        // `b@kefu.OpenIM` holds no `@openim`
+        // `b@kefu.OpenIM` 不含 `@openim`
         assert_eq!(want.len(), 9, "{want:?}");
     }
 
@@ -601,7 +657,7 @@ mod tests {
     #[test]
     fn type_counts_follow_the_desktop_rules() {
         let (_d, acct) = account("counts");
-        // wxid_me + wxid_bob (medianote excluded), one group, one official, one former friend (local_type 0 with a pinyin)
+        // wxid_me 和 wxid_bob（不算 medianote）、一个群、一个公众号、一个曾经的好友（local_type 为 0 且有拼音）
         assert_eq!(
             acct.contact_type_counts().unwrap(),
             json!({"private": 2, "group": 1, "official": 1, "former_friend": 1})
@@ -616,7 +672,7 @@ mod tests {
             acct.display_names(&who).unwrap(),
             json!({"wxid_bob": "Bobby", "wxid_eve": "Eve", "nobody": "nobody"})
         );
-        // big avatar wins, small is the fallback, none means no entry
+        // 优先取大头像，没有时取小头像，都没有时不列出
         assert_eq!(
             acct.avatar_urls(&who).unwrap(),
             json!({"wxid_bob": "http://big", "wxid_eve": "http://eve-small"})
@@ -636,7 +692,7 @@ mod tests {
             st["wxid_bob"],
             json!({"isFolded": false, "isMuted": false, "isPinned": false})
         );
-        // pinned: bit 11 of the flag, whatever else is set beside it
+        // 置顶：flag 的第 11 位，不论旁边还设了哪些位
         assert_eq!(
             st["wxid_eve"],
             json!({"isFolded": false, "isMuted": false, "isPinned": true})
@@ -684,7 +740,7 @@ mod tests {
     fn nickname_parser_is_robust() {
         assert!(parse_group_nicknames(&[]).is_empty());
         assert!(parse_group_nicknames(&[0x0a, 0xff, 0xff, 0xff, 0xff, 0x0f]).is_empty());
-        // truncated entry, then a good one; the first occurrence of an id wins
+        // 先是截断的条目，然后是完整的；同一个 ID 取第一次出现的
         let mut buf = vec![0x0a, 0x08, b'w', b'x'];
         buf.extend(entry("wxid_a", "first"));
         buf.extend(entry("wxid_a", "second"));
@@ -699,7 +755,7 @@ mod tests {
         let root = TestDir::new("weflow-contact-head-image");
         let f = Fixture::new(&root, "wxid_me_ab12");
         let png: &[u8] = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
-        // bytes that happen to be UTF-8: plain text, and text with a character of two bytes
+        // 恰好是 UTF-8 的字节：纯 ASCII 文字，以及含双字节字符的文字
         let ascii: &[u8] = b"hello!";
         let wide: &[u8] = "a\u{e9}b".as_bytes();
         let packed = zstd::stream::encode_all(png, 3).unwrap();
@@ -730,7 +786,7 @@ mod tests {
         assert_eq!(decode_hex("00ff7a"), [0x00, 0xff, 0x7a]);
         assert_eq!(decode_hex("zz01"), [0x01]);
         assert!(decode_hex("abc").is_empty(), "odd length");
-        // a character of two bytes: four bytes in all, but no pair of them to slice
+        // 含一个双字节字符：共四个字节，但无法按两个字节切开
         assert!(decode_hex("a\u{e9}b").is_empty());
         assert!(decode_hex("\u{e9}\u{e9}").is_empty());
     }

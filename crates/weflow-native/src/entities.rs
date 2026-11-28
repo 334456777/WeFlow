@@ -1,11 +1,11 @@
-//! The XML entities WeChat writes into the text of its messages and posts, and how they are decoded.
+//! 微信写进消息和朋友圈文字里的 XML 实体，以及它们的解码。
 
 use std::borrow::Cow;
 
-/// The character the entity whose name starts `after` (the text after a `&`) stands for, and how many bytes its name
-/// and `;` take; `None` when no entity [`decode_entities`] knows starts there. Names compare ASCII case-insensitively.
+/// 以 `after`（`&` 之后的文字）开头的实体代表的字符，以及实体名和 `;` 共占的字节数；`after` 开头不是
+/// [`decode_entities`] 认识的实体时为 `None`。实体名不区分 ASCII 大小写。
 fn entity_at(after: &[u8]) -> Option<(char, usize)> {
-    // the rest of the name, without case, and the `;`
+    // 首字母之后是否依次是 `rest`（不区分大小写）和 `;`
     let is = |rest: &[u8]| {
         after
             .get(1..=rest.len())
@@ -24,16 +24,15 @@ fn entity_at(after: &[u8]) -> Option<(char, usize)> {
     is(rest).then_some((c, rest.len() + 2))
 }
 
-/// Decodes the XML entities WeChat writes (`&lt;`, `&gt;`, `&amp;`, `&quot;`, `&apos;`, `&#39;`, in any ASCII case)
-/// in one pass, so the text an entity decodes to is never decoded again: `&amp;lt;` becomes `&lt;`. Anything else
-/// after a `&` is kept as it is. Does not copy when there is no `&`.
+/// 一遍解码微信写的 XML 实体（`&lt;`、`&gt;`、`&amp;`、`&quot;`、`&apos;`、`&#39;`，不区分 ASCII 大小写），
+/// 实体解码出的文字不会再次解码：`&amp;lt;` 变成 `&lt;`。`&` 后面不是这些实体时原样保留。没有 `&` 时不复制。
 pub fn decode_entities(s: &str) -> Cow<'_, str> {
     let h = s.as_bytes();
     let Some(mut amp) = memchr::memchr(b'&', h) else {
         return Cow::Borrowed(s);
     };
     let mut out = String::with_capacity(s.len());
-    // the text up to `kept` is in `out`; a `&` that starts no entity stays in the text after it
+    // `kept` 之前的文字已写进 `out`；不是实体开头的 `&` 留在 `kept` 之后的文字里，随后一起写入
     let mut kept = 0;
     loop {
         let mut next = amp + 1;
@@ -56,7 +55,7 @@ pub fn decode_entities(s: &str) -> Cow<'_, str> {
 mod tests {
     use super::*;
 
-    /// The decoding a `&` at a time: the name up to the first `;` within five bytes, looked up in a table.
+    /// 逐个 `&` 解码的参照实现：取 `&` 之后五个字节内第一个 `;` 之前的名称，在表里查找。
     fn decode_entities_each(s: &str) -> String {
         const ENTITIES: [(&str, char); 6] = [
             ("lt", '<'),
@@ -118,8 +117,8 @@ mod tests {
     proptest::proptest! {
         #![proptest_config(crate::property_cases(1024))]
 
-        /// For any text of entities, their pieces, `&` and `;` in every case and order, and multi-byte characters, the
-        /// decoding is the one a `&` at a time gives.
+        /// 由实体、实体的片段、`&`、`;`（各种大小写和顺序）以及多字节字符拼成的任意文字，解码的结果都与逐个 `&`
+        /// 解码的结果相同。
         #[test]
         fn any_text_decodes_as_a_and_at_a_time_decodes_it(
             pieces in proptest::collection::vec(

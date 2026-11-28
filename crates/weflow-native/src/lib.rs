@@ -1,8 +1,8 @@
-//! WeFlow's read-only database layer: WeChat's SQLCipher databases read in pure Rust with a bundled SQLite.
+//! WeFlow 的只读数据库层：用纯 Rust 和内置的 SQLite 读取微信的 SQLCipher 数据库。
 //!
-//! [`cipher_vfs`] and [`sqlcipher`] decrypt the pages as SQLite reads them, [`db::Account`] is the handle of an
-//! account, and [`msg`], [`contact`], [`sns`], [`media`], [`stats`] and [`report`] query one domain each.
-//! [`wcdb::Wcdb`] is the facade the service layer calls, and [`wxkey`] gets the database key from a running WeChat.
+//! [`cipher_vfs`] 和 [`sqlcipher`] 在 SQLite 读取页时解密，[`db::Account`] 是一个账号的句柄，[`msg`]、[`contact`]、
+//! [`sns`]、[`media`]、[`stats`] 和 [`report`] 各查询一个领域。[`wcdb::Wcdb`] 是业务层调用的门面，[`wxkey`]
+//! 从正在运行的微信取得数据库密钥。
 
 pub mod cipher_vfs;
 pub mod contact;
@@ -32,8 +32,8 @@ pub mod wcdb;
 pub mod windows_db_key;
 pub mod wxkey;
 
-/// The configuration of a property test (#502): `cases` cases, or `PROPTEST_CASES` of them when it is set (to run
-/// more than CI does). A failure prints its smallest input; it is not saved into the source tree.
+/// 性质测试（#502）的配置：跑 `cases` 个用例，设了 `PROPTEST_CASES` 时按它的数目跑（用来跑得比 CI 多）。
+/// 失败时打印最小的输入，不保存到源码目录里。
 #[cfg(test)]
 pub(crate) fn property_cases(cases: u32) -> proptest::test_runner::Config {
     let mut config = proptest::test_runner::Config::default();

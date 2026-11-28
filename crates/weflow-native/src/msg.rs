@@ -1,5 +1,4 @@
-//! Message reading on top of [`Account`]: shard/table lookup, paging, per-day statistics
-//! and cursors. Rows are read as [`MsgRow`](crate::msg_row::MsgRow)s.
+//! 基于 [`Account`] 读取消息：查找分片和表、分页、按天统计和游标。行读成 [`MsgRow`](crate::msg_row::MsgRow)。
 
 use std::path::PathBuf;
 
@@ -15,29 +14,29 @@ mod lookup;
 mod page;
 mod tables;
 
-/// One message location: which shard database, which table.
+/// 消息所在的一处位置：哪个分片的哪张表。
 #[derive(Clone, Debug)]
 pub struct MsgTable {
-    /// The message database, `message_<n>.db`.
+    /// 所在的消息库，`message_<n>.db` 或 `biz_message_<n>.db`。
     pub db: PathBuf,
-    /// The table, `Msg_<md5 of the username>`.
+    /// 表名 `Msg_<md5>`，其中 `<md5>` 是用户名的 md5。
     pub table: String,
 }
 
-/// Sort key of a message: (`sort_seq`, `create_time`, `local_id`, shard index).
+/// 消息的排序键：`sort_seq`、`create_time`、`local_id` 和所在分片的序号。
 type Key = (i64, i64, i64, usize);
 
-/// Which end of a conversation a read of its messages starts from.
+/// 读取会话的消息时从哪一端开始。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Order {
-    /// The oldest message first.
+    /// 最早的消息在前。
     OldestFirst,
-    /// The newest message first.
+    /// 最新的消息在前。
     NewestFirst,
 }
 
-/// `keys` in the chat's order, oldest or newest first; equal keys of different databases by ascending database
-/// number either way, as the pages by offset list them.
+/// 把 `keys` 按聊天窗口的顺序排列，最早或最新的在前；两个方向下不同分片的相同键都按分片号升序排列，
+/// 与按偏移分页时列出的顺序一致。
 fn sort_keys(keys: &mut [Key], order: Order) {
     match order {
         Order::OldestFirst => keys.sort_unstable(),
@@ -45,20 +44,20 @@ fn sort_keys(keys: &mut [Key], order: Order) {
     }
 }
 
-/// The newest-first order of keys: by sort key descending, equal ones by ascending database number.
+/// 最新在前时键的顺序：按排序键降序，相同的键按分片号升序。
 fn newest_first(a: &Key, b: &Key) -> std::cmp::Ordering {
     (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2)).then(a.3.cmp(&b.3))
 }
 
-/// Sender filter of a cursor: (does this username match, also keep the account owner's own messages).
+/// 游标的发送者筛选：第一项判断一个用户名是否符合，第二项为真时同时保留账号所有者自己的消息。
 pub type SenderFilter<'a> = (&'a dyn Fn(&str) -> bool, bool);
 
-/// What a page read of an export cursor fails with when its keys had to be read again and the pages are no longer
-/// the same (see [`Account::open_export_cursor`]): the export has to start over.
+/// 导出游标的键需要重新读取、分页因此改变时，读一页返回的错误（见 [`Account::open_export_cursor`]）：
+/// 导出要从头开始。
 pub const KEYS_CHANGED: &str =
     "the order of the messages changed while they were read; the export has to start over";
 
-/// `Msg_<md5(username)>`, the per-conversation table name.
+/// 会话的消息表名 `Msg_<md5(username)>`。
 pub fn table_name_for(session_id: &str) -> String {
     let digest = Md5::digest(session_id.as_bytes());
     format!(
@@ -70,7 +69,11 @@ pub fn table_name_for(session_id: &str) -> String {
     )
 }
 
-/// Usernames of every conversation in `session.db`.
+/// `session.db` 中全部会话的用户名。
+///
+/// # Errors
+///
+/// 无法读取 `session.db`（文件不存在或解密失败），或者查询 `SessionTable` 失败。
 pub fn session_usernames(acct: &Account) -> Result<Vec<String>> {
     let rows = acct.query(&acct.session_db(), "select username from SessionTable", &[])?;
     Ok(rows
@@ -84,28 +87,28 @@ fn int(row: &Value, key: &str) -> i64 {
     row.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
 
-/// A message's place in its conversation's newest-first order, to page from.
+/// 消息在会话中按最新在前排列时的位置，用作翻页的起点。
 ///
-/// It is the message's sort key (`sort_seq`, or `create_time * 1000` without one, then `create_time`, `local_id`) and
-/// the number of its `message_<n>.db`. Equal keys of different databases are listed by ascending database number.
+/// 它由两部分组成：消息的排序键（`sort_seq`，没有时用 `create_time * 1000`；其次是 `create_time` 和 `local_id`），
+/// 以及所在消息库的分片号（[`shard_name`]）。不同消息库中相同的键按分片号升序排列。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MsgPos {
-    /// `sort_seq`, or `create_time * 1000` for a row without one.
+    /// `sort_seq`；行里没有时为 `create_time * 1000`。
     pub sort_seq: i64,
-    /// Unix seconds.
+    /// 发送时间，Unix 时间戳（秒）。
     pub create_time: i64,
-    /// The row's id in its table.
+    /// 行在所在表中的 ID（本地 ID）。
     pub local_id: i64,
-    /// The number of its `message_<n>.db`.
+    /// 所在消息库的分片号。
     pub shard: u32,
 }
 
-// one per message of a conversation in a cursor: its size changes only on purpose (#505)
+// 游标为会话的每条消息保存一个：固定它的大小，只在有意时改变（#505）
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(size_of::<MsgPos>() == 32);
 
 impl MsgPos {
-    /// `sort_seq.create_time.local_id.shard`, what [`parse`](Self::parse) reads back.
+    /// 写成 `sort_seq.create_time.local_id.shard` 的游标，[`parse`](Self::parse) 可以读回。
     pub fn token(&self) -> String {
         format!(
             "{}.{}.{}.{}",
@@ -113,7 +116,7 @@ impl MsgPos {
         )
     }
 
-    /// The position a [`token`](Self::token) names; `None` for anything else.
+    /// [`token`](Self::token) 写出的游标表示的位置；其他文字为 `None`。
     pub fn parse(token: &str) -> Option<Self> {
         let mut parts = token.trim().split('.');
         let pos = Self {
@@ -125,11 +128,10 @@ impl MsgPos {
         parts.next().is_none().then_some(pos)
     }
 
-    /// The place of a moment (Unix seconds) in the chat's order, which is WeChat's: `sort_seq`, the send time in
-    /// milliseconds plus a little. A page [`After`](PageFrom::After) it starts at the first message ordered at that
-    /// moment or later. A message ordered a second or two off its own send time (seen on a real account) falls on
-    /// the side its order puts it, as in the chat window, so pages on from there neither skip nor repeat one
-    /// (issue #242).
+    /// 某一时刻（Unix 秒）在聊天窗口顺序中的位置，这个顺序就是微信的 `sort_seq`：毫秒的发送时间再加一点。
+    /// 以它为界的 [`After`](PageFrom::After) 页从排在这一时刻或之后的第一条消息开始。
+    /// 排序位置与发送时间相差一两秒的消息（真实账号上出现过）按排序位置落在这一时刻的某一侧，与聊天窗口一致，
+    /// 所以从这里往后翻页既不跳过也不重复消息（#242）。
     pub fn at_time(seconds: i64) -> Self {
         Self {
             sort_seq: seconds.saturating_mul(1000),
@@ -144,29 +146,29 @@ impl MsgPos {
     }
 }
 
-/// Whether rows at a position's own place come after it, in a listing across conversations (issue #178).
+/// 在跨会话的列表里，与某个位置的排序位置相同的行是否排在它之后（#178）。
 ///
-/// None do in its own conversation (a row there at the same place is the same message, kept by more than one
-/// database) or in one listed before it; all do in one listed after it.
+/// 在它自己的会话里（那里排序位置相同的行是同一条消息，保存在不止一个数据库中）和排在它前面的会话里都不在它之后，
+/// 在排在它后面的会话里都在它之后。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ties {
-    /// No row at the position's place comes after it.
+    /// 排序位置相同的行都不在它之后。
     None,
-    /// Every row at the position's place comes after it.
+    /// 排序位置相同的行都在它之后。
     All,
 }
 
-/// Where a page of [`Account::messages_from`] starts.
+/// [`Account::messages_from`] 的一页从哪里开始。
 #[derive(Clone, Copy, Debug)]
 pub enum PageFrom {
-    /// The messages listed after this one: older ones.
+    /// 列在这条消息之后的消息，即更早的消息。
     Before(MsgPos),
-    /// The messages listed before this one: newer ones, the closest first taken.
+    /// 列在这条消息之前的消息，即更新的消息，先取离它最近的。
     After(MsgPos),
 }
 
-/// The sort key of a row (see [`MsgPos`]) from its cells `sort_seq`, `create_time` and `local_id`; `None` when one is not an integer, but for a
-/// null `sort_seq`, which is one without, as a zero.
+/// 由 `sort_seq`、`create_time` 和 `local_id` 三个单元格得出行的排序键（见 [`MsgPos`]）；有一个不是整数时为
+/// `None`，但 `sort_seq` 为 null 时与 0 一样，算作没有 `sort_seq`。
 fn typed_row_key(
     sort_seq: rusqlite::types::ValueRef<'_>,
     create_time: rusqlite::types::ValueRef<'_>,
@@ -184,11 +186,11 @@ fn typed_row_key(
     Some((seq, create, local_id))
 }
 
-/// Numbers of the `biz_message_<n>.db` databases, where official accounts and service notices are kept, start here:
-/// a message's database is told by its number alone, so they must not meet those of `message_<n>.db`.
+/// `biz_message_<n>.db`（保存公众号和服务通知的消息）的编号从这里开始：只凭编号区分消息所在的数据库，
+/// 所以它们不能与 `message_<n>.db` 的编号重叠。
 const BIZ_SHARD_BASE: u32 = 1 << 24;
 
-/// The name of the database with this number: `message_<n>`, or `biz_message_<n>`.
+/// 编号为 `shard` 的数据库名：`message_<n>` 或 `biz_message_<n>`。
 pub fn shard_name(shard: u32) -> String {
     match shard.checked_sub(BIZ_SHARD_BASE) {
         Some(n) => format!("biz_message_{n}"),
@@ -196,7 +198,7 @@ pub fn shard_name(shard: u32) -> String {
     }
 }
 
-/// The number of the message database holding a table.
+/// 表所在消息库的编号。
 pub(crate) fn shard_of(t: &MsgTable) -> Option<u32> {
     t.db.file_name()
         .and_then(|n| n.to_str())
@@ -228,9 +230,10 @@ mod tests {
     use rusqlite::{params, Connection};
 
     pub(super) const T0: i64 = 1_700_000_000;
-    pub(super) const DAY: i64 = 2 * 86_400; // two days apart so local-time bucketing cannot merge them
+    pub(super) const DAY: i64 = 2 * 86_400; // 相隔两天，按本地时间分到哪一天都不会合并
 
-    /// `msgs`: (`local_id`, `day_offset`, `local_type`, `real_sender_id`, text). `server_id` = `create_time` offset.
+    /// `msgs` 的每一项是（`local_id`、`day_offset`、`local_type`、`real_sender_id`、文字）；
+    /// `server_id` 等于 `create_time` 相对 `T0` 的偏移。`zstd_local_id` 那一行的内容用 zstd 压缩。
     pub(super) fn shard(
         msgs: &[(i64, i64, i64, i64, &str)],
         zstd_local_id: Option<i64>,
@@ -266,7 +269,8 @@ mod tests {
         })
     }
 
-    /// Two shards: ids 1..3 in shard 0 (days 0..2), ids 1..2 in shard 1 (days 3..4); `local_id` overlaps on purpose.
+    /// 两个分片：分片 0 有 ID 1..3（偏移为 0..2 个 `DAY`），分片 1 有 ID 1..2（偏移为 3..4 个 `DAY`）；
+    /// `local_id` 特意重叠。
     pub(super) fn account(tag: &str) -> (TestDir, Account) {
         let dir = TestDir::new(&format!("weflow-msg-{tag}"));
         std::fs::create_dir_all(dir.join("message")).unwrap();
@@ -311,9 +315,8 @@ mod tests {
         }
     }
 
-    /// An account whose `wxid_bob` messages are `shards`, one `message_<n>.db` each: rows of (`local_id`,
-    /// `sort_seq` as an SQL literal, `create_time` as one). Neither column has a type, so a row can store any SQLite
-    /// value.
+    /// `wxid_bob` 的消息为 `shards` 的账号，每个分片一个 `message_<n>.db`，每行是（`local_id`、写成 SQL 字面量的
+    /// `sort_seq`、同样写成字面量的 `create_time`）。这两列没有类型，所以一行可以存任意 SQLite 值。
     pub(super) fn keyed_account(
         tag: &str,
         shards: &[Vec<(i64, String, String)>],
@@ -360,13 +363,13 @@ mod tests {
     }
 }
 
-/// Proofs of `cargo kani` (#501).
+/// `cargo kani` 的证明（#501）。
 #[cfg(kani)]
 mod proofs {
     use super::*;
 
-    /// [`newest_first`] is a total order for any keys, so the standard library's sort puts slices of any length in
-    /// it: equal only for equal keys, the reverse when swapped, and transitive.
+    /// 对任意的键 [`newest_first`] 都是全序，所以标准库的排序能把任意长度的切片排成这个顺序：只有相同的键才相等，
+    /// 交换两边时结果相反，并且满足传递性。
     #[kani::proof]
     fn newest_first_is_a_total_order() {
         use std::cmp::Ordering::{Equal, Greater};
@@ -378,8 +381,8 @@ mod proofs {
         }
     }
 
-    /// Any 3 keys come out of [`sort_keys`] as a reordering of them, in the chat's order in either direction, equal
-    /// keys of different databases by ascending database number: the sort uses the order proved above.
+    /// 任意 3 个键经 [`sort_keys`] 排序后仍是这 3 个键，两个方向都按聊天窗口的顺序排列，
+    /// 不同分片的相同键按分片号升序：排序用的是上面证明过的顺序。
     #[kani::proof]
     #[kani::unwind(5)]
     fn keys_are_sorted_either_way_with_ties_by_database() {
