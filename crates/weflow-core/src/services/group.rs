@@ -7,7 +7,7 @@ use std::path::Path;
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
-use super::session_kind::may_be_friend;
+use super::session_kind::is_friend;
 use super::*;
 use crate::chat_msg;
 use crate::contract::{
@@ -531,11 +531,11 @@ impl ServiceHub {
                 .filter(|n| !n.is_empty())
                 .cloned()
                 .unwrap_or_else(|| wxid.clone());
-            let lw = wxid.to_lowercase();
-            // 微信的联系人表里账号自己那一行和好友一样（`local_type` 为 1），但它不是好友（#1079）
-            let is_friend = may_be_friend(&lw)
-                && normalized_wxid != my_wxid
-                && contact.as_ref().is_some_and(|c| c.local_type == 1);
+            let is_friend = is_friend(
+                &wxid,
+                contact.as_ref().map_or(0, |c| c.local_type),
+                &my_wxid,
+            );
             let is_owner = owner.as_deref() == Some(wxid.as_str());
             let count = lookup_candidates
                 .iter()

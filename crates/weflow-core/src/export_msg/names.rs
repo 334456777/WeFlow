@@ -15,6 +15,8 @@ pub struct ContactInfo {
     pub remark: String,
     /// 微信号。
     pub alias: String,
+    /// 联系人表里这一行的 `local_type`，好友为 1；行里没有时为 0。
+    pub local_type: i64,
 }
 
 impl ContactInfo {
@@ -39,6 +41,10 @@ impl ContactInfo {
             nickname: s(&["nickName", "nick_name", "nickname"]),
             remark: s(&["remark"]),
             alias: s(&["alias"]),
+            local_type: ["local_type", "localType"]
+                .iter()
+                .find_map(|k| v.get(*k).and_then(Value::as_i64))
+                .unwrap_or(0),
         }
     }
 

@@ -54,6 +54,15 @@ pub(super) fn may_be_friend(username: &str) -> bool {
         || NOT_FRIENDS.contains(&username))
 }
 
+/// 联系人 `username` 是否是好友：[`may_be_friend`]，不是账号自己，联系人表里这一行的 `local_type` 为 1。
+/// 群成员面板和 arkme-json 导出都按它判断（#1343）。`own_wxid` 是账号的裸 wxid。
+pub(crate) fn is_friend(username: &str, local_type: i64, own_wxid: &str) -> bool {
+    // 微信的联系人表里账号自己那一行和好友一样（`local_type` 为 1），但它不是好友（#1079）
+    may_be_friend(&username.to_lowercase())
+        && crate::config::clean_account_dir_name(username) != own_wxid
+        && local_type == 1
+}
+
 /// `username` 所指会话的种类；`own_wxid` 是账号的裸 wxid（[`crate::config::clean_account_dir_name`]）。
 pub(super) fn session_kind(username: &str, own_wxid: &str) -> SessionKind {
     let lowered = username.to_lowercase();

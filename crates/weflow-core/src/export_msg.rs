@@ -758,6 +758,7 @@ mod tests {
                 nickname: "Bob".into(),
                 remark: "Bobby".into(),
                 alias: "bb".into(),
+                local_type: 1,
             },
         );
         contacts.insert(
@@ -767,6 +768,8 @@ mod tests {
                 nickname: "Me Nick".into(),
                 remark: String::new(),
                 alias: String::new(),
+                // 微信的联系人表里账号自己那一行也是 1
+                local_type: 1,
             },
         );
         (msgs, contacts)
