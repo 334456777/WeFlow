@@ -10,6 +10,7 @@ use crate::commands::insight::print_insight;
 use super::web::{open_in_browser, query_escape, serve_webui, web_backend};
 use crate::serve_api;
 use serde_json::{json, Value};
+use weflow_core::config::keys::{self, ListenHost};
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::services::ServiceHub;
 
@@ -22,19 +23,19 @@ pub(crate) struct ServeCommand {
     #[arg(long)]
     host: Option<String>,
     /// Listen port; default: 18108.
-    #[arg(long)]
+    #[arg(long, value_parser = clap::value_parser!(u16).range(keys::SERVE_PORT.min..=keys::SERVE_PORT.max))]
     port: Option<u16>,
     /// Access token for the HTTP API; default: `http_api_token` from the config. Without one the command API makes one up for each run. An empty one counts as none.
     #[arg(long, env = "WEFLOW_HTTP_TOKEN", hide_env_values = true)]
     api_token: Option<String>,
     /// Tasks the command API runs at once, the `POST` commands such as exports, keys and backups; more are queued or refused. Default: 1
-    #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+    #[arg(long, value_parser = clap::value_parser!(u16).range(keys::SERVE_MAX_TASKS.min..=keys::SERVE_MAX_TASKS.max))]
     max_tasks: Option<u16>,
     /// Other commands the command API runs at once; default: the number of CPUs
-    #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+    #[arg(long, value_parser = clap::value_parser!(u16).range(keys::SERVE_MAX_READS.min..=keys::SERVE_MAX_READS.max))]
     max_reads: Option<u16>,
     /// Images and voices the command API's /api/ media routes decode at once; more wait in line. Default: the number of CPUs
-    #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+    #[arg(long, value_parser = clap::value_parser!(u16).range(keys::SERVE_MAX_MEDIA.min..=keys::SERVE_MAX_MEDIA.max))]
     max_media: Option<u16>,
     /// Print a line on stderr for each request of the command API: method, path without the query, status and time
     #[arg(long)]
@@ -121,26 +122,19 @@ pub(crate) fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The address `--host` (or `serve_host`) and the port name: an IPv4 or IPv6 address, the latter with or without
-/// brackets (`::1`, `[::1]`), or a host name, which takes the first address it resolves to.
+/// The address `--host` (or `serve_host`) and the port name ([`keys::listen_host`]): a host name takes the first
+/// address it resolves to.
 async fn listen_address(host: &str, port: u16) -> AppResult<std::net::SocketAddr> {
-    let host = host.trim();
-    let bare = host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .unwrap_or(host);
-    if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
-        return Ok(std::net::SocketAddr::new(ip, port));
+    let shown = host.trim();
+    let invalid = |why: String| AppError::usage(format!("invalid listen address {shown}: {why}"));
+    match keys::listen_host(host).map_err(|why| invalid(why.to_string()))? {
+        ListenHost::Ip(ip) => Ok(std::net::SocketAddr::new(ip, port)),
+        ListenHost::Name(name) => tokio::net::lookup_host((name, port))
+            .await
+            .map_err(|err| invalid(err.to_string()))?
+            .next()
+            .ok_or_else(|| invalid("the name has no address".into())),
     }
-    let invalid = |why: String| AppError::usage(format!("invalid listen address {host}: {why}"));
-    if bare.is_empty() || bare.contains(['[', ']', '/']) {
-        return Err(invalid("not an IP address or a host name".into()));
-    }
-    tokio::net::lookup_host((bare, port))
-        .await
-        .map_err(|err| invalid(err.to_string()))?
-        .next()
-        .ok_or_else(|| invalid("the name has no address".into()))
 }
 
 /// `serve` runs the command API (every CLI command over HTTP, see `serve_api`), next to the optional insight and image

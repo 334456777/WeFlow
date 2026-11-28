@@ -176,9 +176,10 @@ impl ServeSettings {
         match key {
             "host" => {
                 let host = as_string(value)?.trim().to_string();
-                if format!("{host}:0").parse::<std::net::SocketAddr>().is_err() {
+                // what `serve --host` takes, which resolves a host name when it starts
+                if keys::listen_host(&host).is_err() {
                     return Err(AppError::usage(format!(
-                        "invalid value '{host}' for {name}; use an IP address such as 127.0.0.1, 0.0.0.0 or [::1]"
+                        "invalid value '{host}' for {name}; use an IP address such as 127.0.0.1, 0.0.0.0 or [::1], or a host name"
                     )));
                 }
                 self.host = Some(host);
@@ -1580,9 +1581,13 @@ mod tests {
         assert!(store.profile(None).unwrap().extra.is_empty());
 
         for (key, bad) in [
-            ("serve_port", json!(0)),
+            ("serve_port", json!(65536)),
+            ("serve_port", json!(-1)),
+            ("serve_max_tasks", json!(0)),
             ("serve_max_tasks", json!(65536)),
-            ("serve_host", json!("localhost")),
+            ("serve_host", json!("")),
+            ("serve_host", json!("a/b")),
+            ("serve_host", json!("[::1")),
             ("serve_insight", json!("maybe")),
         ] {
             assert!(
@@ -1591,6 +1596,19 @@ mod tests {
             );
         }
         assert_eq!(store.get_key(None, "serve_insight"), Value::Null);
+        // what `serve --host` and `--port` take (#1265): a host name, an IPv6 address without brackets, a free port
+        for (key, good) in [
+            ("serve_host", json!("localhost")),
+            ("serve_host", json!("::1")),
+            ("serve_port", json!(0)),
+        ] {
+            store.set_key(None, key, good.clone()).unwrap();
+            assert_eq!(store.get_key(None, key), good, "{key}");
+        }
+        store
+            .set_key(None, "serve_host", json!(" 0.0.0.0 "))
+            .unwrap();
+        store.set_key(None, "serve_port", json!(8080)).unwrap();
 
         store.unset_key(None, "serve_port").unwrap();
         assert_eq!(store.get_key(None, "serve_port"), Value::Null);

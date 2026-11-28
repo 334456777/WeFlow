@@ -330,10 +330,10 @@ pub const MESSAGE_PUSH_FILTER_MODE: Choice = Choice {
     default: "all",
 };
 
-/// `serve_port`: the listen port of `serve`.
+/// `serve_port`: the listen port of `serve`, as `--port` takes it; 0 has the system pick a free one.
 pub const SERVE_PORT: Bounds = Bounds {
     name: "serve_port",
-    min: 1,
+    min: 0,
     max: u16::MAX as i64,
 };
 
