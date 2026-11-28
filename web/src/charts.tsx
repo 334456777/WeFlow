@@ -3,7 +3,7 @@ import type { Bar } from './api/analytics';
 import { n } from './format';
 import { t } from './i18n';
 
-/** 并排的柱子，高度按占最大值的比例；`ticks` 在下面给其中一些柱子写上名称。没有柱子时显示没有消息。 */
+/** 并排的柱子，高度按占最大值的比例；`ticks` 在下面给其中一些柱子写上名称。没有柱子时只显示 `没有消息。`。 */
 export function Columns({ label, bars, ticks }: { label: string; bars: Bar[]; ticks(index: number, bar: Bar): string | null }) {
   if (!bars.length) return <p className="muted">{t('没有消息。')}</p>;
   const max = Math.max(1, ...bars.map(b => b.value));

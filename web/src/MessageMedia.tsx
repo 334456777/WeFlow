@@ -12,7 +12,7 @@ export type Preview =
   | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb };
 
 /**
- * 预览按打开时的样子（`.dat`）显示的图片的原图：微信点「查看原图」时下载的 `_h.dat`，下载到本机后改为显示它（#194）。
+ * 预览按打开时的样子（`.dat`）显示的图片的原图：微信点「查看原图」时下载的 `_h.dat`，下载到本机后换成显示它（#194）。
  * 请求过之后 `shown` 为 true，到达之前 `loading` 为 true，`opened` 是被它替换的图片，用来换回去（#338）。
  */
 export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean; loading?: boolean; opened?: string }

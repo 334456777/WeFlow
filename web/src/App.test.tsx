@@ -356,7 +356,7 @@ describe('App', () => {
     const side = () => screen.getByRole('button', { name: /取消导出|再次导出/, hidden: true });
     expect(side().hasAttribute('inert')).toBe(true);
 
-    // `export messages` 的任何格式都可以选，不只前三种（#279）；可以多选，这里取消了 HTML（#342）
+    // `export messages` 的所有格式都可以选（#279），并且可以多选，这里取消了 HTML（#342）
     const exportCard = within(document.querySelector<HTMLElement>('[data-card="export"]')!);
     fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
     fireEvent.click(exportCard.getByRole('button', { name: 'HTML' }));
