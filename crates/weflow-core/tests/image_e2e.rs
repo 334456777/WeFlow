@@ -182,7 +182,7 @@ fn decrypts_the_hd_variant_and_caches_it() {
     assert_eq!(batch["rows"][2]["failureKind"], "not_found");
     assert!(batch["rows"][2].get("localPath").is_none());
 
-    let cleared = hub.cache_clear(&[weflow_core::services::CachePart::Images]);
+    let cleared = hub.cache_clear(&[weflow_core::contract::CachePart::Images]);
     assert!(cleared.warnings.is_empty(), "{:?}", cleared.warnings);
     assert!(!std::path::Path::new(&path).exists());
 }

@@ -6,7 +6,7 @@ import { ArrowsClockwise, CircleNotch, Trash } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { WEB, type Health } from '../api/backend';
 import { listKept, listPublished, pickVersion, pruneVersions, shownVersion, type KeptVersion, type PublishedVersion } from '../api/webVersions';
-import { formatSize } from '../jobs/TaskCenter';
+import { formatSize } from '../format';
 import { SettingRow, SettingsGroup } from './layout';
 import { t } from '../i18n';
 

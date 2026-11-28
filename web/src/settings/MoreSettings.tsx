@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { CircleNotch, Trash } from '@phosphor-icons/react';
 import { CACHE_LABELS, clearCache, listCache, planClearCache, type CachePart, type CachePartName } from '../api/settings';
-import { formatSize } from '../jobs/TaskCenter';
+import { formatSize } from '../format';
 import { GridSkeleton } from '../Skeleton';
 import { NoteLine, reason, SettingsGroup, type Note } from './layout';
 import { locale, t } from '../i18n';

@@ -16,6 +16,7 @@ mod launch;
 mod numbers;
 mod reads;
 mod serve_api;
+mod served;
 mod stop;
 mod term;
 mod views;
@@ -108,7 +109,7 @@ async fn main() -> ExitCode {
     } = i18n::parse(launch::args());
     // a command run by `serve` gets the database keys the server already derived on stdin
     // (see `serve_api::child::spawn`)
-    if std::env::var_os(serve_api::child::KEYS_ON_STDIN).is_some() {
+    if std::env::var_os(served::KEYS_ON_STDIN).is_some() {
         let mut stdin = std::io::stdin();
         let mut keys = Vec::new();
         if !std::io::IsTerminal::is_terminal(&stdin)

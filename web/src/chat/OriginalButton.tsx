@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { CircleNotch, FrameCorners } from '@phosphor-icons/react';
 import { getImageInfo, type ImageInfo } from '../api/messages';
-import { formatFileSize } from './messages';
+import { formatFileSize } from '../format';
 import type { PreviewHd } from './MessageView';
 import { t } from '../i18n';
 

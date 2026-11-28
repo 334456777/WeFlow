@@ -11,10 +11,10 @@ import { listResources, voiceSeconds, type Resource, type ResourceQuery, type Re
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
-import { formatClock, formatFileSize } from '../chat/messages';
+import { formatClock, formatFileSize } from '../format';
 import { imagePreview, PlayBadge, thumbFailure, Voice, type Preview } from '../chat/MessageView';
 import { Popover } from '../Popover';
-import { Failed } from '../reports/AnnualReport';
+import { Failed } from '../Failed';
 import { Segmented } from '../Segmented';
 import { MediaSkeleton } from '../Skeleton';
 import { formatDate, locale, msg, t } from '../i18n';

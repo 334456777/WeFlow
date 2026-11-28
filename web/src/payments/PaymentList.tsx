@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatYuan, type Payment } from '../api/pay';
 import { Avatar } from '../Avatar';
-import { dayOf, formatClock, formatDayHeading } from '../chat/messages';
+import { dayOf, formatClock, formatDayHeading } from '../format';
 import { locale, t } from '../i18n';
 
 /** Records drawn at first and added each time the end comes near. */

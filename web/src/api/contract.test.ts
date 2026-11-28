@@ -3,16 +3,16 @@
 // so what is read here is what the server answers, not what a fixture of the page supposes it does.
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, resetZone, vi } from '#test';
-import { dayOf, formatClock, formatFileSize, isMine, kindOf, withoutLabel } from '../chat/messages';
+import { isMine, kindOf, withoutLabel } from '../chat/messages';
+import { dayOf, formatClock, formatFileSize } from '../format';
 import { formatSessionTime, kindOf as sessionKind, sessionRows } from '../chat/sessions';
 import { contactLine } from '../contacts/ContactList';
-import { jobDetail } from '../jobs/TaskCenter';
 import { getSessions } from './chat';
 import { ApiError } from './client';
 import { countKinds, getContacts, matchContacts } from './contacts';
 import type * as Contract from './contract.gen';
 import { listResources, type ResourceQuery } from './details';
-import { describeCommand, isFinished, listJobs, type Job } from './jobs';
+import { describeCommand, isFinished, jobDetail, listJobs, type Job } from './jobs';
 import { getMessages, searchMessages, type ParsedMessage } from './messages';
 
 const TEXT = readFileSync(new URL('../../contract/samples.json', import.meta.url), 'utf8');

@@ -3,7 +3,7 @@
 import { call, get } from './client';
 import { t } from '../i18n';
 import type * as Contract from './contract.gen';
-import { dayOf } from '../chat/messages';
+import { dayOf } from '../format';
 
 /** The footprint and its parts, the contract's (#430): keys in snake_case, as the native layer writes them. */
 export type Footprint = Contract.Footprint;

@@ -2,6 +2,7 @@
 // as server-sent events, cancelling them, and the file a `return=file` job wrote (the wiki's command API page).
 import { apiUrl, call, get, mediaAddress, token, type Params } from './client';
 import type * as Contract from './contract.gen';
+import { formatSize } from '../format';
 import { msg, t } from '../i18n';
 
 /** Where a job stands: queued, running, or how it ended. */
@@ -27,6 +28,28 @@ export type Job = Omit<Contract.Job, 'progress' | 'result'> & {
 
 /** Whether the job has ended: succeeded, failed or cancelled. */
 export const isFinished = (status: JobStatus) => status === 'succeeded' || status === 'failed' || status === 'cancelled';
+
+// shown through t()
+const STATUS: Record<Job['status'], string> = { queued: msg('排队中'), running: msg('正在运行'), succeeded: msg('已完成'), failed: msg('未完成'), cancelled: msg('已取消') };
+
+/** What the line under a job's name says: its progress, its error, or its file. */
+export function jobDetail(job: Job): string {
+  if (job.status === 'running') {
+    const p = job.progress;
+    if (p?.formats?.every(f => f.done)) return t('正在打包');
+    const count = p?.total ? (p.current ?? 0) + ' / ' + p.total : '';
+    return [p?.message, count, p?.percent !== undefined ? Math.round(p.percent) + '%' : ''].filter(Boolean).join(' · ') || t('正在运行');
+  }
+  if (job.status === 'failed') return job.result?.error?.message || (job.httpStatus ? t('命令没有完成（HTTP {status}）', { status: job.httpStatus }) : t('命令没有完成'));
+  if (job.status === 'succeeded' && job.file) return (job.file.name ?? t('文件')) + (job.file.size !== null ? ' · ' + formatSize(job.file.size) : '');
+  return t(STATUS[job.status]);
+}
+
+/** The state of a job and what it says: 「未完成 · 磁盘空间不足」. */
+export const jobLine = (job: Job) => {
+  const status = t(STATUS[job.status]);
+  return status === jobDetail(job) ? status : status + ' · ' + jobDetail(job);
+};
 
 /** Starts `method path` as a job; with `file`, the job keeps the file the command writes. */
 export function startJob(method: 'POST' | 'GET', path: string, params: Params, file: boolean, signal?: AbortSignal): Promise<Job> {

@@ -1,7 +1,7 @@
 // The annual report (#208): `report annual years` and `report annual generate`, over one year or all of them.
 import { call, get } from './client';
 import { msg, t } from '../i18n';
-import { baseType } from '../chat/messages';
+import { baseType } from './messages';
 import type * as Contract from './contract.gen';
 
 /** `report annual generate`, as the contract says (#430). */

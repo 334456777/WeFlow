@@ -7,7 +7,7 @@
 //! process ends when the command returns, or when Windows stops waiting (5 seconds for a closed window).
 //!
 //! A command `serve` runs cannot be sent any of these; for one that ends by itself
-//! ([`CANCEL_ON_STDIN`](crate::serve_api::child::CANCEL_ON_STDIN)), the end of its stdin is the request instead.
+//! ([`CANCEL_ON_STDIN`](crate::served::CANCEL_ON_STDIN)), the end of its stdin is the request instead.
 
 /// How the command was asked to stop.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,7 +50,7 @@ pub(crate) async fn requested() -> Stop {
 /// The end of stdin, for a command `serve` runs that ends by itself: `serve` ends it when the job is cancelled, or the
 /// request or the server is gone (#287, #809). Never, for any other command.
 async fn stdin_ends() {
-    if std::env::var_os(crate::serve_api::child::CANCEL_ON_STDIN).is_none() {
+    if std::env::var_os(crate::served::CANCEL_ON_STDIN).is_none() {
         return std::future::pending().await;
     }
     let (ended, end) = tokio::sync::oneshot::channel();
