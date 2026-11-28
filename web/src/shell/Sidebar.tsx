@@ -1,5 +1,4 @@
-// The navigation on the left (#130), folded by its button or on a narrow window; on a phone a tab bar takes its
-// place (#335). The connection is shown at its foot.
+// 左侧的导航（#130），可以用它的按钮收起，窗口较窄时自动收起；手机上由标签栏代替（#335）。底部显示连接状态。
 import { useEffect, useState } from 'react';
 import {
   AddressBook, Aperture, Archive, CalendarStar, ChartBar, ChatCircleDots, Export, Footprints, Gear, Images, Lightbulb,
@@ -27,7 +26,7 @@ const navigation = [
   { id: 'settings', label: msg('设置'), icon: Gear },
 ] as const;
 
-/** The pages on a phone's tab bar; the others are under 「更多」 (#335). */
+/** 手机标签栏上的页面；其他页面在「更多」里（#335）。 */
 const MOBILE_TABS = ['chat', 'contacts', 'moments', 'resources'] as const;
 
 const SIDEBAR_KEY = 'weflow.sidebar';
@@ -45,27 +44,27 @@ function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-/** Whether the sidebar is folded, and its button. */
+/** 侧栏是否收起，以及切换它的函数。 */
 export interface SidebarFold {
-  /** Folded by its button (remembered) or because the window is narrow. */
+  /** 用按钮收起了（会记住），或者因为窗口较窄而收起。 */
   folded: boolean;
   narrow: boolean;
   toggle(): void;
 }
 
-/** The sidebar's fold: chosen with its button and kept in this browser, and always folded in a narrow window. */
+/** 侧栏的收起状态：用按钮选择并保存在这个浏览器里；窗口较窄时总是收起。 */
 export function useSidebarFold(): SidebarFold {
   const narrow = useMediaQuery('(max-width: 1100px)');
   const [chosen, setChosen] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'folded'; } catch { return false; } });
   const toggle = () => {
     const next = !chosen;
     setChosen(next);
-    try { localStorage.setItem(SIDEBAR_KEY, next ? 'folded' : 'open'); } catch { /* only lost on reload */ }
+    try { localStorage.setItem(SIDEBAR_KEY, next ? 'folded' : 'open'); } catch { /* 存不下时只是刷新后不记得 */ }
   };
   return { folded: narrow || chosen, narrow, toggle };
 }
 
-/** The navigation: the pages and the connection state; the tab bar on a phone. */
+/** 导航：各个页面和连接状态；手机上是标签栏。 */
 export function Sidebar({ section, onSelect, fold, backend, realtime }: {
   section: Navigation; onSelect(section: Navigation): void; fold: SidebarFold; backend: Backend; realtime: boolean;
 }) {

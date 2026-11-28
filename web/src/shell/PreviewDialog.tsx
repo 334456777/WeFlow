@@ -1,5 +1,5 @@
-// The preview of a picture or video opened on any page (#194): it flies out of the thumbnail it was opened from and
-// back into it, steps through the pictures and videos of a conversation, zooms, shows the original (#338).
+// 在任何页面打开的图片或视频预览（#194）：从打开它的缩略图里飞出、关闭时飞回，
+// 可以在一个会话的图片和视频之间翻看、缩放、显示原图（#338）。
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { flushSync } from 'react-dom';
@@ -14,20 +14,20 @@ import { prefersReducedMotion, usePresence } from '../motion';
 import { t } from '../i18n';
 import './PreviewDialog.css';
 
-/** What `usePreview` gives: a way to open a preview, and the dialog to put in the page. */
+/** `usePreview` 返回的内容：打开预览的函数，以及要放进页面的对话框。 */
 export interface PreviewControl {
   open(preview: Preview): void;
-  /** The dialog, once in the page. */
+  /** 对话框，在页面里放一次。 */
   dialog: ReactElement;
 }
 
-/** The preview dialog of the whole page, which opens and closes without animating with `reducedMotion`. */
+/** 整个网页共用的预览对话框；`reducedMotion` 时打开和关闭都不播放动画。 */
 export function usePreview(reducedMotion: boolean): PreviewControl {
   const [preview, setPreview] = useState<Preview | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const shownPreview = usePresence(preview);
   const zoom = useRef<ZoomControls>(null);
-  // the picture or video before or after in the conversation (#194), and the two each way read ahead of time
+  // 会话里的前一个或后一个图片、视频（#194），并提前读取前后各两个
   const gallery = preview?.gallery;
   const stepPreview = (by: number) => {
     if (!gallery) return;
@@ -43,7 +43,7 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     }
   }, [gallery]);
   const previewKeys = (event: { key: string; target: EventTarget; preventDefault(): void }) => {
-    // the video's own keys seek and change the volume
+    // 视频自己的按键用来快进快退和调音量
     if (event.target instanceof HTMLVideoElement) return;
     const act: Record<string, () => void> = {
       ArrowLeft: () => stepPreview(-1), ArrowRight: () => stepPreview(1),
@@ -53,23 +53,23 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     if (run) { event.preventDefault(); run(); }
   };
 
-  // The dialog stays in the top layer until its exit animation has played. Opened as the preview is rendered, so that
-  // a picture flying in from its thumbnail (#194) finds it open; one that flew back closed it already.
+  // 对话框在退场动画播放完之前一直留在顶层。预览渲染时就打开对话框，
+  // 从缩略图飞进来的图片（#194）因此能找到打开的对话框；飞回去的图片已经自己关掉了它。
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (shownPreview && !shownPreview.closing && dialog && !dialog.open) dialog.showModal?.();
     else if (!shownPreview && dialog?.open) dialog.close();
   }, [shownPreview]);
 
-  // The picture or video of a preview flies out of the thumbnail it was opened from and back into it (#194): the one
-  // focused or last pressed. Back only while the preview shows that same one and its thumbnail is on screen.
+  // 预览里的图片或视频从打开它的缩略图（聚焦的或最后按下的那个）飞出、关闭时飞回（#194）。只有预览显示的仍是同一个、
+  // 且缩略图在屏幕上时才飞回。
   const pressed = useRef<Element | null>(null);
   useEffect(() => {
     const down = (event: PointerEvent) => { pressed.current = event.target as Element; };
     window.addEventListener('pointerdown', down, true);
     return () => window.removeEventListener('pointerdown', down, true);
   }, []);
-  // the thumbnail opened from, and the picture it showed then: the image, or its original once shown instead
+  // 打开预览的缩略图，以及当时显示的图片：点开时的图片，或者之后换成的原图
   const opened = useRef<{ thumb: HTMLImageElement; src: string; hd?: string } | null>(null);
   const previewMedia = () => dialogRef.current?.querySelector<HTMLElement>('.zoom-frame img, .preview-video');
   const open = (next: Preview) => {
@@ -78,7 +78,7 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     const shown: Preview = { ...next, thumb: { src: thumb.currentSrc || thumb.src, aspect: thumb.naturalWidth / thumb.naturalHeight } };
     opened.current = { thumb, src: next.src, hd: next.type === 'image' ? next.hd?.src : undefined };
     if (!canFly(prefersReducedMotion(reducedMotion))) { setPreview(shown); return; }
-    // the dialog's own fade and growth stay off while it is open: switched back on, they would play from the start
+    // 对话框打开期间关掉它自己的淡入和放大：中途重新打开会让它们从头播放一遍
     dialogRef.current?.setAttribute('data-flown', '');
     const from = thumb.getBoundingClientRect();
     let done = () => {};
@@ -88,8 +88,7 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
       if (f) done = frameFlight('open', f, media, from);
     }).then(() => done());
   };
-  // the original instead of the image opened (#194), or the image opened again (#338), in the same place: the one shown
-  // stays under the other until it comes
+  // 在同一个位置换成原图（#194），或者换回点开时的图片（#338）：新的到达之前，原来显示的垫在下面
   const toggleOriginal = (show: boolean) => {
     if (!preview || preview.type !== 'image' || !preview.hd) return;
     const img = previewMedia();
@@ -98,7 +97,7 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     if (show) setPreview({ ...preview, src: preview.hd.src, thumb: under, hd: { ...preview.hd, shown: true, loading: true, opened: preview.src } });
     else if (preview.hd.opened) setPreview({ ...preview, src: preview.hd.opened, thumb: under, hd: { ...preview.hd, shown: false, loading: false } });
   };
-  // the original has come (or failed): 「原图」 stops spinning
+  // 原图到了（或者失败了）：「原图」按钮停止转圈
   const originalSettled = () => setPreview(p => (p?.type === 'image' && p.hd?.loading ? { ...p, hd: { ...p.hd, loading: false } } : p));
   const closePreview = () => {
     const back = opened.current;
@@ -110,7 +109,7 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
       dialog?.setAttribute('data-flown', '');
       const frame = dialog?.querySelector<HTMLElement>('.preview-content');
       const done = frame ? frameFlight('close', frame, media, back.thumb.getBoundingClientRect()) : () => {};
-      // a picture opened while it flies back (#844) is flown in, and keeps the mark
+      // 飞回期间又打开了图片（#844）时，那张图片是飞进来的，保留这个标记
       void fly(media, () => { flushSync(() => setPreview(null)); dialog?.close(); }, () => back.thumb).then(landed => {
         done();
         if (landed) dialog?.removeAttribute('data-flown');
@@ -121,8 +120,7 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     }
   };
 
-  // A click on the backdrop closes. One on the frame while it still flies in lands on the dialog too, as the frame
-  // takes no clicks until it is in place (#844), and does nothing.
+  // 点背景关闭预览。框还在飞进来时点在框上，点击也会落到对话框上（框到位之前不接收点击，#844），这种点击什么都不做。
   const onBackdrop = (event: { target: EventTarget; currentTarget: Element; clientX: number; clientY: number }) => {
     if (event.target !== event.currentTarget) return false;
     const box = event.currentTarget.querySelector('.preview-content')?.getBoundingClientRect();
@@ -133,14 +131,14 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     onCancel={event => { event.preventDefault(); closePreview(); }} onClick={event => { if (onBackdrop(event)) closePreview(); }} onKeyDown={previewKeys}>
     {shownPreview && (() => {
       const shown = shownPreview.value;
-      // what the preview shows, also while it fades out after it was let go of (#340)
+      // 预览显示的内容，放开之后的淡出期间也是它（#340）
       const steps = shown.gallery;
       return <div className="preview-content"><header><strong>{shown.title}{steps && <small className="num"> {steps.index + 1} / {steps.items.length}</small>}</strong>
         <span className="preview-tools">
           {shown.locate && <button type="button" className="icon-button" aria-label={t('在会话中定位')} title={t('在会话中定位')}
             onClick={() => { const locate = shown.locate; dialogRef.current?.removeAttribute('data-flown'); opened.current = null; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
           <button type="button" className="icon-button" aria-label={t('关闭预览')} onClick={closePreview}><X size={18} /></button></span></header>
-        {/* the picture sunk in a hollow of the frame (#341) */}
+        {/* 图片放在框里的凹陷中（#341） */}
         <div className="preview-stage">{shown.type === 'image'
           ? <PreviewImage key={shown.src} src={shown.src} title={shown.title} controls={zoom} thumb={shown.thumb}
             onSettled={shown.hd?.loading ? originalSettled : undefined} />

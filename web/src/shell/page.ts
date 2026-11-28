@@ -1,5 +1,5 @@
-// What the workspace gives each page and what a page gives back (#401). A page keeps its own state, so it stays as it
-// was when another page is opened and back; the workspace picks the page shown and gathers the console's cards.
+// 工作区交给每个页面的内容，以及页面交回的内容（#401）。页面自己保存状态，所以打开别的页面再回来时保持原样；
+// 工作区决定显示哪个页面，并汇集操作控制台的卡片。
 import type { ReactNode } from 'react';
 import type { Backend, Health } from '../api/backend';
 import type { ChatSession } from '../api/chat';
@@ -9,56 +9,56 @@ import type { Preview } from '../MessageMedia';
 import type { SessionsState } from '../useSessions';
 import type { JobsState } from '../jobs/useJobs';
 
-/** What every page shares: the server, the records read once for all pages, and the parts of the screen. */
+/** 所有页面共用的内容：服务端、为所有页面读一次的记录，以及屏幕的各个部分。 */
 export interface Shell {
   backend: Backend;
-  /** The server answers now. */
+  /** 服务端现在在回答。 */
   connected: boolean;
   /**
-   * What changes something or follows it (jobs, the settings) can be used: the server answers, or the sample server
-   * answers in its place (#896), keeping what changes in the page.
+   * 会改动东西或跟随改动的功能（作业、设置）可以使用：服务端在回答，或者示例服务端代替它回答（#896），
+   * 改动保存在页面里。
    */
   usable: boolean;
-  /** What `/health` says of the server `usable` acts on: the server's, or the sample server's; null while neither. */
+  /** `usable` 所指的服务端的 `/health`：服务端的或示例服务端的；都没有时为 null。 */
   health: Health | null;
   /**
-   * The page shows the server's records (`holdsRecords`): connected, or gone after it was, when what was read stays
-   * shown and what is not read yet is asked for (and fails, saying the server is not reached) until it is back.
+   * 网页显示服务端的记录（`holdsRecords`）：已连接，或者连接过又断开。断开时继续显示已读到的记录，还没读的照常请求
+   * （并失败，说明连不上服务端），直到服务端回来。
    */
   held: boolean;
   /**
-   * The page shows records (`recordsOf`): the server's (`held`), or the sample's (`sample`), which the sample server of
-   * src/mock answers the page's reads with (#879).
+   * 网页显示记录（`recordsOf`）：服务端的（`held`），或者示例的（`sample`，由 src/mock 的示例服务端回答网页的读取，
+   * #879）。
    */
   records: boolean;
-  /** The records are the sample's: no server has answered this page, or the one there does not suit it. */
+  /** 记录是示例的：还没有服务端回答过这个网页，或者现在的服务端不适用于它。 */
   sample: boolean;
-  /** Another server or account (#198): what a page read for the one before goes. */
+  /** 作用域：换了服务端或账号时变化（#198），页面为之前的作用域读到的内容随之作废。 */
   scope: number;
-  /** The conversation list, which other pages name and open conversations from. */
+  /** 会话列表，其他页面用它显示会话的名字、从它打开会话。 */
   sessions: SessionsState;
   sessionList: ChatSession[];
   reloadSessions(): void;
   jobs: JobsState;
   profile: Profile | undefined;
-  /** On a phone a page of two sides shows one at a time: the detail, once something is picked (#335). */
+  /** 手机上有两栏的页面一次只显示一栏：选了某一项之后显示详情（#335）。 */
   mobileDetail: boolean;
   setMobileDetail(show: boolean): void;
   openPreview(preview: Preview): void;
   toast(message: string): void;
 }
 
-/** Opens the chat page at a conversation. */
+/** 打开聊天页的某个会话。 */
 export type ChatWith = (username: string) => void;
-/** Opens the chat page at a message of a conversation. */
+/** 打开聊天页，定位到某个会话的某条消息。 */
 export type OpenAt = (sessionId: string, localId: number, createTime: number) => void;
 
-/** What a page gives the workspace. */
+/** 页面交给工作区的内容。 */
 export interface Page {
-  /** What the page shows beside the navigation; none while it has no records to show (the chat page's is shown). */
+  /** 页面在导航旁边显示的内容；没有记录可显示时不给（这时显示聊天页的）。 */
   view?: ReactNode;
-  /** Its own cards of the console, given whether shown or not: the console keeps one order of them all. */
+  /** 页面自己在操作控制台里的卡片，不论是否显示都给出：操作控制台为全部卡片保持同一个顺序。 */
   cards?: Card[];
-  /** The cards it shows, its own or shared ones such as 'tasks'; none, as for the view. */
+  /** 页面显示的卡片，包括自己的和共用的（如 `'tasks'`）；与 `view` 一样可以不给。 */
   shown?: string[];
 }

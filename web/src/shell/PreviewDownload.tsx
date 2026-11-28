@@ -1,5 +1,5 @@
-// 「下载」 in the preview's corner (#341): saves the file the preview shows, as it shows it: the image opened (`.dat`)
-// or its original (`_h.dat`) once shown instead, or the video. Named after the message's time.
+// 预览右下角的「下载」按钮（#341）：保存预览正在显示的那个文件，即点开时的图片（`.dat`）、换成原图后的原图
+// （`_h.dat`），或者视频。文件名取消息的时间。
 import { useState } from 'react';
 import { CircleNotch, DownloadSimple } from '@phosphor-icons/react';
 import { t } from '../i18n';
@@ -8,7 +8,7 @@ const EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/heic': 'heic', 'video/mp4': 'mp4',
 };
 
-/** `微信图片_20261020_085900_原图.jpg`: the kind, the time from the address (`create-time`), the original marked. */
+/** 下载的文件名，如 `微信图片_20261020_085900_原图.jpg`：种类、地址里的时间（`create-time`），原图另加标记。 */
 export function downloadName(src: string, kind: 'image' | 'video', type: string, original: boolean): string {
   const seconds = Number(new URL(src, 'http://page').searchParams.get('create-time'));
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -18,7 +18,7 @@ export function downloadName(src: string, kind: 'image' | 'video', type: string,
   return (kind === 'video' ? t('微信视频') : t('微信图片')) + stamp + (original ? t('_原图') : '') + '.' + extension;
 }
 
-/** The 「下载」 button of the preview. */
+/** 预览的「下载」按钮。 */
 export function PreviewDownload({ src, kind, original }: { src: string; kind: 'image' | 'video'; original: boolean }) {
   const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle');
   const save = async () => {

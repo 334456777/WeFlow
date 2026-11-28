@@ -1,4 +1,4 @@
-// The picture or video the preview dialog shows, and why it cannot be shown when it fails to load.
+// 预览对话框显示的图片或视频，加载失败时说明无法显示的原因。
 import { useEffect, useState } from 'react';
 import type { CSSProperties, Ref } from 'react';
 import { Warning } from '@phosphor-icons/react';
@@ -6,10 +6,10 @@ import { reasonOf, type PreviewThumb } from '../MessageMedia';
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 import { t } from '../i18n';
 
-/** The size of a picture of that shape in the preview: as wide as fits, as the preview's own rules allow. */
+/** 这种形状的图片在预览里的大小：在预览的空间限制内尽量宽；加载期间用缩略图作背景。 */
 export function previewSize(thumb: PreviewThumb): CSSProperties {
   return {
-    // the room the preview's bar, corners and margins take: shell/PreviewDialog.css, on .preview-dialog
+    // 预览的栏、边角和外边距占的空间：见 shell/PreviewDialog.css 的 `.preview-dialog`
     width: 'min(960px, 100vw - var(--preview-room-x), (100dvh - var(--preview-room-y)) * ' + thumb.aspect.toFixed(4) + ')',
     aspectRatio: String(thumb.aspect),
     background: 'url(' + JSON.stringify(thumb.src) + ') center / contain no-repeat',
@@ -22,7 +22,7 @@ function MediaError({ src, what }: { src: string; what: string }) {
   return <div className="file-preview"><Warning size={40} /><h3>{t('{what}无法显示', { what })}</h3><p>{reason || t('正在查找原因…')}</p></div>;
 }
 
-/** The image of the preview, zoomable; why it cannot be shown when it fails to load. */
+/** 预览里可缩放的图片；加载失败时说明无法显示的原因。 */
 export function PreviewImage({ src, title, controls, thumb, onSettled }: { src: string; title: string; controls?: Ref<ZoomControls>; thumb?: PreviewThumb; onSettled?(): void }) {
   const [failed, setFailed] = useState(false);
   return failed
@@ -30,7 +30,7 @@ export function PreviewImage({ src, title, controls, thumb, onSettled }: { src: 
     : <ZoomImage ref={controls} src={src} alt={title} onLoad={onSettled} onError={() => { setFailed(true); onSettled?.(); }} sized={thumb && previewSize(thumb)} />;
 }
 
-/** The video of the preview; why it cannot be shown when it fails to load. */
+/** 预览里的视频；加载失败时说明无法显示的原因。 */
 export function PreviewVideo({ src, poster, thumb }: { src: string; poster?: string; thumb?: PreviewThumb }) {
   const [failed, setFailed] = useState(false);
   return failed

@@ -4,7 +4,7 @@ import { canFly, fly, FRAME_NAME, frameFlight, frameVars, MEDIA_NAME, thumbnailO
 
 afterEach(() => { document.body.innerHTML = ''; Reflect.deleteProperty(document, 'startViewTransition'); });
 
-// happy-dom loads no pictures: one that has, as the browser would say
+// happy-dom 不加载图片：按浏览器的说法把图片标成已经加载
 function loaded(img: HTMLImageElement, width: number, height: number) {
   Object.defineProperty(img, 'complete', { value: true });
   Object.defineProperty(img, 'naturalWidth', { value: width });
@@ -16,7 +16,7 @@ describe('the preview flying from its thumbnail (#194)', () => {
   it('finds the loaded thumbnail of the control it opens from', () => {
     document.body.innerHTML = '<button id="a"><img></button><button id="b"><span><img></span></button><button id="c">no picture</button>';
     const [first, second] = Array.from(document.querySelectorAll('img'));
-    // not loaded yet: nothing to fly, nor a shape to size the preview with
+    // 还没加载：没有可以飞的图片，也没有确定预览大小用的形状
     expect(thumbnailOf(document.getElementById('a'))).toBeNull();
     loaded(second, 240, 180);
     expect(thumbnailOf(document.getElementById('c'), second.parentElement, document.getElementById('a'))).toBe(second);
@@ -76,7 +76,7 @@ describe('the preview flying from its thumbnail (#194)', () => {
         return { finished: new Promise<void>(resolve => { ends.push(resolve); }) };
       },
     });
-    // flying back into the thumbnail, then opened from that same thumbnail again before it has landed
+    // 正飞回缩略图，落地之前又从同一个缩略图打开
     const back = fly(media, () => {}, () => thumb);
     expect(thumb.style.viewTransitionName).toBe(MEDIA_NAME);
     const again = fly(thumb, () => {}, () => media);
@@ -96,7 +96,7 @@ describe('the frame flying with the picture (#339)', () => {
     const thumb = { left: 10, top: 500, width: 100, height: 75 };
     const vars = frameVars(frame, media, thumb);
     expect(vars).toMatchObject({ '--frame-w': '440px', '--frame-h': '420px', '--frame-sx': '0.25', '--frame-sy': '0.25', '--frame-tx': '-5px', '--frame-ty': '-12.5px' });
-    // at the start the frame's box is the thumbnail's, and its picture, scaled, starts at the box's corner
+    // 开始时框的位置和大小与缩略图相同，缩放后框的截图里的图片正好从这个位置的左上角开始
     const at = (axis: 'x' | 'y') => {
       const [corner, offset, scale] = axis === 'x' ? [thumb.left, media.left - frame.left, 0.25] : [thumb.top, media.top - frame.top, 0.25];
       return corner + parseFloat(vars['--frame-t' + axis]) + offset * scale;
@@ -112,7 +112,7 @@ describe('the frame flying with the picture (#339)', () => {
     const root = document.documentElement;
     const thumb = new DOMRect(10, 20, 100, 75);
     const opened = frameFlight('open', frame, media, thumb);
-    // closed while it still flies in: the close's marks stay when the opening ends
+    // 还在飞进来时就关闭：打开的那次飞行结束时，关闭的标记保留
     const closed = frameFlight('close', frame, media, thumb);
     opened();
     expect(root.dataset.flight).toBe('close');
