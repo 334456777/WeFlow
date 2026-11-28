@@ -4,8 +4,9 @@
 // statistics, the insights; jobs run for a few seconds each, and an export hands back a note in place of the records;
 // what reaches WeChat or the server's computer answers as it would there.
 // A chunk of its own, loaded only then: it imports nothing of the page's but types (plugins/plainImport.ts).
+import type { Health } from '../api/backend';
 import type { SampleAnswer, SampleServer } from '../api/client';
-import type { GroupMember, MemberAnalytics, Resource, ResourceKind, Session } from '../api/contract.gen';
+import type { Answers, GroupMember, MemberAnalytics, Resource, ResourceKind, Session } from '../api/contract.gen';
 import { excludeCandidates, excludedList, groupHours, groupList, groupMedia, groupMessages, groupRanking, memberMessages, overall, rankings, setExcluded, timeSpread } from './analytics';
 import { backupManifest } from './backup';
 import { dayOf, dayEnd, dayStart, NOW } from './clock';
@@ -239,8 +240,23 @@ function snsTimeline(params: Params) {
 
 type Route = (params: Params) => unknown;
 
+/** The command a route runs, as the server names it: `GET api/chat/sessions` runs `chat sessions`. */
+type CommandOf<Key> = Key extends `${string} ${infer Path}` ? Words<Path extends `api/${infer Read}` ? Read : Path> : never;
+/** A route's path as the words of its command: `chat/sessions` is `chat sessions`. */
+type Words<Path extends string> = Path extends `${infer Head}/${infer Tail}` ? `${Head} ${Words<Tail>}` : Path;
+
+/**
+ * What a route may answer: the contract's `data` of its command, or a failure. `health` answers as the page reads it,
+ * and `config get` with the value, which the contract does not describe; any other command must be in the contract.
+ */
+type Answer<Key> = Failure | (Key extends 'GET health' ? Health : Key extends 'GET api/config/get' ? string | null
+  : CommandOf<Key> extends keyof Answers ? Answers[CommandOf<Key>] : never);
+
+/** A table of routes, each checked against what the contract says its command answers (#1267). */
+const described = <T extends Record<string, Route>>(table: T & NoInfer<{ [Key in keyof T]: (params: Params) => Answer<Key> }>): T => table;
+
 /** The routes the sample answers, by method and path. */
-const routes: Record<string, Route> = {
+const table = {
   'GET api/chat/sessions': () => sessions(),
   'GET api/chat/statuses': params => Object.fromEntries(list(params, 'sessions').map(username => {
     const group = groups.find(g => g.username === username);
@@ -249,7 +265,7 @@ const routes: Record<string, Route> = {
   'GET api/chat/messages': messagePage,
   'GET api/chat/search': search,
   'GET api/chat/date-counts': dateCounts,
-  'GET api/chat/message': params => messageOf(text(params, 'session-id'), number(params, 'local-id') ?? 0) ?? null,
+  'GET api/chat/message': params => messageOf(text(params, 'session-id'), number(params, 'local-id') ?? 0) ?? new Failure(404, 'runtime_error', '未找到该消息'),
   'GET api/chat/image-info': params => {
     const localId = number(params, 'local-id') ?? 0;
     return { thumb: true, normal: true, hd: localId % 2 === 0, normalBytes: 180_000 + localId * 1_000, hdBytes: localId % 2 === 0 ? 2_400_000 + localId * 10_000 : null };
@@ -319,7 +335,10 @@ const routes: Record<string, Route> = {
   'DELETE cache/clear-account': params => (flag(params, 'dry-run') ? planClearAccount() : clearAccount()),
   'GET api/cache/list': () => listCache(),
   'DELETE cache/clear': params => clearCache(params),
-};
+} satisfies Record<string, Route>;
+
+/** The routes the sample answers, each answering what the contract says (#1267). */
+const routes: Record<string, Route> = described(table);
 
 /** Where the sample's backup is said to be written. */
 const BACKUP = 'C:\\Users\\sample\\Documents\\WeFlow\\backups\\weflow-backup.zip';
