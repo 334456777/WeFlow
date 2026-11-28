@@ -28,7 +28,7 @@ description: 给 WebUI（web/）加页面、读取或改界面时的步骤和容
 
 没连上服务端时由 `src/mock/` 回答，设计见 Wiki [WebUI 实现#示例数据](https://github.com/334456777/WeFlow/wiki/WebUI-实现#示例数据)。
 
-- 新的读取在 `src/mock/server.ts` 的 `routes` 里登记，键是「方法 路径」（如 `'GET api/chat/sessions'`），失败返回 `Failure`。没有登记的路由回答 `refused`，页面显示「这是示例数据，连接 weflow serve 后才能这样做。」。以 `Prefer: respond-async` 发出的请求作为作业由 `mock/jobs.ts` 运行，成功后要改动示例状态的写进 `effectOf`。
+- 新的读取在 `src/mock/server.ts` 的路由表 `table` 里登记，键是「方法 路径」（如 `'GET api/chat/sessions'`），失败返回 `Failure`。键对应的命令（去掉 `api/`、斜杠换成空格）要在 `contract.gen.ts` 的 `Answers` 里，回答按它的类型检查；报「not assignable to type 'Failure'」说明命令名拼错了或契约里没有这条命令，契约之外的例外只有 `health` 和 `config get`（`server.ts` 的 `Answer`）。没有登记的路由回答 `refused`，页面显示「这是示例数据，连接 weflow serve 后才能这样做。」。以 `Prefer: respond-async` 发出的请求作为作业由 `mock/jobs.ts` 运行，成功后要改动示例状态的写进 `effectOf`。
 - 示例服务端是单独的 chunk：从页面代码只能 `import type`，`plugins/plainImport.ts` 在构建时检查。
 - 时间用 `mock/clock.ts` 的 `ago`、`at`、`daysSince` 从打开网页的时刻往前推算，不写死日期。
 - 内容围绕 WeFlow、WebUI 和账号主人的生活，聊天、朋友圈、支付、报告和见解互相呼应；人名、微信号、地址都是虚构的。排行或见解里出现的人要有私聊。
