@@ -169,6 +169,94 @@ async fn a_new_message_is_activity_once_across_restarts() {
     assert_eq!(fake.requests().len(), 1);
 }
 
+/// 冷却期间到的新消息不触发活动见解，冷却结束后再触发一次；名单的两种模式相同（#1340）。
+#[tokio::test]
+async fn a_message_during_the_cooldown_is_activity_when_it_ends() {
+    use weflow_native::fixture::{ContactSpec, MsgSpec, SessionSpec};
+    for mode in ["whitelist", "blacklist"] {
+        let fake = FakeModel::start().unwrap();
+        let root = common::temp_dir(&format!("ins-activity-cooldown-{mode}"));
+        let fixture = weflow_native::fixture::Fixture::new(&root.join("data"), "wxid_me_ab12");
+        fixture.contact_db(
+            &[
+                ContactSpec::new("wxid_me", 1, "Me Nick"),
+                ContactSpec::new("wxid_bob", 1, "Bob"),
+            ],
+            &[],
+        );
+        // 时间都在引擎启动（即现在）之后
+        let first = chrono::Utc::now().timestamp() + 600;
+        let second = first + 60;
+        let write_chat = |messages: Vec<MsgSpec>, last: i64| {
+            fixture.session_db(&[SessionSpec {
+                username: "wxid_bob",
+                summary: "news",
+                last_timestamp: last,
+                unread: 1,
+                last_msg_type: 1,
+            }]);
+            fixture.message_shard(0, &[("wxid_bob", messages)]);
+        };
+        let settings = |cooldown: u32| {
+            // whitelist 列出 Bob；blacklist 的名单为空，引擎自己选会话
+            let list: &[&str] = if mode == "whitelist" {
+                &["wxid_bob"]
+            } else {
+                &[]
+            };
+            let base = ai_settings(&fake, "openai", "fake-chat", list);
+            move |p: &mut weflow_core::config::ProfileConfig| {
+                base(p);
+                p.extra.insert("ai_insight_filter_mode".into(), json!(mode));
+                p.extra
+                    .insert("ai_insight_cooldown_minutes".into(), json!(cooldown));
+            }
+        };
+
+        write_chat(vec![MsgSpec::text(1, "wxid_bob", first, "news")], first);
+        let hub = hub_over(&root, &fixture, settings(120));
+        let mut got = Vec::new();
+        hub.insight_analyze_activity(&mut |r| got.push(r.clone()))
+            .await;
+        assert_eq!(got.len(), 1, "{mode}: {got:?}");
+
+        // 冷却期间来了一条新消息，之后重启：引擎自己选会话时，会话列表要隔 15 分钟才重读，
+        // 重启后马上读到它；冷却时间从记录里算
+        write_chat(
+            vec![
+                MsgSpec::text(1, "wxid_bob", first, "news"),
+                MsgSpec::text(2, "wxid_bob", second, "more news"),
+            ],
+            second,
+        );
+        let hub = hub_over(&root, &fixture, settings(120));
+        for _ in 0..2 {
+            hub.insight_analyze_activity(&mut |r| got.push(r.clone()))
+                .await;
+        }
+        assert_eq!(got.len(), 1, "{mode}: still cooling: {got:?}");
+
+        // 冷却结束：服务每次都重读配置文件，把冷却时间改成 0 写进去
+        let mut config = weflow_core::config::ConfigStore::default();
+        let p = config.profiles.get_mut("default").unwrap();
+        p.db_path = Some(fixture.account_dir.to_string_lossy().to_string());
+        p.decrypt_key = Some(fixture.key_hex());
+        p.wxid = Some("wxid_me_ab12".into());
+        settings(0)(p);
+        config.save(&root.join("home/config.json")).unwrap();
+        for _ in 0..2 {
+            hub.insight_analyze_activity(&mut |r| got.push(r.clone()))
+                .await;
+        }
+        assert_eq!(
+            got.len(),
+            2,
+            "{mode}: the message waited out the cooldown: {got:?}"
+        );
+        assert_eq!(fake.requests().len(), 2, "{mode}");
+    }
+}
+
 /// The conversations the engine picks itself, with no list to follow, are people: the file helper and an official
 /// account are newer in the list and silent as long, yet `insight trigger` without a conversation, the silence scan
 /// and the activity scan pass them by (#1249).
