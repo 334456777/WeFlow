@@ -1,5 +1,4 @@
-// The contacts page (#205): the list, read once the page is opened, and one contact beside it; counted and exported
-// from the console.
+// 通讯录页（#205）：打开页面时读取的联系人列表和旁边的一个联系人的资料；统计和导出在操作控制台里。
 import { useEffect, useState } from 'react';
 import type { ContactKind } from '../api/contacts';
 import type { ChatWith, Page, Shell } from '../shell/page';
@@ -11,7 +10,7 @@ import { useContacts } from './useContacts';
 import { locale, t } from '../i18n';
 import './contacts.css';
 
-/** The contacts page: its view and its console cards. */
+/** 通讯录页：页面视图和操作控制台的卡片。 */
 export function useContactsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { backend, records, scope, setMobileDetail } = shell;
   const [state, reload] = useContacts(active && records, scope);

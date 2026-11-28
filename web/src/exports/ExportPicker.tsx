@@ -1,4 +1,4 @@
-// The conversations to export (#211): searched, narrowed by kind, picked one by one or all those shown at once.
+// 选择要导出的会话（#211）：可以搜索、按种类筛选，逐个勾选或者一次全选列出的会话。
 import { useMemo, useState } from 'react';
 import { ArrowClockwise, Check, MagnifyingGlass, X } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
@@ -14,17 +14,17 @@ import { locale, t } from '../i18n';
 const ROW_HEIGHT = 58;
 const FILTERS: SessionFilter[] = ['all', 'private', 'group', 'official'];
 
-/** A conversation's name; its username when it has none. */
+/** 会话的名称；没有名称时用用户名。 */
 export const nameOf = (session: ChatSession) => session.displayName || session.username;
 
-/** The conversations of `filter` whose name or id holds `query`. */
+/** 属于 `filter` 这一类、名称或用户名包含 `query`（不区分大小写）的会话。 */
 export function pickable(sessions: readonly ChatSession[], filter: SessionFilter, query: string): ChatSession[] {
   const needle = query.trim().toLocaleLowerCase();
   return sessions.filter(s => (filter === 'all' || kindOf(s.username) === filter)
     && (!needle || nameOf(s).toLocaleLowerCase().includes(needle) || s.username.toLocaleLowerCase().includes(needle)));
 }
 
-/** Beside the list: the conversations picked, each one to take off again. */
+/** 列表旁边的已选会话，每个都可以再取消。 */
 export function PickedList({ picked, onRemove }: { picked: ChatSession[]; onRemove(id: string): void }) {
   if (!picked.length) return <div className="pane-message"><p>{t('在左侧勾选要导出的会话，可以按类型筛选后全选。')}</p></div>;
   return <div className="picked" aria-label={t('已选的会话')}>
@@ -39,7 +39,7 @@ export function PickedList({ picked, onRemove }: { picked: ChatSession[]; onRemo
   </div>;
 }
 
-/** The conversation list with a box to tick each, filtered by kind and searched by name. */
+/** 每行带勾选框的会话列表，可以按种类筛选、按名称或用户名搜索。 */
 export function ExportPicker({ state, picked, onChange, onRetry }: {
   state: SessionsState;
   picked: ReadonlySet<string>;

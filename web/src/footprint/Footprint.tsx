@@ -1,6 +1,5 @@
-// My footprint (#209): over a range of days, how many people I talked with and replied to and how often I was
-// @-mentioned, the chats and mentions in the order they happened (each opening the message), and the groups that
-// mentioned me; the console cards write the AI's summary and export the statistics.
+// 我的足迹（#209）：一段日期内和多少人聊过、回复了多少人、被 @ 了多少次，按发生的顺序排列的私聊和 @我 的消息
+// （每一项都能打开那条消息），以及 @我 的群；操作控制台的卡片生成 AI 的总结、导出统计。
 import { Fragment, useMemo, useState } from 'react';
 import { ArrowSquareOut, At, CircleNotch, DownloadSimple, MagnifyingGlass, Sparkle } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
@@ -21,13 +20,13 @@ import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 import { locale, t } from '../i18n';
 
-/** A group message's text without the `sender:` line it starts with. */
+/** 去掉开头的 `sender:` 那一行后的群消息文字；剩下的为空时是 `[空消息]`。 */
 export const mentionText = (content: string) => content.replace(/^[^\n:]{1,64}:\n/, '').trim() || t('[空消息]');
 
 const clock = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString(locale(), { hour12: false, hour: '2-digit', minute: '2-digit' });
 const lasted = (seconds: number) => (seconds < 60 ? t('不到 1 分钟') : seconds < 3600 ? t('{n} 分钟', { n: Math.round(seconds / 60) }) : t('{n} 小时', { n: Math.round(seconds / 360) / 10 }));
 
-/** Names and avatars of people and groups, from the contact list. */
+/** 按用户名查联系人的函数，用来显示人和群的名称、头像；数据来自联系人列表。 */
 export function useNames(): (username: string) => Contact | undefined {
   const [contacts] = useRead('contacts:' + currentScope(), () => contactList());
   return useMemo(() => {
@@ -36,7 +35,7 @@ export function useNames(): (username: string) => Contact | undefined {
   }, [contacts]);
 }
 
-/** The ranges to pick from, and the days of a range of one's own. */
+/** 可选的时间范围，以及自定义范围的日期。 */
 export function FootprintRanges({ choice, onChoice }: { choice: FootprintChoice; onChoice(choice: FootprintChoice): void }) {
   const range = rangeOf(choice);
   const preset = 'preset' in choice ? choice.preset : null;
@@ -50,7 +49,7 @@ export function FootprintRanges({ choice, onChoice }: { choice: FootprintChoice;
   </div>;
 }
 
-/** The footprint read: the counts, the timeline narrowed to `keyword`, and the groups that mentioned me. */
+/** 读到的足迹：人数和次数、按 `keyword` 筛选的时间线，以及 @我 的群。 */
 export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
   data: Footprint; keyword: string; onKeyword(keyword: string): void;
   names(username: string): Contact | undefined; onOpen(session: string, localId: number, createTime: number): void;
@@ -117,7 +116,7 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
   </div>;
 }
 
-/** The footprint page: the range picked, and the footprint over it once read. */
+/** 足迹页的内容：选的时间范围，以及读到之后这段时间的足迹。 */
 export function FootprintPage({ choice, onChoice, keyword, onKeyword, onOpen, onData }: {
   choice: FootprintChoice; onChoice(choice: FootprintChoice): void; keyword: string; onKeyword(keyword: string): void;
   onOpen(session: string, localId: number, createTime: number): void; onData(data: Footprint | null): void;
@@ -138,7 +137,7 @@ export function FootprintPage({ choice, onChoice, keyword, onKeyword, onOpen, on
   </>;
 }
 
-/** The console card: the AI's few sentences on the range; it is turned on here, the model is set in the settings. */
+/** 操作控制台的 AI 总结卡片：AI 对这段时间写的几句话；总结在这里开启，模型在设置里设置。 */
 export function FootprintAi({ range, data, aiReady }: { range: FootprintRange; data: Footprint | null; aiReady?: boolean }) {
   const names = useNames();
   const [text, setText] = useState<{ range: string; text: string } | null>(null);
@@ -151,7 +150,7 @@ export function FootprintAi({ range, data, aiReady }: { range: FootprintRange; d
       setText({ range: range.label, text: await summarizeFootprint(range, data, s => names(s)?.displayName ?? s) });
     } catch (problem) {
       const message = (problem instanceof Error && problem.message) || t('没有生成，请重试。');
-      // the server's answer, in its language, when the summary is not turned on
+      // 没有开启足迹总结时服务端的报错，用的是服务端的语言，中英文都要认出
       setNote({ text: message, error: true, enable: /AI 足迹总结|AI Footprint summary/i.test(message) });
     } finally {
       setBusy(false);
@@ -170,7 +169,7 @@ export function FootprintAi({ range, data, aiReady }: { range: FootprintRange; d
   </div>;
 }
 
-/** The console card: the range as a file kept by the server, its statistics as JSON or its timeline as CSV or Excel. */
+/** 操作控制台的导出卡片：把这段时间的足迹导出成服务端保存的文件，统计导出为 JSON，或者时间线导出为 CSV、Excel。 */
 export function FootprintExport({ range }: { range: FootprintRange }) {
   const [format, setFormat] = useState<FootprintFormat>('json');
   const [busy, setBusy] = useState(false);

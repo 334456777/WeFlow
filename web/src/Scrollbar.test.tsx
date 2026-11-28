@@ -10,7 +10,7 @@ function Area() {
   return <><div ref={ref} className="scroll-area" data-testid="area"><p>content</p></div><Scrollbar target={ref} /></>;
 }
 
-/** One bar for two pages, as a panel that shows one page and then another keeps its bar (#836). */
+/** 两个页面共用一个滚动条，与面板先显示一个页面、再换成另一个时保留滚动条一样（#836）。 */
 function Pages({ page }: { page: 'a' | 'b' }) {
   const a = useRef<HTMLDivElement>(null);
   const b = useRef<HTMLDivElement>(null);
@@ -22,7 +22,7 @@ function Pages({ page }: { page: 'a' | 'b' }) {
   </>;
 }
 
-// happy-dom has no layout: give the area a size before the bar measures it.
+// happy-dom 不排版：在滚动条量尺寸之前给区域设定大小。
 function sized(height: number, content: number) {
   const proto = HTMLElement.prototype;
   const saved = [Object.getOwnPropertyDescriptor(proto, 'clientHeight'), Object.getOwnPropertyDescriptor(proto, 'scrollHeight')];
@@ -52,7 +52,7 @@ describe('Scrollbar', () => {
       const area = getByTestId('area');
       const frame = container.querySelector<HTMLElement>('.scroll-fades')!;
       const shown = () => ['top', 'bottom'].filter(side => frame.querySelector('.scroll-fade.' + side)!.classList.contains('shown'));
-      // over the area, as tall as it (the test's areas have no width)
+      // 盖在区域上，与它一样高（测试里的区域没有宽度）
       expect(frame.classList.contains('scrollable')).toBe(true);
       expect(frame.style.height).toBe('400px');
       expect(shown()).toEqual(['bottom']);
@@ -79,7 +79,7 @@ describe('Scrollbar', () => {
       const thumb = container.querySelector('.scrollbar-thumb') as HTMLElement;
       const area = getByTestId('area');
       expect(bar.classList.contains('scrollable')).toBe(true);
-      // The track is the area less 4px at each end: 400px; the area shows a tenth of the content, so does the thumb.
+      // 轨道是区域两端各去掉 4px，即 400px；区域显示内容的十分之一，滑块也占轨道的十分之一。
       expect(bar.style.height).toBe('400px');
       expect(thumb.style.height).toBe('40px');
 
@@ -88,8 +88,8 @@ describe('Scrollbar', () => {
       expect(bar.classList.contains('active')).toBe(true);
       expect(thumb.style.transform).toBe('translateY(180px)');
 
-      // 36px is a tenth of the 360px the thumb can travel, so a tenth of the 3672px the area can scroll; the area
-      // hears that a person scrolls it (the thumb is not inside it)
+      // 36px 是滑块可移动的 360px 的十分之一，所以滚动区域可滚动的 3672px 的十分之一；
+      // 区域收到用户在滚动它的事件（滑块不在区域里面）
       const intent = vi.fn();
       area.addEventListener(SCROLL_INTENT, intent);
       fireEvent.pointerDown(thumb, { button: 0, clientY: 200, pointerId: 1 });
@@ -97,7 +97,7 @@ describe('Scrollbar', () => {
       expect(intent).toHaveBeenCalledTimes(1);
       fireEvent.pointerMove(thumb, { clientY: 236, pointerId: 1 });
       expect(area.scrollTop).toBeCloseTo(1836 + 367.2);
-      // an area that scrolls smoothly is moved at once, or it would trail behind the pointer (#159)
+      // 平滑滚动的区域要立即移动，否则会落在指针后面（#159）
       const scrollTo = vi.fn();
       area.scrollTo = scrollTo as typeof area.scrollTo;
       fireEvent.pointerMove(thumb, { clientY: 272, pointerId: 1 });
@@ -112,7 +112,7 @@ describe('Scrollbar', () => {
     try {
       const { container, getByTestId, rerender } = render(<Pages page="a" />);
       const bar = container.querySelector('.scrollbar') as HTMLElement;
-      // scrolled and pointed at, then a click elsewhere shows the other page within the time the bar lingers
+      // 滚动并把指针移到区域上，然后在滚动条消失之前点了别处，换成另一个页面
       const a = getByTestId('a');
       a.scrollTop = 300;
       fireEvent.scroll(a);
@@ -123,7 +123,7 @@ describe('Scrollbar', () => {
       expect(container.querySelector('[data-testid="a"]')).toBeNull();
       expect(bar.classList.contains('active')).toBe(false);
       expect(bar.classList.contains('hover')).toBe(false);
-      // the new page's own scrolling shows it as before
+      // 新页面自己滚动时，滚动条像前面一样显示
       const b = getByTestId('b');
       b.scrollTop = 100;
       fireEvent.scroll(b);

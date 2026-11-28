@@ -1,4 +1,4 @@
-// Beside the Moments timeline (#202): everyone's posts, or one poster's, with how many each has; searchable by name.
+// 朋友圈时间线旁边的列表（#202）：选全部朋友圈或某个发布者的朋友圈，显示每人的条数；可以按名称或用户名搜索。
 import { useMemo, useState } from 'react';
 import { Aperture, ArrowClockwise, MagnifyingGlass } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
@@ -11,10 +11,10 @@ import { t } from '../i18n';
 const ROW_HEIGHT = 58;
 const ALL = '@all';
 
-/** The posters, 「全部」 first, each with how many posts; where the reading stands until it is done. */
+/** 发布者列表，「全部朋友圈」在最前（搜索时不列出），每人显示条数；读完之前显示读取的状态。 */
 export function MomentPeople({ state, total, selected, onSelect, onRetry }: {
   state: PeopleState;
-  /** All the posts, from `sns stats`, once known. */
+  /** 全部朋友圈的条数，来自 `sns stats`；还没读到时为 null，这时按各发布者的条数相加。 */
   total: number | null;
   selected: string | null;
   onSelect(username: string | null): void;

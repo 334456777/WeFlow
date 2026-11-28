@@ -1,22 +1,21 @@
-// A floating layer anchored to a control (#224): it grows out of the control, stays on screen, and closes on a
-// click outside or Esc. It lives in <body>, so a card's overflow never clips it.
+// 锚定在控件上的浮层（#224）：从控件处展开，保持在屏幕内，点击外面或按 Esc 时关闭。
+// 它放在 `<body>` 里，所以卡片的 overflow 不会把它裁掉。
 //
-// It opens below the control, or above where only that has room. Where neither has, it takes the larger side and
-// scrolls inside; on a screen narrower than it plus the margins, the margins shrink, then it scrolls across too
-// (#239). While its control is scrolled out of sight (of the window, or of a list it sits in) it hides, and shows
-// again when the control is back.
+// 下方放得下时在控件下方打开，只有上方放得下时在上方打开。上下都放不下时选空间大的一边，在浮层里滚动；
+// 屏幕比浮层加两侧留白还窄时先缩小留白，再横向滚动（#239）。控件滚出视野（窗口或所在列表的视野）时浮层隐藏，
+// 控件回到视野时再显示。
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { usePresence } from './motion';
 
-/** Distance from the anchor, and the least room kept to the window's edges. */
+/** 与锚点的距离，以及与窗口边缘至少保留的距离。 */
 const GAP = 8;
 const EDGE = 16;
 
 interface Place { left: number; top: number; origin: string; maxWidth?: number; maxHeight?: number; hidden: boolean }
 
-/** The part of the anchor not clipped by the window or by an ancestor that scrolls or clips. */
+/** 锚点没有被窗口、或者会滚动和裁剪的祖先元素挡住的部分。 */
 export function visibleBox(anchor: HTMLElement): { top: number; bottom: number } {
   const box = anchor.getBoundingClientRect();
   let top = Math.max(box.top, 0);
@@ -30,7 +29,7 @@ export function visibleBox(anchor: HTMLElement): { top: number; bottom: number }
   return { top, bottom };
 }
 
-/** Where a layer of this natural size goes next to the anchor. */
+/** 自然尺寸为 `width` × `height` 的浮层在锚点旁边的位置。 */
 export function placeOf(anchor: DOMRect, width: number, height: number, hidden = false): Place {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -43,13 +42,13 @@ export function placeOf(anchor: DOMRect, width: number, height: number, hidden =
   const room = Math.max(0, below ? roomBelow : roomAbove);
   const maxHeight = height > room ? room : undefined;
   const top = below ? anchor.bottom + GAP : anchor.top - GAP - Math.min(height, room);
-  // grow out of the anchor's middle
+  // 从锚点的中间展开
   const origin = Math.round(anchor.left + anchor.width / 2 - left) + 'px ' + (below ? 'top' : 'bottom');
   return { left, top, origin, maxWidth, maxHeight, hidden };
 }
 
 function styleOf(place: Place | null): CSSProperties {
-  // until it is measured (before the first paint) it waits off screen, where it can already take the focus
+  // 量好尺寸之前（第一次绘制之前）先放在屏幕外，在那里已经可以获得焦点
   if (!place) return { left: -9999, top: 0 };
   const scrolls = place.maxHeight !== undefined || place.maxWidth !== undefined;
   return {
@@ -58,11 +57,11 @@ function styleOf(place: Place | null): CSSProperties {
   };
 }
 
-/** `children` in a layer anchored to `anchor`, while `open`. */
+/** `open` 时把 `children` 放进锚定在 `anchor` 上的浮层。 */
 export function Popover({ anchor, open, onClose, label, className, children }: {
   anchor: RefObject<HTMLElement | null>;
   open: boolean;
-  /** Esc returns the focus to the control; a click outside leaves it where the click put it. */
+  /** 按 Esc（`escape`）关闭时把焦点还给控件；点击外面（`outside`）关闭时焦点留在点击的地方。 */
   onClose: (reason: 'escape' | 'outside') => void;
   label: string;
   className?: string;
@@ -81,11 +80,11 @@ export function Popover({ anchor, open, onClose, label, className, children }: {
       const layer = ref.current;
       if (!control || !layer) return;
       const seen = visibleBox(control);
-      // the natural size, scrolled or not: its content and padding (it has no border)
+      // 自然尺寸，不论是否在滚动：内容加内边距（浮层没有边框）
       setPlace(placeOf(control.getBoundingClientRect(), layer.scrollWidth, layer.scrollHeight, seen.bottom < seen.top));
     };
     update();
-    // the console and the page scroll under it: follow the anchor
+    // 操作控制台和页面在它下面滚动：跟着锚点移动
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
@@ -103,7 +102,7 @@ export function Popover({ anchor, open, onClose, label, className, children }: {
       const target = event.target as Node;
       if (!ref.current?.contains(target) && !anchor.current?.contains(target)) close.current('outside');
     };
-    // Esc with the focus nowhere (on <body>) closes it too; with the focus in it, its own handler below does
+    // 焦点不在任何元素上（在 `<body>` 上）时按 Esc 也关闭；焦点在浮层里时由下面浮层自己的处理函数关闭
     const escape = (event: KeyboardEvent) => {
       const at = document.activeElement;
       if (event.key === 'Escape' && (!at || at === document.body)) close.current('escape');

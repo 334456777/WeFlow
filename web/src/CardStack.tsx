@@ -1,31 +1,30 @@
-// A column of cards that open and close from their header and can be dragged into a new order. Order and open state
-// stay in this browser (localStorage).
+// 一列卡片，点标题栏展开或收起，可以拖动调整顺序。顺序和展开状态保存在这个浏览器里（localStorage）。
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { CaretDown } from '@phosphor-icons/react';
 import { timing } from './motion';
 import { t } from './i18n';
 
-/** A card of the stack: its header and its content. */
+/** 卡片列里的一张卡片：标题栏和内容。 */
 export interface Card {
   id: string;
   title: string;
-  /** Shown on the right of the header while the card is closed. */
+  /** 卡片收起时显示在标题栏右边。 */
   summary?: ReactNode;
-  /** A closed card's content stays (it only folds away); one that reads only while open is given `open`. */
+  /** 卡片收起后内容仍然保留（只是折叠起来）；只在展开时读取的内容写成函数，接收 `open`。 */
   content: ReactNode | ((open: boolean) => ReactNode);
 }
 
-/** What this browser keeps of a stack: the cards' order and those closed, by id. */
+/** 这个浏览器保存的卡片列布局：卡片的顺序和收起的卡片，都按 ID 记录。 */
 export interface CardLayout {
   order: string[];
   closed: string[];
 }
 
-/** Pointer travel before a press on a header becomes a drag. */
+/** 在标题栏上按下后，指针移动超过这么多像素才算拖动。 */
 const DEAD_ZONE = 4;
 
-/** Reads a saved layout, keeping only known cards and adding new ones at the end. */
+/** 读取保存的布局，只保留认识的卡片，新的卡片加在最后；没有保存的布局时用默认的顺序和 `closed`。 */
 export function loadLayout(key: string, ids: string[], closed: string[]): CardLayout {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(key) || 'null');
@@ -33,7 +32,7 @@ export function loadLayout(key: string, ids: string[], closed: string[]): CardLa
       const order = saved.order.filter((id): id is string => ids.includes(id));
       return { order: [...order, ...ids.filter(id => !order.includes(id))], closed: saved.closed.filter((id): id is string => ids.includes(id)) };
     }
-  } catch { /* no storage, or a broken entry: start from the defaults */ }
+  } catch { /* 没有存储，或者保存的内容坏了：从默认值开始 */ }
   return { order: ids, closed };
 }
 
@@ -50,17 +49,17 @@ interface Drag {
   element: HTMLElement;
   startY: number;
   pointerY: number;
-  /** Distance from the card's top edge to the pointer. */
+  /** 卡片上边缘到指针的距离。 */
   grab: number;
-  /** Current offset of the card from its place in the column. */
+  /** 卡片当前相对于它在列中位置的偏移。 */
   offset: number;
   active: boolean;
 }
 
-/** The cards in the order kept as `storageKey`, those in `defaultClosed` closed until opened. */
+/** 按保存在 `storageKey` 下的顺序排列的卡片；`defaultClosed` 里的卡片在展开之前是收起的。 */
 export function CardStack({ cards, storageKey, defaultClosed, label, hidden = [] }: {
   cards: Card[]; storageKey: string; defaultClosed: string[]; label: string;
-  /** Cards left out for now; they keep their place in the saved order and come back there. */
+  /** 暂时不显示的卡片；它们在保存的顺序里保留位置，再显示时回到原处。 */
   hidden?: readonly string[];
 }) {
   const [layout, setLayout] = useState(() => loadLayout(storageKey, cards.map(card => card.id), defaultClosed));
@@ -79,10 +78,10 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
   const save = (next: CardLayout) => {
     current.current = next;
     setLayout(next);
-    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* the order is only lost on reload */ }
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* 写不进去时，只是刷新后顺序会丢失 */ }
   };
 
-  /** Moves a card to `index` among the cards shown; the hidden ones stay in their slots of the whole order. */
+  /** 把一张卡片移到显示的卡片中的第 `index` 位；隐藏的卡片在整个顺序里留在原来的位置。 */
   const move = (id: string, index: number, options: { skip?: string; focus?: string } = {}) => {
     const all = current.current.order;
     const shown = all.filter(other => !hiddenNow.current.includes(other));
@@ -100,7 +99,7 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
     save({ ...current.current, closed: closed.includes(id) ? closed.filter(other => other !== id) : [...closed, id] });
   };
 
-  // After a reorder: slide the other cards from where they were (FLIP), keep the dragged card under the pointer.
+  // 调整顺序之后：其他卡片从原来的位置滑过去（FLIP），拖动的卡片保持在指针下面。
   useLayoutEffect(() => {
     const previous = before.current;
     before.current = null;
@@ -131,7 +130,7 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
     drag.current = null;
     if (!held?.active) return;
     setDragging(null);
-    // Settle into place on the snap curve.
+    // 按 `--ease-snap` 的缓动曲线落到位。
     held.element.style.transform = '';
     const settle = timing('--duration-panel', '--ease-snap');
     if (settle.duration) held.element.animate?.([{ transform: 'translateY(' + String(held.offset) + 'px)' }, { transform: 'translateY(0)' }], settle);
@@ -151,7 +150,7 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
     const layoutTop = rect.top - held.offset;
     held.offset = event.clientY - held.grab - layoutTop;
     held.element.style.transform = 'translateY(' + String(held.offset) + 'px)';
-    // The card goes after every other card whose middle its own middle has passed.
+    // 卡片的中线越过了哪些卡片的中线，就排到它们后面。
     const middle = event.clientY - held.grab + rect.height / 2;
     const index = cardElements(container.current)
       .filter(element => element !== held.element)
@@ -161,7 +160,7 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
 
   const startDrag = (event: ReactPointerEvent<HTMLButtonElement>, id: string) => {
     swallowClick.current = false;
-    // Touch keeps scrolling the page; cards move with a mouse, a pen or the keyboard.
+    // 触摸仍用来滚动页面；卡片用鼠标、触控笔或键盘移动。
     if (event.button !== 0 || event.pointerType === 'touch') return;
     const element = event.currentTarget.closest<HTMLElement>('[data-card]');
     if (!element) return;

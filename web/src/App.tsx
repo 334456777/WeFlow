@@ -1,9 +1,8 @@
-// The workspace (#130): navigation on the left, a page in the middle, the operations console on the right. It holds
-// what the pages share (the server, the account, the conversation list, the jobs), opens one page
-// from another and gathers the pages' cards into the one console; each page keeps its own state (#401).
-// Records come from `weflow serve` once connected; until then the sample server of src/mock answers the pages in its
-// place (#879), jobs and settings too (#896). When the server goes after it was connected, what was read from it stays
-// shown until it is back.
+// 工作区（#130）：左边是导航，中间是页面，右边是操作控制台。
+// 这里保存各页面共用的状态（服务端、账号、会话列表、作业），从一个页面打开另一个页面，
+// 并把各页面的卡片收进同一个操作控制台；每个页面保存自己的状态（#401）。
+// 连上 `weflow serve` 后记录来自它；在那之前由 src/mock 的示例服务端代替它回答各页面（#879），
+// 作业和设置也一样（#896）。连上过的服务端断开后，已经从它读到的记录继续显示，直到它恢复。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
 import { useAnalyticsPage } from './analytics/useAnalyticsPage';
@@ -41,37 +40,37 @@ import { SampleContext } from './shell/sample';
 import { Sidebar, useSidebarFold } from './shell/Sidebar';
 import type { Category, Navigation } from './types';
 
-/** The records a page browses: the chat's, the Moments' or WeChat Pay's. */
+/** 页面浏览的是哪一类记录：聊天、朋友圈或微信支付。 */
 const categoryOf = (section: Navigation): Category => section === 'moments' || section === 'payments' ? section : 'chat';
 
-/** The sample server, a chunk of its own: downloaded only by a page that no server answers. */
+/** 示例服务端，单独的 chunk：只有没有服务端回答的页面才下载它。 */
 const loadSample = (): Promise<SampleServer> => import('./mock/server').then(module => module.server);
 
-/** The whole page: the navigation, the open page and the console, with the state they share. */
+/** 整个页面：导航、打开的页面和操作控制台，以及它们共用的状态。 */
 export function App() {
-  // the keyboard (#195): one Tab stop per group, arrows within it; / to search
+  // 键盘操作（#195）：每组控件只占一个 Tab 停靠点，组内用方向键移动；按 / 搜索
   useRovingFocus();
   useSearchKey();
   const prefs = usePreferences();
   const [backend, recheckBackend] = useBackend(prefs.realtime);
-  // the server's language, once it said (#439): the pages are drawn again in it
+  // 服务端告知的语言（#439）：语言变化时用它重新画出各页面
   const language = useLang();
   const connected = backend.state === 'ready';
   const held = holdsRecords(backend);
   const sample = recordsOf(backend) === 'sample';
   const records = held || sample;
-  // the sample server answers the page's reads in its place (#879): set before any of them is made
+  // 示例服务端代替服务端回答页面的读取（#879）：在发出任何读取之前设置好
   useLayoutEffect(() => {
     if (!sample) return;
     setSample(loadSample);
     return () => setSample(null);
   }, [sample]);
-  // jobs and settings go to the server that answers, or to the sample server in its place (#896)
+  // 作业和设置发给回答的服务端，或者代替它的示例服务端（#896）
   const usable = connected || sample;
   const health = useActingHealth(backend, sample);
   const fold = useSidebarFold();
   const [section, setSection] = useState<Navigation>('chat');
-  // the records browsed last, which the settings keep, with their cards in the console
+  // 最后浏览的那一类记录：打开设置时保留它，操作控制台里仍显示它的卡片
   const [category, setCategory] = useState<Category>('chat');
   const [mobileDetail, setMobileDetail] = useState(false);
   const [toast, setToast] = useState('');
@@ -84,10 +83,10 @@ export function App() {
   const { open: openPreview, dialog: previewDialog } = usePreview(prefs.reducedMotion);
   const consoleRef = useRef<HTMLElement>(null);
 
-  // another server or account (#198): what was read for the one before goes
+  // 换了服务端或账号（#198）：为之前那一个读到的内容都清掉
   const scope = useScope(backend);
   const jobs = useJobs(usable, scope);
-  // the account setup (#216): it opens by itself when a tab finds the account not set up, and from the settings
+  // 配置向导（#216）：标签页发现账号还没配置好时自动打开（关掉过就不再自动打开），也可以从设置里打开
   const profiles = useProfiles(usable, scope, jobs.jobs);
   const profile = profiles.profiles ? currentProfile(profiles.profiles) : undefined;
   const [setupOpen, setSetupOpen] = useState(false);
@@ -106,7 +105,7 @@ export function App() {
     setSection(value); setMobileDetail(false);
     if (value !== 'settings') setCategory(categoryOf(value));
   };
-  // from another page: the chat page opens at a conversation, or at a message when its conversation is in the list
+  // 从其他页面跳到聊天页：打开一个会话，或者定位到一条消息（消息所在的会话不在会话列表里时提示 `missing`）
   const chatWith = (username: string) => { selectSection('chat'); chat.open(username); setMobileDetail(true); };
   const openInChat = (missing: string): OpenAt => (sessionId, localId, createTime) => {
     if (!sessionList.some(session => session.username === sessionId)) { setToast(missing); return; }
@@ -114,7 +113,7 @@ export function App() {
     chat.openAt(sessionId, localId, createTime);
   };
   const settings = useSettingsPage(shell, prefs, { profiles, recheck: recheckBackend, onSetup: () => setSetupOpen(true) });
-  // from the insights page: the AI settings, where the conversations the insights are written for are chosen (#1078)
+  // 从灵感信箱页打开 AI 设置，在那里选择为哪些会话写见解（#1078）
   const openAiSettings = () => { selectSection('settings'); settings.openSection('ai'); };
   const pages: Record<Navigation, Page> = {
     chat,
@@ -130,23 +129,23 @@ export function App() {
     backup: backupPage(shell),
     settings,
   };
-  // a page with nothing to show yet (Moments, WeChat Pay while the server is looked for) leaves the chat page's
+  // 还没有内容可显示的页面（还在找服务端时的朋友圈、微信支付）沿用聊天页的视图和卡片
   const page = pages[section];
   const tasks: Card = {
     id: 'tasks', title: t('任务中心'),
     summary: usable ? jobsSummary(jobs) : held ? t('已断开') : t('未连接'),
     content: usable ? <TaskCenter jobs={jobs} names={sessionNames} /> : <p className="empty-text">{t('连接 weflow serve 后，导出等任务会显示在这里。')}</p>,
   };
-  // every card in its first order, the task centre after the open conversation's export; the console keeps each
-  // viewer's own order and shows those of the page, or of the records browsed while the settings are open
+  // 全部卡片按最初的顺序排列，任务中心排在当前会话的导出卡片后面；操作控制台保存每位用户自己调整的顺序，
+  // 显示当前页面的卡片，打开设置时显示之前浏览的那一类记录的卡片
   const [exportCard, ...chatCards] = chat.cards;
   const cards = [exportCard, tasks, ...chatCards, ...Object.values(pages).filter(other => other !== chat).flatMap(other => other.cards ?? [])];
   const shownCards = (section === 'settings' ? pages[category] : page).shown ?? chat.shown;
   const hiddenCards = cards.map(card => card.id).filter(id => !shownCards.includes(id));
 
-  // another page comes in as content does (#776) or as the skin brings it (pageIn, #832), its panel kept when two pages
-  // share its shape; the console with it
-  // when it shows other cards (not into the settings, which keep those of the records browsed before)
+  // 换页时新的页面像内容一样进入（#776），或者按皮肤的方式进入（`pageIn`，#832）；
+  // 两个页面的面板形状相同时，面板元素保留不变。操作控制台换了显示的卡片时也一起进入，
+  // 进入设置时不换（设置保留之前浏览的那一类记录的卡片）
   const mainRef = useRef<HTMLDivElement>(null);
   const shownCardIds = shownCards.join(' ');
   const shownPage = useRef({ section, cards: shownCardIds });

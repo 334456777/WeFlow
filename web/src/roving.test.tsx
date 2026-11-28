@@ -38,7 +38,7 @@ describe('roving focus', () => {
     items[1].focus();
     fireEvent.keyDown(items[1], { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[2]);
-    // the disabled one is skipped: the end is the last that can take the focus
+    // 跳过禁用的项：End 移到最后一个可以获得焦点的项
     fireEvent.keyDown(items[2], { key: 'End' });
     expect(document.activeElement).toBe(items[2]);
     fireEvent.keyDown(items[2], { key: 'Home' });
@@ -65,7 +65,7 @@ describe('roving focus', () => {
     await act(async () => { await new Promise(r => requestAnimationFrame(() => r(null))); });
     expect(tabStops(container, 'nav button').slice(0, 3)).toEqual([-1, -1, 0]);
     const search = container.querySelector('input')!;
-    // happy-dom lays nothing out: offsetParent is null, so count the field as showing
+    // happy-dom 不排版，`offsetParent` 总是 null：这里让输入框算作可见
     Object.defineProperty(search, 'offsetParent', { configurable: true, get: () => document.body });
     fireEvent.keyDown(document.body, { key: '/' });
     expect(document.activeElement).toBe(search);

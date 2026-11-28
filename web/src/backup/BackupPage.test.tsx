@@ -25,7 +25,7 @@ describe('backup', () => {
       { path: 'msg/video/2026-10/b.mp4', sha256: '', size: 70 },
       { path: 'msg/file/2026-10/c.pdf', sha256: '', size: 9 },
       { path: 'emojis/c.gif', sha256: '', size: 5 },
-      // a backup of an older WeFlow
+      // 旧版 WeFlow 做的备份
       { path: 'FileStorage/Image/2026-10/b.dat', sha256: '', size: 30 },
       { path: 'FileStorage/Audio/2026-10/d.amr', sha256: '', size: 2 },
       { path: 'manifest.extra', sha256: '', size: 1 },
@@ -124,7 +124,7 @@ describe('backup', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看' }));
     await act(async () => {});
     expect(screen.getByLabelText('备份的内容').textContent).toContain('wxid_sample');
-    // a server takes the sample's place: a new scope
+    // 连上的服务端取代示例数据：新的作用域
     rerender(page(false, 2));
     expect(path()).toBe('');
     expect(screen.queryByLabelText('备份的内容')).toBeNull();

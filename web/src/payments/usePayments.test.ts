@@ -28,18 +28,18 @@ describe('payments', () => {
     expect(result.current[0].status).toBe('ready');
     expect(urls).toEqual(['/api/biz/pay-records?limit=500&offset=0']);
 
-    // the page left and opened again
+    // 离开页面再回来
     rerender({ enabled: false, scope: 1 });
     rerender({ enabled: true, scope: 1 });
     await act(async () => {});
     expect(urls).toHaveLength(1);
 
-    // a message of another conversation brings no notice
+    // 其他会话的消息不会带来支付通知
     act(() => emitLive({ type: 'message.new', sessionId: 'wxid_a' }));
     await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_COMMAND_MS); });
     expect(urls).toHaveLength(1);
 
-    // one of the WeChat Pay account while the page is left: read once it opens again
+    // 离开页面期间「微信支付」公众号来了消息：再打开页面时重读
     rerender({ enabled: false, scope: 1 });
     act(() => emitLive({ type: 'message.new', sessionId: 'gh_3dfda90e39d6' }));
     await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_COMMAND_MS); });
@@ -48,13 +48,13 @@ describe('payments', () => {
     await act(async () => {});
     expect(urls).toHaveLength(2);
 
-    // a service notice while the page is open: read at once, the notices read before shown meanwhile
+    // 页面打开时来了服务通知：立即重读，这期间显示之前读到的通知
     act(() => emitLive({ type: 'message.new', sessionId: 'notifymessage' }));
     await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_COMMAND_MS); });
     expect(urls).toHaveLength(3);
     expect(result.current[0].status).toBe('ready');
 
-    // another server or account
+    // 换了服务端或账号
     rerender({ enabled: true, scope: 2 });
     await act(async () => {});
     expect(urls).toHaveLength(4);

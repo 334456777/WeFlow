@@ -1,6 +1,5 @@
-// The Moments timeline (#202): posts newest first, a page at a time, each with its text, pictures, video, shared
-// link, place, likes and comments. Pictures and videos come through `/api/sns/media`, which fetches them from
-// WeChat's servers once and keeps them.
+// 朋友圈时间线（#202）：最新的在前，一次读一页，每条带文字、图片、视频、分享的链接、位置、点赞和评论。
+// 图片和视频经过 `/api/sns/media` 读取，它从微信的服务器下载一次后保存下来。
 import { useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, CircleNotch, Heart, ImageBroken, LinkSimple, MapPin, Play } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
@@ -19,10 +18,10 @@ type FeedState =
 
 const errorOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('读取朋友圈失败');
 
-/** Give it a `key` per server or account and filter, so a new one starts from the top. */
+/** 朋友圈时间线。每个服务端或账号、每个筛选条件要给它不同的 `key`，换了之后从头开始。 */
 export function MomentsFeed({ filter, scroller, onPreview }: {
   filter: SnsFilter;
-  /** The scrolling pane, to read the next page before its end is reached. */
+  /** 滚动的面板，用来在滚到末尾之前读取下一页。 */
   scroller: React.RefObject<HTMLElement | null>;
   onPreview(preview: Preview): void;
 }) {
@@ -59,7 +58,7 @@ export function MomentsFeed({ filter, scroller, onPreview }: {
     );
   };
 
-  // the next page while the end of the list comes near
+  // 列表的末尾接近可见区域（800px 以内）时读取下一页
   const latestMore = useRef(more);
   latestMore.current = more;
   useEffect(() => {
@@ -95,13 +94,13 @@ function when(seconds: number): string {
   return formatDayHeading(dayOf(seconds)) + ' ' + formatClock(seconds);
 }
 
-/** A post's media: pictures and videos on WeChat's servers, and a shared link (any other address). */
+/** 一条朋友圈的媒体：微信服务器上的图片和视频，以及分享的链接（其他地址）。 */
 function partsOf(post: SnsPost): { pictures: SnsMedia[]; link?: SnsMedia } {
   const media = post.media ?? [];
   return { pictures: media.filter(m => isWechatMedia(m.url)), link: media.find(m => m.url && !isWechatMedia(m.url)) };
 }
 
-/** One post: its poster, its text, its pictures or video, where it was made, its likes and comments. */
+/** 一条朋友圈：发布者、文字、分享的链接、图片或视频、发布的位置、点赞和评论。 */
 export function MomentPost({ post, onPreview }: { post: SnsPost; onPreview(preview: Preview): void }) {
   const { pictures: shown, link } = partsOf(post);
   const place = post.location?.poiName || post.location?.city;
@@ -128,7 +127,7 @@ export function MomentPost({ post, onPreview }: { post: SnsPost; onPreview(previ
 
 const hostOf = (url: string) => { try { return new URL(url).hostname || url; } catch { return url; } };
 
-/** The page a post shares: a link to it when its address is a web page's, else the same card without one. */
+/** 朋友圈分享的网页：地址是网页地址时是指向它的链接，否则是不带链接的同样的卡片。 */
 function SharedLink({ link, post }: { link: SnsMedia; post: SnsPost }) {
   const url = safeUrl(link.url);
   const inner = <>
@@ -156,7 +155,7 @@ function MediaTile({ media, post, index, onPreview }: { media: SnsMedia; post: S
   </button>;
 }
 
-/** An image through the server; when it is gone from WeChat's servers, a placeholder that says so. */
+/** 经过服务端读取的图片；读不到（例如已经从微信的服务器上删除）时显示说明这一点的占位。 */
 function MediaImage({ src, label }: { src: string; label: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <span className="moment-tile-empty" title={t('已删除或无法读取')}><ImageBroken size={20} aria-label={t('{label}无法读取', { label })} /></span>;

@@ -1,4 +1,4 @@
-/* Moments (#202): the posts, their pictures and what people said on them. */
+/* 朋友圈（#202）：每条朋友圈、其中的图片、分享的链接，以及点赞和评论。 */
 @layer pages {
 .moment-body { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .moment-body header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
@@ -13,7 +13,7 @@
 .moment-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .moment-tile:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .moment-tile-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--fg-subtle); }
-/* as on a video message (.play-badge): a small disc */
+/* 与视频消息上的播放标记（.play-badge）一样：一个小圆片 */
 .moment-play { position: absolute; top: 50%; left: 50%; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: var(--badge-bg); box-shadow: var(--badge-shadow); color: var(--fg); opacity: .9; pointer-events: none; }
 .moment-badge { position: absolute; top: 4px; left: 4px; padding: 0 var(--space-1); border-radius: var(--radius-xs); background: var(--badge-bg); color: var(--fg); font-size: var(--text-2xs); line-height: var(--leading-2xs); opacity: .9; }
 .moment-link { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1); border-radius: var(--radius-md); box-shadow: var(--well-shadow); color: var(--fg-muted); font-size: var(--text-xs); text-decoration: none; }

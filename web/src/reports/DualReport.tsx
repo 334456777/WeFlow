@@ -1,5 +1,5 @@
-// The dual report (#208): me and one friend over a year or all of them — how it began, how much and when we talk,
-// who opens and how fast replies come, and the words each of us says.
+// 双人报告（#208）：我和一位好友在一年或全部年份里的聊天：怎样开始的、聊了多少、什么时候聊，
+// 谁先开口、回复有多快，以及各自常说的话。
 import { useMemo, useRef, useState } from 'react';
 import { CaretDown, MagnifyingGlass, UserCircle } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
@@ -15,18 +15,18 @@ import { Heatmap, Moment, Phrases } from './AnnualReport';
 import { useShownReport } from './shown';
 import { locale, t } from '../i18n';
 
-/** Up to this many people are listed; the rest are found by name. */
+/** 最多列出这么多人，其余的靠搜索找到。 */
 const LISTED = 50;
 
-/** A friend the dual report may be with. */
+/** 可以和他生成双人报告的一位好友。 */
 export interface Friend { username: string; displayName: string; avatarUrl?: string }
 
-/** The friend of the report, picked from the private chats: those talked to most first, the others by name. */
+/** 选报告的好友：从私聊的对象里选，聊得最多的在前，其他人排在后面；可以按名字或微信号搜索。 */
 export function FriendPicker({ selected, onSelect }: { selected: Friend | null; onSelect(friend: Friend): void }) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
   const anchor = useRef<HTMLButtonElement>(null);
-  // read once it is first opened: the twenty talked to most, then everyone else
+  // 第一次打开时才读取：聊得最多的 20 个人，然后是其他所有人
   const [asked, setAsked] = useState(false);
   const [people, retry] = useRead('friends:' + asked, async signal => {
     if (!asked) return [];
@@ -69,7 +69,7 @@ export function FriendPicker({ selected, onSelect }: { selected: Friend | null; 
 
 const when = (ms: number) => new Date(ms).toLocaleString(locale(), { hour12: false, year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-/** A few messages as they went back and forth, mine on the right. */
+/** 按顺序排列的几条一来一往的消息，自己发的在右边。 */
 function Exchange({ label, messages, me, friend }: { label: string; messages: DualMessage[]; me: string; friend: string }) {
   return <ol className="report-exchange" aria-label={label}>
     {messages.map((m, i) => <li key={i} className={m.isSentByMe ? 'mine' : undefined}>
@@ -79,7 +79,7 @@ function Exchange({ label, messages, me, friend }: { label: string; messages: Du
   </ol>;
 }
 
-/** The dual report, moment by moment. */
+/** 双人报告的各个部分，从第一次聊天到常说的话。 */
 export function DualReportView({ report }: { report: DualReport }) {
   const r = report;
   const span = r.year ? t('{year} 年', { year: r.year }) : t('这些年');
@@ -140,10 +140,10 @@ export function DualReportView({ report }: { report: DualReport }) {
   </article>;
 }
 
-/** The friend picked, and the dual report of the year chosen with them; `onShown` is told which one is there. */
+/** 选的好友，以及和他在所选年份的双人报告；`onShown` 收到当前显示的是哪一份报告。 */
 export function DualReportPage({ friend, onFriend, year, onShown }: { friend: Friend | null; onFriend(friend: Friend): void; year: number; onShown(key: string | null): void }) {
   const [report, retry] = useRead('dual:' + (friend?.username ?? '') + ':' + year, signal => (friend ? getDualReport(friend.username, year, signal) : Promise.resolve(null)));
-  // none until a friend is picked: the read answers null
+  // 选好友之前没有报告：读取的结果是 null
   const shown = report.status === 'ready' && report.value ? 'dual:' + report.value.friendUsername + ':' + report.value.year : null;
   useShownReport(shown, onShown);
   return <div className="group-analytics">

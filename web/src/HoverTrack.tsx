@@ -1,17 +1,16 @@
-// The hover hollow that slides (#232): a group of clickable items (the navigation, a list) shares one shallow
-// hollow. When the pointer crosses into another item, the hollow slides over from the item it was on, rather than
-// one fading out and the other in; it does not follow the pointer itself. Coming into the group it appears where the
-// pointer is, and leaving it fades away. Keyboard focus (when it shows) moves it too.
+// 会滑动的悬停凹陷（#232）：一组可以点击的项（导航、列表）共用一个浅的凹陷。指针移到另一项时，
+// 凹陷从原来那一项滑过去，而不是一个淡出、另一个淡入；凹陷不跟着指针本身移动。
+// 指针进入这一组时凹陷出现在指针所在的项上，离开时淡出。显示出来的键盘焦点也会移动它。
 import { useEffect, useRef } from 'react';
 
-/** After a scroll the rows move under the pointer: for this long the hollow jumps instead of sliding. */
+/** 滚动后各行在指针下面移动：滚动后这么长时间内，凹陷直接跳到位而不滑动。 */
 const SCROLL_QUIET_MS = 150;
 
-/** Put it first in the group (its parent), which it positions; the hollow scrolls with the group's items. */
+/** 悬停凹陷。放在这一组（它的父元素）的最前面，按父元素定位；凹陷随这一组的项一起滚动。 */
 export function HoverTrack({ items, quiet = '.selected, .active' }: {
-  /** The items, as a selector. */
+  /** 这一组的项，写成选择器。 */
   items: string;
-  /** Items already sunk (the selection): the hollow fades out over them instead of doubling their shade. */
+  /** 已经凹下去的项（选中的项）：凹陷在它们上面淡出，不让阴影叠成两层。 */
   quiet?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -26,13 +25,13 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
     let scrolledAt = 0;
 
     const place = (item: HTMLElement, slide: boolean) => {
-      // all read before anything is written, so that the page is not laid out again in between (#961)
+      // 先读完所有的值再写，免得中间页面重新排版（#961）
       const box = group.getBoundingClientRect();
       const at = item.getBoundingClientRect();
       const x = at.left - box.left - group.clientLeft + group.scrollLeft;
       const y = at.top - box.top - group.clientTop + group.scrollTop;
-      // the item's outline, whatever the skin makes it (#831): its corners, its clip (on the item, or on its shape
-      // layer under a skin with shapes, styles/roles.css) and its turn
+      // 这一项的轮廓，不论皮肤把它画成什么样（#831）：圆角、裁剪（在这一项上，
+      // 或者在带外形层的皮肤下的外形层上，见 styles/roles.css）和旋转
       const shape = getComputedStyle(item);
       const clip = shape.clipPath && shape.clipPath !== 'none' ? shape.clipPath : getComputedStyle(item, '::before').clipPath;
       const radius = shape.borderRadius;
@@ -40,17 +39,17 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
       if (!slide) hollow.style.transition = 'none';
       hollow.style.width = at.width + 'px';
       hollow.style.height = at.height + 'px';
-      // `translate`, not `transform`: it applies before `scale`, so a press shrinks the hollow about its own centre
+      // 用 `translate` 而不是 `transform`：它在 `scale` 之前生效，所以按下时凹陷绕自己的中心缩小
       hollow.style.translate = `${x}px ${y}px`;
       hollow.style.borderRadius = radius;
       hollow.style.clipPath = clip ?? '';
       hollow.style.rotate = rotate;
-      // In place at once: the styles are worked out with no transition before it is given back. Working out the
-      // hollow's style is enough for that (a property that needs no layout to read); nothing needs to be laid out.
+      // 立即到位：恢复过渡之前，先在没有过渡的状态下算出样式。算出凹陷自己的样式就够了
+      // （读一个不需要排版就能读的属性），不需要重新排版。
       if (!slide) { void getComputedStyle(hollow).opacity; hollow.style.transition = ''; }
     };
     const show = (item: HTMLElement) => {
-      // it slides only from where it is showing; coming in from outside (or right after a scroll) it appears in place
+      // 只有正在显示时才从原处滑过去；从外面进来（或者刚滚动过）时直接出现在那一项上
       const slide = (hollow.dataset.state === 'on' || hollow.dataset.state === 'quiet') && Date.now() - scrolledAt > SCROLL_QUIET_MS;
       place(item, slide);
       current = item;
@@ -61,8 +60,8 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
       release();
       if (hollow.dataset.state) hollow.dataset.state = 'off';
     };
-    // Held down, the hollow under the item sinks into the press itself (and shrinks with the item), rather than the
-    // item sinking on top of it: one hollow that deepens, not two shades at once.
+    // 按住时，这一项下面的凹陷自己变成按下的样子（并随这一项缩小），而不是这一项在凹陷上面再凹下去：
+    // 只有一个变深的凹陷，不会同时出现两层阴影。
     const press = (event: PointerEvent) => {
       if (event.pointerType === 'touch' || event.button !== 0) return;
       const item = itemOf(event.target);
@@ -77,7 +76,7 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
     const over = (event: PointerEvent) => {
       if (event.pointerType === 'touch') return;
       hovered = true;
-      // in the gaps between items it stays where it is, so the next item still slides it on
+      // 指针在两项之间的空隙里时凹陷留在原处，这样到下一项时仍然滑过去
       const item = itemOf(event.target);
       if (item && item !== current) { release(); show(item); }
     };
@@ -93,7 +92,7 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
     };
     const focusOut = () => { if (!hovered) hide(); };
     const scrolled = () => { scrolledAt = Date.now(); };
-    // the item changed (a row taken by another conversation, the sidebar folding): follow it at once
+    // 这一项变了（这一行换成了另一个会话、侧栏折叠）：立即跟过去
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { if (current?.isConnected) place(current, false); else if (current) hide(); });
     resize?.observe(group);
     const changed = new MutationObserver(() => {

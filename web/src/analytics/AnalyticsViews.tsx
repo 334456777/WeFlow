@@ -1,5 +1,4 @@
-// The chat analytics page (#207): the private chats in numbers, when the messages come, and who they are with; and
-// the console card that leaves people out of them.
+// 聊天分析页（#207）：私聊的总数、消息的时间分布和聊天对象的排行，以及操作控制台里设置「不统计的好友」的卡片。
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowClockwise, ChatCircleDots, Check, CircleNotch, MagnifyingGlass } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
@@ -11,12 +10,12 @@ import type { AnalyticsState } from './useAnalytics';
 import { n } from '../format';
 import { locale, t } from '../i18n';
 
-/** The local date of Unix seconds; `—` for none. */
+/** Unix 秒数对应的本地日期；没有时间时为 `—`。 */
 export const day = (seconds: number | null) => (seconds ? new Date(seconds * 1000).toLocaleDateString(locale()) : '—');
-/** `part` as a percentage of `whole`, to one decimal; `0%` of nothing. */
+/** `part` 占 `whole` 的百分比，保留一位小数；`whole` 为 0 时为 `0%`。 */
 export const share = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0) + '%';
 
-/** One bar a row, each with its count and share of `total`. */
+/** 每行一个条形，带条数和占 `total` 的比例。 */
 export function Shares({ label, bars, total }: { label: string; bars: Bar[]; total: number }) {
   return <ul className="chart-shares" aria-label={label}>
     {bars.map(b => <li key={b.label}>
@@ -41,7 +40,7 @@ function RankRow({ rank, person, top, canChat, onChat }: { rank: number; person:
   </li>;
 }
 
-/** The private chats' analytics: the totals, the rankings and when the messages are sent. */
+/** 私聊的分析：总览、各类消息的条数、消息在一天、一周和各个月里的分布，以及聊得最多的人。 */
 export function PrivateAnalytics({ state, onReload, canChat, onChat }: {
   state: AnalyticsState; onReload(): void; canChat(username: string): boolean; onChat(username: string): void;
 }) {
@@ -96,7 +95,7 @@ export function PrivateAnalytics({ state, onReload, canChat, onChat }: {
   </div>;
 }
 
-/** The people left out of the analytics: every private chat can be, and those left out already come first. */
+/** 设置不统计的好友：每个私聊的对象都可以选，已经不统计的排在前面。 */
 export function ExcludedPeople({ onSaved }: { onSaved(): void }) {
   const [data, setData] = useState<{ saved: string[]; people: Candidate[] } | { error: string } | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -121,7 +120,7 @@ export function ExcludedPeople({ onSaved }: { onSaved(): void }) {
       .filter(p => !words || p.displayName.toLowerCase().includes(words) || p.username.toLowerCase().includes(words) || (p.wechatId ?? '').toLowerCase().includes(words))
       .sort((a, b) => Number(first.has(b.username)) - Number(first.has(a.username)));
   }, [data, keyword]);
-  // everyone left out (they come first), and a few of the others: the rest are found by name
+  // 列出全部不统计的人（排在前面）和其他人里的 8 个，其余的要搜索才能找到
   const out = data && !('error' in data) ? shown.filter(p => data.saved.includes(p.username)).length : 0;
   const listed = shown.slice(0, out + 8);
 

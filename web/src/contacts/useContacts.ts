@@ -1,24 +1,24 @@
-// The contact list of `weflow serve` (#205) for the contacts page, once it is opened: the list the other pages read
-// too (`contactList`), kept for the server and account.
+// 通讯录页打开后读取的 `weflow serve` 的联系人列表（#205）：与其他页面读的是同一份（`contactList`），
+// 按服务端和账号保留。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
 import { t } from '../i18n';
 import { contactList, type Contact } from '../api/contacts';
 
-/** The contact list as read: not yet, being read, read, or why it failed. */
+/** 联系人列表的读取状态：还没读、正在读、已读到，或者失败的原因。 */
 export type ContactsState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'ready'; contacts: Contact[] }
   | { status: 'error'; message: string };
 
-/** The contact list once `enabled`, and what reads it again. */
+/** `enabled` 之后的联系人列表，以及重新读取它的函数（不用 `contactList` 保留的结果）。 */
 export function useContacts(enabled: boolean, scope: number): [ContactsState, () => void] {
   const [state, setState] = useState<ContactsState>({ status: 'idle' });
   const [round, setRound] = useState(0);
   const again = useRef(false);
   const reload = useCallback(() => { again.current = true; setRound(n => n + 1); }, []);
-  // what was read is kept while the page is left and opened again, as long as the server and account are the same
+  // 只要服务端和账号没变，离开页面再回来时保留已读到的列表
   const read = useRef<string | null>(null);
   useEffect(() => {
     const key = scope + ':' + round;
@@ -35,7 +35,7 @@ export function useContacts(enabled: boolean, scope: number): [ContactsState, ()
       read.current = null;
       setState({ status: 'error', message: problem instanceof ApiError && problem.message ? problem.message : t('读取通讯录失败') });
     });
-    // left before the list came: read it again next time
+    // 列表读到之前就离开了页面：下次打开时重新读取
     return () => { left = true; if (!done && read.current === key) read.current = null; };
   }, [enabled, scope, round]);
   return [state, reload];

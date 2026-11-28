@@ -33,11 +33,11 @@ describe('dual report', () => {
     expect(messageText(app(244813135921, 'quote'))).toBe('[引用回复]');
     expect(messageText(app(5 * 2 ** 32 + 49, 'link'))).toBe('[链接]');
     expect(messageText(app(6 * 2 ** 32 + 49, 'file'))).toBe('[文件]');
-    // a transfer is one however it is kept, and a pat is no card
+    // 转账不论用哪种消息类型保存都是转账；拍一拍即使种类是 `card` 也不当作卡片
     expect(messageText(app(49, 'transfer'))).toBe('[转账]');
     expect(messageText(app(2000 * 2 ** 32 + 49, 'transfer'))).toBe('[转账]');
     expect(messageText(app(62 * 2 ** 32 + 49, 'card'))).toBe('[系统消息]');
-    // a kind the chat window shows as text has no label of its own
+    // 聊天窗口当作文字显示的种类没有自己的标签
     expect(messageText(app(49, 'announcement'))).toBe('[消息]');
     expect(messageText(app(49))).toBe('[消息]');
   });
@@ -91,7 +91,7 @@ describe('dual report', () => {
     const { rerender } = render(page(null));
     await act(async () => {});
     expect(screen.getByText('选一位好友，生成你们两个人的报告。')).toBeTruthy();
-    // no friend, no report to save (#1077)
+    // 没有选好友就没有可以保存的报告（#1077）
     expect(shown.every(key => key === null)).toBe(true);
     rerender(page({ username: 'wxid_a', displayName: '林沐' }));
     await act(async () => {});

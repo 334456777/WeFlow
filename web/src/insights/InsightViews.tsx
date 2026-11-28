@@ -1,5 +1,4 @@
-// The insights page (#210): who has insights beside them, the insights in the middle, and the console's cards to
-// see how many, write one now and clear them.
+// 灵感信箱页（#210）：一侧是有见解的联系人，中间是见解，操作控制台的卡片用来查看条数、立即生成一条和删除见解。
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowClockwise, ArrowRight, ChatCircleDots, CircleNotch, Copy, Lightbulb, MagnifyingGlass, Sparkle, Trash } from '@phosphor-icons/react';
@@ -16,7 +15,7 @@ import { locale, t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 
-/** Beside the insights: all of them, or one conversation's, and words to look for. */
+/** 见解旁边的列表：选全部见解或一个会话的见解，以及搜索的关键词。 */
 export function InsightContacts({ state, selected, onSelect, keyword, onKeyword, onRetry }: {
   state: InsightsState;
   selected: string | null;
@@ -65,7 +64,7 @@ export function InsightContacts({ state, selected, onSelect, keyword, onKeyword,
   </div>;
 }
 
-/** How a record came to be, read when asked for. */
+/** 一条见解的生成过程，展开时才读取。 */
 function LogDetail({ id }: { id: string }) {
   const [log, setLog] = useState<InsightLog | null | 'error' | undefined>(undefined);
   useEffect(() => {
@@ -88,7 +87,7 @@ function InsightCard({ record, canChat, onRead, onChat }: { record: InsightRecor
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const copy = async () => {
-    try { await navigator.clipboard.writeText(record.insight); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* the browser refused */ }
+    try { await navigator.clipboard.writeText(record.insight); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* 浏览器拒绝写入剪贴板 */ }
   };
   return <article className={'insight-card' + (record.read ? '' : ' unread')} aria-label={t('{name}的见解', { name: record.displayName })} onClick={() => { if (!record.read) onRead(); }}>
     <header>
@@ -107,7 +106,7 @@ function InsightCard({ record, canChat, onRead, onChat }: { record: InsightRecor
   </article>;
 }
 
-/** The insight records read, newest first, with more on demand. */
+/** 读到的见解，最新的在前，按需加载更早的。 */
 export function InsightList({ state, narrowed, canChat, onRead, onChat, onMore }: {
   state: InsightsState;
   narrowed: boolean;
@@ -132,7 +131,7 @@ export function InsightList({ state, narrowed, canChat, onRead, onChat, onMore }
   </div>;
 }
 
-/** How many, and whether the engine writes any. */
+/** 见解的条数，以及见解引擎是否在自动写见解。 */
 export function InsightsSummary({ state, engine, aiReady }: { state: InsightsState; engine: boolean | undefined; aiReady: boolean | undefined }) {
   if (state.status !== 'ready') return <GridSkeleton label={t('正在统计见解')} cells={3} />;
   const { page } = state;
@@ -150,19 +149,19 @@ export function InsightsSummary({ state, engine, aiReady }: { state: InsightsSta
 }
 
 /**
- * `insight trigger`: one insight now, for the conversation chosen or the first one it may write for. With none chosen,
- * the conversations it may write for are those the session list of the AI settings allows (#1078): when the list alone
- * is allowed and it is empty, that is said, with the way to the settings, instead of asking the server.
+ * `insight trigger`：立即为选中的会话、或者第一个可以写见解的会话生成一条见解。没有选会话时，
+ * 可以写见解的会话由 AI 设置里的会话名单决定（#1078）：只允许名单里的会话而名单是空的时，不请求服务端，
+ * 而是说明这一点并给出前往设置的入口。
  */
 export function InsightTrigger({ session, name, onDone, onSettings }: {
   session: string | null; name: string | null; onDone(): void;
-  /** Opens the AI settings, where the session list is. */
+  /** 打开 AI 设置，会话名单在那里。 */
   onSettings?(): void;
 }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
   const [noneAllowed, setNoneAllowed] = useState(false);
-  // read again on each try, as the list may have changed in the settings since; a list not read leaves it to the server
+  // 每次尝试都重新读取，因为名单可能已经在设置里改过；读不到名单时交给服务端判断
   const listIsEmpty = () => getInsightSessions().then(noSessionAllowed, () => false).then(none => { setNoneAllowed(none); return none; });
   useEffect(() => {
     setNote(null);
@@ -191,12 +190,12 @@ export function InsightTrigger({ session, name, onDone, onSettings }: {
       <p className="card-note setting-warning">{t('会话名单是空的，不会为任何会话写见解。先在「设置 → AI 见解」的会话名单里选择要写见解的私聊。')}</p>
       {onSettings && <button type="button" className="secondary-button" onClick={onSettings}>{t('前往 AI 见解')}<ArrowRight size={12} /></button>}
     </div>}
-    {/* the server's reasons may run over lines */}
+    {/* 服务端给的原因可能有多行，`.insight-trigger-note` 保留换行 */}
     {note && <p className={'card-note insight-trigger-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined}>{note.text}</p>}
   </>;
 }
 
-/** `insight clear`, of the conversation chosen or of all, after asking. */
+/** `insight clear`：确认后删除选中的会话的见解，或者全部见解。 */
 export function InsightClear({ session, name, count, onDone }: { session: string | null; name: string | null; count: number; onDone(): void }) {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);

@@ -1,5 +1,4 @@
-// The reports page (#208): the annual or the dual report, of the year picked (the latest until then) and a friend;
-// saved from the console.
+// 报告页（#208）：选中年份（选之前是最近的一年）的年度报告，或者和一位好友的双人报告；在操作控制台里保存。
 import { useEffect, useRef, useState } from 'react';
 import { CalendarStar } from '@phosphor-icons/react';
 import { Segmented } from '../Segmented';
@@ -11,14 +10,14 @@ import { SaveReport } from './SaveReport';
 import { t } from '../i18n';
 import './reports.css';
 
-/** The reports page: its view and its console cards. */
+/** 报告页：页面视图和操作控制台的卡片。 */
 export function useReportsPage(shell: Shell): Page {
   const { scope } = shell;
   const [mode, setMode] = useState<'annual' | 'dual'>('annual');
   const [year, setYear] = useState<number | null>(null);
   const [friend, setFriend] = useState<Friend | null>(null);
   useEffect(() => { setYear(null); setFriend(null); }, [scope]);
-  // the report there to save, by its key; none while it is read, failed, or waits for a friend to be picked
+  // 可以保存的报告的键；正在读取、读取失败或者还在等选好友时为 null
   const [shown, setShown] = useState<string | null>(null);
   const scroller = useRef<HTMLElement>(null);
   const cards = [{ id: 'report-save', title: t('保存报告'), content: <SaveReport report={shown} find={() => scroller.current?.querySelector<HTMLElement>('article.report') ?? null} /> }];

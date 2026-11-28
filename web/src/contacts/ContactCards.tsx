@@ -1,4 +1,4 @@
-// The console cards of the contacts page (#205): how many of each kind, and the list exported as a job of the server.
+// 通讯录页的操作控制台卡片（#205）：各类联系人的个数，以及作为服务端的作业导出通讯录。
 import { useState } from 'react';
 import { DownloadSimple } from '@phosphor-icons/react';
 import { CONTACT_FORMATS, CONTACT_KINDS, contactKindLabels, countKinds, type Contact, type ContactFormat, type ContactKind } from '../api/contacts';
@@ -7,7 +7,7 @@ import { runJob } from '../jobs/useJobs';
 import { GridSkeleton } from '../Skeleton';
 import { locale, msg, t } from '../i18n';
 
-/** How many contacts of each kind, and how many friends have a remark; a skeleton while they are read. */
+/** 各类联系人的个数和有备注的好友的个数；读取期间显示骨架屏。 */
 export function ContactsSummary({ contacts }: { contacts: Contact[] | null }) {
   if (!contacts) return <GridSkeleton label={t('正在读取通讯录')} cells={5} />;
   const counts = countKinds(contacts);
@@ -18,31 +18,33 @@ export function ContactsSummary({ contacts }: { contacts: Contact[] | null }) {
   </dl>;
 }
 
-/** A format's name. */
+/** 导出格式的名称。 */
 export const contactFormatLabel = (format: ContactFormat) => CONTACT_FORMATS.find(f => f.value === format)!.label;
 
-/** What the contacts export writes. */
+/** 通讯录导出的选项：格式、导出哪些种类、是否附带头像。 */
 export interface ContactsExportOptions {
   format: ContactFormat;
   kinds: ContactKind[];
-  /** The avatars on the HTML page (#708); only an HTML export takes them. */
+  /** HTML 页面上的头像（#708），只有导出 HTML 时才附带。 */
   avatars: boolean;
 }
 
-/** Every kind, in Excel, without avatars. */
+/** 默认的导出：全部种类、Excel 格式、不附带头像。 */
 export const DEFAULT_CONTACTS_EXPORT: ContactsExportOptions = { format: 'excel', kinds: [...CONTACT_KINDS], avatars: false };
 
-/** Whether the export carries the avatars: asked for, and on an HTML page. */
+/** 导出是否附带头像：选了头像，并且导出的是 HTML 页面。 */
 const withAvatars = (options: ContactsExportOptions) => options.avatars && options.format === 'html';
 
-/** What the export writes, for a closed card's header: the kinds, the format, and the avatars. */
+/** 卡片收起时标题栏上的导出摘要：种类、格式和头像。 */
 export function contactsExportSummary(options: ContactsExportOptions): string {
   const kinds = options.kinds.length === CONTACT_KINDS.length ? t('全部') : options.kinds.map(k => t(contactKindLabels[k])).join(t('、'));
   return kinds + ' · ' + contactFormatLabel(options.format) + (withAvatars(options) ? ' · ' + t('头像') : '');
 }
 
-/** The parameters of `export contacts --parsed`: the kinds in the order of the page, none when every kind is chosen;
- *  with the avatars, the page and the avatars packed into a zip, so the task centre downloads both. */
+/**
+ * `export contacts --parsed` 的参数：种类按页面上的顺序排列，选了全部种类时不传；
+ * 附带头像时把页面和头像打包成 zip，任务中心一次下载两者。
+ */
 export function contactsExportParams(options: ContactsExportOptions) {
   const kind = CONTACT_KINDS.filter(k => options.kinds.includes(k));
   const avatars = withAvatars(options);
@@ -54,7 +56,7 @@ export function contactsExportParams(options: ContactsExportOptions) {
 
 const AVATAR_NOTE = msg('头像放进 media 文件夹，和页面一起打包成 zip；本机没有的联网下载，联系人多时要等一会儿');
 
-/** `export contacts --parsed`, kept on the server until it is saved from the task centre. */
+/** 通讯录的导出卡片：运行 `export contacts --parsed`，导出的文件保存在服务端，从任务中心下载。 */
 export function ContactsExport({ options, onChange, ready }: { options: ContactsExportOptions; onChange(options: ContactsExportOptions): void; ready: boolean }) {
   const { format, kinds } = options;
   const [busy, setBusy] = useState(false);

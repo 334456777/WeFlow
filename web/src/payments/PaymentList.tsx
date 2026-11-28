@@ -1,15 +1,15 @@
-// The WeChat Pay records chosen (#204), newest first under the day they were paid: the payee, the amount, how it
-// was paid and its state, then the other lines of the notice. All are read already; they are drawn a batch at a
-// time as the end comes near.
+// 选中的微信支付记录（#204），按支付的日期分组，最新的在前：收款方、金额、支付方式和状态，然后是通知里的其他各行。
+// 记录已经全部读到，滚动到接近末尾时再画出下一批。
 import { useEffect, useRef, useState } from 'react';
 import { formatYuan, type Payment } from '../api/pay';
 import { Avatar } from '../Avatar';
 import { dayOf, formatClock, formatDayHeading } from '../format';
 import { locale, t } from '../i18n';
 
-/** Records drawn at first and added each time the end comes near. */
+/** 一开始画出的记录数，以及每次接近末尾时增加的记录数。 */
 const BATCH = 60;
 
+// 卡片已经另外显示的通知行（金额、收款方、支付方式和状态），不再重复列出
 const SHOWN = /金额$|方式$|状态$|^(收款方|收款商户|商户名称|商户)$/;
 
 function PaymentCard({ payment }: { payment: Payment }) {
@@ -35,10 +35,10 @@ function PaymentCard({ payment }: { payment: Payment }) {
   </article>;
 }
 
-/** Give it a `key` per filter, so a new one starts from the top. */
+/** 支付记录的列表。每个筛选条件要给它不同的 `key`，换了之后从头开始。 */
 export function PaymentList({ payments, scroller, narrowed }: {
   payments: Payment[];
-  /** The scrolling pane, to draw more before its end is reached. */
+  /** 滚动的面板，用来在滚到末尾之前画出更多记录。 */
   scroller: React.RefObject<HTMLElement | null>;
   narrowed: boolean;
 }) {

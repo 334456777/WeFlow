@@ -1,4 +1,4 @@
-/* My footprint (#209): the ranges, then a timeline of chats and mentions grouped by day. */
+/* 我的足迹（#209）：上面是时间范围，下面是按天分组的私聊和 @我 的消息的时间线。 */
 @layer pages {
 .footprint-ranges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
 
@@ -7,7 +7,7 @@
 .footprint-day { margin-top: var(--space-3); color: var(--fg-subtle); font-size: var(--text-xs); font-weight: var(--weight-medium); }
 .footprint-day:first-child { margin-top: 0; }
 .footprint-event { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--card-shadow); }
-/* a mention, marked out from the chats */
+/* @我 的消息，与私聊区分开 */
 .footprint-event.mention { background: var(--card-bg-marked); box-shadow: var(--card-shadow-marked); }
 .footprint-ai { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--well-shadow); font-size: var(--text-sm); line-height: var(--leading-sm); white-space: pre-wrap; }
 }

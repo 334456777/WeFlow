@@ -76,14 +76,14 @@ describe('saving a report', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存为网页' }));
     await act(async () => {});
     expect(screen.getByText(DONE)).toBeTruthy();
-    // the dual report, no friend picked yet: nothing to save, and nothing said of the annual one
+    // 换到双人报告、还没选好友：没有可以保存的，也不显示对年度报告的提示
     rerender(card(null));
     expect(disabled()).toEqual([true, true]);
     expect(screen.queryByText(DONE)).toBeNull();
-    // back on it, what was said is not said again
+    // 换回年度报告时，之前的提示不再出现
     rerender(card('annual:2025'));
     expect(screen.queryByText(DONE)).toBeNull();
-    // another year
+    // 再保存一次，然后换到另一年
     fireEvent.click(screen.getByRole('button', { name: '保存为网页' }));
     await act(async () => {});
     expect(screen.getByText(DONE)).toBeTruthy();
@@ -95,10 +95,10 @@ describe('saving a report', () => {
 
 const DONE = '已交给浏览器下载。头像换成了名字的第一个字。';
 
-/** The names of the files handed to the browser from now on. */
+/** 此后交给浏览器下载的文件名。 */
 function downloads(): string[] {
   const saved: string[] = [];
-  // spied on, not assigned: `URL` is one object for every test file, and `restoreAllMocks` puts spies back (#931)
+  // 用 spy 而不是直接赋值：所有测试文件共用同一个 `URL` 对象，`restoreAllMocks` 会把 spy 还原（#931）
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:x');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { saved.push(this.download); });

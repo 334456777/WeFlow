@@ -1,4 +1,4 @@
-// The WeChat Pay records chosen (#204), saved by the browser as HTML, JSON or Excel, as the chat export offers.
+// 选中的微信支付记录（#204），由浏览器保存成 HTML、JSON 或 Excel 文件。
 import { formatYuan, type Payment } from '../api/pay';
 import { dayOf, formatClock } from '../format';
 import { makeSheet, safeName, saveFile, xmlEscape, XLSX_TYPE } from '../files';
@@ -6,7 +6,7 @@ import { locale, msg, t } from '../i18n';
 import type { ExportFormat, ExportResult } from '../types';
 import { totalsOf, type PayFilter } from './usePayments';
 
-// shown through t(): the file is in the page's language
+// 显示时经过 t()：文件用页面的语言
 const COLUMNS = [msg('日期'), msg('时间'), msg('商户'), msg('收支'), msg('金额（元）'), msg('方式'), msg('状态'), msg('标题'), msg('详情')];
 const columns = () => COLUMNS.map(c => t(c));
 
@@ -15,13 +15,13 @@ const rowOf = (p: Payment) => [
   p.method, p.status, p.title, p.lines.map(l => (l.label ? l.label + t('：') : '') + l.value).join('\n'),
 ];
 
-/** 「全部商户_2026-10-01_2026-10-12」, for the file's name and heading. */
+/** 文件名和标题里描述筛选条件的部分，如 `全部商户_2026-10-01_2026-10-12`。 */
 export function describe(filter: PayFilter): string {
   const days = filter.from || filter.to ? (filter.from || t('最早')) + '_' + (filter.to || t('最近')) : t('全部时间');
   return (filter.merchant ?? t('全部商户')) + '_' + days;
 }
 
-/** The payments chosen as a file of `format`, named after the filter; fails when there are none. */
+/** 把选中的支付记录生成 `format` 格式的文件，按筛选条件命名；没有记录时抛出错误。 */
 export async function exportPayments(payments: Payment[], filter: PayFilter, format: ExportFormat): Promise<ExportResult> {
   if (!payments.length) throw new Error(t('筛选范围内没有支付记录。'));
   const name = safeName(t('微信支付') + '_' + describe(filter));
@@ -32,7 +32,7 @@ export async function exportPayments(payments: Payment[], filter: PayFilter, for
   let type: string;
   if (format === 'JSON') {
     bytes = utf8(JSON.stringify({
-      source: 'WeFlow', kind: '微信支付', merchant: filter.merchant, from: filter.from || null, to: filter.to || null, // i18n-ignore: a field of the file
+      source: 'WeFlow', kind: '微信支付', merchant: filter.merchant, from: filter.from || null, to: filter.to || null, // i18n-ignore: 文件里的字段
       count: totals.count, paidFen: totals.paid, refundedFen: totals.refunded,
       records: payments.map(p => ({ time: p.time, merchant: p.merchant, title: p.title, amountFen: p.amount, refund: p.refund, method: p.method, status: p.status, lines: p.lines })),
     }, null, 2));

@@ -1,27 +1,29 @@
-// A scrollbar drawn by the page over its scroll area (`.scroll-area` hides the browser's): it takes no width, so
-// content does not shift when it appears, and it looks like the rest of the page (the skin's scrollbar role, #828).
-// Render it right after the scroll area, in the same positioned parent; it places itself along its right edge.
-// It also fades the area's top and bottom edges while there is more to scroll that way (#194, #831): a frame over the
-// area, of its size, its corners and its clip whatever they are, holds a band at each edge, which app.css paints with
-// what lies under the area and shows while there is more beyond that edge (`shown`).
+// 页面自己画在滚动区域上的滚动条（`.scroll-area` 隐藏了浏览器的滚动条）：它不占宽度，出现时内容不会移动，
+// 样子也与页面其他部分一致（皮肤的滚动条角色，#828）。紧跟在滚动区域后面渲染，放在同一个定位的父元素里，
+// 它自己沿滚动区域的右边缘定位。
+// 它还在滚动区域的上下边缘做渐隐，表示那个方向还能滚动（#194、#831）：
+// 一个与滚动区域大小、圆角和裁剪都相同的框盖在区域上，上下边缘各有一条带子，app.css 用区域下面的底色画它们，
+// 那一边还有内容时才显示（`shown`）。
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
-/** Distance from the scroll area's edges. */
+/** 滚动条与滚动区域边缘的距离。 */
 const INSET = 4;
 const MIN_THUMB = 24;
-/** How long the bar stays after the last scroll. */
+/** 最后一次滚动后滚动条继续显示的时长。 */
 const LINGER_MS = 900;
-/** Sent to the scroll area when a person starts dragging the thumb, which is not inside it: the area's own pointer
- * events do not see that the person is scrolling (a chat window lets go of its bottom on it). */
+/**
+ * 用户开始拖动滑块时发给滚动区域的事件。滑块不在区域里面，区域自己的指针事件看不到用户在滚动
+ * （聊天窗口收到它时就不再停在底部）。
+ */
 export const SCROLL_INTENT = 'weflow:scroll-intent';
 
-/** Whether the pointer is over `element`; false where `:hover` cannot be asked. */
+/** 指针是否在 `element` 上；不能查询 `:hover` 时为 false。 */
 function hovered(element: Element) {
   try { return element.matches(':hover'); } catch { return false; }
 }
 
-/** The scrollbar and the edge fades of the scroll area `target`. */
+/** 滚动区域 `target` 的滚动条和边缘渐隐。 */
 export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> }) {
   const track = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLDivElement>(null);
@@ -36,9 +38,8 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
     let room = 0;
     let linger = 0;
 
-    // It runs at every frame of a scroll, and of a panel that grows or shrinks (the sidebar folding): everything is
-    // read first and only then written, so that the page is laid out once a frame and not again for each read (#961),
-    // and a style is set only when it changes.
+    // 滚动的每一帧、面板变大变小（侧栏折叠）的每一帧都会运行：先读完所有值再写，这样每帧只排版一次，
+    // 不会每读一次就排版一次（#961）；样式只在变化时才设置。
     const set = (element: HTMLElement, property: 'left' | 'top' | 'width' | 'height' | 'borderRadius' | 'clipPath' | 'transform', value: string) => {
       if (element.style[property] !== value) element.style[property] = value;
     };
@@ -49,9 +50,9 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
       const left = area.offsetLeft + area.clientLeft;
       const top = area.offsetTop + area.clientTop;
       const width = area.clientWidth;
-      // the bar's own width, from its style: it takes none on the page while there is nothing to scroll
+      // 滚动条自己的宽度，取自它的样式；没有可滚动的内容时它在页面上不占宽度
       const barWidth = overflow ? Number.parseFloat(getComputedStyle(bar).width) || 0 : 0;
-      // the area's shape, whatever the skin makes it: its corners and its clip
+      // 滚动区域的外形，不论皮肤把它画成什么样：圆角和裁剪
       const shape = overflow && fades.current ? getComputedStyle(area) : null;
       const radius = shape?.borderRadius ?? '';
       const clip = shape?.clipPath ?? '';
@@ -83,20 +84,20 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
       set(knob, 'transform', 'translateY(' + (travel * Math.min(1, scrollTop / room)) + 'px)');
     };
     const show = () => {
-      // added only when it is not there: adding it again would still be a change of the class to whoever watches
+      // 没有这个类时才加：重复加上，对监视类名的一方来说仍然算一次变化
       if (!bar.classList.contains('active')) bar.classList.add('active');
       window.clearTimeout(linger);
       linger = window.setTimeout(() => bar.classList.remove('active'), LINGER_MS);
     };
     const onScroll = () => { place(); show(); };
-    // Shown while the pointer is over the area or the thumb, which sits outside the area's element.
+    // 指针在区域或滑块上时显示；滑块不在区域的元素里面。
     const enter = () => { place(); bar.classList.add('hover'); };
     const leave = (event: PointerEvent) => {
       const to = event.relatedTarget as Node | null;
       if (to !== knob && !(to && area.contains(to))) bar.classList.remove('hover');
     };
 
-    // The content grows and shrinks (cards open, rows arrive) without the area changing size: watch its children.
+    // 内容会变大变小（卡片展开、新的行到达）而区域本身的大小不变：所以监视它的子元素。
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
     const watch = () => {
       if (resize) {
@@ -112,11 +113,10 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
     area.addEventListener('scroll', onScroll, { passive: true });
     area.addEventListener('pointerenter', enter);
     area.addEventListener('pointerleave', leave);
-    // a pointer already over a new area (another page in the same panel, #836) sends it no `pointerenter`
+    // 指针已经在新的区域上时（同一个面板换了页面，#836），区域收不到 `pointerenter`
     if (hovered(area)) bar.classList.add('hover');
 
-    // Dragging the thumb scrolls in proportion. Only the thumb takes the pointer: the strip beside it would cover
-    // the right edge of rows and bubbles.
+    // 拖动滑块时按比例滚动。只有滑块接收指针：滑块旁边的轨道会盖住各行和气泡的右边缘。
     let drag: { y: number; top: number } | null = null;
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
@@ -129,7 +129,7 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
     const move = (event: PointerEvent) => {
       if (!drag || !travel) return;
       const top = drag.top + ((event.clientY - drag.y) * room) / travel;
-      // at once: an area that scrolls smoothly (the chat window) would trail behind the pointer
+      // 立即滚动：平滑滚动的区域（聊天窗口）会落在指针后面
       if (area.scrollTo) area.scrollTo({ top, behavior: 'instant' }); else area.scrollTop = top;
     };
     const up = () => { drag = null; bar.classList.remove('dragging'); show(); };
@@ -143,8 +143,8 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
       resize?.disconnect();
       children.disconnect();
       window.clearTimeout(linger);
-      // the bar outlives the area when a panel shows another page (#836): what it showed for this one ends here, as
-      // the timer that would have hidden it is gone
+      // 面板换页时滚动条比滚动区域留得更久（#836）：为这个区域显示的状态在这里结束，
+      // 因为本来会把它隐藏的定时器已经清掉了
       bar.classList.remove('active', 'hover', 'dragging');
       area.removeEventListener('scroll', onScroll);
       area.removeEventListener('pointerenter', enter);

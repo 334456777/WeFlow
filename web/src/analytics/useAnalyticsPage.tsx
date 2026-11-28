@@ -1,5 +1,5 @@
-// The chat analytics page (#207): the private chats counted once the page is opened (again when the people left out
-// change), or a group picked (the first until then) over a range of days, and one of its members.
+// 聊天分析页（#207）：打开页面时统计私聊，不统计的好友变了之后重新统计；或者在一段日期内统计选中的群
+// （还没有选时是第一个群）和其中的一个成员。
 import { useEffect, useRef, useState } from 'react';
 import { ChartBar } from '@phosphor-icons/react';
 import type { DayRange } from '../api/groups';
@@ -15,7 +15,7 @@ import './analytics.css';
 
 type Member = { username: string; displayName: string; avatarUrl?: string };
 
-/** The chat analytics page: its view and its console cards. */
+/** 聊天分析页：页面视图和操作控制台的卡片。 */
 export function useAnalyticsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { records, scope } = shell;
   const [mode, setMode] = useState<'private' | 'group'>('private');

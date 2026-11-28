@@ -1,10 +1,9 @@
-// The column chart the analytics, the group analytics and the dual report draw (#207, #208); its styles are with the
-// other charts in app.css.
+// 聊天分析、群聊分析和双人报告画的柱状图（#207、#208）；样式与其他图表一起在 app.css 里。
 import type { Bar } from './api/analytics';
 import { n } from './format';
 import { t } from './i18n';
 
-/** Bars standing side by side, as tall as their share of the largest; `ticks` names some of them underneath. */
+/** 并排的柱子，高度按占最大值的比例；`ticks` 在下面给其中一些柱子写上名称。没有柱子时只显示 `没有消息。`。 */
 export function Columns({ label, bars, ticks }: { label: string; bars: Bar[]; ticks(index: number, bar: Bar): string | null }) {
   if (!bars.length) return <p className="muted">{t('没有消息。')}</p>;
   const max = Math.max(1, ...bars.map(b => b.value));
@@ -20,8 +19,8 @@ export function Columns({ label, bars, ticks }: { label: string; bars: Bar[]; ti
 
 const january = (b: Bar) => b.month === 1;
 /**
- * Where a year's name goes under the months: each January, and the first month when no January follows soon, that is
- * within 6 months or an eighth of the chart, as the bars of a long chart are narrow on a phone.
+ * 年份的名称写在哪些月份下面：每个一月；第一个月后面不久没有一月时，也写在第一个月下面。
+ * 「不久」指 6 个月或图表的八分之一以内（取较长的），因为长图表的柱子在手机上很窄。
  */
 export const yearStarts = (months: Bar[], i: number) =>
   january(months[i]) || (i === 0 && !months.slice(1, Math.max(7, Math.ceil(months.length / 8) + 1)).some(january));

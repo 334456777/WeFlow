@@ -1,8 +1,7 @@
-// Which report the reports page shows (#1077): the console's save card saves only a report that is there, and lets go
-// of what it said of the one before.
+// 报告页当前显示的是哪一份报告（#1077）：操作控制台的保存卡片只保存正在显示的报告，并清掉对上一份报告的提示。
 import { useEffect, useRef } from 'react';
 
-/** Tells `onShown` the report shown by a key of its own, null while there is none, and null once it goes. */
+/** 用报告自己的键告诉 `onShown` 正在显示的报告；没有报告时、以及报告不再显示时传 null。 */
 export function useShownReport(key: string | null, onShown: (key: string | null) => void): void {
   const latest = useRef(onShown);
   latest.current = onShown;

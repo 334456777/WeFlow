@@ -1,4 +1,4 @@
-/* The export page (#211): conversations ticked in the list, the ones picked beside it, the formats as chips. */
+/* 导出页（#211）：列表里勾选的会话、旁边的已选会话，以及同时写出几种格式时的进度条。 */
 @layer pages {
 .pick-row { cursor: pointer; }
 .pick-row > .checkbox { flex-shrink: 0; }
@@ -10,7 +10,7 @@
 
 .picked-copy small { color: var(--fg-subtle); font-size: var(--text-xs); }
 
-/* The formats of an export written side by side (#628): a lane each, all sweeping at once, solid once written. */
+/* 同时写出的几种导出格式（#628）：每种一条进度条，一起闪动，写完后变成实心。 */
 .format-lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-3); margin: var(--space-1) 0 0; padding: 0; color: var(--fg-muted); font-size: var(--text-xs); list-style: none; }
 .format-lane-bar {
   display: block; height: 4px; margin-top: 2px; border-radius: var(--radius-full); box-shadow: var(--track-shadow);
@@ -19,7 +19,7 @@
 }
 .format-lanes .done { color: var(--fg); }
 .format-lanes .done .format-lane-bar { background: var(--fg-muted); animation: none; }
-/* reduced motion: the sweep stops, as the loading placeholders' does (app.css) */
+/* 减少动画时停止闪动，与加载时的占位骨架屏（app.css）一样 */
 @media (prefers-reduced-motion: reduce) {
   .format-lane-bar { animation: none; }
 }

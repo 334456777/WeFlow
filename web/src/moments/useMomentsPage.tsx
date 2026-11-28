@@ -1,5 +1,5 @@
-// The Moments page (#202): who posts beside the timeline, narrowed to a poster, words and days by its console card.
-// The posts are the server's, or the sample's while no server has answered (#879).
+// 朋友圈页（#202）：时间线旁边是发布者列表；可以只看一个发布者，或者用操作控制台的卡片按文字和日期筛选。
+// 朋友圈来自服务端，还没有服务端回答时来自示例数据（#879）。
 import { useEffect, useRef, useState } from 'react';
 import { NO_FILTER, type SnsFilter } from '../api/sns';
 import type { Page, Shell } from '../shell/page';
@@ -12,7 +12,7 @@ import { useMomentPeople } from './useMomentPeople';
 import { t } from '../i18n';
 import './moments.css';
 
-/** `active`: the page browsed, the one the console keeps the cards of while the settings are open. */
+/** 朋友圈页：页面视图和操作控制台的卡片。`active` 表示正在浏览这一页，打开设置时操作控制台仍保留它的卡片。 */
 export function useMomentsPage(shell: Shell, active: boolean): Page {
   const { backend, scope, setMobileDetail } = shell;
   const live = active && shell.records;

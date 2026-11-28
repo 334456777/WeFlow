@@ -1,12 +1,12 @@
-// The token of `weflow serve`, typed in (#214): for a page opened without it, or with one the server no longer takes.
-// It is kept for this tab only (sessionStorage, see client.ts) and never shown again; the connection tries it at once.
+// 手动输入 `weflow serve` 的令牌（#214）：网页打开时没有带令牌，或者带的令牌服务端不再接受时使用。
+// 令牌只保存在这个标签页里（sessionStorage，见 client.ts），之后不再显示；连接会立即用它重试。
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Key } from '@phosphor-icons/react';
 import { setToken } from './api/client';
 import { t } from './i18n';
 
-/** A field for the token and a button that sets it. */
+/** 输入令牌的输入框和设置令牌的按钮。 */
 export function TokenForm({ label = t('令牌') }: { label?: string }) {
   const [value, setValue] = useState('');
   const submit = (event: FormEvent) => {
@@ -24,7 +24,7 @@ export function TokenForm({ label = t('令牌') }: { label?: string }) {
   </form>;
 }
 
-/** What to do when the server refuses the token: type it, or open the page again from `weflow serve`. */
+/** 服务端拒绝令牌时的提示：输入令牌，或者用 `weflow serve` 给出的地址重新打开网页。 */
 export function TokenPrompt() {
   return <div className="token-prompt" role="alert">
     <h2>{t('需要令牌')}</h2>

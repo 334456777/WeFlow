@@ -1,4 +1,4 @@
-// The contacts (#205), by kind with how many of each, or searched across all kinds by name, remark or WeChat ID.
+// 联系人列表（#205）：按种类列出并显示每类的个数，或者在全部种类里按名称、备注或微信号搜索。
 import { useMemo, useState } from 'react';
 import { ArrowClockwise, MagnifyingGlass } from '@phosphor-icons/react';
 import { CONTACT_KINDS, contactKindLabels, countKinds, matchContacts, type Contact, type ContactKind } from '../api/contacts';
@@ -12,13 +12,13 @@ import { t } from '../i18n';
 
 const ROW_HEIGHT = 58;
 
-/** Under the name: the nickname when a remark stands in for it, and where the person is. */
+/** 名字下面的一行：备注代替了名字时显示昵称，再加上地区；都没有时显示公众号的简介或联系人的种类。 */
 export function contactLine(c: Contact): string {
   const line = [c.remark && c.nickname && c.nickname !== c.displayName ? c.nickname : '', c.region ?? ''].filter(Boolean).join(' · ');
   return line || (c.type === 'official' ? c.detailDescription ?? '' : '') || t(contactKindLabels[c.type]);
 }
 
-/** The contacts of one kind, or those a search finds; where the reading stands until it is done. */
+/** 一类联系人，或者搜索到的联系人；读完之前显示读取的状态。 */
 export function ContactList({ state, kind, onKind, selected, onSelect, onRetry }: {
   state: ContactsState;
   kind: ContactKind;

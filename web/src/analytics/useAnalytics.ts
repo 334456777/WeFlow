@@ -1,22 +1,25 @@
-// The analytics page's reads (#207): the private chats' numbers, read once the page is opened and again for another
-// server or account or once the people left out change; and the group chats to pick from.
+// 聊天分析页的读取（#207）：私聊的统计在打开页面时读取，换了服务端或账号、或者不统计的好友变了之后重读；
+// 以及供选择的群聊列表。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
 import { t } from '../i18n';
 import { getOverall, getRankings, getTimeSpread, type Overall, type Ranked, type TimeSpread } from '../api/analytics';
 import { getGroups, type Group } from '../api/groups';
 
-/** How many private chats the rankings list. */
+/** 排行列出的私聊个数。 */
 export const RANKED = 20;
 
-/** The private chats' analytics as read: not yet, being read, read, or why it failed. */
+/** 私聊统计的读取状态：还没读、正在读、已读到，或者失败的原因。 */
 export type AnalyticsState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'ready'; overall: Overall; rankings: Ranked[]; spread: TimeSpread }
   | { status: 'error'; message: string };
 
-/** Every read counts the chats again, so `reload()` shows the messages that arrived since. */
+/**
+ * 私聊的统计：`enabled` 时读取，`scope` 变化后重读。每次读取都重新统计私聊，
+ * 所以 `reload()` 能算上这期间收到的消息。
+ */
 export function useAnalytics(enabled: boolean, scope: number): [AnalyticsState, () => void] {
   const [state, setState] = useState<AnalyticsState>({ status: 'idle' });
   const [round, setRound] = useState(0);
@@ -43,14 +46,14 @@ export function useAnalytics(enabled: boolean, scope: number): [AnalyticsState, 
   return [state, reload];
 }
 
-/** The group chats as read: not yet, being read, read, or why it failed. */
+/** 群聊列表的读取状态：还没读、正在读、已读到，或者失败的原因。 */
 export type GroupsState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'ready'; groups: Group[] }
   | { status: 'error'; message: string };
 
-/** The group chats, read once group mode is opened and again for another server or account. */
+/** 群聊列表：打开群聊模式（`enabled`）时读取，换了服务端或账号（`scope`）后重读。 */
 export function useGroups(enabled: boolean, scope: number): [GroupsState, () => void] {
   const [state, setState] = useState<GroupsState>({ status: 'idle' });
   const [round, setRound] = useState(0);

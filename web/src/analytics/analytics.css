@@ -1,7 +1,6 @@
-/* Chat analytics (#207): what only the analytics page draws; the blocks, charts and ranks the reports and the
-   footprint draw too stay in app.css. */
+/* 聊天分析（#207）：只有聊天分析页用的样式；报告和足迹页也用的区块、图表和排行的样式在 app.css。 */
 @layer pages {
-/* one grid for all the rows, so the bars line up whatever the names */
+/* 所有行共用一个网格，名称不论多长，条形都对齐 */
 .chart-shares { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content 3.5em; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
 .chart-shares li { display: contents; }
 .chart-shares .job-bar { margin-top: 0; }

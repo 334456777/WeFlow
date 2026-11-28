@@ -1,5 +1,5 @@
-// My footprint (#209): the range of days (today until another is picked), words to narrow the timeline to, and what
-// was read, for the AI card of the console.
+// 我的足迹（#209）：保存选的日期范围（选别的之前是今天）、筛选时间线的关键词，
+// 以及读到的足迹（给操作控制台的 AI 总结卡片用）。
 import { useRef, useState } from 'react';
 import { Footprints } from '@phosphor-icons/react';
 import { rangeOf, type Footprint, type FootprintChoice } from '../api/footprint';
@@ -9,7 +9,7 @@ import { FootprintAi, FootprintExport, FootprintPage } from './Footprint';
 import { t } from '../i18n';
 import './footprint.css';
 
-/** The footprint page: its view and its console cards. */
+/** 足迹页：页面视图和操作控制台的卡片。 */
 export function useFootprintPage(shell: Shell, openAt: OpenAt): Page {
   const [choice, setChoice] = useState<FootprintChoice>({ preset: 'today' });
   const range = rangeOf(choice);

@@ -1,5 +1,5 @@
-// Beside the WeChat Pay records (#204): all of them, or one payee's, with how often and how much was paid there in
-// the days chosen; searchable by name.
+// 微信支付记录旁边的列表（#204）：选全部记录或一个收款方的记录，显示选中的日期范围内在那里支付的次数和金额；
+// 可以按名称搜索。
 import { useMemo, useState } from 'react';
 import { ArrowClockwise, MagnifyingGlass, Wallet } from '@phosphor-icons/react';
 import { formatMoney } from '../api/pay';
@@ -13,10 +13,10 @@ import { locale, t } from '../i18n';
 const ROW_HEIGHT = 58;
 const ALL = '\u0000all';
 
-/** The list of payees, 「全部商户」 first; where the reading stands until it is done. */
+/** 收款方列表，「全部商户」在最前（搜索时不列出）；读完之前显示读取的状态。 */
 export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry }: {
   state: PaymentsState;
-  /** The payees of the days chosen. */
+  /** 选中的日期范围内的收款方。 */
   merchants: Merchant[];
   selected: string | null;
   onSelect(merchant: string | null): void;

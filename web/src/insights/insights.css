@@ -1,4 +1,4 @@
-/* Insights (#210): the cards of the insights page. */
+/* 见解（#210）：灵感信箱页的见解卡片，以及操作控制台里生成见解的提示。 */
 @layer pages {
 .insight-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--card-bg); box-shadow: var(--card-shadow); }
 .insight-card.unread { cursor: pointer; }
@@ -17,7 +17,7 @@
 .insight-log dd { margin: 0; }
 .insight-log .wide { grid-column: 1 / -1; }
 .insight-log pre { max-height: 200px; margin: 2px 0 0; overflow: auto; font-family: var(--font-mono); font-size: var(--text-2xs); white-space: pre-wrap; overflow-wrap: anywhere; }
-/* the console's 生成见解: why none can be written, with the way to the settings; the server's reasons keep their lines */
+/* 操作控制台的「生成见解」：说明为什么不能写见解，并给出前往设置的入口；服务端给的原因保留换行 */
 .insight-none-allowed { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .insight-trigger-note { white-space: pre-line; }
 }

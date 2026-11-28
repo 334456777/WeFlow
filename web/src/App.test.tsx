@@ -10,7 +10,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-/** The server's event stream (`/health/events`): `hello` with `serving`, or an error when there is no server. */
+/** 服务端的事件流（`/health/events`）：发出带 `serving` 的 `hello`，没有服务端时报错。 */
 let serving: object | null = null;
 const opened: FakeEventSource[] = [];
 
@@ -21,7 +21,7 @@ class FakeEventSource {
   constructor(readonly url: string) {
     opened.push(this);
     queueMicrotask(() => {
-      // a job's events come only when a test sends them
+      // 作业的事件只在测试发出时才来
       if (this.closed || url.startsWith('/jobs/')) return;
       if (serving) this.emit('hello', serving);
       else this.fail();
@@ -37,7 +37,7 @@ class FakeEventSource {
   fail() { this.onerror?.(new Event('error')); }
 }
 
-/** Runs a server saying `health` (none for null). */
+/** 模拟回答 `health` 的服务端；为 null 时没有服务端。 */
 function serve(health: object | null) {
   serving = health;
   vi.stubGlobal('EventSource', FakeEventSource);
@@ -49,13 +49,13 @@ async function renderWith(health: object | null) {
   await act(async () => {});
 }
 
-/** Lets what a timer of the page does within `ms` happen inside act(), not at some later point of the test. */
+/** 让页面的定时器在 `ms` 内做的事发生在 `act()` 里，而不是测试后面的某个时刻。 */
 const settle = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 const HEALTH = { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: __WEFLOW_WEB__.minBackendVersion, data: 'a' };
 
-/** Opens the settings at one of their sections, by its name in the list (#776), whatever its state beside it says. */
+/** 按列表里的名称打开设置的某个分组（#776），不管名称旁边显示的状态是什么。 */
 function openSettings(section: string) {
   fireEvent.click(screen.getByRole('button', { name: '设置' }));
   fireEvent.click(within(screen.getByRole('navigation', { name: '设置分组' })).getByRole('button', { name: new RegExp('^' + section) }));
@@ -69,14 +69,14 @@ describe('App', () => {
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeTruthy();
     expect(screen.getByRole('region', { name: '操作控制台' })).toBeTruthy();
     expect(screen.queryByText('操作控制台')).toBeNull();
-    // the sample server answers as a server would: the newest conversation opens, its messages read the same way
+    // 示例服务端像真的服务端一样回答：打开最新的会话，消息也用同样的方式读取
     await waitFor(() => expect(document.querySelector('.message-pane')?.textContent).toContain('改成讲 WeFlow 自己的'));
     expect(screen.getByRole('button', { name: '选择WeFlow 开发群' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('button', { name: '选择林沐' }).textContent).toContain('收到 👌');
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);
     expect(screen.getByText('示例数据 · 连接 weflow serve 后显示真实会话')).toBeTruthy();
     expect(document.querySelector('[data-card="export"] .badge')?.textContent).toBe('示例数据');
-    // no read went to a server
+    // 没有读取发给服务端
     expect(fetch.mock.calls.filter(([url]) => String(url).includes('/api/'))).toEqual([]);
   });
 
@@ -88,7 +88,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '搜索' }));
     await waitFor(() => expect(document.querySelectorAll('.search-results .search-result')).toHaveLength(1));
     expect(document.querySelector('.search-results')?.textContent).toContain('WAL 解析的 Kani 证明');
-    // the job runs in the page for a few seconds, in the task centre; what it hands back says the sample is not exported
+    // 作业在页面里运行几秒钟，显示在任务中心；它交回的文件说明示例数据不会被导出
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
     await waitFor(() => expect(document.querySelector('[data-card="tasks"] .task-list')?.textContent).toContain('导出 WeFlow 开发群 · HTML'));
     const card = document.querySelector<HTMLElement>('[data-card="export"]')!;
@@ -107,7 +107,7 @@ describe('App', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索全部会话的消息' }), { target: { value: 'WeFlow' } });
     fireEvent.click(screen.getByRole('button', { name: '搜索' }));
     await waitFor(() => expect(document.querySelector('.search-results .results-count')?.textContent).toMatch(/^(找到|已显示) \d+ 条记录（全部会话）/));
-    // what the hits are, not who sent them: the names in a group come once its members are read
+    // 比较的是搜索结果本身而不是发送者：群里的名字要等读到群成员之后才出现
     const shown = () => [document.querySelector('.search-results .results-count')!.textContent, Array.from(document.querySelectorAll('.search-result time'), time => time.textContent)];
     const hits = shown();
     fireEvent.click(screen.getByRole('button', { name: '资源浏览' }));
@@ -129,7 +129,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: '查看林沐' }));
     fireEvent.click(within(await screen.findByRole('article', { name: '林沐的资料' })).getByRole('button', { name: '查看聊天记录' }));
     await waitFor(() => expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true'));
-    // the hits were of the group: none is left under a card that names 林沐
+    // 之前的结果属于那个群：标着林沐的卡片下面不留任何结果
     expect(screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索此会话的消息' }).placeholder).toBe('搜索林沐的消息');
     expect(document.querySelector('.search-results .search-result')).toBeNull();
   }, 15_000);
@@ -147,7 +147,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存为网页' }));
     const done = '已交给浏览器下载。头像换成了名字的第一个字。';
     await waitFor(() => expect(screen.getByText(done)).toBeTruthy());
-    // the dual report, its friend not picked yet: nothing there to save
+    // 双人报告还没选好友：没有可以保存的报告
     fireEvent.click(screen.getByRole('button', { name: '双人' }));
     await waitFor(() => expect(screen.getByText('选一位好友，生成你们两个人的报告。')).toBeTruthy());
     expect(disabled()).toEqual([true, true]);
@@ -200,18 +200,18 @@ describe('App', () => {
     }));
     render(<App />);
     await act(async () => {});
-    // live messages are on unless turned off
+    // 实时消息默认开启
     expect(screen.getByRole('status').textContent).toBe('实时');
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '折叠的群聊']);
     expect(calls).toContain('/api/chat/statuses?sessions=wxid_a&sessions=g%40chatroom');
-    // The first conversation is opened; its details and media are read only once their cards open (#200).
+    // 打开第一个会话；会话资料和媒体文件要等卡片展开才读取（#200）。
     expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true');
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);
     expect(calls.filter(url => /detail|resources|group\//.test(url))).toEqual([]);
-    // the open conversation can be exported on the server (#211)
+    // 打开的会话可以在服务端导出（#211）
     expect(screen.getByRole('button', { name: '开始导出' })).toHaveProperty('disabled', false);
     expect(document.querySelector('[data-card="info"] .card-summary')?.textContent).toBe('约 42 条');
-    // Its messages, oldest first: a text, a notice in the middle, a file sent by me.
+    // 它的消息，最早的在前：一条文字，中间一条系统提示，最后是我发的一个文件。
     await act(async () => {});
     const rows = Array.from(document.querySelectorAll('.message-pane .message-row'));
     expect(rows.map(row => row.className)).toEqual(['message-row incoming', 'message-row system', 'message-row outgoing']);
@@ -246,18 +246,18 @@ describe('App', () => {
     expect(before.names).toEqual(['周舟']);
     expect(before.messages[0]).toContain('你好');
 
-    // the server stops: what was read stays, said to be from before; nothing of the sample
+    // 服务端停止：已读到的记录保留，状态显示已断开；不换成示例数据
     serving = null;
     act(() => opened.filter(stream => !stream.closed).at(-1)!.fail());
     expect(screen.getByRole('status').textContent).toBe('已断开');
     expect(shown()).toEqual(before);
     expect(screen.queryByText('示例数据 · 连接 weflow serve 后显示真实会话')).toBeNull();
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);
-    // the tries that fail meanwhile change nothing
+    // 这期间失败的重连不改变任何内容
     await settle(1300);
     expect(shown()).toEqual(before);
 
-    // back: everything is read again, as for any server that comes back (scope.ts)
+    // 服务端恢复：所有内容重读，与任何恢复的服务端一样（scope.ts）
     const read = calls.filter(url => url.startsWith('/api/chat/sessions')).length;
     serving = HEALTH;
     await settle(2500);
@@ -301,12 +301,12 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择陈屿' }));
     await waitFor(() => expect(screen.getByText('pgo-build.sh 的训练清单可以加上 WebUI 常用的几个读取', { selector: '.message-bubble' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    // the connection first, the sections of the server marked as needing it (#776)
+    // 连接状态排在最前，需要服务端的分组标明这一点（#776）
     expect(screen.getByRole('region', { name: '连接状态' }).textContent).toContain('weflow serve');
     const sections = screen.getByRole('navigation', { name: '设置分组' });
     expect(Array.from(sections.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['连接状态', '账号', '外观与浏览', '启动选项', 'AI 见解', '缓存', '网页版本', '命令控制台']);
-    // no server: the sample server keeps the server's settings in the page (#896), so its sections are usable; the
-    // console needs a server
+    // 没有服务端：示例服务端把服务端的设置保存在页面里（#896），所以这些分组可以用；
+    // 命令控制台需要服务端
     expect(within(sections).getByRole('button', { name: /^启动选项/ }).textContent).toContain('地址、端口和并发');
     expect(within(sections).getByRole('button', { name: /^命令控制台/ }).textContent).toContain('连接后可用');
     fireEvent.click(within(sections).getByRole('button', { name: /^启动选项/ }));
@@ -356,13 +356,13 @@ describe('App', () => {
     const side = () => screen.getByRole('button', { name: /取消导出|再次导出/, hidden: true });
     expect(side().hasAttribute('inert')).toBe(true);
 
-    // any format of `export messages`, not only the first three (#279); several at once, HTML taken off (#342)
+    // `export messages` 的所有格式都可以选（#279），并且可以多选，这里取消了 HTML（#342）
     const exportCard = within(document.querySelector<HTMLElement>('[data-card="export"]')!);
     fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
     fireEvent.click(exportCard.getByRole('button', { name: 'HTML' }));
     expect(exportCard.getByRole('button', { name: 'TXT' }).getAttribute('aria-pressed')).toBe('true');
     expect(exportCard.getByRole('button', { name: 'HTML' }).getAttribute('aria-pressed')).toBe('false');
-    // the last format taken off too: the button asks for one, and starts nothing (#353)
+    // 最后一个格式也能取消：按钮提示选择格式，点了也不会开始导出（#353）
     fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
     expect(screen.getByRole('button', { name: '选择导出格式' })).toHaveProperty('disabled', true);
     expect(document.querySelector('[data-card="export"] .card-summary')?.textContent).toBe('未选择格式');
@@ -370,18 +370,18 @@ describe('App', () => {
     await act(async () => {});
     expect(started).toEqual([]);
     fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
-    // no media unless asked for (#342), each kind on its own (#694)
+    // 不选就不附带媒体（#342），每种媒体分开选择（#694）
     for (const name of ['图片', '语音', '视频', '表情', '文件', '头像']) expect(exportCard.getByRole('button', { name }).getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
     await act(async () => {});
-    // a job of the server that keeps its file
+    // 服务端的作业，保留它写出的文件
     expect(started[0].url).toBe('/export/messages?return=file');
     expect((started[0].init?.headers as Record<string, string>).Prefer).toBe('respond-async');
-    // one file, nothing to pack
+    // 只有一个文件，不用打包
     expect(JSON.parse(String(started[0].init?.body))).toEqual({ 'session-id': 'wxid_a', format: ['txt'] });
     expect(screen.getByRole('button', { name: '正在导出' }).getAttribute('aria-disabled')).toBe('true');
     expect(side().hasAttribute('inert')).toBe(false);
-    // its progress from the job's events, in the task centre too
+    // 进度来自作业的事件，任务中心里也显示
     const events = opened.find(source => source.url.startsWith('/jobs/j1/events'))!;
     act(() => { events.emit('progress', { type: 'progress', message: '正在导出消息', current: 5, total: 10, percent: 50 }); });
     expect(screen.getByRole('progressbar', { name: '导出 林沐 · TXT的进度' }).getAttribute('aria-valuenow')).toBe('50');
@@ -401,7 +401,7 @@ describe('App', () => {
     expect(links[0].getAttribute('href')).toBe('/jobs/j2/file');
     expect(side().getAttribute('aria-label')).toBe('再次导出');
     expect(screen.getByText(/林沐\.html · 2\.0 KB/)).toBeTruthy();
-    // a finished job is deleted, with its file on the server: the cancelled one and the one done
+    // 删除已结束的作业时连同它在服务端的文件一起删除：一个是取消的，一个是完成的
     const deletes = screen.getAllByRole('button', { name: '删除' });
     expect(deletes.map(button => button.getAttribute('title'))).toEqual(['删除这个任务和它在服务端的文件', '删除这个任务']);
   });
@@ -439,14 +439,14 @@ describe('App', () => {
     await act(async () => {});
     expect(calls.filter(url => url.startsWith('/api/chat/contacts'))).toEqual(['/api/chat/contacts?parsed=true']);
     expect(Array.from(document.querySelectorAll('.card-title'), t => t.textContent)).toEqual(['任务中心', '通讯录统计', '导出通讯录']);
-    // the friends first, with how many of each kind
+    // 先列出好友，并显示每类的个数
     const names = () => Array.from(document.querySelectorAll('.conversation-name'), n => n.textContent);
     expect(names()).toEqual(['小陈', '秋秋']);
     expect(screen.getByRole('button', { name: '群聊 1 个' })).toBeTruthy();
     expect(document.querySelector('.conversation-preview')?.textContent).toBe('陈屿 · 中国 上海');
     fireEvent.click(screen.getByRole('button', { name: '公众号 1 个' }));
     expect(names()).toEqual(['城市手记']);
-    // a search goes through every kind
+    // 搜索查找全部种类
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索联系人' }), { target: { value: 'CHENYU' } });
     expect(names()).toEqual(['小陈']);
 
@@ -456,17 +456,17 @@ describe('App', () => {
     expect(card.textContent).toContain('签名慢慢走');
     expect(card.textContent).toContain('同学');
 
-    // only the friends and groups, as Excel
+    // 只导出好友和群聊，格式为 Excel
     fireEvent.click(within(document.querySelector<HTMLElement>('[data-card="contacts-export"]')!).getByRole('button', { name: '公众号' }));
     fireEvent.click(within(document.querySelector<HTMLElement>('[data-card="contacts-export"]')!).getByRole('button', { name: '曾经的好友' }));
     fireEvent.click(document.querySelector<HTMLButtonElement>('[data-card="contacts-export"] .primary-button')!);
     await act(async () => {});
     expect(started).toEqual([{ url: '/export/contacts?return=file', body: { format: 'excel', parsed: true, kind: ['friend', 'group'] } }]);
     expect(document.querySelector('.jobs .task strong')?.textContent).toBe('导出通讯录 · 好友、群聊 · Excel');
-    // the list of jobs is read again 300 ms after one starts
+    // 启动作业 300 毫秒后重读作业列表
     await settle(350);
 
-    // the conversation with them
+    // 打开与他的会话
     fireEvent.click(within(card).getByRole('button', { name: '查看聊天记录' }));
     await act(async () => {});
     expect(screen.getByRole('button', { name: '选择陈屿' }).getAttribute('aria-pressed')).toBe('true');
@@ -496,18 +496,18 @@ describe('App', () => {
     await act(async () => {});
     expect(Array.from(document.querySelectorAll('.card-title'), t => t.textContent)).toEqual(['任务中心', '批量导出', '导出会话列表']);
     expect(screen.getByRole('button', { name: '先在左侧选择会话' })).toHaveProperty('disabled', true);
-    // the groups, all at once, then one taken off again beside the list
+    // 一次全选群聊，再在列表旁边取消其中一个
     fireEvent.click(screen.getByRole('button', { name: '群聊' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '全选当前列出的会话' }));
     expect(screen.getByRole('heading', { name: '已选 2 个会话' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '不导出同学群' }));
     fireEvent.click(screen.getByRole('button', { name: '全部' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '导出林沐' }));
-    // no format: nothing to export until one is picked (#353)
+    // 没有格式：选格式之前不能导出（#353）
     fireEvent.click(screen.getByRole('button', { name: 'HTML' }));
     expect(screen.getByRole('button', { name: '选择导出格式' })).toHaveProperty('disabled', true);
     fireEvent.click(screen.getByRole('button', { name: 'HTML' }));
-    // Excel too, with the compact columns, by remark: two formats, packed into a zip (#342)
+    // 再加上 Excel，用精简列、按备注显示名称：两种格式，打包成 zip（#342）
     fireEvent.click(screen.getByRole('button', { name: 'Excel' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Excel 精简列' }));
     fireEvent.click(screen.getByRole('button', { name: '备注' }));
@@ -518,9 +518,9 @@ describe('App', () => {
     expect(started[0].body).toEqual({ 'session-id': 'wxid_a', format: ['html', 'excel'], 'display-name': 'remark', 'excel-compact': true, zip: true });
     expect(screen.getByText('已加入 2 个导出任务，在任务中心查看进度和下载文件。')).toBeTruthy();
     expect(Array.from(document.querySelectorAll('.jobs .task strong'), n => n.textContent)).toEqual(['导出 家人群 · HTML、Excel', '导出 林沐 · HTML、Excel']);
-    // the list of jobs is read again 300 ms after one starts
+    // 启动作业 300 毫秒后重读作业列表
     await settle(350);
-    // the list of the conversations picked
+    // 导出已选会话的列表
     fireEvent.click(document.querySelector<HTMLButtonElement>('[data-card="sessions-export"] .secondary-button')!);
     await act(async () => {});
     expect(started[2]).toEqual({ url: '/export/sessions?return=file', body: { session: ['wxid_a', 'g@chatroom'] } });
@@ -549,7 +549,7 @@ describe('App', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
     expect(status().classList.contains('quiet')).toBe(true);
 
-    // the server stops: the stream breaks, and the tries to connect again fail
+    // 服务端停止：事件流断开，重新连接也失败
     serving = null;
     await act(async () => { opened[opened.length - 1].fail(); });
     expect(status().textContent).toBe('已断开');
@@ -588,7 +588,7 @@ describe('App', () => {
     const stream = opened[opened.length - 1];
     expect(stream.url).toContain('/api/push/messages');
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['陈屿', '林沐']);
-    // 林沐 writes twice: the list puts the conversation on top, once for both
+    // 林沐发了两条：列表把这个会话移到最上面，两条只重读一次
     newest += 2;
     const before = read;
     await act(async () => {
@@ -598,7 +598,7 @@ describe('App', () => {
     });
     expect(read).toBe(before + 1);
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '陈屿']);
-    // open, it shows them; one more comes below the last
+    // 打开会话后显示这些消息；再来一条时加在最后一条下面
     fireEvent.click(screen.getByRole('button', { name: /选择林沐/ }));
     await act(async () => {});
     const texts = () => Array.from(document.querySelectorAll('.message-pane .message-row .message-body'), body => body.textContent);
@@ -606,10 +606,10 @@ describe('App', () => {
     newest += 1;
     await act(async () => { stream.emit('message.new', { sessionId: 'wxid_a' }); await new Promise(resolve => setTimeout(resolve, 20)); });
     expect(texts()).toEqual(['m0', 'm1', 'm2', 'm3']);
-    // the list is read again 500 ms after the message
+    // 消息到达 500 毫秒后重读列表
     await settle(600);
 
-    // turned off: the state alone, from /health/events
+    // 关掉之后只从 `/health/events` 读连接状态
     openSettings('外观与浏览');
     fireEvent.click(screen.getByRole('checkbox', { name: '实时消息' }));
     await act(async () => {});
@@ -633,7 +633,7 @@ describe('App', () => {
     await act(async () => {});
     expect(screen.getByRole('status').textContent).toBe('需要令牌');
     expect(screen.getByRole('alert').textContent).toContain('?token=');
-    // typed, kept for this tab only, never shown again
+    // 输入的令牌只保存在这个标签页里，之后不再显示出来
     fireEvent.change(screen.getByLabelText('令牌'), { target: { value: ' right ' } });
     fireEvent.click(screen.getByRole('button', { name: '连接' }));
     expect(sessionStorage.getItem('weflow.token')).toBe('right');
@@ -673,15 +673,15 @@ describe('App', () => {
     const taken = () => animated.splice(0);
     const consolePanel = document.querySelector('.console')!;
 
-    // into the settings the console keeps its cards: the panel alone
+    // 进入设置时操作控制台保留它的卡片：只有面板播放进入动画
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(taken()).toEqual([screen.getByRole('region', { name: '设置' })]);
-    // another section: the detail, not the panel
+    // 换一个分组：播放的是详情，而不是面板
     fireEvent.click(screen.getByRole('button', { name: /^外观与浏览/ }));
     const detail = taken();
     expect(detail.length).toBeGreaterThan(0);
     expect(detail.every(element => element.classList.contains('settings-detail'))).toBe(true);
-    // a page of other cards: the panel and the console
+    // 换到卡片不同的页面：面板和操作控制台都播放
     fireEvent.click(screen.getByRole('button', { name: '通讯录' }));
     expect(taken()).toEqual([screen.getByRole('region', { name: '通讯录' }), consolePanel]);
   });
@@ -709,14 +709,14 @@ describe('App', () => {
     expect((screen.getByPlaceholderText('模型名称') as HTMLInputElement).value).toBe('m2');
     expect(reads()).toBe(1);
 
-    // the insight engine is a startup option, and the way there and back is beside each switch
+    // 见解引擎是启动选项，两边的开关旁边都有前往另一边的按钮
     fireEvent.click(screen.getByRole('button', { name: '前往启动选项' }));
     await act(async () => {});
     expect(screen.getByRole('region', { name: '启动选项' }).textContent).toContain('运行灵感引擎');
     fireEvent.click(screen.getByRole('button', { name: '前往 AI 见解' }));
     expect(screen.getByRole('region', { name: 'AI 见解' })).toBeTruthy();
 
-    // left and opened anew, the settings read again
+    // 离开设置后重新打开，设置会重读
     fireEvent.click(screen.getByRole('button', { name: '聊天' }));
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     await act(async () => {});
@@ -742,7 +742,7 @@ describe('App', () => {
     expect(dialog()?.textContent).toBe('');
     expect(sessionStorage.getItem('weflow.setup')).toBe('dismissed');
 
-    // the settings say how far the account is set up, in their list too, and open the setup again
+    // 设置显示账号配置到了哪一步（分组列表里也显示），并能再次打开配置向导
     openSettings('账号');
     expect(screen.getByRole('button', { name: /^账号/ }).textContent).toBe('账号default · 还没有配置');
     expect(screen.getByRole('button', { name: /^连接状态/ }).textContent).toBe(`连接状态已连接 · ${__WEFLOW_WEB__.minBackendVersion}`);
@@ -751,14 +751,14 @@ describe('App', () => {
     await act(async () => {});
     expect(dialog()?.textContent).toContain('数据库目录');
 
-    // a tab that finds the account set up does not open it
+    // 发现账号已经配置好的标签页不打开配置向导
     cleanup();
     sessionStorage.clear();
     complete = true;
     await renderWith(HEALTH);
     expect(dialog()?.textContent).toBe('');
     openSettings('账号');
-    // the settings read what they show as they open
+    // 设置在打开时读取要显示的内容
     await act(async () => {});
     expect(screen.getByRole('region', { name: '账号' }).textContent).toContain('default当前wxid_aD:/x已配置，没有图片密钥');
   });
@@ -787,9 +787,9 @@ describe('App', () => {
     const people = screen.getByRole('region', { name: '朋友圈浏览' });
     expect(Array.from(people.querySelectorAll('.conversation-name'), n => n.textContent)).toEqual(['全部朋友圈', '林沐', '小周']);
     expect(Array.from(document.querySelectorAll('.moment-text'), n => n.textContent)).toEqual(['海边', '加班']);
-    // the console has the page's own cards
+    // 操作控制台显示这个页面自己的卡片
     expect(Array.from(document.querySelectorAll('.card-title'), t => t.textContent)).toEqual(['筛选朋友圈', '朋友圈统计']);
-    // one poster
+    // 只看一个发布者
     fireEvent.click(screen.getByRole('button', { name: '只看小周，1 条' }));
     await act(async () => {});
     expect(asked.at(-1)).toContain('user=wxid_b');
@@ -816,13 +816,13 @@ describe('App', () => {
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', { name: '微信支付' }));
     await act(async () => {});
-    // both pages were read
+    // 两页都读了
     expect(asked.filter(u => u.startsWith('/api/biz/pay-records'))).toHaveLength(2);
     const list = screen.getByRole('region', { name: '微信支付浏览' });
     expect(Array.from(list.querySelectorAll('.conversation-name'), n => n.textContent)).toEqual(['全部商户', '街角咖啡', '出行服务']);
     expect(Array.from(document.querySelectorAll('.pay-amount'), n => n.textContent)).toEqual(['-28.00', '+5.00', '-12.50']);
     expect(Array.from(document.querySelectorAll('.card-title'), t => t.textContent)).toEqual(['筛选支付记录', '合计', '导出支付记录']);
-    // one payee: the refund is taken off
+    // 只看一个收款方：金额减去了退款
     fireEvent.click(screen.getByRole('button', { name: '只看街角咖啡，2 笔' }));
     expect(Array.from(document.querySelectorAll('.pay-amount'), n => n.textContent)).toEqual(['-28.00', '+5.00']);
     expect(within(list).getByRole('button', { name: '只看街角咖啡，2 笔' }).textContent).toContain('¥23.00');
@@ -896,7 +896,7 @@ describe('App', () => {
     expect(info.textContent).toContain('12,345 条');
     expect(info.textContent).toContain('2020');
     expect(screen.getByRole('region', { name: '群成员' }).textContent).toContain('1500');
-    // a thousand and more members: only those in sight are drawn
+    // 一千多个成员：只画出看得见的那些
     expect(document.querySelectorAll('.member-row').length).toBeLessThan(60);
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索群成员' }), { target: { value: '小七' } });
     expect(Array.from(document.querySelectorAll('.member-row'), row => row.getAttribute('aria-label'))).toEqual(['小七，好友']);
@@ -910,7 +910,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回群成员' }));
     expect(screen.getByRole('region', { name: '群成员' })).toBeTruthy();
 
-    // the media card: a file opens the conversation at its message
+    // 媒体文件卡片：点文件打开会话并定位到那条消息
     fireEvent.click(screen.getByRole('button', { name: /^媒体文件/ }));
     await act(async () => {});
     expect(calls.find(url => url.startsWith('/api/chat/resources'))).toBe('/api/chat/resources?session=g%40chatroom&type=image&type=video&type=file&limit=60');
@@ -940,11 +940,11 @@ describe('App', () => {
     render(<App />);
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', { name: '我的足迹' }));
-    // the testing library's waitFor, not vi's: it lets the page and its report settle inside act()
+    // 用 Testing Library 的 `waitFor` 而不是 vi 的：它让页面和足迹的读取在 `act()` 里完成
     fireEvent.click(await waitFor(() => screen.getByRole('button', { name: /^打开和.*的这段聊天$/ })));
     await act(async () => {});
     await act(async () => {});
-    // turning to the chat page does not let go of the lookup: the conversation opens around the message
+    // 换到聊天页时不放弃查找：会话在那条消息附近打开
     expect(calls).toContain('/api/chat/message?session-id=wxid_a&local-id=7&create-time=1760000000&parsed=true');
     expect(calls.some(url => url.startsWith('/api/chat/messages') && url.includes('before=c.7'))).toBe(true);
     expect(document.querySelector('.message-pane')!.textContent).toContain('那天的话');
