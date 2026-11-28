@@ -1,7 +1,7 @@
 // The annual report (#208): `report annual years` and `report annual generate`, over one year or all of them.
 import { call, get } from './client';
 import { msg, t } from '../i18n';
-import { baseType } from './messages';
+import { kindOf, type MessageKind } from '../messageKind';
 import type * as Contract from './contract.gen';
 
 /** `report annual generate`, as the contract says (#430). */
@@ -36,18 +36,22 @@ export type DualReport = Contract.DualReport;
 /** `report dual generate` with `friend` over `year` (0 for all the years), a POST as a report is generated. */
 export const getDualReport = (friend: string, year: number, signal?: AbortSignal) => call<DualReport>('POST', 'report/dual/generate', { friend, year }, signal);
 
-// shown through t()
-const KINDS: Record<number, string> = {
-  3: msg('[图片]'), 34: msg('[语音]'), 43: msg('[视频]'), 47: msg('[表情]'), 48: msg('[位置]'), 49: msg('[链接或文件]'), 50: msg('[通话]'),
-  244813135921: msg('[引用回复]'),
+// each kind's label, shown through t(); a kind without one is 「[消息]」
+const LABELS: Partial<Record<MessageKind, string>> = {
+  quote: msg('[引用回复]'), image: msg('[图片]'), emoji: msg('[表情]'), voice: msg('[语音]'), video: msg('[视频]'),
+  file: msg('[文件]'), link: msg('[链接]'), finder: msg('[视频号]'), record: msg('[聊天记录]'), contact: msg('[名片]'),
+  location: msg('[位置]'), call: msg('[通话]'), system: msg('[系统消息]'),
 };
+// the kinds of `money`, by the app message's kind
+const MONEY: Record<string, string> = { transfer: msg('[转账]'), 'red-packet': msg('[红包]'), gift: msg('[礼物]') };
 
 /**
- * What a message of the dual report says: its text, or its kind for anything else, an app message (a link, a file, …,
- * its kind in the high bits of its type) by its base type unless the type itself is named.
+ * What a message of the dual report says: its text, or for anything else the label of its kind, the one the chat
+ * window draws it by (an app message's from the `appMsgKind` the server gives).
  */
 export function messageText(m: DualMessage): string {
   if (!m.localType || m.localType === 1) return m.content;
-  const kind = KINDS[m.localType] ?? KINDS[baseType(m.localType)];
-  return kind ? t(kind) : t('[消息]');
+  const kind = kindOf(m);
+  const label = kind === 'money' ? MONEY[m.appMsgKind ?? ''] : LABELS[kind];
+  return label ? t(label) : t('[消息]');
 }

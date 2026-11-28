@@ -1,4 +1,5 @@
-// What a message is, by its type and the kind the server names: how the chat window draws it.
+// What a message is, by its type and the kind the server names: how the chat window draws it, and what the dual
+// report calls a message that is not text (#1263).
 import { baseType, type ParsedMessage } from './api/messages';
 
 /** How the chat window draws a message. */
@@ -16,7 +17,7 @@ const APP_KINDS: Record<string, MessageKind> = {
 const PAT = 62 * 4_294_967_296 + 49;
 
 /** A message's kind, by its type and, for an app message, by its `appMsgKind`; text for one it does not know. */
-export function kindOf(message: ParsedMessage): MessageKind {
+export function kindOf(message: Pick<ParsedMessage, 'localType' | 'appMsgKind'>): MessageKind {
   if (message.localType === PAT) return 'system';
   switch (baseType(message.localType)) {
     case 1: return 'text';

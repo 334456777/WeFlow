@@ -7679,6 +7679,10 @@
             "format": "int64",
             "description": "WeChat's type of the message, as a parsed message's `localType`."
           },
+          "appMsgKind": {
+            "type": "string",
+            "description": "What an app message is, as a parsed message's `appMsgKind`; left out for any other message."
+          },
           "emojiMd5": {
             "type": "string",
             "description": "A sticker's MD5."
@@ -7732,6 +7736,10 @@
             "type": "integer",
             "format": "int64",
             "description": "WeChat's type of the message, as a parsed message's `localType`."
+          },
+          "appMsgKind": {
+            "type": "string",
+            "description": "What an app message is, as a parsed message's `appMsgKind`; left out for any other message."
           },
           "emojiMd5": {
             "type": "string",
