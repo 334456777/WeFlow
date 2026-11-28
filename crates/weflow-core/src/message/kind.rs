@@ -1,6 +1,6 @@
 //! Message types: WeChat's `local_type` to the export's type numbers and names.
 
-use super::appmsg::app_type;
+use super::appmsg::{app_message_kind_in, app_type, row_of_kind, AppType};
 use super::xml::{extract_app_message_type, normalize_app_message_content, MsgXml};
 
 /// The export's type code of a message: its local type, or for an app message the kind its [`MsgXml`] names.
@@ -17,8 +17,9 @@ pub fn convert_message_type_in(local_type: i64, x: &MsgXml<'_>) -> i64 {
     // (the TypeScript exporter has the same check).
     let looks_app = local_type == 49 || normalized.contains("<appmsg");
     if looks_app || xml_type.is_some_and(|t| t != 0) {
-        // the row of the app message types (#1180); any other app message is a link
-        return app_type(xml_type_raw).map_or(7, |row| row.chatlab);
+        // the row of the app message types (#1180), else of the kind its XML gives it (#1263); any other app
+        // message is a link
+        return app_row(local_type, x).map_or(7, |row| row.chatlab);
     }
     match local_type {
         1 => 0,
@@ -43,12 +44,19 @@ pub fn message_type_name_in(local_type: i64, x: &MsgXml<'_>) -> &'static str {
                 return "系统消息";
             }
             // the row of the app message types, whatever `local_type` keeps (#1180)
-            if let Some(row) = app_type(x.app_type_twice()) {
+            if let Some(row) = app_row(local_type, x) {
                 return row.name;
             }
         }
     }
     message_type_name_of(local_type)
+}
+
+/// The row of an app message's own `<type>`; for a type the table does not know, the row of the kind
+/// [`app_message_kind_in`] gives it, as the chat window and the detailed JSON name it (#1263).
+fn app_row(local_type: i64, x: &MsgXml<'_>) -> Option<AppType> {
+    app_type(x.app_type_twice())
+        .or_else(|| app_message_kind_in(x, local_type).and_then(row_of_kind))
 }
 
 /// The type name of a message by the local type alone.
@@ -86,4 +94,26 @@ pub fn weclone_type_name(local_type: i64, content: &str) -> &'static str {
         return "file";
     }
     "text"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A type the table does not know is named by the kind its XML gives it, as the chat window and the detailed
+    /// JSON name it (#1263); one with no kind of its own stays a link.
+    #[test]
+    fn a_type_the_table_does_not_know_is_named_by_its_kind() {
+        let reply = "<msg><appmsg><title>好</title><type>999</type>\
+                     <refermsg><type>1</type><content>hi</content></refermsg></appmsg></msg>";
+        assert_eq!(message_type_name_in(49, &MsgXml::new(reply)), "引用消息");
+        assert_eq!(convert_message_type_in(49, &MsgXml::new(reply)), 25);
+        let finder = "<msg><appmsg><title>直播</title><type>63</type>\
+                      <finderUsername>v2_x</finderUsername></appmsg></msg>";
+        assert_eq!(message_type_name_in(49, &MsgXml::new(finder)), "视频号消息");
+        assert_eq!(convert_message_type_in(49, &MsgXml::new(finder)), 7);
+        let card = "<msg><appmsg><title>T</title><type>999</type></appmsg></msg>";
+        assert_eq!(message_type_name_in(49, &MsgXml::new(card)), "链接消息");
+        assert_eq!(convert_message_type_in(49, &MsgXml::new(card)), 7);
+    }
 }

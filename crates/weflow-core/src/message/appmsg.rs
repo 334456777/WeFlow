@@ -80,6 +80,25 @@ pub(crate) fn app_type(xml_type: &str) -> Option<AppType> {
     })
 }
 
+/// The row of the types whose kind is `kind` (an official account's article is a link), for a message whose kind its
+/// XML gives rather than its `<type>`; `None` for a kind with no row (a card, a gift, a place).
+pub(crate) fn row_of_kind(kind: &str) -> Option<AppType> {
+    app_type(match kind {
+        "music" => "3",
+        "link" | "official-link" => "5",
+        "file" => "6",
+        "chat-record" => "19",
+        "miniapp" => "33",
+        "finder" => "51",
+        "solitaire" => "53",
+        "quote" => "57",
+        "announcement" => "87",
+        "transfer" => "2000",
+        "red-packet" => "2001",
+        _ => return None,
+    })
+}
+
 /// The kind an app message's own `<type>` gives it (`finder`, `music`, `quote`, …), the same for the chat window,
 /// the exports and the text of both (#1165); `None` for a type that does not say, whose kind
 /// [`kind_by_keywords`] guesses.
@@ -124,10 +143,43 @@ pub(crate) fn kind_by_keywords(own: &str) -> Option<&'static str> {
     None
 }
 
+/// The place an app message's own XML (`own`, [`without_quoted`]) names: the `label`, else the `poiname`, of its
+/// `<location>`, as an attribute or an element; empty when it names none.
+pub(crate) fn location_label(own: &str) -> String {
+    [
+        xml_attr_text(own, "location", "label"),
+        xml_attr_text(own, "location", "poiname"),
+        xml_text(own, "label"),
+        xml_text(own, "poiname"),
+    ]
+    .into_iter()
+    .find(|v| !v.is_empty())
+    .unwrap_or_default()
+}
+
+/// Whether a link (`<type>` 5 or 49) is an official account's article: it names an official account as its source
+/// (`gh_…`), its app as one, or a source at all.
+fn is_official_article(n: &str, xml_type: &str) -> bool {
+    matches!(xml_type, "5" | "49")
+        && (xml_text(n, "sourceusername").starts_with("gh_")
+            || xml_text(n, "appname").contains("公众号")
+            || !xml_text(n, "sourcename").is_empty())
+}
+
+/// Whether `kind` is a link's, an official account's article among them.
+pub(crate) fn is_link_kind(kind: Option<&str>) -> bool {
+    matches!(kind, Some("link" | "official-link"))
+}
+
 /// `appMsgKind` of [`extract_arkme_app_message_meta_in`], without reading the other fields; `None` for an image, a
 /// voice message, a video, a sticker and a location, which are not app messages.
 pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> {
-    classify_app_message(&MsgXml::new(content), local_type)?.kind
+    app_message_kind_in(&MsgXml::new(content), local_type)
+}
+
+/// [`app_message_kind`] of a message's [`MsgXml`].
+pub(crate) fn app_message_kind_in(x: &MsgXml<'_>, local_type: i64) -> Option<&'static str> {
+    classify_app_message(x, local_type)?.kind
 }
 
 /// The app-message fields of a message's [`MsgXml`]: extra structured fields for `arkme-json` / `json`. An image, a
@@ -165,7 +217,7 @@ pub fn quote_or_link_app_message_meta_in(
         return None;
     }
     let class = classify_app_message(x, local_type)?;
-    if !matches!(class.kind, Some("quote" | "link")) {
+    if class.kind != Some("quote") && !is_link_kind(class.kind) {
         return None;
     }
     app_message_fields(class, local_type, x)
@@ -209,7 +261,8 @@ fn put_quote(meta: &mut Map<String, Value>, x: &MsgXml<'_>) {
 }
 
 /// The first part of [`extract_arkme_app_message_meta_in`] for an app message; `None` when the message has no
-/// app-message meta at all, as one of [`is_non_app_type`] has none.
+/// app-message meta at all, as one of [`is_non_app_type`] has none. Its kind is the only one an app message has: the
+/// chat window, the command API and the exports all read it (#1263).
 fn classify_app_message(x: &MsgXml<'_>, local_type: i64) -> Option<AppMessageClass> {
     if x.content().is_empty() || is_non_app_type(local_type) {
         return None;
@@ -219,16 +272,26 @@ fn classify_app_message(x: &MsgXml<'_>, local_type: i64) -> Option<AppMessageCla
     let has_refer = n.contains("<refermsg>");
     let replies = has_refer || local_type == 244813135921;
     let xml_type = x.app_type_twice().to_string();
+    let own = without_quoted(&n);
     // the message's own `<type>` first; the words of its own XML only when the type says nothing (#1165)
     let kind = match kind_of_app_type(&xml_type) {
         Some("link") if replies => Some("quote"),
         Some(kind) => Some(kind),
-        None => match kind_by_keywords(&without_quoted(&n)) {
+        None => match kind_by_keywords(&own) {
             Some(kind) => Some(kind),
             None if replies => Some("quote"),
             None if looks_app => Some("card"),
             None => None,
         },
+    };
+    // what the chat window shows apart: a gift, a place, an official account's article; the exports name them the
+    // same (#1263)
+    let kind = match kind {
+        Some("finder" | "red-packet") => kind,
+        _ if xml_type == "115" => Some("gift"),
+        _ if !location_label(&own).is_empty() => Some("location"),
+        Some("link") if is_official_article(&n, &xml_type) => Some("official-link"),
+        kind => kind,
     };
     let is_finder = kind == Some("finder");
     let is_music = kind == Some("music");
@@ -290,7 +353,7 @@ fn app_message_fields(
     if kind == Some("quote") {
         put_quote(&mut meta, x);
     }
-    if kind == Some("link") {
+    if is_link_kind(kind) {
         let card = extract_html_link_card(&n, local_type);
         let url = card
             .as_ref()
@@ -658,7 +721,7 @@ mod tests {
             }
             // a media reply's meta is its quote: the detailed JSON keeps it too
             let quote_or_link =
-                whole.filter(|_| matches!(kind, Some("quote" | "link")) || is_non_app_type(t));
+                whole.filter(|_| kind == Some("quote") || is_link_kind(kind) || is_non_app_type(t));
             assert_eq!(
                 quote_or_link_app_message_meta_in(&MsgXml::new(&s), t),
                 quote_or_link,
