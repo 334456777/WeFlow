@@ -460,12 +460,12 @@ fn app_type_in(content: &str, normalized: &str) -> String {
         return String::new();
     }
     // the regex needs a `<type>`, and no character but these letters' ASCII cases folds to them: images, voice and
-    // stickers have none
-    if crate::xml::find_ci(normalized, 0, "<type>").is_none() {
+    // stickers have none; it reads the message's own XML too, as what it quotes has a `<type>` of its own (#1263)
+    if crate::xml::find_ci(&own, 0, "<type>").is_none() {
         return String::new();
     }
     rx(r"(?i)<type>(\d+)</type>")
-        .captures(normalized)
+        .captures(&own)
         .map(|c| c[1].to_string())
         .unwrap_or_default()
 }

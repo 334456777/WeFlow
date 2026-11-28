@@ -419,6 +419,11 @@ fn parse_type49_message(content: &str) -> Type49Info {
     }
     let xml_type = app_xml_type(content);
     if xml_type.is_empty() {
+        // no `<type>`: the kind the words of its XML give it, as the exports read it (#1263)
+        r.app_msg_kind = crate::message::appmsg::app_message_kind(content, 49).map(Into::into);
+        if r.app_msg_kind.as_deref() == Some("quote") {
+            (r.quoted_content, r.quoted_sender) = quote_of(content);
+        }
         return r;
     }
     // the fields are text for people to read, with their entities decoded (#1199)
@@ -1334,21 +1339,39 @@ mod tests {
         }
     }
 
-    /// Every type of the table, kept as `local_type` 49 or as `(<type> << 32) | 49`, has one tag, one kind, one type
-    /// name and one ChatLab type, wherever it is read: the chat window's text and the exports' agree, and so do
-    /// both kinds (#1180).
+    /// Every `<type>` from 0 to 2100, kept as `local_type` 49 or as `(<type> << 32) | 49`, has one kind, one type
+    /// name and one ChatLab type wherever it is read. One of the table has its row's, whose tag starts the chat
+    /// window's text and the exports' alike (#1180); one the table does not know is a card, or a gift for 115, read
+    /// the same however it is kept (#1263).
     #[test]
-    fn an_app_type_reads_the_same_everywhere() {
-        let types = [
-            "3", "76", "4", "5", "49", "6", "8", "19", "24", "33", "36", "51", "53", "57", "62",
-            "87", "2000", "2001",
-        ];
-        for ty in types {
-            let row = app_type(ty).unwrap();
+    fn every_app_type_reads_the_same_everywhere() {
+        let mut known = 0;
+        for n in 0..=2100_i64 {
+            let ty = n.to_string();
+            let ty = ty.as_str();
             let xml = format!(
                 "<msg><appmsg><title>T</title><type>{ty}</type><url>https://a</url></appmsg></msg>"
             );
-            let kept_as: i64 = (ty.parse::<i64>().unwrap() << 32) | 49;
+            let x = crate::message::xml::MsgXml::new(&xml);
+            let kept_as = (n << 32) | 49;
+            let Some(row) = app_type(ty) else {
+                let [as_49, as_kept] = [49, kept_as].map(|local_type| {
+                    (
+                        crate::message::appmsg::app_message_kind(&xml, local_type),
+                        parse_type49_message(&xml).app_msg_kind,
+                        crate::message::kind::message_type_name_in(local_type, &x),
+                        crate::message::kind::convert_message_type_in(local_type, &x),
+                        parsed_content(&xml, local_type, None),
+                        crate::message::parse_message_content(&xml, local_type, None, None, None),
+                    )
+                });
+                let kind = if n == 115 { "gift" } else { "card" };
+                assert_eq!(as_49.0, Some(kind), "<type> {ty}");
+                assert_eq!(as_49.1.as_deref(), Some(kind), "<type> {ty}");
+                assert_eq!(as_49, as_kept, "<type> {ty}");
+                continue;
+            };
+            known += 1;
             for local_type in [49, kept_as] {
                 let at = format!("<type> {ty} as {local_type}");
                 let chat = parsed_content(&xml, local_type, None);
@@ -1392,7 +1415,6 @@ mod tests {
                     arkme,
                     "{at}"
                 );
-                let x = crate::message::xml::MsgXml::new(&xml);
                 assert_eq!(
                     crate::message::kind::message_type_name_in(local_type, &x),
                     row.name,
@@ -1402,6 +1424,141 @@ mod tests {
                     crate::message::kind::convert_message_type_in(local_type, &x),
                     row.chatlab,
                     "{at}"
+                );
+            }
+        }
+        // the table's rows, read from the table itself
+        assert!(known > 10, "{known} types");
+    }
+
+    /// Elements of an app message's XML for the property test: those whose words tell a kind when the `<type>` tells
+    /// none (a Channels video, a red packet, a song, #1241) and some that tell none, empty ones among them.
+    const WORDS: &[&str] = &[
+        "<finderFeed><objectId>1</objectId></finderFeed>",
+        "<finderUsername>v2_x@finder</finderUsername>",
+        "<finderUsername></finderUsername>",
+        "<finderObjectID>12</finderObjectID>",
+        "<finderGuarantee></finderGuarantee>",
+        "<nativeurl>wxpay://c2cbizmessagehandler/hongbao/receivehongbao?a=1</nativeurl>",
+        "<musicurl>https://m</musicurl>",
+        "<musicurl> </musicurl>",
+        "<playurl>https://p</playurl>",
+        "<dataurl>https://d</dataurl>",
+        "<dataurl></dataurl>",
+        "<des>d</des>",
+        "<url>https://a</url>",
+    ];
+
+    /// An app message as the property test makes it: its own `<type>` (one of the table, one it does not know, or
+    /// none), some of [`WORDS`], and what it quotes, if it replies: the quoted message's `<type>` and words.
+    type AppParts = (Option<i64>, Vec<&'static str>, Option<Quoted>);
+
+    /// What an [`AppParts`] quotes: the quoted message's `<type>` and words, and whether its XML is escaped in the
+    /// `<content>` of the `<refermsg>`, as WeChat writes it, or not.
+    type Quoted = (i64, Vec<&'static str>, bool);
+
+    /// The strategy of [`AppParts`].
+    fn app_message() -> impl proptest::strategy::Strategy<Value = AppParts> {
+        use proptest::prelude::*;
+        let known: Vec<i64> = (1..=2100)
+            .filter(|n: &i64| app_type(&n.to_string()).is_some())
+            .collect();
+        let ty = prop_oneof![
+            3 => proptest::sample::select(known.clone()).prop_map(Some),
+            1 => (1..5000_i64).prop_map(Some),
+            1 => Just(None),
+        ];
+        let words = || proptest::sample::subsequence(WORDS, 0..=4);
+        let quoted =
+            proptest::option::of((proptest::sample::select(known), words(), any::<bool>()));
+        (ty, words(), quoted)
+    }
+
+    /// The XML of an [`AppParts`].
+    fn app_xml(ty: Option<i64>, words: &[&str], quoted: Option<&Quoted>) -> String {
+        let ty = ty.map_or(String::new(), |n| format!("<type>{n}</type>"));
+        let refer = quoted.map_or(String::new(), |(n, words, escaped)| {
+            let content = format!(
+                "<msg><appmsg><title>Q</title><type>{n}</type>{}</appmsg></msg>",
+                words.concat()
+            );
+            let content = if *escaped {
+                content.replace('<', "&lt;").replace('>', "&gt;")
+            } else {
+                content
+            };
+            format!(
+                "<refermsg><type>49</type><svrid>1</svrid><content>{content}</content></refermsg>"
+            )
+        });
+        format!(
+            "<msg><appmsg><title>T</title>{ty}{}{refer}</appmsg></msg>",
+            words.concat()
+        )
+    }
+
+    /// The `[…]` an app message's text starts with, if any.
+    fn tag_of(text: &str) -> Option<&str> {
+        let end = text.find(']')?;
+        (text.starts_with('[') && end <= 30).then(|| &text[..=end])
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(512))]
+
+        /// Any app message has one kind, type name and tag however it is kept and wherever it is read: the kind its
+        /// own `<type>` gives it, else the one the words of its own XML give it, never those of what it quotes
+        /// (#1165, #1241, #1263).
+        #[test]
+        fn any_app_message_has_one_kind_wherever_it_is_read(
+            (ty, words, quoted) in app_message(),
+        ) {
+            use proptest::prop_assert_eq;
+            let xml = app_xml(ty, &words, quoted.as_ref());
+            let x = crate::message::xml::MsgXml::new(&xml);
+            let kind = crate::message::appmsg::app_message_kind(&xml, 49);
+            let chat_kind = parse_type49_message(&xml).app_msg_kind;
+            prop_assert_eq!(chat_kind.as_deref(), kind, "{}", xml);
+            // the type first, the words of the message's own XML only when the type tells no kind
+            let replies = quoted.is_some();
+            let want = match ty.and_then(|n| kind_of_app_type(&n.to_string())) {
+                Some("link") if replies => "quote",
+                Some(by_type) => by_type,
+                None => kind_by_keywords(&words.concat())
+                    .unwrap_or(if replies { "quote" } else { "card" }),
+            };
+            let want = match want {
+                "finder" | "red-packet" => want,
+                _ if ty == Some(115) => "gift",
+                _ => want,
+            };
+            prop_assert_eq!(kind, Some(want), "{}", xml);
+            // what it quotes says nothing of it
+            if let Some((n, _, escaped)) = &quoted {
+                let bare = app_xml(ty, &words, Some(&(*n, Vec::new(), *escaped)));
+                prop_assert_eq!(crate::message::appmsg::app_message_kind(&bare, 49), kind, "{}", xml);
+            }
+            // the chat window's line and the exports' text start with the same tag, but for a forwarded chat
+            // record, whose items the exports write after a tag of their own
+            let chat = parsed_content(&xml, 49, None);
+            let export = crate::message::parse_message_content(&xml, 49, None, None, None)
+                .unwrap_or_default();
+            if kind != Some("chat-record") {
+                prop_assert_eq!(tag_of(&chat), tag_of(&export), "{}: {} / {}", xml, chat, export);
+            }
+            // however it is kept
+            if let Some(n) = ty {
+                let kept = (n << 32) | 49;
+                prop_assert_eq!(crate::message::appmsg::app_message_kind(&xml, kept), kind, "{}", xml);
+                prop_assert_eq!(
+                    crate::message::kind::message_type_name_in(kept, &x),
+                    crate::message::kind::message_type_name_in(49, &x),
+                    "{}", xml
+                );
+                prop_assert_eq!(
+                    crate::message::kind::convert_message_type_in(kept, &x),
+                    crate::message::kind::convert_message_type_in(49, &x),
+                    "{}", xml
                 );
             }
         }
