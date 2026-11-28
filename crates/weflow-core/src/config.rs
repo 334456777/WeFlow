@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 use crate::error::{AppError, AppResult};
 
 mod extra_keys;
+pub mod keys;
 mod legacy_keys;
 pub use legacy_keys::refuse_renamed;
 
@@ -182,10 +183,10 @@ impl ServeSettings {
                 }
                 self.host = Some(host);
             }
-            "port" => self.port = Some(as_int_in(value, &name, 1, u16::MAX)?),
-            "max_tasks" => self.max_tasks = Some(as_int_in(value, &name, 1, u16::MAX)?),
-            "max_reads" => self.max_reads = Some(as_int_in(value, &name, 1, u16::MAX)?),
-            "max_media" => self.max_media = Some(as_int_in(value, &name, 1, u16::MAX)?),
+            "port" => self.port = Some(as_bounded(value, &keys::SERVE_PORT)?),
+            "max_tasks" => self.max_tasks = Some(as_bounded(value, &keys::SERVE_MAX_TASKS)?),
+            "max_reads" => self.max_reads = Some(as_bounded(value, &keys::SERVE_MAX_READS)?),
+            "max_media" => self.max_media = Some(as_bounded(value, &keys::SERVE_MAX_MEDIA)?),
             "log_requests" => self.log_requests = Some(as_bool(value, &name)?),
             "insight" => self.insight = Some(as_bool(value, &name)?),
             "image_auto_download" => self.image_auto_download = Some(as_bool(value, &name)?),
@@ -470,6 +471,12 @@ impl ConfigStore {
         target.get_key(&key)
     }
 
+    /// The key `setting` of the profile `profile`, else of the current one, as the key reads it ([`keys::Setting`]):
+    /// its default when it is not set or holds what the key does not take.
+    pub fn setting<S: keys::Setting>(&self, profile: Option<&str>, setting: &S) -> S::Value {
+        setting.read(&self.get_key(profile, setting.name()))
+    }
+
     /// Sets `key` from the text a command line gives (`config set`, #813): as it is for the keys that hold text
     /// (paths, keys, tokens, names), so that `123456789012345678901234567890` or `1e5` stays what was typed; read as
     /// JSON for the others (numbers, `true`/`false`, and the arrays and objects of the keys the WebUI keeps).
@@ -562,7 +569,7 @@ impl ConfigStore {
             "decrypt_key" => target.decrypt_key = Some(as_string(value)?),
             "wxid" => target.wxid = Some(as_string(value)?),
             "image_xor_key" => {
-                target.image_xor_key = Some(as_int_in(value, &key, 0, u8::MAX.into())?);
+                target.image_xor_key = Some(as_bounded(value, &keys::IMAGE_XOR_KEY)?);
             }
             "image_aes_key" => target.image_aes_key = Some(as_string(value)?),
             "cache_path" => target.cache_path = Some(as_string(value)?),
@@ -583,7 +590,9 @@ impl ConfigStore {
             "ai_model_api_key" => target.ai_model_api_key = Some(as_string(value)?),
             "ai_model_api_model" => target.ai_model_api_model = Some(as_string(value)?),
             "ai_model_api_max_tokens" => {
-                target.ai_model_api_max_tokens = Some(as_int_in(value, &key, 1, u32::MAX)?);
+                let tokens = keys::AI_MODEL_API_MAX_TOKENS;
+                target.ai_model_api_max_tokens =
+                    Some(as_int_in(value, tokens.name, tokens.min, tokens.max)?);
             }
             "ai_insight_enabled" => target.ai_insight_enabled = Some(as_bool(value, &key)?),
             other => {
@@ -1096,13 +1105,9 @@ fn as_i64(value: Value) -> AppResult<i64> {
     }
 }
 
-/// A whole number from `min` to `max`, as the type of the field it sets; anything outside is refused rather than
-/// wrapped by a later `as` cast.
-fn as_int_in<T>(value: Value, key: &str, min: T, max: T) -> AppResult<T>
-where
-    T: Copy + Into<i64> + TryFrom<i64>,
-{
-    let (min, max) = (min.into(), max.into());
+/// A whole number from `min` to `max` for the key `key`, as the type of the field it sets; anything outside is refused
+/// rather than wrapped by a later `as` cast.
+fn as_int_in<T: TryFrom<i64>>(value: Value, key: &str, min: i64, max: i64) -> AppResult<T> {
     let n = as_i64(value)?;
     T::try_from(n)
         .ok()
@@ -1112,6 +1117,11 @@ where
                 "invalid value {n} for {key}; use a whole number from {min} to {max}"
             ))
         })
+}
+
+/// A whole number in the bounds of `bounds`, as the type of the field it sets ([`as_int_in`]).
+fn as_bounded<T: TryFrom<i64>>(value: Value, bounds: &keys::Bounds) -> AppResult<T> {
+    as_int_in(value, bounds.name, bounds.min, bounds.max)
 }
 
 /// A switch for the key `key`: `true` or `false`, or `1`/`0`, `yes`/`no`, `on`/`off`, in any case.

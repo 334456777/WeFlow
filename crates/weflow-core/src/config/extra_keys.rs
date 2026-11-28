@@ -2,10 +2,12 @@
 //! insights, the message push, the statistics, the image auto-download and the progress bar (#1042, #1149).
 //!
 //! Each key takes one kind of value. [`Kind::settle`] refuses a value of another kind and gives one it takes the form
-//! the readers look for: a switch is a JSON boolean, a count a whole number, a mode its name in lower case.
+//! the readers look for: a switch is a JSON boolean, a count a whole number, a mode its name in lower case. The bounds,
+//! names and defaults of the switches, counts, numbers and modes are their descriptions in [`super::keys`].
 
 use serde_json::{Number, Value};
 
+use super::keys::{self, Choice, Count};
 use super::{as_bool, as_seconds, as_string};
 use crate::error::{AppError, AppResult};
 
@@ -16,22 +18,12 @@ pub(super) enum Kind {
     Switch,
     /// A whole number of seconds, 0 or more ([`as_seconds`]).
     Seconds,
-    /// A whole number from `min` to `max`.
-    Count {
-        /// The least number taken.
-        min: i64,
-        /// The greatest number taken.
-        max: i64,
-    },
-    /// A number from `least` to `most`, a fraction or a whole one.
-    Number {
-        /// The least number taken.
-        least: f64,
-        /// The greatest number taken.
-        most: f64,
-    },
-    /// One of the names, in any case; kept in lower case.
-    Choice(&'static [&'static str]),
+    /// A whole number in the bounds of the count.
+    Count(Count),
+    /// A number in the bounds of the number, a fraction or a whole one.
+    Number(keys::Number),
+    /// One of the names of the choice, in any case; kept in lower case.
+    Choice(Choice),
     /// A JSON array of conversation ids.
     Ids,
     /// A JSON object whose keys are conversation ids.
@@ -43,56 +35,53 @@ pub(super) enum Kind {
 /// Each key and what it takes, in the order `config set --help` lists them.
 pub(super) const KEYS: &[(&str, Kind)] = &[
     ("auto_download_whitelist", Kind::Ids),
-    ("no_progress", Kind::Switch),
+    (keys::NO_PROGRESS.name, Kind::Switch),
     ("progress_delay_seconds", Kind::Seconds),
     (
-        "ai_insight_filter_mode",
-        Kind::Choice(&["whitelist", "blacklist"]),
+        keys::AI_INSIGHT_FILTER_MODE.name,
+        Kind::Choice(keys::AI_INSIGHT_FILTER_MODE),
     ),
     ("ai_insight_filter_list", Kind::Ids),
-    ("ai_insight_silence_days", Kind::Count { min: 1, max: 365 }),
     (
-        "ai_insight_scan_interval_hours",
-        Kind::Number {
-            least: 0.1,
-            most: 168.0,
-        },
+        keys::AI_INSIGHT_SILENCE_DAYS.name,
+        Kind::Count(keys::AI_INSIGHT_SILENCE_DAYS),
     ),
     (
-        "ai_insight_cooldown_minutes",
-        Kind::Count {
-            min: 0,
-            max: 10_080,
-        },
+        keys::AI_INSIGHT_SCAN_INTERVAL_HOURS.name,
+        Kind::Number(keys::AI_INSIGHT_SCAN_INTERVAL_HOURS),
     ),
-    ("ai_insight_notification_enabled", Kind::Switch),
-    ("ai_insight_allow_context", Kind::Switch),
     (
-        "ai_insight_context_count",
-        Kind::Count { min: 1, max: 1000 },
+        keys::AI_INSIGHT_COOLDOWN_MINUTES.name,
+        Kind::Count(keys::AI_INSIGHT_COOLDOWN_MINUTES),
     ),
-    ("ai_insight_allow_moments_context", Kind::Switch),
+    (keys::AI_INSIGHT_NOTIFICATION_ENABLED.name, Kind::Switch),
+    (keys::AI_INSIGHT_ALLOW_CONTEXT.name, Kind::Switch),
+    (
+        keys::AI_INSIGHT_CONTEXT_COUNT.name,
+        Kind::Count(keys::AI_INSIGHT_CONTEXT_COUNT),
+    ),
+    (keys::AI_INSIGHT_ALLOW_MOMENTS_CONTEXT.name, Kind::Switch),
     ("ai_insight_moments_bindings", Kind::ById),
     (
-        "ai_insight_moments_context_count",
-        Kind::Count { min: 1, max: 20 },
+        keys::AI_INSIGHT_MOMENTS_CONTEXT_COUNT.name,
+        Kind::Count(keys::AI_INSIGHT_MOMENTS_CONTEXT_COUNT),
     ),
-    ("ai_insight_allow_social_context", Kind::Switch),
+    (keys::AI_INSIGHT_ALLOW_SOCIAL_CONTEXT.name, Kind::Switch),
     ("ai_insight_weibo_bindings", Kind::ById),
     ("ai_insight_weibo_cookie", Kind::Text),
     (
-        "ai_insight_social_context_count",
-        Kind::Count { min: 1, max: 5 },
+        keys::AI_INSIGHT_SOCIAL_CONTEXT_COUNT.name,
+        Kind::Count(keys::AI_INSIGHT_SOCIAL_CONTEXT_COUNT),
     ),
     ("ai_insight_system_prompt", Kind::Text),
-    ("ai_insight_telegram_enabled", Kind::Switch),
+    (keys::AI_INSIGHT_TELEGRAM_ENABLED.name, Kind::Switch),
     ("ai_insight_telegram_token", Kind::Text),
     ("ai_insight_telegram_chat_ids", Kind::Text),
-    ("ai_footprint_enabled", Kind::Switch),
+    (keys::AI_FOOTPRINT_ENABLED.name, Kind::Switch),
     ("ai_footprint_system_prompt", Kind::Text),
     (
-        "message_push_filter_mode",
-        Kind::Choice(&["all", "whitelist", "blacklist"]),
+        keys::MESSAGE_PUSH_FILTER_MODE.name,
+        Kind::Choice(keys::MESSAGE_PUSH_FILTER_MODE),
     ),
     ("message_push_filter_list", Kind::Ids),
     ("analytics_excluded_usernames", Kind::Ids),
@@ -122,9 +111,9 @@ impl Kind {
         match self {
             Self::Switch => as_bool(value, key).map(Value::Bool),
             Self::Seconds => as_seconds(value, key).map(Value::from),
-            Self::Count { min, max } => as_count(&value, key, min, max).map(Value::from),
-            Self::Number { least, most } => as_number(value, key, least, most),
-            Self::Choice(names) => as_choice(&value, key, names),
+            Self::Count(count) => as_count(&value, key, count.min, count.max).map(Value::from),
+            Self::Number(number) => as_number(value, key, number.least, number.most),
+            Self::Choice(choice) => as_choice(&value, key, &choice),
             Self::Ids => as_ids(value, key),
             Self::ById => as_by_id(value, key),
             Self::Text => as_string(value).map(Value::String),
@@ -141,7 +130,7 @@ fn shown(value: &Value) -> String {
 }
 
 /// A whole number from `min` to `max`: a JSON number without a fraction, or text that holds one.
-fn as_count(value: &Value, key: &str, min: i64, max: i64) -> AppResult<i64> {
+pub(super) fn as_count(value: &Value, key: &str, min: i64, max: i64) -> AppResult<i64> {
     let n = match value {
         Value::Number(n) => n.as_i64(),
         Value::String(s) => s.trim().parse::<i64>().ok(),
@@ -156,7 +145,7 @@ fn as_count(value: &Value, key: &str, min: i64, max: i64) -> AppResult<i64> {
 }
 
 /// A number from `least` to `most`: a JSON number, kept as it is, or text that holds one.
-fn as_number(value: Value, key: &str, least: f64, most: f64) -> AppResult<Value> {
+pub(super) fn as_number(value: Value, key: &str, least: f64, most: f64) -> AppResult<Value> {
     let number = match &value {
         Value::Number(n) => Some(n.clone()),
         Value::String(s) => s.trim().parse::<f64>().ok().and_then(Number::from_f64),
@@ -173,16 +162,15 @@ fn as_number(value: Value, key: &str, least: f64, most: f64) -> AppResult<Value>
         })
 }
 
-/// One of `names`, in any case, as its name.
-fn as_choice(value: &Value, key: &str, names: &[&str]) -> AppResult<Value> {
+/// One of the names of `choice`, in any case, as its name.
+fn as_choice(value: &Value, key: &str, choice: &Choice) -> AppResult<Value> {
     let text = shown(value);
-    let typed = text.trim().to_ascii_lowercase();
-    if let Some(name) = names.iter().find(|name| **name == typed) {
-        return Ok(Value::String((*name).to_string()));
+    if let Some(name) = choice.find(&text) {
+        return Ok(Value::String(name.to_string()));
     }
     Err(AppError::usage(format!(
         "invalid value '{text}' for {key}; use {}",
-        either(names)
+        either(choice.names)
     )))
 }
 
