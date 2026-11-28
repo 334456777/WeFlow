@@ -1,166 +1,166 @@
-//! Images, voices, videos and stickers: their lists and what the media commands decode or write.
+//! 图片、语音、视频和表情：它们的列表，以及媒体命令解码或写出的内容。
 
 use schemars::JsonSchema;
 use serde::Serialize;
 
 use super::chat::MessageView;
 
-/// Which files of a message's image are on this computer (`chat image-info`), and the sizes the message gives.
+/// 消息中的图片有哪些版本在本机上（`chat image-info`），以及消息给出的大小。
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageInfo {
-    /// The thumbnail a chat shows.
+    /// 是否有缩略图，即聊天窗口中显示的那张。
     pub thumb: bool,
-    /// The image shown when it is opened.
+    /// 是否有点开时显示的图片。
     pub normal: bool,
-    /// The original, once View original downloaded it.
+    /// 是否有原图：在微信中点「查看原图」下载后才有。
     pub hd: bool,
-    /// Bytes of the image; null when neither the message nor its file says.
+    /// 图片的字节数：消息中写的 `length`，没有时为本机文件的大小；都没有时为 `null`。
     pub normal_bytes: Option<u64>,
-    /// Bytes of the original, as the message gives them even before it is downloaded.
+    /// 原图的字节数：消息中写的 `hdlength`（原图还没下载时也有），没有时为本机原图文件的大小；都没有时为 `null`。
     pub hd_bytes: Option<u64>,
 }
 
-/// The images of a conversation (`chat images`), the newest first, each once.
+/// 会话中的图片（`chat images`），从新到旧，每张只列一次。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct ChatImages {
-    /// The image messages.
+    /// 这些图片消息。
     pub images: Vec<ImageRef>,
 }
 
-/// What names an image message's file.
+/// 用来找到图片消息的文件的标识。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageRef {
-    /// The image's MD5, as a message's `imageMd5`; null when the message has none.
+    /// 图片的 MD5，与消息的 `imageMd5` 相同；消息中没有时为 `null`。
     pub image_md5: Option<String>,
-    /// The name of its `.dat` file, as a message's `imageDatName`; null when the message has none.
+    /// 图片的 `.dat` 文件名，与消息的 `imageDatName` 相同；消息中没有时为 `null`。
     pub image_dat_name: Option<String>,
-    /// Null when the message has no time.
+    /// 发送时间；消息没有时间时为 `null`。
     pub create_time: Option<i64>,
 }
 
-/// The voice messages of a conversation (`chat voice-messages`), the newest first.
+/// 会话中的语音消息（`chat voice-messages`），从新到旧，每条只列一次。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct VoiceMessages {
-    /// The voice messages.
+    /// 这些语音消息。
     pub messages: Vec<MessageView>,
 }
 
-/// A page of image and video messages across conversations (`chat media-stream`), the newest first.
+/// 各会话的图片和视频消息中的一页（`chat media-stream`），从新到旧。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaStream {
-    /// The messages of the page.
+    /// 这一页的消息。
     pub items: Vec<MediaStreamItem>,
-    /// Whether there are messages past this page.
+    /// 这一页之后是否还有消息。
     pub has_more: bool,
-    /// The `offset` of the next page.
+    /// 下一页的 `offset`。
     pub next_offset: usize,
 }
 
-/// A message of `chat media-stream`.
+/// `chat media-stream` 中的一条消息。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaStreamItem {
-    /// The message, its fields at the top level.
+    /// 消息本身，它的字段放在顶层。
     #[serde(flatten)]
     pub message: MessageView,
-    /// The conversation's username.
+    /// 会话的用户名。
     pub session_id: String,
-    /// The conversation's name as the conversation list shows it.
+    /// 会话的显示名，与会话列表相同。
     pub session_display_name: String,
-    /// `image` or `video`.
+    /// `image` 或 `video`。
     pub media_type: String,
 }
 
-/// A voice already decoded (`chat voice-cache`).
+/// 缓存中已解码的语音（`chat voice-cache`）；这个命令不做解码。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceCache {
-    /// Whether the voice was decoded already.
+    /// 缓存中是否有这条语音解码后的 WAV。
     pub has_cache: bool,
-    /// The WAV, in base64; left out without one.
+    /// base64 编码的 WAV；没有时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
 }
 
-/// The voices `chat voice-preload` decoded ahead.
+/// `chat voice-preload` 预先解码的语音。
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct VoicesPrepared {
-    /// The voices decoded or found decoded already.
+    /// 这次解码的和缓存中已有的语音数。
     pub prepared: usize,
 }
 
-/// The stickers `chat emoji` downloaded.
+/// `chat emoji` 下载的表情：会话最近 500 条消息中的表情。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct EmojisDownloaded {
-    /// The sticker messages found.
+    /// 找到的表情数。
     pub found: usize,
-    /// The ones downloaded now, not already there.
+    /// 这次下载的表情数，不含原来就有的。
     pub downloaded: usize,
-    /// The ones whose request or write failed; they are not in `files`.
+    /// 请求或写入失败的表情数；它们不在 `files` 中。
     pub failed: usize,
-    /// Left out when none was found.
+    /// 磁盘上的表情，即原来就有的和这次下载的，按消息的顺序；一个都没找到时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<EmojiFile>>,
 }
 
-/// A sticker `chat emoji` has on disk.
+/// `chat emoji` 在磁盘上的一个表情。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct EmojiFile {
-    /// The sticker's MD5.
+    /// 表情的 MD5。
     pub md5: String,
-    /// Already there before.
+    /// 下载之前是否就已经有了。
     pub cached: bool,
-    /// The file.
+    /// 文件的路径。
     pub path: String,
-    /// Bytes downloaded; left out for one already there.
+    /// 下载的字节数；原来就有的省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<usize>,
 }
 
-/// A media file a command wrote (`chat image-data`, `video-data`, `voice-data` with `out`).
+/// 命令写出的一个媒体文件（带 `out` 的 `chat image-data`、`video-data`、`voice-data`）。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct MediaWritten {
-    /// The file written.
+    /// 写出的文件。
     pub path: String,
-    /// Its size.
+    /// 文件的字节数。
     pub bytes: u64,
 }
 
-/// A voice as WAV in base64 (`chat voice-data` without `out`).
+/// base64 编码的 WAV 语音（不带 `out` 的 `chat voice-data`）。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct VoiceData {
-    /// The WAV, in base64.
+    /// base64 编码的 WAV。
     pub data: String,
 }
 
-/// What `image auto-download status` answers: whether the image auto-download hook is in WeChat. `weflow serve`
-/// answers its `--json` document for the hook it runs itself (on Windows x64 unless `serve_image_auto_download` is
-/// false); the command run on its own, or through `serve` as a job or with `std`, answers for its own process, which
-/// runs none.
+/// `image auto-download status` 的回答：原图自动下载的钩子是否在微信中。
+///
+/// `weflow serve` 为它自己运行的钩子回答 `--json` 文档（在 Windows x64 上，`serve_image_auto_download` 不为
+/// `false` 时运行）；单独运行的命令，以及经 `serve` 以作业或带 `std` 运行的命令，回答的是自己的进程，而它不运行钩子。
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoDownloadStatus {
-    /// Whether the hook is in WeChat now.
+    /// 钩子现在是否在微信中。
     pub is_hooked: bool,
-    /// The WeChat process hooked; null while none is.
+    /// 挂钩的微信进程的 ID；没有挂钩时为 `null`。
     pub pid: Option<u32>,
-    /// Whether this computer can download WeChat's images on its own.
+    /// 这台计算机是否支持原图自动下载（只有 Windows x64 支持）。
     pub supported: bool,
 }
 
-/// What `image auto-download start` answers once stopped (Ctrl+C).
+/// `image auto-download start` 收到停止请求（如 Ctrl+C）、撤除钩子后的回答。
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct AutoDownloadStopped {
-    /// Always true.
+    /// 总是 `true`。
     pub stopped: bool,
 }
 
-/// The MD5 a video message names (`video parse-md5`); null when its XML has none.
+/// 视频消息中写的 MD5（`video parse-md5`）；XML 中没有时为 `null`。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct VideoMd5 {
-    /// The video's MD5, as a message's `videoMd5`.
+    /// 视频的 MD5，与消息的 `videoMd5` 相同。
     pub md5: Option<String>,
 }

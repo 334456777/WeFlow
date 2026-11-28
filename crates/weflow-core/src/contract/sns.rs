@@ -1,330 +1,330 @@
-//! Moments: posts, their media and comments, the counts, and what the Moments commands download and write.
+//! 朋友圈：动态及其媒体和评论、计数，以及朋友圈命令下载和写出的内容。
 
 use std::path::PathBuf;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Who has posts in Moments (`sns users`), the one who posted last first.
+/// 在朋友圈发过动态的人（`sns users`），最近发的在前。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct SnsUsers {
-    /// Their wxids.
+    /// 他们的 wxid。
     pub usernames: Vec<String>,
 }
 
-/// How many Moments posts there are (`sns stats`).
+/// 朋友圈有多少条动态（`sns stats`）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SnsStats {
-    /// The posts kept on this computer.
+    /// 本机保存的动态数。
     pub total_posts: i64,
-    /// How many people posted them.
+    /// 发了这些动态的人数。
     pub total_friends: i64,
-    /// How many of them are the account's own; null when the account's wxid is not known.
+    /// 其中账号自己的动态数；不知道账号的 wxid 时为 `null`。
     pub my_posts: Option<i64>,
 }
 
-/// How many Moments posts one person has (`sns post-counts --user`).
+/// 一个人有多少条朋友圈动态（`sns post-counts --user`）。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UserPosts {
-    /// Their wxid.
+    /// 这个人的 wxid。
     pub username: String,
-    /// Their posts kept on this computer.
+    /// 本机保存的这个人的动态数。
     pub total_posts: i64,
 }
 
-/// A page of Moments posts (`sns timeline`), the newest first.
+/// 朋友圈动态的一页（`sns timeline`），从新到旧。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct SnsTimeline {
-    /// The posts of the page.
+    /// 这一页的动态。
     pub timeline: Vec<SnsPost>,
 }
 
-/// A Moments post.
+/// 一条朋友圈动态。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SnsPost {
-    /// WeChat's id of the post.
+    /// 微信给动态的 ID；XML 中没有时为 `tid`。
     pub id: String,
-    /// The row's id in WeChat's table, in decimal.
+    /// 这一行在微信的表中的 ID，写成十进制。
     pub tid: String,
-    /// The poster's wxid.
+    /// 发布者的 wxid。
     pub username: String,
-    /// The poster's name: the post's own, else the contact's, else the username.
+    /// 发布者在账号中的显示名：备注，没有时依次用昵称、微信号和用户名本身。
     pub nickname: String,
-    /// When it was posted; 0 when the post does not say.
+    /// 发布的时间；动态中没有写时为 0。
     pub create_time: i64,
-    /// The text of the post.
+    /// 动态的文字。
     pub content_desc: String,
-    /// WeChat's type of the post: 1 pictures, 15 a video, others links and such.
+    /// 微信的动态类型：1 为图片，15 为视频，其他为链接等；XML 中没有时为 1。
     #[serde(rename = "type")]
     pub kind: i64,
-    /// The post's XML as WeChat keeps it.
+    /// 微信保存的动态 XML。
     pub raw_xml: String,
-    /// Its pictures or video.
+    /// 动态中的图片或视频。
     pub media: Vec<SnsMedia>,
-    /// The names of those who liked it.
+    /// 点赞者的昵称。
     pub likes: Vec<String>,
-    /// Its comments, in the order of the post's XML.
+    /// 评论，按动态 XML 中的顺序。
     pub comments: Vec<SnsComment>,
-    /// The key of the post's video, which opens its cover too.
+    /// 动态视频的密钥（`<enc key>`），也能解开视频的封面。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_key: Option<String>,
-    /// The address of the poster's avatar; left out when there is none.
+    /// 发布者头像的地址；没有时省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
-    /// Where it was posted; left out when the post does not say.
+    /// 发布的地点；动态中没有写时省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SnsLocation>,
 }
 
-/// A picture or video of a post: addresses on WeChat's servers, fetched and decrypted by `sns media` with `key`.
+/// 动态中的一张图片或一段视频：微信服务器上的地址，由 `sns media` 用 `key` 取回并解密。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SnsMedia {
-    /// The full picture or the video: WeChat's address, over https and with `token`; with `with-media`, as
-    /// `resolvedUrl`, else WeChat's.
+    /// 完整的图片或视频：微信服务器的地址，改用 https 并带上 `token`；带 `with-media` 时为 `resolvedUrl`，
+    /// 没有时仍为微信的地址。
     pub url: String,
-    /// The thumbnail, as `url`.
+    /// 缩略图，写法同 `url`。
     pub thumb: String,
-    /// The file's MD5, as the post gives it.
+    /// 动态中写的文件 MD5。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub md5: Option<String>,
-    /// The access token WeChat's server asks for.
+    /// 微信服务器要求的访问令牌。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
-    /// The key that decrypts the file, to pass to `sns media`.
+    /// 解密文件的密钥，传给 `sns media`；视频优先用动态的视频密钥（#202）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    /// The `enc_idx` attribute the post gives the file.
+    /// 动态给文件写的 `enc_idx` 属性。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enc_idx: Option<String>,
-    /// With `with-media`: WeChat's address of the full picture or the video.
+    /// 带 `with-media` 时：完整的图片或视频在微信服务器上的地址。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_url: Option<String>,
-    /// With `with-media`: WeChat's address of the thumbnail.
+    /// 带 `with-media` 时：缩略图在微信服务器上的地址。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_thumb: Option<String>,
-    /// With `with-media`: the file fetched and decrypted, as a data URL, else `proxyUrl`.
+    /// 带 `with-media` 时：取回并解密的文件，写成 data URL；取不到时为 `proxyUrl`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_url: Option<String>,
-    /// With `with-media`: the thumbnail, as `resolvedUrl`.
+    /// 带 `with-media` 时：缩略图，写法同 `resolvedUrl`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_thumb_url: Option<String>,
-    /// With `with-media`: the route of `weflow serve` that fetches and decrypts the file (`/api/sns/media`).
+    /// 带 `with-media` 时：`weflow serve` 上取回并解密这个文件的路由（`/api/sns/media`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_url: Option<String>,
-    /// With `with-media`: the route that fetches and decrypts the thumbnail.
+    /// 带 `with-media` 时：取回并解密缩略图的路由。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_thumb_url: Option<String>,
-    /// The moving part of a live photo.
+    /// 实况照片中动的部分。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub live_photo: Option<SnsLivePhoto>,
 }
 
-/// The video of a live photo.
+/// 实况照片中的视频。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SnsLivePhoto {
-    /// The video, as a picture's `url`.
+    /// 视频，写法同图片的 `url`。
     pub url: String,
-    /// Its thumbnail, as a picture's `thumb`.
+    /// 视频的缩略图，写法同图片的 `thumb`。
     pub thumb: String,
-    /// The access token WeChat's server asks for.
+    /// 微信服务器要求的访问令牌。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
-    /// The key that decrypts the video; the picture's key opens it when it has none.
+    /// 解密视频的密钥：动态的视频密钥，没有时依次为它自己的密钥和图片的密钥。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    /// The video's MD5, as the post gives it.
+    /// 动态中写的视频 MD5。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub md5: Option<String>,
-    /// The `enc_idx` attribute the post gives the video.
+    /// 动态给视频写的 `enc_idx` 属性。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enc_idx: Option<String>,
-    /// With `with-media`: as a picture's `rawUrl`.
+    /// 带 `with-media` 时：同图片的 `rawUrl`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_url: Option<String>,
-    /// With `with-media`: as a picture's `rawThumb`.
+    /// 带 `with-media` 时：同图片的 `rawThumb`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_thumb: Option<String>,
-    /// With `with-media`: as a picture's `resolvedUrl`.
+    /// 带 `with-media` 时：同图片的 `resolvedUrl`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_url: Option<String>,
-    /// With `with-media`: as a picture's `resolvedThumbUrl`.
+    /// 带 `with-media` 时：同图片的 `resolvedThumbUrl`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_thumb_url: Option<String>,
-    /// With `with-media`: as a picture's `proxyUrl`.
+    /// 带 `with-media` 时：同图片的 `proxyUrl`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_url: Option<String>,
-    /// With `with-media`: as a picture's `proxyThumbUrl`.
+    /// 带 `with-media` 时：同图片的 `proxyThumbUrl`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_thumb_url: Option<String>,
 }
 
-/// A comment on a post.
+/// 动态下的一条评论。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SnsComment {
-    /// WeChat's id of the comment; one made up (`cmt_…`) when the post gives none.
+    /// 微信给评论的 ID；动态中没有时为生成的 `cmt_…`。
     pub id: String,
-    /// The commenter's name.
+    /// 评论者的昵称。
     pub nickname: String,
-    /// The commenter's wxid; left out when the post does not say.
+    /// 评论者的 wxid；动态中没有写时省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
-    /// Its text; empty for a comment of stickers only.
+    /// 评论的文字；只有表情的评论为空。
     pub content: String,
-    /// The comment it answers; empty when none.
+    /// 所回复的评论；没有时为空。
     pub ref_comment_id: String,
-    /// The wxid of whom it answers; left out when it answers no one or the post does not say.
+    /// 所回复的人的 wxid；不是回复，或动态中没有写时省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ref_username: Option<String>,
-    /// The name of whom it answers; left out as `refUsername`.
+    /// 所回复的人的昵称：动态中写的，没有时按 `refUsername` 从同一条动态的评论中找；找不到时省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ref_nickname: Option<String>,
-    /// The stickers in it; left out when there are none.
+    /// 评论中的表情；没有时省略。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub emojis: Vec<SnsEmoji>,
 }
 
-/// A sticker in a comment.
+/// 评论中的一个表情。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SnsEmoji {
-    /// Its plain address; empty when it has only `encryptUrl`.
+    /// 不加密的地址；只有 `encryptUrl` 时为空。
     pub url: String,
-    /// Its MD5; empty when the comment does not say.
+    /// 表情的 MD5；评论中没有写时为空。
     pub md5: String,
-    /// In pixels; null when the comment does not say.
+    /// 宽度，单位为像素；评论中没有写时为 `null`。
     pub width: Option<i64>,
-    /// In pixels; null when the comment does not say.
+    /// 高度，单位为像素；评论中没有写时为 `null`。
     pub height: Option<i64>,
-    /// The address of its encrypted file; left out when it has none.
+    /// 加密文件的地址；没有时省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encrypt_url: Option<String>,
-    /// The AES key of `encryptUrl`; left out when it has none.
+    /// `encryptUrl` 的 AES 密钥；没有时省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aes_key: Option<String>,
 }
 
-/// Where a post was made, as much as it says.
+/// 发布动态的地点，动态中写了多少就有多少。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SnsLocation {
-    /// In degrees, as the post writes it.
+    /// 纬度，单位为度，按动态中写的数字。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latitude: Option<serde_json::Number>,
-    /// In degrees, as the post writes it.
+    /// 经度，单位为度，按动态中写的数字。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub longitude: Option<serde_json::Number>,
-    /// The city.
+    /// 城市。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub city: Option<String>,
-    /// The country.
+    /// 国家。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub country: Option<String>,
-    /// The name of the place.
+    /// 地点的名称。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poi_name: Option<String>,
-    /// The place's address.
+    /// 地点的地址。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poi_address: Option<String>,
-    /// The place's address as a name.
+    /// 地址的名称（`poiAddressName`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poi_address_name: Option<String>,
-    /// The label the post shows for it.
+    /// 动态为这个地点显示的标签。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 }
 
-/// A Moments image or video `sns media` fetched.
+/// `sns media` 取回的一张朋友圈图片或一段视频。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SnsMediaFetched {
-    /// The file it was written to, with `out`.
+    /// 带 `out` 时写入的文件；不带时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub out: Option<String>,
-    /// Its MIME type.
+    /// 文件的 MIME 类型。
     pub content_type: String,
-    /// Its size, decrypted when there was a key.
+    /// 文件的字节数，有密钥时为解密后的大小。
     pub bytes: usize,
-    /// Where WeFlow keeps it; null when it was not kept.
+    /// WeFlow 缓存它的位置；没有缓存时为 `null`。
     pub cache_path: Option<PathBuf>,
 }
 
-/// What WeChat's media server answered `sns debug-resource` for the first bytes of a resource.
+/// 微信的媒体服务器对 `sns debug-resource` 请求资源前几个字节的回答。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct SnsResourceProbe {
-    /// The HTTP status.
+    /// HTTP 状态码。
     pub status: u16,
-    /// The headers that matter.
+    /// 与解密有关的回答头。
     pub headers: SnsResourceHeaders,
 }
 
-/// The answer headers that matter for decrypting a Moments resource; null when the server left one out.
+/// 与解密朋友圈资源有关的回答头；服务器没有给出的为 `null`。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub struct SnsResourceHeaders {
-    /// `X-Enc`.
+    /// `X-Enc` 头。
     pub x_enc: Option<String>,
-    /// `X-Time`.
+    /// `X-Time` 头。
     pub x_time: Option<String>,
-    /// `Content-Length`.
+    /// `Content-Length` 头。
     pub content_length: Option<String>,
-    /// `Content-Type`.
+    /// `Content-Type` 头。
     pub content_type: Option<String>,
 }
 
-/// The Moments sticker `sns download-emoji` saved (or found already saved).
+/// `sns download-emoji` 保存（或发现已经保存过）的朋友圈表情。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SnsEmojiSaved {
-    /// The file in WeFlow's cache.
+    /// WeFlow 缓存中的文件。
     pub local_path: PathBuf,
 }
 
 impl SnsEmojiSaved {
-    /// The answer for the sticker saved at `local_path`.
+    /// 保存在 `local_path` 的表情的回答。
     pub fn at(local_path: PathBuf) -> Self {
         Self { local_path }
     }
 }
 
-/// The image `sns download-image` downloaded (and decrypted when it was a .dat payload).
+/// `sns download-image` 下载的图片；是 `.dat` 格式时用图片密钥解密。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum SnsImageDownload {
-    /// Written to `out`.
+    /// 写进了 `out`。
     Saved(SnsImageSaved),
-    /// In the answer, without `out`.
+    /// 不带 `out` 时放在回答中。
     Inline(SnsImageInline),
 }
 
-/// The image written to `out`.
+/// 写进 `out` 的图片。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct SnsImageSaved {
-    /// The address it was downloaded from.
+    /// 下载的地址。
     pub url: String,
-    /// The file written.
+    /// 写出的文件。
     pub out: PathBuf,
-    /// The image's extension, with its dot.
+    /// 图片的扩展名，带点。
     pub ext: String,
-    /// Its size in bytes.
+    /// 图片的字节数。
     pub size: usize,
 }
 
-/// The image in base64, without `out`.
+/// 不带 `out` 时以 base64 放在回答中的图片。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct SnsImageInline {
-    /// The address it was downloaded from.
+    /// 下载的地址。
     pub url: String,
-    /// The image's extension, with its dot.
+    /// 图片的扩展名，带点。
     pub ext: String,
-    /// Its size in bytes.
+    /// 图片的字节数。
     pub size: usize,
-    /// A `data:image/...;base64,` URL.
+    /// `data:image/...;base64,` 形式的 URL。
     pub data: String,
 }
 
@@ -333,7 +333,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// A post as `sns timeline` builds it writes out and reads back into [`SnsPost`] the same, every field of it.
+    /// `sns timeline` 生成的动态写出后再读回 [`SnsPost`]，每个字段都不变。
     #[test]
     fn a_moments_post_reads_into_the_contract_and_back_the_same() {
         let xml = r#"<TimelineObject><id>1395</id><createTime>1700000000</createTime>
@@ -360,7 +360,7 @@ mod tests {
         let post = serde_json::to_value(&built).unwrap();
         let typed: SnsPost = serde_json::from_value(post.clone()).unwrap();
         assert_eq!(serde_json::to_value(&typed).unwrap(), post);
-        // the test has every kind of field to lose
+        // 测试数据含有每一种可能丢失的字段
         assert!(typed.video_key.is_some() && typed.avatar_url.is_some());
         let media = &typed.media[0];
         assert!(media.key.is_some() && media.enc_idx.is_some() && media.live_photo.is_some());
@@ -371,7 +371,7 @@ mod tests {
             !typed.comments[1].emojis.is_empty() && typed.comments[1].emojis[0].height.is_none()
         );
         assert_eq!(typed.likes, ["Carol"]);
-        // what `with-media` adds to a picture and its live photo
+        // `with-media` 给图片和它的实况照片加上的字段
         let fetched = json!({
             "url": "/sns/media/a", "thumb": "/sns/media/a.t", "key": "k1", "rawUrl": "http://mmsns.qpic.cn/a",
             "rawThumb": "http://mmsns.qpic.cn/a/150", "resolvedUrl": "/sns/media/a", "proxyThumbUrl": "/p/a.t",
@@ -379,7 +379,7 @@ mod tests {
         });
         let media: SnsMedia = serde_json::from_value(fetched.clone()).unwrap();
         assert_eq!(serde_json::to_value(media).unwrap(), fetched);
-        // and a field none of them knows fails rather than goes missing from the answer
+        // 契约类型不认识的字段让读取失败，而不是从回答中丢掉
         assert!(
             serde_json::from_value::<SnsMedia>(json!({ "url": "", "thumb": "", "size": 1 }))
                 .is_err()

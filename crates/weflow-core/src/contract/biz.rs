@@ -1,82 +1,83 @@
-//! Official accounts' pushes and WeChat Pay notices.
+//! 公众号的推送和微信支付的通知。
 
 use schemars::JsonSchema;
 use serde::Serialize;
 
-/// The pushes of an official account (`biz messages`).
+/// 一个公众号的推送（`biz messages`），从新到旧的一页。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct BizMessages {
-    /// The official account, `gh_…`.
+    /// 公众号的用户名，`gh_…`。
     pub username: String,
-    /// Its pushes; messages without content are left out.
+    /// 它的推送；没有内容的消息不列出。
     pub messages: Vec<BizMessage>,
 }
 
-/// One push of an official account: its lead article and the others sent with it.
+/// 公众号的一次推送：头条文章和随它一起发出的其他文章。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BizMessage {
-    /// The message's id in its table; null when its row does not say.
+    /// 消息的本地 ID，只在所在分片中唯一。
     pub local_id: Option<i64>,
-    /// When it was sent; null when its row does not say.
+    /// 发出的时间；消息行中没有时为 `null`。
     pub create_time: Option<i64>,
-    /// The lead article's title; empty when the push has none.
+    /// 头条文章的标题；推送中没有时为空。
     pub title: String,
-    /// The lead article's summary.
+    /// 头条文章的摘要（`<des>`）。
     pub description: String,
-    /// The lead article's address.
+    /// 头条文章的地址。
     pub url: String,
-    /// The lead article's cover image: its `cover`, else its `thumburl`.
+    /// 头条文章的封面图：`<cover>`，没有时为 `<thumburl>`。
     pub cover: String,
-    /// The other articles of the push.
+    /// 推送中的其他文章。
     pub content_list: Vec<BizArticle>,
 }
 
-/// An article sent with a push.
+/// 随推送一起发出的一篇文章。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct BizArticle {
-    /// Never empty: an article without a title is left out.
+    /// 标题，不会为空：没有标题的文章不列出。
     pub title: String,
-    /// The article's address.
+    /// 文章的地址。
     pub url: String,
-    /// Its cover image: its `cover`, else its `thumburl`.
+    /// 封面图：`<cover>`，没有时为 `<thumburl>`。
     pub cover: String,
-    /// Its `summary`, else its `digest`.
+    /// 摘要：`<summary>`，没有时为 `<digest>`。
     pub summary: String,
 }
 
-/// A page of WeChat Pay notices (`biz pay-records`), newest first.
+/// 微信支付通知的一页（`biz pay-records`），从新到旧。
+///
+/// 通知来自微信支付账号的会话，以及微信存放支付卡片的服务通知。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PayRecords {
-    /// The notices of the page.
+    /// 这一页的通知。
     pub records: Vec<PayRecord>,
-    /// Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as
-    /// its other messages are left out.
+    /// 这一页之后是否还有消息：这一页读满 `limit` 条消息时为 `true`。两个会话中不是微信支付通知的消息不列出，
+    /// 所以一页的通知可能少于 `limit` 条。
     pub has_more: bool,
 }
 
-/// A WeChat Pay notice.
+/// 一条微信支付通知。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PayRecord {
-    /// The notice's title, such as 「已支付¥9.99」.
+    /// 通知的标题，如「已支付¥9.99」。
     pub title: String,
-    /// Its lines, as WeChat writes them (amount, method, state…).
+    /// 通知的各行，即微信写的原文（金额、支付方式、状态等）。
     pub description: String,
-    /// How it was paid, as the card's top line 「使用零钱支付」 names it (「零钱」); null when the card has no top line of that form.
+    /// 支付方式，取自卡片顶行「使用零钱支付」这样的写法（「零钱」）；卡片没有这样的顶行时为 `null`。
     pub method: Option<String>,
-    /// Its state, the words before the amount in the title (「已支付」 of 「已支付¥9.99」); null when the title holds no
-    /// amount.
+    /// 状态，即标题中金额前面的文字（「已支付¥9.99」中的「已支付」）；标题中没有金额时为 `null`。
     pub status: Option<String>,
-    /// Who was paid; `WeChat Pay` (in the server's language) when the notice does not say.
+    /// 收款方（`<display_name>`）；通知中没有时为服务端语言的「微信支付」（英文为 `WeChat Pay`）。
     pub merchant_name: String,
-    /// The address of the payee's icon; empty when the notice has none.
+    /// 收款方图标的地址；通知中没有时为空。
     pub merchant_icon: String,
-    /// When it was published, in Unix seconds; 0 when the notice does not say.
+    /// 通知发布的时间（`<pub_time>`），Unix 秒；通知中没有时为 0。
     pub timestamp: i64,
-    /// The message's id in its table.
+    /// 消息的本地 ID，只在所在分片中唯一。
     pub local_id: Option<i64>,
-    /// When the message was received; null when its row does not say.
+    /// 收到消息的时间；消息行中没有时为 `null`。
     pub create_time: Option<i64>,
 }

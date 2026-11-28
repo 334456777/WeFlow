@@ -1,37 +1,37 @@
-//! WeFlow's cache: what it takes and what clearing it removes.
+//! WeFlow 的缓存：各部分占用多少、清理时删除什么，以及没有得到确认的删除。
 
 use std::path::PathBuf;
 
 use schemars::JsonSchema;
 use serde::Serialize;
 
-/// A part of WeFlow's cache that is listed and cleared on its own.
+/// WeFlow 缓存中单独列出、单独清理的一部分。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CachePart {
-    /// The images decrypted (`Images`).
+    /// 解密后的图片（`Images`）。
     Images,
-    /// The voices decoded (`Voices`).
+    /// 解码后的语音（`Voices`）。
     Voices,
-    /// The stickers downloaded (`Emojis`).
+    /// 下载的表情（`Emojis`）。
     Emojis,
-    /// The Moments media fetched (`sns_cache`).
+    /// 取回的朋友圈媒体（`sns_cache`）。
     Sns,
-    /// The analytics' saved results (`analytics_cache.json`).
+    /// 保存的统计结果（`analytics_cache.json`）。
     Analytics,
-    /// The files `weflow serve` and the message push wrote for clients (`api-media`, `push-avatar-files` and the
-    /// served files).
+    /// `weflow serve` 和消息推送为客户端写的文件（`api-media`、`push-avatar-files` 和 `serve-files`），
+    /// 运行中的 `weflow serve` 正在用的文件夹除外。
     Api,
-    /// The fingerprints of the keys that opened the databases (`verified-keys`).
+    /// 校验通过的密钥的指纹（`verified-keys`）。
     Keys,
-    /// Runtime directories and ffmpeg builds earlier versions left in the home folder.
+    /// 早期版本在 WeFlow 的文件夹中留下的运行时目录（`runtime/`）和 ffmpeg（`ffmpeg/<版本>/`）。
     Runtime,
-    /// The WebUI versions downloaded, but the ones a running `weflow serve` shows.
+    /// 下载的网页版本，运行中的 `weflow serve` 正在显示的除外。
     Web,
 }
 
 impl CachePart {
-    /// Every part, in the order they are listed; `cache clear --all` clears them all.
+    /// 全部部分，按列出的顺序排列；`cache clear --all` 清理全部。
     pub const ALL: [CachePart; 9] = [
         CachePart::Images,
         CachePart::Voices,
@@ -44,7 +44,7 @@ impl CachePart {
         CachePart::Web,
     ];
 
-    /// Name in the JSON output; also the option of `weflow cache clear` (`--images`, …).
+    /// JSON 输出中的名字，也是 `weflow cache clear` 的选项名（`--images` 等）。
     pub fn name(self) -> &'static str {
         match self {
             CachePart::Images => "images",
@@ -60,71 +60,71 @@ impl CachePart {
     }
 }
 
-/// One part of WeFlow's cache (`cache list`), and how much of the disk it takes.
+/// WeFlow 缓存的一部分（`cache list`），以及它占用的磁盘空间。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct CacheUsage {
-    /// Its name, as `cache clear` takes it.
+    /// 这一部分的名字，即 `cache clear` 接受的写法。
     pub part: CachePart,
-    /// What `cache clear` removes; for `runtime`, the runtime directories and ffmpeg builds earlier versions left.
+    /// `cache clear` 删除的文件和文件夹，不存在的也列出；`runtime` 和 `web` 只列出存在的。
     pub paths: Vec<PathBuf>,
-    /// What `paths` take on disk.
+    /// `paths` 中文件的总字节数。
     pub bytes: u64,
-    /// How many files `paths` hold.
+    /// `paths` 中的文件数。
     pub files: u64,
 }
 
-/// What `cache clear` removed.
+/// `cache clear` 删除了什么。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheCleared {
-    /// The files and folders removed.
+    /// 删除的文件和文件夹。
     pub removed_paths: Vec<String>,
-    /// What the removed files took on disk.
+    /// 删除的文件原来的总字节数。
     pub freed_bytes: u64,
-    /// What could not be removed, and why; left out when everything was.
+    /// 没有删掉的路径及原因；全部删掉时省略。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
 }
 
-/// What `cache clear-account` removed.
+/// `cache clear-account` 删除了什么。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountCleared {
-    /// The files and folders removed: WeFlow's caches of the account, and the exports named after it.
+    /// 删除的文件和文件夹：WeFlow 为这个账号保存的缓存和见解记录，以及以账号命名的导出。
     pub removed_paths: Vec<String>,
-    /// Whether the account was taken out of the profile (`db_path`, `wxid`, the keys).
+    /// 账号是否已移出档案（`db_path`、`wxid`、数据库密钥和图片密钥），总是 `true`。
     pub profile_reset: bool,
-    /// What could not be removed, and why; left out when everything was.
+    /// 没有删掉的路径及原因；全部删掉时省略。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
 }
 
-/// What `cache clear` or `clear-account` would remove (`--dry-run`), for a page that asks first.
+/// `cache clear` 或 `cache clear-account` 将要删除的内容（`--dry-run`），供页面在删除前询问。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RemovalPlan {
-    /// Always true.
+    /// 总是 `true`。
     pub dry_run: bool,
-    /// The files and folders it would remove.
+    /// 将要删除的文件和文件夹，只列出存在的。
     pub paths: Vec<PlannedRemoval>,
-    /// What they all take on disk.
+    /// 它们的总字节数。
     pub bytes: u64,
-    /// The profile keys it would unset (`clear-account`).
+    /// 将要清除的档案键（`clear-account`）；`cache clear` 时为空。
     pub profile_keys: Vec<String>,
 }
 
-/// A file or folder a removal would take.
+/// 将要删除的一个文件或文件夹。
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct PlannedRemoval {
-    /// The file or folder.
+    /// 文件或文件夹。
     pub path: PathBuf,
-    /// What it takes on disk; a folder's is that of the files under it.
+    /// 占用的字节数；文件夹为其中所有文件的总和。
     pub bytes: u64,
 }
 
-/// A removal the terminal was asked to confirm and was not.
+/// 在终端上要求确认、但没有得到确认的删除。
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 pub struct Cancelled {
-    /// Always true.
+    /// 总是 `true`。
     pub cancelled: bool,
 }

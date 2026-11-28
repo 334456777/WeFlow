@@ -4,40 +4,37 @@
 /** The API version of the contract, `apiVersion` of `/health`. */
 export const CONTRACT_API_VERSION = "4";
 
-/** A conversation of `chat sessions`, newest first. */
+/** `chat sessions` 中的一个会话，从新到旧排列。 */
 export interface Session {
-  /** The other party's wxid, `…@chatroom` for a group, `gh_…` for an official account. */
+  /** 对方的 wxid；群聊为 `…@chatroom`，公众号为 `gh_…`。 */
   username: string;
-  /** WeChat's type of the conversation's row; 0 for an official account WeChat lists without one. */
+  /** 会话表中这一行的类型；从联系人补上的会话（会话表中没有的公众号等）为 0。 */
   type: number;
-  /** The messages not read in WeChat yet. */
+  /** 在微信中还没读的消息数；公众号没有这一列，按最近收到的消息估算。 */
   unreadCount: number;
-  /** The last message as the list shows it. */
+  /** 列表显示的最后一条消息；会话表中没有摘要时为消息类型的标签（如 `[图片]`）。 */
   summary: string;
-  /** What the list is ordered by; 0 for an official account WeChat lists without a conversation. */
+  /** 列表排序所依据的时间（公众号不早于最后一条消息的时间）；从联系人补上、没有消息的会话为 0。 */
   sortTimestamp: number;
-  /** The time of the last message; 0 when WeChat's row does not say. */
+  /** 最后一条消息的时间；会话表的行中没有时取 `sortTimestamp`，从联系人补上、没有消息的会话为 0。 */
   lastTimestamp: number;
-  /** WeChat's type of the last message, as a message's `localType`. */
+  /** 最后一条消息的类型，与消息的 `localType` 相同。 */
   lastMsgType: number;
-  /** About how many messages the conversation has, when WeChat's row or its tables say. */
+  /** 会话大约有多少条消息，会话表的行或消息表给出时才有。 */
   messageCountHint?: number;
-  /** The remark, else the nickname, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** In a group: who sent the last message. */
+  /** 群聊中最后一条消息的发送者。 */
   lastMsgSender?: string;
-  /** In a group: the name of who sent the last message. */
+  /** 群聊中最后一条消息的发送者的名字。 */
   lastSenderDisplayName?: string;
-  /** The account's own wxid. */
+  /** 账号自己的 wxid（裸 wxid）。 */
   selfWxid: string;
-  /** The address of the conversation's avatar; left out when there is none. */
+  /** 会话头像的地址；没有时省略。 */
   avatarUrl?: string;
 }
 
-/**
- * A message of a page as the chat window shows it (`chat messages`, `chat message` and `chat search` with
- * `parsed`).
- */
+/** 聊天窗口显示的一条消息（带 `parsed` 的 `chat messages`、`chat message` 和 `chat search`）。 */
 export interface ParsedMessage {
   /** 本地 ID，即消息在所在分片的会话表中的行号；与 `createTime` 一起是 `chat message` 的键。 */
   localId: number;
@@ -162,524 +159,528 @@ export interface ParsedMessage {
   /** 消息的键：同一条消息在每台机器上的键都相同。键的内容不透明，只用来比较。 */
   messageKey: string;
   /**
-   * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
-   * It is opaque; only the server reads it.
+   * 消息在会话中的位置（游标）：作为 `before` 或 `after` 传入，就能读取它前后的消息。
+   * 它是不透明的，只有服务端解读它。
    */
   _cursor?: string;
-  /** The conversation of a search hit. */
+  /** 搜到的消息所在的会话，只在 `chat search` 中有。 */
   _session_id?: string;
 }
 
 /**
- * A message as WeChat keeps it (`chat messages` without `parsed`, the `row` of `chat message`).
+ * 微信保存的一条消息（不带 `parsed` 的 `chat messages`，`chat message` 的 `row`）。
  *
- * Its columns are read with their types, the text inflated and decoded, the sender resolved (#257, #492).
+ * 各列按类型读出，内容已解压并解码成文字，发送者已换成用户名（#257、#492）。
  */
 export interface MessageRow {
-  /** Unique within its message database (`shard`), not across them. */
+  /** 本地 ID，只在所在的消息库（`shard`）中唯一，不同的消息库之间可能相同。 */
   localId: number;
-  /** A decimal string, as it may pass 2^53; left out when the message has none. */
+  /** 服务器 ID 的十进制字符串（可能超过 2^53）；消息没有时省略。 */
   serverId?: string;
-  /** The type, with an app message's sub-type in the high 32 bits (`(sub << 32) | 49`). */
+  /** 消息类型，app 消息的子类型在高 32 位（`(sub << 32) | 49`）。 */
   localType: number;
-  /** Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none. */
+  /** 在聊天顺序中的位置（毫秒时间加一个计数）；微信没有保存时省略。 */
   sortSeq?: number;
-  /** When it was sent; left out when WeChat stored none. */
+  /** 发送时间；微信没有保存时省略。 */
   createTime?: number;
-  /** WeChat's `status` column; left out when WeChat stored none. */
+  /** 微信的 `status` 列；微信没有保存时省略。 */
   status?: number;
-  /** The sender's username; left out when WeChat's table of names has none for it. */
+  /** 发送者的用户名；微信的用户名表中没有对应的行时省略。 */
   sender?: string;
-  /** Whether the account's owner sent it. */
+  /** 是否为账号所有者发的。 */
   isSend: boolean;
-  /** The text, or the XML of a message that is not text, inflated and decoded. */
+  /** 文字；不是文字的消息为它的 XML。已解压并解码。 */
   content: string;
-  /** The `msgsource` XML (mentions, the group's member count, …). */
+  /** `msgsource` 的 XML（@ 了谁、群的人数等）；没有时省略。 */
   source?: string;
-  /** WeChat's packed info (protobuf), in lowercase hex. */
+  /** 微信的 `packed_info_data` 列（protobuf），写成小写十六进制；没有时省略。 */
   packedInfo?: string;
-  /** The number of the message database holding it (`message_<n>.db`, or `biz_message_<n>.db` from 16777216 on). */
+  /** 所在消息库的分片号：`message_<n>.db` 为 n，`biz_message_<n>.db` 为 16777216 + n。 */
   shard: number;
   /**
-   * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
-   * It is opaque; only the server reads it.
+   * 消息在会话中的位置（游标）：作为 `before` 或 `after` 传入，就能读取它前后的消息。
+   * 它是不透明的，只有服务端解读它。
    */
   _cursor: string;
 }
 
-/** A hit of `chat search` without `parsed`: the message as WeChat keeps it, and its conversation. */
+/** 不带 `parsed` 的 `chat search` 搜到的一条：微信保存的消息，以及它所在的会话。 */
 export interface SearchHit {
-  /** Unique within its message database (`shard`), not across them. */
+  /** 本地 ID，只在所在的消息库（`shard`）中唯一，不同的消息库之间可能相同。 */
   localId: number;
-  /** A decimal string, as it may pass 2^53; left out when the message has none. */
+  /** 服务器 ID 的十进制字符串（可能超过 2^53）；消息没有时省略。 */
   serverId?: string;
-  /** The type, with an app message's sub-type in the high 32 bits (`(sub << 32) | 49`). */
+  /** 消息类型，app 消息的子类型在高 32 位（`(sub << 32) | 49`）。 */
   localType: number;
-  /** Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none. */
+  /** 在聊天顺序中的位置（毫秒时间加一个计数）；微信没有保存时省略。 */
   sortSeq?: number;
-  /** When it was sent; left out when WeChat stored none. */
+  /** 发送时间；微信没有保存时省略。 */
   createTime?: number;
-  /** WeChat's `status` column; left out when WeChat stored none. */
+  /** 微信的 `status` 列；微信没有保存时省略。 */
   status?: number;
-  /** The sender's username; left out when WeChat's table of names has none for it. */
+  /** 发送者的用户名；微信的用户名表中没有对应的行时省略。 */
   sender?: string;
-  /** Whether the account's owner sent it. */
+  /** 是否为账号所有者发的。 */
   isSend: boolean;
-  /** The text, or the XML of a message that is not text, inflated and decoded. */
+  /** 文字；不是文字的消息为它的 XML。已解压并解码。 */
   content: string;
-  /** The `msgsource` XML (mentions, the group's member count, …). */
+  /** `msgsource` 的 XML（@ 了谁、群的人数等）；没有时省略。 */
   source?: string;
-  /** WeChat's packed info (protobuf), in lowercase hex. */
+  /** 微信的 `packed_info_data` 列（protobuf），写成小写十六进制；没有时省略。 */
   packedInfo?: string;
-  /** The number of the message database holding it (`message_<n>.db`, or `biz_message_<n>.db` from 16777216 on). */
+  /** 所在消息库的分片号：`message_<n>.db` 为 n，`biz_message_<n>.db` 为 16777216 + n。 */
   shard: number;
   /**
-   * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
-   * It is opaque; only the server reads it.
+   * 消息在会话中的位置（游标）：作为 `before` 或 `after` 传入，就能读取它前后的消息。
+   * 它是不透明的，只有服务端解读它。
    */
   _cursor: string;
-  /** The conversation the message is in. */
+  /** 消息所在的会话。 */
   _session_id: string;
 }
 
-/** `chat message` without `parsed`: the message as WeChat keeps it, and as the query commands list it. */
+/** 不带 `parsed` 的 `chat message`：微信保存的这条消息，以及查询命令列出它时的样子。 */
 export interface MessageLookup {
-  /** The message as WeChat keeps it. */
+  /** 微信保存的这条消息。 */
   row: MessageRow;
-  /** Null when the row could not be read as a message. */
+  /** 查询命令列出它时的样子。 */
   message: MessageView | null;
 }
 
 /**
- * A message as the query commands list it (`chat resources`, `chat images`, `chat media-stream`…).
+ * 查询命令列出的一条消息（`chat resources`、`chat voice-messages`、`chat media-stream`，以及不带 `parsed` 的
+ * `chat message`）。
  *
- * It holds the main fields of its row, its text and the keys of its media. An optional field is left out when the
- * message has none.
+ * 含消息行的主要字段、消息的文字和媒体的标识。可选字段在消息没有时省略。
  */
 export interface MessageView {
-  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
+  /** 本地 ID，只在所在分片中唯一；与 `createTime` 一起是 `chat message` 查找消息所用的键。 */
   localId: number;
-  /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
+  /** 服务器 ID 的十进制字符串（可能超过 2^53）；消息没有服务器 ID 时为 `"0"`。 */
   serverId: string;
-  /** When it was sent. */
+  /** 发送时间。 */
   createTime: number;
-  /** WeChat's type of the message, as a parsed message's `localType`. */
+  /** 消息类型，与解析过的消息的 `localType` 相同。 */
   localType: number;
-  /** 1 when I sent it, else 0. */
+  /** 账号所有者发的为 1，否则为 0。 */
   isSend: number;
-  /** Who sent it; empty when the row does not say. */
+  /**
+   * 发送者，与导出相同：系统消息和拍一拍中，撤回提示为撤回者，其他为会话；其余消息中，账号自己发的为账号，
+   * 其他为行中的发送者，没有时为会话。
+   */
   senderUsername: string;
-  /** The message as WeChat keeps it (often XML). */
+  /** 微信保存的消息内容（常为 XML）。 */
   content: string;
-  /** Its text as the chat window shows it; null when it has none. */
+  /** 消息的文字，写法与导出相同；没有文字时为 `null`。 */
   text: string | null;
-  /** An image's MD5, as a parsed message's `imageMd5`. */
+  /** 图片的 MD5，与解析过的消息的 `imageMd5` 相同。 */
   imageMd5?: string;
-  /** The name of an image's `.dat` file, as a parsed message's `imageDatName`. */
+  /** 图片的 `.dat` 文件名，与解析过的消息的 `imageDatName` 相同。 */
   imageDatName?: string;
-  /** The MD5 that names a video's file, as a parsed message's `videoMd5`. */
+  /** 视频的 MD5，视频文件以它命名，与解析过的消息的 `videoMd5` 相同。 */
   videoMd5?: string;
-  /** A sticker's MD5. */
+  /** 表情的 MD5。 */
   emojiMd5?: string;
-  /** A sticker's address on WeChat's servers. */
+  /** 表情在微信服务器上的地址。 */
   emojiCdnUrl?: string;
-  /** An app message's `<type>`, as a parsed message's `xmlType`. */
+  /** app 消息的 `<type>`，与解析过的消息的 `xmlType` 相同。 */
   xmlType?: string;
-  /** A file's name. */
+  /** 文件名。 */
   fileName?: string;
-  /** A file's extension, without its dot. */
+  /** 文件的扩展名，不带点。 */
   fileExt?: string;
-  /** A file's MD5. */
+  /** 文件的 MD5。 */
   fileMd5?: string;
-  /** In bytes. */
+  /** 文件大小，单位为字节。 */
   fileSize?: number;
-  /** A location's latitude. */
+  /** 位置的纬度。 */
   locationLat?: number;
-  /** A location's longitude. */
+  /** 位置的经度。 */
   locationLng?: number;
-  /** The name of a location's place. */
+  /** 位置的地点名称（`poiname`）。 */
   locationPoiname?: string;
-  /** A location's label, its address as WeChat shows it. */
+  /** 位置的标签（`label`），即微信显示的地址。 */
   locationLabel?: string;
   /**
-   * The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a
-   * sticker and a location, which are not app messages.
+   * app 消息的种类（`link`、`file`、`music` 等），与导出的种类相同；不是 app 消息的消息（包括图片、语音、视频、
+   * 表情和位置）省略。
    */
   appMsgKind?: string;
 }
 
 /**
- * A contact of `chat contacts --parsed`: the most recent conversation first, then by
- * name. A text field is left out when it is empty.
+ * `chat contacts --parsed` 中的一个联系人：最近聊过的在前，其余按名字排列。列表不含账号自己。
+ *
+ * 文字字段为空时省略。
  */
 export interface Contact {
-  /** The contact's wxid, `…@chatroom` for a group, `gh_…` for an official account. */
+  /** 联系人的 wxid；群聊为 `…@chatroom`，公众号为 `gh_…`。 */
   username: string;
-  /** The remark, else the nickname, else the WeChat ID, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** My remark for them. */
+  /** 账号所有者给对方的备注。 */
   remark?: string;
-  /** The name they gave themselves. */
+  /** 对方自己设的昵称。 */
   nickname?: string;
-  /** The WeChat ID. */
+  /** 微信号。 */
   alias?: string;
-  /** The names of the contact's labels. */
+  /** 联系人所在标签的名称。 */
   labels?: string[];
-  /** The signature. */
+  /** 个性签名。 */
   detailDescription?: string;
-  /** The region they gave. */
+  /** 对方填写的地区。 */
   region?: string;
-  /** What the contact is. */
+  /** 联系人的种类。 */
   type: ContactKind;
-  /** The address of their avatar. */
+  /** 头像的地址：大头像，没有时为小头像。 */
   avatarUrl?: string;
 }
 
-/** What a contact of `chat contacts --parsed` is. */
+/** `chat contacts --parsed` 中联系人的种类。 */
 export type ContactKind = "friend" | "group" | "official" | "former_friend";
 
-/** A page of `chat resources`. */
+/** `chat resources` 的一页。 */
 export interface ResourcePage {
-  /** The messages of the page. */
+  /** 这一页的消息。 */
   items: Resource[];
-  /** Whether there are messages past this page. */
+  /** 这一页之后是否还有消息。 */
   hasMore: boolean;
-  /** The `_cursor` of the last item, to pass as `before` for the next page; null on the last page. */
+  /** 最后一项的 `_cursor`，作为 `before` 传入就能读下一页；最后一页为 `null`。 */
   nextCursor: string | null;
 }
 
-/** A message of `chat resources`, newest first. */
+/** `chat resources` 中的一条消息，从新到旧排列。 */
 export interface Resource {
-  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
+  /** 本地 ID，只在所在分片中唯一；与 `createTime` 一起是 `chat message` 查找消息所用的键。 */
   localId: number;
-  /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
+  /** 服务器 ID 的十进制字符串（可能超过 2^53）；消息没有服务器 ID 时为 `"0"`。 */
   serverId: string;
-  /** When it was sent. */
+  /** 发送时间。 */
   createTime: number;
-  /** WeChat's type of the message, as a parsed message's `localType`. */
+  /** 消息类型，与解析过的消息的 `localType` 相同。 */
   localType: number;
-  /** 1 when I sent it, else 0. */
+  /** 账号所有者发的为 1，否则为 0。 */
   isSend: number;
-  /** Who sent it; empty when the row does not say. */
+  /**
+   * 发送者，与导出相同：系统消息和拍一拍中，撤回提示为撤回者，其他为会话；其余消息中，账号自己发的为账号，
+   * 其他为行中的发送者，没有时为会话。
+   */
   senderUsername: string;
-  /** The message as WeChat keeps it (often XML). */
+  /** 微信保存的消息内容（常为 XML）。 */
   content: string;
-  /** Its text as the chat window shows it; null when it has none. */
+  /** 消息的文字，写法与导出相同；没有文字时为 `null`。 */
   text: string | null;
-  /** An image's MD5, as a parsed message's `imageMd5`. */
+  /** 图片的 MD5，与解析过的消息的 `imageMd5` 相同。 */
   imageMd5?: string;
-  /** The name of an image's `.dat` file, as a parsed message's `imageDatName`. */
+  /** 图片的 `.dat` 文件名，与解析过的消息的 `imageDatName` 相同。 */
   imageDatName?: string;
-  /** The MD5 that names a video's file, as a parsed message's `videoMd5`. */
+  /** 视频的 MD5，视频文件以它命名，与解析过的消息的 `videoMd5` 相同。 */
   videoMd5?: string;
-  /** A sticker's MD5. */
+  /** 表情的 MD5。 */
   emojiMd5?: string;
-  /** A sticker's address on WeChat's servers. */
+  /** 表情在微信服务器上的地址。 */
   emojiCdnUrl?: string;
-  /** An app message's `<type>`, as a parsed message's `xmlType`. */
+  /** app 消息的 `<type>`，与解析过的消息的 `xmlType` 相同。 */
   xmlType?: string;
-  /** A file's name. */
+  /** 文件名。 */
   fileName?: string;
-  /** A file's extension, without its dot. */
+  /** 文件的扩展名，不带点。 */
   fileExt?: string;
-  /** A file's MD5. */
+  /** 文件的 MD5。 */
   fileMd5?: string;
-  /** In bytes. */
+  /** 文件大小，单位为字节。 */
   fileSize?: number;
-  /** A location's latitude. */
+  /** 位置的纬度。 */
   locationLat?: number;
-  /** A location's longitude. */
+  /** 位置的经度。 */
   locationLng?: number;
-  /** The name of a location's place. */
+  /** 位置的地点名称（`poiname`）。 */
   locationPoiname?: string;
-  /** A location's label, its address as WeChat shows it. */
+  /** 位置的标签（`label`），即微信显示的地址。 */
   locationLabel?: string;
   /**
-   * The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a
-   * sticker and a location, which are not app messages.
+   * app 消息的种类（`link`、`file`、`music` 等），与导出的种类相同；不是 app 消息的消息（包括图片、语音、视频、
+   * 表情和位置）省略。
    */
   appMsgKind?: string;
-  /** Where the message stands in the listing (not in its conversation): `before` reads on from it. */
+  /** 消息在这个列表中（而不是在它的会话中）的位置：作为 `before` 传入时从它之后接着读。 */
   _cursor: string;
-  /** The conversation's name as the conversation list shows it. */
+  /** 会话的显示名，与会话列表相同。 */
   sessionDisplayName: string;
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   sessionId: string;
-  /** What the message holds. */
+  /** 消息中的资源种类。 */
   resourceType: ResourceKind;
 }
 
-/** What a message of `chat resources` holds. */
+/** `chat resources` 中一条消息的资源种类。 */
 export type ResourceKind = "image" | "video" | "voice" | "file";
 
-/** Whether a conversation is folded, muted and pinned (`chat statuses` answers one for each username asked for). */
+/** 会话是否折叠、免打扰和置顶（`chat statuses` 为请求的每个用户名回答一个）。 */
 export interface ChatStatus {
-  /** Folded into WeChat's folded chats. */
+  /** 是否折叠进了微信的「折叠的聊天」。 */
   isFolded: boolean;
-  /** Its notifications are muted. */
+  /** 是否设了消息免打扰。 */
   isMuted: boolean;
-  /** Pinned to the top of WeChat's conversation list (#885). */
+  /** 是否在微信的会话列表中置顶（#885）。 */
   isPinned: boolean;
 }
 
-/** How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them. */
+/** 每类联系人各有多少（`chat tab-counts`），按联系人列表的各个标签页计数，不含账号自己。 */
 export interface TabCounts {
-  /** Friends. */
+  /** 好友。 */
   private: number;
-  /** Group chats. */
+  /** 群聊。 */
   group: number;
-  /** Official accounts. */
+  /** 公众号。 */
   official: number;
-  /** People who were friends. */
+  /** 曾经的好友。 */
   former_friend: number;
 }
 
-/** The days a conversation has messages on (`chat dates`), as `YYYY-MM-DD` in the server's time zone, oldest first. */
+/** 会话有消息的日期（`chat dates`），写成服务端所在时区的 `YYYY-MM-DD`，从早到晚。 */
 export interface SessionDates {
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   sessionId: string;
-  /** The days. */
+  /** 这些日期。 */
   dates: string[];
 }
 
-/** How many messages a conversation has on each day it has any (`chat date-counts`), by `YYYY-MM-DD`. */
+/** 会话在每个有消息的日期的消息数（`chat date-counts`），以 `YYYY-MM-DD` 为键。 */
 export interface SessionDateCounts {
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   sessionId: string;
-  /** The messages of each day, in the server's time zone. */
+  /** 每天的消息数，日期按服务端所在的时区。 */
   counts: Record<string, number>;
 }
 
-/** A conversation's details (`chat detail`): its facts, and where its messages are kept. */
+/** 会话的详情（`chat detail`）：对方是谁，以及消息存放在哪里。 */
 export interface SessionDetail {
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   wxid: string;
-  /** The remark, else the nickname, else the alias, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** My remark for them. */
+  /** 账号所有者给对方的备注。 */
   remark?: string;
-  /** The name they gave themselves, or a group's name. */
+  /** 对方自己设的昵称，群聊为群名。 */
   nickName?: string;
-  /** The WeChat ID. */
+  /** 微信号。 */
   alias?: string;
-  /** The address of the avatar. */
+  /** 头像的地址（`http` 地址或 `data:` URL）；没有时省略。 */
   avatarUrl?: string;
-  /** How many messages the conversation has. */
+  /** 会话的消息数。 */
   messageCount: number;
-  /** The time of its first message; null when its tables do not say. */
+  /** 第一条消息的时间；消息表中读不出时为 `null`。 */
   firstMessageTime: number | null;
-  /** The time of its last message; null when its tables do not say. */
+  /** 最后一条消息的时间；消息表中读不出时为 `null`。 */
   latestMessageTime: number | null;
-  /** The tables that hold its messages. */
+  /** 存放这个会话的消息的表。 */
   messageTables: MessageTable[];
 }
 
-/** One of WeChat's tables that holds messages of a conversation. */
+/** 微信中存放一个会话的消息的一张表。 */
 export interface MessageTable {
-  /** The database's file name, such as `message_0.db`. */
+  /** 数据库的文件名，如 `message_0.db`。 */
   dbName: string;
-  /** The table's name, `Msg_<MD5 of the username>`. */
+  /** 表名，`Msg_<用户名的 MD5>`。 */
   tableName: string;
-  /** The messages in it. */
+  /** 表中的消息数。 */
   count: number;
 }
 
-/** Who a conversation is with and how many messages it has (`chat detail --fast`). */
+/** 会话的对方是谁、有多少条消息（`chat detail --fast`）。 */
 export interface SessionFacts {
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   wxid: string;
-  /** The remark, else the nickname, else the alias, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** My remark for them. */
+  /** 账号所有者给对方的备注。 */
   remark?: string;
-  /** The name they gave themselves, or a group's name. */
+  /** 对方自己设的昵称，群聊为群名。 */
   nickName?: string;
-  /** The WeChat ID. */
+  /** 微信号。 */
   alias?: string;
-  /** The address of the avatar. */
+  /** 头像的地址（`http` 地址或 `data:` URL）；没有时省略。 */
   avatarUrl?: string;
-  /** How many messages the conversation has. */
+  /** 会话的消息数。 */
   messageCount: number;
 }
 
-/** Where a conversation's messages are kept (`chat detail --extra`, and `chat detail` without `fast`). */
+/** 会话的消息存放在哪里（`chat detail --extra`，以及不带 `fast` 的 `chat detail`）。 */
 export interface SessionTables {
-  /** The time of its first message; null when its tables do not say. */
+  /** 第一条消息的时间；消息表中读不出时为 `null`。 */
   firstMessageTime: number | null;
-  /** The time of its last message; null when its tables do not say. */
+  /** 最后一条消息的时间；消息表中读不出时为 `null`。 */
   latestMessageTime: number | null;
-  /** The tables that hold its messages. */
+  /** 存放这个会话的消息的表。 */
   messageTables: MessageTable[];
 }
 
-/** Which files of a message's image are on this computer (`chat image-info`), and the sizes the message gives. */
+/** 消息中的图片有哪些版本在本机上（`chat image-info`），以及消息给出的大小。 */
 export interface ImageInfo {
-  /** The thumbnail a chat shows. */
+  /** 是否有缩略图，即聊天窗口中显示的那张。 */
   thumb: boolean;
-  /** The image shown when it is opened. */
+  /** 是否有点开时显示的图片。 */
   normal: boolean;
-  /** The original, once View original downloaded it. */
+  /** 是否有原图：在微信中点「查看原图」下载后才有。 */
   hd: boolean;
-  /** Bytes of the image; null when neither the message nor its file says. */
+  /** 图片的字节数：消息中写的 `length`，没有时为本机文件的大小；都没有时为 `null`。 */
   normalBytes: number | null;
-  /** Bytes of the original, as the message gives them even before it is downloaded. */
+  /** 原图的字节数：消息中写的 `hdlength`（原图还没下载时也有），没有时为本机原图文件的大小；都没有时为 `null`。 */
   hdBytes: number | null;
 }
 
-/** A group chat of `group list`, the largest first. */
+/** `group list` 中的一个群聊，成员多的在前。 */
 export interface GroupChat {
-  /** The group's id, `…@chatroom`. */
+  /** 群的 ID，`…@chatroom`。 */
   username: string;
-  /** Its name, else its id. */
+  /** 群的备注，没有时依次用群名和群的 ID。 */
   displayName: string;
-  /** How many members it has. */
+  /** 成员数。 */
   memberCount: number;
-  /** The address of its avatar; left out when it has none. */
+  /** 群头像的地址；没有时省略。 */
   avatarUrl?: string;
 }
 
-/**
- * The members of a group (`group members`): the owner first,
- * then friends, then by how many messages they sent.
- */
+/** 群的成员（`group members`）：群主在前，其次是好友，再按发的消息数从多到少，最后按名字排列。 */
 export interface GroupMembers {
-  /** The group's id, `…@chatroom`. */
+  /** 群的 ID，`…@chatroom`。 */
   chatroomId: string;
-  /** How many members there are. */
+  /** 成员数。 */
   count: number;
-  /** When the panel was built, in Unix milliseconds. */
+  /** 生成成员面板的时间，Unix 毫秒。 */
   updatedAt: number;
-  /** The members. */
+  /** 这些成员。 */
   members: GroupMember[];
 }
 
-/** A member of a group's members panel. */
+/** 群成员面板中的一个成员。 */
 export interface GroupMember {
-  /** The member's wxid. */
+  /** 成员的 wxid。 */
   username: string;
-  /** Their name as WeChat shows it in the group. */
+  /** 成员在账号中的显示名：备注，没有时依次用昵称、微信号和用户名本身（群昵称见 `groupNickname`）。 */
   displayName: string;
-  /** The nickname of their contact; empty when they are not a contact. */
+  /** 联系人中的昵称；不在联系人中时为空。 */
   nickname: string;
-  /** The WeChat ID of their contact; empty when they are not a contact or chose none. */
+  /** 联系人中的微信号；不在联系人中或没有设置时为空。 */
   alias: string;
-  /** My remark for them; empty when they are not a contact or have none. */
+  /** 账号所有者给对方的备注；不在联系人中或没有备注时为空。 */
   remark: string;
-  /** The name they gave themselves in this group; empty when none. */
+  /** 对方在这个群里给自己起的群昵称；没有时为空。 */
   groupNickname: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** Whether they own the group. */
+  /** 是否为群主。 */
   isOwner: boolean;
-  /** Whether they are my friend. */
+  /** 是否为账号所有者的好友。 */
   isFriend: boolean;
-  /** How many messages they sent in the group; 0 unless `counts=true`. */
+  /** 在群里发的消息数；不带 `counts=true` 时为 0。 */
   messageCount: number;
 }
 
-/** Who sent how many messages in a group (`group ranking`), the most first. */
+/** 群里谁发了多少条消息（`group ranking`），多的在前。 */
 export interface GroupRank {
-  /** Who. */
+  /** 成员。 */
   member: RankedMember;
-  /** How many messages they sent in the range asked for. */
+  /** 在请求的时间范围内发的消息数。 */
   messageCount: number;
 }
 
-/** A member of a ranking. */
+/** 排行中的一个成员。 */
 export interface RankedMember {
-  /** The member's wxid. */
+  /** 成员的 wxid。 */
   username: string;
-  /** Their name as WeChat shows it in the group. */
+  /** 成员在账号中的显示名：备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
 }
 
-/** How many messages a group has in each hour of the day (`group hours`). */
+/** 群在一天中每个小时的消息数（`group hours`）。 */
 export interface GroupHours {
-  /** By the hour, `"0"` to `"23"`, in the server's time zone. */
+  /** 按小时计数，键为 `"0"` 到 `"23"`，按服务端所在的时区。 */
   hourlyDistribution: Record<string, number>;
 }
 
-/** How many messages of each kind a group has (`group media`), the most first. */
+/** 群里各种消息的数量（`group media`），多的在前。 */
 export interface GroupMedia {
-  /** The kinds of message, the most first. */
+  /** 各种消息，多的在前；没有消息的种类不列出。 */
   typeCounts: MediaCount[];
-  /** All the messages counted. */
+  /** 计入的全部消息数。 */
   total: number;
 }
 
-/** One kind of message and how many there are. */
+/** 一种消息及其数量。 */
 export interface MediaCount {
-  /** WeChat's type of the message, as `localType`; -1 for all the others together. */
+  /** 消息类型：文本 1、图片 3、语音 34、视频 43、表情 47、链接和文件 49；其余类型合在一起为 -1。 */
   type: number;
-  /** Its name in Chinese. */
+  /** 种类的中文名，如「文本」「其他」。 */
   name: string;
-  /** How many messages of it there are. */
+  /** 这种消息的数量。 */
   count: number;
 }
 
-/** What one member of a group sent (`group member`). */
+/** 群里一个成员发的消息（`group member`）。 */
 export interface MemberAnalytics {
-  /** The numbers of their messages. */
+  /** 各类消息的数量。 */
   statistics: MemberStatistics;
-  /** By the hour, `"0"` to `"23"`, in the server's time zone. */
+  /** 按小时计数，键为 `"0"` 到 `"23"`，按服务端所在的时区。 */
   timeDistribution: Record<string, number>;
-  /** What they said most, the most first, up to 10. */
+  /** 说得最多的话，多的在前，最多 10 条。 */
   commonPhrases: PhraseCount[];
-  /** The WeChat emojis (`[微笑]` and the like) in their text, the most used first, up to 10. */
+  /** 文字中的微信表情（`[微笑]` 之类），用得多的在前，最多 10 个。 */
   commonEmojis: EmojiCount[];
 }
 
-/** The numbers of a member's messages. */
+/** 一个成员各类消息的数量。 */
 export interface MemberStatistics {
-  /** All their messages. */
+  /** 全部消息数。 */
   totalMessages: number;
-  /** Text, quotes included. */
+  /** 文字消息数，包括引用。 */
   textMessages: number;
-  /** Images. */
+  /** 图片数。 */
   imageMessages: number;
-  /** Voice messages. */
+  /** 语音消息数。 */
   voiceMessages: number;
-  /** Videos. */
+  /** 视频数。 */
   videoMessages: number;
-  /** Stickers. */
+  /** 表情数。 */
   emojiMessages: number;
-  /** Every other kind. */
+  /** 其他各种消息的数量。 */
   otherMessages: number;
-  /** The time of their first message; null when they sent none. */
+  /** 第一条消息的时间；没有发过时为 `null`。 */
   firstMessageTime: number | null;
-  /** The time of their last message; null when they sent none. */
+  /** 最后一条消息的时间；没有发过时为 `null`。 */
   lastMessageTime: number | null;
-  /** The days, in the server's time zone, with a message of theirs. */
+  /** 发过消息的天数，按服务端所在的时区。 */
   activeDays: number;
-  /** By WeChat's type of the message, as `localType`. */
+  /** 按消息类型（与 `localType` 相同）计数。 */
   messageTypeCounts: Record<string, number>;
 }
 
-/** A phrase and how often it was said. */
+/** 一句话和它被说了几次。 */
 export interface PhraseCount {
-  /** A text message of at most 20 characters, counted whole. */
+  /** 一条完整的文字消息（不超过 20 个字符），按完全相同计数。 */
   phrase: string;
-  /** How many times it was sent. */
+  /** 发了几次。 */
   count: number;
 }
 
-/** An emoji and how often it was sent. */
+/** 一个表情和它被发了几次。 */
 export interface EmojiCount {
-  /** The emoji as the text writes it, `[微笑]`. */
+  /** 表情在文字中的写法，如 `[微笑]`。 */
   emoji: string;
-  /** How many times it was used. */
+  /** 用了几次。 */
   count: number;
 }
 
-/** A page of a member's messages in a group (`group member-messages`), newest first. */
+/** 一个成员在群里的消息中的一页（`group member-messages`），从新到旧。 */
 export interface MemberMessages {
-  /** The messages of the page. */
+  /** 这一页的消息。 */
   messages: ChatMessage[];
-  /** Whether there are messages past this page. */
+  /** 这一页之后是否还有消息。 */
   hasMore: boolean;
-  /** Pass it as `cursor` for the next page. */
+  /** 作为 `cursor` 传入就能读下一页。 */
   nextCursor: number;
 }
 
@@ -813,777 +814,783 @@ export interface ChatMessage {
   messageKey: string;
 }
 
-/** The private chats counted together (`analytics overall`), but for the people left out. */
+/** 排除名单以外的全部私聊合在一起的统计（`analytics overall`）。 */
 export interface OverallStatistics {
-  /** All the messages. */
+  /** 全部消息数。 */
   totalMessages: number;
-  /** Text, quotes included. */
+  /** 文字消息数，包括引用。 */
   textMessages: number;
-  /** Images. */
+  /** 图片数。 */
   imageMessages: number;
-  /** Voice messages. */
+  /** 语音消息数。 */
   voiceMessages: number;
-  /** Videos. */
+  /** 视频数。 */
   videoMessages: number;
-  /** Stickers. */
+  /** 表情数。 */
   emojiMessages: number;
-  /** Every other kind. */
+  /** 其他各种消息的数量。 */
   otherMessages: number;
-  /** The ones I sent. */
+  /** 账号所有者发出的消息数。 */
   sentMessages: number;
-  /** The ones I received. */
+  /** 账号所有者收到的消息数。 */
   receivedMessages: number;
-  /** The time of the first message; null without messages. */
+  /** 第一条消息的时间；没有消息时为 `null`。 */
   firstMessageTime: number | null;
-  /** The time of the last message; null without messages. */
+  /** 最后一条消息的时间；没有消息时为 `null`。 */
   lastMessageTime: number | null;
-  /** The days with a message. */
+  /** 有消息的天数。 */
   activeDays: number;
-  /** By WeChat's type of the message, as `localType`. */
+  /** 按消息类型（与 `localType` 相同）计数。 */
   messageTypeCounts: Record<string, number>;
 }
 
-/** A private chat of `analytics rankings`, the one with the most messages first. */
+/** `analytics rankings` 中的一个私聊，消息最多的在前；不含排除名单中的人。 */
 export interface ContactRank {
-  /** The other party's wxid. */
+  /** 对方的 wxid。 */
   username: string;
-  /** The remark, else the nickname, else the WeChat ID, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** The WeChat ID they chose, else the username when it is not a `wxid_…`; else empty. */
+  /** 对方设置的微信号；没有时，用户名不以 `wxid_` 开头则为用户名，否则为空。 */
   wechatId: string;
-  /** The messages of the chat in the range asked for. */
+  /** 请求的时间范围内这个私聊的消息数。 */
   messageCount: number;
-  /** The ones I sent. */
+  /** 其中账号所有者发出的消息数。 */
   sentCount: number;
-  /** The ones I received. */
+  /** 其中账号所有者收到的消息数。 */
   receivedCount: number;
-  /** The time of the last message; null without messages. */
+  /** 最后一条消息的时间；没有消息时为 `null`。 */
   lastMessageTime: number | null;
 }
 
-/** When the private chats' messages were sent (`analytics time`), in the server's time zone. */
+/** 排除名单以外的私聊的消息在什么时候发出（`analytics time`），按服务端所在的时区。 */
 export interface TimeDistribution {
-  /** By the hour, `"0"` to `"23"`. */
+  /** 按小时计数，键为 `"0"` 到 `"23"`。 */
   hourlyDistribution: Record<string, number>;
-  /** By the day of the week, `"1"` (Monday) to `"7"` (Sunday). */
+  /** 按星期计数，键为 `"1"`（星期一）到 `"7"`（星期日）。 */
   weekdayDistribution: Record<string, number>;
-  /** By the month, `YYYY-MM`. */
+  /** 按月份计数，键为 `YYYY-MM`。 */
   monthlyDistribution: Record<string, number>;
 }
 
-/**
- * Someone who may be left out of the analytics (`analytics exclude-candidates`): the private chats, and those left
- * out already.
- */
+/** 可以从统计中排除的人（`analytics exclude-candidates`）：各个私聊的对方，以及已经排除的人。 */
 export interface ExcludeCandidate {
-  /** The other party's wxid. */
+  /** 对方的 wxid。 */
   username: string;
-  /** The remark, else the nickname, else the WeChat ID, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** As in a ranking. */
+  /** 写法与 `analytics rankings` 的 `wechatId` 相同。 */
   wechatId: string;
 }
 
-/** A page of Moments posts (`sns timeline`), the newest first. */
+/** 朋友圈动态的一页（`sns timeline`），从新到旧。 */
 export interface SnsTimeline {
-  /** The posts of the page. */
+  /** 这一页的动态。 */
   timeline: SnsPost[];
 }
 
-/** A Moments post. */
+/** 一条朋友圈动态。 */
 export interface SnsPost {
-  /** WeChat's id of the post. */
+  /** 微信给动态的 ID；XML 中没有时为 `tid`。 */
   id: string;
-  /** The row's id in WeChat's table, in decimal. */
+  /** 这一行在微信的表中的 ID，写成十进制。 */
   tid: string;
-  /** The poster's wxid. */
+  /** 发布者的 wxid。 */
   username: string;
-  /** The poster's name: the post's own, else the contact's, else the username. */
+  /** 发布者在账号中的显示名：备注，没有时依次用昵称、微信号和用户名本身。 */
   nickname: string;
-  /** When it was posted; 0 when the post does not say. */
+  /** 发布的时间；动态中没有写时为 0。 */
   createTime: number;
-  /** The text of the post. */
+  /** 动态的文字。 */
   contentDesc: string;
-  /** WeChat's type of the post: 1 pictures, 15 a video, others links and such. */
+  /** 微信的动态类型：1 为图片，15 为视频，其他为链接等；XML 中没有时为 1。 */
   type: number;
-  /** The post's XML as WeChat keeps it. */
+  /** 微信保存的动态 XML。 */
   rawXml: string;
-  /** Its pictures or video. */
+  /** 动态中的图片或视频。 */
   media: SnsMedia[];
-  /** The names of those who liked it. */
+  /** 点赞者的昵称。 */
   likes: string[];
-  /** Its comments, in the order of the post's XML. */
+  /** 评论，按动态 XML 中的顺序。 */
   comments: SnsComment[];
-  /** The key of the post's video, which opens its cover too. */
+  /** 动态视频的密钥（`<enc key>`），也能解开视频的封面。 */
   videoKey?: string;
-  /** The address of the poster's avatar; left out when there is none. */
+  /** 发布者头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** Where it was posted; left out when the post does not say. */
+  /** 发布的地点；动态中没有写时省略。 */
   location?: SnsLocation;
 }
 
-/** A picture or video of a post: addresses on WeChat's servers, fetched and decrypted by `sns media` with `key`. */
+/** 动态中的一张图片或一段视频：微信服务器上的地址，由 `sns media` 用 `key` 取回并解密。 */
 export interface SnsMedia {
   /**
-   * The full picture or the video: WeChat's address, over https and with `token`; with `with-media`, as
-   * `resolvedUrl`, else WeChat's.
+   * 完整的图片或视频：微信服务器的地址，改用 https 并带上 `token`；带 `with-media` 时为 `resolvedUrl`，
+   * 没有时仍为微信的地址。
    */
   url: string;
-  /** The thumbnail, as `url`. */
+  /** 缩略图，写法同 `url`。 */
   thumb: string;
-  /** The file's MD5, as the post gives it. */
+  /** 动态中写的文件 MD5。 */
   md5?: string;
-  /** The access token WeChat's server asks for. */
+  /** 微信服务器要求的访问令牌。 */
   token?: string;
-  /** The key that decrypts the file, to pass to `sns media`. */
+  /** 解密文件的密钥，传给 `sns media`；视频优先用动态的视频密钥（#202）。 */
   key?: string;
-  /** The `enc_idx` attribute the post gives the file. */
+  /** 动态给文件写的 `enc_idx` 属性。 */
   encIdx?: string;
-  /** With `with-media`: WeChat's address of the full picture or the video. */
+  /** 带 `with-media` 时：完整的图片或视频在微信服务器上的地址。 */
   rawUrl?: string;
-  /** With `with-media`: WeChat's address of the thumbnail. */
+  /** 带 `with-media` 时：缩略图在微信服务器上的地址。 */
   rawThumb?: string;
-  /** With `with-media`: the file fetched and decrypted, as a data URL, else `proxyUrl`. */
+  /** 带 `with-media` 时：取回并解密的文件，写成 data URL；取不到时为 `proxyUrl`。 */
   resolvedUrl?: string;
-  /** With `with-media`: the thumbnail, as `resolvedUrl`. */
+  /** 带 `with-media` 时：缩略图，写法同 `resolvedUrl`。 */
   resolvedThumbUrl?: string;
-  /** With `with-media`: the route of `weflow serve` that fetches and decrypts the file (`/api/sns/media`). */
+  /** 带 `with-media` 时：`weflow serve` 上取回并解密这个文件的路由（`/api/sns/media`）。 */
   proxyUrl?: string;
-  /** With `with-media`: the route that fetches and decrypts the thumbnail. */
+  /** 带 `with-media` 时：取回并解密缩略图的路由。 */
   proxyThumbUrl?: string;
-  /** The moving part of a live photo. */
+  /** 实况照片中动的部分。 */
   livePhoto?: SnsLivePhoto;
 }
 
-/** The video of a live photo. */
+/** 实况照片中的视频。 */
 export interface SnsLivePhoto {
-  /** The video, as a picture's `url`. */
+  /** 视频，写法同图片的 `url`。 */
   url: string;
-  /** Its thumbnail, as a picture's `thumb`. */
+  /** 视频的缩略图，写法同图片的 `thumb`。 */
   thumb: string;
-  /** The access token WeChat's server asks for. */
+  /** 微信服务器要求的访问令牌。 */
   token?: string;
-  /** The key that decrypts the video; the picture's key opens it when it has none. */
+  /** 解密视频的密钥：动态的视频密钥，没有时依次为它自己的密钥和图片的密钥。 */
   key?: string;
-  /** The video's MD5, as the post gives it. */
+  /** 动态中写的视频 MD5。 */
   md5?: string;
-  /** The `enc_idx` attribute the post gives the video. */
+  /** 动态给视频写的 `enc_idx` 属性。 */
   encIdx?: string;
-  /** With `with-media`: as a picture's `rawUrl`. */
+  /** 带 `with-media` 时：同图片的 `rawUrl`。 */
   rawUrl?: string;
-  /** With `with-media`: as a picture's `rawThumb`. */
+  /** 带 `with-media` 时：同图片的 `rawThumb`。 */
   rawThumb?: string;
-  /** With `with-media`: as a picture's `resolvedUrl`. */
+  /** 带 `with-media` 时：同图片的 `resolvedUrl`。 */
   resolvedUrl?: string;
-  /** With `with-media`: as a picture's `resolvedThumbUrl`. */
+  /** 带 `with-media` 时：同图片的 `resolvedThumbUrl`。 */
   resolvedThumbUrl?: string;
-  /** With `with-media`: as a picture's `proxyUrl`. */
+  /** 带 `with-media` 时：同图片的 `proxyUrl`。 */
   proxyUrl?: string;
-  /** With `with-media`: as a picture's `proxyThumbUrl`. */
+  /** 带 `with-media` 时：同图片的 `proxyThumbUrl`。 */
   proxyThumbUrl?: string;
 }
 
-/** A comment on a post. */
+/** 动态下的一条评论。 */
 export interface SnsComment {
-  /** WeChat's id of the comment; one made up (`cmt_…`) when the post gives none. */
+  /** 微信给评论的 ID；动态中没有时为生成的 `cmt_…`。 */
   id: string;
-  /** The commenter's name. */
+  /** 评论者的昵称。 */
   nickname: string;
-  /** The commenter's wxid; left out when the post does not say. */
+  /** 评论者的 wxid；动态中没有写时省略。 */
   username?: string;
-  /** Its text; empty for a comment of stickers only. */
+  /** 评论的文字；只有表情的评论为空。 */
   content: string;
-  /** The comment it answers; empty when none. */
+  /** 所回复的评论；没有时为空。 */
   refCommentId: string;
-  /** The wxid of whom it answers; left out when it answers no one or the post does not say. */
+  /** 所回复的人的 wxid；不是回复，或动态中没有写时省略。 */
   refUsername?: string;
-  /** The name of whom it answers; left out as `refUsername`. */
+  /** 所回复的人的昵称：动态中写的，没有时按 `refUsername` 从同一条动态的评论中找；找不到时省略。 */
   refNickname?: string;
-  /** The stickers in it; left out when there are none. */
+  /** 评论中的表情；没有时省略。 */
   emojis?: SnsEmoji[];
 }
 
-/** A sticker in a comment. */
+/** 评论中的一个表情。 */
 export interface SnsEmoji {
-  /** Its plain address; empty when it has only `encryptUrl`. */
+  /** 不加密的地址；只有 `encryptUrl` 时为空。 */
   url: string;
-  /** Its MD5; empty when the comment does not say. */
+  /** 表情的 MD5；评论中没有写时为空。 */
   md5: string;
-  /** In pixels; null when the comment does not say. */
+  /** 宽度，单位为像素；评论中没有写时为 `null`。 */
   width: number | null;
-  /** In pixels; null when the comment does not say. */
+  /** 高度，单位为像素；评论中没有写时为 `null`。 */
   height: number | null;
-  /** The address of its encrypted file; left out when it has none. */
+  /** 加密文件的地址；没有时省略。 */
   encryptUrl?: string;
-  /** The AES key of `encryptUrl`; left out when it has none. */
+  /** `encryptUrl` 的 AES 密钥；没有时省略。 */
   aesKey?: string;
 }
 
-/** Where a post was made, as much as it says. */
+/** 发布动态的地点，动态中写了多少就有多少。 */
 export interface SnsLocation {
-  /** In degrees, as the post writes it. */
+  /** 纬度，单位为度，按动态中写的数字。 */
   latitude?: number;
-  /** In degrees, as the post writes it. */
+  /** 经度，单位为度，按动态中写的数字。 */
   longitude?: number;
-  /** The city. */
+  /** 城市。 */
   city?: string;
-  /** The country. */
+  /** 国家。 */
   country?: string;
-  /** The name of the place. */
+  /** 地点的名称。 */
   poiName?: string;
-  /** The place's address. */
+  /** 地点的地址。 */
   poiAddress?: string;
-  /** The place's address as a name. */
+  /** 地址的名称（`poiAddressName`）。 */
   poiAddressName?: string;
-  /** The label the post shows for it. */
+  /** 动态为这个地点显示的标签。 */
   label?: string;
 }
 
-/** Who has posts in Moments (`sns users`), the one who posted last first. */
+/** 在朋友圈发过动态的人（`sns users`），最近发的在前。 */
 export interface SnsUsers {
-  /** Their wxids. */
+  /** 他们的 wxid。 */
   usernames: string[];
 }
 
-/** How many Moments posts there are (`sns stats`). */
+/** 朋友圈有多少条动态（`sns stats`）。 */
 export interface SnsStats {
-  /** The posts kept on this computer. */
+  /** 本机保存的动态数。 */
   totalPosts: number;
-  /** How many people posted them. */
+  /** 发了这些动态的人数。 */
   totalFriends: number;
-  /** How many of them are the account's own; null when the account's wxid is not known. */
+  /** 其中账号自己的动态数；不知道账号的 wxid 时为 `null`。 */
   myPosts: number | null;
 }
 
-/** How many Moments posts one person has (`sns post-counts --user`). */
+/** 一个人有多少条朋友圈动态（`sns post-counts --user`）。 */
 export interface UserPosts {
-  /** Their wxid. */
+  /** 这个人的 wxid。 */
   username: string;
-  /** Their posts kept on this computer. */
+  /** 本机保存的这个人的动态数。 */
   totalPosts: number;
 }
 
-/** The years with private messages (`report annual years`), the latest first. */
+/** 私聊中有消息的年份（`report annual years`），最近的在前。 */
 export interface ReportYears {
-  /** The years, in the server's time zone. */
+  /** 这些年份，按服务端所在的时区。 */
   years: number[];
   /**
-   * How they were found: `native` (WeChat's own index), `table-scan` (the time span of each table) or
-   * `edge-scan` (each chat's first and last message).
+   * 找出年份的方式：`native`（只读数据库层按每条消息的时间查出）、`table-scan`（各表的时间范围）或
+   * `edge-scan`（各私聊的第一条和最后一条消息）。
    */
   strategy: string;
 }
 
-/** The annual report (`report annual generate`) over the private chats of one year, or of all of them. */
+/** 年度报告（`report annual generate`），统计一年或所有年份的私聊。 */
 export interface AnnualReport {
-  /** 0 for all the years. */
+  /** 报告的年份；所有年份时为 0。 */
   year: number;
-  /** The messages of the private chats. */
+  /** 私聊的消息数。 */
   totalMessages: number;
-  /** The private chats with messages. */
+  /** 有消息的私聊数。 */
   totalFriends: number;
-  /** The three private chats with the most messages. */
+  /** 消息最多的三个私聊。 */
   coreFriends: CoreFriend[];
-  /** Months 1–12. */
+  /** 1 到 12 月每个月消息最多的好友。 */
   monthlyTopFriends: MonthlyTopFriend[];
-  /** Null without messages. */
+  /** 消息最多的一天；没有消息时为 `null`。 */
   peakDay: PeakDay | null;
-  /** Null without messages. */
+  /** 与一位好友连续聊天最多的天数；没有消息时为 `null`。 */
   longestStreak: LongestStreak | null;
-  /** Messages by weekday and hour. */
+  /** 按星期和小时的消息数。 */
   activityHeatmap: ActivityHeatmap;
-  /** Null without messages between 0:00 and 6:00. */
+  /** 0:00 到 6:00 之间消息最多的好友；这段时间没有消息时为 `null`。 */
   midnightKing: MidnightKing | null;
-  /** The address of my avatar; left out when there is none. */
+  /** 账号所有者头像的地址；没有时省略。 */
   selfAvatarUrl?: string;
-  /** Null when no friend has 50 or more messages each way. */
+  /** 双方来往最均衡的好友；没有一位好友双方各发了 50 条以上时为 `null`。 */
   mutualFriend: MutualFriend | null;
-  /** Null without conversations. */
+  /** 一轮轮聊天由谁开始；没有聊天时为 `null`。 */
   socialInitiative: SocialInitiative | null;
-  /** Null when I answered nothing. */
+  /** 账号所有者回复的速度；没有一个私聊有 10 次以上回复时为 `null`。 */
   responseSpeed: ResponseSpeed | null;
-  /** My phrases said at least twice, the most said first. */
+  /** 账号所有者说过至少 2 次的常用语，说得多的在前。 */
   topPhrases: PhraseCount[];
-  /** Left out when my Moments cannot be read. */
+  /** 账号所有者的朋友圈；读不了朋友圈时省略。 */
   snsStats?: AnnualSnsStats;
-  /** Null when no friend fits. */
+  /** 前一段时间聊得多、后来很少联系的好友；没有符合条件的好友时为 `null`。 */
   lostFriend: LostFriend | null;
 }
 
-/** One of the three private chats with the most messages. */
+/** 消息最多的三个私聊之一。 */
 export interface CoreFriend {
-  /** The friend's wxid. */
+  /** 好友的 wxid。 */
   username: string;
-  /** The remark, else the nickname, else the WeChat ID, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** The chat's messages. */
+  /** 这个私聊的消息数。 */
   messageCount: number;
-  /** The ones I sent. */
+  /** 其中账号所有者发出的消息数。 */
   sentCount: number;
-  /** The ones I received. */
+  /** 其中账号所有者收到的消息数。 */
   receivedCount: number;
 }
 
-/** Who a month's most messages are with. */
+/** 一个月中消息最多的好友。 */
 export interface MonthlyTopFriend {
-  /** 1–12. */
+  /** 月份，1 到 12。 */
   month: number;
-  /** 「暂无」 for a month without messages. */
+  /** 好友的名字；没有消息的月份为「暂无」。 */
   displayName: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** Their messages in the month; 0 for a month without messages. */
+  /** 这个月与好友的消息数；没有消息的月份为 0。 */
   messageCount: number;
 }
 
-/** The day with the most messages, and who most of them are with. */
+/** 消息最多的一天，以及这天消息最多的好友。 */
 export interface PeakDay {
-  /** `YYYY-MM-DD`. */
+  /** 日期，`YYYY-MM-DD`。 */
   date: string;
-  /** The day's messages. */
+  /** 这天的消息数。 */
   messageCount: number;
-  /** The name of the friend most of them are with. */
+  /** 这天消息最多的好友的名字；读不出时为空。 */
   topFriend: string;
-  /** The day's messages with that friend. */
+  /** 这天与那位好友的消息数。 */
   topFriendCount: number;
 }
 
-/** The most days in a row talked with one friend. */
+/** 与一位好友连续聊天最多的天数。 */
 export interface LongestStreak {
-  /** The friend's name. */
+  /** 好友的名字。 */
   friendName: string;
-  /** How many days in a row. */
+  /** 连续的天数。 */
   days: number;
-  /** `YYYY-MM-DD`. */
+  /** 第一天，`YYYY-MM-DD`。 */
   startDate: string;
-  /** `YYYY-MM-DD`. */
+  /** 最后一天，`YYYY-MM-DD`。 */
   endDate: string;
 }
 
-/** Messages by weekday and hour. */
+/** 按星期和小时的消息数。 */
 export interface ActivityHeatmap {
-  /** Seven rows, Monday first, of 24 hours each. */
+  /** 七行，星期一在前，每行 24 个小时。 */
   data: number[][];
 }
 
-/** Who the most messages between 0:00 and 6:00 are with. */
+/** 0:00 到 6:00 之间消息最多的好友。 */
 export interface MidnightKing {
-  /** The friend's name. */
+  /** 好友的名字。 */
   displayName: string;
-  /** Their messages between 0:00 and 6:00. */
+  /** 0:00 到 6:00 之间与这位好友的消息数。 */
   count: number;
-  /** Of all the messages between 0:00 and 6:00, to one decimal. */
+  /** 占 0:00 到 6:00 之间全部消息的百分比，保留一位小数。 */
   percentage: number;
 }
 
-/** The friend whose sent and received messages, 50 or more each, are closest to even. */
+/** 发出和收到的消息各有 50 条以上、两者最接近相等的好友。 */
 export interface MutualFriend {
-  /** The friend's name. */
+  /** 好友的名字。 */
   displayName: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** The messages I sent them. */
+  /** 账号所有者发给对方的消息数。 */
   sentCount: number;
-  /** The messages they sent me. */
+  /** 对方发给账号所有者的消息数。 */
   receivedCount: number;
-  /** Sent ÷ received, to two decimals. */
+  /** 发出数除以收到数，保留两位小数。 */
   ratio: number;
 }
 
 /**
- * Conversations opened by me or by them.
+ * 由账号所有者或对方开始的一轮轮聊天。
  *
- * A conversation starts with the first message after an hour without any.
+ * 静默超过 1 小时后的第一条消息开始新的一轮。
  */
 export interface SocialInitiative {
-  /** The conversations I opened. */
+  /** 账号所有者开始的轮数。 */
   initiatedChats: number;
-  /** The conversations they opened. */
+  /** 对方开始的轮数。 */
   receivedChats: number;
-  /** The share opened by me, in percent to one decimal. */
+  /** 账号所有者开始的比例，百分数，保留一位小数。 */
   initiativeRate: number;
-  /** Whom I opened the most conversations with; left out when I opened none. */
+  /** 账号所有者主动开始聊天最多的好友；一轮都没有时省略。 */
   topInitiatedFriend?: string;
-  /** How many conversations I opened with them; left out when I opened none. */
+  /** 与那位好友主动开始的轮数；一轮都没有时省略。 */
   topInitiatedCount?: number;
 }
 
 /**
- * How fast I answer, in seconds.
+ * 账号所有者回复的速度，单位为秒。
  *
- * An answer is my message after theirs in the same conversation, within a day.
+ * 回复是同一轮聊天中对方消息之后账号所有者的消息，间隔在一天之内；只计入回复至少 10 次的私聊。
  */
 export interface ResponseSpeed {
-  /** The mean over all my answers. */
+  /** 全部回复的平均时间。 */
   avgResponseTime: number;
-  /** The name of the friend I answer fastest on average. */
+  /** 平均回复最快的好友的名字。 */
   fastestFriend: string;
-  /** My mean answer to that friend. */
+  /** 对那位好友的平均回复时间。 */
   fastestTime: number;
 }
 
-/** My Moments in the annual report. */
+/** 年度报告中账号所有者的朋友圈。 */
 export interface AnnualSnsStats {
-  /** My posts. */
+  /** 账号所有者的动态数。 */
   totalPosts: number;
-  /** My posts by WeChat's post type. */
+  /** 按微信的动态类型计数；没有时省略。 */
   typeCounts?: Record<string, number>;
-  /** Who liked my posts the most. */
+  /** 给账号所有者的动态点赞最多的好友。 */
   topLikers: FriendCount[];
-  /** Whose posts I liked the most. */
+  /** 账号所有者点赞最多的好友。 */
   topLiked: FriendCount[];
 }
 
-/** A friend and a count. */
+/** 一位好友和一个计数。 */
 export interface FriendCount {
-  /** The friend's wxid. */
+  /** 好友的 wxid。 */
   username: string;
-  /** The likes counted. */
+  /** 点赞的次数。 */
   count: number;
-  /** The remark, else the nickname, else the WeChat ID, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
 }
 
 /**
- * A friend talked to much more in an earlier period than later.
+ * 前一段时间比后一段聊得多得多的好友。
  *
- * The earlier period has more than 80 messages and more than five times as many as the later one.
+ * 前一段超过 80 条消息（所有年份时超过 100 条），并且是后一段的 5 倍以上。
+ * 所有年份时前后两段以最早和最晚一天的中点分开；今年为过去 12 个月的前 6 个月和后 6 个月；往年为上半年和下半年。
  */
 export interface LostFriend {
-  /** The friend's wxid. */
+  /** 好友的 wxid。 */
   username: string;
-  /** The remark, else the nickname, else the WeChat ID, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   displayName: string;
-  /** The address of their avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** The messages of the earlier period. */
+  /** 前一段的消息数。 */
   earlyCount: number;
-  /** The messages of the later period. */
+  /** 后一段的消息数。 */
   lateCount: number;
-  /** The earlier period, as the report says it: 「去年的这个时候」 and the like. */
+  /** 报告对前一段的说法：所有年份为「这段时间以来」，今年为「去年的这个时候」，往年为「<年份>年上半年」。 */
   periodDesc: string;
 }
 
-/** The dual report (`report dual generate`): me and one friend, over one year or all of them. */
+/** 双人报告（`report dual generate`）：账号所有者和一位好友，统计一年或所有年份。 */
 export interface DualReport {
-  /** 0 for all the years. */
+  /** 报告的年份；所有年份时为 0。 */
   year: number;
-  /** My name. */
+  /** 账号所有者的名字：联系人中的显示名，没有时为 wxid。 */
   selfName: string;
-  /** The address of my avatar; left out when there is none. */
+  /** 账号所有者头像的地址；没有时省略。 */
   selfAvatarUrl?: string;
-  /** The friend's wxid. */
+  /** 好友的 wxid。 */
   friendUsername: string;
-  /** The remark, else the nickname, else the WeChat ID, else the username. */
+  /** 备注，没有时依次用昵称、微信号和用户名本身。 */
   friendName: string;
-  /** The address of the friend's avatar; left out when there is none. */
+  /** 好友头像的地址；没有时省略。 */
   friendAvatarUrl?: string;
-  /** The first message ever between the two. */
+  /** 两人之间的第一条消息；没有消息时为 `null`。 */
   firstChat: DualMessage | null;
-  /** The first messages ever between the two, at most 10. */
+  /** 两人之间最早的几条消息，最多 10 条。 */
   firstChatMessages: DualMessage[];
-  /** The first message of the year; null for all the years. */
+  /** 这一年的第一条消息；所有年份或这一年没有消息时为 `null`。 */
   yearFirstChat: YearFirstChat | null;
-  /** The counts. */
+  /** 各项计数。 */
   stats: DualStats;
-  /** Phrases said at least twice by either, the most said first. */
+  /** 两人中任一方说过至少 2 次的常用语，说得多的在前；不含 `exclude-word` 给出的词。 */
   topPhrases: PhraseCount[];
-  /** Phrases three quarters or more of which are mine. */
+  /** 至少四分之三出自账号所有者、且账号所有者说过至少 2 次的常用语，最多 20 条。 */
   myExclusivePhrases: PhraseCount[];
-  /** Phrases three quarters or more of which are the friend's. */
+  /** 至少四分之三出自好友、且好友说过至少 2 次的常用语，最多 20 条。 */
   friendExclusivePhrases: PhraseCount[];
-  /** Seven rows, Monday first, of 24 hours each. */
+  /** 按星期和小时的消息数：七行，星期一在前，每行 24 个小时。 */
   heatmap?: number[][];
-  /** Who opened the conversations. */
+  /** 一轮轮聊天由谁开始。 */
   initiative?: DualInitiative;
-  /** How fast I answer; left out when I answered nothing. */
+  /** 账号所有者回复的速度；一次都没有回复时省略。 */
   response?: DualResponse;
-  /** Messages by month, `YYYY-MM`. */
+  /** 按月份的消息数，键为 `YYYY-MM`。 */
   monthly?: Record<string, number>;
-  /** The most days in a row the two talked; left out without messages. */
+  /** 两人连续聊天最多的天数；没有消息时省略。 */
   streak?: DualStreak;
 }
 
-/** A message of the dual report. */
+/** 双人报告中的一条消息。 */
 export interface DualMessage {
-  /** Its text; raw for anything but text. */
+  /** 微信保存的内容：文字消息为文字，其他消息为原始内容（常为 XML）。 */
   content: string;
-  /** Whether I sent it. */
+  /** 是否为账号所有者发的。 */
   isSentByMe: boolean;
-  /** Who sent it; only on `firstChat`, where the row says. */
+  /** 发送者；只在 `firstChat` 中、消息行写了发送者时才有。 */
   senderUsername?: string;
-  /** Milliseconds. */
+  /** 发送时间，Unix 毫秒。 */
   createTime: number;
-  /** `YYYY-MM-DD HH:MM:SS`, local time. */
+  /** 发送时间，服务端所在时区的 `YYYY-MM-DD HH:MM:SS`。 */
   createTimeStr: string;
-  /** WeChat's type of the message, as a parsed message's `localType`. */
+  /** 消息类型，与解析过的消息的 `localType` 相同。 */
   localType: number;
-  /** What an app message is, as a parsed message's `appMsgKind`; left out for any other message. */
+  /** app 消息的种类，与解析过的消息的 `appMsgKind` 相同；其他消息省略。 */
   appMsgKind?: string;
-  /** A sticker's MD5. */
+  /** 表情的 MD5。 */
   emojiMd5?: string;
-  /** A sticker's address. */
+  /** 表情的地址。 */
   emojiCdnUrl?: string;
 }
 
-/** The first message of the year, with the first messages that follow it. */
+/** 这一年的第一条消息，以及它之后最早的几条消息。 */
 export interface YearFirstChat {
-  /** Milliseconds. */
+  /** 发送时间，Unix 毫秒。 */
   createTime: number;
-  /** `YYYY-MM-DD HH:MM:SS`, local time. */
+  /** 发送时间，服务端所在时区的 `YYYY-MM-DD HH:MM:SS`。 */
   createTimeStr: string;
-  /** Its text; raw for anything but text. */
+  /** 微信保存的内容：文字消息为文字，其他消息为原始内容（常为 XML）。 */
   content: string;
-  /** Whether I sent it. */
+  /** 是否为账号所有者发的。 */
   isSentByMe: boolean;
-  /** The friend's name. */
+  /** 好友的名字。 */
   friendName: string;
-  /** The year's first messages, at most 10. */
+  /** 这一年最早的几条消息，最多 10 条。 */
   firstThreeMessages: DualMessage[];
-  /** WeChat's type of the message, as a parsed message's `localType`. */
+  /** 消息类型，与解析过的消息的 `localType` 相同。 */
   localType: number;
-  /** What an app message is, as a parsed message's `appMsgKind`; left out for any other message. */
+  /** app 消息的种类，与解析过的消息的 `appMsgKind` 相同；其他消息省略。 */
   appMsgKind?: string;
-  /** A sticker's MD5. */
+  /** 表情的 MD5。 */
   emojiMd5?: string;
-  /** A sticker's address. */
+  /** 表情的地址。 */
   emojiCdnUrl?: string;
 }
 
-/** The counts of the dual report, and each one's most sent sticker. */
+/** 双人报告的计数，以及双方各自发得最多的表情。 */
 export interface DualStats {
-  /** All the messages between the two. */
+  /** 两人之间的全部消息数。 */
   totalMessages: number;
-  /** The characters of the text messages. */
+  /** 文字消息的字数。 */
   totalWords: number;
-  /** Images. */
+  /** 图片数。 */
   imageCount: number;
-  /** Voice messages. */
+  /** 语音消息数。 */
   voiceCount: number;
-  /** Stickers. */
+  /** 表情数。 */
   emojiCount: number;
-  /** The MD5 of the sticker I sent most; left out when I sent none. */
+  /** 账号所有者发得最多的表情的 MD5；一个都没发时省略。 */
   myTopEmojiMd5?: string;
-  /** Its address; left out when neither its message nor the sticker database has one. */
+  /** 这个表情的地址；消息和表情数据库中都没有时省略。 */
   myTopEmojiUrl?: string;
-  /** The MD5 of the sticker the friend sent most; left out when they sent none. */
+  /** 好友发得最多的表情的 MD5；一个都没发时省略。 */
   friendTopEmojiMd5?: string;
-  /** Its address; left out when neither its message nor the sticker database has one. */
+  /** 这个表情的地址；消息和表情数据库中都没有时省略。 */
   friendTopEmojiUrl?: string;
-  /** How many times I sent mine. */
+  /** 账号所有者发这个表情的次数；一个都没发时省略。 */
   myTopEmojiCount?: number;
-  /** How many times the friend sent theirs. */
+  /** 好友发那个表情的次数；一个都没发时省略。 */
   friendTopEmojiCount?: number;
 }
 
 /**
- * Conversations opened by me, or by them.
+ * 由账号所有者或好友开始的一轮轮聊天。
  *
- * A conversation starts with the first message after an hour without any.
+ * 静默超过 1 小时后的第一条消息开始新的一轮。
  */
 export interface DualInitiative {
-  /** The conversations I opened. */
+  /** 账号所有者开始的轮数。 */
   initiated: number;
-  /** The conversations the friend opened. */
+  /** 好友开始的轮数。 */
   received: number;
 }
 
 /**
- * How fast I answer the friend, in seconds.
+ * 账号所有者回复好友的速度，单位为秒。
  *
- * An answer is my message after theirs in the same conversation, within a day.
+ * 回复是同一轮聊天中好友消息之后账号所有者的消息，间隔在一天之内。
  */
 export interface DualResponse {
-  /** The mean, rounded. */
+  /** 平均时间，取整。 */
   avg: number;
-  /** The fastest answer. */
+  /** 最快的一次。 */
   fastest: number;
-  /** The slowest answer. */
+  /** 最慢的一次。 */
   slowest: number;
-  /** The answers counted. */
+  /** 计入的回复次数。 */
   count: number;
 }
 
-/** The most days in a row the two talked. */
+/** 两人连续聊天最多的天数。 */
 export interface DualStreak {
-  /** How many days in a row. */
+  /** 连续的天数。 */
   days: number;
-  /** The first day, `YYYY-MM-DD`. */
+  /** 第一天，`YYYY-MM-DD`。 */
   startDate: string;
-  /** The last day, `YYYY-MM-DD`. */
+  /** 最后一天，`YYYY-MM-DD`。 */
   endDate: string;
 }
 
-/** The pushes of an official account (`biz messages`). */
+/** 一个公众号的推送（`biz messages`），从新到旧的一页。 */
 export interface BizMessages {
-  /** The official account, `gh_…`. */
+  /** 公众号的用户名，`gh_…`。 */
   username: string;
-  /** Its pushes; messages without content are left out. */
+  /** 它的推送；没有内容的消息不列出。 */
   messages: BizMessage[];
 }
 
-/** One push of an official account: its lead article and the others sent with it. */
+/** 公众号的一次推送：头条文章和随它一起发出的其他文章。 */
 export interface BizMessage {
-  /** The message's id in its table; null when its row does not say. */
+  /** 消息的本地 ID，只在所在分片中唯一。 */
   localId: number | null;
-  /** When it was sent; null when its row does not say. */
+  /** 发出的时间；消息行中没有时为 `null`。 */
   createTime: number | null;
-  /** The lead article's title; empty when the push has none. */
+  /** 头条文章的标题；推送中没有时为空。 */
   title: string;
-  /** The lead article's summary. */
+  /** 头条文章的摘要（`<des>`）。 */
   description: string;
-  /** The lead article's address. */
+  /** 头条文章的地址。 */
   url: string;
-  /** The lead article's cover image: its `cover`, else its `thumburl`. */
+  /** 头条文章的封面图：`<cover>`，没有时为 `<thumburl>`。 */
   cover: string;
-  /** The other articles of the push. */
+  /** 推送中的其他文章。 */
   contentList: BizArticle[];
 }
 
-/** An article sent with a push. */
+/** 随推送一起发出的一篇文章。 */
 export interface BizArticle {
-  /** Never empty: an article without a title is left out. */
+  /** 标题，不会为空：没有标题的文章不列出。 */
   title: string;
-  /** The article's address. */
+  /** 文章的地址。 */
   url: string;
-  /** Its cover image: its `cover`, else its `thumburl`. */
+  /** 封面图：`<cover>`，没有时为 `<thumburl>`。 */
   cover: string;
-  /** Its `summary`, else its `digest`. */
+  /** 摘要：`<summary>`，没有时为 `<digest>`。 */
   summary: string;
 }
 
-/** A page of WeChat Pay notices (`biz pay-records`), newest first. */
+/**
+ * 微信支付通知的一页（`biz pay-records`），从新到旧。
+ *
+ * 通知来自微信支付账号的会话，以及微信存放支付卡片的服务通知。
+ */
 export interface PayRecords {
-  /** The notices of the page. */
+  /** 这一页的通知。 */
   records: PayRecord[];
   /**
-   * Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as
-   * its other messages are left out.
+   * 这一页之后是否还有消息：这一页读满 `limit` 条消息时为 `true`。两个会话中不是微信支付通知的消息不列出，
+   * 所以一页的通知可能少于 `limit` 条。
    */
   hasMore: boolean;
 }
 
-/** A WeChat Pay notice. */
+/** 一条微信支付通知。 */
 export interface PayRecord {
-  /** The notice's title, such as 「已支付¥9.99」. */
+  /** 通知的标题，如「已支付¥9.99」。 */
   title: string;
-  /** Its lines, as WeChat writes them (amount, method, state…). */
+  /** 通知的各行，即微信写的原文（金额、支付方式、状态等）。 */
   description: string;
-  /** How it was paid, as the card's top line 「使用零钱支付」 names it (「零钱」); null when the card has no top line of that form. */
+  /** 支付方式，取自卡片顶行「使用零钱支付」这样的写法（「零钱」）；卡片没有这样的顶行时为 `null`。 */
   method: string | null;
-  /**
-   * Its state, the words before the amount in the title (「已支付」 of 「已支付¥9.99」); null when the title holds no
-   * amount.
-   */
+  /** 状态，即标题中金额前面的文字（「已支付¥9.99」中的「已支付」）；标题中没有金额时为 `null`。 */
   status: string | null;
-  /** Who was paid; `WeChat Pay` (in the server's language) when the notice does not say. */
+  /** 收款方（`<display_name>`）；通知中没有时为服务端语言的「微信支付」（英文为 `WeChat Pay`）。 */
   merchantName: string;
-  /** The address of the payee's icon; empty when the notice has none. */
+  /** 收款方图标的地址；通知中没有时为空。 */
   merchantIcon: string;
-  /** When it was published, in Unix seconds; 0 when the notice does not say. */
+  /** 通知发布的时间（`<pub_time>`），Unix 秒；通知中没有时为 0。 */
   timestamp: number;
-  /** The message's id in its table. */
+  /** 消息的本地 ID，只在所在分片中唯一。 */
   localId: number | null;
-  /** When the message was received; null when its row does not say. */
+  /** 收到消息的时间；消息行中没有时为 `null`。 */
   createTime: number | null;
 }
 
-/** A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys. */
+/**
+ * 配置中的一个档案（`config profiles`）：它的账号和设置到了哪一步，不含密钥。
+ *
+ * 密钥只说明设置了没有，只有空白的值算作没有设置。
+ */
 export interface ProfileSummary {
-  /** The profile's name, as `config set current_profile` takes it. */
+  /** 档案的名字，即 `config set current_profile` 接受的写法。 */
   name: string;
-  /** Whether the commands read it. */
+  /** 是否为当前档案（`current_profile`），命令读取的就是它。 */
   current: boolean;
-  /** The account's wxid; null when it is not set. */
+  /** 账号的 wxid（`wxid`）；没有设置时为 `null`。 */
   wxid: string | null;
-  /** The WeChat data directory. */
+  /** 微信的数据目录（`db_path`）；没有设置时为 `null`。 */
   dbPath: string | null;
-  /** Whether the database key is set. */
+  /** 是否设置了数据库密钥。 */
   decryptKey: boolean;
-  /** Whether both image keys are set. */
+  /** 两个图片密钥是否都已设置。 */
   imageKeys: boolean;
-  /** Whether the key of the AI model API is set. */
+  /** 是否设置了 AI 模型接口的密钥。 */
   aiKey: boolean;
-  /** Whether it can open the databases: the data directory and the database key are set. */
+  /** 能否打开数据库，即数据目录和数据库密钥都已设置。 */
   complete: boolean;
 }
 
-/** One part of WeFlow's cache (`cache list`), and how much of the disk it takes. */
+/** WeFlow 缓存的一部分（`cache list`），以及它占用的磁盘空间。 */
 export interface CacheUsage {
-  /** Its name, as `cache clear` takes it. */
+  /** 这一部分的名字，即 `cache clear` 接受的写法。 */
   part: CachePart;
-  /** What `cache clear` removes; for `runtime`, the runtime directories and ffmpeg builds earlier versions left. */
+  /** `cache clear` 删除的文件和文件夹，不存在的也列出；`runtime` 和 `web` 只列出存在的。 */
   paths: string[];
-  /** What `paths` take on disk. */
+  /** `paths` 中文件的总字节数。 */
   bytes: number;
-  /** How many files `paths` hold. */
+  /** `paths` 中的文件数。 */
   files: number;
 }
 
-/** A part of WeFlow's cache that is listed and cleared on its own. */
+/** WeFlow 缓存中单独列出、单独清理的一部分。 */
 export type CachePart = "images" | "voices" | "emojis" | "sns" | "analytics" | "api" | "keys" | "runtime" | "web";
 
-/** What `cache clear` or `clear-account` would remove (`--dry-run`), for a page that asks first. */
+/** `cache clear` 或 `cache clear-account` 将要删除的内容（`--dry-run`），供页面在删除前询问。 */
 export interface RemovalPlan {
-  /** Always true. */
+  /** 总是 `true`。 */
   dryRun: boolean;
-  /** The files and folders it would remove. */
+  /** 将要删除的文件和文件夹，只列出存在的。 */
   paths: PlannedRemoval[];
-  /** What they all take on disk. */
+  /** 它们的总字节数。 */
   bytes: number;
-  /** The profile keys it would unset (`clear-account`). */
+  /** 将要清除的档案键（`clear-account`）；`cache clear` 时为空。 */
   profileKeys: string[];
 }
 
-/** A file or folder a removal would take. */
+/** 将要删除的一个文件或文件夹。 */
 export interface PlannedRemoval {
-  /** The file or folder. */
+  /** 文件或文件夹。 */
   path: string;
-  /** What it takes on disk; a folder's is that of the files under it. */
+  /** 占用的字节数；文件夹为其中所有文件的总和。 */
   bytes: number;
 }
 
-/** A removal the terminal was asked to confirm and was not. */
+/** 在终端上要求确认、但没有得到确认的删除。 */
 export interface Cancelled {
-  /** Always true. */
+  /** 总是 `true`。 */
   cancelled: boolean;
 }
 
-/** What `cache clear` removed. */
+/** `cache clear` 删除了什么。 */
 export interface CacheCleared {
-  /** The files and folders removed. */
+  /** 删除的文件和文件夹。 */
   removedPaths: string[];
-  /** What the removed files took on disk. */
+  /** 删除的文件原来的总字节数。 */
   freedBytes: number;
-  /** What could not be removed, and why; left out when everything was. */
+  /** 没有删掉的路径及原因；全部删掉时省略。 */
   warnings?: string[];
 }
 
-/** What `cache clear-account` removed. */
+/** `cache clear-account` 删除了什么。 */
 export interface AccountCleared {
-  /** The files and folders removed: WeFlow's caches of the account, and the exports named after it. */
+  /** 删除的文件和文件夹：WeFlow 为这个账号保存的缓存和见解记录，以及以账号命名的导出。 */
   removedPaths: string[];
-  /** Whether the account was taken out of the profile (`db_path`, `wxid`, the keys). */
+  /** 账号是否已移出档案（`db_path`、`wxid`、数据库密钥和图片密钥），总是 `true`。 */
   profileReset: boolean;
-  /** What could not be removed, and why; left out when everything was. */
+  /** 没有删掉的路径及原因；全部删掉时省略。 */
   warnings?: string[];
 }
 
-/** The config file a `config` change was written to. */
+/** `config` 的修改写入的配置文件。 */
 export interface ConfigWritten {
-  /** Null when `config unset config_path` finds no default place for it. */
+  /**
+   * 写入的配置文件；`config set config_path` 和 `config unset config_path` 时为此后使用的配置文件，
+   * 后者找不到默认位置时为 `null`。
+   */
   configPath: string | null;
   /**
-   * For `config set` of a key WeFlow does not read but spelt almost as one it does (`decrypt_ky`), that one:
-   * the key was saved as it was typed all the same. Left out otherwise.
+   * `config set` 的键 WeFlow 不读取、但与一个读取的键只差一点（如 `decrypt_ky`）时，为那个读取的键；
+   * 键仍按输入的写法保存。其他情况省略。
    */
   didYouMean?: string;
 }
@@ -1665,124 +1672,124 @@ export interface ProfileConfig {
   extra: Record<string, unknown>;
 }
 
-/** The language `weflow lang` saved: `en` or `zh`. */
+/** `weflow lang` 保存的语言：`en` 或 `zh`。 */
 export interface LangSaved {
-  /** `en` or `zh`. */
+  /** `en` 或 `zh`。 */
   lang: string;
 }
 
-/** The file an export wrote (`export sessions`, `contacts`, `footprint`). */
+/** 导出写出的文件（`export sessions`、`contacts`、`footprint`）。 */
 export interface ExportWritten {
-  /** The file. */
+  /** 写出的文件；带 `zip` 时为 zip 文件。 */
   out: string;
-  /** The format it was written in: `json`, `csv`, `excel`, … */
+  /** 写出的格式：`json`、`csv`、`excel` 等。 */
   format: string;
 }
 
-/** What `group export-members` or `export-member-messages` wrote. */
+/** `group export-members` 或 `export-member-messages` 写出了多少。 */
 export interface GroupExported {
-  /** The members, or the messages, written. */
+  /** 写出的成员数或消息数。 */
   count: number;
 }
 
-/** What `sns export` wrote. */
+/** `sns export` 写出了什么。 */
 export interface SnsExported {
-  /** Empty when no post matched, and nothing was written. */
+  /** 写出的文件；没有符合条件的动态、什么都没写时为空。 */
   filePath: string;
-  /** The posts written. */
+  /** 写出的动态数。 */
   postCount: number;
-  /** The media files copied beside it. */
+  /** 保存在它旁边 `media/` 文件夹中的媒体文件数。 */
   mediaCount: number;
 }
 
-/** A conversation's messages written in one format (`export messages`). */
+/** 一个会话按一种格式写出的消息（`export messages`）。 */
 export interface MessagesExported {
-  /** The file; in a zip of several formats, its name inside the zip. */
+  /** 写出的文件；打包成 zip 时为它在 zip 中的名字。 */
   out: string;
-  /** The messages written. */
+  /** 写出的消息数。 */
   count: number;
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   session: string;
-  /** The format written: `json`, `html`, `txt`, … */
+  /** 写出的格式：`json`、`html`、`txt` 等。 */
   format: string;
-  /** The media copied beside it, with `media`. */
+  /** 带 `media` 时复制到它旁边的媒体；不带时省略。 */
   media?: MediaCopied;
 }
 
-/** The media an export of messages copied to its `media/` folder. */
+/** 消息的导出复制到 `media/` 文件夹中的媒体。 */
 export interface MediaCopied {
-  /** The media messages asked for. */
+  /** `media` 选中的种类的消息数。 */
   requested: number;
-  /** The ones whose file was copied. */
+  /** 其中复制了文件的消息数。 */
   exported: number;
-  /** The ones whose file is not on disk, or could not be read or converted. */
+  /** 其中文件不在磁盘上，或者读不了、转换不了的消息数。 */
   missing: number;
-  /** The folder they went to, `media/<name of the export>` beside the export; in a zip, its path inside the zip. */
+  /** 媒体所在的文件夹，即导出文件旁边的 `media/<导出文件名>`；打包成 zip 时为它在 zip 中的路径。 */
   dir: string;
 }
 
-/** One conversation in several formats (`export messages` with several `format`s), or packed (`zip`). */
+/** 一个会话写成几种格式（`export messages` 给了几个 `format`），或者打包成 zip（`zip`）。 */
 export type MessagesBundle = MessagesFolder | MessagesZip;
 
-/** The formats of one conversation, each written to its file in one folder. */
+/** 一个会话的几种格式，每种写成一个文件，放在同一个文件夹中。 */
 export interface MessagesFolder {
-  /** The folder. */
+  /** 这个文件夹。 */
   out: string;
-  /** The formats written, in the order asked for. */
+  /** 写出的格式，按请求的顺序。 */
   formats: string[];
-  /** Each format's file, in the same order. */
+  /** 每种格式的文件，顺序同上。 */
   files: MessagesExported[];
 }
 
-/** The formats of one conversation packed into a zip, with their media. */
+/** 一个会话的各格式和它们的媒体打包成的 zip。 */
 export interface MessagesZip {
-  /** The zip. */
+  /** 这个 zip。 */
   out: string;
-  /** The formats packed, in the order asked for. */
+  /** 打包的格式，按请求的顺序。 */
   formats: string[];
-  /** Each format's file, named as it is inside the zip. */
+  /** 每种格式的文件，名字为它在 zip 中的名字。 */
   files: MessagesExported[];
-  /** The media packed with them, its `dir` the folder inside the zip; null without `media`. */
+  /** 一起打包的媒体，`dir` 为 zip 中的文件夹；不带 `media` 时为 `null`。 */
   media: MediaCopied | null;
 }
 
-/** What `export media` copied. */
+/** `export media` 复制了什么。 */
 export interface MediaExport {
-  /** The files written; as many as `files`. */
+  /** 写出的文件数，与 `files` 的项数相同。 */
   exported: number;
-  /** The media messages found. */
+  /** 找到的媒体消息数。 */
   found: number;
-  /** The media messages whose file could not be written: `found` less `exported`. */
+  /** 文件写不出来的媒体消息数，即 `found` 减去 `exported`。 */
   missing: number;
-  /** The missing ones by kind: `image`, `voice`, `video`, `emoji`. */
+  /** 按种类分的 `missing`，键为 `image`、`voice`、`video`、`emoji`、`file`；没有缺失的种类不列出。 */
   missingByKind: Record<string, number>;
-  /** The exported images that are only the thumbnail. */
+  /** 导出的图片中只有缩略图的张数。 */
   thumbOnly: number;
-  /** What `missing` and `thumbOnly` mean, in English. */
+  /** `missing` 和 `thumbOnly` 的含义，英文。 */
   note: string;
-  /** The conversations looked through. */
+  /** 查看过的会话数。 */
   sessions: number;
-  /** The folder written to; each conversation's files are in a subfolder named after it. */
+  /** 写入的文件夹；每个会话的文件在以会话命名的子文件夹中。 */
   out: string;
-  /** The files written. */
+  /** 写出的文件。 */
   files: MediaFileExported[];
 }
 
-/** A media file `export media` wrote. */
+/** `export media` 写出的一个媒体文件。 */
 export interface MediaFileExported {
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   session: string;
-  /** `image`, `voice`, `video` or `emoji`. */
+  /** `image`、`voice`、`video`、`emoji` 或 `file`。 */
   kind: string;
-  /** The file's name. */
+  /** 文件名。 */
   fileName: string;
-  /** The file. */
+  /** 文件的路径。 */
   path: string;
-  /** The message's `localId`. */
+  /** 消息的本地 ID（`localId`）。 */
   localId: number;
-  /** When the message was sent. */
+  /** 消息的发送时间。 */
   createTime: number;
-  /** An image's: the file is only its thumbnail. */
+  /** 图片才有：文件是否只是缩略图。 */
   isThumb?: boolean;
 }
 
@@ -1810,24 +1817,24 @@ export interface ImageBatch {
   rows: ImageResult[];
 }
 
-/** What `image auto-download start` answers once stopped (Ctrl+C). */
+/** `image auto-download start` 收到停止请求（如 Ctrl+C）、撤除钩子后的回答。 */
 export interface AutoDownloadStopped {
-  /** Always true. */
+  /** 总是 `true`。 */
   stopped: boolean;
 }
 
 /**
- * What `image auto-download status` answers: whether the image auto-download hook is in WeChat. `weflow serve`
- * answers its `--json` document for the hook it runs itself (on Windows x64 unless `serve_image_auto_download` is
- * false); the command run on its own, or through `serve` as a job or with `std`, answers for its own process, which
- * runs none.
+ * `image auto-download status` 的回答：原图自动下载的钩子是否在微信中。
+ *
+ * `weflow serve` 为它自己运行的钩子回答 `--json` 文档（在 Windows x64 上，`serve_image_auto_download` 不为
+ * `false` 时运行）；单独运行的命令，以及经 `serve` 以作业或带 `std` 运行的命令，回答的是自己的进程，而它不运行钩子。
  */
 export interface AutoDownloadStatus {
-  /** Whether the hook is in WeChat now. */
+  /** 钩子现在是否在微信中。 */
   isHooked: boolean;
-  /** The WeChat process hooked; null while none is. */
+  /** 挂钩的微信进程的 ID；没有挂钩时为 `null`。 */
   pid: number | null;
-  /** Whether this computer can download WeChat's images on its own. */
+  /** 这台计算机是否支持原图自动下载（只有 Windows x64 支持）。 */
   supported: boolean;
 }
 
@@ -1846,148 +1853,151 @@ export interface VideoInfo {
   exists: boolean;
 }
 
-/** The MD5 a video message names (`video parse-md5`); null when its XML has none. */
+/** 视频消息中写的 MD5（`video parse-md5`）；XML 中没有时为 `null`。 */
 export interface VideoMd5 {
-  /** The video's MD5, as a message's `videoMd5`. */
+  /** 视频的 MD5，与消息的 `videoMd5` 相同。 */
   md5: string | null;
 }
 
-/** What `web info` answers: the WebUI `serve` shows, and the versions downloaded. */
+/** `web info` 的回答：`serve` 显示的网页版本，以及本机已有的版本。 */
 export interface WebInfo {
-  /** The version `serve` shows when it starts: one kept here that suits this weflow; null when there is none. */
+  /** `serve` 启动时显示的版本，即本机已有、适用于这个 weflow 的一个版本；没有时为 `null`。 */
   inUse: string | null;
-  /** The folder of `in_use`; null when there is none. */
+  /** `inUse` 的文件夹；没有时为 `null`。 */
   path: string | null;
-  /** The version chosen with `web use`. */
+  /** 用 `web use` 选定的版本；没有选定时为 `null`。 */
   picked: string | null;
-  /** The version this weflow was built for. */
+  /** 这个 weflow 构建时对应的网页版本（默认版本）。 */
   builtIn: string;
-  /** The version `serve` would show: downloaded beside it when it is not kept here. */
+  /** `serve` 最终显示的版本：本机没有时，`serve` 在运行时下载它，下载好后换成它。 */
   wanted: string | null;
-  /** Whether `wanted` is kept here. */
+  /** `wanted` 是否已在本机。 */
   downloaded: boolean;
-  /** Where the versions are kept. */
+  /** 存放网页版本的文件夹。 */
   store: string;
-  /** The versions kept there. */
+  /** 其中已有的版本。 */
   installed: string[];
-  /**
-   * Why `serve` passes over the version picked (it does not suit this weflow) and what to do about it; null when
-   * it does not.
-   */
+  /** `serve` 不显示选定的版本（它不适用于这个 weflow）时的原因和处理办法；其他情况为 `null`。 */
   note: string | null;
 }
 
-/** A downloaded WebUI version (`web list`, `web install`). */
+/** 本机已下载的一个网页版本（`web list`、`web install`）。 */
 export interface WebInstalled {
-  /** The WebUI's version, as `web use` takes it. */
+  /** 网页的版本，即 `web use` 接受的写法。 */
   version: string;
-  /** The API version it was built for (`weflow.apiVersion` of its `package.json`). */
+  /** 构建时对应的 API 版本（它的 `package.json` 中的 `weflow.apiVersion`）。 */
   apiVersion: string;
-  /** The oldest weflow it works with (`weflow.minBackendVersion`). */
+  /** 能配合使用的最低 weflow 版本（`weflow.minBackendVersion`）。 */
   minBackendVersion: string;
-  /** Its folder. */
+  /** 这个版本的文件夹。 */
   path: string;
-  /** The one `serve` shows when it starts. */
+  /** 是否为 `serve` 启动时显示的版本。 */
   inUse: boolean;
-  /** The one chosen with `web use`. */
+  /** 是否为用 `web use` 选定的版本。 */
   picked: boolean;
-  /** Whether it suits this weflow. */
+  /** 是否适用于这个 weflow。 */
   suits: boolean;
 }
 
-/** A published WebUI version (`web list --remote`). */
+/** 已发布的一个网页版本（`web list --remote`）。 */
 export interface WebPublished {
-  /** The WebUI's version, as `web install` takes it. */
+  /** 网页的版本，即 `web install` 接受的写法。 */
   version: string;
-  /** The size of its download, in bytes. */
+  /** 下载的大小，单位为字节。 */
   size: number;
-  /** The API version it was built for; null when its metadata leaves it out. */
+  /** 构建时对应的 API 版本；元数据中没有时为 `null`。 */
   apiVersion: string | null;
-  /** The oldest weflow it works with; null when its metadata leaves it out. */
+  /** 能配合使用的最低 weflow 版本；元数据中没有时为 `null`。 */
   minBackendVersion: string | null;
-  /** Whether it suits this weflow. */
+  /** 是否适用于这个 weflow。 */
   suits: boolean;
-  /** Why it does not suit; null when it does. */
+  /** 不适用的原因；适用时为 `null`。 */
   why: string | null;
-  /** Whether it is kept here already. */
+  /** 本机是否已经有这个版本。 */
   downloaded: boolean;
 }
 
-/** The WebUI version `web use` chose. */
+/** `web use` 选定的网页版本。 */
 export interface WebChosen {
-  /** The version, downloaded first when it was not kept here. */
+  /** 选定的版本；本机没有时先下载。 */
   version: string;
-  /** Its folder. */
+  /** 这个版本的文件夹。 */
   path: string;
 }
 
-/** The WebUI version `web update` moved to. */
+/** `web update` 换到的网页版本。 */
 export interface WebUpdated {
-  /** The newest published release that suits this weflow, else the newest pre-release that does. */
+  /** 适用于这个 weflow 的最新正式版；没有正式版时为适用的最新预发布版。 */
   version: string;
-  /** The version wanted before; null when there was none. */
+  /** 更新前 `serve` 要显示的版本；没有时为 `null`。 */
   before: string | null;
-  /** Its folder. */
+  /** 这个版本的文件夹。 */
   path: string;
 }
 
-/** What `web prune` did. */
+/** `web prune` 做了什么。 */
 export interface WebPruned {
-  /** The versions removed: all but the one chosen and the one this weflow was built for. */
+  /** 删除的版本：选定的版本和这个 weflow 的默认版本以外的全部版本。 */
   removed: string[];
-  /** The versions kept after it. */
+  /** 删除之后本机还有的版本。 */
   kept: string[];
-  /** Versions a running `serve` shows, kept until it stops. */
+  /** 运行中的 `serve` 正在显示、因此保留到它停止的版本。 */
   shown: string[];
 }
 
-/** The accounts `db scan` found under a folder: those with a `db_storage` folder. */
+/** `db scan` 在一个文件夹下找到的账号，即含 `db_storage` 文件夹的子文件夹。 */
 export interface DbScan {
-  /** The folder scanned, with the home directory expanded. */
+  /** 扫描的文件夹，主目录已展开。 */
   root: string;
-  /** Its subfolders that are account folders; empty when it cannot be read. */
+  /** 其中是账号目录的子文件夹；文件夹读不了时为空。 */
   accounts: ScannedAccount[];
 }
 
-/** An account folder `db scan` found. */
+/** `db scan` 找到的一个账号目录。 */
 export interface ScannedAccount {
-  /** The folder's name. */
+  /** 文件夹的名字，没有去掉后缀。 */
   wxid: string;
-  /** The folder. */
+  /** 文件夹。 */
   path: string;
 }
 
-/** The database key `key db` read from WeChat. */
+/** `key db` 从微信读到的数据库密钥。 */
 export interface DbKey {
-  /** Left out with `save`: it went to the profile instead. */
+  /** 数据库密钥；带 `save` 时写进了档案，这里省略。 */
   decrypt_key?: string;
-  /** Always `wx_key`: WeChat hooked by the binary's own implementation. */
+  /** 总是 `wx_key`，即用 weflow 自带的实现挂钩微信。 */
   method: string;
-  /** The WeChat process hooked (`wx_key`). */
+  /** 挂钩的微信进程的 ID。 */
   pid?: number;
-  /** With `save`: the profile keys written. */
+  /** 带 `save` 时写入的档案键；不带时省略。 */
   saved?: string[];
 }
 
-/** The image keys `key image` derived from the `kvcomm` cache and checked against the account's images. */
+/** `key image` 从 `kvcomm` 缓存推导、并用账号的图片校验过的图片密钥。 */
 export interface ImageKeys {
-  /** The XOR key; left out with `save`, where it went to the profile instead. */
+  /** XOR 密钥；带 `save` 时写进了档案，这里省略。 */
   image_xor_key?: number;
-  /** The AES key, 16 hex characters; left out with `save`, where it went to the profile instead. */
+  /** AES 密钥，16 个十六进制字符；带 `save` 时写进了档案，这里省略。 */
   image_aes_key?: string;
-  /** Both keys were checked: the AES key on an image header and the XOR key on a whole image. */
+  /**
+   * 两个密钥是否都校验过：AES 密钥能把缩略图的文件头解密成图片，并且有一张缩略图用这对密钥解码成完整的 JPEG；
+   * 为 `false` 时只校验了 AES 密钥。
+   */
   verified: boolean;
-  /** Whether a thumbnail decoded as a whole JPEG with both keys; as `verified`. */
+  /** 是否有一张缩略图用这对密钥解码成完整的 JPEG，与 `verified` 相同。 */
   xor_verified: boolean;
-  /** How: `jpeg_decode_and_xor_tail` or `aes_header_only`. */
+  /** 校验的方式：`jpeg_decode_and_xor_tail` 或 `aes_header_only`。 */
   verification: string;
-  /** The `kvcomm` files the keys came from. */
+  /** 推导出密钥的 code 来自哪些 `kvcomm` 文件。 */
   sources: CandidateSource[];
-  /** What was read of the `kvcomm` folders. */
+  /**
+   * 读取 `kvcomm` 文件夹的情况：能列出的文件夹数 `readable_directories`、候选 code 的个数 `candidate_codes`，
+   * 以及读不了的路径 `errors`。
+   */
   collection: unknown;
-  /** What was read of the account's images. */
+  /** 扫描账号图片的情况：查看的目录项数 `entries_scanned`、可用的缩略图数 `valid_templates` 等。 */
   scan: unknown;
-  /** With `save`: the profile keys written. */
+  /** 带 `save` 时写入的档案键；不带时省略。 */
   saved?: string[];
 }
 
@@ -1999,289 +2009,288 @@ export interface CandidateSource {
   parsing: string;
 }
 
-/** What `key image-mem` (Linux x64 and macOS) answers: the AES key found in WeChat's memory, if any. */
+/** `key image-mem`（Linux x64 和 macOS）的回答：在微信的内存中找到的 AES 密钥。 */
 export interface ImageMemKey {
-  /** The 16-byte AES key as 32 hex characters; left out when nothing matched. */
+  /** 16 字节的 AES 密钥，写成 32 个十六进制字符；没有找到，或带 `save` 写进了档案时省略。 */
   image_aes_key?: string;
   /**
-   * `key image-mem` without `--ciphertext`: the XOR key a thumbnail of the account decodes with together with the
-   * AES key; left out when no thumbnail has an XOR tail that verifies.
+   * 不带 `--ciphertext` 时，账号的一张缩略图与 AES 密钥一起解码所用的 XOR 密钥；
+   * 没有一张缩略图的 XOR 尾部通过校验，或带 `save` 写进了档案时省略。
    */
   image_xor_key?: number;
   /**
-   * How the AES key was confirmed, when one was found: `jpeg_decode_and_xor_tail` (a thumbnail of the account
-   * decodes as a whole JPEG with both keys), `sample_first_blocks` (the first blocks of two or more thumbnails
-   * decrypt into image headers) or `first_block` (only the given ciphertext was checked).
+   * 找到 AES 密钥时确认它的方式：`jpeg_decode_and_xor_tail`（账号的一张缩略图用这对密钥解码成完整的 JPEG）、
+   * `sample_first_blocks`（两张以上缩略图的第一个块解密成图片文件头）或 `first_block`（只检查了给出的密文）。
    */
   verification?: string;
-  /** The WeChat process whose memory was read. */
+  /** 读取了内存的微信进程的 ID。 */
   pid: number;
-  /** With `save`: the profile keys written. */
+  /** 带 `save` 时写入的档案键；不带时省略。 */
   saved?: string[];
 }
 
 /**
- * What `key processes` (macOS) answers: the running WeChat clients, the main application first.
+ * `key processes`（macOS）的回答：正在运行的微信客户端，主程序在前。
  *
- * Helper, `WeChatAppEx` and crashpad processes are left out.
+ * 不含 helper、`WeChatAppEx` 和 crashpad 进程。
  */
 export interface WeChatProcesses {
-  /** The processes; empty when WeChat is not running. */
+  /** 这些进程；微信没有运行时为空。 */
   processes: WeChatProcess[];
 }
 
-/** A running WeChat client. */
+/** 一个正在运行的微信客户端。 */
 export interface WeChatProcess {
-  /** The process id. */
+  /** 进程 ID。 */
   pid: number;
-  /** The process's name. */
+  /** 进程名。 */
   name: string;
-  /** The executable. */
+  /** 可执行文件的路径。 */
   path: string;
-  /** Whether it is the main client rather than a helper. */
+  /** 是否为应用包的主程序（`…/Contents/MacOS/WeChat`）。 */
   main: boolean;
 }
 
-/** The images of a conversation (`chat images`), the newest first, each once. */
+/** 会话中的图片（`chat images`），从新到旧，每张只列一次。 */
 export interface ChatImages {
-  /** The image messages. */
+  /** 这些图片消息。 */
   images: ImageRef[];
 }
 
-/** What names an image message's file. */
+/** 用来找到图片消息的文件的标识。 */
 export interface ImageRef {
-  /** The image's MD5, as a message's `imageMd5`; null when the message has none. */
+  /** 图片的 MD5，与消息的 `imageMd5` 相同；消息中没有时为 `null`。 */
   imageMd5: string | null;
-  /** The name of its `.dat` file, as a message's `imageDatName`; null when the message has none. */
+  /** 图片的 `.dat` 文件名，与消息的 `imageDatName` 相同；消息中没有时为 `null`。 */
   imageDatName: string | null;
-  /** Null when the message has no time. */
+  /** 发送时间；消息没有时间时为 `null`。 */
   createTime: number | null;
 }
 
-/** The voice messages of a conversation (`chat voice-messages`), the newest first. */
+/** 会话中的语音消息（`chat voice-messages`），从新到旧，每条只列一次。 */
 export interface VoiceMessages {
-  /** The voice messages. */
+  /** 这些语音消息。 */
   messages: MessageView[];
 }
 
-/** A page of image and video messages across conversations (`chat media-stream`), the newest first. */
+/** 各会话的图片和视频消息中的一页（`chat media-stream`），从新到旧。 */
 export interface MediaStream {
-  /** The messages of the page. */
+  /** 这一页的消息。 */
   items: MediaStreamItem[];
-  /** Whether there are messages past this page. */
+  /** 这一页之后是否还有消息。 */
   hasMore: boolean;
-  /** The `offset` of the next page. */
+  /** 下一页的 `offset`。 */
   nextOffset: number;
 }
 
-/** A message of `chat media-stream`. */
+/** `chat media-stream` 中的一条消息。 */
 export interface MediaStreamItem {
-  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
+  /** 本地 ID，只在所在分片中唯一；与 `createTime` 一起是 `chat message` 查找消息所用的键。 */
   localId: number;
-  /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
+  /** 服务器 ID 的十进制字符串（可能超过 2^53）；消息没有服务器 ID 时为 `"0"`。 */
   serverId: string;
-  /** When it was sent. */
+  /** 发送时间。 */
   createTime: number;
-  /** WeChat's type of the message, as a parsed message's `localType`. */
+  /** 消息类型，与解析过的消息的 `localType` 相同。 */
   localType: number;
-  /** 1 when I sent it, else 0. */
+  /** 账号所有者发的为 1，否则为 0。 */
   isSend: number;
-  /** Who sent it; empty when the row does not say. */
+  /**
+   * 发送者，与导出相同：系统消息和拍一拍中，撤回提示为撤回者，其他为会话；其余消息中，账号自己发的为账号，
+   * 其他为行中的发送者，没有时为会话。
+   */
   senderUsername: string;
-  /** The message as WeChat keeps it (often XML). */
+  /** 微信保存的消息内容（常为 XML）。 */
   content: string;
-  /** Its text as the chat window shows it; null when it has none. */
+  /** 消息的文字，写法与导出相同；没有文字时为 `null`。 */
   text: string | null;
-  /** An image's MD5, as a parsed message's `imageMd5`. */
+  /** 图片的 MD5，与解析过的消息的 `imageMd5` 相同。 */
   imageMd5?: string;
-  /** The name of an image's `.dat` file, as a parsed message's `imageDatName`. */
+  /** 图片的 `.dat` 文件名，与解析过的消息的 `imageDatName` 相同。 */
   imageDatName?: string;
-  /** The MD5 that names a video's file, as a parsed message's `videoMd5`. */
+  /** 视频的 MD5，视频文件以它命名，与解析过的消息的 `videoMd5` 相同。 */
   videoMd5?: string;
-  /** A sticker's MD5. */
+  /** 表情的 MD5。 */
   emojiMd5?: string;
-  /** A sticker's address on WeChat's servers. */
+  /** 表情在微信服务器上的地址。 */
   emojiCdnUrl?: string;
-  /** An app message's `<type>`, as a parsed message's `xmlType`. */
+  /** app 消息的 `<type>`，与解析过的消息的 `xmlType` 相同。 */
   xmlType?: string;
-  /** A file's name. */
+  /** 文件名。 */
   fileName?: string;
-  /** A file's extension, without its dot. */
+  /** 文件的扩展名，不带点。 */
   fileExt?: string;
-  /** A file's MD5. */
+  /** 文件的 MD5。 */
   fileMd5?: string;
-  /** In bytes. */
+  /** 文件大小，单位为字节。 */
   fileSize?: number;
-  /** A location's latitude. */
+  /** 位置的纬度。 */
   locationLat?: number;
-  /** A location's longitude. */
+  /** 位置的经度。 */
   locationLng?: number;
-  /** The name of a location's place. */
+  /** 位置的地点名称（`poiname`）。 */
   locationPoiname?: string;
-  /** A location's label, its address as WeChat shows it. */
+  /** 位置的标签（`label`），即微信显示的地址。 */
   locationLabel?: string;
   /**
-   * The kind of an app message (`link`, `file`, `music`…); left out for an image, a voice message, a video, a
-   * sticker and a location, which are not app messages.
+   * app 消息的种类（`link`、`file`、`music` 等），与导出的种类相同；不是 app 消息的消息（包括图片、语音、视频、
+   * 表情和位置）省略。
    */
   appMsgKind?: string;
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   sessionId: string;
-  /** The conversation's name as the conversation list shows it. */
+  /** 会话的显示名，与会话列表相同。 */
   sessionDisplayName: string;
-  /** `image` or `video`. */
+  /** `image` 或 `video`。 */
   mediaType: string;
 }
 
-/** A voice already decoded (`chat voice-cache`). */
+/** 缓存中已解码的语音（`chat voice-cache`）；这个命令不做解码。 */
 export interface VoiceCache {
-  /** Whether the voice was decoded already. */
+  /** 缓存中是否有这条语音解码后的 WAV。 */
   hasCache: boolean;
-  /** The WAV, in base64; left out without one. */
+  /** base64 编码的 WAV；没有时省略。 */
   data?: string;
 }
 
-/** The voices `chat voice-preload` decoded ahead. */
+/** `chat voice-preload` 预先解码的语音。 */
 export interface VoicesPrepared {
-  /** The voices decoded or found decoded already. */
+  /** 这次解码的和缓存中已有的语音数。 */
   prepared: number;
 }
 
-/** The stickers `chat emoji` downloaded. */
+/** `chat emoji` 下载的表情：会话最近 500 条消息中的表情。 */
 export interface EmojisDownloaded {
-  /** The sticker messages found. */
+  /** 找到的表情数。 */
   found: number;
-  /** The ones downloaded now, not already there. */
+  /** 这次下载的表情数，不含原来就有的。 */
   downloaded: number;
-  /** The ones whose request or write failed; they are not in `files`. */
+  /** 请求或写入失败的表情数；它们不在 `files` 中。 */
   failed: number;
-  /** Left out when none was found. */
+  /** 磁盘上的表情，即原来就有的和这次下载的，按消息的顺序；一个都没找到时省略。 */
   files?: EmojiFile[];
 }
 
-/** A sticker `chat emoji` has on disk. */
+/** `chat emoji` 在磁盘上的一个表情。 */
 export interface EmojiFile {
-  /** The sticker's MD5. */
+  /** 表情的 MD5。 */
   md5: string;
-  /** Already there before. */
+  /** 下载之前是否就已经有了。 */
   cached: boolean;
-  /** The file. */
+  /** 文件的路径。 */
   path: string;
-  /** Bytes downloaded; left out for one already there. */
+  /** 下载的字节数；原来就有的省略。 */
   size?: number;
 }
 
 /**
- * A group's own message count, as `chat group-hint` saved it (all left out when there is none); with `set`, only
- * when it was saved.
+ * `chat group-hint` 保存的自己在这个群里的消息数；没有保存过时各项都省略。带 `set` 时只有保存的时间
+ * `updatedAt`。
  */
 export interface GroupHint {
-  /** My messages in the group. */
+  /** 账号所有者在这个群里的消息数。 */
   count?: number;
-  /** Unix milliseconds. */
+  /** 保存的时间，Unix 毫秒。 */
   updatedAt?: number;
-  /** `disk`. */
+  /** 记录从哪里读到，总是 `disk`。 */
   source?: string;
 }
 
-/** A media file a command wrote (`chat image-data`, `video-data`, `voice-data` with `out`). */
+/** 命令写出的一个媒体文件（带 `out` 的 `chat image-data`、`video-data`、`voice-data`）。 */
 export interface MediaWritten {
-  /** The file written. */
+  /** 写出的文件。 */
   path: string;
-  /** Its size. */
+  /** 文件的字节数。 */
   bytes: number;
 }
 
-/** A voice as WAV in base64 (`chat voice-data` without `out`). */
+/** base64 编码的 WAV 语音（不带 `out` 的 `chat voice-data`）。 */
 export interface VoiceData {
-  /** The WAV, in base64. */
+  /** base64 编码的 WAV。 */
   data: string;
 }
 
-/** A Moments image or video `sns media` fetched. */
+/** `sns media` 取回的一张朋友圈图片或一段视频。 */
 export interface SnsMediaFetched {
-  /** The file it was written to, with `out`. */
+  /** 带 `out` 时写入的文件；不带时省略。 */
   out?: string;
-  /** Its MIME type. */
+  /** 文件的 MIME 类型。 */
   contentType: string;
-  /** Its size, decrypted when there was a key. */
+  /** 文件的字节数，有密钥时为解密后的大小。 */
   bytes: number;
-  /** Where WeFlow keeps it; null when it was not kept. */
+  /** WeFlow 缓存它的位置；没有缓存时为 `null`。 */
   cachePath: string | null;
 }
 
-/** What WeChat's media server answered `sns debug-resource` for the first bytes of a resource. */
+/** 微信的媒体服务器对 `sns debug-resource` 请求资源前几个字节的回答。 */
 export interface SnsResourceProbe {
-  /** The HTTP status. */
+  /** HTTP 状态码。 */
   status: number;
-  /** The headers that matter. */
+  /** 与解密有关的回答头。 */
   headers: SnsResourceHeaders;
 }
 
-/** The answer headers that matter for decrypting a Moments resource; null when the server left one out. */
+/** 与解密朋友圈资源有关的回答头；服务器没有给出的为 `null`。 */
 export interface SnsResourceHeaders {
-  /** `X-Enc`. */
+  /** `X-Enc` 头。 */
   "x-enc": string | null;
-  /** `X-Time`. */
+  /** `X-Time` 头。 */
   "x-time": string | null;
-  /** `Content-Length`. */
+  /** `Content-Length` 头。 */
   "content-length": string | null;
-  /** `Content-Type`. */
+  /** `Content-Type` 头。 */
   "content-type": string | null;
 }
 
-/** The Moments sticker `sns download-emoji` saved (or found already saved). */
+/** `sns download-emoji` 保存（或发现已经保存过）的朋友圈表情。 */
 export interface SnsEmojiSaved {
-  /** The file in WeFlow's cache. */
+  /** WeFlow 缓存中的文件。 */
   localPath: string;
 }
 
-/** The image `sns download-image` downloaded (and decrypted when it was a .dat payload). */
+/** `sns download-image` 下载的图片；是 `.dat` 格式时用图片密钥解密。 */
 export type SnsImageDownload = SnsImageSaved | SnsImageInline;
 
-/** The image written to `out`. */
+/** 写进 `out` 的图片。 */
 export interface SnsImageSaved {
-  /** The address it was downloaded from. */
+  /** 下载的地址。 */
   url: string;
-  /** The file written. */
+  /** 写出的文件。 */
   out: string;
-  /** The image's extension, with its dot. */
+  /** 图片的扩展名，带点。 */
   ext: string;
-  /** Its size in bytes. */
+  /** 图片的字节数。 */
   size: number;
 }
 
-/** The image in base64, without `out`. */
+/** 不带 `out` 时以 base64 放在回答中的图片。 */
 export interface SnsImageInline {
-  /** The address it was downloaded from. */
+  /** 下载的地址。 */
   url: string;
-  /** The image's extension, with its dot. */
+  /** 图片的扩展名，带点。 */
   ext: string;
-  /** Its size in bytes. */
+  /** 图片的字节数。 */
   size: number;
-  /** A `data:image/...;base64,` URL. */
+  /** `data:image/...;base64,` 形式的 URL。 */
   data: string;
 }
 
-/** The backup `backup create` wrote. */
+/** `backup create` 写出的备份。 */
 export interface BackupCreated {
   /**
-   * The backup file written: the `.zip` file given as `out`, or the `weflow-backup-YYYYMMDD-HHMMSS.zip` written into
-   * the folder given.
+   * 写出的备份文件：`out` 给出的 `.zip` 文件，或者写在 `out` 给出的文件夹中的
+   * `weflow-backup-YYYYMMDD-HHMMSS.zip`。
    */
   out: string;
-  /** The files in it. */
+  /** 其中的文件数。 */
   entries: number;
-  /** The account backed up. */
+  /** 备份的账号，即账号目录的名字（带后缀）。 */
   wxid: string;
-  /** Unix seconds. */
+  /** 创建备份的时间，Unix 秒。 */
   createdAt: number;
-  /** Files of the media and stickers that could not be read and are not in it; left out when there are none. */
+  /** 读不了、因而不在备份中的媒体和表情文件；没有时省略。 */
   skipped?: SkippedFile[];
-  /**
-   * Databases WeChat kept writing to while they were copied, whose main file and WAL in the backup may be of two
-   * moments; left out when there are none.
-   */
+  /** 复制期间微信仍在写入的数据库，备份中它们的主文件和 WAL 可能来自两个时刻；没有时省略。 */
   unsettled?: string[];
 }
 
@@ -2330,234 +2339,238 @@ export interface BackupEntry {
   size: number;
 }
 
-/** Where `backup restore` put the files. */
+/** `backup restore` 把文件放到了哪里。 */
 export interface BackupRestored {
-  /** The folder the backup was restored into. */
+  /** 恢复到的文件夹。 */
   restoredTo: string;
-  /** WeFlow's sticker cache, where the stickers of the backup went; left out when it held none. */
+  /** WeFlow 的表情缓存，备份中的表情放回了这里；备份中没有表情时省略。 */
   stickersRestoredTo?: string;
 }
 
-/** The default places of WeChat's data directory (`db detect`). */
+/** 微信数据目录的默认位置（`db detect`）。 */
 export interface DbCandidates {
-  /** The places WeChat keeps it by default on this system, whether they exist or not. */
+  /** 本系统上微信默认存放数据目录的位置，不论是否存在。 */
   candidates: DbCandidate[];
 }
 
-/** A place WeChat's data directory may be. */
+/** 微信数据目录可能在的一个位置。 */
 export interface DbCandidate {
-  /** The directory, with the home directory expanded. */
+  /** 目录，主目录已展开。 */
   path: string;
-  /** Whether it exists. */
+  /** 是否存在。 */
   exists: boolean;
 }
 
-/** The accounts in WeChat's data directory (`db wxid`). */
+/** 微信数据目录中的账号（`db wxid`）。 */
 export interface DbAccounts {
-  /** The account folders found in it. */
+  /** 其中找到的账号目录。 */
   accounts: DbAccount[];
 }
 
-/** An account of WeChat's data directory. */
+/** 微信数据目录中的一个账号。 */
 export interface DbAccount {
-  /** As `config set wxid` takes it, without the suffix of its folder's name. */
+  /** 写成 `config set wxid` 接受的形式，即去掉账号目录名的后缀。 */
   wxid: string;
-  /** Its folder. */
+  /** 账号目录。 */
   path: string;
 }
 
-/** That the databases open with the configured key (`db test`); a failure is an error instead. */
+/** 数据库能用配置的密钥打开（`db test`）；打不开时回答错误。 */
 export interface DbConnection {
-  /** The account's folder whose databases were opened. */
+  /** 打开了其中数据库的账号目录。 */
   accountDir: string;
 }
 
 /**
- * My footprint over a range of days (`insight footprint`).
+ * 账号所有者在一段日期内的足迹（`insight footprint`）。
  *
- * It says who I talked with and replied to, and where I was @-mentioned. Its keys are the native layer's, in
- * `snake_case`. Times are Unix seconds, 0 where there is none.
+ * 说明和谁聊过、回复过谁、在哪里被 @。键沿用只读数据库层的写法，为 `snake_case`。时间为 Unix 秒，没有时为 0。
  */
 export interface Footprint {
-  /** The counts over the range. */
+  /** 整个范围内的计数。 */
   summary: FootprintSummary;
-  /** The private chats with a message in the range, the latest first. */
+  /** 范围内有消息的私聊，最近的在前。 */
   private_sessions: FootprintSession[];
-  /** The stretches of each private chat, in time order: a new one begins after a long pause. */
+  /** 各私聊的分段，按开始的时间排列：静默超过 1 小时后开始新的一段。 */
   private_segments: FootprintSegment[];
-  /** The group messages that @-mention me, the latest first. */
+  /** 群里 @ 了账号所有者的消息，最新的在前；`@所有人` 也算。 */
   mentions: FootprintMention[];
-  /** The groups of those, the one with the most first. */
+  /** 这些消息所在的群，@ 得多的在前。 */
   mention_groups: MentionGroup[];
-  /** How it was read. */
+  /** 读取的情况。 */
   diagnostics: FootprintDiagnostics;
 }
 
-/** The counts of the footprint. */
+/** 足迹的计数。 */
 export interface FootprintSummary {
-  /** The people who wrote to me. */
+  /** 在私聊中给账号所有者发过消息的人数。 */
   private_inbound_people: number;
-  /** Those of them I answered. */
+  /** 其中账号所有者也发过消息的人数。 */
   private_replied_people: number;
-  /** The people I wrote to. */
+  /** 账号所有者在私聊中发过消息的人数。 */
   private_outbound_people: number;
-  /** Replied over inbound, from 0 to 1. */
+  /** `private_replied_people` 除以 `private_inbound_people`，0 到 1；没有人发来消息时为 0。 */
   private_reply_rate: number;
-  /** The mentions listed. */
+  /** 列出的 @ 的条数。 */
   mention_count: number;
-  /** The groups of those. */
+  /** 这些 @ 所在的群数。 */
   mention_group_count: number;
 }
 
-/** A private chat of the footprint. */
+/** 足迹中的一个私聊。 */
 export interface FootprintSession {
-  /** The other party's wxid. */
+  /** 对方的 wxid。 */
   session_id: string;
-  /** The messages they sent in the range. */
+  /** 范围内对方发的消息数。 */
   incoming_count: number;
-  /** The messages I sent in the range. */
+  /** 范围内账号所有者发的消息数。 */
   outgoing_count: number;
-  /** Whether both of us wrote. */
+  /** 双方是否都发过消息。 */
   replied: boolean;
-  /** The time of their first message. */
+  /** 对方第一条消息的时间。 */
   first_incoming_ts: number;
-  /** The time of my first message after it. */
+  /** 在那之后账号所有者第一条消息的时间。 */
   first_reply_ts: number;
-  /** The time of the last message. */
+  /** 最后一条消息的时间。 */
   latest_ts: number;
-  /** The message to open the chat at, the last one, by its local id and time. */
+  /** 打开聊天时定位到的消息（最后一条）的本地 ID。 */
   anchor_local_id: number;
-  /** The time of that message. */
+  /** 那条消息的时间，与 `latest_ts` 相同。 */
   anchor_create_time: number;
 }
 
-/** A stretch of a private chat. */
+/** 私聊中的一段。 */
 export interface FootprintSegment {
-  /** The other party's wxid. */
+  /** 对方的 wxid。 */
   session_id: string;
-  /** Its place among the chat's stretches, from 1. */
+  /** 这一段在这个私聊的各段中的序号，从 1 开始。 */
   segment_index: number;
-  /** The time of its first message. */
+  /** 第一条消息的时间。 */
   start_ts: number;
-  /** The time of its last message. */
+  /** 最后一条消息的时间。 */
   end_ts: number;
-  /** From the first message to the last, in seconds. */
+  /** 从第一条消息到最后一条的秒数。 */
   duration_sec: number;
-  /** The messages they sent. */
+  /** 对方发的消息数。 */
   incoming_count: number;
-  /** The messages I sent. */
+  /** 账号所有者发的消息数。 */
   outgoing_count: number;
-  /** All its messages. */
+  /** 这一段的全部消息数。 */
   message_count: number;
-  /** Whether both of us wrote. */
+  /** 双方是否都发过消息。 */
   replied: boolean;
-  /** The time of their first message. */
+  /** 对方第一条消息的时间。 */
   first_incoming_ts: number;
-  /** The time of my first message after it. */
+  /** 在那之后账号所有者第一条消息的时间。 */
   first_reply_ts: number;
-  /** As `end_ts`. */
+  /** 与 `end_ts` 相同。 */
   latest_ts: number;
-  /** The message to open the chat at, the first one, by its local id and time. */
+  /** 打开聊天时定位到的消息（这一段的第一条）的本地 ID。 */
   anchor_local_id: number;
-  /** As `start_ts`. */
+  /** 与 `start_ts` 相同。 */
   anchor_create_time: number;
 }
 
-/** A group message that @-mentions me. */
+/** 群里 @ 了账号所有者的一条消息。 */
 export interface FootprintMention {
-  /** The group's id, `…@chatroom`. */
+  /** 群的 ID，`…@chatroom`。 */
   session_id: string;
-  /** The message's id in its conversation's table. */
+  /** 消息的本地 ID。 */
   local_id: number;
-  /** When it was sent. */
+  /** 发送时间。 */
   create_time: number;
-  /** Who sent it; empty when the row does not say. */
+  /** 发送者；消息行中没有时为空。 */
   sender_username: string;
-  /** Its text as WeChat keeps it. */
+  /** 微信保存的消息文字。 */
   message_content: string;
-  /** The message's `source` XML, which lists who it mentions. */
+  /** 消息的 `source` XML，其中列出了 @ 的人。 */
   source: string;
 }
 
-/** A group I was @-mentioned in. */
+/** 账号所有者被 @ 过的一个群。 */
 export interface MentionGroup {
-  /** The group's id, `…@chatroom`. */
+  /** 群的 ID，`…@chatroom`。 */
   session_id: string;
-  /** The mentions listed in it. */
+  /** 其中列出的 @ 的条数。 */
   count: number;
-  /** The time of the last of them. */
+  /** 其中最后一条的时间。 */
   latest_ts: number;
 }
 
-/** How the footprint was read. */
+/** 读取足迹的情况。 */
 export interface FootprintDiagnostics {
-  /** Whether a list was cut at its limit. */
+  /** 是否有列表因为达到上限而截断，即下面两项之一为 `true`。 */
   truncated: boolean;
-  /** Whether the private chats were cut at their limit. */
+  /** 私聊是否因为达到上限而截断；`insight footprint` 不设上限。 */
   private_truncated: boolean;
-  /** Whether the mentions were cut at their limit. */
+  /** @ 是否因为达到上限而截断；`insight footprint` 不设上限。 */
   mention_truncated: boolean;
-  /** The message databases of the account. */
+  /** 账号的消息库个数。 */
   scanned_dbs: number;
-  /** How long the reading took. */
+  /** 读取所用的毫秒数。 */
   elapsed_ms: number;
-  /** The private chats looked through. */
+  /** 查看过的私聊数。 */
   private_session_count: number;
-  /** The groups looked through. */
+  /** 查看过的群聊数。 */
   group_session_count: number;
 }
 
-/** What the export window shows of each conversation asked for (`chat export-stats`). */
+/** 导出窗口为请求的每个会话显示的统计（`chat export-stats`）。 */
 export interface ExportStats {
-  /** By username, in the order asked for. */
+  /** 以会话的用户名为键，按请求的顺序。 */
   data: Record<string, SessionExportStats>;
 }
 
-/** One conversation's messages by type, within the range asked for, and its relations. */
+/** 一个会话在请求的时间范围内各类型的消息数，以及它的关系。 */
 export interface SessionExportStats {
-  /** All the messages. */
+  /** 全部消息数。 */
   totalMessages: number;
-  /** Voice messages (type 34). */
+  /** 语音消息数（类型 34）。 */
   voiceMessages: number;
-  /** Images (type 3). */
+  /** 图片数（类型 3）。 */
   imageMessages: number;
-  /** Videos (type 43). */
+  /** 视频数（类型 43）。 */
   videoMessages: number;
-  /** Stickers (type 47). */
+  /** 表情数（类型 47）。 */
   emojiMessages: number;
-  /** Transfers (app messages of sub-type 2000). */
+  /** 转账数（子类型为 2000 的 app 消息）。 */
   transferMessages: number;
-  /** Red packets (app messages of sub-type 2001). */
+  /** 红包数（子类型为 2001 的 app 消息）。 */
   redPacketMessages: number;
-  /** Voice and video calls (type 50). */
+  /** 语音和视频通话数（类型 50）。 */
   callMessages: number;
-  /** The time of the first message; left out without messages. */
+  /** 第一条消息的时间；没有消息时省略。 */
   firstTimestamp?: number;
-  /** The time of the last message; left out without messages. */
+  /** 最后一条消息的时间；没有消息时省略。 */
   lastTimestamp?: number;
-  /** A group's: my messages in it. */
+  /** 群聊才有：账号所有者在群里的消息数。 */
   groupMyMessages?: number;
-  /** A group's: the members who said something. */
+  /** 群聊才有：发过言的成员数。 */
   groupActiveSpeakers?: number;
-  /** A group's: its members. */
+  /** 群聊才有：群的成员数。 */
   groupMemberCount?: number;
-  /** A group's, with relations: its members who are my friends. */
+  /** 群聊才有，带 `no-relations` 时省略：群成员中账号所有者的好友数。 */
   groupMutualFriends?: number;
-  /** A private chat's, with relations: the groups we are both in. */
+  /** 私聊才有，带 `no-relations` 时省略：双方共同所在的群数。 */
   privateMutualGroups?: number;
 }
 
-/** The names a group's transfer message shows for its two sides (`chat transfer-names`). */
+/**
+ * 群里的转账消息为双方显示的名字（`chat transfer-names`）。
+ *
+ * 名字依次取群昵称、联系人的备注、昵称和微信号，都没有时为用户名；账号自己没有群昵称时为服务端语言的「我」
+ * （英文为 `Me`）。
+ */
 export interface TransferNames {
-  /** Who paid. */
+  /** 付款方的名字。 */
   payerName: string;
-  /** Who received it. */
+  /** 收款方的名字。 */
   receiverName: string;
 }
 
-/** One insight record (`insight get`); a record not found is a failure of the command. */
+/** 一条见解记录（`insight get`）；找不到记录时命令失败。 */
 export interface InsightLookup {
-  /** The record. */
+  /** 这条记录。 */
   record: InsightRecord;
 }
 
@@ -2618,97 +2631,101 @@ export interface InsightRecordLog {
 /** The wire format a model API speaks. */
 export type ModelApiFormat = "openai" | "anthropic";
 
-/** A page of the account's insight records (`insight records`), the newest first, with counts over all of them. */
+/** 账号见解记录中的一页（`insight records`），最新的在前，并带上全部记录的计数。 */
 export interface InsightRecords {
-  /** The records of the page. */
+  /** 这一页的记录。 */
   records: InsightSummary[];
-  /** The records the filters match. */
+  /** 符合筛选条件的记录数。 */
   total: number;
-  /** The account's records written today. */
+  /** 账号今天写下的记录数，不论筛选条件。 */
   todayCount: number;
-  /** The account's records not read yet. */
+  /** 账号还没读的记录数，不论筛选条件。 */
   unreadCount: number;
-  /** Everyone with a record, the most records first. */
+  /** 所有有记录的会话，记录多的在前，不论筛选条件。 */
   contacts: InsightContact[];
 }
 
-/** An insight record as lists and events name it, without its log. */
+/** 列表和事件中的一条见解记录，不含它的日志。 */
 export interface InsightSummary {
-  /** The record's id, as `insight get` takes it. */
+  /** 记录的 ID，即 `insight get` 接受的写法。 */
   id: string;
-  /** Unix milliseconds. */
+  /** 写下记录的时间，Unix 毫秒。 */
   createdAt: number;
-  /** The conversation it is about. */
+  /** 记录所说的会话。 */
   sessionId: string;
-  /** The conversation's name. */
+  /** 写下记录时会话的名字。 */
   displayName: string;
-  /** The address of the conversation's avatar; left out when there is none. */
+  /** 会话头像的地址；没有时省略。 */
   avatarUrl?: string;
-  /** Why it was written: `activity`, `silence`, `test`, … */
+  /** 写下它的原因：`activity`、`silence`、`test` 等。 */
   triggerReason: string;
-  /** What the model wrote. */
+  /** 模型写的见解。 */
   insight: string;
-  /** Whether it was marked read. */
+  /** 是否已标为已读。 */
   read: boolean;
 }
 
-/** A conversation with insight records. */
+/** 一个有见解记录的会话。 */
 export interface InsightContact {
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   sessionId: string;
-  /** The conversation's name. */
+  /** 会话的名字，取自它的一条记录。 */
   displayName: string;
-  /** Its records. */
+  /** 它的记录数。 */
   count: number;
-  /** The address of its avatar; left out when there is none. */
+  /** 头像的地址；没有时省略。 */
   avatarUrl?: string;
 }
 
-/** How often the engine wrote about a conversation today (`insight today-stats`). */
+/**
+ * 见解引擎今天为一个会话写了几条见解（`insight today-stats`）。
+ *
+ * 计数只保存在运行引擎的进程的内存中：`serve --insight` 由服务进程回答，其他情况下为空。
+ */
 export interface InsightTodayStat {
-  /** The conversation's username. */
+  /** 会话的用户名。 */
   sessionId: string;
-  /** The records written about it today. */
+  /** 今天为它写下的记录数。 */
   count: number;
-  /** When, `HH:MM` local time. */
+  /** 写下的时间，服务端所在时区的 `HH:MM`。 */
   times: string[];
 }
 
-/** What `insight mark-read` answers; a record not found is a failure of the command. */
+/** `insight mark-read` 的回答；找不到记录时命令失败。 */
 export interface InsightMarked {
-  /** The record marked read. */
+  /** 标为已读的记录。 */
   id: string;
 }
 
-/** What `insight clear` answers. */
+/** `insight clear` 的回答。 */
 export interface InsightCleared {
-  /** The records removed. */
+  /** 删除的记录数。 */
   removed: number;
 }
 
-/** What `insight clear` would remove (`--dry-run`), for a page that asks first. */
+/** `insight clear` 将要删除多少（`--dry-run`），供页面在删除前询问。 */
 export interface InsightClearPlan {
-  /** Always true. */
+  /** 总是 `true`。 */
   dryRun: boolean;
-  /** The records it would remove. */
+  /** 将要删除的记录数。 */
   records: number;
 }
 
-/** What `insight scan` answers: the insights the silence scan wrote. */
+/** `insight scan` 的回答：静默扫描写下的见解。 */
 export interface InsightScan {
-  /** How many it wrote. */
+  /** 写下的条数。 */
   generated: number;
-  /** The records written. */
+  /** 写下的记录。 */
   records: InsightSummary[];
 }
 
-/** The models the model API offers (`insight models`), as the service lists them. */
+/** 模型接口提供的模型（`insight models`），按服务列出的样子。 */
 export interface ModelList {
-  /** The API format asked in. */
+  /** 请求所用的接口格式。 */
   format: ModelApiFormat;
-  /** The address asked. */
+  /** 请求的地址，即模型列表的地址。 */
   endpoint: string;
-  /** The models, in the service's order. */
+  /** 这些模型，按服务给出的顺序。 */
   models: ModelInfo[];
 }
 
@@ -2721,33 +2738,33 @@ export interface ModelInfo {
 }
 
 /**
- * What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the
- * command fails with what happened instead.
+ * `insight test`、`trigger` 和 `footprint-summary` 的回答；没有设置 AI 或 AI 没有回答时，命令改为失败，
+ * 报错中写明发生了什么。
  */
 export interface InsightReply {
-  /** What happened, in the server's language. */
+  /** 发生了什么，使用服务端的语言。 */
   message?: string;
-  /** The record written (`trigger`). */
+  /** 写下的记录（`trigger`）。 */
   record?: InsightSummary;
-  /** The summary written (`footprint-summary`). */
+  /** 写出的总结（`footprint-summary`）。 */
   insight?: string;
-  /** Where the question went and what came back (`test`). */
+  /** 问题发到了哪里、得到了什么回答（`test`）。 */
   probe?: ModelProbe;
 }
 
-/** What `insight test` asked of the model API and what it answered. */
+/** `insight test` 向模型接口问了什么、它回答了什么。 */
 export interface ModelProbe {
-  /** The API format asked in. */
+  /** 请求所用的接口格式。 */
   format: ModelApiFormat;
-  /** The address asked. */
+  /** 请求的地址。 */
   endpoint: string;
-  /** The model that answered, as the service names it, else the one asked for. */
+  /** 回答的模型，按服务给出的名字；服务没有给出时为请求的模型。 */
   model: string;
-  /** The answer, trimmed. */
+  /** 回答，去掉了首尾空白。 */
   reply: string;
-  /** From the request to the answer, retries included. */
+  /** 从请求到回答的毫秒数，包括重试。 */
   durationMs: number;
-  /** The requests tried again after a transient failure. */
+  /** 暂时失败后重试的次数。 */
   retries: number;
 }
 

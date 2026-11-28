@@ -1,8 +1,8 @@
-//! The reads the CLI and the command API share (#397), one typed request each.
+//! 命令行和命令 API 共用的读取（#397），每种读取是一个类型化的请求。
 //!
-//! Each read runs on a [`ServiceHub`]. The CLI builds them from its arguments and the command API from the
-//! parameters of a request, so neither depends on how the other parses; both answer what [`Read::run`] returns,
-//! serialized at their own edge.
+//! 每个读取都在一个 [`ServiceHub`] 上运行。命令行从自己的参数构造读取，命令 API 从请求的参数构造，
+//! 两边互不依赖对方的解析方式；两边都回答 [`Read::run`] 的结果，各自在自己的边界上序列化。
+//! 返回文件本身的媒体读取是 [`MediaRead`]。
 
 use std::path::PathBuf;
 
@@ -12,300 +12,304 @@ use crate::config::ConfigStore;
 use crate::error::{AppError, AppResult};
 use crate::services::{Freshness, ImageVariant, ResourceQuery, ServiceHub, SnsTimelineQuery};
 
-/// A page of a conversation's messages (`chat messages`).
+/// 会话消息中的一页（`chat messages`）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessagePage {
-    /// The conversation: the other party's wxid, or `…@chatroom` for a group.
+    /// 会话：私聊为对方的 wxid，群聊为 `…@chatroom`。
     pub session_id: String,
-    /// The most messages of the page.
+    /// 这一页最多的消息数。
     pub limit: i32,
-    /// The messages skipped, newest first, without `before`, `after` or `since`.
+    /// 不带 `before`、`after`、`since` 时，从最新的消息起跳过的条数。
     pub offset: i32,
-    /// The `_cursor` of the message the page ends above.
+    /// 读取这条消息之前（更早）的一页：那条消息的 `_cursor`。
     pub before: Option<String>,
-    /// The `_cursor` of the message the page starts below.
+    /// 读取这条消息之后（更新）的一页：那条消息的 `_cursor`。
     pub after: Option<String>,
-    /// Unix seconds: the page from where this time falls in the chat's order.
+    /// Unix 秒：从这个时间在聊天顺序中的位置开始的一页。
     pub since: Option<i64>,
-    /// Answer the messages as the chat window shows them rather than as WeChat keeps them.
+    /// 按聊天窗口显示的样子回答消息，而不是微信保存的原样。
     pub parsed: bool,
 }
 
-/// A read that answers a JSON value: the reads of the command API's in-process routes.
+/// 回答一个 JSON 值的读取，即命令 API 进程内路由的读取。
 ///
-/// A `session_id` is a conversation: the other party's wxid, or `…@chatroom` for a group. A `start` or `end` of type
-/// `Option<String>` is a local date (`YYYY-MM-DD`), both included; `parsed` answers messages as the chat window shows
-/// them rather than as WeChat keeps them.
+/// `session_id` 是会话：私聊为对方的 wxid，群聊为 `…@chatroom`。类型为 `Option<String>` 的 `start`、`end`
+/// 是本地日期（`YYYY-MM-DD`），两端都包含；`parsed` 让消息按聊天窗口显示的样子回答，而不是微信保存的原样。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Read {
-    /// `chat sessions`; a `limit` of 0 is all of them.
+    /// `chat sessions`；`limit` 为 0 时列出全部。
     ChatSessions {
-        /// The most conversations.
+        /// 最多列出的会话数。
         limit: usize,
     },
-    /// `chat messages`.
+    /// `chat messages`：会话消息中的一页。
     ChatMessages(MessagePage),
-    /// `chat message`: by exactly one of `local_id` and `server_id`.
+    /// `chat message`：按 `local_id`、`server_id` 两者之一查找，只能给一个。
     ChatMessage {
-        /// The conversation.
+        /// 会话。
         session_id: String,
-        /// The message's id in its table.
+        /// 消息的本地 ID。
         local_id: Option<i64>,
-        /// WeChat's id of the message, in decimal.
+        /// 服务器 ID，十进制。
         server_id: Option<String>,
-        /// With `local_id`: its time, which tells apart messages of different databases with the same id.
+        /// 与 `local_id` 一起给出时：消息的时间，用来区分不同消息库中本地 ID 相同的消息。
         create_time: Option<i64>,
-        /// As the chat window shows it.
+        /// 按聊天窗口显示的样子回答。
         parsed: bool,
     },
-    /// `chat contact`: one contact's row.
+    /// `chat contact`：一个联系人的行。
     ChatContact {
-        /// The contact's wxid.
+        /// 联系人的 wxid。
         username: String,
     },
-    /// `chat contacts`.
+    /// `chat contacts`：全部联系人。
     ChatContacts {
-        /// Sorted and classified into kinds, with names, labels and avatars, rather than as WeChat keeps them.
+        /// 排序并分类，带名字、标签和头像，而不是微信保存的原样。
         parsed: bool,
     },
-    /// `chat counts`: how many messages each conversation has.
+    /// `chat counts`：每个会话的消息数。
     ChatCounts {
-        /// The conversations.
+        /// 这些会话。
         sessions: Vec<String>,
     },
-    /// `chat search`: in the conversation `session`, or in all of them.
+    /// `chat search`：在会话 `session` 中搜索，没有给出时搜索全部会话。
     ChatSearch {
-        /// The text to find.
+        /// 要找的文字。
         keyword: String,
-        /// The conversation; all of them when none.
+        /// 会话；没有时为全部会话。
         session: Option<String>,
-        /// The most hits.
+        /// 最多的结果数。
         limit: i32,
-        /// The hits skipped, newest first.
+        /// 从最新的结果起跳过的条数。
         offset: i32,
-        /// Unix seconds: only messages from then on; 0 for no bound.
+        /// Unix 秒：只要从这时起的消息；0 表示不限。
         start: i32,
-        /// Unix seconds: only messages up to then; 0 for no bound.
+        /// Unix 秒：只要到这时为止的消息；0 表示不限。
         end: i32,
-        /// Each hit as the chat window shows it.
+        /// 每条结果按聊天窗口显示的样子回答。
         parsed: bool,
     },
-    /// `chat dates`: the days the conversation has messages on.
+    /// `chat dates`：会话有消息的日期。
     ChatDates {
-        /// The conversation.
+        /// 会话。
         session_id: String,
     },
-    /// `chat date-counts`: the conversation's messages by day.
+    /// `chat date-counts`：会话每天的消息数。
     ChatDateCounts {
-        /// The conversation.
+        /// 会话。
         session_id: String,
     },
-    /// `chat detail --fast`: the contact and the message count.
+    /// `chat detail --fast`：联系人和消息数。
     ChatDetailFast {
-        /// The conversation.
+        /// 会话。
         session_id: String,
     },
-    /// `chat resources`; `start` and `end` are local dates (`YYYY-MM-DD`), both included.
+    /// `chat resources`；`start`、`end` 是本地日期（`YYYY-MM-DD`），两端都包含。
     ChatResources {
-        /// The conversation; all of them when none.
+        /// 会话；没有时为全部会话。
         session: Option<String>,
-        /// `image`, `video`, `voice` and `file`; all of them when empty.
+        /// 要列出的种类：`image`、`video`、`voice`、`file`；为空时列出全部种类。
         types: Vec<String>,
-        /// The first day.
+        /// 第一天。
         start: Option<String>,
-        /// The last day.
+        /// 最后一天。
         end: Option<String>,
-        /// The most messages of the page.
+        /// 这一页最多的消息数：0 为 300，最多 2000。
         limit: usize,
-        /// The `nextCursor` of the page before.
+        /// 上一页的 `nextCursor`。
         before: Option<String>,
     },
-    /// `chat image-info`: which files of a message's image are on this computer.
+    /// `chat image-info`：消息中的图片有哪些版本在本机上。
     ChatImageInfo {
-        /// The conversation.
+        /// 会话。
         session_id: String,
-        /// The message's id in its table.
+        /// 消息的本地 ID。
         local_id: String,
-        /// Its time, which tells apart messages of different databases with the same id.
+        /// 消息的时间，用来区分不同消息库中本地 ID 相同的消息。
         create_time: Option<i64>,
     },
-    /// `group members`.
+    /// `group members`：群的成员面板。
     GroupMembers {
-        /// The group, `…@chatroom`.
+        /// 群，`…@chatroom`。
         chatroom_id: String,
-        /// Count each member's messages too.
+        /// 同时统计每个成员的消息数。
         counts: bool,
     },
-    /// `sns timeline` without its media, which are downloaded.
+    /// 不带 `with-media` 的 `sns timeline`（带它时要下载媒体）。
     SnsTimeline {
-        /// The most posts.
+        /// 最多的动态数。
         limit: i32,
-        /// The posts skipped, newest first.
+        /// 从最新的动态起跳过的条数。
         offset: i32,
-        /// Only the posts of these wxids; all when empty.
+        /// 只要这些 wxid 的动态；为空时不限。
         users: Vec<String>,
-        /// Only the posts holding this text.
+        /// 只要含这段文字的动态。
         keyword: Option<String>,
-        /// Unix seconds: only posts from then on; 0 for no bound.
+        /// Unix 秒：只要从这时起的动态；0 表示不限。
         start: i64,
-        /// Unix seconds: only posts up to then; 0 for no bound.
+        /// Unix 秒：只要到这时为止的动态；0 表示不限。
         end: i64,
     },
-    /// `sns users`: who has posts.
+    /// `sns users`：发过动态的人。
     SnsUsers,
-    /// `sns stats`.
+    /// `sns stats`：朋友圈的动态数。
     SnsStats {
-        /// Answer the counts kept from an earlier read while they are fresh.
+        /// 之前读到的计数没有过期时直接用它回答。
         prefer_cache: bool,
     },
-    /// `sns post-counts`.
+    /// `sns post-counts`：每个人的动态数。
     SnsPostCounts {
-        /// Only this wxid's posts.
+        /// 只要这个 wxid 的动态数。
         user: Option<String>,
-        /// Answer the counts kept from an earlier read while they are fresh.
+        /// 之前读到的计数没有过期时直接用它回答。
         prefer_cache: bool,
     },
-    /// Whether each conversation is folded, muted and pinned.
+    /// `chat statuses`：每个会话是否折叠、免打扰和置顶。
     ChatStatuses {
-        /// The conversations.
+        /// 这些会话。
         sessions: Vec<String>,
     },
-    /// `chat tab-counts`.
+    /// `chat tab-counts`：每类联系人的个数。
     ChatTabCounts,
-    /// `group list`.
+    /// `group list`：账号所在的群。
     GroupList,
-    /// `group ranking`; like every `start` and `end` below, local dates (`YYYY-MM-DD`), both included.
+    /// `group ranking`；与下面每个 `start`、`end` 一样，日期是本地的 `YYYY-MM-DD`，两端都包含。
     GroupRanking {
-        /// The group, `…@chatroom`.
+        /// 群，`…@chatroom`。
         chatroom_id: String,
-        /// The most members; 0 for all of them.
+        /// 最多的成员数；0 表示全部。
         limit: usize,
-        /// The first day.
+        /// 第一天。
         start: Option<String>,
-        /// The last day.
+        /// 最后一天。
         end: Option<String>,
     },
-    /// `group hours`.
+    /// `group hours`：群消息按小时的分布。
     GroupHours {
-        /// The group, `…@chatroom`.
+        /// 群，`…@chatroom`。
         chatroom_id: String,
-        /// The first day.
+        /// 第一天。
         start: Option<String>,
-        /// The last day.
+        /// 最后一天。
         end: Option<String>,
     },
-    /// `group media`.
+    /// `group media`：群里各种消息的数量。
     GroupMedia {
-        /// The group, `…@chatroom`.
+        /// 群，`…@chatroom`。
         chatroom_id: String,
-        /// The first day.
+        /// 第一天。
         start: Option<String>,
-        /// The last day.
+        /// 最后一天。
         end: Option<String>,
     },
-    /// `group member`: what one member sent.
+    /// `group member`：一个成员发了什么。
     GroupMember {
-        /// The group, `…@chatroom`.
+        /// 群，`…@chatroom`。
         chatroom_id: String,
-        /// The member's wxid.
+        /// 成员的 wxid。
         username: String,
-        /// The first day.
+        /// 第一天。
         start: Option<String>,
-        /// The last day.
+        /// 最后一天。
         end: Option<String>,
     },
-    /// `group member-messages`: a page of one member's messages.
+    /// `group member-messages`：一个成员的消息中的一页。
     GroupMemberMessages {
-        /// The group, `…@chatroom`.
+        /// 群，`…@chatroom`。
         chatroom_id: String,
-        /// The member's wxid.
+        /// 成员的 wxid。
         username: String,
-        /// The most messages of the page, in [`MEMBER_MESSAGES_LIMIT`](crate::services::MEMBER_MESSAGES_LIMIT).
+        /// 这一页最多的消息数，在 [`MEMBER_MESSAGES_LIMIT`](crate::services::MEMBER_MESSAGES_LIMIT) 之内。
         limit: usize,
-        /// The `nextCursor` of the page before; 0 for the first.
+        /// 上一页的 `nextCursor`；第一页为 0。
         cursor: usize,
-        /// The first day.
+        /// 第一天。
         start: Option<String>,
-        /// The last day.
+        /// 最后一天。
         end: Option<String>,
     },
-    /// `analytics overall`.
+    /// `analytics overall`：私聊的总体统计。
     AnalyticsOverall,
-    /// `analytics rankings`.
+    /// `analytics rankings`：消息最多的私聊。
     AnalyticsRankings {
-        /// The most chats; 0 for all of them.
+        /// 最多的私聊数；0 表示全部。
         limit: usize,
-        /// The first day.
+        /// 第一天。
         start: Option<String>,
-        /// The last day.
+        /// 最后一天。
         end: Option<String>,
     },
-    /// `analytics time`.
+    /// `analytics time`：私聊消息的时间分布。
     AnalyticsTime,
-    /// `analytics excluded` without `--set`, which saves the list.
+    /// 不带 `--set` 的 `analytics excluded`（带 `--set` 时保存名单）。
     AnalyticsExcluded,
-    /// `analytics exclude-candidates`.
+    /// `analytics exclude-candidates`：可以从统计中排除的人。
     AnalyticsExcludeCandidates,
-    /// `biz accounts`: the official accounts followed.
+    /// `biz accounts`：关注的公众号。
     BizAccounts,
-    /// `biz messages`: a page of an official account's pushes.
+    /// `biz messages`：一个公众号的推送中的一页。
     BizMessages {
-        /// The official account, `gh_…`.
+        /// 公众号的用户名，`gh_…`。
         username: String,
-        /// The most pushes.
+        /// 最多读取的消息数。
         limit: i32,
-        /// The pushes skipped, newest first.
+        /// 从最新的消息起跳过的条数。
         offset: i32,
     },
-    /// `biz pay-records`.
+    /// `biz pay-records`：微信支付通知中的一页。
     BizPayRecords {
-        /// The most messages read.
+        /// 最多读取的消息数。
         limit: i32,
-        /// The messages skipped, newest first.
+        /// 从最新的消息起跳过的条数。
         offset: i32,
     },
-    /// `insight footprint`.
+    /// `insight footprint`：一段日期内的足迹。
     InsightFootprint {
-        /// The first day.
+        /// 第一天。
         start: Option<String>,
-        /// The last day.
+        /// 最后一天。
         end: Option<String>,
     },
-    /// `insight get`.
+    /// `insight get`：一条见解记录。
     InsightGet {
-        /// The record's id.
+        /// 记录的 ID。
         id: String,
     },
-    /// `report annual years`.
+    /// `report annual years`：可以生成年度报告的年份。
     ReportAnnualYears,
-    /// `cache list`.
+    /// `cache list`：缓存各部分占用的空间。
     CacheList,
-    /// `config get`: a key of the current profile, or the whole profile; read from the file, as the CLI does.
+    /// `config get`：当前档案的一个键，或整个档案；与命令行一样从文件读取。
     ConfigGet {
-        /// The key; the whole profile when none.
+        /// 键；没有时为整个档案。
         key: Option<String>,
     },
-    /// `config profiles`.
+    /// `config profiles`：配置中的档案。
     ConfigProfiles,
-    /// `db detect`.
+    /// `db detect`：微信数据目录的默认位置。
     DbDetect,
-    /// `db test`: opens the configured account with its key.
+    /// `db test`：用配置的密钥打开配置的账号。
     DbTest,
-    /// `db wxid`: the accounts of a data directory.
+    /// `db wxid`：数据目录中的账号。
     DbWxid {
-        /// The data directory; the configured one when none.
+        /// 数据目录；没有时取配置的 `db_path`，也没有配置时取存在的各个默认位置。
         root: Option<String>,
     },
 }
 
-/// `--start` / `--end` as Unix seconds, both inclusive (the end is the last second of its day); 0 for no bound.
+/// 把 `--start`、`--end` 换成 Unix 秒，两端都包含（结束为那一天的最后一秒）；没有给出的一端为 0，表示不限。
+///
+/// # Errors
+///
+/// 返回用法错误：日期不是有效的 `YYYY-MM-DD`（年份在 1970 到 2100 之间）、在本地时区中不存在，
+/// 或者 `start` 晚于 `end`。
 pub fn day_span(start: Option<&str>, end: Option<&str>) -> AppResult<(i64, i64)> {
     let (b, e) = crate::dates::date_range_args(start, end)?;
     Ok((b.unwrap_or(0), e.map(|e| e - 1).unwrap_or(0)))
 }
 
-/// `config profiles` (#215, #216): what each profile is set up with, the keys only as whether they are set, so a
-/// client can tell which account is ready without reading a key. `complete`: enough to open the database.
+/// `config profiles`（#215、#216）：每个档案设置了什么；密钥只说明设置了没有，客户端不读密钥也能知道哪个账号可以用。
+/// `complete` 表示足以打开数据库。
 fn profiles_summary(config: &ConfigStore) -> Vec<crate::contract::ProfileSummary> {
     let set = |value: &Option<String>| value.as_deref().is_some_and(|v| !v.trim().is_empty());
     let profiles = config
@@ -318,7 +322,7 @@ fn profiles_summary(config: &ConfigStore) -> Vec<crate::contract::ProfileSummary
             db_path: p.db_path.clone(),
             decrypt_key: set(&p.decrypt_key),
             image_keys: p.image_xor_key.is_some() && set(&p.image_aes_key),
-            // the key of the AI model API (#213), as the database keys: whether it is set
+            // AI 模型接口的密钥（#213）与数据库密钥一样，只说明设置了没有
             ai_key: set(&p.ai_model_api_key),
             complete: set(&p.db_path) && set(&p.decrypt_key),
         })
@@ -326,13 +330,18 @@ fn profiles_summary(config: &ConfigStore) -> Vec<crate::contract::ProfileSummary
     profiles
 }
 
-/// The config file of `hub`, read again: a config read answers what the file holds now.
+/// 重新读取 `hub` 的配置文件：配置的读取回答文件现在的内容。
 fn config_of(hub: &ServiceHub) -> AppResult<ConfigStore> {
     ConfigStore::load(hub.config_path()).map_err(|err| AppError::config(format!("{err:#}")))
 }
 
 impl Read {
-    /// What the read answers: the `data` of its `--json` document.
+    /// 读取的回答，即它的 `--json` 文档中的 `data`。
+    ///
+    /// # Errors
+    ///
+    /// 返回所调用的服务的错误：参数不对时为用法错误，账号没有配置好时为配置错误，读取数据库失败时为数据库层的错误，
+    /// 要找的消息或记录不存在时为 `not_found`。
     pub fn run(&self, hub: &ServiceHub) -> AppResult<Value> {
         match self {
             Read::ChatSessions { limit } => {
@@ -343,7 +352,7 @@ impl Read {
                 Ok(json!(sessions))
             }
             Read::ChatMessages(page) => {
-                // typed rows (#492), serialized once: parsed as the chat window shows them, or as they are kept
+                // 类型化的行（#492），只序列化一次：按聊天窗口显示的样子解析，或者保持微信保存的原样
                 let rows = match page.since {
                     Some(seconds) => {
                         hub.message_page_since(&page.session_id, page.limit, seconds)?
@@ -592,7 +601,7 @@ impl Read {
     }
 }
 
-/// The image file `chat image-data --variant` asks for (`best`, `thumb`, `normal`, `hd`).
+/// `chat image-data --variant` 要的图片版本（`best`、`thumb`、`normal`、`hd`）；其他写法为 `best`。
 pub fn image_variant(variant: &str) -> ImageVariant {
     match variant {
         "thumb" => ImageVariant::Thumb,
@@ -602,73 +611,79 @@ pub fn image_variant(variant: &str) -> ImageVariant {
     }
 }
 
-/// The file of a message the command API shows a page as it is (`<img>`, `<audio>`, `<video>`), and that
-/// `chat image-data`, `voice-data` and `video-data` write.
+/// 消息中的媒体文件：命令 API 把它原样交给页面（`<img>`、`<audio>`、`<video>`），
+/// `chat image-data`、`voice-data`、`video-data` 把它写出。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MediaRead {
-    /// An image, decrypted.
+    /// 解密后的图片。
     ChatImage {
-        /// The conversation.
+        /// 会话。
         session_id: String,
-        /// The message's id in its table.
+        /// 消息的本地 ID。
         local_id: String,
-        /// Its time, which tells apart messages of different databases with the same id.
+        /// 消息的时间，用来区分不同消息库中本地 ID 相同的消息。
         create_time: Option<i64>,
-        /// Which of WeChat's files of the image.
+        /// 取微信保存的哪个版本。
         variant: ImageVariant,
     },
-    /// Decoded to WAV.
+    /// 解码成 WAV 的语音。
     ChatVoice {
-        /// The conversation.
+        /// 会话。
         session_id: String,
-        /// The message's id in its table.
+        /// 消息的本地 ID。
         local_id: String,
-        /// Its time, which tells apart messages of different databases with the same id.
+        /// 消息的时间，用来区分不同消息库中本地 ID 相同的消息。
         create_time: Option<i64>,
-        /// WeChat's id of the message, in decimal.
+        /// 服务器 ID，十进制。
         server_id: Option<String>,
-        /// Who sent it, which matters in a group.
+        /// 发送者，在群聊中用来找到语音。
         sender: Option<String>,
     },
-    /// The video as WeChat keeps it, or with `thumb` its thumbnail, else its cover.
+    /// 微信保存的视频本身；带 `thumb` 时为缩略图，没有时为封面。
     ChatVideo {
-        /// The conversation.
+        /// 会话。
         session_id: String,
-        /// The message's id in its table.
+        /// 消息的本地 ID。
         local_id: String,
-        /// Its time, which tells apart messages of different databases with the same id.
+        /// 消息的时间，用来区分不同消息库中本地 ID 相同的消息。
         create_time: Option<i64>,
-        /// The thumbnail, else the cover, rather than the video.
+        /// 取缩略图（没有时为封面），而不是视频。
         thumb: bool,
     },
 }
 
-/// A media file and its content type.
+/// 一个媒体文件及其内容类型。
 #[derive(Debug)]
 pub struct MediaFile {
-    /// What it holds.
+    /// 文件的内容。
     pub body: MediaBody,
-    /// Its content type.
+    /// 内容类型（MIME）。
     pub mime: &'static str,
 }
 
-/// What a media file is made of: bytes decoded in memory, or a file on disk, read as it is sent (a video).
+/// 媒体文件由什么组成：在内存中解码出的字节，或者磁盘上边读边发的文件（视频）。
 #[derive(Debug)]
 pub enum MediaBody {
-    /// Bytes decoded in memory.
+    /// 在内存中解码出的字节。
     Bytes(Vec<u8>),
-    /// A file on disk.
+    /// 磁盘上的文件。
     File(PathBuf),
 }
 
-/// The content type of an image, from its first bytes.
+/// 按开头的字节判断图片的内容类型；认不出时为 `application/octet-stream`。
 pub fn image_mime(bytes: &[u8]) -> &'static str {
     crate::image::ImageFormat::of(bytes)
         .map_or("application/octet-stream", crate::image::ImageFormat::mime)
 }
 
 impl MediaRead {
-    /// The file, read on a blocking thread: decrypting an image or decoding a voice takes a few milliseconds.
+    /// 在阻塞线程上读取文件：解密图片或解码语音要花几毫秒。
+    ///
+    /// # Errors
+    ///
+    /// 同各媒体所用的服务方法（[`ServiceHub::image_variant_for_message`]、[`ServiceHub::voice_data`]、
+    /// [`ServiceHub::video_files_for_message`]）；要视频的缩略图而缩略图和封面都不在本机时，返回 `failureKind` 为
+    /// `not_found` 的运行时错误；阻塞线程失败时返回运行时错误。
     pub async fn fetch(self, hub: ServiceHub) -> AppResult<MediaFile> {
         tokio::task::spawn_blocking(move || self.fetch_blocking(&hub))
             .await
@@ -720,7 +735,7 @@ impl MediaRead {
                         mime: "video/mp4",
                     });
                 }
-                // a poster is small: read, to tell its type
+                // 封面不大：读进内存，好判断它的类型
                 let bytes = std::fs::read(path).map_err(|e| {
                     AppError::runtime(format!("failed to read {}: {e}", path.display()))
                 })?;
@@ -733,7 +748,7 @@ impl MediaRead {
     }
 }
 
-/// The file `chat video-data` answers: the video, or with `thumb` its thumbnail, else its cover.
+/// `chat video-data` 回答的文件：视频本身；带 `thumb` 时为缩略图，没有时为封面。
 fn video_file(files: &crate::video::VideoFiles, thumb: bool) -> AppResult<&std::path::Path> {
     if !thumb {
         return Ok(&files.video);
