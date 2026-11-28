@@ -68,7 +68,7 @@ describe('annual report', () => {
     const { rerender, unmount } = render(page(null));
     await act(async () => {});
     await act(async () => {});
-    // generating takes a POST (#336)
+    // 生成报告用 POST（#336）
     expect(urls).toEqual(['GET /api/report/annual/years', 'POST /report/annual/generate {"year":2025}']);
     expect(Array.from(screen.getByRole('group', { name: '报告的年份' }).querySelectorAll('button'), b => b.textContent)).toEqual(['2025 年', '2024 年', '全部年份']);
     expect(screen.getByRole('button', { name: '2025 年' }).getAttribute('aria-pressed')).toBe('true');
@@ -78,7 +78,7 @@ describe('annual report', () => {
     await act(async () => {});
     expect(urls.at(-1)).toBe('POST /report/annual/generate {"year":0}');
     expect(screen.getByRole('article').getAttribute('aria-label')).toBe('全部年份的年度报告');
-    // the report there is told, and none while the next one is read, or once the page is gone (#1077)
+    // 报告显示时告知它的键，读取下一份期间和页面卸载后告知 null（#1077）
     unmount();
     expect(shown.filter((key, i) => key !== shown[i - 1])).toEqual([null, 'annual:2025', null, 'annual:0', null]);
   });

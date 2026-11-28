@@ -1,7 +1,7 @@
-// The resource browser (#206): the images, videos, voices and files of every conversation, newest first, in a grid
-// grouped by month, narrowed by type (on the page) and by conversation and days (in a console card), a page at a time
-// from the cursor of `chat resources` (#178) as the grid is scrolled. A picture or video opens in the preview, which goes through those read so far and
-// can open the message in its conversation; a voice plays where it is; a file opens its message.
+// 资源浏览（#206）：全部会话的图片、视频、语音和文件，最新的在前，按月份分组排成网格；在页面上按类型筛选，
+// 在操作控制台的卡片里按会话和日期筛选。滚动网格时从 `chat resources` 的游标（#178）接着一页一页地读。
+// 图片和视频在预览里打开，预览可以在已读到的图片和视频之间切换，也可以打开会话里的那条消息；
+// 语音就地播放；点文件打开它所在的消息。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { ArrowSquareOut, CaretDown, ChatsCircle, CircleNotch, FilePdf, FileText, MagnifyingGlass, Warning, X } from '@phosphor-icons/react';
@@ -27,29 +27,29 @@ const FILTERS: { label: string; types: ResourceType[] }[] = [
   { label: msg('文件'), types: ['file'] },
 ];
 
-/** The conversation and days the console card narrows the page to. */
+/** 操作控制台的卡片用来筛选页面的会话和日期。 */
 export interface ResourceFilter {
   session: string | null;
-  /** `YYYY-MM-DD`, inclusive; empty for no bound. */
+  /** `YYYY-MM-DD`，包含这一天；为空表示不限。 */
   from: string;
   to: string;
 }
 
-/** Every conversation, every day. */
+/** 不筛选：全部会话、全部日期。 */
 export const ALL_RESOURCES: ResourceFilter = { session: null, from: '', to: '' };
 
 const narrowed = (filter: ResourceFilter) => Boolean(filter.session || filter.from || filter.to);
 
-/** What the filter narrows to, for a closed card's header: the conversation, by date, or 「全部」. */
+/** 卡片收起时标题栏上的筛选摘要：会话和 `按日期`，都没有时为 `全部`。 */
 export function resourceFilterSummary(filter: ResourceFilter, sessions: readonly ChatSession[]): string {
   const name = filter.session && (sessions.find(s => s.username === filter.session)?.displayName || filter.session);
   const parts = [name, (filter.from || filter.to) && t('按日期')].filter(Boolean);
   return parts.length ? parts.join(' · ') : t('全部');
 }
 
-/** Resources a page: a few screens of the grid. */
+/** 每页的资源数，约为网格的几屏。 */
 export const PAGE = 120;
-/** Conversations listed in the picker before a search narrows them. */
+/** 选择器最多列出的会话数，其余的靠搜索找到。 */
 const LISTED = 50;
 
 type Pages =
@@ -59,7 +59,7 @@ type Pages =
 
 const errorOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('读取资源失败');
 
-/** The pages of `query` read so far, the next one read by `more`. */
+/** `query` 已经读到的各页，读取下一页的 `more`，以及从第一页重读的函数。 */
 function usePages(query: ResourceQuery): [Pages, () => void, () => void] {
   const key = JSON.stringify(query);
   const [state, setState] = useState<Pages>({ status: 'loading' });
@@ -76,7 +76,7 @@ function usePages(query: ResourceQuery): [Pages, () => void, () => void] {
       problem => { if (!controller.signal.aborted) setState({ status: 'error', message: errorOf(problem) }); },
     );
     return () => controller.abort();
-    // the query is read again when its key changes
+    // `query` 的键（`JSON.stringify` 的结果）变化时才重读
   }, [key, round]);
   const more = () => {
     const signal = request.current?.signal;
@@ -99,7 +99,7 @@ const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString(loc
 const month = (seconds: number) => formatDate(new Date(seconds * 1000), { year: 'numeric', month: 'long' });
 const keyOf = (item: Resource) => item._cursor ?? sessionOf(item) + ':' + item.localId + '.' + item.createTime;
 
-/** What a picture or video opens in the preview, with its way back to the conversation. */
+/** 图片或视频在预览里打开的内容，带着回到会话里那条消息的入口（`locate`）；其他资源为 null。 */
 function previewOf(item: Resource, onOpen: (item: Resource) => void): Preview | null {
   const message = asMessage(item);
   const locate = () => onOpen(item);
@@ -109,9 +109,10 @@ function previewOf(item: Resource, onOpen: (item: Resource) => void): Preview | 
   return null;
 }
 
-/** A thumbnail, with `badge` over it; when it cannot be decoded, why (the server's answer: a format not supported yet,
- * a file not downloaded…), with the badge in place of the warning only when `video`, the video it stands for, still
- * plays, so that the badge never covers the reason. */
+/**
+ * 缩略图，上面叠着 `badge`。解码失败时显示原因（服务端的回答，如不支持的格式、没有下载的文件）；
+ * 只有它代表的视频 `video` 仍能播放时，才用 `badge` 代替警告图标，这样 `badge` 不会盖住原因。
+ */
 function Thumb({ src, label, video, badge }: { src: string; label: string; video?: string; badge?: ReactNode }) {
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [failure, setFailure] = useState<{ reason: string; plays: boolean } | null>(null);
@@ -137,7 +138,7 @@ function Tile({ item, onPreview, onOpen }: { item: Resource; onPreview(item: Res
   const when = day(item.createTime) + ' ' + formatClock(item.createTime);
   const caption = <span className="resource-caption">
     <span className="clamp-1">{nameOf(item)}</span><small className="num">{when}</small>
-    {/* a voice opens its message from here; a picture or video from its preview, a file from the tile */}
+    {/* 语音从这里打开它所在的消息；图片和视频从预览里打开，文件点格子本身打开 */}
     {item.resourceType === 'voice' && <button type="button" className="icon-button resource-locate" tabIndex={-1} aria-label={t('在会话中定位')} title={t('在会话中定位')} onClick={() => onOpen(item)}><ArrowSquareOut size={14} /></button>}
   </span>;
   switch (item.resourceType) {
@@ -159,7 +160,7 @@ function Tile({ item, onPreview, onOpen }: { item: Resource; onPreview(item: Res
   }
 }
 
-/** The conversation to narrow to, or all of them: those with the latest messages first, found by name. */
+/** 选要筛选的会话或者全部会话：按会话列表的顺序列出（不列出 `sortTimestamp` 为 0 的），可以按名称搜索。 */
 function SessionPicker({ sessions, selected, onSelect }: { sessions: readonly ChatSession[]; selected: string | null; onSelect(username: string | null): void }) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -199,7 +200,7 @@ function SessionPicker({ sessions, selected, onSelect }: { sessions: readonly Ch
   </>;
 }
 
-/** The console card: the conversation and the days. */
+/** 操作控制台的筛选卡片：会话和日期范围。 */
 export function ResourceFilterCard({ sessions, filter, onChange }: { sessions: readonly ChatSession[]; filter: ResourceFilter; onChange(filter: ResourceFilter): void }) {
   return <div className="resource-filter">
     <SessionPicker sessions={sessions} selected={filter.session} onSelect={session => onChange({ ...filter, session })} />
@@ -209,10 +210,10 @@ export function ResourceFilterCard({ sessions, filter, onChange }: { sessions: r
   </div>;
 }
 
-/** The images, videos, voices and files the filter narrows to, newest first, a page at a time. */
+/** 按筛选条件列出的图片、视频、语音和文件，最新的在前，一次读一页。 */
 export function ResourcesPage({ filter, scroller, onPreview, onOpen }: {
   filter: ResourceFilter;
-  /** The page's scroll area (`ScrollPage`), which the grid scrolls in. */
+  /** 页面的滚动区域（`ScrollPage`），网格在里面滚动。 */
   scroller: RefObject<HTMLElement | null>;
   onPreview(preview: Preview): void;
   onOpen(sessionId: string, localId: number, createTime: number): void;
@@ -230,8 +231,8 @@ export function ResourcesPage({ filter, scroller, onPreview, onOpen }: {
     onPreview(media.length > 1 && index >= 0 ? { ...own, gallery: { items: media.map(m => previewOf(m, open)!), index } } : own);
   };
 
-  // the next page as the end of the grid comes near: within 800px of the bottom of the page's scroll area, or of the
-  // window where the area grows with the grid and the document scrolls instead (a phone)
+  // 网格的末尾接近时读下一页：距页面滚动区域的底部 800px 以内；滚动区域随网格变高、
+  // 改由整个文档滚动时（手机上），按窗口的底部计算
   const end = useRef<HTMLDivElement>(null);
   const moreRef = useRef(more);
   moreRef.current = more;

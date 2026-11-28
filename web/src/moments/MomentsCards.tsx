@@ -1,4 +1,4 @@
-// The console's cards on the Moments page (#202): narrowing the timeline by words and days, and the totals.
+// 朋友圈页的操作控制台卡片（#202）：按文字和日期筛选时间线，以及统计的总数。
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { MagnifyingGlass, X } from '@phosphor-icons/react';
@@ -8,17 +8,17 @@ import { addDays, parseDay } from '../calendar/dates';
 import { GridSkeleton } from '../Skeleton';
 import { locale, t } from '../i18n';
 
-/** Unix seconds of the start of a local day, and of the last second of one. */
+/** 本地时间一天开始时的 Unix 秒数，以及一天最后一秒的 Unix 秒数；没有日期时为 0。 */
 const startOf = (day: string) => (day ? parseDay(day).getTime() / 1000 : 0);
 const endOf = (day: string) => (day ? parseDay(addDays(day, 1)).getTime() / 1000 - 1 : 0);
 
-/** What the filter narrows to, for a closed card's header: the words, by date, or 「全部」. */
+/** 卡片收起时标题栏上的筛选摘要：关键词和 `按日期`，都没有时为 `全部`。 */
 export function filterSummary(filter: SnsFilter): string {
   const parts = [filter.keyword.trim() && t('「{keyword}」', { keyword: filter.keyword.trim() }), (filter.start || filter.end) && t('按日期')].filter(Boolean);
   return parts.length ? parts.join(' · ') : t('全部');
 }
 
-/** Words and days, applied when sent; the poster is picked in the list. */
+/** 按文字和日期筛选，提交后才生效；发布者在列表里选。 */
 export function MomentsFilter({ filter, onChange }: { filter: SnsFilter; onChange(filter: SnsFilter): void }) {
   const [keyword, setKeyword] = useState(filter.keyword);
   const [range, setRange] = useState({ from: '', to: '' });
@@ -41,7 +41,7 @@ export function MomentsFilter({ filter, onChange }: { filter: SnsFilter; onChang
   </form>;
 }
 
-/** The totals of `sns stats`, read while the card is open. */
+/** `sns stats` 的总数，卡片展开时读取。 */
 export function MomentsStats({ scope, active }: { scope: number; active: boolean }) {
   const [stats, setStats] = useState<{ scope: number; value: SnsStats } | null>(null);
   const [failed, setFailed] = useState(false);

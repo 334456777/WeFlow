@@ -1,19 +1,18 @@
-// A report saved from the browser (#208): the report as shown, in the page's styles and the colours of the theme in
-// use, as a page of its own (HTML) or a picture (PNG). The CLI has no such output; the desktop app takes a screenshot.
-// Pictures are left out (avatars as their initials): WeChat's avatar links expire, and a picture from elsewhere would
-// stop the canvas from being read.
+// 在浏览器里保存报告（#208）：按显示的样子，用页面的样式和当前主题的颜色，保存成单独的网页（HTML）或图片（PNG）。
+// 命令行没有这样的输出，所以由网页生成。图片不保存（头像换成名字的第一个字）：微信的头像链接会过期，
+// 而来自别处的图片会使画布（canvas）不能再被读出。
 import { locale, t } from '../i18n';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 
-/** Every rule of the page's own style sheets. */
+/** 页面的样式表里的全部规则；读不了规则的样式表（如跨域的）跳过。 */
 export function pageCss(): string {
   return Array.from(document.styleSheets, sheet => {
     try { return Array.from(sheet.cssRules, rule => rule.cssText).join('\n'); } catch { return ''; }
   }).join('\n');
 }
 
-/** The custom properties as they are now — the theme in use — to fix on the copy, which no media query may change. */
+/** 自定义属性此刻的值（即当前的主题），写死在副本上，媒体查询就改不了它们。 */
 export function themeVariables(): string {
   const style = getComputedStyle(document.documentElement);
   const pairs: string[] = [];
@@ -24,7 +23,7 @@ export function themeVariables(): string {
   return pairs.join('; ');
 }
 
-/** A copy of the report with each picture swapped for its initial. */
+/** 报告的副本，每张图片换成名字的第一个字（图片的 `data-initial`）。 */
 export function withoutPictures(report: HTMLElement): HTMLElement {
   const copy = report.cloneNode(true) as HTMLElement;
   copy.querySelectorAll('img').forEach(img => {
@@ -39,8 +38,7 @@ export function withoutPictures(report: HTMLElement): HTMLElement {
 
 const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
-/** The theme and the skin in use (#830) as attributes of the copy's root, so that the rules of a skin's sheet, which
- * are under `:root[data-skin]`, hold there too. */
+/** 当前的主题和皮肤（#830），写成副本根元素的属性，这样写在 `:root[data-skin]` 下的皮肤规则在副本里同样生效。 */
 function looks(): string {
   const { theme, skin } = document.documentElement.dataset;
   return [['data-theme', theme], ['data-skin', skin]]
@@ -48,10 +46,10 @@ function looks(): string {
     .map(([name, value]) => ' ' + name + '="' + escape(value!).replaceAll('"', '&quot;') + '"').join('');
 }
 
-/** Styles of the copy itself: the page scrolls as a document, the report sits in a column on the page. */
+/** 副本自己的样式：整个页面像普通文档一样滚动，报告排在页面中间的一栏里。 */
 const OWN_CSS = 'html, body { height: auto; overflow: auto; } body { padding: 24px 16px; } .report-export { max-width: 880px; margin: 0 auto; } .report-export .report { margin-top: 0; }';
 
-/** The report as a page of its own. */
+/** 把报告做成单独的网页，返回 HTML 文本。 */
 export function reportHtml(report: HTMLElement, title: string): string {
   const copy = withoutPictures(report);
   return '<!doctype html>\n<html lang="' + locale() + '"' + looks() + '><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -59,7 +57,7 @@ export function reportHtml(report: HTMLElement, title: string): string {
     + '<body style="' + escape(themeVariables()).replaceAll('"', '&quot;') + '"><main class="report-export">' + copy.outerHTML + '</main></body></html>\n';
 }
 
-/** The report as an SVG that draws it in a foreignObject, `width` CSS pixels wide. */
+/** 把报告画在 SVG 的 `foreignObject` 里，宽 `width` 个 CSS 像素；同时返回量出的高度。 */
 export function reportSvg(report: HTMLElement, width: number): { svg: string; height: number } {
   const copy = withoutPictures(report);
   const frame = document.createElementNS(XHTML, 'div') as HTMLDivElement;
@@ -67,7 +65,7 @@ export function reportSvg(report: HTMLElement, width: number): { svg: string; he
   const style = document.createElementNS(XHTML, 'style');
   style.textContent = pageCss() + '\n.report { margin-top: 0; }';
   frame.append(style, copy);
-  // measured as laid out in the page, at the width it will have
+  // 放进页面、按图片的宽度排版后量出高度
   const probe = document.createElement('div');
   probe.setAttribute('style', 'position: fixed; left: -100000px; top: 0; visibility: hidden');
   probe.append(frame);
@@ -75,12 +73,12 @@ export function reportSvg(report: HTMLElement, width: number): { svg: string; he
   const height = Math.ceil(frame.getBoundingClientRect().height) || report.scrollHeight + 48;
   probe.remove();
   const body = new XMLSerializer().serializeToString(frame);
-  // the SVG is the root of the picture, where `:root` is
+  // SVG 是这张图片的根元素，也就是 `:root` 所指的元素，所以主题和皮肤的属性写在它上面
   const svg = '<svg xmlns="http://www.w3.org/2000/svg"' + looks() + ' width="' + width + '" height="' + height + '"><foreignObject x="0" y="0" width="100%" height="100%">' + body + '</foreignObject></svg>';
   return { svg, height };
 }
 
-/** The report as a PNG, at twice the size for sharp text. */
+/** 把报告画成 PNG，按两倍的尺寸画，文字更清晰。 */
 export async function reportPng(report: HTMLElement, width = Math.min(880, Math.max(360, report.clientWidth)) + 48): Promise<Blob> {
   const { svg, height } = reportSvg(report, width);
   const picture = new Image();

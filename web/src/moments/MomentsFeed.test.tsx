@@ -41,7 +41,7 @@ describe('the Moments timeline (#202)', () => {
     const pictures = [...card.querySelectorAll('.moment-tile img')].map(img => img.getAttribute('src')!);
     expect(pictures[0]).toContain('/api/sns/media?url=' + encodeURIComponent(image));
     expect(pictures[0]).toContain('key=11');
-    // a video shows its cover with a play mark, and plays through the server
+    // 视频显示封面和播放标记，经过服务端播放
     expect(card.querySelectorAll('.moment-play')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: '预览林沐的视频 2' }));
     expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ type: 'video', src: expect.stringContaining(encodeURIComponent(video)) }));

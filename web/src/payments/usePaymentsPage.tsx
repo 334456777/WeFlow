@@ -1,5 +1,5 @@
-// The WeChat Pay page (#204): all the notices read once, narrowed by payee and days here. The notices are
-// the server's, or the sample's while no server has answered (#879).
+// 微信支付页（#204）：全部通知读一次，在页面里按收款方和日期筛选。
+// 通知来自服务端，还没有服务端回答时来自示例数据（#879）。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Page, Shell } from '../shell/page';
 import { BrowserPanel } from '../shell/panels';
@@ -12,7 +12,7 @@ import { ALL_PAYMENTS, merchantsOf, usePayments, withinDays, type PayFilter } fr
 import { t } from '../i18n';
 import './payments.css';
 
-/** `active`: the page browsed, the one the console keeps the cards of while the settings are open. */
+/** 微信支付页：页面视图和操作控制台的卡片。`active` 表示正在浏览这一页，打开设置时操作控制台仍保留它的卡片。 */
 export function usePaymentsPage(shell: Shell, active: boolean): Page {
   const { backend, scope, setMobileDetail } = shell;
   const live = active && shell.records;

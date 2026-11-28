@@ -1,4 +1,4 @@
-/* WeChat Pay: the notices of the payments page. */
+/* 微信支付（#204）：微信支付页上的支付通知。 */
 @layer pages {
 .pay-row { display: flex; flex-direction: column; }
 

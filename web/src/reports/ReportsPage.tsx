@@ -1,5 +1,4 @@
-// The reports page (#208): the years with messages, the latest first, then the annual report of the year picked,
-// or the dual report of it with one friend.
+// 报告页（#208）：有消息的年份，最近的在前；下面是选中那一年的年度报告，或者那一年和一位好友的双人报告。
 import { getReportYears } from '../api/reports';
 import { Chip } from '../Chip';
 import { ListSkeleton } from '../Skeleton';
@@ -9,7 +8,7 @@ import { AnnualReportPage } from './AnnualReport';
 import { DualReportPage, type Friend } from './DualReport';
 import { t } from '../i18n';
 
-/** The years to pick, then the report of the year picked; `onShown` is told which report is there, if any. */
+/** 可选的年份和选中那一年的报告，`year` 为 null 时是最近的一年；`onShown` 收到当前显示的报告，没有时为 null。 */
 export function ReportsPage({ mode, year, onYear, friend, onFriend, onShown }: {
   mode: 'annual' | 'dual'; year: number | null; onYear(year: number): void; friend: Friend | null; onFriend(friend: Friend): void;
   onShown(key: string | null): void;

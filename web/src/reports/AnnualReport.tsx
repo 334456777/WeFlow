@@ -1,5 +1,5 @@
-// The annual report page (#208): the years with messages to pick from, and one year (or all of them) told in
-// numbers: who the chats were with, month by month and hour by hour, the moments that stand out, the words said most.
+// 年度报告（#208）：用数字讲述一年（或者全部年份）的私聊：和谁聊、每个月和每个时段的情况、值得记住的时刻，
+// 以及最常说的话。选年份在 ReportsPage.tsx。
 import type { ReactNode } from 'react';
 import { Avatar } from '../Avatar';
 import { busiestHour, formatWait, getAnnualReport, type AnnualReport } from '../api/reports';
@@ -12,12 +12,12 @@ import { weekdays } from '../calendar/dates';
 import { useShownReport } from './shown';
 import { t } from '../i18n';
 
-/** One moment of the year: what it is, its number, and a line about it. */
+/** 报告里值得记住的一项：名称、数字和一句说明。 */
 export function Moment({ label, value, children }: { label: string; value: ReactNode; children: ReactNode }) {
   return <li className="report-moment"><span className="report-label">{label}</span><strong className="report-value num">{value}</strong><span className="report-note">{children}</span></li>;
 }
 
-/** Messages by weekday and hour, darker for more. */
+/** 按星期和小时分布的消息，消息越多颜色越深。 */
 export function Heatmap({ data }: { data: number[][] }) {
   const max = Math.max(1, ...data.flat());
   const best = busiestHour(data);
@@ -34,7 +34,7 @@ export function Heatmap({ data }: { data: number[][] }) {
   </figure>;
 }
 
-/** The words said most, larger the more often. */
+/** 最常说的话，说得越多字越大。 */
 export function Phrases({ phrases, label = t('常用语') }: { phrases: AnnualReport['topPhrases']; label?: string }) {
   const max = Math.max(1, ...phrases.map(p => p.count));
   return <ul className="word-chips report-phrases" aria-label={label}>
@@ -43,7 +43,7 @@ export function Phrases({ phrases, label = t('常用语') }: { phrases: AnnualRe
   </ul>;
 }
 
-/** The annual report, moment by moment. */
+/** 年度报告的各个部分，从总览到朋友圈。 */
 export function AnnualReportView({ report }: { report: AnnualReport }) {
   const r = report;
   const span = r.year ? t('{year} 年', { year: r.year }) : t('这些年');
@@ -125,7 +125,7 @@ export function AnnualReportView({ report }: { report: AnnualReport }) {
   </article>;
 }
 
-/** The report of the year picked, 0 for all of them; `onShown` is told which one is there. */
+/** 选中的那一年的报告，`year` 为 0 时是全部年份；`onShown` 收到当前显示的是哪一份报告。 */
 export function AnnualReportPage({ year, onShown }: { year: number; onShown(key: string | null): void }) {
   const [report, retry] = useRead('report:' + year, signal => getAnnualReport(year, signal));
   useShownReport(report.status === 'ready' ? 'annual:' + report.value.year : null, onShown);

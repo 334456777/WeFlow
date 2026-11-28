@@ -1,21 +1,21 @@
-// The console card of the reports page (#208): the report shown, saved as a picture or as a page of its own.
+// 报告页的操作控制台卡片（#208）：把正在显示的报告保存成图片或者单独的网页。
 import { useEffect, useState } from 'react';
 import { CircleNotch, FileHtml, Image as ImageIcon } from '@phosphor-icons/react';
 import { safeName, saveFile } from '../files';
 import { reportHtml, reportPng } from './reportFiles';
 import { t } from '../i18n';
 
-/** What a save said, of the report it was of. */
+/** 一次保存的结果提示，以及它属于哪一份报告。 */
 interface Note { of: string; text: string; error?: boolean }
 
 /**
- * The buttons that save the report shown, as a PNG or as an HTML page: `report` is its key, null while there is none
- * (it is read, failed, or waits for a friend to be picked), and `find` gives its element.
+ * 把正在显示的报告保存成 PNG 或 HTML 网页的按钮：`report` 是这份报告的键，没有报告（正在读取、读取失败，
+ * 或者还在等选好友）时为 null；`find` 返回报告的元素。
  */
 export function SaveReport({ report, find }: { report: string | null; find(): HTMLElement | null }) {
   const [busy, setBusy] = useState<'png' | 'html' | null>(null);
   const [note, setNote] = useState<Note | null>(null);
-  // another report shown: what was said of the one before is let go of, not to come back with it
+  // 换了报告时清掉对上一份报告的提示，免得换回来时它又出现
   useEffect(() => { setNote(null); }, [report]);
   const save = async (kind: 'png' | 'html') => {
     if (!report) return;
@@ -35,7 +35,7 @@ export function SaveReport({ report, find }: { report: string | null; find(): HT
       setBusy(null);
     }
   };
-  // a save still going when another report is shown says nothing under it
+  // 换了报告后，还在进行的保存不在新的报告下面显示提示
   const said = note?.of === report ? note : null;
   const disabled = busy !== null || !report;
   return <div className="excluded-people">

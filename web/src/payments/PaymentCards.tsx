@@ -1,5 +1,4 @@
-// The console's cards on the WeChat Pay page (#204): the days to look at, the totals of what is chosen, and its
-// export. The payee is picked in the list.
+// 微信支付页的操作控制台卡片（#204）：要看的日期范围、选中的记录的合计，以及导出。收款方在列表里选。
 import { useEffect, useState } from 'react';
 import { CheckCircle, DownloadSimple, X } from '@phosphor-icons/react';
 import { formatMoney, type Payment } from '../api/pay';
@@ -13,13 +12,13 @@ import { locale, t } from '../i18n';
 
 const FORMATS: ExportFormat[] = ['HTML', 'JSON', 'Excel'];
 
-/** What the filter narrows to, for a closed card's header: the payee, by date, or 「全部」. */
+/** 卡片收起时标题栏上的筛选摘要：收款方和 `按日期`，都没有时为 `全部`。 */
 export function payFilterSummary(filter: PayFilter): string {
   const parts = [filter.merchant, (filter.from || filter.to) && t('按日期')].filter(Boolean);
   return parts.length ? parts.join(' · ') : t('全部');
 }
 
-/** The card of the days to look at, and the payee picked. */
+/** 设置日期范围的卡片，并显示选中的收款方。 */
 export function PaymentsFilter({ filter, onChange }: { filter: PayFilter; onChange(filter: PayFilter): void }) {
   const narrowed = Boolean(filter.merchant || filter.from || filter.to);
   return <div className="moments-filter">
@@ -31,7 +30,7 @@ export function PaymentsFilter({ filter, onChange }: { filter: PayFilter; onChan
   </div>;
 }
 
-/** The totals of the payments chosen; a skeleton while they are read. */
+/** 选中的支付记录的合计；读取期间显示骨架屏。 */
 export function PaymentsSummary({ payments }: { payments: Payment[] | null }) {
   if (!payments) return <GridSkeleton label={t('正在读取支付记录')} cells={2} />;
   const totals = totalsOf(payments);
@@ -44,7 +43,7 @@ export function PaymentsSummary({ payments }: { payments: Payment[] | null }) {
   </dl>;
 }
 
-/** Saves the records chosen; give it a `key` per filter, so a file made for another one is not offered. */
+/** 把选中的记录保存成文件；每个筛选条件要给它不同的 `key`，免得给出按别的条件生成的文件。 */
 export function PaymentsExport({ payments, filter }: { payments: Payment[] | null; filter: PayFilter }) {
   const [format, setFormat] = useState<ExportFormat>('Excel');
   const [result, setResult] = useState<ExportResult | null>(null);

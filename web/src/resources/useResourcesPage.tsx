@@ -1,4 +1,4 @@
-// The resource browser (#206): the page picks the type, its console card the conversation and days.
+// 资源浏览页（#206）：在页面上选类型，在操作控制台的卡片里选会话和日期。
 import { useEffect, useRef, useState } from 'react';
 import { Images } from '@phosphor-icons/react';
 import type { OpenAt, Page, Shell } from '../shell/page';
@@ -7,7 +7,7 @@ import { ALL_RESOURCES, ResourceFilterCard, resourceFilterSummary, ResourcesPage
 import { t } from '../i18n';
 import './resources.css';
 
-/** The resources page: its view and its console cards. */
+/** 资源浏览页：页面视图和操作控制台的卡片。 */
 export function useResourcesPage(shell: Shell, openAt: OpenAt): Page {
   const { scope, sessionList } = shell;
   const [filter, setFilter] = useState(ALL_RESOURCES);

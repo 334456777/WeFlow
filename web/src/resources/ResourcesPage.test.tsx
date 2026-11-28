@@ -9,7 +9,7 @@ import { ALL_RESOURCES, ResourceFilterCard, ResourcesPage } from './ResourcesPag
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const json = (data: unknown) => new Response(JSON.stringify({ success: true, data }));
-// 2025-10-03 and 2025-09-20, local time
+// 本地时间的 2025-10-03 和 2025-09-20
 const OCT = new Date(2025, 9, 3, 12).getTime() / 1000;
 const SEP = new Date(2025, 8, 20, 12).getTime() / 1000;
 const item = (n: number, resourceType: Resource['resourceType'], createTime: number, extra: Partial<Resource> = {}): Resource => ({
@@ -26,14 +26,14 @@ function serve(pages: Record<string, unknown>) {
     const url = new URL(String(input), 'http://localhost');
     calls.push(url.pathname + url.search);
     if (url.pathname === '/api/chat/resources') return json(pages[url.searchParams.get('before') ?? ''] ?? { items: [], hasMore: false, nextCursor: null });
-    // why a thumbnail failed
+    // 缩略图失败的原因
     return new Response(JSON.stringify({ success: false, error: { code: 'runtime_error', message: 'WXGF 图片无法转换：暂不支持它的格式（P and B slices (inter prediction)）', details: { failureKind: 'unsupported_image' } } }), { status: 422 });
   });
   vi.stubGlobal('fetch', fetch);
   return calls;
 }
 
-// the page in its scroll area and its console card, as the app puts them side by side
+// 与应用里一样，把滚动区域里的页面和操作控制台的卡片并排放在一起
 function Browser({ onPreview, onOpen }: { onPreview(p: Preview): void; onOpen(...args: unknown[]): void }) {
   const [filter, setFilter] = useState(ALL_RESOURCES);
   const scroller = useRef<HTMLElement>(null);
@@ -61,7 +61,7 @@ describe('the resource browser (#206)', () => {
     page(onPreview, onOpen);
     expect(await screen.findByRole('heading', { name: '2025年10月' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '2025年9月' })).toBeTruthy();
-    // a voice plays where it is, its length read from the message
+    // 语音就地播放，时长从消息里读出
     expect(screen.getByRole('button', { name: /播放语音，4″/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /^播放视频，家人群/ }));
@@ -73,7 +73,7 @@ describe('the resource browser (#206)', () => {
     preview.locate?.();
     expect(onOpen).toHaveBeenLastCalledWith('room@chatroom', 3, SEP);
 
-    // a file opens its message
+    // 点文件打开它所在的消息
     fireEvent.click(screen.getByRole('button', { name: /^旅行计划\.pdf，林沐/ }));
     expect(onOpen).toHaveBeenLastCalledWith('wxid_a', 4, SEP);
   });
@@ -117,13 +117,13 @@ describe('the resource browser (#206)', () => {
       const url = new URL(String(input), 'http://localhost');
       calls.push(url.pathname + url.search);
       if (url.pathname === '/api/chat/resources') return json({ items: [item(1, 'video', OCT), item(2, 'video', SEP)], hasMore: false, nextCursor: null });
-      // the first video is not on this computer: it and its thumbnail answer so; the second plays without a thumbnail
+      // 1 号视频不在本机，它和它的缩略图都这样回答；2 号视频能播放但没有缩略图
       if (url.searchParams.get('local-id') === '1') return failed('该视频不在本机：请先在微信中打开该视频');
       return url.searchParams.has('thumb') ? failed('该视频没有缩略图或封面') : new Response(new Uint8Array([0]), { status: 206 });
     }));
     const { container } = page();
     const tiles = await waitFor(() => { const found = [...container.querySelectorAll<HTMLElement>('.resource-thumb')]; if (found.length < 2) throw new Error('no tiles'); return found; });
-    // laid over the tile: a child of its button
+    // 叠在格子上：是格子按钮的直接子元素
     const badgeOver = (tile: HTMLElement) => [...tile.children].some(child => child.classList.contains('play-badge'));
     expect(tiles.map(badgeOver)).toEqual([true, true]);
     for (const tile of tiles) fireEvent.error(tile.querySelector('img')!);
@@ -131,12 +131,12 @@ describe('the resource browser (#206)', () => {
     expect(await within(tiles[0]).findByText('该视频不在本机：请先在微信中打开该视频')).toBeTruthy();
     expect(within(tiles[0]).getByText('视频无法显示')).toBeTruthy();
     expect(tiles[0].querySelector('.play-badge')).toBeNull();
-    // the video is asked for itself, once: its answer says why the thumbnail failed too
+    // 视频本身只请求一次：它的回答也说明了缩略图失败的原因
     expect(calls.filter(call => call.includes('local-id=1&'))).toHaveLength(1);
 
     expect(await within(tiles[1]).findByText('该视频没有缩略图或封面')).toBeTruthy();
     expect(within(tiles[1]).getByText('缩略图无法显示')).toBeTruthy();
-    // in the flow of the words, where the warning is otherwise, not laid over them
+    // 排在文字中间、原本放警告图标的位置，不叠在文字上
     expect(tiles[1].querySelector('.resource-missing')?.firstElementChild?.className).toBe('play-badge');
     expect(badgeOver(tiles[1])).toBe(false);
   });
@@ -150,7 +150,7 @@ describe('the resource browser (#206)', () => {
       }
       disconnect() {}
     });
-    // the area holds more than it shows: it scrolls itself
+    // 区域里的内容比它显示的多：区域自己滚动
     const tall = (area: HTMLElement, scrolls: boolean) => {
       Object.defineProperty(area, 'scrollHeight', { configurable: true, value: scrolls ? 3000 : 600 });
       Object.defineProperty(area, 'clientHeight', { configurable: true, value: 600 });
@@ -168,7 +168,7 @@ describe('the resource browser (#206)', () => {
     await waitFor(() => expect(watched).toHaveLength(2));
     expect(calls.at(-1)).toBe('/api/chat/resources?type=image&type=video&type=voice&type=file&limit=120&before=k1');
 
-    // a phone: the area grows with the grid, and the document scrolls
+    // 手机上：区域随网格变高，由整个文档滚动
     tall(area, false);
     cleanup();
     watched.length = 0;
