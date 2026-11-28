@@ -1,4 +1,4 @@
-//! The footprint: who the account talked with and replied to over a range of days.
+//! 足迹：一段日期内账号所有者和谁聊过、回复过谁、在哪里被 @。
 
 use serde_json::{json, Value};
 
@@ -6,8 +6,13 @@ use super::ServiceHub;
 use crate::error::{AppError, AppResult};
 
 impl ServiceHub {
-    /// Who I talked with and replied to, and where I was @-mentioned, between `begin` and `end` (Unix seconds,
-    /// both inclusive; 0 for no bound).
+    /// `begin` 到 `end` 之间账号所有者和谁聊过、回复过谁、在哪里被 @。
+    ///
+    /// `begin`、`end` 是 Unix 秒，两端都包含，为 0 时不限。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn footprint(&self, begin: i64, end: i64) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let profile = self.profile()?;
@@ -20,8 +25,11 @@ impl ServiceHub {
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// [`Self::footprint`]'s answer as the rows of a CSV or Excel export, with the names of the conversations and
-    /// of who @-mentioned me (#315).
+    /// 把 [`Self::footprint`] 的结果写成 CSV 或 Excel 导出的行，带上会话的名字和 @ 账号所有者的人的名字（#315）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误。
     pub fn footprint_timeline(
         &self,
         data: &Value,
@@ -47,7 +55,11 @@ impl ServiceHub {
         Ok(crate::export::footprint_timeline(data, &names))
     }
 
-    /// `insight footprint`: the same statistics as [`Self::footprint`].
+    /// `insight footprint`：与 [`Self::footprint`] 相同的统计，读成契约类型。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`Self::footprint`]；数据库层的回答不符合契约类型时返回运行时错误。
     pub fn insight_footprint(&self, begin: i64, end: i64) -> AppResult<crate::contract::Footprint> {
         crate::contract::Footprint::of(self.footprint(begin, end)?)
     }

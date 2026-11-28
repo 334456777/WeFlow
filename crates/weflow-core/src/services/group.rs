@@ -1,4 +1,4 @@
-//! Group analytics: members panel, rankings, activity, media mix, per-member analytics and exports.
+//! 群聊分析：成员面板、排行、活跃时段、消息种类分布、单个成员的分析和导出。
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -22,7 +22,7 @@ use weflow_native::msg::Order;
 use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::wcdb::Databases;
 
-/// How many messages a page of `group member-messages` holds: a `limit` outside this range is a usage error.
+/// `group member-messages` 一页的消息数：`limit` 超出这个范围时为用法错误。
 pub const MEMBER_MESSAGES_LIMIT: std::ops::RangeInclusive<usize> = 1..=100;
 
 #[derive(Clone, Debug, Default)]
@@ -37,11 +37,11 @@ struct MemberContact {
     local_type: i64,
 }
 
-/// The `<sender>:` line WeChat puts before the text of a message someone else sent to a group.
+/// 别人发到群里的消息，微信在正文前加的 `<sender>:` 一行。
 const SENDER_LINE: &str = r"(?i)^\s*([a-zA-Z0-9_@-]{4,}):\s*(?:\r?\n|<br\s*/?>)";
 
-/// A WeChat emoji as a text writes it, `[微笑]`: a short name in brackets with no bracket, markup or white space in
-/// it, so neither a CDATA section (`<![CDATA[0]]>`) nor a bracketed remark is one.
+/// 文字里写的微信表情，如 `[微笑]`：方括号里的一个短名字，其中没有方括号、标记或空白，
+/// 所以 CDATA 段（`<![CDATA[0]]>`）和用方括号括起的备注都不算。
 const TEXT_EMOJI: &str = r"\[[^\[\]<>\s]{1,12}\]";
 
 fn pick_str(row: &Value, keys: &[&str]) -> String {
@@ -103,8 +103,8 @@ pub(crate) fn build_id_candidates(values: &[&str]) -> Vec<String> {
     out
 }
 
-/// The group nicknames the members can be trusted to have ([`build_trusted_group_nicknames`]), of `candidates` only;
-/// of every member when there are none.
+/// 可以信任的成员群昵称（[`build_trusted_group_nicknames`]），只取 `candidates` 中的；
+/// 没有 `candidates` 时取全部成员的。
 fn trusted_nicknames(
     entries: &Map<String, Value>,
     candidates: &[String],
@@ -122,13 +122,13 @@ fn trusted_nicknames(
     )
 }
 
-/// The group nickname of the identities `candidates` ([`resolve_group_nickname`]).
+/// 身份 `candidates` 对应的群昵称（[`resolve_group_nickname`]）。
 fn resolve_nickname(map: &HashMap<String, String>, candidates: &[String]) -> String {
     let candidates: Vec<&str> = candidates.iter().map(String::as_str).collect();
     resolve_group_nickname(map, &candidates)
 }
 
-// ── owner detection ──
+// ── 找出群主 ──
 
 fn resolve_member_username(candidate: &Value, lookup: &HashMap<String, String>) -> Option<String> {
     let raw = candidate.as_str()?.trim();
@@ -194,9 +194,10 @@ fn extract_owner(value: &Value, lookup: &HashMap<String, String>, depth: u32) ->
     }
 }
 
-/// The kind of a message in a member's message export: an app message kept as `(<type> << 32) | 49` by the tag of
-/// its `<type>` in the one table, without the brackets, as one kept as 49 for a `<type>` the table does not know
-/// (#1263).
+/// 成员消息导出中一条消息的种类。
+///
+/// 保存为 `(<type> << 32) | 49` 的 app 消息取它的 `<type>` 在子类型表中的标签（去掉方括号）；
+/// 子类型表中没有的 `<type>` 与保存为 49 的一样，写成「链接/文件」（#1263）。
 fn simple_type_name(local_type: i64) -> String {
     if local_type & 0xFFFF_FFFF == 49 {
         return crate::message::appmsg::row_kept_in(local_type)
@@ -234,7 +235,7 @@ fn format_unix_time(ts: i64) -> String {
     }
 }
 
-/// The kind of file a group's export of members or of a member's messages is, by the extension of its name.
+/// 群成员导出或成员消息导出的文件种类，按文件名的扩展名判断。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum MemberTable {
     Csv,
@@ -242,10 +243,10 @@ enum MemberTable {
 }
 
 impl MemberTable {
-    /// The kind `out` names: `.csv` or `.xlsx`, in any case.
+    /// `out` 所指的种类：`.csv` 或 `.xlsx`，不区分大小写。
     ///
     /// # Errors
-    /// A usage error for any other extension and for none (#1136): told before the databases are read.
+    /// 其他扩展名或没有扩展名时返回用法错误（#1136），在读数据库之前就报告。
     fn of(out: &Path) -> AppResult<Self> {
         let ext = out.extension().and_then(|e| e.to_str()).unwrap_or("");
         if ext.eq_ignore_ascii_case("csv") {
@@ -291,7 +292,7 @@ impl ServiceHub {
         chatroom_id: &str,
     ) -> AppResult<Vec<Value>> {
         let raw = self.wrap_native(wcdb.group_members(chatroom_id))?;
-        // the DLL hands back either a bare array or `{ "members": [...] }`
+        // 接受数组本身，也接受 `{ "members": [...] }`
         Ok(raw
             .as_array()
             .cloned()
@@ -531,7 +532,7 @@ impl ServiceHub {
                 .cloned()
                 .unwrap_or_else(|| wxid.clone());
             let lw = wxid.to_lowercase();
-            // the account's own row is a friend's (`local_type` 1) in WeChat's contacts; it is not a friend (#1079)
+            // 微信的联系人表里账号自己那一行和好友一样（`local_type` 为 1），但它不是好友（#1079）
             let is_friend = may_be_friend(&lw)
                 && normalized_wxid != my_wxid
                 && contact.as_ref().is_some_and(|c| c.local_type == 1);
@@ -577,8 +578,13 @@ impl ServiceHub {
         Ok(data.into_iter().map(|d| d.0).collect())
     }
 
-    /// The members panel and when it was built (Unix milliseconds). It is built
-    /// anew on every call: one pass over the group's messages gives the counts.
+    /// 成员面板，以及生成它的时间（Unix 毫秒）。
+    ///
+    /// 每次调用都重新生成，遍历一遍群消息得到各成员的消息数；带消息数时顺带把自己的消息数保存为群提示。
+    ///
+    /// # Errors
+    ///
+    /// `chatroom_id` 为空时返回用法错误；账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn group_members_panel(
         &self,
         chatroom_id: &str,
@@ -589,7 +595,7 @@ impl ServiceHub {
             return Err(AppError::usage("chatroom id must not be empty"));
         }
         let wcdb = self.open_wcdb()?;
-        // the panel reads the members from the contacts and, with their counts, the messages
+        // 面板从联系人中读成员；要消息数时还读消息
         let groups: &[Databases] = if include_counts {
             &[Databases::Contacts, Databases::Messages]
         } else {
@@ -601,7 +607,11 @@ impl ServiceHub {
         Ok((data, chrono::Utc::now().timestamp_millis()))
     }
 
-    /// The groups of the account, the latest first, with their names and member counts (`group list`).
+    /// 账号所在的群，带名字和成员数（`group list`）；按成员数从多到少排列，成员数相同的按会话列表的顺序。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读不出会话列表时返回数据库层的错误。
     pub fn group_chats(&self) -> AppResult<Vec<GroupChat>> {
         let wcdb = self.open_wcdb()?;
         let sessions = self.wrap_native(wcdb.sessions())?;
@@ -639,7 +649,11 @@ impl ServiceHub {
         Ok(groups)
     }
 
-    /// The full member records of a group.
+    /// 群成员的完整记录。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读不出成员时返回数据库层的错误。
     pub fn group_members_full(&self, chatroom_id: &str) -> AppResult<Vec<Value>> {
         let wcdb = self.open_wcdb()?;
         self.group_members_full_with(&wcdb, chatroom_id)
@@ -759,8 +773,11 @@ impl ServiceHub {
         Ok(data)
     }
 
-    /// The `limit` members of a group with the most messages between `start` and `end` (`group ranking`); a `limit`
-    /// of 0 is all of them.
+    /// `start` 到 `end` 之间群里消息最多的 `limit` 个成员（`group ranking`）；`limit` 为 0 时列出全部。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库或统计失败时返回数据库层的错误。
     pub fn group_message_ranking(
         &self,
         chatroom_id: &str,
@@ -769,7 +786,7 @@ impl ServiceHub {
         end: i64,
     ) -> AppResult<Vec<GroupRank>> {
         let wcdb = self.open_wcdb()?;
-        // the ranking counts the messages, then names the senders from the contacts
+        // 排行先数消息，再从联系人中取发送者的名字
         wcdb.prefetch(&[Databases::Messages, Databases::Contacts])
             .map_err(|e| AppError::native(format!("{e:#}")))?;
         let d = self.group_stats_data(&wcdb, chatroom_id, start, end)?;
@@ -824,7 +841,11 @@ impl ServiceHub {
             .collect())
     }
 
-    /// A group's messages by hour between `start` and `end` (`group hours`).
+    /// `start` 到 `end` 之间群消息按小时的分布（`group hours`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，统计失败时返回数据库层的错误。
     pub fn group_active_hours(
         &self,
         chatroom_id: &str,
@@ -850,7 +871,11 @@ impl ServiceHub {
         })
     }
 
-    /// A group's messages by kind between `start` and `end` (`group media`).
+    /// `start` 到 `end` 之间群消息按种类的分布（`group media`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，统计失败时返回数据库层的错误。
     pub fn group_media_stats(
         &self,
         chatroom_id: &str,
@@ -877,13 +902,13 @@ impl ServiceHub {
         let mut others = 0i64;
         for (k, c) in raw {
             let t = crate::api::js_parse_int(&k).unwrap_or(0);
-            // an app message kept as `(<type> << 32) | 49` counts by its `<type>` in the one table (#1263): a link or
-            // a file as one kept as 49, a sticker as one of type 47
+            // 保存为 `(<type> << 32) | 49` 的 app 消息按它的 `<type>` 在子类型表中的种类计数（#1263）：
+            // 链接和文件算作 49，表情算作 47
             let t = match crate::message::appmsg::row_kept_in(t) {
                 Some(row) if matches!(row.kind, Some("link" | "file")) => 49,
                 Some(_) if t >> 32 == 8 => 47,
                 Some(_) => t,
-                // a `<type>` the table does not know, as one kept as 49
+                // 子类型表中没有的 `<type>` 算作 49
                 None if t & 0xFFFF_FFFF == 49 => 49,
                 None => t,
             };
@@ -915,8 +940,8 @@ impl ServiceHub {
         })
     }
 
-    /// Who sent `row`: the owner when the reader says so, else the sender it resolved, else the `<sender>:` line a
-    /// group message's text starts with.
+    /// `row` 是谁发的：数据库层标记为自己发的时为账号所有者，否则取它解析出的发送者，
+    /// 再没有时取群消息正文开头的 `<sender>:` 一行。
     fn row_sender(&self, row: &MsgRow, my_wxid: &str) -> String {
         if row.is_send && !my_wxid.is_empty() {
             return my_wxid.to_string();
@@ -932,8 +957,8 @@ impl ServiceHub {
             .unwrap_or_default()
     }
 
-    /// A cursor over the messages `member` may have sent: only their rows (and rows with an unresolved sender) are
-    /// read, which keeps a per-member scan of a 200,000-message group to that member's share of the work.
+    /// 只读 `member` 可能发的消息的游标：只读这个成员的行（以及发送者没有解析出来的行），
+    /// 所以在 20 万条消息的群里扫描一个成员，工作量只是这个成员所占的那一份。
     fn member_cursor(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
@@ -975,7 +1000,11 @@ impl ServiceHub {
         }
     }
 
-    /// One member's messages in a group between `start` and `end`: counts, hours, phrases and emojis (`group member`).
+    /// `start` 到 `end` 之间一个成员在群里的消息：计数、时段、常用语和表情（`group member`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn group_member_analytics(
         &self,
         chatroom_id: &str,
@@ -1033,8 +1062,7 @@ impl ServiceHub {
                     }
                     let msg_type = row.local_type;
                     let create_time = row.create_time.unwrap_or(0);
-                    // only the line naming the sender is a sender line (#656): the owner's text keeps a first
-                    // line such as `TODO:`
+                    // 只有写着发送者的那一行才是发送者行（#656）：账号所有者的文字中 `TODO:` 这样的第一行要保留
                     let body = row.content.trim();
                     let content = match rx(SENDER_LINE).captures(body) {
                         Some(line) if line[1].trim().eq_ignore_ascii_case(sender.trim()) => {
@@ -1045,7 +1073,7 @@ impl ServiceHub {
                     total += 1;
                     if msg_type == 1 || msg_type == 244813135921 {
                         text += 1;
-                        // a quote's content is the XML of its appmsg: what it says is its title (#1092)
+                        // 引用消息的内容是它的 appmsg 的 XML：说的话在它的标题里（#1092）
                         let said: Cow<'_, str> = if msg_type == 1 {
                             Cow::Borrowed(content.trim())
                         } else {
@@ -1101,7 +1129,7 @@ impl ServiceHub {
             |counts: &HashMap<String, i64>, order: &[String], n: usize| -> Vec<(String, i64)> {
                 let mut v: Vec<(String, i64)> =
                     order.iter().map(|k| (k.clone(), counts[k])).collect();
-                v.sort_by_key(|a| std::cmp::Reverse(a.1)); // stable: ties keep first-seen order like JS Map + sort
+                v.sort_by_key(|a| std::cmp::Reverse(a.1)); // 稳定排序：次数相同的保持首次出现的顺序，与桌面版一致
                 v.truncate(n);
                 v
             };
@@ -1192,11 +1220,12 @@ impl ServiceHub {
         Ok(out)
     }
 
-    /// One page of a member's messages (newest first).
+    /// 一个成员的消息中的一页，从新到旧。
     ///
     /// # Errors
     ///
-    /// A usage error when `limit` is not in [`MEMBER_MESSAGES_LIMIT`].
+    /// 群 ID 或成员 ID 为空，或 `limit` 不在 [`MEMBER_MESSAGES_LIMIT`] 内时返回用法错误；
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn group_member_messages(
         &self,
         chatroom_id: &str,
@@ -1300,11 +1329,12 @@ impl ServiceHub {
         })
     }
 
-    /// Writes a member's messages in a group as CSV or XLSX depending on the extension; in XLSX a text longer than
-    /// 32 000 characters, more than a cell holds, is cut to its first 32 000.
+    /// 按扩展名把一个成员在群里的消息写成 CSV 或 XLSX；
+    /// XLSX 中超过 32 000 个字符（一个单元格装不下）的文字截取前 32 000 个。
     ///
     /// # Errors
-    /// A usage error when `out` is not a `.csv` or `.xlsx` file, before anything is read.
+    /// 群 ID 或成员 ID 为空，或 `out` 不是 `.csv`、`.xlsx` 文件时返回用法错误，在读取任何数据之前报告；
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误，写文件失败时返回运行时错误。
     pub fn group_export_member_messages(
         &self,
         chatroom_id: &str,
@@ -1460,7 +1490,7 @@ impl ServiceHub {
             ws.write_with_format(1, 5, "成员wxid", &bold).map_err(x)?;
             ws.merge_range(1, 6, 1, 7, member, &Format::new())
                 .map_err(x)?;
-            // xlsx caps rows and columns far below the integer types, so the writer fails before they could wrap
+            // xlsx 的行数和列数上限远小于这些整数类型的范围，写入器在它们溢出之前就会报错
             for (i, (label, value)) in (0u16..).zip([
                 ("成员显示名", &member_display),
                 ("成员备注", &remark),
@@ -1498,10 +1528,11 @@ impl ServiceHub {
         })
     }
 
-    /// Writes a group's members to `out` (`group export-members`), as CSV or XLSX depending on the extension.
+    /// 把群成员写到 `out`（`group export-members`），按扩展名写成 CSV 或 XLSX。
     ///
     /// # Errors
-    /// A usage error when `out` is not a `.csv` or `.xlsx` file, before anything is read.
+    /// `out` 不是 `.csv`、`.xlsx` 文件时返回用法错误，在读取任何数据之前报告；账号没有配置好时返回配置错误，
+    /// 读不出成员时返回数据库层的错误；群没有成员或写文件失败时返回运行时错误。
     pub fn group_export_members(&self, chatroom_id: &str, out: &Path) -> AppResult<GroupExported> {
         let table = MemberTable::of(out)?;
         let wcdb = self.open_wcdb()?;
@@ -1662,7 +1693,7 @@ impl ServiceHub {
             ws.merge_range(1, 6, 1, 7, session_remark.as_str(), &Format::new())
                 .map_err(x)?;
             ws.set_row_height(1, 20).map_err(x)?;
-            // xlsx caps rows and columns far below the integer types, so the writer fails before they could wrap
+            // xlsx 的行数和列数上限远小于这些整数类型的范围，写入器在它们溢出之前就会报错
             for (i, pair) in (0u16..).zip(meta.chunks(2)) {
                 ws.write_with_format(2, i * 2, pair[0], &bold).map_err(x)?;
                 ws.write(2, i * 2 + 1, pair[1]).map_err(x)?;
@@ -1691,7 +1722,7 @@ impl ServiceHub {
     }
 }
 
-/// JSON-pointer escaping of a path segment.
+/// 按 JSON 指针（JSON Pointer）的规则转义路径中的一段。
 fn escape_pointer(s: &str) -> String {
     s.replace('~', "~0").replace('/', "~1")
 }

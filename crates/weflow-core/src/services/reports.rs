@@ -1,4 +1,4 @@
-//! Annual and dual ("two people") reports.
+//! 年度报告和双人报告。
 
 use std::collections::{HashMap, HashSet};
 
@@ -24,8 +24,8 @@ use weflow_native::wcdb::Databases;
 
 const CONVERSATION_GAP: i64 = 3600;
 
-/// Takes `key` out of the native layer's answer and reads it into the contract's type: absent and null are `None`,
-/// and a field the type does not know fails here rather than leave the answer unseen.
+/// 从数据库层的回答中取出 `key`，读成契约类型：没有或为 null 时为 `None`；
+/// 类型不认识的字段在这里就报错，而不是让这部分回答无人察觉。
 fn from_native<T: serde::de::DeserializeOwned>(
     answer: &mut Value,
     key: &str,
@@ -59,10 +59,9 @@ fn local_ts(year: i32, month: u32, day: u32, h: u32, m: u32, s: u32) -> i64 {
         .unwrap_or(0)
 }
 
-/// The year of a report as the commands take it: `0` for all years, otherwise one of [`crate::dates::YEARS`].
+/// 命令接受的报告年份：`0` 表示所有年份，否则必须是 [`crate::dates::YEARS`] 中的一年。
 ///
-/// Before 1970 the Unix times of a year are negative, which the reading layer reads as no limit: such a year would
-/// report every year.
+/// 1970 年以前的 Unix 时间是负数，读取层把它当作不限：这样的年份会把所有年份都报告出来。
 fn checked_year(year: i32) -> AppResult<i32> {
     if year == 0 || crate::dates::YEARS.contains(&year) {
         Ok(year)
@@ -73,14 +72,14 @@ fn checked_year(year: i32) -> AppResult<i32> {
     }
 }
 
-/// The first and last second of a year in the machine's local time zone; `(0, 0)`, no limit, for `0`, all years.
+/// 本机时区中一年的第一秒和最后一秒；`0`（所有年份）时为 `(0, 0)`，即不限。
 fn year_range(year: i32) -> (i64, i64) {
     year_range_in(&Local, year)
 }
 
-/// [`year_range`] in the time zone `tz`, for a year [`checked_year`] returned.
+/// 时区 `tz` 中的 [`year_range`]，`year` 是 [`checked_year`] 检查过的年份。
 ///
-/// The start is at least 1: the start of 1970 east of UTC is a negative Unix time, which is no limit either.
+/// 开始时间至少为 1：在 UTC 以东的时区，1970 年的开始是负的 Unix 时间，同样会被当作不限。
 fn year_range_in<Tz: TimeZone>(tz: &Tz, year: i32) -> (i64, i64) {
     if year == 0 {
         return (0, 0);
@@ -105,7 +104,7 @@ fn parse_local_day(s: &str) -> Option<chrono::DateTime<Local>> {
 }
 
 fn day_index(dt: chrono::DateTime<Local>) -> i64 {
-    // local midnight as unix days, like `Math.floor(dayDate.getTime() / 86400000)`
+    // 本地午夜换算成 Unix 天数，与桌面版的 `Math.floor(dayDate.getTime() / 86400000)` 相同
     let midnight = Local
         .from_local_datetime(&dt.date_naive().and_time(NaiveTime::MIN))
         .earliest()
@@ -117,13 +116,12 @@ fn round1(v: f64) -> f64 {
     (v * 10.0).round() / 10.0
 }
 
-/// Whether `sender` is the account itself: the configured wxid or its cleaned form, by the database layer's rule
-/// ([`is_same_wxid`]).
+/// `sender` 是否是账号自己：按数据库层的规则（[`is_same_wxid`]）与配置的 wxid 或它的裸 wxid 比较。
 fn sent_by_me(sender: &str, raw_wxid: &str, cleaned: &str) -> bool {
     is_same_wxid(sender, raw_wxid) || is_same_wxid(sender, cleaned)
 }
 
-// ── emoji helpers (dual report) ──
+// ── 双人报告的表情辅助函数 ──
 
 fn normalize_emoji_md5(raw: &str) -> Option<String> {
     let t = raw.trim();
@@ -269,7 +267,7 @@ fn parse_emoji_candidate(item: &Value) -> EmojiCandidate {
         ],
     )));
     let url = direct_url.or_else(|| extract_emoji_url(&content));
-    // owner
+    // 谁发的
     let mut is_me = coerce_bool(record_field(
         item,
         &[
@@ -306,14 +304,13 @@ fn parse_emoji_candidate(item: &Value) -> EmojiCandidate {
     }
 }
 
-/// The md5 and the CDN address of an emoji message, read from its XML.
+/// 从表情消息的 XML 中读出的 md5 和 CDN 地址。
 fn emoji_of(content: &str) -> (Option<String>, Option<String>) {
     let stripped = strip_emoji_owner_prefix(content);
     (extract_emoji_md5(&stripped), extract_emoji_url(&stripped))
 }
 
-/// What an app message is, as the chat window says (`appMsgKind`): the report names a message's kind by it, as the
-/// chat window does (#1263). `None` for any other message.
+/// app 消息的种类（`appMsgKind`）：报告与聊天窗口一样按它称呼消息的种类（#1263）。不是 app 消息时为 `None`。
 fn app_msg_kind_of(row: &MsgRow) -> Option<String> {
     crate::chat_msg::map_msg_row(row.clone(), "", "")
         .app_msg_kind()
@@ -400,7 +397,12 @@ impl ServiceHub {
         v
     }
 
-    /// The years the annual report can be made for: native query, then table time ranges, then first/last message.
+    /// 可以生成年度报告的年份：先用数据库层的查询，再看各表的时间范围，最后看最早和最晚的消息。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好（档案、wxid、数据目录或密钥）时返回配置错误，数据库打不开时返回数据库层的错误，
+    /// 没有私聊会话时返回运行时错误。
     pub fn report_available_years(&self) -> AppResult<crate::contract::ReportYears> {
         let (wcdb, cleaned, _) = self.report_connect()?;
         let sessions = self.report_private_sessions(&wcdb, &cleaned);
@@ -415,7 +417,7 @@ impl ServiceHub {
                 });
             }
         }
-        // table scan
+        // 按表扫描
         let mut years: HashSet<i32> = HashSet::new();
         for sid in &sessions {
             let Ok(Value::Array(tables)) = wcdb.message_table_stats(sid) else {
@@ -490,15 +492,17 @@ impl ServiceHub {
         })
     }
 
-    /// `annualReport:generateReport`
+    /// 年度报告（桌面版的 `annualReport:generateReport`）。
     ///
     /// # Errors
-    /// `invalid_arguments` when `year` is neither `0` (all years) nor a year from 1970 to 2100.
+    /// `year` 既不是 `0`（所有年份）也不是 1970 到 2100 之间的年份时返回 `invalid_arguments`；
+    /// 账号没有配置好时返回配置错误，读取数据库或统计失败时返回数据库层的错误；
+    /// 没有私聊会话，或数据库层的回答不符合契约类型时返回运行时错误。
     pub fn report_annual(&self, year: i32) -> AppResult<AnnualReport> {
         let year = checked_year(year)?;
         self.emit_progress("annual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
-        // the report reads the conversations, their messages, the Moments and the contacts, in that order
+        // 报告依次读会话、消息、朋友圈和联系人
         wcdb.prefetch(&[
             Databases::Sessions,
             Databases::Messages,
@@ -521,7 +525,7 @@ impl ServiceHub {
             .map_err(|e| AppError::native(format!("base statistics failed: {e}")))?;
         let total_messages = num(&d["total"]);
 
-        let mut contact_stats: Vec<(String, i64, i64)> = Vec::new(); // sid, sent, received
+        let mut contact_stats: Vec<(String, i64, i64)> = Vec::new(); // 会话 ID、发出、收到
         let mut monthly_stats: Vec<(String, HashMap<i64, i64>)> = Vec::new();
         if let Some(ss) = d.get("sessions").and_then(Value::as_object) {
             for (sid, stat) in ss {
@@ -642,7 +646,7 @@ impl ServiceHub {
             use_sql_extras = true;
         }
 
-        // conversation / response / phrase state for the cursor fallback
+        // 逐条读取的后备方式所用的对话、回复和常用语的状态
         let mut response_times: IndexMap<String, Vec<i64>> = IndexMap::new();
         let mut phrase_count: HashMap<String, i64> = HashMap::new();
         let mut phrase_order: Vec<String> = Vec::new();
@@ -701,7 +705,7 @@ impl ServiceHub {
                         }
                         last_message.insert(sid.clone(), (create_time, sent));
                         if (local_type == 1 || local_type == QUOTE) && sent {
-                            // a quote's content is the XML of its appmsg: what it says is its title
+                            // 引用消息的内容是它的 appmsg 的 XML：说的话在它的标题里
                             let text = if local_type == QUOTE {
                                 reply_text(&row.content)
                             } else {
@@ -771,7 +775,7 @@ impl ServiceHub {
             streak_done = true;
         }
         if !streak_done {
-            // cursor-based longest streak
+            // 逐条读取，计算最长的连续聊天天数
             for sid in &sessions {
                 let Ok(cursor) = wcdb.open_message_cursor(
                     sid,
@@ -836,7 +840,7 @@ impl ServiceHub {
             }
         }
 
-        // Moments
+        // 朋友圈
         self.emit_progress("annual-report", "analysing Moments…", 75, 100);
         let mut sns_stats: Option<AnnualSnsStats> = None;
         let (sb, se) = if is_all {
@@ -915,7 +919,7 @@ impl ServiceHub {
             }
         }
 
-        // contact info
+        // 联系人信息
         self.emit_progress("annual-report", "collecting contact info…", 85, 100);
         let contact_ids: Vec<String> = contact_stats.iter().map(|c| c.0.clone()).collect();
         let (names, avatars) = self.names_and_avatars(&wcdb, &contact_ids);
@@ -988,7 +992,7 @@ impl ServiceHub {
                 max_day = *count;
                 let (mut top_friend, mut top_count) = (String::new(), 0i64);
                 if let Some(m) = daily_contact.get(day) {
-                    // the map keeps the order of the sessions read, so a tie keeps the friend read first
+                    // 这个表保持读取会话的顺序，所以次数相同时保留先读到的好友
                     for (sid, c) in m {
                         if *c > top_count {
                             top_count = *c;
@@ -1136,7 +1140,7 @@ impl ServiceHub {
             }
         };
 
-        // "once close friend"
+        // 曾经亲密、后来很少联系的好友（`lost_friend`）
         let mut lost = None;
         let (mut max_early, mut best_early, mut best_late, mut best_sid, mut best_desc) =
             (80i64, 0i64, 0i64, String::new(), String::new());
@@ -1311,10 +1315,12 @@ impl ServiceHub {
         rows
     }
 
-    /// `dualReport:generateReport`
+    /// 双人报告（桌面版的 `dualReport:generateReport`）。
     ///
     /// # Errors
-    /// `invalid_arguments` when `year` is neither `0` (all years) nor a year from 1970 to 2100.
+    /// `year` 既不是 `0`（所有年份）也不是 1970 到 2100 之间的年份时返回 `invalid_arguments`；
+    /// 账号没有配置好时返回配置错误，读取数据库或统计失败时返回数据库层的错误；
+    /// 数据库层的回答不符合契约类型时返回运行时错误。
     pub fn report_dual(
         &self,
         friend: &str,
@@ -1324,7 +1330,7 @@ impl ServiceHub {
         let year = checked_year(year)?;
         self.emit_progress("dual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
-        // the report reads the friend's contact, then the messages
+        // 报告先读好友的联系人信息，再读消息
         wcdb.prefetch(&[Databases::Contacts, Databases::Messages])
             .map_err(|e| AppError::native(format!("{e:#}")))?;
         let is_all = year == 0;
@@ -1449,7 +1455,7 @@ impl ServiceHub {
             }
         }
         if emoji_count > 0 && (my_md5.is_none() || fr_md5.is_none()) {
-            // fallback: scan the conversation
+            // 后备：逐条扫描会话
             let mut tally: Vec<(bool, String, Option<String>, i64)> = Vec::new();
             if let Ok(cursor) = wcdb.open_message_cursor(
                 friend,
@@ -1513,7 +1519,7 @@ impl ServiceHub {
                 }
             }
         }
-        // a sticker whose message names no URL: the one the sticker database has for it
+        // 消息里没有地址的表情：用表情数据库中给它记的地址
         let stored_url = |md5: &Option<String>| {
             let url = wcdb.emoticon_cdn_url(md5.as_deref()?).ok()?;
             (!url.is_empty()).then_some(url)
@@ -1651,7 +1657,7 @@ mod tests {
             year_range_in(&new_york, 2023),
             (1_672_531_200 + 18_000, 1_704_067_199 + 18_000)
         );
-        // the start of 1970 is the epoch in UTC and before it east of UTC: both read as no limit, so it is held at 1
+        // 1970 年的开始在 UTC 是纪元本身，在 UTC 以东早于纪元：两者都会被当作不限，所以固定为 1
         assert_eq!(year_range_in(&Utc, 1970), (1, 31_535_999));
         assert_eq!(year_range_in(&tokyo, 1970), (1, 31_535_999 - 32_400));
         assert_eq!(
@@ -1663,7 +1669,7 @@ mod tests {
 
     #[test]
     fn emoji_urls_with_broken_escapes_do_not_panic() {
-        // a multi-byte character right after `%`, in the address and in the whole message
+        // `%` 后面紧跟多字节字符，在地址中和整条消息中各试一次
         assert_eq!(normalize_emoji_url("%a中").as_deref(), Some("%a中"));
         let xml = r#"<msg><emoji cdnurl="http://emoji.example/%a中?m=%E4%B8%AD" /></msg>"#;
         assert_eq!(
@@ -1683,7 +1689,7 @@ mod tests {
         assert!(sent_by_me("wxid_me", "wxid_me_1a2b", "wxid_me"));
         assert!(sent_by_me("WXID_ME", "wxid_me_1a2b", "wxid_me"));
         assert!(sent_by_me("john", "john_1a2b", "john"));
-        // a friend whose custom id is the account's with something after `_`, and the other way round
+        // 好友的自定义 ID 是账号的 ID 加 `_` 和别的字符，以及反过来的情形
         assert!(!sent_by_me("john", "john_smith", "john_smith"));
         assert!(!sent_by_me("john_smith", "john", "john"));
         assert!(!sent_by_me("", "john", "john"));
@@ -1697,7 +1703,7 @@ mod tests {
             ..MsgRow::default()
         };
         let transfer = "<msg><appmsg><title>微信转账</title><type>2000</type></appmsg></msg>";
-        // a transfer as a plain app message and with its own type in the high bits
+        // 转账保存为普通的 app 消息，以及在高 32 位带着自己的类型
         for local_type in [49, (2000 << 32) | 49] {
             assert_eq!(
                 app_msg_kind_of(&row(local_type, transfer)).as_deref(),

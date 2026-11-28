@@ -1,5 +1,4 @@
-//! Chat queries beyond the basics: message lookup, per-day statistics, session details,
-//! export statistics, resource listings and cached hints.
+//! 基本读取以外的聊天查询：按 ID 查消息、按天统计、会话详情、导出统计、资源列表和保存的群提示。
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -25,17 +24,18 @@ use weflow_native::msg::{table_name_for, Order};
 use weflow_native::msg_row::{Columns, MsgRow};
 use weflow_native::wcdb::Databases;
 
-/// The local types a file is kept as: an app message of `<type>` 6, kept as 49 or as `(6 << 32) | 49` (#1263). A
-/// sticker or a note kept as `(8 << 32) | 49` or `(24 << 32) | 49` is no file.
+/// 文件消息保存时用的 `local_type`：`<type>` 为 6 的 app 消息，保存为 49 或 `(6 << 32) | 49`（#1263）。
+/// 保存为 `(8 << 32) | 49` 的表情和 `(24 << 32) | 49` 的笔记不是文件。
 pub(super) const FILE_APP_TYPES: [i64; 2] = [49, (6 << 32) | 49];
 
 fn native(e: anyhow::Error) -> AppError {
     AppError::from_native(e)
 }
 
-/// The message a `local_id` names, `None` when there is none. The id is only unique within one message database,
-/// so when several databases hold it, `create_time` (seconds) and then `local_type` (the kind of message the caller
-/// wants, e.g. 3 for an image) pick one; if that still leaves more than one, the error lists them.
+/// `local_id` 指的消息，没有时为 `None`。
+///
+/// 本地 ID 只在一个消息库内唯一，所以多个消息库都有它时，先按 `create_time`（秒）、
+/// 再按 `local_type`（调用方要的消息类型，如图片为 3）选出一条；仍有多条时，返回的错误中列出它们。
 pub(crate) fn message_by_local_id(
     wcdb: &weflow_native::wcdb::Wcdb,
     session_id: &str,
@@ -86,9 +86,10 @@ fn uniq(ids: &[String]) -> Vec<String> {
     out
 }
 
-/// The lowercase forms of an id to look it up by: the id, and the id without an account folder's suffix
-/// (`clean_account_dir_name`). Two ids share a key when [`is_same_wxid`](crate::message::transfer::is_same_wxid)
-/// takes them for one account: `john` and `john_1a2b` do, `john` and `john_smith` do not.
+/// 查找一个 ID 时用的小写形式：ID 本身，以及去掉账号目录后缀的 ID（`clean_account_dir_name`）。
+///
+/// [`is_same_wxid`](crate::message::transfer::is_same_wxid) 认为是同一个账号的两个 ID 有共同的键：
+/// `john` 和 `john_1a2b` 有，`john` 和 `john_smith` 没有。
 fn identity_keys(raw: &str) -> Vec<String> {
     let value = raw.trim();
     if value.is_empty() {
@@ -151,24 +152,24 @@ fn basename(path: &str) -> String {
     path.rsplit(['/', '\\']).next().unwrap_or("").to_string()
 }
 
-/// Which messages `chat resources` lists.
+/// `chat resources` 列出哪些消息。
 #[derive(Clone, Debug, Default)]
 pub struct ResourceQuery {
-    /// The conversation; all of them when none.
+    /// 会话；为 `None` 时列出所有会话的。
     pub session_id: Option<String>,
-    /// `image`, `video`, `voice` and `file`; all of them when empty.
+    /// `image`、`video`、`voice`、`file` 中的几种；为空时全部列出。
     pub types: Vec<String>,
-    /// Unix seconds: only messages from then on; 0 for no bound.
+    /// Unix 秒：只列出从这时起的消息；0 表示不限。
     pub begin: i64,
-    /// Unix seconds: only messages up to then; 0 for no bound.
+    /// Unix 秒：只列出到这时为止的消息；0 表示不限。
     pub end: i64,
-    /// The most messages of the page.
+    /// 这一页最多的消息数。
     pub limit: usize,
-    /// The `nextCursor` of the page before
+    /// 上一页的 `nextCursor`。
     pub before: Option<String>,
 }
 
-/// The kinds of message `chat resources --type` takes.
+/// `chat resources --type` 接受的消息种类。
 const RESOURCE_TYPES: [&str; 4] = ["image", "video", "voice", "file"];
 
 impl ServiceHub {
@@ -186,9 +187,14 @@ impl ServiceHub {
         )
     }
 
-    // ── single messages ──
+    // ── 单条消息 ──
 
-    /// `chat message --local-id` (#492: a typed row).
+    /// `chat message --local-id`（#492：返回类型化的行）。
+    ///
+    /// # Errors
+    ///
+    /// 找不到消息时返回 `not_found`；本地 ID 对应不同消息库中的多条消息时返回用法错误（`details.candidates`
+    /// 列出它们）；账号没有配置好时返回配置错误。
     pub fn chat_message_by_id(
         &self,
         session_id: &str,
@@ -200,16 +206,16 @@ impl ServiceHub {
             .ok_or_else(|| AppError::not_found("message not found"))
     }
 
-    /// `chat message --server-id`.
+    /// `chat message --server-id`。
     ///
     /// # Errors
-    /// A usage error when `server_id` is not a decimal number; a `not_found` failure when no message has it.
+    /// `server_id` 不是十进制数时返回用法错误；没有消息有这个 ID 时返回 `not_found`。
     pub fn chat_message_by_server_id(
         &self,
         session_id: &str,
         server_id: &str,
     ) -> AppResult<MsgRow> {
-        // the database layer compares the id as a number: what is not one is the caller's mistake
+        // 数据库层按数字比较 ID：不是数字就是调用方写错了
         if server_id.trim().parse::<i64>().is_err() {
             return Err(AppError::usage(format!("invalid server id: {server_id}")));
         }
@@ -219,7 +225,7 @@ impl ServiceHub {
             .ok_or_else(|| AppError::not_found("message not found"))
     }
 
-    /// `chat message` without `parsed`: the row, and the message as the query commands list it.
+    /// 不带 `parsed` 的 `chat message`：数据库的行，以及查询命令列出时的消息。
     pub fn message_lookup(&self, row: MsgRow, session_id: &str) -> MessageLookup {
         let my = self.my_wxid_cleaned();
         let message = collect_rows(
@@ -240,9 +246,13 @@ impl ServiceHub {
         }
     }
 
-    // ── per-day statistics ──
+    // ── 按天统计 ──
 
-    /// The local days a conversation has messages on, oldest first (`chat dates`); none when they cannot be read.
+    /// 会话有消息的日期（本地时间），从早到晚（`chat dates`）；读不出时为空。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误。
     pub fn chat_dates(&self, session_id: &str) -> AppResult<SessionDates> {
         let wcdb = self.open_wcdb()?;
         let dates = wcdb
@@ -256,7 +266,11 @@ impl ServiceHub {
         })
     }
 
-    /// A conversation's messages by local day (`chat date-counts`).
+    /// 会话每天（本地时间）的消息数（`chat date-counts`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn chat_date_counts(&self, session_id: &str) -> AppResult<SessionDateCounts> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
@@ -280,7 +294,11 @@ impl ServiceHub {
         })
     }
 
-    /// How many messages each conversation asked for has, by its id, in the order asked.
+    /// 请求的每个会话的消息数，按会话 ID 列出，顺序与请求的一致。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn chat_counts(&self, session_ids: &[String]) -> AppResult<IndexMap<String, i64>> {
         let ids = uniq(session_ids);
         if ids.is_empty() {
@@ -297,7 +315,11 @@ impl ServiceHub {
             .collect())
     }
 
-    /// Whether each of `usernames` is folded, muted and pinned (`chat statuses`), once each, in the order given.
+    /// `usernames` 中每一个是否折叠、免打扰和置顶（`chat statuses`），每个只列一次，顺序与给出的一致。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn chat_statuses(&self, usernames: &[String]) -> AppResult<IndexMap<String, ChatStatus>> {
         let ids = uniq(usernames);
         if ids.is_empty() {
@@ -324,12 +346,12 @@ impl ServiceHub {
             .collect())
     }
 
-    // ── session detail ──
+    // ── 会话详情 ──
 
-    /// Who a conversation is with and how many messages it has (`chat detail --fast`).
+    /// 会话的对方是谁、有多少条消息（`chat detail --fast`）。
     ///
     /// # Errors
-    /// A usage error for an empty id; a native error when the databases cannot be read.
+    /// ID 为空时返回用法错误；账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误。
     pub fn chat_detail_fast(&self, session_id: &str) -> AppResult<SessionFacts> {
         let id = session_id.trim();
         if id.is_empty() {
@@ -374,10 +396,10 @@ impl ServiceHub {
         })
     }
 
-    /// Where a conversation's messages are kept, and their first and last time (`chat detail --extra`).
+    /// 会话的消息存放在哪些表里，以及最早和最晚的时间（`chat detail --extra`）。
     ///
     /// # Errors
-    /// A usage error for an empty id; a native error when the databases cannot be opened.
+    /// ID 为空时返回用法错误；账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误。
     pub fn chat_detail_extra(&self, session_id: &str) -> AppResult<SessionTables> {
         let id = session_id.trim();
         if id.is_empty() {
@@ -435,8 +457,11 @@ impl ServiceHub {
         })
     }
 
-    /// [`Self::chat_detail_fast`] and [`Self::chat_detail_extra`] together (`chat detail`); the tables are empty when
-    /// they cannot be read.
+    /// [`Self::chat_detail_fast`] 和 [`Self::chat_detail_extra`] 合在一起（`chat detail`）；读不出表时表的部分为空。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`Self::chat_detail_fast`]。
     pub fn chat_detail(&self, session_id: &str) -> AppResult<SessionDetail> {
         Ok(SessionDetail {
             facts: self.chat_detail_fast(session_id)?,
@@ -444,9 +469,13 @@ impl ServiceHub {
         })
     }
 
-    // ── export statistics ──
+    // ── 导出统计 ──
 
-    /// How many contacts of each kind there are (`chat tab-counts`).
+    /// 每类联系人各有多少（`chat tab-counts`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误；读取数据库失败或回答不符合契约类型时返回数据库层的错误。
     pub fn chat_tab_counts(&self) -> AppResult<TabCounts> {
         serde_json::from_value(self.contact_type_counts()?)
             .map_err(|err| AppError::native(format!("{err:#}")))
@@ -464,7 +493,7 @@ impl ServiceHub {
             if !may_be_friend(username) {
                 continue;
             }
-            // the first of the columns the row has
+            // 取这一行有的列中的第一个
             let local_type = ["local_type", "localType", "WCDB_CT_local_type"]
                 .iter()
                 .find_map(|k| {
@@ -501,7 +530,14 @@ impl ServiceHub {
         out
     }
 
-    /// The message-type counts plus group/private relations.
+    /// `session_ids` 中各会话的导出统计：各类型的消息数，群的成员数、发言人数和自己的消息数；
+    /// `include_relations` 时还有群和私聊之间的关系（群里的好友数、和对方共同的群数）。
+    ///
+    /// 不限时间范围时，顺带把群里自己的消息数保存为群提示。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误。
     pub fn chat_export_stats(
         &self,
         session_ids: &[String],
@@ -516,7 +552,7 @@ impl ServiceHub {
             });
         }
         let wcdb = self.open_wcdb()?;
-        // the statistics read the messages, then the conversations and the contacts
+        // 统计依次读消息、会话和联系人
         wcdb.prefetch(&[
             Databases::Messages,
             Databases::Sessions,
@@ -635,30 +671,30 @@ impl ServiceHub {
         Ok(ExportStats { data })
     }
 
-    // ── group "my message count" hint (persisted) ──
+    // ── 群提示：自己在群里的消息数，保存在文件里 ──
 
-    /// The name of the account's file of group hints.
+    /// 账号的群提示文件的文件名。
     fn hint_file_name(&self) -> String {
         let who = self.my_wxid_cleaned();
         let who = if who.is_empty() { "default" } else { &who };
         format!("group_my_message_counts_{who}.json")
     }
 
-    /// The account's file of group hints, in the cache folder: `cache_path` when it is set (#1013).
+    /// 账号的群提示文件，在缓存目录中：设了 `cache_path` 时就在它下面（#1013）。
     fn hint_path(&self) -> PathBuf {
         self.cache_base().join(self.hint_file_name())
     }
 
-    /// The account's file of group hints in the home folder's `cache/`, where WeFlow 7.0.0 and earlier kept it
-    /// whatever `cache_path` said; `None` when that folder is the cache folder.
+    /// 主目录的 `cache/` 下账号的群提示文件：WeFlow 7.0.0 及更早版本不论 `cache_path` 怎样设置都放在这里；
+    /// 这个目录就是缓存目录时为 `None`。
     pub(super) fn legacy_hint_path(&self) -> Option<PathBuf> {
         let home_cache = self.ctx.cache_dir();
-        // compared as the system resolves them, so that another spelling of the same folder is not taken for it
+        // 按系统解析后的路径比较，同一个目录换一种写法也不会被当成另一个目录
         let moved = fs::canonicalize(&home_cache).ok() != fs::canonicalize(self.cache_base()).ok();
         moved.then(|| home_cache.join(self.hint_file_name()))
     }
 
-    /// The account's saved hints: those of [`Self::legacy_hint_path`], and over them those of the cache folder.
+    /// 账号保存的群提示：先取 [`Self::legacy_hint_path`] 中的，再用缓存目录中的覆盖。
     fn read_hints(&self) -> Map<String, Value> {
         let read = |path: &Path| -> Option<Map<String, Value>> {
             serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
@@ -671,10 +707,10 @@ impl ServiceHub {
         hints
     }
 
-    /// Saves `count` as the group's own message count (`chat group-hint --set`), kept per account in the cache.
+    /// 把 `count` 保存为自己在这个群里的消息数（`chat group-hint --set`），按账号存在缓存中。
     ///
     /// # Errors
-    /// A usage error when `chatroom_id` is not a group's id.
+    /// `chatroom_id` 不是群的 ID 时返回用法错误；文件写不进去时返回运行时错误。
     pub fn set_group_hint(&self, chatroom_id: &str, count: i64) -> AppResult<GroupHint> {
         if !chatroom_id.trim().ends_with("@chatroom") {
             return Err(AppError::usage("invalid group chat id"));
@@ -698,7 +734,7 @@ impl ServiceHub {
             .map_err(|e| AppError::runtime(format!("{e:#}")))?;
         crate::fs_atomic::write_atomically(&path, &bytes)
             .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
-        // the hints read from the home folder's cache are in the cache folder's file now
+        // 从主目录缓存读到的群提示已一并写进缓存目录的文件，旧文件可以删掉
         if let Some(legacy) = self.legacy_hint_path() {
             let _ = fs::remove_file(legacy);
         }
@@ -709,10 +745,10 @@ impl ServiceHub {
         })
     }
 
-    /// The group's own message count as saved (`chat group-hint`); all left out when none was.
+    /// 保存的自己在这个群里的消息数（`chat group-hint`）；没有保存过时各项都省略。
     ///
     /// # Errors
-    /// A usage error when `chatroom_id` is not a group's id.
+    /// `chatroom_id` 不是群的 ID 时返回用法错误。
     pub fn group_hint(&self, chatroom_id: &str) -> AppResult<GroupHint> {
         if !chatroom_id.trim().ends_with("@chatroom") {
             return Err(AppError::usage("invalid group chat id"));
@@ -731,15 +767,14 @@ impl ServiceHub {
         })
     }
 
-    // ── resources ──
+    // ── 资源 ──
 
     fn resource_type(msg: &ExportMsg) -> Option<ResourceKind> {
         match msg.local_type {
             3 => Some(ResourceKind::Image),
             43 => Some(ResourceKind::Video),
             34 => Some(ResourceKind::Voice),
-            // one kept as `(6 << 32) | 49` is a file; one kept as 49 only when it says so (the metadata parse is
-            // the expensive part, so it comes last)
+            // 保存为 `(6 << 32) | 49` 的是文件；保存为 49 的只有自己说明是文件时才是（解析元数据最费时，所以放在最后）
             t if FILE_APP_TYPES.contains(&t) => {
                 let is_file = t != 49
                     || msg.xml_type.as_deref() == Some("6")
@@ -750,10 +785,10 @@ impl ServiceHub {
         }
     }
 
-    /// What the chat window calls each of `usernames` (a conversation's own username among them names the
-    /// conversation): in the group `session_id`, the name a member gave themselves there; else, and in any other
-    /// chat, the remark, else the nickname, else the WeChat ID. A username without a name, or with names that cannot
-    /// be read, is left out.
+    /// 聊天窗口对 `usernames` 中每一个的称呼（其中会话自己的用户名指会话本身）。
+    ///
+    /// 在群 `session_id` 里，用成员在群里给自己起的名字；没有时，以及在其他聊天中，依次用备注、昵称、微信号。
+    /// 没有名字或读不出名字的用户名不列出。
     pub fn names_in_chat(
         &self,
         session_id: Option<&str>,
@@ -777,12 +812,12 @@ impl ServiceHub {
         names
     }
 
-    /// The images / videos / voice / files across sessions, newest first in the chats' order (a
-    /// place two conversations share by conversation id), `limit` a page (default 300, at most 2,000). The next page
-    /// goes on from the `nextCursor` of this one (issue #178).
+    /// 各会话中的图片、视频、语音和文件，按聊天中的顺序从新到旧排列（不同会话中位置相同的消息按会话 ID 排），
+    /// 每页 `limit` 条（默认 300，最多 2000）。下一页从这一页的 `nextCursor` 接着读（#178）。
     ///
     /// # Errors
-    /// A usage error when a type of `q` is none of `image`, `video`, `voice` and `file`, or its cursor is not one.
+    /// `q` 中的类型不是 `image`、`video`、`voice`、`file` 之一，或者它的游标不是资源游标时返回用法错误；
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn chat_resources(&self, q: &ResourceQuery) -> AppResult<Value> {
         use std::cmp::Ordering;
         use weflow_native::msg::{MsgPos, Ties};
@@ -824,7 +859,7 @@ impl ServiceHub {
             ),
             None => None,
         };
-        // conversations by their last message, newest first: none holds a message ordered much after it
+        // 会话按最后一条消息的时间从新到旧排列：任何会话都不会有排在这个时间之后很多的消息
         let requested = q.session_id.as_deref().map(str::trim).unwrap_or("");
         let mut sessions: Vec<(String, i64)> = Vec::new();
         if requested.is_empty() {
@@ -861,13 +896,12 @@ impl ServiceHub {
         if wanted.contains(&"file") {
             local_types.extend(FILE_APP_TYPES);
         }
-        // a conversation's last message time is in seconds, and a message's place is its send time in milliseconds
-        // plus a little
+        // 会话最后一条消息的时间以秒为单位，而消息的位置是毫秒级的发送时间再加一点
         const SLACK_SECS: i64 = 10;
         let want = limit + 1;
         let my = self.my_wxid_cleaned();
         let place = |p: &MsgPos| (p.sort_seq, p.create_time, p.local_id);
-        // (place, conversation, message, kind), in the order of the listing
+        // （位置，会话，消息，种类），按列出的顺序
         let mut items: Vec<(MsgPos, String, ExportMsg, ResourceKind)> = Vec::new();
         let tables = wcdb.message_tables_by_name().map_err(native)?;
         for (sid, last) in &sessions {
@@ -895,12 +929,12 @@ impl ServiceHub {
                 end: None,
                 sender_filter: None,
             };
-            // a message kept by more than one database (a re-synced one) is listed once
+            // 存在多个数据库中的消息（重新同步过的）只列一次
             let mut seen: HashSet<(i64, i64, i64)> = HashSet::new();
             let mut from = from;
             let mut found = 0;
             loop {
-                // what is older than the page so far cannot be on it
+                // 比目前这一页更旧的消息不可能在这一页上
                 let rows = wcdb
                     .typed_before(
                         tables,
@@ -926,8 +960,7 @@ impl ServiceHub {
                     found += 1;
                     items.push((pos, sid.clone(), m, kind));
                 }
-                // rows that are not resources (a type-49 app message is a file only by what it says) or
-                // listed already are read past
+                // 不是资源的行（类型为 49 的 app 消息要看内容才知道是不是文件）和已经列出的行跳过，接着往下读
                 let Some(end) = end else {
                     break;
                 };
@@ -970,7 +1003,11 @@ impl ServiceHub {
         }))
     }
 
-    /// The de-duplicated image identifiers of a session, newest first.
+    /// 会话中去重后的图片标识，从新到旧。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn chat_all_images(&self, session_id: &str) -> AppResult<ChatImages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
@@ -1009,7 +1046,11 @@ impl ServiceHub {
         Ok(ChatImages { images })
     }
 
-    /// The voice messages of a conversation, newest first, once each (`chat voice-messages`).
+    /// 会话的语音消息，从新到旧，每条一次（`chat voice-messages`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn chat_all_voices(&self, session_id: &str) -> AppResult<VoiceMessages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
@@ -1027,10 +1068,11 @@ impl ServiceHub {
         Ok(VoiceMessages { messages })
     }
 
-    /// The image/video messages across sessions, paged by the native scanner.
+    /// 各会话的图片和视频消息，由数据库层的扫描分页。
     ///
     /// # Errors
-    /// A usage error when `media_type` is none of `image`, `video` and `all`.
+    /// `media_type` 不是 `image`、`video`、`all` 之一时返回用法错误；账号没有配置好时返回配置错误，
+    /// 读取数据库失败时返回数据库层的错误。
     pub fn chat_media_stream(
         &self,
         session_id: Option<&str>,
@@ -1099,7 +1141,11 @@ impl ServiceHub {
         })
     }
 
-    /// The names a group's transfer message shows for its payer and receiver (`chat transfer-names`).
+    /// 群里的转账消息显示的付款人和收款人的名字（`chat transfer-names`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，数据库打不开时返回数据库层的错误。
     pub fn chat_transfer_names(
         &self,
         chatroom_id: &str,
@@ -1160,15 +1206,23 @@ impl ServiceHub {
 }
 
 impl ServiceHub {
-    /// The rows of `SessionTable`, newest first, as WeChat keeps them.
+    /// `SessionTable` 的行，从新到旧，保持微信保存的原样。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn sessions(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.sessions()
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// The list `export sessions` writes: [`Self::sessions`] with each conversation's `display_name` (the contact's
-    /// remark, else its nickname, else its WeChat ID, else the username) after its `username`.
+    /// `export sessions` 写出的列表：[`Self::sessions`]，每个会话在 `username` 之后加上
+    /// `display_name`（联系人的备注，没有时依次用昵称、微信号和用户名）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn sessions_with_names(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let sessions = wcdb
@@ -1208,17 +1262,26 @@ impl ServiceHub {
         Ok(Value::Array(rows))
     }
 
-    /// `limit` messages of a conversation from `offset` on, in the order of `chat messages`.
+    /// 会话从第 `offset` 条起的 `limit` 条消息，顺序与 `chat messages` 相同。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> AppResult<Vec<MsgRow>> {
         let wcdb = self.open_wcdb()?;
         wcdb.messages(session_id, limit, offset)
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// A newest-first page of a conversation for `chat messages`, as typed rows (#492): from the newest message, after
-    /// `offset` of them, or next to the message of a `_cursor` (`before`: the older ones; `after`: the newer ones
-    /// closest to it). Each row, as a [`MessageRow`](crate::contract::MessageRow), has its own `_cursor`, to ask for the
-    /// page next to it.
+    /// `chat messages` 的一页，从新到旧，返回类型化的行（#492）。
+    ///
+    /// 从最新的消息开始，跳过 `offset` 条；或者从某个 `_cursor` 所在消息的旁边开始（`before`：更旧的；
+    /// `after`：离它最近的更新的）。每一行作为 [`MessageRow`](crate::contract::MessageRow) 带有自己的 `_cursor`，
+    /// 用来请求它旁边的一页。
+    ///
+    /// # Errors
+    ///
+    /// 游标无效时返回用法错误；账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn message_page_rows(
         &self,
         session_id: &str,
@@ -1248,8 +1311,12 @@ impl ServiceHub {
         .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// `chat messages --since`: the `limit` messages sent at `seconds` (Unix time) or later, the earliest ones, still
-    /// newest first, each with its `_cursor`: where a chat window jumps to a day, then pages both ways from.
+    /// `chat messages --since`：在 `seconds`（Unix 时间）或之后发送的最早的 `limit` 条消息，仍按从新到旧排列，
+    /// 每条带自己的 `_cursor`：聊天窗口跳到某一天时从这里开始，再向两边翻页。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn message_page_since(
         &self,
         session_id: &str,
@@ -1262,7 +1329,7 @@ impl ServiceHub {
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// Typed rows of one conversation as the chat window shows them, each with its `_cursor` (#492).
+    /// 把一个会话的类型化的行转成聊天窗口显示的样子，每条带自己的 `_cursor`（#492）。
     pub fn parsed_rows(
         &self,
         rows: Vec<MsgRow>,
@@ -1280,8 +1347,8 @@ impl ServiceHub {
             .collect()
     }
 
-    /// `chat message --parsed`: the message a lookup found, parsed as a page's are and with its `_cursor`, so a
-    /// chat window can open its conversation there (issue #200).
+    /// `chat message --parsed`：查到的消息，按一页消息的方式解析并带上 `_cursor`，
+    /// 聊天窗口可以在那里打开它的会话（#200）。
     pub fn parsed_lookup(
         &self,
         row: MsgRow,
@@ -1290,7 +1357,11 @@ impl ServiceHub {
         self.parsed_rows(vec![row], session_id).pop()
     }
 
-    /// `chat search`: the hits, newest first.
+    /// `chat search`：搜到的消息，从新到旧。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn search(
         &self,
         keyword: &str,
@@ -1305,8 +1376,8 @@ impl ServiceHub {
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// `chat search --parsed`: each hit as the chat window shows it, with its `_cursor`, to page its conversation
-    /// from, and its `_session_id`.
+    /// `chat search --parsed`：每条搜到的消息按聊天窗口的样子给出，带上 `_cursor`（从这里翻它所在的会话）
+    /// 和 `_session_id`。
     pub fn parsed_hits(&self, hits: Vec<SessionRow>) -> Vec<crate::contract::ParsedMessage> {
         let my = self.wmy();
         hits.into_iter()
@@ -1322,28 +1393,44 @@ impl ServiceHub {
             .collect()
     }
 
-    /// Every row of `contact`, as WeChat keeps them (`chat contacts` without `--parsed`).
+    /// `contact` 表的每一行，保持微信保存的原样（不带 `--parsed` 的 `chat contacts`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn contacts(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contacts()
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// One contact's row, `{}` when it is unknown (`chat contact`).
+    /// 一个联系人的行，不认识时为 `{}`（`chat contact`）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn contact(&self, username: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contact(username)
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// `{ "private", "group", "official", "former_friend" }`: how many contacts of each kind.
+    /// `{ "private", "group", "official", "former_friend" }`：每类联系人各有多少。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn contact_type_counts(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.contact_type_counts()
             .map_err(|err| AppError::native(format!("{err:#}")))
     }
 
-    /// A group's members, their group nicknames and their count, as one JSON object.
+    /// 群的成员、他们的群昵称和人数，合成一个 JSON 对象。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读不出成员时返回数据库层的错误。
     pub fn group_members(&self, chatroom_id: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let members = wcdb
@@ -1359,7 +1446,11 @@ impl ServiceHub {
         }))
     }
 
-    /// One ascending cursor batch starting at `min_time`.
+    /// 从 `min_time` 起按时间升序读出的一批消息（游标的一次读取）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn chat_new_messages(
         &self,
         session_id: &str,
@@ -1391,7 +1482,7 @@ impl ServiceHub {
         let _ = wcdb.close_message_cursor(cursor);
         let (rows, _) = fetched.map_err(|e| AppError::native(format!("{e:#}")))?;
         let mut msgs = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
-        // by sort sequence when both have one, else by time, then sequence, local id and server id
+        // 两条都有排序序号时按它排，否则依次按时间、排序序号、本地 ID 和服务器 ID 排
         msgs.sort_by(|a, b| {
             let (asq, bsq) = (a.sort_seq.max(0), b.sort_seq.max(0));
             if asq > 0 && bsq > 0 && asq != bsq {
@@ -1407,7 +1498,13 @@ impl ServiceHub {
         Ok(msgs)
     }
 
-    /// The newest `limit` messages (1 to 500), oldest first (direct-offset read).
+    /// 最新的 `limit` 条消息（1 到 500），从旧到新排列（按偏移直接读取）。
+    ///
+    /// 私聊中只留对方和自己发的消息，全被滤掉时保留全部。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读取数据库失败时返回数据库层的错误。
     pub fn chat_latest_messages(
         &self,
         session_id: &str,

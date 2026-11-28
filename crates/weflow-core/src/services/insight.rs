@@ -1,7 +1,6 @@
-//! Port of the `InsightService` runtime: the silence scan, the activity trigger, insight
-//! generation with optional chat / Moments / Weibo context, Telegram push, test and footprint
-//! helpers. A desktop notification popup has no CLI counterpart; instead every generated insight
-//! is handed to the caller (the `serve --insight` loop prints it as a JSON line).
+//! 移植自桌面版的 `InsightService` 运行时：静默扫描、活动触发、见解生成（可选附带聊天、朋友圈、微博的内容）、
+//! Telegram 推送，以及测试和足迹的辅助功能。桌面版的通知弹窗在命令行中没有对应，
+//! 生成的每条见解都交给调用方（`serve --insight` 的循环把它打印成一行 JSON）。
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -21,28 +20,28 @@ use crate::model_api::{ModelApi, Prompt};
 use crate::num::i64_f64;
 use crate::sync::MutexExt;
 
-/// How long one request of `insight test` and `insight models` may take.
+/// `insight test` 和 `insight models` 的一次请求最多可用的时间。
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long one request for an insight or a footprint summary may take: a model that reasons first can take a while.
+/// 请求一条见解或足迹总结最多可用的时间：先推理的模型可能要花一阵。
 const GENERATE_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// 见解引擎在调用之间保留的状态。
 #[derive(Default)]
 pub struct InsightState {
     today_triggers: HashMap<String, Vec<i64>>,
     today_date: i64,
-    /// When an activity insight about a conversation was last written or found in the records, Unix milliseconds.
+    /// 上次为某个会话写下活动见解（或在记录中找到它）的时间，Unix 毫秒。
     last_activity: HashMap<String, i64>,
-    /// The newest message seen in a conversation, Unix seconds.
+    /// 在某个会话中看到的最新一条消息的时间，Unix 秒。
     last_seen: HashMap<String, i64>,
-    /// When the engine first looked for activity, Unix seconds: a conversation it has not seen yet is new only for
-    /// its messages after then, not for those it had when the engine started (#1140).
+    /// 引擎第一次检查活动的时间，Unix 秒：还没见过的会话只有这之后的消息才算新消息，
+    /// 引擎启动时已有的不算（#1140）。
     activity_since: Option<i64>,
     session_cache: Option<(Vec<Session>, Instant)>,
 }
 
-/// Why `api` cannot be asked yet, in the words of the settings: a model is needed, and a key unless the base URL
-/// names a service of one's own (a local one may take none).
+/// `api` 还不能提问的原因，用设置里的说法：需要模型名，还需要密钥，除非基础地址指向自建的服务（本地服务可能不要密钥）。
 fn model_api_missing(api: &ModelApi) -> Option<&'static str> {
     if api.key.trim().is_empty() && api.base_url.trim().is_empty() {
         return Some(tr("Please enter the API key first", "请先填写 API Key"));
@@ -57,8 +56,9 @@ fn millis_since(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
-/// What a test trigger says when the model had nothing to say about `name`; without the recent messages
-/// (`ai_insight_allow_context` off) the model sees next to nothing, which is the usual reason.
+/// 测试触发时模型对 `name` 没有可说的内容时的提示。
+///
+/// 不发送最近的消息（`ai_insight_allow_context` 关闭）时模型几乎什么都看不到，这是常见的原因。
 fn skipped_message(name: &str, chat_sent: bool) -> String {
     let skipped = fill(
         tr(
@@ -77,19 +77,19 @@ fn skipped_message(name: &str, chat_sent: bool) -> String {
         )
 }
 
-/// A failure of the engine, which goes on with the next conversation: a warning on stderr.
+/// 引擎的一次失败：在 stderr 上给出警告，然后继续处理下一个会话。
 fn log_failure(why: &str) {
     crate::output::warn(&format!("{}{why}", tr("insight: ", "洞察：")));
 }
 
-/// Why the engine writes an insight; the record's `triggerReason`.
+/// 引擎写见解的原因，即记录的 `triggerReason`。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Trigger {
-    /// New messages in a conversation (`activity`).
+    /// 会话中有新消息（`activity`）。
     Activity,
-    /// A conversation silent for a while (`silence`).
+    /// 会话静默了一段时间（`silence`）。
     Silence,
-    /// `insight trigger` asked for it (`test`), even with the insights turned off.
+    /// `insight trigger` 要求的（`test`），见解关闭时也生成。
     Test,
 }
 
@@ -119,21 +119,20 @@ fn start_of_day() -> i64 {
         .unwrap_or(0)
 }
 
-/// The time between two silence scans for `hours` of `ai_insight_scan_interval_hours` as it reads, which is within its
-/// bounds ([`keys::AI_INSIGHT_SCAN_INTERVAL_HOURS`]).
+/// 两次静默扫描的间隔；`hours` 是从 `ai_insight_scan_interval_hours` 读出的值，
+/// 已在它的取值范围内（[`keys::AI_INSIGHT_SCAN_INTERVAL_HOURS`]）。
 fn scan_interval(hours: f64) -> Duration {
     Duration::from_secs_f64(hours * 3600.0)
 }
 
-/// Whether the silence scan and `insight trigger` without a conversation may pick `id` themselves: a chat with
-/// another person, not a group, an official account, the file helper or a system conversation.
+/// 静默扫描和不指定会话的 `insight trigger` 能否自己选中 `id`：只选和另一个人的私聊，
+/// 不选群、公众号、文件传输助手和系统会话。
 fn picked_as_private(id: &str, own_wxid: &str) -> bool {
     is_private_session(id, own_wxid) && !id.to_lowercase().contains("placeholder")
 }
 
-/// Whether the activity scan of the blacklist mode may pick `id` itself: a private chat or a group, not an official
-/// account, the file helper, a system conversation or the account's chat with itself. The whitelist mode asks of the
-/// conversations of its list, whatever they are.
+/// 黑名单模式的活动扫描能否自己选中 `id`：选私聊和群，不选公众号、文件传输助手、系统会话和账号自己的会话。
+/// 白名单模式处理名单中的会话，不论是哪一类。
 fn picked_for_activity(id: &str, own_wxid: &str) -> bool {
     matches!(
         session_kind(id, own_wxid),
@@ -154,7 +153,7 @@ impl ServiceHub {
         self.fresh_config()
     }
 
-    /// The model API of the profile's settings (`ai_model_api_*`).
+    /// 档案设置中的模型接口（`ai_model_api_*`）。
     fn model_api(&self) -> ModelApi {
         let c = self.insight_cfg();
         let p = &self.profile_name;
@@ -169,15 +168,15 @@ impl ServiceHub {
         }
     }
 
-    /// Whether the profile turned the AI insights on (`ai_insight_enabled`).
+    /// 档案是否开启了 AI 见解（`ai_insight_enabled`）。
     pub fn insight_enabled(&self) -> bool {
         self.insight_cfg()
             .setting(Some(&self.profile_name), &keys::AI_INSIGHT_ENABLED)
     }
 
-    /// Whether `serve --insight` prints the insights it writes (`ai_insight_notification_enabled`), read from the
-    /// config file each time like the other insight settings, so a change made while `serve` runs counts from its next
-    /// round.
+    /// `serve --insight` 是否打印它写下的见解（`ai_insight_notification_enabled`）。
+    ///
+    /// 与其他见解设置一样每次从配置文件读取，所以 `serve` 运行期间的修改从下一轮起生效。
     pub fn insight_notifies(&self) -> bool {
         self.insight_cfg().setting(
             Some(&self.profile_name),
@@ -185,8 +184,7 @@ impl ServiceHub {
         )
     }
 
-    /// The time between two silence scans of `serve --insight` (`ai_insight_scan_interval_hours`), read from the
-    /// config file each time.
+    /// `serve --insight` 两次静默扫描的间隔（`ai_insight_scan_interval_hours`），每次从配置文件读取。
     pub fn insight_scan_interval(&self) -> Duration {
         scan_interval(self.insight_cfg().setting(
             Some(&self.profile_name),
@@ -194,7 +192,7 @@ impl ServiceHub {
         ))
     }
 
-    /// Whether the recent messages go to the model with the question (`ai_insight_allow_context`).
+    /// 最近的消息是否随提问发给模型（`ai_insight_allow_context`）。
     fn insight_sends_chat(&self) -> bool {
         self.insight_cfg()
             .setting(Some(&self.profile_name), &keys::AI_INSIGHT_ALLOW_CONTEXT)
@@ -216,7 +214,8 @@ impl ServiceHub {
         ins::session_allowed(&mode, &list, session_id)
     }
 
-    /// The account the insight records belong to: `wxid:<wxid>`, else `db:<hash of the data directory>`, else `default`.
+    /// 见解记录所属的账号：`wxid:<wxid>`；没有 wxid 时为 `db:<hash>`（数据目录路径的 SHA-1 的前 16 位十六进制）；
+    /// 都没有时为 `default`。
     pub(super) fn insight_scope(&self) -> String {
         let my = self.my_wxid_cleaned();
         if !my.trim().is_empty() {
@@ -234,36 +233,35 @@ impl ServiceHub {
         "default".into()
     }
 
-    /// The current account's insight records.
+    /// 当前账号的见解记录。
     fn record_store(&self) -> RecordStore {
         RecordStore::load(&self.ctx.home_dir, &self.insight_scope())
     }
 
-    // ── records ──
+    // ── 记录 ──
 
-    /// A page of the account's insight records (`insight records`; see [`RecordStore::list`]).
+    /// 账号见解记录中的一页（`insight records`，见 [`RecordStore::list`]）。
     pub fn insight_list_records(&self, f: &RecordFilters) -> InsightRecords {
         self.record_store().list(f)
     }
 
-    /// One of the account's insight records (`insight get`; see [`RecordStore::get`]).
+    /// 账号的一条见解记录（`insight get`，见 [`RecordStore::get`]）。
     ///
     /// # Errors
-    /// As [`RecordStore::get`].
+    /// 同 [`RecordStore::get`]。
     pub fn insight_get_record(&self, id: &str) -> AppResult<crate::contract::InsightLookup> {
         self.record_store().get(id)
     }
 
-    /// Marks one of the account's insight records read (`insight mark-read`; see [`RecordStore::mark_read`]).
+    /// 把账号的一条见解记录标为已读（`insight mark-read`，见 [`RecordStore::mark_read`]）。
     ///
     /// # Errors
-    /// As [`RecordStore::mark_read`].
+    /// 同 [`RecordStore::mark_read`]。
     pub fn insight_mark_record_read(&self, id: &str) -> AppResult<InsightMarked> {
         self.record_store().mark_read(id)
     }
 
-    /// How many of the account's insight records `insight clear` with `f` would remove: its `--dry-run`, and the
-    /// count it asks about before removing.
+    /// 带 `f` 的 `insight clear` 会删除账号的多少条见解记录：用于它的 `--dry-run`，以及删除前询问时显示的条数。
     pub fn insight_clear_plan(&self, f: &RecordFilters) -> InsightClearPlan {
         InsightClearPlan {
             dry_run: true,
@@ -271,15 +269,15 @@ impl ServiceHub {
         }
     }
 
-    /// Removes the account's insight records that `f` matches (`insight clear`; see [`RecordStore::clear`]).
+    /// 删除账号中 `f` 匹配的见解记录（`insight clear`，见 [`RecordStore::clear`]）。
     ///
     /// # Errors
-    /// As [`RecordStore::clear`].
+    /// 同 [`RecordStore::clear`]。
     pub fn insight_clear_records(&self, f: &RecordFilters) -> AppResult<InsightCleared> {
         self.record_store().clear(f)
     }
 
-    /// How often the engine wrote about each conversation today, and when (`insight today-stats`).
+    /// 引擎今天为每个会话写了几次、在什么时间（`insight today-stats`）。
     pub fn insight_today_stats(&self) -> Vec<InsightTodayStat> {
         let mut st = self.insight_state.lock_or_panic();
         let today = start_of_day();
@@ -310,12 +308,12 @@ impl ServiceHub {
             .collect()
     }
 
-    // ── connection test / footprint ──
+    // ── 连接测试和足迹 ──
 
-    /// Asks the model API for a short answer, and says where it asked and what came back.
+    /// 向模型接口要一句简短的回答，并说明问的是哪里、回答了什么。
     ///
     /// # Errors
-    /// When the settings lack the model API, or it answered with an error.
+    /// 设置中缺少模型接口的配置，或接口回答了错误时返回运行时错误。
     pub async fn insight_test_connection(&self) -> AppResult<InsightReply> {
         let api = self.model_api();
         if let Some(missing) = model_api_missing(&api) {
@@ -354,11 +352,11 @@ impl ServiceHub {
         }
     }
 
-    /// `insight models`: the models the model API offers.
+    /// `insight models`：模型接口提供的模型。
     ///
     /// # Errors
     ///
-    /// The settings lack a key, or the service answered with an error or something that is not a list of models.
+    /// 设置中既没有密钥也没有基础地址时返回配置错误；服务回答了错误，或者回答的不是模型列表时返回运行时错误。
     pub async fn insight_models(&self) -> AppResult<ModelList> {
         let api = self.model_api();
         if api.key.trim().is_empty() && api.base_url.trim().is_empty() {
@@ -378,10 +376,10 @@ impl ServiceHub {
         })
     }
 
-    /// The AI's summary of a footprint (`insight footprint-summary`).
+    /// 足迹的 AI 总结（`insight footprint-summary`）。
     ///
     /// # Errors
-    /// When the footprint summary is off, the settings lack the model API, or it answered with an error.
+    /// 足迹总结没有开启、设置中缺少模型接口的配置，或接口回答了错误时返回运行时错误。
     pub async fn insight_footprint_summary(&self, params: &Value) -> AppResult<InsightReply> {
         let c = self.insight_cfg();
         let p = &self.profile_name;
@@ -547,7 +545,7 @@ impl ServiceHub {
         }
     }
 
-    // ── sessions ──
+    // ── 会话 ──
 
     fn insight_sessions(&self, force: bool) -> Vec<Session> {
         {
@@ -740,14 +738,13 @@ impl ServiceHub {
         fill(tr("Recent public social platform content (source: Weibo, latest {length} posts):\n{posts}", "近期公开社交平台内容（来源：微博，最近 {length} 条）：\n{posts}"), &[("length", lines.len().to_string()), ("posts", lines.join("\n"))])
     }
 
-    // ── generation ──
+    // ── 生成 ──
 
-    /// An insight about a conversation: the stored record when an insight was produced; `None` when insights are off or
-    /// the model had nothing to say (`SKIP`).
+    /// 为一个会话生成见解：生成了见解时返回保存的记录；见解关闭或模型没有可说的（`SKIP`）时为 `None`。
     ///
     /// # Errors
     ///
-    /// The model API is not set up, or asking it failed; the text says why.
+    /// 模型接口没有配置好、请求失败或保存记录失败时，返回说明原因的文字。
     pub async fn insight_generate(
         &self,
         session_id: &str,
@@ -762,7 +759,7 @@ impl ServiceHub {
         let c = self.insight_cfg();
         let p = &self.profile_name;
         let allow_context = self.insight_sends_chat();
-        // 1 to 1000, which a `usize` holds
+        // 取值 1 到 1000，`usize` 装得下
         let context_count =
             usize::try_from(c.setting(Some(p), &keys::AI_INSIGHT_CONTEXT_COUNT)).unwrap_or(1);
         let name = self.insight_display_name(session_id, display_name).await;
@@ -908,10 +905,10 @@ impl ServiceHub {
         )
     }
 
-    /// `insight trigger <session>`: a test insight for that conversation, whatever the filters say.
+    /// `insight trigger <session>`：不论名单怎样设置，为这个会话生成一条测试见解。
     ///
     /// # Errors
-    /// When no insight could be written: the model API failed, or the model had nothing to say.
+    /// 没有写出见解时返回运行时错误：模型接口失败，或者模型没有可说的。
     pub async fn insight_trigger_session(&self, session_id: &str) -> AppResult<InsightReply> {
         let name = self
             .chat_contact_avatar(session_id)
@@ -934,10 +931,10 @@ impl ServiceHub {
         }
     }
 
-    /// Forces an insight for the first eligible private chat.
+    /// 强制为第一个符合条件的私聊生成一条见解。
     ///
     /// # Errors
-    /// When the settings lack the model API, there is no conversation to write about, or no insight could be written.
+    /// 设置中缺少模型接口的配置、没有可写的会话或没能写出见解时返回运行时错误。
     pub async fn insight_trigger_test(&self) -> AppResult<InsightReply> {
         if let Some(missing) = model_api_missing(&self.model_api()) {
             return Err(AppError::runtime(missing));
@@ -990,8 +987,9 @@ impl ServiceHub {
         })
     }
 
-    /// Writes insights about the private chats that have been silent too long, one a silence: a chat with a silence
-    /// insight written after its last message gets no other until a message ends that silence; returns how many.
+    /// 为静默太久的私聊写见解，每段静默一条，返回写了几条。
+    ///
+    /// 最后一条消息之后已经写过静默见解的会话，在新消息结束这段静默之前不再写。
     pub async fn insight_silence_scan(
         &self,
         on_insight: &mut dyn FnMut(&ins::InsightRecord),
@@ -1019,7 +1017,7 @@ impl ServiceHub {
             if last <= 0.0 || now - last < threshold_ms {
                 continue;
             }
-            // one insight a silence (#1140): none again until a message ends it and a new one begins
+            // 每段静默一条见解（#1140）：直到有消息结束它、新的静默开始之前不再写
             if records
                 .last_written(&id, Trigger::Silence.as_str())
                 .is_some_and(|at| i64_f64(at) >= last)
@@ -1039,7 +1037,7 @@ impl ServiceHub {
                 Ok(None) => {}
                 Err(why) => {
                     log_failure(&why);
-                    // the settings are missing: every other conversation would fail alike
+                    // 缺少设置：其他会话也都会同样失败
                     if model_api_missing(&self.model_api()).is_some() {
                         return generated;
                     }
@@ -1049,11 +1047,10 @@ impl ServiceHub {
         generated
     }
 
-    /// Writes an insight about a recently active conversation: at most one session per call, honouring the cooldown.
+    /// 为最近活跃的会话写一条见解：每次调用最多处理一个会话，遵守冷却时间。
     ///
-    /// Only messages newer than the engine's first call are activity: what a conversation held when the engine
-    /// started, or when it first came into the list, is not (#1140). The cooldown counts from the newest activity
-    /// insight in the records too, so it holds across restarts.
+    /// 只有引擎第一次调用之后的消息才算活动，引擎启动时会话里已有的消息不算（#1140）。
+    /// 冷却时间也从记录中最新的一条活动见解算起，所以重启后同样有效。
     pub async fn insight_analyze_activity(&self, on_insight: &mut dyn FnMut(&ins::InsightRecord)) {
         if !self.insight_enabled() {
             return;
@@ -1077,7 +1074,7 @@ impl ServiceHub {
                 .copied();
             cooldown_ms > 0 && last.is_some_and(|at| now - at < cooldown_ms)
         };
-        // asked only of a conversation with new messages, as the records are read from their file
+        // 只对有新消息的会话调用，因为要从文件读记录
         let cooled_by_records = |sid: &str| -> bool {
             if cooldown_ms <= 0 {
                 return false;
@@ -1112,7 +1109,7 @@ impl ServiceHub {
                     .last_seen
                     .get(sid)
                     .copied();
-                // a conversation cooling down keeps its new messages for when the cooldown ends
+                // 冷却中的会话留着它的新消息，等冷却结束再处理
                 if ts <= seen.unwrap_or(since) || cooled_by_records(sid) {
                     continue;
                 }
@@ -1208,12 +1205,12 @@ mod tests {
         assert!(model_api_missing(&api("", "", "m")).is_some());
         assert!(model_api_missing(&api("", "k", "")).is_some());
         assert!(model_api_missing(&api("", "k", "m")).is_none());
-        // a service of one's own may take no key
+        // 自建的服务可以不要密钥
         assert!(model_api_missing(&api("http://127.0.0.1:11434/v1", "", "m")).is_none());
     }
 
-    /// The scan interval is the hours set; a file written by hand with what `config set` does not take (0, too many
-    /// hours, a number too large for a time) scans every 4 hours (#1149, #1265).
+    /// 扫描间隔就是设置的小时数。手写的配置文件里有 `config set` 不接受的值（0、过多的小时数、
+    /// 大到无法表示时间的数）时，每 4 小时扫描一次（#1149、#1265）。
     #[test]
     fn the_scan_interval_is_the_hours_set() {
         use crate::config::keys::Setting;
