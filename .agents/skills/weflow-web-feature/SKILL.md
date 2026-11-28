@@ -1,6 +1,6 @@
 ---
 name: weflow-web-feature
-description: 给 WebUI（web/）加页面、读取或改界面时的步骤和容易漏的地方：src/api 的类型与读取方式、作用域和缓存、实时消息后的重读、示例服务端（src/mock）的回答和示例内容、界面文字的 t() 与英文、页面样式和角色类名、JSDoc、请求列表测试和冒烟测试。在 web/src 里写或改页面、组件、hook、api 调用或示例数据时使用。
+description: 给 WebUI（web/）加页面、读取或改界面时的步骤和容易漏的地方：共用代码放在哪里、src/api 的类型与读取方式、作用域和缓存、实时消息后的重读、示例服务端（src/mock）的回答和示例内容、界面文字的 t() 与英文、页面样式和角色类名、JSDoc、请求列表测试和冒烟测试。在 web/src 里写或改页面、组件、hook、api 调用或示例数据时使用。
 ---
 
 # 改 WebUI 的功能
@@ -23,6 +23,14 @@ description: 给 WebUI（web/）加页面、读取或改界面时的步骤和容
   - 「加载更多」之类的分页请求，在会话、筛选条件变化时一起取消。
   - 连续的事件合并成一次读取并限制频率，不被源源不断的事件一直推迟。
 - 断开后页面继续显示已读到的记录：显示什么以 `Shell` 交给页面的 `records` 为准；要服务端执行操作的入口以 `connected` 为准，示例服务端也能回答的入口以 `usable` 为准。见 Wiki [WebUI 实现#断开后的记录](https://github.com/334456777/WeFlow/wiki/WebUI-实现#断开后的记录)。
+
+## 代码放在哪里
+
+放在哪个目录的规则见 [CLAUDE.md](../../../CLAUDE.md) 的「WebUI（`web/`）」。
+
+- 新写的组件或函数第二个页面也要用时，移到 `src/` 顶层再导入，不从另一个页面的目录里导入。只移动代码的提交和改功能的提交分开。
+- 移动的组件带着样式时，样式从页面的样式表移进 `app.css`，就从 `pages` 层降到了 `app` 层：各页面写给这些类名的规则会因此盖过它。逐条核对这些规则，再用 `bun run shots` 截改动前后的图逐像素比较（[weflow-web-check](../weflow-web-check/SKILL.md#改样式而不该改变外观)）。
+- 要按消息的种类显示时，用 `messageKind.ts` 的 `kindOf`，它读服务端给的 `appMsgKind`。回答里没有需要的种类或标签时，在服务端的契约里加字段（[weflow-contract](../weflow-contract/SKILL.md)），不在网页里按 `localType` 写表。
 
 ## 示例数据
 
