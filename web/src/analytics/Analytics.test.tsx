@@ -39,10 +39,10 @@ describe('chat analytics', () => {
     ]);
     expect(monthBars({ ...SPREAD, monthlyDistribution: {} })).toEqual([]);
     expect(typeBars(OVERALL).map(b => b.label)).toEqual(['文字', '图片', '表情', '其他']);
-    // the first month is named only when the next January is far enough away not to run into it
+    // 第一个月只在离下一个一月足够远、两个标签不会挤在一起时才标出
     const fromMarch = monthBars({ ...SPREAD, monthlyDistribution: { '2024-03': 1, '2025-02': 1 } });
     expect(fromMarch.map((_, i) => yearStarts(fromMarch, i))).toEqual(fromMarch.map(b => b.label === '2024年3月' || b.label === '2025年1月'));
-    // over seven years an eighth is 11 months: May is too close to the January after it
+    // 七年多的范围里，八分之一约为 11 个月：五月离之后的一月太近，不标出
     const long = monthBars({ ...SPREAD, monthlyDistribution: { '2019-05': 1, '2026-10': 1 } });
     expect(yearStarts(long, 0)).toBe(false);
     expect(long.filter((_, i) => yearStarts(long, i))).toHaveLength(7);

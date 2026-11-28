@@ -1,5 +1,5 @@
-// Group chat analytics (#207): a group picked from the list, its messages by kind and hour and who sends the most,
-// one member's numbers, words and messages, and the console cards that export them as jobs of the server.
+// 群聊分析（#207）：从列表里选的一个群的各类消息、按小时的分布和发言最多的成员，一个成员的数字、常说的话和消息，
+// 以及操作控制台里把它们作为服务端的作业导出的卡片。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowClockwise, ArrowLeft, CaretDown, CircleNotch, DownloadSimple, MagnifyingGlass, UsersThree } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
@@ -23,10 +23,10 @@ const Failed = ({ message, onRetry }: { message: string; onRetry(): void }) =>
   <div className="pane-message" role="alert"><strong>{t('读取失败')}</strong><p>{message}</p>
     <button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={12} />{t('重试')}</button></div>;
 
-/** Up to this many groups are listed; the rest are found by name. */
+/** 最多列出这么多个群，其余的按群名搜索找到。 */
 const LISTED = 50;
 
-/** The group shown, and the list to pick another from, found by name. */
+/** 显示当前选中的群；点开后从群聊列表里换一个，列表可以按群名搜索。 */
 export function GroupPicker({ state, selected, onSelect, onRetry }: { state: GroupsState; selected: Group | null; onSelect(group: string): void; onRetry(): void }) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -76,7 +76,7 @@ function MemberRow({ rank, ranked, top, onOpen }: { rank: number; ranked: GroupR
   </li>;
 }
 
-/** One group: its messages by kind and by hour, and the twenty members who send the most. */
+/** 一个群的统计：各类消息的条数、按小时的分布，以及发言最多的 20 个成员。 */
 export function GroupStats({ group, range, onMember }: { group: Group; range: DayRange; onMember(member: { username: string; displayName: string; avatarUrl?: string }): void }) {
   const [state, retry] = useRead(group.username + '|' + range.from + '|' + range.to, signal =>
     Promise.all([getGroupMedia(group.username, range, signal), getGroupHours(group.username, range, signal), getGroupRanking(group.username, range, signal)]));
@@ -104,13 +104,13 @@ export function GroupStats({ group, range, onMember }: { group: Group; range: Da
 
 const clock = (seconds: number) => new Date(seconds * 1000).toLocaleString(locale(), { hour12: false });
 
-/** One member in one group: their numbers, hours, words and emoji, and their messages, newest first. */
+/** 一个群里的一个成员：总数、按小时的分布、常说的话和常用表情，以及这个成员的消息，最新的在前。 */
 export function MemberView({ group, member, range, onBack }: { group: Group; member: { username: string; displayName: string; avatarUrl?: string }; range: DayRange; onBack(): void }) {
   const key = group.username + '|' + member.username + '|' + range.from + '|' + range.to;
   const [state, retry] = useRead(key, signal => getMember(group.username, member.username, range, signal));
   const [page, setPage] = useState<{ messages: MemberMessage[]; more: boolean; cursor: number; loading: boolean; error?: string }>({ messages: [], more: false, cursor: 0, loading: true });
-  // the reads of the messages of `key`, aborted together once it changes: a later page of the group, member and range
-  // left is not added to those of the next
+  // 同一个 `key` 的各次消息读取共用一个控制器，`key` 变化时一起取消：换了群、成员或时间范围后，
+  // 旧的后续页不会加到新的列表里
   const reads = useRef<AbortController | null>(null);
   const readPage = (cursor: number) => {
     const signal = reads.current?.signal;
@@ -170,7 +170,7 @@ export function MemberView({ group, member, range, onBack }: { group: Group; mem
   </div>;
 }
 
-/** The console card: the group's member list, and the messages of the member shown, as files kept by the server. */
+/** 操作控制台的导出卡片：把群成员列表和正在查看的成员的消息导出成服务端保存的文件。 */
 export function GroupExport({ group, member, range }: { group: Group | null; member: { username: string; displayName: string } | null; range: DayRange }) {
   const [busy, setBusy] = useState<'members' | 'messages' | null>(null);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);

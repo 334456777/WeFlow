@@ -1,6 +1,5 @@
-// A time range picked in one calendar (#224): from the start field, the first day picked is the start and the
-// second the end (swapped when it comes first); from the end field, the day picked is the end. The calendar opens
-// out of the fields and closes once the range is picked, on Esc, or on a click outside.
+// 在一个日历里选时间范围（#224）：从开始日期框打开时，第一次选的是开始、第二次选的是结束（第二次选的更早时两者互换）；
+// 从结束日期框打开时，选的那一天是结束。日历从日期框处展开，选完范围、按 Esc 或点击外面时关闭。
 import { useRef, useState } from 'react';
 import { ArrowsLeftRight, CalendarBlank } from '@phosphor-icons/react';
 import { Popover } from '../Popover';
@@ -8,26 +7,26 @@ import { Calendar, openingDay } from './Calendar';
 import { ordered, today } from './dates';
 import { t } from '../i18n';
 
-/** A range of days, `YYYY-MM-DD`, both inclusive; empty for no bound. */
+/** 一段日期，写成 `YYYY-MM-DD`，两端都包含在内；为空表示这一端不限。 */
 export interface Range { from: string; to: string }
 
 type Side = 'from' | 'to';
 
-/** The start and end fields of a range, and the calendar they share. */
+/** 范围的开始、结束两个日期框，以及它们共用的日历。 */
 export function DateRange({ from, to, onChange, onOpen, max = today(), marks, label = t('时间范围') }: {
   from: string;
   to: string;
   onChange: (range: Range) => void;
-  /** Called as the calendar opens, to ask for its marks. */
+  /** 日历打开时调用，用来请求要标出的日子（`marks`）。 */
   onOpen?: () => void;
   max?: string;
   marks?: Record<string, number> | null;
   label?: string;
 }) {
   const [side, setSide] = useState<Side | null>(null);
-  // the start picked from the start field while its end is still to pick
+  // 从开始日期框选了开始、还没有选结束时的开始日期
   const [pending, setPending] = useState<string | null>(null);
-  // the side shown while the calendar plays its exit
+  // 日历播放退出动画期间仍按这一端显示
   const shown = useRef<Side>('from');
   if (side) shown.current = side;
   const anchor = useRef<HTMLDivElement>(null);
@@ -49,7 +48,7 @@ export function DateRange({ from, to, onChange, onOpen, max = today(), marks, la
       onChange({ from: start, to: end });
       close();
     } else if (pending === null) {
-      // the start; until the end is picked, the range is at least that day
+      // 选的是开始；选结束之前，范围至少包含这一天
       onChange({ from: day, to: to && to >= day ? to : day });
       setPending(day);
     } else {

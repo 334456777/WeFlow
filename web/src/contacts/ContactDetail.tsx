@@ -1,13 +1,13 @@
-// One contact (#205): what WeChat keeps of them, and the way to their conversation.
+// 一个联系人（#205）：微信保存的这个联系人的资料，以及打开与他的会话的入口。
 import { ChatCircleDots } from '@phosphor-icons/react';
 import { contactKindLabels, type Contact } from '../api/contacts';
 import { Avatar } from '../Avatar';
 import { msg, t } from '../i18n';
 
-/** One contact's card, and a button to their conversation when there is one. */
+/** 一个联系人的资料卡片；会话列表里有与他的会话时，附带打开会话的按钮。 */
 export function ContactDetail({ contact, canChat, onChat }: {
   contact: Contact;
-  /** Whether the chat list has a conversation with them. */
+  /** 会话列表里是否有与他的会话。 */
   canChat: boolean;
   onChat(): void;
 }) {

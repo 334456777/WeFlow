@@ -1,5 +1,5 @@
-// The database backup page (#212): a backup made as a job of the server and saved from the browser, the backups this
-// tab made, and what a backup on the server's computer holds or restoring it into a folder there.
+// 数据库备份页（#212）：作为服务端的作业创建备份并从浏览器下载，列出这个标签页创建的备份，
+// 以及查看服务端电脑上的备份里有什么、把它恢复到那台电脑上的某个文件夹。
 import { useContext, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Archive, ArrowCounterClockwise, Check, CircleNotch, DownloadSimple, FolderOpen, MagnifyingGlass } from '@phosphor-icons/react';
@@ -23,20 +23,20 @@ function Check3({ label, hint, checked, onChange }: { label: string; hint: strin
     <span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{label} <small>{hint}</small></span></label>;
 }
 
-/** What a backup lacks (`backupGaps`), one warning a line; nothing when it lacks nothing. */
+/** 备份缺少的内容（`backupGaps`），每项一行警告；什么都不缺时不显示。 */
 const Gaps = ({ lines }: { lines: string[] }) => <>{lines.map(line => <p key={line} className="card-note setting-warning backup-gap">{line}</p>)}</>;
 
-/** Where the backup a job made sits on the server, from its result. */
+/** 作业创建的备份在服务端的路径，取自作业的结果；结果里没有时为 null。 */
 const backupPath = (job: Job) => {
   const out = job.result?.data?.out;
   return typeof out === 'string' ? out : null;
 };
 
-/** The backup page: making a backup, the ones this tab made, and inspecting or restoring one. */
+/** 备份页的内容：创建备份、这个标签页创建的备份，以及查看或恢复一个备份。 */
 export function BackupPage({ jobs }: { jobs: JobsState }) {
   const [parts, setParts] = useState<BackupChoice>({ images: false, videos: false, files: false, emojis: false });
   const [note, setNote] = useState<Note>(null);
-  // the sample's backup (#879), to look at as one would a backup on the server's computer
+  // 示例数据里的备份（#879），可以像服务端电脑上的备份一样查看
   const sample = useContext(SampleContext);
   const [path, setPath] = useState(sample ? 'weflow-backup.zip' : '');
   const [target, setTarget] = useState('');
@@ -135,9 +135,8 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
 }
 
 /**
- * The page in the workspace: the task centre beside it shows the backup running. Another server or account (the
- * scope, which a server taking the sample's place starts too) starts it afresh: the path and the backup read are of
- * the one before.
+ * 工作区里的备份页，旁边的任务中心显示正在运行的备份。换了服务端或账号（即作用域；
+ * 连上的服务端取代示例数据时也会换新的作用域）时页面重新开始，因为已填的路径和读到的备份都属于之前的那一个。
  */
 export function backupPage(shell: Shell): Page {
   const view = <ScrollPage label={t('数据库备份')} icon={Archive}>

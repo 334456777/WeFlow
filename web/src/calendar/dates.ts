@@ -1,42 +1,42 @@
-// Days as `YYYY-MM-DD` strings in local time, for the calendar (#224): they compare as text, and a day never
-// shifts with the time zone the way a Date at midnight UTC would.
+// 日历用的日期（#224）：按本地时间写成 `YYYY-MM-DD` 字符串。这样可以直接按文本比较先后，
+// 也不会像 UTC 零点的 `Date` 那样随时区变成另一天。
 
 import { formatDate, lang } from '../i18n';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** The days of a week from Monday, in the page's language: 一 周一 星期一, M Mon Monday. */
+/** 从周一开始的一周七天，按页面的语言写成窄、短、长三种名称：`一` `周一` `星期一`，`M` `Mon` `Monday`。 */
 export function weekdays(): { narrow: string; short: string; long: string }[] {
   return Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(2024, 0, 1 + i); // a Monday
+    const date = new Date(2024, 0, 1 + i); // 2024 年 1 月 1 日是周一
     return {
       narrow: formatDate(date, { weekday: 'narrow' }), short: formatDate(date, { weekday: 'short' }), long: formatDate(date, { weekday: 'long' }),
     };
   });
 }
 
-/** The local day of `date`. */
+/** `date` 在本地时间的日期。 */
 export function toDay(date: Date): string {
   return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
 }
 
-/** The local midnight starting `day`. */
+/** `day` 这一天开始时的本地零点。 */
 export function parseDay(day: string): Date {
   const [y, m, d] = day.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
 
-/** Today, local. */
+/** 本地时间的今天。 */
 export const today = () => toDay(new Date());
 
-/** The day `days` after `day` (before it when negative). */
+/** `day` 之后 `days` 天的日期（`days` 为负数时是之前）。 */
 export function addDays(day: string, days: number): string {
   const date = parseDay(day);
   date.setDate(date.getDate() + days);
   return toDay(date);
 }
 
-/** The same day `months` later, or the month's last day when it is shorter (31 Jan + 1 month = 28 or 29 Feb). */
+/** `months` 个月之后的同一天；那个月没有这一天时取它的最后一天（1 月 31 日加一个月是 2 月 28 日或 29 日）。 */
 export function addMonths(day: string, months: number): string {
   const date = parseDay(day);
   const target = new Date(date.getFullYear(), date.getMonth() + months, 1);
@@ -45,27 +45,27 @@ export function addMonths(day: string, months: number): string {
   return toDay(target);
 }
 
-/** 0 for Monday to 6 for Sunday: the week starts on Monday. */
+/** 星期几，周一为 0、周日为 6：一周从周一开始。 */
 export const weekdayOf = (day: string) => (parseDay(day).getDay() + 6) % 7;
 
-/** The Monday of `day`'s week. */
+/** `day` 所在一周的周一。 */
 export const startOfWeek = (day: string) => addDays(day, -weekdayOf(day));
-/** The Sunday of `day`'s week. */
+/** `day` 所在一周的周日。 */
 export const endOfWeek = (day: string) => addDays(day, 6 - weekdayOf(day));
 
-/** The 6 weeks shown for a month, Monday first: the month's days and the ones around it. */
+/** 一个月显示的 6 周，每周从周一开始：这个月的日子和前后相邻的日子。 */
 export function monthGrid(year: number, month: number): string[][] {
   const first = startOfWeek(toDay(new Date(year, month, 1)));
   return Array.from({ length: 6 }, (_, week) => Array.from({ length: 7 }, (_, d) => addDays(first, week * 7 + d)));
 }
 
-/** The year of `day`, and its month from 0. */
+/** `day` 的年份和从 0 开始的月份。 */
 export const monthOf = (day: string) => ({ year: Number(day.slice(0, 4)), month: Number(day.slice(5, 7)) - 1 });
 
-/** `day`, or `max` when it is later. */
+/** `day`；它晚于 `max` 时为 `max`。 */
 export const clampDay = (day: string, max?: string) => (max && day > max ? max : day);
 
-/** What a screen reader says for a day: `2026年10月12日 星期一`, `Monday, October 12, 2026`. */
+/** 读屏软件为一天读出的文字：`2026年10月12日 星期一`、`Monday, October 12, 2026`。 */
 export function dayLabel(day: string): string {
   const date = parseDay(day);
   const options = { year: 'numeric', month: 'long', day: 'numeric' } as const;
@@ -73,5 +73,5 @@ export function dayLabel(day: string): string {
   return formatDate(date, { ...options, weekday: 'long' });
 }
 
-/** The days from `a` to `b` in order, whichever comes first. */
+/** 把 `a`、`b` 两天按先后排好，早的在前。 */
 export const ordered = (a: string, b: string): [string, string] => (a <= b ? [a, b] : [b, a]);

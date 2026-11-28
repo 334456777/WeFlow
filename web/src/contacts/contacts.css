@@ -1,4 +1,4 @@
-/* Contacts (#205): one contact's card beside the list. */
+/* 通讯录（#205）：联系人列表上方的种类按钮，以及列表旁边一个联系人的资料卡片。 */
 @layer pages {
 .contact-kinds > button { display: inline-flex; align-items: baseline; justify-content: center; gap: 3px; }
 .contact-kinds small { color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-regular); }

@@ -25,18 +25,18 @@ describe('DateRange', () => {
     render(<Harness initial={{ from: '2026-10-01', to: '2026-10-12' }} changes={changes} />);
     open('开始日期');
     expect(screen.getByRole('grid', { name: '2026年10月' })).toBeTruthy();
-    // the calendar opens on the start, with the keyboard on it
+    // 日历打开时显示开始日期，键盘焦点在它上面
     expect(document.activeElement).toBe(day(1));
     expect(day(1).getAttribute('aria-selected')).toBe('true');
     expect(day(5).getAttribute('aria-selected')).toBe('true');
 
     fireEvent.click(day(8));
     expect(changes.at(-1)).toEqual({ from: '2026-10-08', to: '2026-10-12' });
-    // the range up to the day under the pointer is previewed
+    // 预览到指针所在日子为止的范围
     fireEvent.pointerEnter(day(10));
     expect(day(9).className).toContain('between');
     expect(day(11).className).not.toContain('between');
-    // an end before the start: the two swap
+    // 结束早于开始：两者互换
     fireEvent.click(day(3));
     expect(changes.at(-1)).toEqual({ from: '2026-10-03', to: '2026-10-08' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -69,7 +69,7 @@ describe('DateRange', () => {
     expect(document.activeElement).toBe(day(11));
     fireEvent.keyDown(grid, { key: 'ArrowRight' });
     expect(document.activeElement).toBe(day(12));
-    // not past today
+    // 不超过今天
     fireEvent.keyDown(grid, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(day(16));
     fireEvent.keyDown(grid, { key: 'PageUp' });
@@ -100,14 +100,14 @@ describe('DateRange', () => {
     open('开始日期');
     fireEvent.click(screen.getByRole('button', { name: '2026年10月' }));
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '10月' }));
-    // the year list has no title to click: the focus goes to the year chosen, not to <body>
+    // 年份列表没有可以点击的标题：焦点放到选中的年份上，而不是 `<body>`
     fireEvent.click(screen.getByRole('button', { name: '2026年' }));
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '2026' }));
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(document.activeElement).toBe(field);
 
-    // a year picked: the month list takes the focus, and a month the day grid
+    // 选了年份后焦点到月份列表，选了月份后焦点到日子的网格
     open('开始日期');
     fireEvent.click(screen.getByRole('button', { name: '2026年10月' }));
     fireEvent.click(screen.getByRole('button', { name: '2026年' }));
@@ -115,7 +115,7 @@ describe('DateRange', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '10月' }));
     fireEvent.click(screen.getByRole('button', { name: '3月' }));
     expect(document.activeElement).toBe(cell('2019年3月7日'));
-    // with the focus lost all the same (on <body>), Esc closes and gives the focus back
+    // 即使焦点还是丢了（落在 `<body>` 上），按 Esc 也会关闭日历并把焦点还给日期框
     (document.activeElement as HTMLElement).blur();
     expect(document.activeElement).toBe(document.body);
     fireEvent.keyDown(document, { key: 'Escape' });

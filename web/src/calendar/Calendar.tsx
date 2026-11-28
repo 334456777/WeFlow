@@ -1,5 +1,5 @@
-// The calendar of the date pickers (#224): a month of days in the ARIA grid pattern, Monday first, with views to
-// pick a month or a year for records long ago. Days after `max` cannot be picked.
+// 日期选择器里的日历（#224）：按 ARIA 的网格（grid）模式排列一个月的日子，周一在前；另有选月份和选年份的视图，
+// 用来跳到很早的记录。`max` 之后的日子不能选。
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
@@ -10,26 +10,26 @@ import { formatDate, t } from '../i18n';
 
 type View = 'days' | 'months' | 'years';
 
-/** What a calendar shows and does. */
+/** 日历的属性：显示什么、选中一天时做什么。 */
 export interface CalendarProps {
-  /** The chosen days: one day (`from` = `to`), a range, or none (''). */
+  /** 选中的日子：一天（`from` = `to`）、一段范围，或者没有（''）。 */
   from: string;
   to: string;
-  /** Days are picked as a range: several days are selected at once. */
+  /** 按范围选日子：同时选中多天。 */
   range?: boolean;
-  /** The start of a range whose end is being picked: the range up to the day under the pointer is previewed. */
+  /** 正在选结束日期的范围的起点：预览从它到指针所在日子的范围。 */
   pending?: string | null;
-  /** The day focused when the calendar opens. */
+  /** 日历打开时聚焦的日子。 */
   initial: string;
   max?: string;
-  /** Days with messages and how many (`chat date-counts`): marked with a dot; the others are quieter. */
+  /** 有消息的日子和消息的条数（`chat date-counts`）：用圆点标出，其他日子的数字颜色较淡。 */
   marks?: Record<string, number> | null;
   onPick: (day: string) => void;
 }
 
 const YEARS = 12;
 
-/** A month of days, or a view of months or years, that calls `onPick` with the day picked. */
+/** 一个月的日子，或者选月份、选年份的视图；选中一天时以这一天调用 `onPick`。 */
 export function Calendar({ from, to, range, pending, initial, max, marks, onPick }: CalendarProps) {
   const [focus, setFocus] = useState(() => clampDay(initial, max));
   const [view, setView] = useState<View>('days');
@@ -42,15 +42,15 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
   const { year, month } = monthOf(focus);
   const maxMonth = max ? monthOf(max) : null;
 
-  // the focused day takes the keyboard focus when it moved by the keyboard, and when the calendar opens
+  // 用键盘移动了聚焦的日子时、以及日历打开时，让这一天获得键盘焦点
   useEffect(() => {
     if (view !== 'days' || !moved.current) return;
     moved.current = false;
     grid.current?.querySelector<HTMLElement>('[data-day="' + focus + '"]')?.focus();
   }, [focus, view]);
 
-  // a list of months or years takes the focus as it opens, on the one chosen (the control that opened it is gone),
-  // so the keyboard goes on from there and Esc still reaches the popover
+  // 月份或年份的列表打开时，焦点放到选中的那一项上（打开它的控件已经不在了），
+  // 这样键盘从那里接着操作，按 Esc 也仍能关闭弹出层
   useEffect(() => {
     if (!opened.current) { opened.current = true; return; }
     if (view === 'days') return;
@@ -77,11 +77,11 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
     if ((event.key === 'Enter' || event.key === ' ') && !disabled(focus)) { event.preventDefault(); onPick(focus); }
   };
 
-  // the range shown: the one chosen, or while its end is picked, from its start to the day under the pointer
+  // 显示的范围：选中的范围；正在选结束日期时，是从起点到指针所在的日子
   const [start, end] = pending ? ordered(pending, hover || pending) : [from, to];
   const monthDisabled = (y: number, m: number) => Boolean(maxMonth && (y > maxMonth.year || (y === maxMonth.year && m > maxMonth.month)));
   const firstYear = year - (((year % YEARS) + YEARS) % YEARS);
-  // how busy a day was, in three steps on a log scale: the dot grows with it
+  // 一天的消息多少，按对数分成三档：消息越多，圆点越大
   const most = marks ? Math.max(1, ...Object.values(marks)) : 1;
   const heat = (count: number) => Math.max(1, Math.ceil((3 * Math.log1p(count)) / Math.log1p(most)));
 
@@ -146,5 +146,5 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
   </div>;
 }
 
-/** The day a calendar opens on: the chosen day, else today (or the latest allowed). */
+/** 日历打开时显示的日子：选中的那一天，没有时是今天；都不超过 `max`。 */
 export const openingDay = (day: string, max?: string) => clampDay(day || toDay(new Date()), max);
