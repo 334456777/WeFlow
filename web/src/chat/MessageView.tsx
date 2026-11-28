@@ -1,16 +1,16 @@
 // One message of the chat window (#198), drawn by its kind as the skin's bubbles (#828): received ones and the
 // account's own look different; cards (links, files, records…) are bubbles too.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import {
-  Article, ChatsCircle, CurrencyCny, File, FilePdf, FileText, Gift, Image as ImageIcon, MapPin, Pause, Phone, Play,
+  Article, ChatsCircle, CurrencyCny, File, FilePdf, FileText, Gift, Image as ImageIcon, MapPin, Phone, Play,
   UserSquare, VideoCamera, Warning,
 } from '@phosphor-icons/react';
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { formatFileSize } from '../format';
-import { imagePreview, PlayBadge, reasonOf, videoPlays, type Preview, type PreviewThumb } from '../MessageMedia';
+import { imagePreview, PlayBadge, reasonOf, videoPlays, Voice, type Preview, type PreviewThumb } from '../MessageMedia';
 import { kindOf } from '../messageKind';
-import { appLabel, formatDuration, withoutLabel } from './messages';
+import { appLabel, withoutLabel } from './messages';
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 import { t } from '../i18n';
 import { safeUrl } from '../links';
@@ -48,40 +48,6 @@ function RemoteImage({ src, className, alt = '' }: { src: string; className?: st
   const [failed, setFailed] = useState(false);
   if (failed) return <span className={'media-missing ' + (className ?? '')}><ImageIcon size={20} /></span>;
   return <img className={className} src={src} alt={alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
-}
-
-/** One voice plays at a time across the page. */
-let playing: { audio: HTMLAudioElement; stop(): void } | null = null;
-
-/** A voice message's bubble, which plays it, decoded on the server, when pressed. */
-export function Voice({ sessionId, message, className = 'message-bubble voice-bubble' }: { sessionId: string; message: ParsedMessage; className?: string }) {
-  const [state, setState] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
-  const audio = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => () => { audio.current?.pause(); }, []);
-  const seconds = message.voiceDurationSeconds ?? 0;
-  const toggle = () => {
-    if (state === 'playing' || state === 'loading') { audio.current?.pause(); setState('idle'); return; }
-    playing?.stop();
-    const sound = audio.current ?? new Audio(mediaUrl('voice-data', sessionId, message, {
-      'server-id': message.serverId, sender: message.senderUsername ?? undefined,
-    }));
-    audio.current = sound;
-    sound.onended = () => setState('idle');
-    sound.onerror = () => setState('error');
-    sound.onplaying = () => setState('playing');
-    playing = { audio: sound, stop: () => { sound.pause(); setState('idle'); } };
-    setState('loading');
-    sound.currentTime = 0;
-    sound.play().catch(() => setState('error'));
-  };
-  // Longer voices make a longer bubble, as in WeChat.
-  const width = Math.min(220, 72 + seconds * 4);
-  return <button type="button" className={className + ' ' + state} style={className.includes('voice-bubble') ? { width } : undefined} onClick={toggle}
-    aria-label={state === 'playing' ? t('暂停语音，{duration}', { duration: formatDuration(seconds) }) : t('播放语音，{duration}', { duration: formatDuration(seconds) })}>
-    {state === 'error' ? <Warning size={16} /> : state === 'playing' ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
-    <span className="voice-wave" aria-hidden="true" />
-    <span className="num">{state === 'error' ? t('无法播放') : formatDuration(seconds)}</span>
-  </button>;
 }
 
 function fileIcon(ext = '') {

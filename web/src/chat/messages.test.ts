@@ -1,8 +1,8 @@
 import { describe, expect, it } from '#test';
 import { setLang } from '../i18n';
 import type { ParsedMessage } from '../api/messages';
-import { formatDayHeading, formatFileSize } from '../format';
-import { appLabel, formatDuration, withoutLabel } from './messages';
+import { formatDayHeading, formatDuration, formatFileSize } from '../format';
+import { appLabel, withoutLabel } from './messages';
 
 const message = (localType: number, extra: Partial<ParsedMessage> = {}): ParsedMessage =>
   ({ _cursor: 'c', localId: 1, serverId: '1', localType, createTime: 0, isSend: 0, senderUsername: 'a', parsedContent: '', ...extra });

@@ -1,7 +1,10 @@
-// A message's pictures and videos outside the chat window too: what the preview dialog opens (the chat window, the
-// resources and the Moments open it), the play badge on a video, and why a thumbnail cannot be shown.
-import { Play } from '@phosphor-icons/react';
+// A message's pictures, videos and voices outside the chat window too: what the preview dialog opens (the chat
+// window, the resources and the Moments open it), the play badge on a video, why a thumbnail cannot be shown, and the
+// button that plays a voice (the chat window and the resources).
+import { useEffect, useRef, useState } from 'react';
+import { Pause, Play, Warning } from '@phosphor-icons/react';
 import { mediaUrl, type ParsedMessage } from './api/messages';
+import { formatDuration } from './format';
 import { t } from './i18n';
 
 /** What the preview dialog shows: an image or a video, and how to go through the others of its gallery. */
@@ -76,4 +79,38 @@ export async function thumbFailure(src: string, video?: string): Promise<{ reaso
 /** The play button drawn on a video's thumbnail; on a thumbnail that failed, in place of the warning. */
 export function PlayBadge({ size }: { size: number }) {
   return <span className="play-badge" aria-hidden="true"><Play size={size} weight="fill" /></span>;
+}
+
+/** One voice plays at a time across the page. */
+let playing: { audio: HTMLAudioElement; stop(): void } | null = null;
+
+/** A voice message's bubble, which plays it, decoded on the server, when pressed. */
+export function Voice({ sessionId, message, className = 'message-bubble voice-bubble' }: { sessionId: string; message: ParsedMessage; className?: string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
+  const audio = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => () => { audio.current?.pause(); }, []);
+  const seconds = message.voiceDurationSeconds ?? 0;
+  const toggle = () => {
+    if (state === 'playing' || state === 'loading') { audio.current?.pause(); setState('idle'); return; }
+    playing?.stop();
+    const sound = audio.current ?? new Audio(mediaUrl('voice-data', sessionId, message, {
+      'server-id': message.serverId, sender: message.senderUsername ?? undefined,
+    }));
+    audio.current = sound;
+    sound.onended = () => setState('idle');
+    sound.onerror = () => setState('error');
+    sound.onplaying = () => setState('playing');
+    playing = { audio: sound, stop: () => { sound.pause(); setState('idle'); } };
+    setState('loading');
+    sound.currentTime = 0;
+    sound.play().catch(() => setState('error'));
+  };
+  // Longer voices make a longer bubble, as in WeChat.
+  const width = Math.min(220, 72 + seconds * 4);
+  return <button type="button" className={className + ' ' + state} style={className.includes('voice-bubble') ? { width } : undefined} onClick={toggle}
+    aria-label={state === 'playing' ? t('暂停语音，{duration}', { duration: formatDuration(seconds) }) : t('播放语音，{duration}', { duration: formatDuration(seconds) })}>
+    {state === 'error' ? <Warning size={16} /> : state === 'playing' ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
+    <span className="voice-wave" aria-hidden="true" />
+    <span className="num">{state === 'error' ? t('无法播放') : formatDuration(seconds)}</span>
+  </button>;
 }
