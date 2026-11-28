@@ -1,34 +1,33 @@
-// What the conversation list shows (#197): its rows, the filters and folding; the kind of each session and its time
-// are in sessionKind.ts.
+// 会话列表显示的内容（#197）：列表的行、筛选和折叠；会话的种类和时间的写法在 sessionKind.ts。
 import type { ChatSession, SessionStatus } from '../api/chat';
 import { t } from '../i18n';
 import { kindOf, type SessionFilter } from '../sessionKind';
 
-/** The row that stands for the folded groups, as in WeChat. */
+/** 代表全部折叠的群聊的那一行的 ID。 */
 export const FOLDED_ID = '@folded';
 
-/** A row of the conversation list. */
+/** 会话列表的一行。 */
 export interface SessionRow {
   id: string;
   name: string;
   avatarUrl?: string;
-  /** The last message, with its sender in a group. */
+  /** 最后一条消息；群聊里带上发送者。 */
   preview: string;
   time: number;
   unread: number;
   muted: boolean;
-  /** Pinned in WeChat (#885): listed before the others. */
+  /** 在微信里置顶（#885）：排在其他会话前面。 */
   pinned: boolean;
-  /** The entry of the folded groups; `count` of them. */
+  /** 折叠的群聊的入口，共 `count` 个群。 */
   folded?: { count: number };
 }
 
-/** Where WeChat lists a conversation: pinning or unpinning it moves this to that moment (#894). */
+/** 微信排列会话用的时间：置顶或取消置顶时变成操作的时刻（#894）。 */
 const orderOf = (session: ChatSession) => session.sortTimestamp || session.lastTimestamp || 0;
-/** The time shown on a row: that of the last message, which the preview shows (#894). */
+/** 行上显示的时间：最后一条消息的时间，与预览显示的消息一致（#894）。 */
 const timeOf = (session: ChatSession) => session.lastTimestamp || session.sortTimestamp || 0;
 
-/** The last message as WeChat shows it: one line, and in a group whose sender it was, unless it was me. */
+/** 最后一条消息的预览：合成一行；群聊里在前面加上发送者，自己发的不加。 */
 export function previewOf(session: ChatSession): string {
   const text = session.summary.replace(/\s+/g, ' ').trim();
   const sender = session.lastSenderDisplayName?.trim();
@@ -53,17 +52,16 @@ function matches(session: ChatSession, query: string): boolean {
   return session.displayName.toLocaleLowerCase().includes(query) || session.username.toLocaleLowerCase().includes(query);
 }
 
-/** The conversations, then the official accounts not among them. */
+/** 会话，后面接着不在其中的公众号。 */
 export function withOfficials(sessions: readonly ChatSession[], officials: readonly ChatSession[]): ChatSession[] {
   const listed = new Set(sessions.map(s => s.username));
   return [...sessions, ...officials.filter(o => !listed.has(o.username))];
 }
 
 /**
- * The rows for a filter and a search. The conversations pinned in WeChat come first, newest first among them, as
- * WeChat lists them (#885). Folded groups are gathered into one entry at the time of the newest of them, or listed on
- * their own in the folded view; a search looks through all of them by name, in time order. The 「公众号」 filter adds
- * the `officials` followed that have no conversation, after the ones that do (#203).
+ * 按筛选和搜索得出列表的行。在微信里置顶的会话排在最前，它们之间也是最新的在前（#885）。折叠的群聊合成一个入口，
+ * 排在其中最新的群的位置；在折叠视图里则逐个列出。搜索按名称或用户名查找全部会话（包括折叠的），按时间排列。
+ * 「公众号」筛选还在有会话的公众号后面加上关注了但没有会话的 `officials`（#203）。
  */
 export function sessionRows(
   listed: readonly ChatSession[],
@@ -88,7 +86,7 @@ export function sessionRows(
     const newest = folded[0];
     entryOrder = orderOf(newest);
     entry = {
-      // The group's name in front of its last message, without the sender: one prefix is enough on one line.
+      // 在最后一条消息前面加群名，不加发送者：一行里有一个前缀就够了。
       id: FOLDED_ID, name: t('折叠的群聊'), preview: (newest.displayName || newest.username) + '：' + newest.summary.replace(/\s+/g, ' ').trim(),
       time: timeOf(newest), unread: folded.reduce((sum, s) => sum + (s.unreadCount || 0), 0), muted: true, pinned: false,
       folded: { count: folded.length },

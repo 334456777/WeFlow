@@ -1,4 +1,4 @@
-// The cache of the settings page (#213), each part with its size, cleared after showing what goes.
+// 设置页的缓存（#213）：列出每部分的大小，清理前先列出要删除的文件。
 import { useEffect, useState } from 'react';
 import { CircleNotch, Trash } from '@phosphor-icons/react';
 import { CACHE_LABELS, clearCache, listCache, planClearCache, type CachePart, type CachePartName } from '../api/settings';
@@ -7,14 +7,14 @@ import { GridSkeleton } from '../Skeleton';
 import { NoteLine, reason, SettingsGroup, type Note } from './layout';
 import { locale, t } from '../i18n';
 
-/** `cache list`, and `cache clear --<part>` after `--dry-run` showed what goes. */
+/** `cache list`，以及先用 `--dry-run` 列出要删除的文件、确认后再执行的 `cache clear --<part>`。 */
 export function CacheSetting() {
   const [parts, setParts] = useState<CachePart[] | null>(null);
   const [round, setRound] = useState(0);
   const [plan, setPlan] = useState<{ part: CachePartName; paths: { path: string; bytes: number }[]; bytes: number } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<Note>(null);
-  // the part a note is about: it shows under that part's row, by its button (#346); null under the whole list
+  // 提示所说的那一部分：提示显示在那一部分的行下、它的按钮旁边（#346）；为 null 时显示在整个列表下面
   const [noted, setNoted] = useState<CachePartName | null>(null);
   const tell = (text: Note, part: CachePartName | null) => { setNote(text); setNoted(part); };
   useEffect(() => {
@@ -60,7 +60,7 @@ export function CacheSetting() {
   </SettingsGroup>;
 }
 
-/** What `cache clear --dry-run` says would go, under the row of its part, with the way to go on. */
+/** `cache clear --dry-run` 列出的要删除的文件，显示在它那一部分的行下，带取消和确认的按钮。 */
 function ClearPlan({ plan, busy, onCancel, onClear }: {
   plan: { part: CachePartName; paths: { path: string; bytes: number }[]; bytes: number }; busy: boolean; onCancel(): void; onClear(): void;
 }) {

@@ -16,8 +16,8 @@ const message = (total: number, n: number) =>
   ({ _cursor: 'c.' + n, localId: total - n, serverId: String(total - n), localType: 1, createTime: NEWEST - n * 60, isSend: 0, senderUsername: 'wxid_a', parsedContent: 'm' + n });
 
 /**
- * A conversation of `total` messages a minute apart, served newest first in pages, with cursors `c.<n>` (0 is the
- * newest): the newest, `before` and `after` a cursor, or `since` a time.
+ * 模拟一个有 `total` 条消息、每条相隔一分钟的会话，按页回答，最新的在前，游标是 `c.<n>`（0 是最新的）：
+ * 回答最新的一页、某个游标 `before` 或 `after` 的一页，或者某个时间 `since` 起的一页。
  */
 function serve(total: number) {
   const calls: string[] = [];
@@ -26,7 +26,7 @@ function serve(total: number) {
     const query = new URL(url, 'http://x').searchParams;
     const limit = Number(query.get('limit') || 50);
     const at = (key: string) => Number(query.get(key)!.split('.')[1]);
-    // the newest message of the page, and the oldest one it may reach
+    // 这一页最新的消息，以及它最多能到的最早的消息
     let first = 0;
     let last = total - 1;
     if (query.get('before')) first = at('before') + 1;
@@ -46,7 +46,7 @@ describe('useMessages', () => {
     await waitFor(() => expect(result.current.thread.status).toBe('ready'));
     expect(calls[0]).toContain('parsed=true');
     expect(result.current.thread.messages).toHaveLength(50);
-    // Oldest first, as they are shown.
+    // 最早的在前，与显示的顺序一致。
     expect(result.current.thread.messages.at(-1)!.parsedContent).toBe('m0');
     expect(result.current.thread.hasMore).toBe(true);
 
@@ -66,7 +66,7 @@ describe('useMessages', () => {
     const { result, rerender } = renderHook(({ id }) => useMessages(id), { initialProps: { id: 'wxid_a' } });
     await waitFor(() => expect(result.current.thread.status).toBe('ready'));
     rerender({ id: 'wxid_b' });
-    // The first render after the switch already belongs to the new conversation.
+    // 切换后的第一次渲染就已经属于新的会话。
     expect(result.current.thread.status).toBe('loading');
     await waitFor(() => expect(result.current.thread.status).toBe('ready'));
     rerender({ id: 'wxid_a' });
@@ -76,7 +76,7 @@ describe('useMessages', () => {
 
   it('jumps to a day: its first message on top, newer pages below, and back to the newest', async () => {
     const calls = serve(300);
-    // the day of message 200: the page is messages 200 down to 151, oldest first
+    // 第 200 条消息的那一天：这一页是第 200 条到第 151 条，最早的在前
     const jump: Jump = { sessionId: 'wxid_a', target: { at: 'time', seconds: NEWEST - 200 * 60 }, seq: 1 };
     const { result } = renderHook(() => useMessages('wxid_a', jump));
     await waitFor(() => expect(result.current.thread.status).toBe('ready'));
@@ -108,7 +108,7 @@ describe('useMessages', () => {
     const jump: Jump = { sessionId: 'wxid_b', target: { at: 'message', message: hit }, seq: 7 };
     const { result, rerender } = renderHook(({ id, to }) => useMessages(id, to), { initialProps: { id: 'wxid_a', to: null as Jump | null } });
     await waitFor(() => expect(result.current.thread.status).toBe('ready'));
-    // switching to the hit's conversation shows it loading, never its newest page first
+    // 切换到结果所在的会话时显示加载中，不先显示它最新的一页
     rerender({ id: 'wxid_b', to: jump });
     expect(result.current.thread.status).toBe('loading');
     await waitFor(() => expect(result.current.thread.status).toBe('ready'));
@@ -120,7 +120,7 @@ describe('useMessages', () => {
     expect(texts[0]).toBe('m145');
     expect(texts[50]).toBe('m95');
     expect(result.current.thread.focus).toEqual({ cursor: 'c.120', align: 'center', seq: 7 });
-    // a thread left in the past is not kept: back in the conversation, it opens at the newest again
+    // 停在过去的会话不缓存：回到这个会话时，重新从最新的消息打开
     rerender({ id: 'wxid_a', to: jump });
     rerender({ id: 'wxid_b', to: jump });
     await waitFor(() => expect(result.current.thread.messages.at(-1)?.parsedContent).toBe('m0'));
@@ -129,7 +129,7 @@ describe('useMessages', () => {
   it('shows a conversation left by a jump and back at the newest at once when it is opened again (#159)', async () => {
     const calls = serve(300);
     const jump: Jump = { sessionId: 'wxid_a', target: { at: 'message', message: message(300, 120) }, seq: 3 };
-    // what each render shows, not only the last one
+    // 记下每次渲染显示的内容，不只是最后一次
     const shown: string[] = [];
     const { result, rerender } = renderHook(({ id, to }) => {
       const got = useMessages(id, to);
@@ -138,14 +138,14 @@ describe('useMessages', () => {
     }, { initialProps: { id: 'wxid_a', to: jump as Jump | null } });
     await waitFor(() => expect(result.current.thread.focus?.seq).toBe(3));
     expect(result.current.thread.hasNewer).toBe(true);
-    // 「回到最新消息」: the newest page, kept
+    // 「回到最新消息」：读最新的一页，并且缓存
     act(() => result.current.reload());
     await waitFor(() => expect(result.current.thread.messages.at(-1)?.parsedContent).toBe('m0'));
     rerender({ id: 'wxid_b', to: jump });
     await waitFor(() => expect(result.current.thread.status).toBe('ready'));
     const read = calls.length;
     shown.length = 0;
-    // the jump is still the last one, taken already: not a render of a skeleton before the newest messages
+    // 跳转仍是已经执行过的那一次：显示最新消息之前，不会有一次渲染出骨架屏
     rerender({ id: 'wxid_a', to: jump });
     await act(async () => {});
     expect(shown.filter(s => s.startsWith('wxid_a:'))).not.toContain('wxid_a:loading');
@@ -168,7 +168,7 @@ describe('useMessages', () => {
 });
 
 describe('live messages (#201)', () => {
-  /** A conversation whose newest message is `last` (cursor `c.<n>`, older ones lower), with `recalled` ones changed. */
+  /** 模拟最新的消息是第 `last` 条的会话（游标 `c.<n>`，越早的编号越小），`recalled` 里的消息显示为撤回。 */
   function live(state: { last: number; recalled: Set<number> }) {
     const calls: string[] = [];
     const said = (n: number) => ({ ...message(1000, 1000 - n), _cursor: 'c.' + n, localId: n, parsedContent: state.recalled.has(n) ? '撤回了一条消息' : 'm' + n });
@@ -179,7 +179,7 @@ describe('live messages (#201)', () => {
       const after = query.get('after');
       const from = after ? Number(after.split('.')[1]) + 1 : Math.max(0, state.last - limit + 1);
       const page = [];
-      // newest first; after a cursor, the closest ones
+      // 最新的在前；在某个游标之后时，取离它最近的
       const top = after ? Math.min(state.last, from + limit - 1) : state.last;
       for (let n = top; n >= from; n--) page.push(said(n));
       return json({ success: true, data: page });
@@ -194,16 +194,16 @@ describe('live messages (#201)', () => {
     const { result } = renderHook(() => useMessages('wxid_a'));
     await waitFor(() => expect(result.current.thread.status).toBe('ready'));
     expect(texts(result.current.thread)).toEqual(['m0', 'm1', 'm2']);
-    // another conversation: nothing read
+    // 别的会话：不读取
     act(() => emitLive({ type: 'message.new', sessionId: 'wxid_b' }));
     expect(calls).toHaveLength(1);
-    // more than a page came at once
+    // 一次来了超过一页的消息
     state.last = 120;
     act(() => emitLive({ type: 'message.new', sessionId: 'wxid_a' }));
     await waitFor(() => expect(result.current.thread.messages).toHaveLength(121));
     expect(texts(result.current.thread).slice(-2)).toEqual(['m119', 'm120']);
     expect(calls.slice(1).every(url => url.includes('after='))).toBe(true);
-    // twice for one message: once shown
+    // 同一条消息来了两个事件：只显示一次
     act(() => { emitLive({ type: 'message.new', sessionId: 'wxid_a' }); emitLive({ type: 'message.new', sessionId: 'wxid_a' }); });
     await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(6));
     expect(result.current.thread.messages).toHaveLength(121);

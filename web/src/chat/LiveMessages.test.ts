@@ -7,7 +7,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-/** Groups whose one member is 林沐, `state.nick` (小林 unless said) in the group; while `state.down`, the server is busy. */
+/** 模拟只有一个成员林沐的群，他的群昵称是 `state.nick`（不给时为「小林」）；`state.down` 时服务端回答 busy。 */
 function serveMembers(state: { down: boolean; nick?: string }) {
   const calls: string[] = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -21,7 +21,7 @@ function serveMembers(state: { down: boolean; nick?: string }) {
 it('reads the members of a group once for the names of its messages and the members panel', async () => {
   const state = { down: true };
   const calls = serveMembers(state);
-  // a failure is not kept: asked again, they are read again
+  // 失败的结果不保留：再次请求时重新读取
   await expect(getMembers('g@chatroom')).rejects.toThrow('busy');
   state.down = false;
   const [names, panel] = await Promise.all([loadMembers('g@chatroom', new AbortController().signal), getMembers('g@chatroom'), loadMembers('g@chatroom')]);
@@ -52,7 +52,7 @@ it('reads the members again once the group had a live message or the stream was 
   await getMembers('g@chatroom');
   expect(calls).toHaveLength(1);
 
-  // a member renamed themselves in the group; messages of other conversations leave the members kept
+  // 成员改了群昵称；其他会话的消息不影响缓存的成员
   state.nick = '林林';
   emitLive({ type: 'message.new', sessionId: 'other@chatroom' });
   emitLive({ type: 'message.new', sessionId: 'wxid_a' });
@@ -60,7 +60,7 @@ it('reads the members again once the group had a live message or the stream was 
   expect(memberName('g@chatroom', 'wxid_m')).toBe('小林');
   expect(calls).toHaveLength(1);
 
-  // a message of the group: the next to ask reads them again, both asking at once share the read
+  // 这个群来了消息：下一次请求重新读取，同时请求的两方共用一次读取
   emitLive({ type: 'message.new', sessionId: 'g@chatroom' });
   expect(memberName('g@chatroom', 'wxid_m')).toBeUndefined();
   const [names, panel] = await Promise.all([loadMembers('g@chatroom'), getMembers('g@chatroom')]);
@@ -69,7 +69,7 @@ it('reads the members again once the group had a live message or the stream was 
   expect(panel[0].groupNickname).toBe('林林');
   expect(memberName('g@chatroom', 'wxid_m')).toBe('林林');
 
-  // back after a break: every group's
+  // 中断后恢复：所有群的成员都要重新读取
   emitLive({ type: 'resumed' });
   expect(memberName('g@chatroom', 'wxid_m')).toBeUndefined();
   await loadMembers('g@chatroom');

@@ -1,5 +1,5 @@
-// What the settings choose for the whole page, each kept in this browser: live messages (#201), the media exports
-// copy (#342, none unless picked) and reduced motion (#193). A browser that keeps nothing starts from the defaults.
+// 设置里为整个网页选择、各自保存在这个浏览器里的偏好：实时消息（#201）、导出时附带的媒体（#342，不选就没有）、
+// 减少动画（#193）。浏览器里没有保存时用默认值。
 import { useEffect, useState } from 'react';
 import { MEDIA_KINDS, type MediaKind } from '../exports/ExportCards';
 
@@ -7,7 +7,7 @@ const LIVE_KEY = 'weflow.live';
 const MEDIA_KEY = 'weflow.media';
 const MOTION_KEY = 'weflow.reduced-motion';
 
-/** The page's own settings, kept in this browser: live messages, the media to show, reduced motion. */
+/** 网页自己的设置，保存在这个浏览器里：实时消息、导出时附带的媒体、减少动画。 */
 export interface Preferences {
   realtime: boolean;
   setRealtime(on: boolean): void;
@@ -22,10 +22,10 @@ function read<T>(key: string, parse: (text: string | null) => T): T {
 }
 
 function keep(key: string, text: string) {
-  try { localStorage.setItem(key, text); } catch { /* only lost on reload */ }
+  try { localStorage.setItem(key, text); } catch { /* 存不下时只是刷新后不记得 */ }
 }
 
-/** The media kept under `weflow.media`: the kinds this page knows, in their order; none when unreadable. */
+/** 保存在 `weflow.media` 下的媒体：只取这个网页认识的种类，按它们的顺序；读不懂时为空。 */
 export function keptMedia(text: string | null): MediaKind[] {
   try {
     const kept: unknown = JSON.parse(text || '[]');
@@ -35,7 +35,7 @@ export function keptMedia(text: string | null): MediaKind[] {
   }
 }
 
-/** The settings as kept, and their setters, which keep them. */
+/** 保存的设置，以及修改并保存它们的函数。 */
 export function usePreferences(): Preferences {
   const [realtime, setLive] = useState(() => read(LIVE_KEY, text => text !== 'off'));
   const setRealtime = (on: boolean) => { setLive(on); keep(LIVE_KEY, on ? 'on' : 'off'); };

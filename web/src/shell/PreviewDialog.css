@@ -1,36 +1,34 @@
-/* Preview dialog: comes in from 95% with a small rise, leaves faster. */
+/* 预览对话框：从 95% 的大小略微上浮着进入，退出得更快。 */
 @layer pages {
 .preview-dialog {
-  /* the room the frame takes around the picture: the bar above, the footer below, the hollow and the margins (#341) */
+  /* 框在图片周围占的空间：上方的栏、下方的底栏、凹陷和外边距（#341） */
   --preview-room-x: 72px; --preview-room-y: 184px;
   max-width: min(960px + var(--preview-room-x) - 32px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
 .preview-dialog::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
 .preview-dialog[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
 .preview-content { overflow: hidden; border-radius: var(--radius-2xl); background: var(--dialog-bg); box-shadow: var(--dialog-shadow); animation: dialog-in var(--duration-base) var(--ease-out) both; }
 .preview-dialog[data-state='closing'] .preview-content { animation: dialog-out var(--duration-exit) var(--ease-out) both; }
-/* The picture flying out of its thumbnail into the preview and back (#194): the frame grows from the thumbnail's
-   shape to the picture's, the picture filling it as it goes; the backdrop fades meanwhile. */
+/* 图片从缩略图飞进预览、再飞回去（#194）：框从缩略图的形状长成图片的形状，图片随之填满它；背景同时淡入或淡出。 */
 /*
- * The flight holds up nothing (#844): only the picture and the frame are taken, the page under them stays live and
- * clicks go through to it. A page taken whole would be a picture of itself until the flight ends, and every click
- * meanwhile would land on the document instead of what is under the pointer.
+ * 飞行不挡住任何东西（#844）：只截取图片和框，下面的页面照常运行，点击也会落到页面上。
+ * 如果截取整个页面，飞行结束前页面只是它自己的一张截图，这期间的点击都会落到 document 上，而不是指针下的元素。
  */
 :root { view-transition-name: none; }
 ::view-transition { pointer-events: none; }
-/* closing, the backdrop goes with the dialog: the flight's own layer dims the page in its stead and clears */
+/* 关闭时背景随对话框一起消失：由飞行自己的层代替它调暗页面，再逐渐变清 */
 :root[data-flight='close']::view-transition { animation: preview-scrim-out var(--duration-base) ease both; }
 @keyframes preview-scrim-out { from { background: var(--overlay); } }
 ::view-transition-group(preview-media) { z-index: 2; animation-duration: 260ms; animation-timing-function: var(--ease-out); }
 ::view-transition-image-pair(preview-media) { overflow: hidden; border-radius: var(--radius-md); }
 ::view-transition-old(preview-media), ::view-transition-new(preview-media) { width: 100%; height: 100%; object-fit: cover; animation-duration: 260ms; }
-/* The frame (the bar and edges) grows out from under the flying picture, from the thumbnail's box to its place,
-   showing the part of it around the picture; and shrinks back under it (previewMotion.ts sets the boxes). */
-/* under the picture, which the browser would not keep on top of it */
+/* 框（栏和边缘）从飞行中的图片下面长出来，从缩略图的位置长到自己的位置，露出图片周围的部分；关闭时缩回图片下面
+   （位置和大小由 previewMotion.ts 设置）。 */
+/* 放在图片下面：浏览器不会自动让图片保持在它上面 */
 ::view-transition-group(preview-frame) { z-index: 1; animation-duration: 260ms; animation-timing-function: var(--ease-out); }
 ::view-transition-image-pair(preview-frame) { overflow: hidden; border-radius: var(--radius-2xl); }
 /*
- * The frame's picture keeps its own size and is scaled from the thumbnail with the picture (#339): its part where the
- * picture is stays under the picture all the way, so its bar and footer come out of where the picture comes from.
+ * 框的截图保持自己的大小，与图片一起从缩略图缩放（#339）：它位于图片处的部分一路都在图片下面，
+ * 所以栏和底栏是从图片飞来的地方出现的。
  */
 ::view-transition-old(preview-frame), ::view-transition-new(preview-frame) {
   position: absolute; top: 0; left: 0; width: var(--frame-w, 100%); height: var(--frame-h, 100%); object-fit: fill; transform-origin: 0 0;
@@ -43,17 +41,16 @@
 @keyframes preview-frame-shrink { to { transform: translate(var(--fly-x), var(--fly-y)); width: var(--fly-w); height: var(--fly-h); } }
 @keyframes preview-frame-from { from { transform: translate(var(--frame-tx), var(--frame-ty)) scale(var(--frame-sx), var(--frame-sy)); } }
 @keyframes preview-frame-to { to { transform: translate(var(--frame-tx), var(--frame-ty)) scale(var(--frame-sx), var(--frame-sy)); } }
-/* opened by a flight, the frame's own growth stays off until it closes without one; the backdrop fades in as always */
+/* 通过飞行打开时关掉框自己的放大动画，直到不经过飞行地关闭为止；背景照常淡入 */
 .preview-dialog[data-flown] .preview-content { animation: none; }
 .preview-content header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); font-size: var(--text-sm); }
 .preview-content > img { width: auto; max-height: calc(100dvh - var(--preview-room-y)); margin: 0 auto; object-fit: contain; }
 /*
- * The picture sits in a well of the frame; under it 「原图」 on the left, the long flat arrows in the middle and
- * 「下载」 on the right (#341).
+ * 图片放在框里的凹陷中；下方左边是「原图」，中间是扁长的箭头，右边是「下载」（#341）。
  */
 .preview-content:has(> .preview-stage) { padding: 0 var(--space-3); }
 .preview-content:has(> .preview-stage) > header { margin: 0 calc(-1 * var(--space-3)); }
-/* as wide as the picture, in the middle when the bar or the footer is wider */
+/* 与图片同宽；栏或底栏更宽时居中 */
 .preview-stage { width: fit-content; max-width: 100%; margin: 0 auto; padding: var(--space-2); border-radius: var(--radius-xl); box-shadow: var(--well-shadow); }
 .preview-stage :is(.zoom-frame, .preview-video) { border-radius: var(--radius-md); }
 .preview-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); padding: var(--space-3) 0; }
@@ -64,25 +61,24 @@
   display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 24px; border-radius: var(--radius-full);
   color: var(--fg-muted);
 }
-/* a control that looks pressed already under the pointer (styles/roles.css: press-on-hover) */
+/* 指针移上去时已经显示为按下的控件（styles/roles.css 的 `press-on-hover`） */
 .preview-step:hover:not(:disabled) { color: var(--fg); }
 .preview-step:disabled { color: var(--fg-subtle); cursor: not-allowed; }
 
 .preview-download.failed { color: var(--state-danger); }
-/* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */
+/* 可缩放的图片（#194）：框保持图片在 1 倍时的大小，放大后超出框的部分被裁掉。 */
 .zoom-frame { display: flex; justify-content: center; overflow: hidden; touch-action: none; cursor: zoom-in; }
 .zoom-frame.zoomed { cursor: grab; }
 .zoom-frame.zoomed:active { cursor: grabbing; }
 .zoom-frame img { width: auto; max-width: 100%; max-height: calc(100dvh - var(--preview-room-y)); object-fit: contain; transform-origin: center; user-select: none; }
 .preview-tools { display: flex; align-items: center; gap: var(--space-1); }
-/* 「原图」: a small button in the lower left corner; disabled and faint when the original is not on this computer, and on
-   while it shows, pressed again to go back (#194, #338) */
+/* 「原图」：左下角的小按钮；原图不在这台电脑上时不能按并变淡，显示原图时处于打开状态，再按一次换回（#194、#338） */
 .original-button {
   display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-md); padding: 0 var(--space-3);
   border-radius: var(--radius-md); color: var(--fg-muted); font-size: var(--text-xs);
 }
 .original-button small { color: var(--fg-subtle); font-size: var(--text-2xs); }
-/* a control that looks pressed already under the pointer (styles/roles.css: press-on-hover) */
+/* 指针移上去时已经显示为按下的控件（styles/roles.css 的 `press-on-hover`） */
 button.original-button:not([aria-disabled]):hover { color: var(--fg); }
 .original-button[aria-disabled] { color: var(--fg-subtle); cursor: not-allowed; }
 .preview-content header small { margin-left: var(--space-2); color: var(--fg-subtle); font-weight: var(--weight-regular); }

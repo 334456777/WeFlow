@@ -5,33 +5,33 @@ import { currentScope, onNewScope } from '../api/scope';
 import { getMessages, PAGE_SIZE, type PageFrom, type ParsedMessage } from '../api/messages';
 import { t } from '../i18n';
 
-/** A message to bring into view after a jump: a search hit in the middle, a day from its first message at the top. */
+/** 跳转后要显示的消息：搜索结果放在中间，某一天从它的第一条消息开始、放在顶部。 */
 export interface Focus {
   cursor: string;
   align: 'center' | 'start';
-  /** Tells two jumps to the same message apart. */
+  /** 区分跳到同一条消息的两次跳转。 */
   seq: number;
 }
 
-/** A conversation's messages read so far, and where their reading stands. */
+/** 一个会话目前读到的消息，以及读取的状态。 */
 export interface Thread {
   status: 'idle' | 'loading' | 'ready' | 'error';
-  /** Oldest first, as they are shown. */
+  /** 最早的在前，与显示的顺序一致。 */
   messages: ParsedMessage[];
-  /** Whether older messages are left to load. */
+  /** 是否还有更早的消息可以加载。 */
   hasMore: boolean;
   loadingOlder: boolean;
-  /** After a jump into the past: whether newer messages are left to load below (#199). */
+  /** 跳转到过去的位置后：下方是否还有更新的消息可以加载（#199）。 */
   hasNewer: boolean;
   loadingNewer: boolean;
   focus: Focus | null;
   error?: string;
 }
 
-/** Where to show a conversation from: a time (a day picked in the calendar) or a message (a search hit). */
+/** 从哪里开始显示会话：一个时间（日历里选的一天）或一条消息（搜索结果）。 */
 export type Target = { at: 'time'; seconds: number } | { at: 'message'; message: ParsedMessage };
 
-/** A conversation to open where its target is, and which jump it is. */
+/** 要在目标位置打开的会话，以及这是第几次跳转。 */
 export interface Jump {
   sessionId: string;
   target: Target;
@@ -40,17 +40,17 @@ export interface Jump {
 
 const IDLE: Thread = { status: 'idle', messages: [], hasMore: false, loadingOlder: false, hasNewer: false, loadingNewer: false, focus: null };
 const LOADING: Thread = { ...IDLE, status: 'loading' };
-/** Messages read on each side of a search hit. */
+/** 搜索结果前后各读的消息数。 */
 const AROUND = 25;
 
 /**
- * Conversations read in this tab, so going back to one shows it at once (#159); the oldest are dropped. Only threads
- * that reach the newest message are kept: one left in the past by a jump opens at the newest again.
+ * 这个标签页里读过的会话，回到其中一个时立即显示（#159）；超过 `CACHE_SIZE` 个时丢掉最久没有保存过的。
+ * 只保留读到了最新消息的会话：跳转后停在过去的会话，下次打开时重新从最新的消息开始。
  */
 const cache = new Map<string, Thread>();
 const CACHE_SIZE = 20;
 
-/** Keeps a thread read in `scope`, unless a new scope started meanwhile. */
+/** 保存在 `scope` 里读到的会话；这期间开始了新的作用域，或者会话停在过去的位置时不保存。 */
 function remember(id: string, thread: Thread, scope: number) {
   if (thread.hasNewer || scope !== currentScope()) return;
   cache.delete(id);
@@ -58,13 +58,13 @@ function remember(id: string, thread: Thread, scope: number) {
   while (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value!);
 }
 
-/** Forgets every conversation read, as after the account changed. */
+/** 清掉读过的全部会话，例如换了账号之后。 */
 export function forgetMessages() {
   cache.clear();
 }
 onNewScope(forgetMessages);
-// A conversation kept here that got a message is read again when opened; after a break any may have (#201). The
-// open one catches up by itself (see `catchUp`).
+// 缓存里的会话来了消息后，下次打开时重新读取；中断后任何会话都可能来过消息，全部清掉（#201）。
+// 打开着的会话自己补读（见 `catchUp`）。
 onLive(event => {
   if (event.type === 'resumed') cache.clear();
   else cache.delete(event.sessionId);
@@ -72,7 +72,7 @@ onLive(event => {
 
 const messageOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('读取消息失败');
 
-/** The thread around a target: the page of a day, or the messages on both sides of a hit. */
+/** 目标附近的消息：某一天开始的一页，或者搜索结果前后的消息。 */
 async function threadAt(sessionId: string, target: Target, seq: number, signal: AbortSignal): Promise<Thread> {
   if (target.at === 'message') {
     const hit = target.message;
@@ -90,22 +90,22 @@ async function threadAt(sessionId: string, target: Target, seq: number, signal: 
     const messages = page.slice().reverse();
     return { ...IDLE, status: 'ready', messages, hasMore: true, hasNewer: page.length === PAGE_SIZE, focus: { cursor: messages[0]._cursor, align: 'start', seq } };
   }
-  // nothing from that day on: the newest messages, the last one in view
+  // 那一天之后没有消息：显示最新的消息，把最后一条放在视野中
   const latest = await getMessages(sessionId, null, signal);
   const messages = latest.slice().reverse();
   return { ...IDLE, status: 'ready', messages, hasMore: latest.length === PAGE_SIZE, focus: messages.length ? { cursor: messages[messages.length - 1]._cursor, align: 'center', seq } : null };
 }
 
 /**
- * The messages of a conversation: its newest page first, older pages on demand; after a jump (a day, a search
- * hit) the page there, with older pages above and newer ones below on demand. The state remembers whose it is, so
- * right after a switch the new conversation never shows (or is scrolled as) the previous one's messages.
+ * 一个会话的消息：先读最新的一页，需要时再读更早的页；跳转（某一天、某个搜索结果）后读那个位置的一页，
+ * 需要时在上方读更早的、在下方读更新的。状态记着它属于哪个会话，因此刚切换会话时，
+ * 新会话不会显示前一个会话的消息，也不会按它们滚动。
  */
 export function useMessages(sessionId: string | null, jump: Jump | null = null): {
   thread: Thread; loadOlder(): void; loadNewer(): void; reload(): void;
 } {
   const [owned, setOwned] = useState<{ id: string | null; thread: Thread }>(() => ({ id: sessionId, thread: (sessionId && cache.get(sessionId)) || (sessionId ? LOADING : IDLE) }));
-  /** The `seq` of the last jump taken: going back to its conversation does not take it again. */
+  /** 最后执行过的跳转的 `seq`：回到它的会话时不再跳一次。 */
   const handled = useRef<number | null>(null);
   const pendingJump = jump && jump.sessionId === sessionId && jump.seq !== handled.current;
   const thread = owned.id === sessionId ? owned.thread : pendingJump ? LOADING : (sessionId && cache.get(sessionId)) || (sessionId ? LOADING : IDLE);
@@ -155,7 +155,7 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
     return () => controller.abort();
   }, [sessionId, round, jump, update]);
 
-  /** The next page on one side: older above the first message, or newer below the last. */
+  /** 一侧的下一页：第一条消息上方更早的，或者最后一条下方更新的。 */
   const page = useCallback((side: 'older' | 'newer') => {
     const id = current.current;
     const now = latest.current;
@@ -187,18 +187,17 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
   const loadOlder = useCallback(() => page('older'), [page]);
   const loadNewer = useCallback(() => page('newer'), [page]);
 
-  /** Reads the newest page again (after an error, or to leave a jump for the newest messages). */
+  /** 不用缓存，重新读最新的一页（出错后，或者从跳转的位置回到最新消息）。 */
   const reload = useCallback(() => {
     fresh.current = true;
     setRound(n => n + 1);
   }, []);
 
   /**
-   * Live messages (#201): the ones after the last shown, all of them, below it; with `revised` (a recall, or after a
-   * break) the newest page again too, for the messages it changed. A thread left in the past by a jump is not
-   * touched: 「回到最新消息」 reads the newest. One catch-up reads at a time: the events that come while it reads are
-   * caught up on together once it is done, from the last message it read, so a burst of messages is read twice at
-   * most and each without waiting.
+   * 实时消息（#201）：读出最后显示的消息之后的全部消息，加在下面；
+   * `revised`（撤回，或者中断恢复后）时还重读最新的一页，换上其中改动过的消息。
+   * 跳转后停在过去的会话不动，由「回到最新消息」读取最新的。同时只进行一次补读：
+   * 补读期间来的事件在它完成后一起处理，从它读到的最后一条消息接着读，因此一阵消息最多读两次，每次都不用等待。
    */
   const catching = useRef<{ id: string; again: boolean; revised: boolean } | null>(null);
   const catchUp = useCallback((revised: boolean) => {
@@ -232,7 +231,7 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
         if (current.current !== id || scope !== currentScope()) return;
         const after = from;
         update(id, old => {
-          // read again or left for the past meanwhile: what was read may not follow on from the messages shown
+          // 这期间重读过或跳到了过去：读到的消息可能接不上显示的消息
           if (old.status !== 'ready' || old.hasNewer || !old.messages.some(m => m._cursor === after)) return old;
           const changed = new Map(newest.map(m => [m._cursor, m]));
           const messages = old.messages.map(m => changed.get(m._cursor) ?? m);
@@ -244,7 +243,7 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
         if (!run.again) return;
         from = added.at(-1)?._cursor ?? from;
       }
-    })().catch(() => { /* the next event or break tries again */ }).finally(() => {
+    })().catch(() => { /* 下一个事件或下一次中断恢复时再试 */ }).finally(() => {
       if (catching.current === run) catching.current = null;
     });
   }, [update]);

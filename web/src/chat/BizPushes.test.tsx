@@ -33,7 +33,7 @@ describe('BizPushes (#203)', () => {
     expect(calls[0]).toContain('/api/biz/messages?username=gh_news&limit=20&offset=0');
     const cards = document.querySelectorAll('.biz-push');
     expect(cards).toHaveLength(20);
-    // the lead links to its article; the other article of the push follows as a row, the lead not twice
+    // 头条链接到它的文章；这次推送的另一篇文章在下面占一行，头条不重复显示
     expect(screen.getByRole('link', { name: '标题 0' }).getAttribute('href')).toBe('https://mp.example/0');
     expect(screen.getByRole('link', { name: '第二篇' }).getAttribute('target')).toBe('_blank');
     expect(cards[0].querySelectorAll('.biz-item')).toHaveLength(1);
@@ -56,7 +56,7 @@ describe('BizPushes (#203)', () => {
     expect(screen.getByRole('link', { name: '标题 1' })).toBeTruthy();
   });
 
-  /** An account whose pushes are `state.pushes` (`push(n)`, newest first); a page at `state.hold` stays on its way. */
+  /** 模拟推送为 `state.pushes`（`push(n)`，最新的在前）的公众号；偏移量为 `state.hold` 的一页在取消前不回答。 */
   function serveFeed(state: { pushes: number[]; hold?: number }) {
     const calls: { offset: number; signal?: AbortSignal }[] = [];
     vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit = {}) => {
@@ -86,7 +86,7 @@ describe('BizPushes (#203)', () => {
     emitLive({ type: 'message.new', sessionId: 'gh_other' });
     await settle(LIVE_READ_MS - 1);
     expect(calls).toHaveLength(2);
-    // the feed stays while it reads: no skeleton
+    // 重读期间列表保持显示，不出现骨架屏
     expect(titles()).toHaveLength(40);
     await settle(1);
     expect(calls.map(c => c.offset)).toEqual([0, 20, 0]);
@@ -94,7 +94,7 @@ describe('BizPushes (#203)', () => {
     expect(titles()[0]).toBe('标题 0');
     expect(new Set(titles()).size).toBe(41);
 
-    // the next page goes on from where the feed ends
+    // 下一页从列表的末尾接着读
     fireEvent.click(screen.getByRole('button', { name: '加载更早的推送' }));
     await settle();
     expect(calls[3].offset).toBe(41);
@@ -116,7 +116,7 @@ describe('BizPushes (#203)', () => {
     act(() => emitLive({ type: 'message.new', sessionId: 'gh_news' }));
     await settle(LIVE_READ_MS);
     expect(calls[1].signal?.aborted).toBe(true);
-    // the new push on top of the 20 shown
+    // 新推送加在已显示的 20 条上面
     expect(titles()).toHaveLength(21);
     expect(titles()[0]).toBe('标题 0');
     expect(titles().at(-1)).toBe('标题 20');

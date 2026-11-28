@@ -9,7 +9,7 @@ afterEach(cleanup);
 const message = (n: number, localType: number): ParsedMessage =>
   ({ _cursor: 'c' + n, localId: n, localType, createTime: 1_700_000_000 + n, isSend: 0, senderUsername: 'wxid_a', parsedContent: '' }) as ParsedMessage;
 
-// happy-dom has no layout: the picture is 400 × 300 at 1×
+// happy-dom 没有布局：让图片在 1 倍时为 400 × 300
 function sized() {
   const proto = HTMLElement.prototype;
   const saved = [Object.getOwnPropertyDescriptor(proto, 'offsetWidth'), Object.getOwnPropertyDescriptor(proto, 'offsetHeight')];
@@ -25,10 +25,10 @@ function sized() {
 describe('zooming a picture', () => {
   it('keeps the point under the pointer where it is, and the picture inside the frame', () => {
     const v = zoomAt(FIT, 2, 100, 50, 400, 300);
-    // the point 100px right of the centre was 100px into the picture; at 2× that is 200px, so the picture moves -100
+    // 中心右边 100px 的点原来在图片里 100px 处；放大 2 倍后变成 200px，所以图片移动 -100
     expect(v).toEqual({ scale: 2, x: -100, y: -50 });
     expect(zoomAt(v, 4, 100, 50, 400, 300)).toEqual({ scale: 4, x: -300, y: -150 });
-    // at 2× it grew 200 × 150 each way, so it moves at most half of that
+    // 放大 2 倍后宽高共增加 400 × 300，每个方向最多移动其中的一半，即 200 × 150
     expect(keep({ scale: 2, x: 500, y: -500 }, 400, 300)).toEqual({ scale: 2, x: 200, y: -150 });
     expect(zoomAt(v, 0.5, 0, 0, 400, 300)).toEqual(FIT);
     expect(zoomAt(FIT, 100, 0, 0, 400, 300).scale).toBe(8);
@@ -64,7 +64,7 @@ describe('the gallery of a conversation', () => {
     expect(preview.type).toBe('video');
     expect(preview.gallery?.index).toBe(1);
     expect(preview.gallery?.items.map(p => p.type)).toEqual(['image', 'video', 'image']);
-    // a lone picture has nothing to go through, and text has no preview
+    // 只有一张图片时没有可翻看的，文字消息没有预览
     expect(withGallery('wxid_a', [message(1, 3)], message(1, 3))).not.toHaveProperty('gallery');
     expect(withGallery('wxid_a', messages, messages[1])).toBeNull();
   });

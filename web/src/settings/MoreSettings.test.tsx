@@ -33,7 +33,7 @@ describe('settings', () => {
     await act(async () => {});
     const plan = screen.getByRole('group', { name: '将要清理的内容' });
     expect(plan.textContent).toContain('C:/c/Images');
-    // under the row of the button pressed, not after the whole list (#346)
+    // 显示在按下的按钮那一行下面，而不是整个列表后面（#346）
     expect(plan.closest('li')).toBe(screen.getByRole('button', { name: '清理图片' }).closest('li'));
     expect(calls.some(c => c.url.includes('yes=true'))).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '确认清理' }));

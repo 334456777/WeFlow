@@ -1,6 +1,5 @@
-// An official account's pushes (#203): not chat bubbles but a feed of article cards, newest first, from
-// `biz messages`; a card opens its article. WeChat for PC may keep no push of an account on this machine (#113):
-// then it says so.
+// 公众号的推送（#203）：不用聊天气泡，而是 `biz messages` 读到的文章卡片列表，最新的在最上面；点卡片打开文章。
+// 微信电脑版可能没有在本机保存某个公众号的任何推送（#113），这时显示说明。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Article, ArrowClockwise, CircleNotch, Image as ImageIcon } from '@phosphor-icons/react';
@@ -32,7 +31,7 @@ function Cover({ src, className }: { src: string; className: string }) {
   return <img className={className} src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
 }
 
-/** A link to an article, or plain text when the push has no web address. */
+/** 打开文章的链接；推送没有网页地址时是不能点击的普通元素。 */
 function ArticleLink({ article, className, children }: { article: Pick<BizArticle, 'url' | 'title'>; className: string; children: ReactNode }) {
   const url = safeUrl(article.url);
   return url
@@ -41,10 +40,10 @@ function ArticleLink({ article, className, children }: { article: Pick<BizArticl
 }
 
 function PushCard({ push }: { push: BizPush }) {
-  // a row that does not say when (the contract's null) shows as the start of 1970 rather than breaking the list
+  // 没有时间的行（契约里的 null）显示为 1970 年初，不让整个列表出错
   const seconds = push.createTime ?? 0;
   const time = new Date(seconds * 1000);
-  // the first article leads; the others of the same push follow as rows
+  // 推送本身的文章作为头条；同一次推送的其他文章在下面各占一行，`contentList` 的第一项与头条相同时不重复显示
   const more = push.contentList.filter((item, index) => !(index === 0 && item.url === push.url && item.title === push.title));
   return <article className="biz-push">
     <time className="biz-push-time" dateTime={time.toISOString()}>{formatDayHeading(dayOf(seconds), new Date())} {formatClock(seconds)}</time>
@@ -63,10 +62,9 @@ function PushCard({ push }: { push: BizPush }) {
 const keyOf = (push: BizPush) => push.localId + ':' + push.createTime;
 
 /**
- * The first page, read again for a new push or after a break: it takes the place of what it covers (so a push gone
- * from the account goes), and the older pushes already shown stay below it, so a new push does not take the feed back
- * to its first page. A page that does not reach the pushes shown (more came meanwhile than a page holds) is the feed
- * on its own, as the pushes between would be missing.
+ * 合并有新推送或中断恢复后重读的第一页：它取代自己覆盖的那一段（公众号里已经没有的推送随之消失），
+ * 已经显示的更早的推送留在它下面，因此来了新推送时列表不会退回第一页。这一页不满一页（就是全部推送），
+ * 或者与已显示的推送没有重叠（这期间来的推送比一页还多）时，只显示这一页，否则中间会缺少推送。
  */
 function withFirstPage(old: Feed, pushes: BizPush[]): Feed {
   const fresh: Feed = { status: 'ready', pushes, hasMore: pushes.length === BIZ_PAGE, loadingMore: false };
@@ -79,26 +77,26 @@ function withFirstPage(old: Feed, pushes: BizPush[]): Feed {
   return { ...fresh, pushes: [...pushes, ...rest], hasMore: rest.length ? old.hasMore : fresh.hasMore };
 }
 
-/** The pushes of the official account `session`, a page at a time. */
+/** 公众号 `session` 的推送，一次读一页。 */
 export function BizPushes({ session }: { session: ChatSession }) {
   const id = session.username;
   const [feed, setFeed] = useState<Feed>(LOADING);
   const [round, setRound] = useState(0);
-  // the older page being read, asked for at the offset of the feed it would follow on from
+  // 正在读取的更早的一页，它的偏移量按发出请求时的列表计算
   const paging = useRef<AbortController | null>(null);
   useEffect(() => () => paging.current?.abort(), []);
 
   useEffect(() => {
     const controller = new AbortController();
-    // read again: what is shown stays meanwhile
+    // 重读：这期间保留已显示的内容
     setFeed(old => (old.status === 'ready' ? old : LOADING));
     getBizPushes(id, 0, controller.signal).then(pushes => {
       if (controller.signal.aborted) return;
-      // an older page still on its way was asked for at an offset of the feed before this one
+      // 还没回来的更早一页是按旧列表的偏移量请求的，取消它
       paging.current?.abort();
       setFeed(old => withFirstPage(old, pushes));
     }, problem => {
-      // a feed shown stays when it cannot be read again
+      // 重读失败时保留已显示的列表
       if (!controller.signal.aborted) setFeed(old => (old.status === 'ready' ? old : { ...LOADING, status: 'error', error: messageOf(problem) }));
     });
     return () => controller.abort();
@@ -126,7 +124,7 @@ export function BizPushes({ session }: { session: ChatSession }) {
     });
   }, [id]);
 
-  // a new push of this account, or a break: the newest read again (#201), once for a burst
+  // 这个公众号有新推送，或者中断后恢复：重读最新的一页（#201），连续的事件合并成一次读取
   const refresh = useGathered(() => setRound(n => n + 1), LIVE_READ_MS);
   useLive(event => {
     if (event.type === 'resumed' || event.sessionId === id) refresh();

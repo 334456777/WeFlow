@@ -30,7 +30,7 @@ function serve(hits: (url: URL) => SearchHit[]) {
   }));
 }
 
-/** The card and the search it shows, which is the page's: another `mount` makes the card anew, the search kept. */
+/** 卡片和它显示的搜索，搜索属于页面：换一个 `mount` 会重新创建卡片，搜索保留。 */
 function Panel({ onOpenHit = () => {}, onJumpDay = () => {}, mount = 0 }: { onOpenHit?: (hit: SearchHit) => void; onJumpDay?: (id: string, day: string) => void; mount?: number }) {
   const search = useSearch();
   return <SearchPanel key={mount} session={sessions[0]} sessions={sessions} search={search} onOpenHit={onOpenHit} onJumpDay={onJumpDay} />;
@@ -64,7 +64,7 @@ describe('SearchPanel', () => {
     expect(query.get('fields')).toContain('_session_id');
     expect(query.get('start')).toBeNull();
     const results = screen.getAllByRole('button', { name: /旅行计划/ });
-    // mine, then the other party by the conversation's name; the match marked whatever its case
+    // 先是我发的，然后是对方，用会话的名字；不论大小写都标出匹配
     expect(results[0].querySelector('strong')!.textContent).toBe('我');
     expect(results[1].querySelector('strong')!.textContent).toBe('林沐');
     expect(results[1].querySelector('mark')!.textContent).toBe('Trip');
@@ -90,7 +90,7 @@ describe('SearchPanel', () => {
     expect(query.get('session')).toBeNull();
     expect(Number(query.get('start'))).toBe(secondsOf({ from: '2026-10-03', to: '' }).start);
     expect(Number(query.get('end'))).toBe(new Date(2026, 9, 9, 23, 59, 59).getTime() / 1000);
-    // a hit of a group: the group and the sender, by the name in the group once its members are read
+    // 群里的结果：显示群和发送者，读到群成员后用发送者的群昵称
     await waitFor(() => expect(screen.getByRole('button', { name: /旅行计划/ }).querySelector('strong')!.textContent).toBe('设计协作群 · 小陈'));
   });
 
@@ -104,7 +104,7 @@ describe('SearchPanel', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     submit('trip');
     await screen.findByText('找到 1 条记录（全部会话）', { exact: false });
-    // the card made anew, as when another page is opened and then this one again: the search it shows is the same
+    // 重新创建卡片，就像打开别的页面后再回到这一页：显示的搜索不变
     rerender(<Panel mount={1} />);
     expect(screen.getByRole('button', { name: '全部会话' }).getAttribute('aria-pressed')).toBe('true');
     const field = screen.getByRole<HTMLInputElement>('searchbox');
@@ -112,7 +112,7 @@ describe('SearchPanel', () => {
     expect(screen.getByRole('button', { name: /^开始日期/ }).getAttribute('aria-label')).toBe('开始日期：2026-10-03');
     expect(screen.getByRole('button', { name: /^结束日期/ }).getAttribute('aria-label')).toBe('结束日期：2026-10-09');
     expect(document.querySelector('.results-count')!.textContent).toMatch(/^找到 1 条记录（全部会话）/);
-    // the scope changed, not searched again: the hits are still said to be of all conversations
+    // 改了范围但没有重新搜索：仍说明这些结果是在全部会话中搜索的
     const searches = calls.filter(c => c.includes('/chat/search')).length;
     fireEvent.click(screen.getByRole('button', { name: '当前会话' }));
     expect(field.placeholder).toBe('搜索林沐的消息');
@@ -146,7 +146,7 @@ describe('secondsOf (#241)', () => {
   it('ends a day at its last second, however long the day is', () => {
     for (const tz of ['America/Los_Angeles', 'UTC', 'Asia/Tokyo']) {
       process.env.TZ = tz;
-      // a 25-hour and a 23-hour day (in Los Angeles), across a month, across a year
+      // 洛杉矶 25 小时和 23 小时的一天，以及跨月、跨年的范围
       for (const [from, to, end] of [
         ['2026-11-01', '2026-11-01', local(2026, 11, 1, 23, 59, 59)],
         ['2026-03-08', '2026-03-08', local(2026, 3, 8, 23, 59, 59)],
@@ -156,7 +156,7 @@ describe('secondsOf (#241)', () => {
         const range = secondsOf({ from, to });
         expect(range.start, tz + ' ' + from).toBe(midnight(from));
         expect(range.end, tz + ' ' + to).toBe(end);
-        // the next day is left out
+        // 不包括后一天
         expect(range.end + 1, tz + ' ' + to).toBe(midnight(to === '2027-01-01' ? '2027-01-02' : to === '2026-11-02' ? '2026-11-03' : to.slice(0, 8) + String(Number(to.slice(8)) + 1).padStart(2, '0')));
       }
     }

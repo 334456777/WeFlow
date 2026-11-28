@@ -1,22 +1,22 @@
-// The sections of the settings (#776), listed beside the one open: grouped by where what they hold is kept, each
-// with its state in a few words, so a section can be found, and its state read, without opening it.
+// 设置的分区（#776），列在打开的分区旁边：按内容保存在哪里分组，每个分区用几个字写出它的状态，
+// 不打开也能找到分区、看到它的状态。
 import type { Icon } from '@phosphor-icons/react';
 import { AppWindow, Broom, Gear, HardDrives, Palette, Plugs, Sparkle, TerminalWindow, UserCircle } from '@phosphor-icons/react';
 import { HoverTrack } from '../HoverTrack';
 import { msg, t } from '../i18n';
 
-/** A section of the settings. */
+/** 设置的一个分区。 */
 export type SectionId = 'connection' | 'accounts' | 'appearance' | 'serve' | 'ai' | 'cache' | 'web' | 'console';
 
 interface Section {
   id: SectionId; label: string; icon: Icon;
-  /** It reads or writes the server, so it shows nothing of its own without one. */
+  /** 读写服务端，所以没有服务端时它自己没有可显示的内容。 */
   online: boolean;
-  /** The sample server answers it in a server's place, keeping its changes in the page (#896). */
+  /** 没有服务端时由示例服务端回答，改动保存在页面里（#896）。 */
   sample?: boolean;
 }
 
-/** The sections by group, in their order; labels shown through t(). */
+/** 按组排列的分区，顺序即显示的顺序；标签显示时经过 t()。 */
 export const SECTION_GROUPS: { label: string; sections: Section[] }[] = [
   {
     label: msg('常规'), sections: [
@@ -36,19 +36,19 @@ export const SECTION_GROUPS: { label: string; sections: Section[] }[] = [
   { label: msg('高级'), sections: [{ id: 'console', label: msg('命令控制台'), icon: TerminalWindow, online: true }] },
 ];
 
-/** Every section, in their order. */
+/** 全部分区，按显示的顺序。 */
 export const SECTIONS: Section[] = SECTION_GROUPS.flatMap(group => group.sections);
 
-/** A section's name in the page's language. */
+/** 分区在网页语言里的名称。 */
 export const sectionLabel = (id: SectionId) => t(SECTIONS.find(section => section.id === id)!.label);
 
-/** The list of sections, each with its state; those that need a server are marked while there is none. */
+/** 分区列表，每项带着它的状态；没有服务端时，需要服务端的分区标为「连接后可用」。 */
 export function SettingsNav({ open, summaries, connected, sample, onOpen }: {
   open: SectionId;
-  /** Each section's state in a few words. */
+  /** 每个分区用几个字写出的状态。 */
   summaries: Record<SectionId, string>;
   connected: boolean;
-  /** The sample server answers in a server's place (#896). */
+  /** 示例服务端正在代替服务端回答（#896）。 */
   sample: boolean;
   onOpen(id: SectionId): void;
 }) {

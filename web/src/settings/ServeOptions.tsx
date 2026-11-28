@@ -1,6 +1,5 @@
-// The options weflow serve starts with (#406), saved in its config file (`serve_*`): each is used when the command
-// line does not give it, from the next start of the server. Shown by subject (#776), saved together from the bar under
-// them.
+// weflow serve 的启动选项（#406），保存在配置文件里（`serve_*`）：命令行没有给出的选项用这里的值，
+// 服务端下次启动时生效。按主题分组显示（#776），用下方的保存栏一起保存。
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowRight, CircleNotch } from '@phosphor-icons/react';
@@ -13,19 +12,19 @@ import { msg, t } from '../i18n';
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 type Note = { text: string; error?: boolean } | null;
 
-/** The whole numbers, with their labels and what the server uses when none is saved; shown through t(). */
+/** 整数选项，带标签和没有保存时服务端使用的值；显示时经过 t()。 */
 const NUMBERS = [
-  // 0 has the system pick a free port
+  // 0 表示由系统选一个空闲的端口
   { key: 'serve_port', label: msg('端口'), fallback: '18108', min: 0 },
   { key: 'serve_max_tasks', label: msg('同时运行的任务'), fallback: '1', min: 1 },
   { key: 'serve_max_reads', label: msg('同时运行的其他命令'), fallback: msg('CPU 核数'), min: 1 },
   { key: 'serve_max_media', label: msg('同时解码的图片和语音'), fallback: msg('CPU 核数'), min: 1 },
 ] as const;
 
-/** The greatest number of each, as `config set` takes it (`crates/weflow-core/src/config/keys.rs`). */
+/** 每个整数选项的上限，与 `config set` 接受的一致（`crates/weflow-core/src/config/keys.rs`）。 */
 const MOST = 65535;
 
-/** The switches, with what the server does when none is saved; shown through t(). */
+/** 开关选项，带没有保存时服务端的做法；显示时经过 t()。 */
 const SWITCHES = [
   { key: 'serve_open_browser', label: msg('启动时在浏览器中打开网页'), fallback: true },
   { key: 'serve_insight', label: msg('运行灵感引擎'), fallback: false },
@@ -34,13 +33,13 @@ const SWITCHES = [
 ] as const;
 
 const KEYS = ['serve_host', ...NUMBERS.map(n => n.key), ...SWITCHES.map(s => s.key), 'auto_download_whitelist'];
-/** Each key's saved value as text: `''` when none is saved. */
+/** 每个键保存的值，写成文字；没有保存时为 `''`。 */
 type Form = Record<string, string>;
 
-/** A listen address only this machine reaches. */
+/** 是否只有本机能访问的监听地址；为空时服务端监听默认的 127.0.0.1，也算。 */
 const loopback = (host: string) => !host || host === 'localhost' || host.startsWith('127.') || host === '::1' || host === '[::1]';
 
-/** `onAi` opens the AI insights, the other half of what makes insights come by themselves. */
+/** 启动选项的表单。`onAi` 打开 AI 见解的设置：自动生成见解还要在那里开启。 */
 export function ServeOptions({ onAi }: { onAi(): void }) {
   const [saved, setSaved] = useState<Form | null>(null);
   const [form, setForm] = useState<Form | null>(null);
@@ -62,14 +61,14 @@ export function ServeOptions({ onAi }: { onAi(): void }) {
     event.preventDefault();
     if (!form || !saved || bad.length) return;
     setBusy(true); setNote(null);
-    // what was saved before a failure stays saved
+    // 失败之前已经保存的值仍算作已保存
     const next = { ...saved };
     try {
       for (const k of KEYS) {
         const value = form[k].trim();
         if (value === saved[k]) continue;
         if (k === 'auto_download_whitelist') {
-          // the config holds a JSON array; the field shows it comma-separated
+          // 配置里存的是 JSON 数组，输入框里用逗号分隔
           const ids = value.split(',').map(s => s.trim()).filter(Boolean);
           await (ids.length ? setSetting(k, JSON.stringify(ids)) : unsetSetting(k));
         } else {
@@ -94,7 +93,7 @@ export function ServeOptions({ onAi }: { onAi(): void }) {
     {bad.includes(n.key) && <small className="setting-warning">{wholeWarning(n.min, MOST)}</small>}</label>;
   const switchRow = (s: (typeof SWITCHES)[number], text?: string, more?: ReactNode) => {
     const on = form[s.key] ? form[s.key] === 'true' : s.fallback;
-    // the server's default is saved as nothing
+    // 选回服务端的默认值时，保存为未设置
     return <SettingRow key={s.key} name={t(s.label)} text={text}>
       {more}
       <Toggle label={t(s.label)} checked={on} onChange={checked => set(s.key, checked === s.fallback ? '' : String(checked))} />

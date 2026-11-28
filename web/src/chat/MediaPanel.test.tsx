@@ -4,7 +4,7 @@ import { emitLive, LIVE_COMMAND_MS } from '../api/live';
 import { MediaPanel } from './MediaPanel';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
-// a page goes on from the cursor of the last item of the one before (#178)
+// 每一页从前一页最后一项的游标接着读（#178）
 const json = (items: { _cursor: string }[], hasMore: boolean) =>
   new Response(JSON.stringify({ success: true, data: { items, hasMore, nextCursor: hasMore ? items.at(-1)!._cursor : null } }));
 const item = (id: number) => ({ _cursor: 'c' + id, localId: id, createTime: 1760000000 + id, localType: 25769803825, resourceType: 'file', fileName: '文件' + id });
@@ -36,7 +36,7 @@ it('pages media from the cursor of the page before and cancels the next page whe
 it('reads a burst of live messages once and keeps the older pages shown (#201)', async () => {
   vi.useFakeTimers();
   const page = (from: number) => json(Array.from({ length: 60 }, (_, i) => item(from - i)), true);
-  // newest first: 200…141, then 140…81; then two new files, which push 142 and 141 onto the second page
+  // 最新的在前：先是 200…141，然后 140…81；之后来了两个新文件，把 142 和 141 挤到第二页
   const fetch = vi.fn().mockResolvedValueOnce(page(200)).mockResolvedValueOnce(page(140))
     .mockResolvedValueOnce(page(202)).mockResolvedValueOnce(page(80));
   vi.stubGlobal('fetch', fetch);
@@ -58,7 +58,7 @@ it('reads a burst of live messages once and keeps the older pages shown (#201)',
   expect(names().slice(0, 3)).toEqual(['文件202', '文件201', '文件200']);
   expect(new Set(names()).size).toBe(122);
 
-  // the next page goes on from where the list ends, which the new files did not move
+  // 下一页从列表的末尾接着读，新文件没有让末尾移动
   fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
   await act(async () => {});
   expect(fetch.mock.calls[3][0]).toContain('before=c81');

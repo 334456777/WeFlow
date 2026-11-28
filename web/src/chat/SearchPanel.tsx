@@ -1,6 +1,5 @@
-// The console's search card for real conversations (#199): search this conversation or all of them (as WeChat
-// matches), within a time range; a hit opens its conversation there. A calendar with the days that have messages
-// jumps to a day.
+// 操作控制台的搜索卡片（#199）：在当前会话或全部会话中按时间范围搜索，匹配的是微信自己的搜索所匹配的文字；
+// 点结果就在那个位置打开它的会话。标出有消息的日子的日历可以跳到某一天。
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowSquareOut, CircleNotch, MagnifyingGlass } from '@phosphor-icons/react';
@@ -23,8 +22,8 @@ import { t } from '../i18n';
 type Scope = 'session' | 'all';
 
 /**
- * The start of a day and the end of another, in Unix seconds; 0 where open. The end is the second before the next
- * day's local midnight, as a day is not always 24 hours long (23 or 25 where the clocks change).
+ * 一天的开始和另一天的结束，单位是 Unix 秒，不限的一端为 0。结束是后一天本地零点的前一秒，因为一天不总是
+ * 24 小时（实行夏令时的地方调钟那天是 23 或 25 小时）。
  */
 export function secondsOf(range: Range): { start: number; end: number } {
   return {
@@ -33,7 +32,7 @@ export function secondsOf(range: Range): { start: number; end: number } {
   };
 }
 
-/** The days a search was limited to, as `secondsOf` gave them; open where it was, and with no search. */
+/** 搜索限定的日期，由 `secondsOf` 换算出的秒数还原；不限的一端和没有搜索时为空。 */
 export function rangeOf(query: SearchQuery | null): Range {
   return {
     from: query?.start ? toDay(new Date(query.start * 1000)) : '',
@@ -41,10 +40,10 @@ export function rangeOf(query: SearchQuery | null): Range {
   };
 }
 
-/** Whether a search was of all conversations or of one; with no search, of one. */
+/** 搜索的是全部会话还是一个会话；没有搜索时算一个会话。 */
 export const scopeOf = (query: SearchQuery | null): Scope => (query && !query.sessionId ? 'all' : 'session');
 
-/** The text with each match of the keyword marked. */
+/** 标出关键词每一处匹配（不区分大小写）的文字。 */
 function Marked({ text, keyword }: { text: string; keyword: string }) {
   const lower = text.toLocaleLowerCase();
   const needle = keyword.toLocaleLowerCase();
@@ -60,14 +59,14 @@ function Marked({ text, keyword }: { text: string; keyword: string }) {
   return <>{parts}</>;
 }
 
-/** The card's summary: how many hits, or what a search would cover. */
+/** 卡片的摘要：结果的条数，或者搜索的范围。 */
 export function searchSummary(state: SearchState): string {
   if (state.status === 'ready') return t('{n} 条结果', { n: state.hits.length + (state.hasMore ? '+' : '') });
   if (state.status === 'loading') return t('正在搜索');
   return scopeOf(state.query) === 'all' ? t('全部会话') : t('当前会话');
 }
 
-/** How many hits there are so far, and in which scope they were searched: it may since have been changed. */
+/** 目前的结果条数，以及这些结果是在哪个范围搜索的：之后选的范围可能已经不同。 */
 function foundIn(state: SearchState): string {
   const all = scopeOf(state.query) === 'all';
   const n = state.hits.length;
@@ -75,7 +74,7 @@ function foundIn(state: SearchState): string {
   return all ? t('找到 {n} 条记录（全部会话）', { n }) : t('找到 {n} 条记录（当前会话）', { n });
 }
 
-/** The search card: the query, its hits, and the calendar of the conversation's days. */
+/** 搜索卡片：查询条件、结果，以及标出会话里有消息的日子的日历。 */
 export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }: {
   session: ChatSession | undefined;
   sessions: ChatSession[];
@@ -83,7 +82,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
   onOpenHit: (hit: SearchHit) => void;
   onJumpDay: (sessionId: string, day: string) => void;
 }) {
-  // the search is the page's and outlives the card: mounted again, the card starts from what its hits were searched with
+  // 搜索属于页面，卡片卸载后仍在：卡片重新挂载时，从当前结果所用的查询条件开始
   const [query, setQuery] = useState(() => search.state.query?.keyword ?? '');
   const [scope, setScope] = useState<Scope>(() => scopeOf(search.state.query));
   const [range, setRange] = useState<Range>(() => rangeOf(search.state.query));
@@ -92,7 +91,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
   const { counts, request } = useDateCounts(sessionId);
   const { state } = search;
   const name = session?.displayName || sessionId || '';
-  // the names of the senders in the groups among the hits, one group after another
+  // 结果中群消息的发送者名字，一个群一个群地读取
   const [, setNamed] = useState(0);
   useEffect(() => {
     const groups = [...new Set(state.hits.map(h => h._session_id))].filter(id => kindOf(id) === 'group' && !membersKnown(id));
@@ -100,7 +99,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
     const controller = new AbortController();
     (async () => {
       for (const id of groups) {
-        try { await loadMembers(id, controller.signal); } catch { /* the id stays */ }
+        try { await loadMembers(id, controller.signal); } catch { /* 读不到时仍显示用户名 */ }
         if (controller.signal.aborted) return;
         setNamed(n => n + 1);
       }
@@ -143,7 +142,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
         <button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{t('全部会话')}</button>
       </Segmented>
     </div>
-    {/* always there, and optional: no days, no limit (#345) */}
+    {/* 一直显示，可以不填：不选日期就不限时间（#345） */}
     <div className="search-date-row"><span className="field-label">{t('时间范围')}</span>
       <DateRange label={t('搜索的时间范围')} from={range.from} to={range.to} onChange={setRange}
         marks={scope === 'session' ? counts : null} onOpen={scope === 'session' ? request : undefined} /></div>

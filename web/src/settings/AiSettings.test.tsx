@@ -18,7 +18,7 @@ function serve(answer: (method: string, url: string) => Response | undefined) {
   return calls;
 }
 
-/** The settings `values`, as `config get` reads them. */
+/** 按 `config get` 的方式回答设置 `values`。 */
 const settings = (values: Record<string, unknown>) => (url: string) =>
   url.startsWith('/api/config/get') ? ok(values[new URL(url, 'http://x').searchParams.get('key')!] ?? null) : undefined;
 
@@ -42,7 +42,7 @@ describe('AI settings', () => {
 
     fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'm2' } });
     fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-new' } });
-    // a change waits for its save before a test
+    // 有修改时要先保存才能测试
     expect((screen.getByRole('button', { name: '测试连接' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(save);
     await act(async () => {});
@@ -52,7 +52,7 @@ describe('AI settings', () => {
     expect(onSaved).toHaveBeenCalled();
     expect((screen.getByLabelText('API Key') as HTMLInputElement).value).toBe('');
 
-    // the server's own words, which say what failed
+    // 显示服务端自己的话，它说明了哪里失败
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
     await act(async () => {});
     expect(screen.getByRole('alert').textContent).toBe('HTTP 401 from the model API');
@@ -80,7 +80,7 @@ describe('AI settings', () => {
     await act(async () => {});
     const openai = screen.getByRole('button', { name: /OpenAI 兼容/ });
     const anthropic = screen.getByRole('button', { name: /Anthropic 兼容/ });
-    // not set: OpenAI's, at its own address
+    // 没有设置：用 OpenAI 的格式和它的官方地址
     expect(openai.getAttribute('aria-pressed')).toBe('true');
     expect(document.querySelector('.ai-endpoint')?.textContent).toContain('POST https://api.openai.com/v1/chat/completions');
 
@@ -91,7 +91,7 @@ describe('AI settings', () => {
     fireEvent.change(screen.getByPlaceholderText('https://api.anthropic.com'), { target: { value: 'https://gw.example.com/v1/' } });
     expect(document.querySelector('.ai-endpoint')?.textContent).toContain('POST https://gw.example.com/v1/messages');
 
-    // back to the format the setting means: nothing to save
+    // 选回设置所代表的格式：没有要保存的
     fireEvent.click(openai);
     fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), { target: { value: '' } });
     expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
@@ -108,7 +108,7 @@ describe('AI settings', () => {
     await act(async () => {});
     const sent = screen.getByRole('checkbox', { name: '发送最近的聊天内容' }) as HTMLInputElement;
     const count = screen.getByLabelText('发送的条数') as HTMLInputElement;
-    // off by default: the model sees no chat, and the count has nothing to count
+    // 默认关闭：模型看不到聊天，条数没有意义，输入框禁用
     expect(sent.checked).toBe(false);
     expect(count.disabled).toBe(true);
     expect(document.body.textContent).toContain('几乎总是回答没有可说的（SKIP）');
@@ -116,7 +116,7 @@ describe('AI settings', () => {
     fireEvent.click(sent);
     expect(count.disabled).toBe(false);
     const save = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
-    // the bounds `config set` takes
+    // `config set` 接受的范围
     for (const bad of ['0', '-3', '2.5', 'abc', '1001']) {
       fireEvent.change(count, { target: { value: bad } });
       expect(save.disabled).toBe(true);
@@ -143,12 +143,12 @@ describe('AI settings', () => {
     render(<AiSetting profile={PROFILE} engine={false} onSaved={() => {}} onServe={() => {}} />);
     await act(async () => {});
     const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
-    // the chosen first, one the list no longer has among them, by its id
+    // 选中的在前；其中候选里已经没有的那个显示用户名
     expect(Array.from(document.querySelectorAll('.insight-session-list .checkbox'), c => c.textContent)).toEqual(['陈屿', 'wxid_gone', '林沐']);
     expect(box('陈屿').checked).toBe(true);
     expect(box('林沐').checked).toBe(false);
     expect(document.body.textContent).toContain('只为选中的 2 个私聊写见解。');
-    // found by WeChat ID
+    // 按微信号也能找到
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索私聊' }), { target: { value: 'LINMU' } });
     expect(Array.from(document.querySelectorAll('.insight-session-list .checkbox'), c => c.textContent)).toEqual(['林沐']);
     fireEvent.click(box('林沐'));

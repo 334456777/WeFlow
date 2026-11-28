@@ -1,10 +1,10 @@
-// The official accounts followed (#203), for the 「公众号」 filter: read once it is first chosen, again for another
-// server or account (scope.ts). As conversations, so the list and the message pane take them as they are.
+// 关注的公众号（#203），用于「公众号」筛选：第一次选中这个筛选时读取，换了服务端或账号（scope.ts）后重新读取。
+// 读到的公众号写成会话的形式，会话列表和消息区可以直接使用。
 import { useEffect, useState } from 'react';
 import { getBizAccounts } from '../api/biz';
 import type { ChatSession } from '../api/chat';
 
-/** The official accounts followed, as conversations; none until `enabled`, read again for another `scope`. */
+/** 关注的公众号，写成会话的形式，按 `lastTime` 从新到旧；`enabled` 之前为空，`scope` 变了重新读取。 */
 export function useBizAccounts(enabled: boolean, scope: number): ChatSession[] {
   const [accounts, setAccounts] = useState<{ scope: number; sessions: ChatSession[] } | null>(null);
   const known = accounts?.scope === scope;
@@ -20,7 +20,7 @@ export function useBizAccounts(enabled: boolean, scope: number): ChatSession[] {
         }))
         .sort((a, b) => b.sortTimestamp - a.sortTimestamp);
       setAccounts({ scope, sessions });
-    }, () => { /* the list still has the accounts it knows */ });
+    }, () => { /* 读取失败时，列表里仍有带会话的公众号 */ });
     return () => controller.abort();
   }, [enabled, known, scope]);
 

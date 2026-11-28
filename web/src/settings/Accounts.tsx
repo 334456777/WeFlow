@@ -1,6 +1,5 @@
-// The accounts of the settings (#215): each profile with its account and how far it is set up, switching to another,
-// adding one (then the setup); and apart from them, as what cannot be undone (#776), clearing what WeFlow keeps of the
-// current account, shown before it asks.
+// 设置里的账号（#215）：每个档案的账号和配置进度、切换到另一个档案、添加档案（之后打开配置向导）；以及与它们分开、
+// 作为不可撤销的操作（#776）的清除 WeFlow 为当前账号保存的数据，确认前先列出要清除的内容。
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { CheckCircle, CircleNotch, Plus, Trash, Warning } from '@phosphor-icons/react';
@@ -12,22 +11,22 @@ import { t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 
-/** How far a profile is set up, in a few words. */
+/** 用几个字说明档案配置到了哪一步。 */
 export function profileState(p: Profile): string {
   if (!p.complete) return p.dbPath ? t('缺少数据库密钥') : t('还没有配置');
   return p.imageKeys ? t('已配置') : t('已配置，没有图片密钥');
 }
 
-/** The profiles, and clearing the current account's data. */
+/** 档案列表，以及清除当前账号的数据。 */
 export function Accounts({ profiles, onChanged, onSetup }: {
   profiles: Profile[];
-  /** A profile was switched, added or cleared: read them again. */
+  /** 切换、添加或清除了档案：重新读取档案。 */
   onChanged(): void;
-  /** Open the setup for the current profile. */
+  /** 为当前档案打开配置向导。 */
   onSetup(): void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
-  // shown under the group whose action it is about
+  // 显示在它所说的操作所在的那一组下面
   const [note, setNote] = useState<{ text: string; error?: boolean; clearing?: boolean } | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -116,7 +115,7 @@ export function Accounts({ profiles, onChanged, onSetup }: {
   </>;
 }
 
-/** While the profiles are read (#282): rows in the shape of the accounts, so the settings do not jump. */
+/** 读取档案期间的骨架（#282）：形状与账号的行相同，设置页的布局因此不会跳动。 */
 export function AccountsSkeleton() {
   return <div className="accounts" aria-busy="true" aria-label={t('正在读取账号配置')}>
     <ul className="account-list">

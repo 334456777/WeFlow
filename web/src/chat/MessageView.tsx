@@ -1,5 +1,5 @@
-// One message of the chat window (#198), drawn by its kind as the skin's bubbles (#828): received ones and the
-// account's own look different; cards (links, files, records…) are bubbles too.
+// 聊天窗口里的一条消息（#198），按种类画成皮肤的气泡（#828）：收到的和账号所有者自己发的样子不同；
+// 卡片（链接、文件、聊天记录……）也是气泡。
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -14,7 +14,7 @@ import { appLabel, withoutLabel } from './messages';
 import { t } from '../i18n';
 import { safeUrl } from '../links';
 
-/** What a picture or video message opens in the preview; null for other messages. */
+/** 图片或视频消息在预览里打开的内容；其他消息为 null。 */
 export function mediaPreview(sessionId: string, message: ParsedMessage): Preview | null {
   const kind = kindOf(message);
   if (kind === 'image') return imagePreview(sessionId, message, t('图片'));
@@ -22,7 +22,7 @@ export function mediaPreview(sessionId: string, message: ParsedMessage): Preview
   return null;
 }
 
-/** The preview of `message` with the pictures and videos among `messages` to go through. */
+/** `message` 的预览，带上 `messages` 中的图片和视频供前后翻看；`message` 不是图片或视频时为 null。 */
 export function withGallery(sessionId: string, messages: readonly ParsedMessage[], message: ParsedMessage): Preview | null {
   const own = mediaPreview(sessionId, message);
   if (!own) return null;
@@ -32,7 +32,7 @@ export function withGallery(sessionId: string, messages: readonly ParsedMessage[
   return { ...own, gallery: { items: media.map(m => mediaPreview(sessionId, m)!), index } };
 }
 
-/** Pictures from WeChat's servers: no referrer, loaded when near the screen. */
+/** 来自微信服务器的图片：不发送 Referer，接近屏幕时才加载，加载失败时显示占位。 */
 function RemoteImage({ src, className, alt = '' }: { src: string; className?: string; alt?: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <span className={'media-missing ' + (className ?? '')}><ImageIcon size={20} /></span>;
@@ -45,7 +45,7 @@ function fileIcon(ext = '') {
   return <File size={28} />;
 }
 
-/** A card bubble that opens its link in a new tab when it has one. */
+/** 卡片气泡：有可以打开的链接时，点击后在新标签页打开。 */
 function Card({ href, className, children, label }: { href?: string; className: string; children: ReactNode; label?: string }) {
   const url = safeUrl(href);
   return url
@@ -64,7 +64,7 @@ function Record({ message }: { message: ParsedMessage }) {
   </div>;
 }
 
-/** One message, drawn by its kind. */
+/** 按种类画出的一条消息。 */
 export function MessageView({ sessionId, message, onPreview }: {
   sessionId: string; message: ParsedMessage; onPreview(preview: Preview): void;
 }) {
@@ -138,8 +138,8 @@ export function MessageView({ sessionId, message, onPreview }: {
   }
 }
 
-/** A thumbnail from the server, with `badge` over it; when it cannot be decoded, a placeholder that says so instead
- * of a broken image, which has the badge only when `video`, the video it stands for, still plays. */
+/** 服务端给的缩略图，上面叠着 `badge`；无法解码时显示说明无法显示的占位，而不是破图。占位只在它代表的视频 `video`
+ * 仍能播放时带 `badge`。 */
 function MediaThumb({ src, label, video, badge }: { src: string; label: string; video?: string; badge?: ReactNode }) {
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [plays, setPlays] = useState(false);

@@ -1,4 +1,4 @@
-// The conversation list of the chat page (#197): search, a filter by kind, folded groups, and a virtual list.
+// 聊天页的会话列表（#197）：搜索、按种类筛选、折叠的群聊和虚拟列表。
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { ArrowClockwise, ArrowLeft, BellSlash, MagnifyingGlass, PushPin, UsersThree } from '@phosphor-icons/react';
@@ -14,12 +14,12 @@ import { ListSkeleton } from '../Skeleton';
 import { t } from '../i18n';
 
 const FILTERS: SessionFilter[] = ['all', 'private', 'group', 'official'];
-/** A row is 56px high with 2px to the next (#192). */
+/** 一行高 56px，与下一行相隔 2px（#192）。 */
 const ROW_HEIGHT = 58;
 const LIST_PADDING = 8;
 const SKELETON_ROWS = 8;
 
-/** A row of the list; drawn again only when what it shows changes, so a scroll draws only the rows it brings in (#961). */
+/** 列表的一行；只在显示的内容变化时重画，因此滚动时只画新出现的行（#961）。 */
 const SessionItem = memo(function SessionItem({ row, active, now, onOpen }: { row: SessionRow; active: boolean; now: Date; onOpen(row: SessionRow): void }) {
   return <button type="button" data-row-id={row.id} className={'conversation-row' + (active ? ' active' : '') + (row.muted ? ' muted' : '')}
     aria-label={row.folded ? t('打开折叠的群聊，共 {count} 个', { count: row.folded.count }) : t('选择{name}', { name: row.name })} aria-pressed={row.folded ? undefined : active} onClick={() => onOpen(row)}>
@@ -39,13 +39,13 @@ const SessionItem = memo(function SessionItem({ row, active, now, onOpen }: { ro
   </button>;
 });
 
-/** The conversation list, or where its read stands. */
+/** 会话列表；还没读到时显示骨架屏或读取失败的说明。 */
 export function SessionList({ state, selectedId, onSelect, onRetry, officials = [], onFilter }: {
   state: SessionsState;
   selectedId: string | null;
   onSelect(id: string): void;
   onRetry(): void;
-  /** Official accounts followed without a conversation, for the 「公众号」 filter (#203). */
+  /** 关注了但没有会话的公众号，用于「公众号」筛选（#203）。 */
   officials?: readonly ChatSession[];
   onFilter?(filter: SessionFilter): void;
 }) {
@@ -64,7 +64,7 @@ export function SessionList({ state, selectedId, onSelect, onRetry, officials = 
   const foldedCount = state.status === 'ready' ? state.sessions.filter(s => state.statuses[s.username]?.isFolded).length : 0;
   useEffect(() => { if (foldedView && !foldedCount) setFoldedView(false); }, [foldedView, foldedCount]);
 
-  // Focus a row once it is rendered: the list draws only the rows in sight.
+  // 等行渲染出来再聚焦它：列表只画看得见的行。
   useEffect(() => {
     if (!focusId) return;
     document.querySelector<HTMLElement>(`.session-pane [data-row-id="${CSS.escape(focusId)}"]`)?.focus();
@@ -75,12 +75,12 @@ export function SessionList({ state, selectedId, onSelect, onRetry, officials = 
     if (row.id === FOLDED_ID) { setFoldedView(true); setQuery(''); return; }
     onSelect(row.id);
   };
-  // the same function from one render to the next, for the rows (SessionItem), calling the latest `open`
+  // 每次渲染都交给各行（`SessionItem`）同一个函数，行因此不必重画；调用时用的是最新的 `open`
   const opener = useRef(open);
   opener.current = open;
   const onOpen = useCallback((row: SessionRow) => opener.current(row), []);
 
-  // Up and down move to the next conversation and open it, as in WeChat; Home and End go to either end.
+  // 上下方向键移到相邻的会话并打开它（折叠的群聊入口只聚焦、不打开）；Home 和 End 移到第一行和最后一行。
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const keys: Record<string, (i: number) => number> = {
       ArrowDown: i => i + 1, ArrowUp: i => i - 1, Home: () => 0, End: () => rows.length - 1,

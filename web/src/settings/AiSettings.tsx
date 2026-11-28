@@ -1,7 +1,6 @@
-// The AI model API of the insights (#213): its API format (OpenAI's Chat Completions or Anthropic's Messages), the
-// address a question goes to, the key, the model (from the service's own list when asked for), and a test that says
-// where it asked and what came back; whether the recent messages go with the question, and how many (#950); and the
-// conversations the insights are written for (#1078).
+// 见解的模型接口（#213）：接口格式（OpenAI 的 Chat Completions 或 Anthropic 的 Messages）、提问发往的地址、
+// API Key、模型（需要时从服务自己的列表里选），以及说明请求发到了哪里、回答了什么的测试；
+// 是否随提问发送最近的消息、发送多少条（#950）；以及为哪些会话写见解（#1078）。
 import { useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, CheckCircle, CircleNotch, Key, ListBullets, Plugs, WarningCircle } from '@phosphor-icons/react';
@@ -16,32 +15,31 @@ import { t } from '../i18n';
 
 type AiForm = Record<(typeof AI_KEYS)[number], string> & { key: string };
 
-// the bounds `config set` takes and what the server reads with none set (`crates/weflow-core/src/config/keys.rs`)
+// `config set` 接受的范围，以及没有设置时服务端使用的值（`crates/weflow-core/src/config/keys.rs`）
 const TOKENS = { min: 1, max: 2_000_000, fallback: 4096 };
 const CONTEXT = { min: 1, max: 1000, fallback: 40 };
 
-/** How the last test went. */
+/** 最近一次测试的结果。 */
 type Test = { running: true } | { probe: ModelProbe } | { error: string };
 
-/** The models the service listed, or why it did not. */
+/** 服务列出的模型，或者没能列出的原因。 */
 type Models = { running: true } | { list: ModelInfo[] } | { error: string };
 
 /**
- * The AI model API of the insights (`ai_model_api_*`, `ai_insight_enabled`), `insight test` and `insight models`.
- * Insights come by themselves only while weflow serve also runs the insight engine, a startup option: the way there is
- * beside the switch.
+ * 见解的设置（`ai_model_api_*`、`ai_insight_*` 和会话名单），以及 `insight test` 和 `insight models`。
+ * 只有 weflow serve 同时运行见解引擎（一个启动选项）时才会自动生成见解：开关旁边有前往启动选项的按钮。
  */
 export function AiSetting({ profile, engine, onSaved, onServe }: {
   profile: Profile | undefined;
-  /** Whether weflow serve runs the insight engine, when it says. */
+  /** weflow serve 是否在运行见解引擎；服务端没有说明时为 undefined。 */
   engine: boolean | undefined;
   onSaved(): void;
-  /** Open the startup options, where the engine is turned on. */
+  /** 打开启动选项，见解引擎在那里打开。 */
   onServe(): void;
 }) {
   const [saved, setSaved] = useState<AiForm | null>(null);
   const [form, setForm] = useState<AiForm | null>(null);
-  // the conversations the insights are written for, saved with the form
+  // 为哪些会话写见解，与表单一起保存
   const [savedSessions, setSavedSessions] = useState<Sessions | null>(null);
   const [sessions, setSessions] = useState<Sessions | null>(null);
   const [busy, setBusy] = useState<'save' | null>(null);
@@ -64,11 +62,11 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   const sessionsChanged = Boolean(sessions && savedSessions && (sessions.mode !== savedSessions.mode || !sameSessions(sessions.list, savedSessions.list)));
   const changed = sessionsChanged || Boolean(form && saved && (form.key.trim() || AI_KEYS.some(k => form[k].trim() !== saved[k])));
   const format = formatOf(form?.ai_model_api_format);
-  // choosing the format the saved setting means already leaves the setting as it is (unset reads as openai)
+  // 选回已保存的设置所代表的格式时，恢复原来的设置值（没有设置时按 openai 读）
   const choose = (id: ModelApiFormat) => {
     if (id === format) return;
     set('ai_model_api_format', saved && formatOf(saved.ai_model_api_format) === id ? saved.ai_model_api_format : id);
-    // the list was of the other format's service
+    // 已列出的模型属于另一种格式的服务，清掉
     setModels(null);
   };
 
@@ -82,17 +80,17 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
         if (value === saved[k]) continue;
         await (value ? setSetting(k, value) : unsetSetting(k));
       }
-      // the key goes to the server only, typed in; it is never read back
+      // API Key 只在输入后发给服务端，从不读回
       if (form.key.trim()) await setSetting('ai_model_api_key', form.key.trim());
       if (sessions && savedSessions) {
         await setInsightSessions(sessions, savedSessions);
         setSavedSessions(sessions);
       }
-      // the values as the server keeps them, without the spaces around them (#1156)
+      // 服务端保存的值，去掉了两端的空格（#1156）
       const kept: AiForm = { ...form, key: '' };
       for (const k of AI_KEYS) kept[k] = form[k].trim();
       setSaved(kept);
-      // what was typed while it saved stays, as a change still to save
+      // 保存期间又输入的内容保留，算作还没保存的修改
       setForm(now => {
         if (!now) return now;
         const next: AiForm = { ...now, key: now.key === form.key ? '' : now.key };
@@ -129,7 +127,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   const endpoint = endpointOf(format, form.ai_model_api_base_url);
   const testing = test !== null && 'running' in test;
   const listing = models !== null && 'running' in models;
-  // what is asked of the server uses the saved settings: a change waits for its save
+  // 测试和获取模型列表用的是服务端保存的设置：有修改时要先保存
   const waitForSave = changed ? t('先保存，再用保存的设置') : undefined;
   const listed = models !== null && 'list' in models ? models.list : [];
   const offered = [...new Set([...listed.map(m => m.id), ...SUGGESTED_MODELS[format]])];
@@ -205,7 +203,7 @@ export function AiSetting({ profile, engine, onSaved, onServe }: {
   </form>;
 }
 
-/** The models of `insight models`, the chosen one pressed; one is chosen by a click. */
+/** `insight models` 列出的模型，选中的显示为按下；点一个就选它。 */
 function ModelList({ list, chosen, onChoose }: { list: ModelInfo[]; chosen: string; onChoose(id: string): void }) {
   return <div className="ai-models" role="group" aria-label={t('服务提供的模型（{n} 个）', { n: list.length })}>
     {list.map(m => <button type="button" key={m.id} className="ai-model as-row in-well" aria-pressed={m.id === chosen} onClick={() => onChoose(m.id)}>
@@ -214,7 +212,7 @@ function ModelList({ list, chosen, onChoose }: { list: ModelInfo[]; chosen: stri
   </div>;
 }
 
-/** What `insight test` found: the model that answered, how long it took and what it said, or why it failed. */
+/** `insight test` 的结果：回答的模型、用时和回答的内容，或者失败的原因。 */
 function TestResult({ test }: { test: Test }) {
   if ('running' in test) return <p className="ai-probe" role="status"><CircleNotch size={14} className="spin" />{t('正在请求模型…')}</p>;
   if ('error' in test) return <p className="ai-probe failed" role="alert"><WarningCircle size={16} weight="fill" aria-hidden="true" />{test.error}</p>;

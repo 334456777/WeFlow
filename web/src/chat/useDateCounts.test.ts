@@ -16,14 +16,14 @@ it('reads the days again when a calendar opens after a message came (#201)', asy
   act(() => result.current.request());
   await waitFor(() => expect(result.current.counts).toEqual({ '2026-10-01': 2 }));
 
-  // opened again, or after a message of another conversation: kept
+  // 再次打开，或者别的会话来了消息：用缓存
   act(() => result.current.request());
   act(() => emitLive({ type: 'message.new', sessionId: 'wxid_b' }));
   act(() => result.current.request());
   await act(async () => {});
   expect(calls).toHaveLength(1);
 
-  // a message of this one: read again the next time a calendar opens, the days known before shown meanwhile
+  // 这个会话来了消息：下次打开日历时重新读取，这期间显示之前读到的日子
   counts = { '2026-10-01': 2, '2026-10-02': 1 };
   act(() => emitLive({ type: 'message.new', sessionId: 'wxid_a' }));
   expect(result.current.counts).toEqual({ '2026-10-01': 2 });
