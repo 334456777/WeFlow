@@ -174,7 +174,7 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '选择WeFlow 开发群' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '公众号' }));
     await waitFor(() => expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent))
-      .toEqual(['微信支付', '书法日课', 'WeFlow 更新日志', '健康生活小贴士', 'Rust 编程手记', '界面设计观察']));
+      .toEqual(['微信支付', '书法日课', '健康生活小贴士', 'WeFlow 更新日志', 'Rust 编程手记', '界面设计观察']));
   });
 
   it('lists the conversations of a running backend', async () => {

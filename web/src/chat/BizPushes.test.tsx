@@ -10,7 +10,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 const session = { username: 'gh_news', displayName: '每日新闻', summary: '', unreadCount: 0, sortTimestamp: 0, lastTimestamp: 0, lastMsgType: 49 };
 const push = (n: number, extra: object = {}) => ({
-  localId: n, createTime: 1_760_000_000 - n * 3600, title: '标题 ' + n, description: '摘要 ' + n, url: 'https://mp.example/' + n, cover: '',
+  localId: n, createTime: 1_760_000_000 - n * 3600, text: '', title: '标题 ' + n, description: '摘要 ' + n, url: 'https://mp.example/' + n, cover: '',
   contentList: [], ...extra,
 });
 
@@ -121,6 +121,16 @@ describe('BizPushes (#203)', () => {
     expect(titles()[0]).toBe('标题 0');
     expect(titles().at(-1)).toBe('标题 20');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '加载更早的推送' }).disabled).toBe(false);
+  });
+
+  it('shows a plain text push as its text, without a link', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: true, data: { messages: [
+      push(1, { text: '降温了，出门记得加一件外套。', title: '', description: '', url: '', cover: '' }),
+    ] } })));
+    render(<BizPushes session={session} />);
+    expect(await screen.findByText('降温了，出门记得加一件外套。')).toBeTruthy();
+    expect(document.querySelector('.biz-text')?.textContent).toBe('降温了，出门记得加一件外套。');
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('shows an article whose address is not a web page without a link (#818)', async () => {

@@ -1437,12 +1437,14 @@ export interface BizMessages {
   messages: BizMessage[];
 }
 
-/** One push of an official account: its lead article and the others sent with it. */
+/** One push of an official account: its lead article and the others sent with it, or its text. */
 export interface BizMessage {
   /** The message's id in its table; null when its row does not say. */
   localId: number | null;
   /** When it was sent; null when its row does not say. */
   createTime: number | null;
+  /** The push's text when it is not an article (a plain text message); empty for an article. */
+  text: string;
   /** The lead article's title; empty when the push has none. */
   title: string;
   /** The lead article's summary. */

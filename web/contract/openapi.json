@@ -7944,6 +7944,10 @@
             "format": "int64",
             "description": "When it was sent; null when its row does not say."
           },
+          "text": {
+            "type": "string",
+            "description": "The push's text when it is not an article (a plain text message); empty for an article."
+          },
           "title": {
             "type": "string",
             "description": "The lead article's title; empty when the push has none."
@@ -7971,13 +7975,14 @@
         "required": [
           "localId",
           "createTime",
+          "text",
           "title",
           "description",
           "url",
           "cover",
           "contentList"
         ],
-        "description": "One push of an official account: its lead article and the others sent with it."
+        "description": "One push of an official account: its lead article and the others sent with it, or its text."
       },
       "BizArticle": {
         "type": "object",

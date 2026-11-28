@@ -14,9 +14,13 @@ const article = (title: string, summary: string, url = REPO, cover = pictureUrl(
 
 function push(localId: number, createTime: number, lead: Article, more: Article[] = []): BizMessage {
   return {
-    localId, createTime, title: lead.title, description: lead.summary, url: lead.url, cover: lead.cover,
+    localId, createTime, text: '', title: lead.title, description: lead.summary, url: lead.url, cover: lead.cover,
     contentList: [lead, ...more].map(({ title, url, cover, summary }) => ({ title, url, cover, summary })),
   };
+}
+
+function textPush(localId: number, createTime: number, text: string): BizMessage {
+  return { localId, createTime, text, title: '', description: '', url: '', cover: '', contentList: [] };
 }
 
 /** The pushes of each account, newest first. */
@@ -43,9 +47,10 @@ export const pushes = new Map<string, BizMessage[]>([
     push(51, ago(1, 7, 0), article('临帖的第一年，先求像，再求不像', '读帖、摹帖、临帖、背帖，一步一步来', 'https://example.com/calligraphy')),
   ]],
   ['gh_sample_health', [
+    textPush(78, ago(0, 9, 0), '降温了，出门记得加一件外套，晚上泡脚水别太烫。'),
     push(77, ago(1, 13, 0), article('秋冬季节这样喝水最养生', '早上一杯温水，晚上少喝浓茶……', 'https://example.com/health', pictureUrl('morning'))),
   ]],
   [WXPAY, payRecords.slice(0, 6).map((record, i) => ({
-    localId: 900 - i, createTime: record.timestamp, title: record.title, description: record.description, url: '', cover: '', contentList: [],
+    localId: 900 - i, createTime: record.timestamp, text: '', title: record.title, description: record.description, url: '', cover: '', contentList: [],
   }))],
 ]);
