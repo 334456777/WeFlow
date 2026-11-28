@@ -1040,7 +1040,7 @@ fn clearing_account_data_takes_its_insights_and_hints_wherever_the_cache_is() {
 
 #[test]
 fn cache_parts_clear_on_their_own_and_all_together() {
-    use weflow_core::services::CachePart;
+    use weflow_core::contract::CachePart;
     let (_root, hub) = common::mock_hub("n-cache-parts");
     let base = hub.image_cache_root().parent().unwrap().to_path_buf();
     let put = |p: std::path::PathBuf| {
@@ -1116,7 +1116,7 @@ fn cache_parts_clear_on_their_own_and_all_together() {
 /// does (#1139); `cache list` leaves it out of what the part takes.
 #[test]
 fn cache_clear_leaves_the_webui_version_a_server_shows() {
-    use weflow_core::services::CachePart;
+    use weflow_core::contract::CachePart;
     let (_root, hub) = common::mock_hub("n-cache-web");
     let store = hub.web_store();
     for version in ["0.5.0", "0.6.0"] {

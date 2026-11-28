@@ -16,7 +16,7 @@ mod cleanup;
 mod export;
 mod export_media;
 mod export_stream;
-pub use cleanup::{disk_usage, CachePart};
+pub use cleanup::disk_usage;
 mod footprint;
 mod group;
 mod image;

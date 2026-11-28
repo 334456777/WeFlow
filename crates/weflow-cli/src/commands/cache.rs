@@ -9,10 +9,10 @@ use crate::CacheShown;
 use serde_json::{json, Value};
 use weflow_core::colour::{Paint, Role, Stream};
 use weflow_core::config::{AppContext, ConfigStore};
-use weflow_core::contract::{PlannedRemoval, RemovalPlan};
+use weflow_core::contract::{CachePart, PlannedRemoval, RemovalPlan};
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::render::labelled;
-use weflow_core::services::{CachePart, ServiceHub};
+use weflow_core::services::ServiceHub;
 
 #[derive(Args, Debug)]
 pub(crate) struct CacheCommand {
