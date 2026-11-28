@@ -492,7 +492,7 @@ impl Exporter<'_, '_> {
             ("miniapp", _) => Kind::MiniProgram,
             ("finder", _) => Kind::Channels,
             ("announcement", _) => Kind::Announcement,
-            ("link", _) => Kind::Link,
+            ("link" | "official-link", _) => Kind::Link,
             _ => Kind::App,
         };
         m.k = kind as u8;

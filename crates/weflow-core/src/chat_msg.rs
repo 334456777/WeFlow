@@ -468,9 +468,7 @@ fn parse_type49_message(content: &str) -> Type49Info {
     let finder_nickname = first_non_empty(&[ev("findernickname"), ev("finder_nickname")]);
     // the same table as the exports', and for a type that says nothing the same words of its own XML (#1165, #1241)
     let typed = kind_of_app_type(&xml_type).or_else(|| kind_by_keywords(&own));
-    let replies = content.contains("<refermsg");
     let is_finder = typed == Some("finder");
-    let is_red_packet = typed == Some("red-packet");
     let is_music = typed == Some("music");
     let is_location = !location_label.is_empty();
 
@@ -479,9 +477,9 @@ fn parse_type49_message(content: &str) -> Type49Info {
     r.link_url = opt(url.clone());
     r.link_thumb = opt(thumb_url.clone());
     r.app_msg_desc = opt(desc);
-    r.app_msg_app_name = opt(app_name.clone());
-    r.app_msg_source_name = opt(source_name.clone());
-    r.app_msg_source_username = opt(source_username.clone());
+    r.app_msg_app_name = opt(app_name);
+    r.app_msg_source_name = opt(source_name);
+    r.app_msg_source_username = opt(source_username);
     r.app_msg_thumb_url = opt(thumb_url);
     r.app_msg_music_url = opt(music_url.clone());
     r.app_msg_data_url = opt(data_url.clone());
@@ -532,35 +530,11 @@ fn parse_type49_message(content: &str) -> Type49Info {
         r.gift_price = opt(ev("skuprice"));
     }
 
-    let kind = if is_finder {
-        "finder"
-    } else if is_red_packet {
-        "red-packet"
-    } else if is_gift {
-        "gift"
-    } else if is_location {
-        "location"
-    } else if typed == Some("quote") || (typed.is_none() && replies) {
-        // a reply whose type gives no kind is a quote, as in the exports (#1241)
+    // the one kind the exports give it too (#1263)
+    let kind = crate::message::appmsg::app_message_kind(content, 49).unwrap_or("card");
+    if kind == "quote" {
         (r.quoted_content, r.quoted_sender) = quote_of(content);
-        "quote"
-    } else if let Some(kind) = typed.filter(|k| *k != "link") {
-        kind
-    } else if matches!(xml_type.as_str(), "5" | "49")
-        && (source_username.starts_with("gh_")
-            || app_name.contains("公众号")
-            || !source_name.is_empty())
-    {
-        "official-link"
-    } else if typed.is_none() {
-        // a type that gives no kind, the table's (a sticker, a note) or one it does not know, is a card, as in the
-        // exports (#1180, #1241)
-        "card"
-    } else if !url.is_empty() {
-        "link"
-    } else {
-        "card"
-    };
+    }
     r.app_msg_kind = Some(kind.into());
 
     match xml_type.as_str() {
@@ -1545,19 +1519,57 @@ mod tests {
                      <svrid>7</svrid><content>{}</content></refermsg></appmsg></msg>",
                     escaped(q)
                 );
-                // a link with a quote in it is read as the quote
-                let arkme = if by_type == "link" { "quote" } else { by_type };
+                // a link with a quote in it is read as the quote, in the chat window too (#1263)
+                let kind = if by_type == "link" { "quote" } else { by_type };
                 assert_eq!(
                     crate::message::appmsg::app_message_kind(&xml, 49),
-                    Some(arkme),
+                    Some(kind),
                     "<type> {ty} quoting {q}"
                 );
                 let window = parse_type49_message(&xml).app_msg_kind.unwrap();
-                assert!(
-                    window == by_type || (by_type == "link" && window == "official-link"),
-                    "<type> {ty} quoting {q}: {window}"
-                );
+                assert_eq!(window, kind, "<type> {ty} quoting {q}");
             }
+        }
+    }
+
+    /// A gift, a place, an official account's article and a link without an address have one kind in the chat window
+    /// and the exports (#1263).
+    #[test]
+    fn the_chat_window_and_the_exports_name_each_app_message_alike() {
+        for (xml, kind) in [
+            (
+                "<msg><appmsg><title>T</title><type>115</type><wishmessage>w</wishmessage></appmsg></msg>",
+                "gift",
+            ),
+            (
+                "<msg><appmsg><title>T</title><type>5</type><url>https://a</url>\
+                 <sourceusername>gh_x</sourceusername></appmsg></msg>",
+                "official-link",
+            ),
+            (
+                "<msg><appmsg><title>T</title><type>5</type><url>https://a</url></appmsg></msg>",
+                "link",
+            ),
+            (
+                "<msg><appmsg><title>T</title><type>5</type></appmsg></msg>",
+                "link",
+            ),
+            (
+                "<msg><appmsg><title>T</title><type>17</type><location label=\"西湖\" x=\"1\" y=\"2\"/>\
+                 </appmsg></msg>",
+                "location",
+            ),
+        ] {
+            assert_eq!(
+                crate::message::appmsg::app_message_kind(xml, 49),
+                Some(kind),
+                "{xml}"
+            );
+            assert_eq!(
+                parse_type49_message(xml).app_msg_kind.as_deref(),
+                Some(kind),
+                "{xml}"
+            );
         }
     }
 
