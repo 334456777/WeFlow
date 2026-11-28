@@ -291,7 +291,7 @@ pub fn parse_message_content_in(
         // an app message, whether `local_type` keeps its `<type>` in the high bits (`(<type> << 32) | 49`, as
         // WeChat 4 does) or not: the same text either way (#1180)
         l if l & 0xFFFF_FFFF == 49 => Some(
-            app_message_text(x, my_wxid, sender_wxid).unwrap_or_else(|| {
+            app_message_text(x, local_type, my_wxid, sender_wxid).unwrap_or_else(|| {
                 let title = xml_text(normalized, "title");
                 if title.is_empty() {
                     "[消息]".into()
@@ -302,7 +302,7 @@ pub fn parse_message_content_in(
         ),
         _ => {
             if !xml_type.is_empty() {
-                if let Some(text) = app_message_text(x, my_wxid, sender_wxid) {
+                if let Some(text) = app_message_text(x, local_type, my_wxid, sender_wxid) {
                     return Some(text);
                 }
                 let title = xml_text(content, "title");
@@ -320,15 +320,47 @@ pub fn parse_message_content_in(
     }
 }
 
-/// The text of an app message by its own `<type>`, with the tag of its row of
-/// [`appmsg::app_type`](crate::message::appmsg::app_type); `None` for a type not in the table.
+/// How much of an app message its text says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextForm {
+    /// All of it, as the exports write it: a reply with what it quotes, a chat record's messages, a note's text.
+    Full,
+    /// One line, as the chat window shows it: a reply's own text, the title of a chat record or a note.
+    Line,
+}
+
+/// [`app_message_text_as`] in [`TextForm::Full`].
 fn app_message_text(
     x: &MsgXml<'_>,
+    local_type: i64,
     my_wxid: Option<&str>,
     sender_wxid: Option<&str>,
 ) -> Option<String> {
+    app_message_text_as(x, local_type, my_wxid, sender_wxid, TextForm::Full)
+}
+
+/// The text of an app message: by its own `<type>`, with the tag of its row of
+/// [`appmsg::app_type`](crate::message::appmsg::app_type); for a type not in the table, by the row of the kind its XML
+/// gives it ([`appmsg::app_message_kind_in`]), and a place as `[位置] <place>`. The chat window and the exports both
+/// read it, the chat window in [`TextForm::Line`] (#1263). `None` for a type and a kind the table does not know.
+pub(crate) fn app_message_text_as(
+    x: &MsgXml<'_>,
+    local_type: i64,
+    my_wxid: Option<&str>,
+    sender_wxid: Option<&str>,
+    form: TextForm,
+) -> Option<String> {
     let normalized = x.once();
-    let ty = x.app_type_twice();
+    let kind = appmsg::app_message_kind_in(x, local_type);
+    if kind == Some("location") {
+        let place = appmsg::location_label(&appmsg::without_quoted(normalized));
+        return Some(format!("[位置] {place}"));
+    }
+    let own = x.app_type_twice();
+    let ty = match appmsg::app_type(own) {
+        Some(_) => own,
+        None => kind.and_then(appmsg::type_of_kind)?,
+    };
     let row = appmsg::app_type(ty)?;
     let title = xml_text(normalized, "title");
     let with_title = |title: &str| {
@@ -341,6 +373,7 @@ fn app_message_text(
     Some(match ty {
         "2000" => transfer_text(normalized, my_wxid, sender_wxid),
         "8" => row.tag.into(),
+        "24" | "19" if form == TextForm::Line => with_title(&title),
         "24" => note_text(normalized, &title),
         "87" => with_title(&xml_text(normalized, "textannouncement")),
         "3" | "76" => {
@@ -348,7 +381,7 @@ fn app_message_text(
             with_title(if song.is_empty() { &title } else { &song })
         }
         "19" => format_forward_chat_record_content(normalized),
-        "57" => match x.quoted_display() {
+        "57" => match x.quoted_display().filter(|_| form == TextForm::Full) {
             Some(d) => build_quoted_reply_text(d),
             None if title.is_empty() => row.tag.into(),
             None => title,
