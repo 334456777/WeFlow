@@ -1,7 +1,6 @@
-// The settings (#214, #776): a list of the sections, by where what they hold is kept, beside the section open (on a
-// phone, one at a time). A section is groups of rows: the connection and the token, the accounts, what this browser
-// keeps, how the server starts, the AI model, the cache, the page's versions, and the CLI's own tools with the command
-// console (#217).
+// 设置页（#214、#776）：按内容保存在哪里分组的分区列表，旁边是打开的分区（手机上一次只显示一个）。每个分区由
+// 几组设置行组成：连接和 token、账号、这个浏览器保存的设置、服务端的启动选项、AI 模型、缓存、网页版本，以及
+// 命令行自带的工具和命令控制台（#217）。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { WEB } from '../api/backend';
@@ -27,8 +26,8 @@ import { t } from '../i18n';
 import './settings.css';
 
 /**
- * The sections opened since the settings were, each kept as it was (a form typed into, the console) while another is
- * open; the settings read what they show as a section first opens, and again once they are left and opened anew.
+ * 打开设置以来打开过的分区：打开另一个分区时，它们保持原样（填了一半的表单、命令控制台）；分区第一次打开时读取
+ * 要显示的内容，离开设置页再重新打开时再读一次。
  */
 function Sections({ open, pane, children }: { open: SectionId; pane: RefObject<HTMLDivElement | null>; children(id: SectionId): ReactNode }) {
   const [opened, setOpened] = useState<SectionId[]>([open]);
@@ -40,14 +39,13 @@ function Sections({ open, pane, children }: { open: SectionId; pane: RefObject<H
     <div key={id} className="settings-detail" hidden={id !== open}>{children(id)}</div>);
 }
 
-/** The settings show no cards of their own: the console keeps those of the page browsed before. */
+/** 设置页。它没有自己的卡片：操作控制台继续显示之前浏览的页面的卡片。 */
 export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { profiles, failed, reload }, recheck, onSetup }: {
   profiles: ProfilesState; recheck(): void; onSetup(): void;
 }): Page & { openSection(id: SectionId): void } {
-  // what is kept on the server: the one that answers, or the sample server in its place (#896); the page's versions and
-  // the console need a server
+  // 保存在服务端的设置：由回答的服务端读写，没有服务端时由示例服务端代替（#896）；网页版本和命令控制台需要真的服务端
   const { backend, connected, sample, usable, health: acting, profile, mobileDetail, setMobileDetail } = shell;
-  // held here, as the page is there all the time: a theme that follows the system keeps following it
+  // 放在这里，因为这个页面一直存在：跟随系统的主题会一直跟随
   const [theme, setTheme] = useTheme();
   const [skin, setSkin] = useSkin();
   const [open, setOpen] = useState<SectionId>('connection');
@@ -58,7 +56,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
 
   const health = 'health' in backend ? backend.health : null;
   const current = profiles?.find(p => p.current);
-  // a few words each, two lines at most
+  // 每项几个字，最多两行
   const summaries: Record<SectionId, string> = {
     connection: [backendLabel(backend), health?.version].filter(Boolean).join(' · '),
     accounts: current ? [current.name, current.complete ? t('已配置') : profileState(current)].join(' · ') : failed ? t('读不到账号配置') : '',

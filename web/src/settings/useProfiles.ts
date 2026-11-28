@@ -1,29 +1,29 @@
-// The profiles of `config profiles` (#216) while the server is there: read again for another server or account
-// (`scope`), when the setup saved a setting, and when a job that saves a key has succeeded.
+// 有服务端时读取的 `config profiles` 档案（#216）：换了服务端或账号（`scope`）、配置向导保存了设置、保存密钥的
+// 作业成功后都重新读取。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isFinished, type Job } from '../api/jobs';
 import { getProfiles, savedKey, type Profile } from '../api/setup';
 
-/** The profiles as read, and what reads them again. */
+/** 读到的档案，以及重新读取的函数。 */
 export interface ProfilesState {
-  /** null until read, and when it could not be. */
+  /** 读到之前和读取失败时为 null。 */
   profiles: Profile[] | null;
-  /** The server could not say: the read failed, or did not answer a list. */
+  /** 服务端没能给出档案：读取失败，或者回答的不是列表。 */
   failed: boolean;
   reload(): void;
 }
 
 /**
- * `config profiles` while `enabled`, read again for another `scope`, on `reload`, and once one of `jobs` that saves a
- * key (`key db --save`, `key image --save`) has succeeded.
+ * `enabled` 时读取 `config profiles`；`scope` 变化、调用 `reload`，以及 `jobs` 中保存密钥的作业（`key db --save`、
+ * `key image --save`）成功后都重新读取。
  */
 export function useProfiles(enabled: boolean, scope: number, jobs: readonly Job[]): ProfilesState {
   const [profiles, setProfiles] = useState<Profile[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [round, setRound] = useState(0);
   const reload = useCallback(() => setRound(n => n + 1), []);
-  // here rather than in the setup, which is closed or on another step while the job runs (#1138); a job first seen
-  // ended changed nothing since the profiles were read
+  // 放在这里而不是配置向导里，因为作业运行期间向导可能已经关闭或在另一步（#1138）；第一次看到时就已经结束的作业，
+  // 在这次读取档案之前就结束了，不必重读
   const saving = useRef(new Set<string>());
   useEffect(() => {
     let saved = false;
@@ -48,12 +48,12 @@ export function useProfiles(enabled: boolean, scope: number, jobs: readonly Job[
 
 const DISMISSED_KEY = 'weflow.setup';
 
-/** Whether the person closed the setup this tab opened by itself; it then waits to be opened from the settings. */
+/** 用户是否关掉了这个标签页自动打开的配置向导；关掉后要从设置里再打开。 */
 export function setupDismissed(): boolean {
   try { return sessionStorage.getItem(DISMISSED_KEY) === 'dismissed'; } catch { return false; }
 }
 
-/** Remembers, for this tab, that the setup was closed. */
+/** 在这个标签页里记住配置向导已被关掉。 */
 export function dismissSetup(): void {
-  try { sessionStorage.setItem(DISMISSED_KEY, 'dismissed'); } catch { /* asked again after a reload */ }
+  try { sessionStorage.setItem(DISMISSED_KEY, 'dismissed'); } catch { /* 记不住时，刷新后会再打开一次 */ }
 }

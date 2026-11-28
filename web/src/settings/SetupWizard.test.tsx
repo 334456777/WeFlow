@@ -34,7 +34,7 @@ const PROFILE: Profile = { name: 'default', current: true, wxid: null, dbPath: n
 
 interface Call { method: string; url: string; body?: Record<string, unknown>; prefer?: string }
 
-/** A server of the setup's routes; `routes` answers by `METHOD /path`, the rest with an empty list. */
+/** 模拟配置向导用到的服务端：`routes` 按 `METHOD /path` 回答，其余的回答空列表。 */
 function serve(routes: Record<string, (call: Call) => Response>) {
   const calls: Call[] = [];
   vi.stubGlobal('EventSource', FakeEventSource);
@@ -65,7 +65,7 @@ describe('SetupWizard', () => {
     const onChanged = vi.fn();
     render(<Wizard profile={PROFILE} onChanged={onChanged} />);
     await act(async () => {});
-    // the one directory that exists, and its one account, are chosen already
+    // 唯一存在的目录和其中唯一的账号已经选好
     expect(screen.getByRole('button', { name: 'D:/xwechat_files' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByText('C:/gone')).toBeNull();
     expect(calls.find(c => c.url.startsWith('/api/db/wxid'))?.url).toBe('/api/db/wxid?root=D%3A%2Fxwechat_files');
@@ -107,7 +107,7 @@ describe('SetupWizard', () => {
     const started = calls.find(c => c.url.startsWith('/key/db'))!;
     expect([started.url, started.prefer, started.body]).toEqual(['/key/db', 'respond-async', { save: true }]);
 
-    // what the job tells, on each stream of it
+    // 向这个作业每个打开着的事件流发送事件
     const emit = (type: string, data: unknown) => { for (const source of opened.filter(s => s.url.startsWith('/jobs/k1/events') && !s.closed)) source.emit(type, data); };
     act(() => { emit('key_phase', { type: 'key_phase', phase: 'quit_wechat', pids: [42] }); });
     const doing = () => document.querySelector('.setup-running p')?.textContent;
@@ -115,8 +115,7 @@ describe('SetupWizard', () => {
     act(() => { emit('key_phase', { type: 'key_phase', phase: 'login', pid: 43 }); });
     expect(doing()).toContain('请在微信的登录窗口点击「进入微信」');
 
-    // into the back/forward cache, the page holds no stream of the job (#799); shown again, they open anew, and what
-    // the person has to do stays until the job tells it again
+    // 进入往返缓存时，页面不保持作业的事件流（#799）；重新显示时重新打开，作业再次发来之前，仍显示用户要做的事
     const streams = () => opened.filter(s => s.url.startsWith('/jobs/k1/events') && !s.closed).length;
     expect(streams()).toBe(2);
     act(() => { window.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); });
@@ -125,7 +124,7 @@ describe('SetupWizard', () => {
     expect(streams()).toBe(2);
     expect(doing()).toContain('请在微信的登录窗口点击「进入微信」');
 
-    // the job's end, as its stream tells it; the profile is read again by useProfiles, not by the step
+    // 事件流告知作业结束；重新读取档案的是 useProfiles，不是这一步
     jobs = [job('succeeded')];
     const done = { ...job('succeeded'), result: { success: true, data: { method: 'wx_key', saved: ['decrypt_key'] } } };
     await act(async () => { emit('result', done); });
@@ -174,7 +173,7 @@ describe('SetupWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: '4验证' }));
     await act(async () => {});
     expect(screen.getByRole('alert').textContent).toBe('还没有数据库密钥。');
-    // the steps the profile has done are ticked
+    // 档案已经完成的步骤打了勾
     expect(screen.getByRole('button', { name: '已完成数据库目录' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '回到数据库密钥' }));
     expect(currentStep()).toBe('数据库密钥');
@@ -187,7 +186,7 @@ describe('SetupDialog', () => {
     return <SetupDialog open profile={profile} jobs={jobs} onChanged={() => {}} onClose={() => {}} onDone={() => {}} />;
   }
 
-  /** The dialog as the workspace holds it: the jobs and the profiles outlive it. */
+  /** 工作区里的对话框：作业和档案比对话框存在得久。 */
   function Workspace({ open }: { open: boolean }) {
     const jobs = useJobs(true, 0);
     const profiles = useProfiles(true, 0, jobs.jobs);
@@ -195,7 +194,7 @@ describe('SetupDialog', () => {
     return <SetupDialog open={open} profile={profile} jobs={jobs} onChanged={profiles.reload} onClose={() => {}} onDone={() => {}} />;
   }
 
-  /** A server whose `key db --save` job, `id`, runs until `finish` ends it; the key is in the profile from then on. */
+  /** 模拟服务端：它的 `key db --save` 作业 `id` 一直运行，直到 `finish` 结束它；之后档案里就有了密钥。 */
   function keyServer(id: string) {
     const job = (status: string) => ({ id, status, command: ['weflow', '--json', '--progress', 'key', 'db', '--save'], createdAt: 1, startedAt: null, finishedAt: null, exitCode: null, httpStatus: null, progress: null });
     let jobs: unknown[] = [];

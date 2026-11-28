@@ -1,19 +1,18 @@
-/* Settings (#776): the sections listed beside the one open; a section is groups of rows, each group raised. The token
-   and the accounts, the AI model and the cache, the serve options, the WebUI versions and the advanced tools fill them. */
+/* 设置（#776）：分区列表在打开的分区旁边；每个分区由几组设置行组成，每组是一张卡片。分区里是 token 和账号、
+   AI 模型和缓存、启动选项、网页版本和高级工具。 */
 @layer pages {
 .status-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--state-idle); transition: background-color var(--duration-base) var(--ease-glow); }
 .status-dot.exporting { background: var(--state-busy); animation: pulse var(--loop-pulse) ease-in-out infinite; }
 
 .status-dot.done { background: var(--state-ok); }
 .status-dot.error { background: var(--state-danger); }
-/* reduced motion: the pulse stops, as the loading placeholders' sweep does (app.css) */
+/* 减少动画时停止闪烁，与骨架屏的扫光一样（app.css） */
 @media (prefers-reduced-motion: reduce) {
   .status-dot { animation: none; }
 }
 :root.reduced-motion .status-dot { animation: none; }
 
-/* The list of the sections: the page's title over them, a caption over each group of them, and rows as the lists of
-   the other pages have them, an icon in the place of the avatar. */
+/* 分区列表：上面是页面标题，每组上面有小标题，行的样子与其他页面的列表相同，只是头像的位置换成图标。 */
 .settings-browser { --list-width: 255px; }
 .settings-nav-head { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-2); padding: var(--space-5) var(--space-4) var(--space-2) var(--space-5); }
 .settings-nav-head h1 { font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-semibold); }
@@ -23,7 +22,7 @@
 .settings-nav-caption { padding: var(--space-2) var(--space-3) var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); font-weight: var(--weight-medium); }
 .settings-nav-row { min-height: 52px; }
 .settings-nav-row .conversation-name { font-size: var(--text-sm); }
-/* a state too long for a line wraps, a version anywhere */
+/* 状态一行放不下时换行，版本号可以在任何位置断开 */
 .settings-nav-row .conversation-preview { overflow-wrap: anywhere; }
 .settings-nav-icon {
   display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 32px; height: 32px;
@@ -31,16 +30,16 @@
   transition: color var(--duration-hover) ease;
 }
 .settings-nav-row.active .settings-nav-icon { color: var(--fg); }
-/* a section of the server while there is none */
+/* 没有服务端时，需要服务端的分区 */
 .settings-nav-row.idle .conversation-preview { color: var(--fg-subtle); }
 
-/* A section: its heading, then its groups. */
+/* 一个分区：标题，然后是各组设置。 */
 .settings-section { display: flex; flex-direction: column; gap: var(--space-4); max-width: 680px; padding: var(--space-2) 0 var(--space-3); }
 .settings-section-head h2 { font-size: var(--text-lg); line-height: var(--leading-lg); font-weight: var(--weight-semibold); }
 .settings-section-head p { margin-top: 2px; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .settings-section .setting-warning { color: var(--state-danger); font-size: var(--text-xs); line-height: var(--leading-xs); }
 
-/* A group: rows on one subject, a card; its title a small label over them, its buttons beside it. */
+/* 一组：同一主题的设置行，是一张卡片；组的标题是行上方的小标签，按钮在标题旁边。 */
 .settings-group { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--card-bg); box-shadow: var(--card-shadow); }
 .settings-group-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control-sm); padding-bottom: var(--space-1); }
 .settings-group-head h3 { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); font-weight: var(--weight-semibold); }
@@ -48,19 +47,19 @@
 .settings-group-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
 .settings-group.danger .settings-group-head h3, .settings-group.danger .secondary-button:not(:disabled) { color: var(--state-danger); }
 
-/* A row: the setting's name and what it does, its control beside them. */
+/* 一行：设置的名称和用途，控件在它们旁边。 */
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); min-height: 44px; padding: var(--space-2) 0; }
 .setting-copy { flex: 1; min-width: 0; }
 .setting-copy h4 { font-size: var(--text-sm); line-height: var(--leading-sm); font-weight: var(--weight-medium); }
 .setting-copy p { margin-top: 2px; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .setting-control { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-2); }
-/* a wide control goes under its text when the room is short, instead of squeezing it */
+/* 空间不够时，宽的控件放到文字下面，而不是挤压文字 */
 .setting-row.wide { flex-wrap: wrap; }
 .setting-row.wide > .setting-copy { flex: 1 1 240px; }
 .setting-row.wide > .setting-control { flex-shrink: 1; max-width: 100%; }
 .theme-group, .skin-group { width: 240px; max-width: 100%; }
 .insight-mode-group { width: 300px; max-width: 100%; }
-/* the private chats the insights are written for: a search, and two columns of choices where they fit */
+/* 为哪些私聊写见解：一个搜索框，选项在放得下时排成多列（每列至少 160px） */
 .insight-sessions { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-1) 0 var(--space-2); }
 .insight-session-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-2) var(--space-4); }
 .setting-copy .setting-warning svg { vertical-align: -2px; }
@@ -68,8 +67,7 @@
 .source-name { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; }
 .source-name.warning { color: var(--state-danger); }
 
-/* A form of several groups: their fields two to a line where they fit, and the bar that saves them, held at the
-   bottom of the pane while it scrolls. */
+/* 由几组组成的表单：输入框在放得下时一行排几个（每个至少 200px），保存栏在滚动时停在面板底部。 */
 .settings-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3) var(--space-4); padding: var(--space-1) 0 var(--space-2); }
 .ai-form, .serve-form { display: flex; flex-direction: column; gap: var(--space-4); }
 .ai-form .console-field, .serve-form .console-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -80,20 +78,20 @@
   background: var(--field-bg); box-shadow: var(--field-shadow); color: var(--fg); font-size: var(--text-sm);
 }
 .ai-form .console-input:focus-visible, .serve-form .console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-/* held into the pane's padding below it, a little above its edge, so little of what scrolls under it shows */
+/* 伸进面板下方的内边距、离边缘留一点距离，滚到它下面的内容尽量少露出来 */
 .settings-save {
   position: sticky; bottom: calc(var(--space-2) - var(--space-4)); z-index: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3);
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border-radius: var(--radius-lg); background: var(--card-bg); box-shadow: var(--card-shadow);
 }
 .settings-save-note { flex: 1 1 200px; min-width: 0; color: var(--fg-muted); }
 .settings-save-actions { display: flex; gap: var(--space-2); margin-left: auto; }
-/* a phone's pane has less padding below (app.css), and the bar over it names the section already */
+/* 手机上面板下方的内边距较小（app.css），上方的栏已经写着分区名 */
 @media (max-width: 640px) {
   .settings-save { bottom: 0; }
   .settings-section-head h2 { display: none; }
 }
 
-/* The token (#214) and the accounts (#215). */
+/* token（#214）和账号（#215）。 */
 .settings-group .token-form { margin: var(--space-1) 0 var(--space-2); }
 .account-list { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-1) 0 var(--space-2); padding: 0; list-style: none; }
 .account-id { font-family: var(--font-mono); font-size: var(--text-xs); }
@@ -102,14 +100,14 @@
 .account-state.ok { color: var(--fg-muted); }
 .account-state.ok svg { color: var(--state-ok); }
 .account-add { max-width: none; }
-/* a path in a note (an error of the server's) wraps anywhere rather than widen the row or the card it is in (#1072) */
+/* 提示里的路径（来自服务端的报错）可以在任何位置换行，不撑宽所在的行或卡片（#1072） */
 .account-note { font-size: var(--text-xs); line-height: var(--leading-xs); overflow-wrap: anywhere; }
 .settings-group > .account-note { padding-bottom: var(--space-1); }
 .settings-group > .clear-plan { margin-bottom: var(--space-2); }
 .account-skeleton-state { flex-shrink: 0; width: 72px; margin-left: auto; }
 
-/* The cache (#213) and the WebUI versions (#406): a part or a version a line, its size or state and its button at the
-   end; a part's clear plan and the note on it take a line of their own under it (#346). */
+/* 缓存（#213）和网页版本（#406）：每部分或每个版本一行，大小或状态和按钮在行末；某部分的清理计划和它的提示在它
+   下面单独占一行（#346）。 */
 .cache-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .cache-list > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: 44px; padding: var(--space-2) 0; }
 .cache-list > li > .account-note { flex-basis: 100%; margin: 0; }
@@ -118,11 +116,11 @@
 .cache-list > li > .secondary-button { margin-left: auto; }
 .web-versions-more { align-self: flex-start; margin: var(--space-1) 0 var(--space-2); }
 
-/* Advanced (#217): the CLI's own tools, each a row that opens it in the command console. */
+/* 高级（#217）：命令行自带的工具，每个一行，在命令控制台里打开。 */
 .advanced-tools code { display: block; margin-top: 2px; color: var(--fg-subtle); }
 .advanced-tools code, .console-form code, .command-item code { font-family: var(--font-mono); font-size: var(--text-2xs); }
 .settings-group .command-console { padding: var(--space-1) 0 var(--space-2); }
-/* The command console: a searchable list of the commands by tag, and the form of the one chosen. */
+/* 命令控制台：可以搜索、按标签分组的命令列表，以及选中的命令的表单。 */
 .command-console { display: flex; flex-direction: column; gap: var(--space-3); max-width: 720px; }
 .command-list { max-height: 320px; padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--well-shadow); }
 .command-group h4 { padding: var(--space-2) var(--space-2) var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-medium); text-transform: uppercase; }
@@ -131,7 +129,7 @@
   border-radius: var(--radius-sm); color: var(--fg-muted); text-align: left;
 }
 .command-item code { flex-shrink: 0; color: var(--fg); }
-/* a row in the well of the list (styles/roles.css: in-well) */
+/* 列表凹陷里的行（styles/roles.css 的 `in-well`） */
 .command-item:hover, .command-item[aria-pressed='true'] { color: var(--fg); }
 .command-summary { flex: 1; min-width: 0; font-size: var(--text-xs); }
 .command-method { flex-shrink: 0; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); }
@@ -164,8 +162,8 @@
 .console-answer-head span { color: var(--fg-muted); }
 .console-answer.failed .console-answer-head strong { color: var(--state-danger); }
 .console-output { max-height: 360px; margin: 0; padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--well-shadow); font-family: var(--font-mono); font-size: var(--text-2xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Account setup (#216): a dialog of four steps, each a choice of options. */
-/* held at the same top, so the steps stay in place while the body under them changes height */
+/* 账号配置（#216）：分四步的对话框，每一步是一组选项。 */
+/* 顶部位置固定，下方内容的高度变化时，步骤不会移动 */
 .setup-dialog { width: min(600px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: max(24px, 12dvh) auto auto; padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
 .setup-dialog::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
 .setup-dialog[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
@@ -185,7 +183,7 @@
 }
 .setup-step:hover { color: var(--fg); }
 .setup-step[aria-current='step'] { font-weight: var(--weight-semibold); }
-/* the label keeps its gap to the number; the room its bold text needs goes on the right */
+/* 标签与编号的间距不变，加粗的文字多需要的宽度放在右边 */
 .setup-step .steady-label { align-items: flex-start; }
 .setup-step-number {
   display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
@@ -198,7 +196,7 @@
 .setup-choice {
   display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--control-lg); padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md); text-align: left;
-  /* an option (styles/roles.css); held down it shrinks as much as the small controls do */
+  /* 可选项（角色见 styles/roles.css）；按住时缩小的程度与小控件相同 */
   --press: var(--press-scale-sm);
 }
 .setup-choice-copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--text-sm); }
@@ -214,13 +212,12 @@
 .setup-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 .setup-actions.start { justify-content: flex-start; margin-top: 0; }
 
-/* The AI model API (#213): its two formats side by side, the address a question goes to, the models the service
-   lists, and what the test found. */
+/* AI 模型接口（#213）：两种接口格式并排，提问发往的地址，服务列出的模型，以及测试的结果。 */
 .ai-formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-2); padding: var(--space-1) 0 var(--space-3); }
 .ai-format {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md); text-align: left;
-  /* an option (styles/roles.css); held down it shrinks as much as the small controls do */
+  /* 可选项（角色见 styles/roles.css）；按住时缩小的程度与小控件相同 */
   --press: var(--press-scale-sm);
 }
 .ai-format-name { font-size: var(--text-sm); font-weight: var(--weight-semibold); }

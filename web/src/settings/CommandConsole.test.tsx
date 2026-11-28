@@ -15,7 +15,7 @@ function serve() {
     const headers = (init?.headers ?? {}) as Record<string, string>;
     calls.push({ method: init?.method ?? 'GET', url, body: init?.body ? JSON.parse(String(init.body)) : undefined, prefer: headers.Prefer });
     if (url === '/openapi.json') return json(DOC);
-    // `?std=in` answers the command line itself, without the `{success, data}` document
+    // `?std=in` 直接回答命令行本身，不包在 `{success, data}` 里
     if (url.includes('std=in')) return json({ argv: ['weflow', '--json', 'chat', 'messages', '--session-id', 'wxid_a'], stdin: null });
     if (url.startsWith('/chat/messages')) return json({ success: true, data: [{ localId: 1 }] }, 200, { 'X-WeFlow-Exit-Code': '0' });
     if (url.startsWith('/export/contacts')) return json({ success: true, data: { id: 'j1', status: 'queued', command: ['weflow', 'export', 'contacts'], createdAt: 0, startedAt: null, finishedAt: null, exitCode: null, httpStatus: null, progress: null } }, 202);
@@ -37,7 +37,7 @@ describe('CommandConsole', () => {
 
     fireEvent.click(within(list).getByRole('button', { name: /chat messages/ }));
     const form = screen.getByRole('form', { name: '运行 chat messages' });
-    // what is missing, then the command line it runs
+    // 先显示缺了什么，填好后显示等价的命令行
     expect(within(form).getByLabelText('等价的命令行').textContent).toBe('请填写 session-id。');
     expect((within(form).getByRole('button', { name: '运行' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(within(form).getByLabelText(/session-id/), { target: { value: 'wxid_a' } });

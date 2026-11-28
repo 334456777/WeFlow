@@ -1,6 +1,5 @@
-// The setup of an account (#216), in four steps: the WeChat data directory and its account, the database key, the
-// image keys, and a test that the database opens. Each step runs the CLI command behind it on the server and shows
-// its reason when it fails. The keys are fetched with `--save`, so the page only learns that they are set.
+// 账号的配置（#216），分四步：微信数据目录和其中的账号、数据库密钥、图片密钥，以及验证能否打开数据库。每一步都在
+// 服务端运行对应的命令，失败时显示原因。密钥用 `--save` 获取，网页只知道它们是否已设置。
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowClockwise, Check, CircleNotch, FolderOpen, Key, X } from '@phosphor-icons/react';
@@ -16,9 +15,9 @@ import { SteadyLabel } from '../Chip';
 import { findJob, removeJob, runJob, type JobsState } from '../jobs/useJobs';
 import { msg, t } from '../i18n';
 
-/** The steps of the setup, in order, their names marked with `msg()`. */
+/** 配置的各步，按顺序；名称用 `msg()` 标出。 */
 export const STEPS = [
-  // shown through t()
+  // 显示时经过 t()
   { id: 'dir', label: msg('数据库目录') }, { id: 'key', label: msg('数据库密钥') },
   { id: 'image', label: msg('图片密钥') }, { id: 'test', label: msg('验证') },
 ] as const;
@@ -27,7 +26,7 @@ type Step = typeof STEPS[number]['id'];
 const reason = (problem: unknown, fallback: string) =>
   problem instanceof ApiError && problem.message ? problem.message : fallback;
 
-/** One choice of a list: inset when chosen, like the other choices of the page. */
+/** 列表里的一个选项：选中时的样子与页面上其他可选项相同（`as-option` 角色）。 */
 function Choice({ on, onClick, children }: { on: boolean; onClick(): void; children: ReactNode }) {
   return <button type="button" className="setup-choice as-option" aria-pressed={on} onClick={onClick}>
     <span className="setup-choice-copy">{children}</span>{on && <Check size={14} weight="bold" aria-hidden="true" />}
@@ -38,7 +37,7 @@ function Note({ error, children }: { error?: boolean; children: ReactNode }) {
   return <p className={'setup-note' + (error ? ' error' : '')} role={error ? 'alert' : 'status'}>{children}</p>;
 }
 
-/** Step 1: `db detect` and `db wxid`, then `config set db_path` and `config set wxid`. */
+/** 第 1 步：`db detect` 和 `db wxid`，然后 `config set db_path` 和 `config set wxid`。 */
 function DirStep({ profile, onSaved }: { profile: Profile | undefined; onSaved(): void }) {
   const [dirs, setDirs] = useState<string[] | null>(null);
   const [root, setRoot] = useState(profile?.dbPath ?? '');
@@ -116,18 +115,18 @@ function DirStep({ profile, onSaved }: { profile: Profile | undefined; onSaved()
 interface KeyPhase { phase?: string; wasRunning?: boolean }
 
 /**
- * The `key_phase` events of a `key db` job: what the person has to do in WeChat now. A page away holds no stream
- * (#799, see presence.ts); back, the job sends the events it kept again, the latest phase last.
+ * `key db` 作业的 `key_phase` 事件：用户现在要在微信里做什么。离开的页面不保持事件流（#799，见 presence.ts）；
+ * 回来后，作业重新发送它保留的事件，最新的阶段在最后。
  */
 function useKeyPhase(id: string | null): KeyPhase | null {
   const [phase, setPhase] = useState<KeyPhase | null>(null);
   const here = useSyncExternalStore(onPresence, present);
   useEffect(() => { setPhase(null); }, [id]);
   useEffect(() => {
-    // the sample's job (#896) sends no events: it says it is getting ready until it is done
+    // 示例的作业（#896）不发事件：完成之前一直显示「正在准备…」
     if (!id || !here || typeof EventSource === 'undefined' || sampling()) return;
     const source = new EventSource(jobEventsUrl(id));
-    source.addEventListener('key_phase', event => { try { setPhase(JSON.parse((event as MessageEvent).data) as KeyPhase); } catch { /* not JSON */ } });
+    source.addEventListener('key_phase', event => { try { setPhase(JSON.parse((event as MessageEvent).data) as KeyPhase); } catch { /* 不是 JSON */ } });
     source.addEventListener('result', () => source.close());
     source.onerror = () => source.close();
     return () => source.close();
@@ -145,19 +144,18 @@ function phaseText(phase: KeyPhase | null): string {
 }
 
 /**
- * Step 2: `key db --save` as a job, or a key typed in and saved with `config set decrypt_key`. The job is looked for
- * in the shared list, as the step is left and the setup closed while it runs (#1138); `useProfiles` reads the
- * profile again once it has saved the key.
+ * 第 2 步：作为作业运行 `key db --save`，或者手动填写密钥并用 `config set decrypt_key` 保存。作业从共用的作业列表里
+ * 查找，因为它运行期间可能离开这一步、关掉配置向导（#1138）；作业保存了密钥后，由 `useProfiles` 重新读取档案。
  */
 function KeyStep({ profile, jobs, onSaved, onNext }: { profile: Profile | undefined; jobs: JobsState; onSaved(): void; onNext(): void }) {
   const [typed, setTyped] = useState('');
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
   const [starting, setStarting] = useState(false);
-  // the one that runs first, should another tab have queued one more
+  // 另一个标签页又排了一个时，用先运行的那个（列表里最新的在前，所以取最后一个）
   const job = jobs.jobs.filter(j => savedKey(j) === 'db' && !isFinished(j.status)).at(-1);
   const running = Boolean(job);
   const phase = useKeyPhase(job?.id ?? null);
-  // the job seen running, to say how it ended
+  // 看到在运行的作业，记下它，结束后说明结果
   const [watched, setWatched] = useState<string | null>(null);
   useEffect(() => { if (job) setWatched(job.id); }, [job?.id]);
   const ended = findJob(jobs, watched);
@@ -217,13 +215,13 @@ function KeyStep({ profile, jobs, onSaved, onNext }: { profile: Profile | undefi
   </>;
 }
 
-/** `key image --save` (Windows, Linux and macOS): the keys of WeChat's cache, checked against the account's images. */
+/** `key image --save`（Windows、Linux 和 macOS）：从微信的缓存取得图片密钥，并用账号的图片验证。 */
 async function fromCache(): Promise<{ text: string; error?: boolean }> {
   const saved = await saveImageKeys();
   return { text: saved.verified === false ? t('已获取图片密钥（只验证了 AES，XOR 尚未验证）。') : t('已获取图片密钥，并用本机的图片验证过。') };
 }
 
-/** Step 3: the image keys from WeChat's cache (`fromCache`); on other systems the step can only be skipped. */
+/** 第 3 步：从微信的缓存取得图片密钥（`fromCache`）；在其他系统上只能跳过这一步。 */
 function ImageStep({ profile, platform, onSaved, onNext }: {
   profile: Profile | undefined; platform: Health['platform']; onSaved(): void; onNext(): void;
 }) {
@@ -255,7 +253,7 @@ function ImageStep({ profile, platform, onSaved, onNext }: {
   </>;
 }
 
-/** Why `db test` failed, in the page's words, and the step that sets it right. */
+/** 用网页自己的话说明 `db test` 失败的原因，以及能改正它的那一步。 */
 function testFailure(problem: unknown): { text: string; back: Step } {
   const message = reason(problem, t('打不开数据库。'));
   if (problem instanceof ApiError && problem.code === 'config_error') {
@@ -266,7 +264,7 @@ function testFailure(problem: unknown): { text: string; back: Step } {
   return { text: message + ' ' + t('密钥可能与这个账号不符：重新获取数据库密钥，或者换一个账号。'), back: 'key' };
 }
 
-/** Step 4: `db test`. */
+/** 第 4 步：`db test`。 */
 function TestStep({ onDone, onBack }: { onDone(): void; onBack(step: Step): void }) {
   const [result, setResult] = useState<{ ok: boolean; text: string; back?: Step } | null>(null);
   const [round, setRound] = useState(0);
@@ -292,14 +290,14 @@ function TestStep({ onDone, onBack }: { onDone(): void; onBack(step: Step): void
   </>;
 }
 
-/** The setup of the current profile, one step at a time. */
+/** 当前档案的配置向导，一次一步。 */
 export function SetupWizard({ profile, jobs, platform, onChanged, onDone, onClose }: {
-  /** The current profile as `config profiles` last said, or undefined while it is read. */
+  /** `config profiles` 最近一次读到的当前档案；读取期间为 undefined。 */
   profile: Profile | undefined;
   jobs: JobsState;
-  /** The system of the server, from `/health`; undefined while it is checked. */
+  /** 服务端所在的系统，取自 `/health`；检查期间为 undefined。 */
   platform?: Health['platform'];
-  /** A setting was saved: read the profiles again. */
+  /** 保存了一项设置：重新读取档案。 */
   onChanged(): void;
   onDone(): void;
   onClose(): void;
@@ -307,7 +305,7 @@ export function SetupWizard({ profile, jobs, platform, onChanged, onDone, onClos
   const [step, setStep] = useState<Step>(profile?.dbPath && profile.wxid ? (profile.decryptKey ? 'image' : 'key') : 'dir');
   const index = STEPS.findIndex(s => s.id === step);
   const next = () => setStep(STEPS[Math.min(index + 1, STEPS.length - 1)].id);
-  // a step is ticked when the profile has what it sets, wherever the person is
+  // 档案里有某一步设置的内容时，这一步就打勾，不论用户在哪一步
   const done: Record<Step, boolean> = {
     dir: Boolean(profile?.dbPath && profile.wxid), key: Boolean(profile?.decryptKey), image: Boolean(profile?.imageKeys), test: false,
   };

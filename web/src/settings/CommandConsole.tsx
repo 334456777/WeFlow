@@ -1,5 +1,5 @@
-// The command console of the settings (#217): any command of `/openapi.json`, found by name or words, filled in by a
-// form made from its parameters, shown as the command line it runs, and run at once or as a job of the task centre.
+// 设置里的命令控制台（#217）：`/openapi.json` 里的任何命令，按名称或关键词查找，用按参数生成的表单填写，显示
+// 等价的命令行，可以立即运行，也可以作为任务中心的作业运行。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowClockwise, Check, CircleNotch, MagnifyingGlass, Play, Terminal } from '@phosphor-icons/react';
@@ -12,14 +12,14 @@ import { ListSkeleton } from '../Skeleton';
 import { locale, t } from '../i18n';
 
 type Values = Record<string, string | boolean>;
-/** The answer shown is cut here, so a long list does not freeze the page. */
+/** 回答最多显示这么多个字符，很长的列表也不会让页面卡住。 */
 const SHOWN_CHARS = 200_000;
 
 function initialValues(cmd: ConsoleCommand): Values {
   return Object.fromEntries(cmd.fields.map(f => [f.name, f.type === 'boolean' ? false : f.type === 'choice' && f.required ? f.options![0] : '']));
 }
 
-/** The commands whose name, summary or words hold every word of `query`. */
+/** 名称、摘要和说明合起来包含 `query` 的每个词（不区分大小写）的命令；`query` 为空时是全部命令。 */
 export function findCommands(commands: readonly ConsoleCommand[], query: string): ConsoleCommand[] {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return [...commands];
@@ -74,7 +74,7 @@ function CommandForm({ cmd }: { cmd: ConsoleCommand }) {
   const params = useMemo(() => paramsOf(cmd, values), [cmd, values]);
   const job = asJob && cmd.method === 'POST';
 
-  // the command line it runs, asked of the server as the form changes
+  // 表单变化后，停 250 毫秒再向服务端询问等价的命令行
   useEffect(() => {
     if (problems.length) { setArgv(null); return; }
     const controller = new AbortController();
@@ -135,9 +135,9 @@ function CommandForm({ cmd }: { cmd: ConsoleCommand }) {
   </form>;
 }
 
-/** The console: the command picked, its form, its command line and its answer. */
+/** 命令控制台：选中的命令、它的表单、等价的命令行和回答。 */
 export function CommandConsole({ pick, onPicked }: {
-  /** A command to open, chosen from outside (the tools above the console). */
+  /** 从外面（控制台上方的工具）选中、要打开的命令。 */
   pick: string | null;
   onPicked(): void;
 }) {

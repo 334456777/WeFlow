@@ -1,6 +1,5 @@
-// The conversations the AI insights are written for (#1078): `ai_insight_filter_mode` and `ai_insight_filter_list`,
-// chosen among the private chats. The insight engine and the insights page's 生成见解 write only for the
-// conversations these allow; with the list alone allowed and empty, they write none.
+// 为哪些会话写 AI 见解（#1078）：`ai_insight_filter_mode` 和 `ai_insight_filter_list`，从私聊中选择。
+// 见解引擎和见解页的「生成见解」只为它们允许的会话写见解；只处理名单里的会话而名单为空时，一个也不写。
 import { useEffect, useMemo, useState } from 'react';
 import { Check, MagnifyingGlass, WarningCircle } from '@phosphor-icons/react';
 import { getExcludeCandidates, type Candidate } from '../api/analytics';
@@ -10,16 +9,16 @@ import { ListSkeleton } from '../Skeleton';
 import { reason, SettingRow, SettingsGroup } from './layout';
 import { locale, msg, t } from '../i18n';
 
-/** The modes, in the order the choice lists them. */
+/** 名单的两种用法，按选项里的顺序。 */
 const MODES: { value: InsightSessionMode; label: string }[] = [
   { value: 'whitelist', label: msg('只处理选中的会话') },
   { value: 'blacklist', label: msg('选中的会话除外') },
 ];
 
-/** Beyond the chosen ones, this many are listed; the rest are found by name. */
+/** 除了保存在名单里的会话，再多列出这么多个；其余的要搜索才找得到。 */
 const LISTED = 8;
 
-/** What the list means now, in a sentence; whether it allows none. */
+/** 用一句话说明名单现在的含义，以及它是否一个会话也不允许。 */
 function summary({ mode, list }: Sessions): { text: string; none: boolean } {
   const n = list.length.toLocaleString(locale());
   if (mode === 'blacklist') return { text: list.length ? t('为选中的 {n} 个以外的所有私聊写见解。', { n }) : t('为所有私聊写见解。'), none: false };
@@ -27,8 +26,8 @@ function summary({ mode, list }: Sessions): { text: string; none: boolean } {
 }
 
 /**
- * The group of the AI settings that chooses the conversations; `value` is the form's, saved with the rest of it. Those
- * of the `saved` list come first, so that a row does not move under the pointer as it is ticked.
+ * AI 设置里选择会话的一组；`value` 属于表单，与表单的其他内容一起保存。`saved` 名单里的会话排在最前，
+ * 勾选时行不会在指针下面移动。
  */
 export function InsightSessions({ value, saved, onChange }: { value: Sessions; saved: readonly string[]; onChange(next: Sessions): void }) {
   const [people, setPeople] = useState<Candidate[] | { error: string } | null>(null);
@@ -46,7 +45,7 @@ export function InsightSessions({ value, saved, onChange }: { value: Sessions; s
   const first = useMemo(() => new Set(saved), [saved]);
   const shown = useMemo(() => {
     if (!people || 'error' in people) return [];
-    // a saved id the list does not have (a conversation gone, or typed in with config set) stays, to be removed
+    // 已保存、但候选列表里没有的用户名（会话已经不在，或者是用 config set 写入的）也列出来，以便取消
     const known = new Set(people.map(p => p.username));
     const extra: Candidate[] = saved.filter(id => !known.has(id)).map(id => ({ username: id, displayName: id, wechatId: '' }));
     const words = keyword.trim().toLowerCase();
@@ -54,7 +53,7 @@ export function InsightSessions({ value, saved, onChange }: { value: Sessions; s
       .filter(p => !words || [p.displayName, p.username, p.wechatId].some(v => v.toLowerCase().includes(words)))
       .sort((a, b) => Number(first.has(b.username)) - Number(first.has(a.username)));
   }, [people, keyword, saved, first]);
-  // the saved ones, the ones ticked since wherever they are, and a few more
+  // 已保存的、之后勾选的（不论排在哪里），再加几个
   const listed = shown.filter((p, i) => i < shown.filter(q => first.has(q.username)).length + LISTED || chosen.has(p.username));
   const toggle = (username: string, on: boolean) =>
     onChange({ ...value, list: on ? [...value.list, username] : value.list.filter(id => id !== username) });

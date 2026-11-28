@@ -1,5 +1,5 @@
-// The WebUI versions in the settings (#406): those kept on the server's machine, the published ones once asked for,
-// picking one (the page reloads into it when the server shows it at once) and removing the old ones.
+// 设置里的网页版本（#406）：服务端所在机器上保存的版本、检查更新后列出的已发布版本、选用某个版本（服务端立即显示它时
+// 网页重新载入）和清理旧版本。
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowsClockwise, CircleNotch, Trash } from '@phosphor-icons/react';
@@ -13,13 +13,16 @@ import { t } from '../i18n';
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 type Note = { text: string; error?: boolean } | null;
 
-/** A version as a row: what the machine keeps of it and what the registry says, either or both. */
+/** 一个版本的一行：本机保存的信息和发布源给出的信息，至少有其中之一。 */
 type Row = { version: string; kept?: KeptVersion; published?: PublishedVersion };
 
-/** Rows shown before the rest are asked for. */
+/** 点「显示全部」之前显示的行数。 */
 const FIRST = 6;
 
-/** The published versions in the registry's order (newest first), then those kept that it no longer lists. */
+/**
+ * 按发布源的顺序（最新的在前）列出已发布的版本，后面是本机保存、但发布源已经不列的版本；还没有检查更新时只有本机
+ * 保存的版本。
+ */
 function rows(kept: KeptVersion[], published: PublishedVersion[] | null): Row[] {
   const byVersion = new Map(kept.map(k => [k.version, k]));
   if (!published) return kept.map(k => ({ version: k.version, kept: k }));
@@ -30,13 +33,13 @@ function rows(kept: KeptVersion[], published: PublishedVersion[] | null): Row[] 
   ];
 }
 
-/** The newest published version that suits this weflow, a release before a pre-release, as `web update` picks. */
+/** 适用于这个 weflow 的最新已发布版本，正式版优先于预发布版，与 `web update` 的选法相同。 */
 function newest(published: PublishedVersion[] | null): string | null {
   const suitable = (published ?? []).filter(p => p.suits);
   return (suitable.find(p => !p.version.includes('-')) ?? suitable[0])?.version ?? null;
 }
 
-/** Why a version does not suit this weflow, in the page's language (the server's `why` is in English); null when it suits. */
+/** 用网页的语言说明这个版本为什么不适用于这个 weflow（服务端给的 `why` 是英文）；适用时为 null。 */
 function why(row: Row, health: Health): string | null {
   const suits = row.published ? row.published.suits : row.kept?.suits ?? true;
   if (suits) return null;
@@ -47,7 +50,7 @@ function why(row: Row, health: Health): string | null {
   return t('不适用于这个 weflow');
 }
 
-/** The versions kept and published, and choosing or removing them. */
+/** 本机保存的和已发布的版本，以及选用和清理它们。 */
 export function WebVersions({ health, onReload = () => window.location.reload() }: { health: Health; onReload?(): void }) {
   const [kept, setKept] = useState<KeptVersion[] | null>(null);
   const [published, setPublished] = useState<PublishedVersion[] | null>(null);
@@ -144,7 +147,7 @@ export function WebVersions({ health, onReload = () => window.location.reload() 
   </>;
 }
 
-/** The version this page is and what it needs; without the server, all there is to show. */
+/** 这个网页的版本和它需要的 API、weflow 版本；没有服务端时，能显示的只有这一项。 */
 export function VersionInUse({ children }: { children?: ReactNode }) {
   return <SettingsGroup title={t('正在使用')}>
     <SettingRow name={<span className="num">{WEB.version}</span>} text={t('需要 API {apiVersion}，weflow {minBackendVersion} 或更新的版本。', { apiVersion: WEB.apiVersion, minBackendVersion: WEB.minBackendVersion })}>{children}</SettingRow>

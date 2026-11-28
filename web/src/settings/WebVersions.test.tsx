@@ -40,7 +40,7 @@ describe('the WebUI versions (#406)', () => {
     await act(async () => {});
     expect(screen.getByText('有新的适用版本 8.0.0。')).toBeTruthy();
     const items = screen.getAllByRole('listitem').map(li => li.textContent);
-    // a release before a pre-release, as `web update` picks
+    // 正式版优先于预发布版，与 `web update` 的选法相同
     expect(items[1]).toBe('8.0.0最新 · 1.9 MB换上');
     expect(items[2]).toBe(`7.0.0需要 API 1，这个 weflow 提供 API ${WEB.apiVersion}`);
     expect(screen.queryByRole('button', { name: '换成 7.0.0' })).toBeNull();
@@ -53,7 +53,7 @@ describe('the WebUI versions (#406)', () => {
 
   it('says when the server shows another page this run, and what prune removed and left', async () => {
     serve((method, url) => {
-      // 0.0.5: a version the page itself (WEB.version) never has, so the rows stay three
+      // 0.0.5：网页自己（`WEB.version`）不可能是这个版本，所以一直是三行
       if (url === '/web/list') return ok([kept(WEB.version), kept('1.0.0'), kept('0.0.5', { suits: false, minBackendVersion: '99.0.0' })]);
       if (method === 'PUT') return ok({ version: '1.0.0', path: 'x' });
       if (url === '/ui/weflow-web.json') return json({ version: WEB.version });

@@ -1,5 +1,5 @@
-// The connection in the settings (#214): the state of weflow serve with a way to check it again, its version and
-// whether it suits this page, how it runs, and the token this tab keeps (never its value).
+// 设置里的连接（#214）：weflow serve 的状态和重新检测的按钮、它的版本和是否适用于这个网页、运行方式，以及这个
+// 标签页保存的 token（不显示它的值）。
 import { useEffect, useState } from 'react';
 import { ArrowsClockwise } from '@phosphor-icons/react';
 import type { Backend, Health } from '../api/backend';
@@ -9,7 +9,7 @@ import { TokenForm } from '../TokenForm';
 import { SettingRow, SettingsGroup } from './layout';
 import { t } from '../i18n';
 
-/** How the server runs (#214): its limits and the insight engine, when it says them. */
+/** 服务端的运行方式（#214）：同时运行的上限和见解引擎；服务端都没有给出时为 null。 */
 function serverDetail(health: Health): string | null {
   const { limits, insight } = health;
   if (!limits && insight === undefined) return null;
@@ -21,10 +21,10 @@ function serverDetail(health: Health): string | null {
   return parts.join(' · ');
 }
 
-/** The dot of each state, as the sidebar shows it. */
+/** 每种状态的圆点，与侧栏显示的一样。 */
 const DOTS: Record<Backend['state'], string> = { checking: 'exporting', ready: 'done', offline: '', incompatible: 'error', unauthorized: 'error' };
 
-/** The connection's state, the server's version and options, and the token. */
+/** 连接状态、服务端的版本和选项，以及 token。 */
 export function ConnectionSettings({ backend, recheck }: { backend: Backend; recheck(): void }) {
   const [tokenSaved, setTokenSaved] = useState(() => Boolean(token()));
   useEffect(() => onAuth(event => { if (event === 'token') setTokenSaved(Boolean(token())); }), []);
@@ -32,7 +32,7 @@ export function ConnectionSettings({ backend, recheck }: { backend: Backend; rec
   const running = health && serverDetail(health);
   return <>
     <SettingsGroup title="weflow serve" actions={<button className="secondary-button" type="button" onClick={recheck}><ArrowsClockwise size={12} />{t('重新检测')}</button>}>
-      {/* the state, then the version once the server said it, else what the state means */}
+      {/* 先是状态；服务端给出版本后显示版本，否则显示状态的含义 */}
       <SettingRow name={<span className="settings-state"><span className={'status-dot ' + DOTS[backend.state]} aria-hidden="true" />{backendLabel(backend)}</span>}
         text={health ? <>weflow {health.version} · API {health.apiVersion}</> : backendDetail(backend)}>
         {health && <span className={'source-name' + (backend.state === 'incompatible' ? ' warning' : '')}>{backend.state === 'incompatible' ? t('不适用于这个网页') : t('适用于这个网页')}</span>}
