@@ -20,6 +20,10 @@ description: 新增、修改或删除 weflow 的 CLI 子命令和参数时要一
 ## serve
 
 - 每个命令在 [`serve_api/rules.rs`](../../../crates/weflow-cli/src/serve_api/rules.rs) 的 `METHODS` 里有一个 HTTP 方法：读用 `GET`，运行任务或写文件用 `POST`，改设置用 `PUT`，删除用 `DELETE`。方法随参数变化时用 `Rule::Arg` 或 `Rule::Value`。
+- 下面三张表由人登记，漏登记时命令照样能运行，只是在 serve 下行为不对：
+  - 只写出一个文件的命令加进 [`serve_api/files.rs`](../../../crates/weflow-cli/src/serve_api/files.rs) 的 `FILE_COMMANDS`，`?return=file` 才能把文件带回：写明请求不给 `--out` 时用的名字（空字符串表示命令自己在文件夹里起名）和结果里存放写出路径的字段（`None` 表示就是 `--out`）。命令要有 `out` 参数，`file_commands_write_to_out` 检查；某些参数组合会写出文件夹时（`export messages` 的多个格式），在同一文件的 `not_one_file` 里提前拒绝。
+  - 在微信里下钩子的命令（`key db`、`image auto-download start`）被直接终止会把钩子留在微信里：加进 [`serve_api/child.rs`](../../../crates/weflow-cli/src/serve_api/child.rs) 的 `ends_by_itself`，serve 不终止它，而是关闭它的 stdin。命令在设了 `CANCEL_ON_STDIN` 时把 stdin 结束当作停止请求，先撤钩子再退出：一直运行的命令用 `stop::requested`，`key db` 用 `commands/key.rs` 的 `interrupt_when_stdin_ends`。见 Wiki [服务端实现#子进程路由](https://github.com/334456777/WeFlow/wiki/服务端实现#子进程路由)。
+  - 回答服务进程自己持有的状态的命令（运行中的钩子、见解引擎的计数）在子进程里只能读到子进程自己的空状态：加进 `rules.rs` 的 `OWN_STATE`，并在 `serve_api.rs` 的 `own_state` 里回答，`own_state_answers_the_commands_declared`、`own_state_names_real_commands` 检查两边一致。见 Wiki [服务端实现#服务进程自己回答的命令](https://github.com/334456777/WeFlow/wiki/服务端实现#服务进程自己回答的命令)。
 - 会写微信数据库的操作不做成命令：数据库层只读，见 Wiki [不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能#不提供的写操作)。
 - 网页经常读的命令可以进入 `/api/` 进程内路由，判断标准见 Wiki [服务端实现#哪些读取进入进程内](https://github.com/334456777/WeFlow/wiki/服务端实现#哪些读取进入进程内)。要进入时改四处：
   1. `weflow-core/src/reads.rs` 的 `Read` 加一个成员，并实现它的读取；
@@ -54,6 +58,7 @@ description: 新增、修改或删除 weflow 的 CLI 子命令和参数时要一
 | 测试 | 检查什么 |
 |---|---|
 | `every_command_has_a_method` | 每个命令在 `METHODS` 里都有方法 |
+| `file_commands_write_to_out`、`own_state_names_real_commands`、`own_state_answers_the_commands_declared` | `FILE_COMMANDS` 的命令都有 `out` 参数；`OWN_STATE` 的命令都存在，且 `own_state` 都回答了 |
 | `every_command_and_argument_has_help` | 每个命令和参数都有 `///` |
 | `all_help_text_is_translated`、`every_translation_is_used` | `help_zh.rs` 没有缺项，也没有用不上的项 |
 | `the_list_matches_the_cli`、`typed_reads_take_what_clap_takes_and_read_it_the_same` | 进程内路由与 `read_of` 一致，参数读法与 clap 相同 |
