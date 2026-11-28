@@ -20,7 +20,9 @@ const IMAGE: i64 = 3;
 const VIDEO: i64 = 43;
 const EMOJI: i64 = 47;
 const CALL: i64 = 50;
-/// `(2000 << 32) | 49` and `(2001 << 32) | 49`: transfer and red-packet app messages.
+/// `(2000 << 32) | 49` and `(2001 << 32) | 49`: transfer and red-packet app messages, as WeChat 4 keeps them. The
+/// statistics read the local type only, never the content, so an app message kept as 49 with its `<type>` only in its
+/// XML counts as a 49, not as a transfer or a red packet (#1263).
 const TRANSFER: i64 = 8_589_934_592_049;
 const RED_PACKET: i64 = 8_594_229_559_345;
 
@@ -1131,6 +1133,54 @@ mod tests {
             )
             .unwrap();
         assert_eq!(ranged["wxid_bob"]["total_messages"], 2);
+    }
+
+    /// A transfer and a red packet are counted by their local type, `(<type> << 32) | 49` as WeChat 4 keeps them; one
+    /// kept as 49 with its `<type>` only in its XML counts among the messages, not as a transfer or a red packet
+    /// (#1263).
+    #[test]
+    fn transfers_and_red_packets_are_counted_by_their_local_type() {
+        use crate::fixture::{MsgSpec, SessionSpec};
+        let root = TestDir::new("weflow-stats-app-kinds");
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        f.session_db(&[SessionSpec {
+            username: "wxid_pal",
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        let app = |id, ty: i64| {
+            let xml = format!("<msg><appmsg><title>t</title><type>{ty}</type></appmsg></msg>");
+            MsgSpec::text(id, "wxid_pal", T0 + id, &xml)
+        };
+        f.message_shard(
+            0,
+            &[(
+                "wxid_pal",
+                vec![
+                    app(1, 2000).of_type(TRANSFER),
+                    app(2, 2001).of_type(RED_PACKET),
+                    app(3, 2000).of_type(49),
+                    app(4, 2001).of_type(49),
+                ],
+            )],
+        );
+        let a = Account::new(f.db_storage(), &f.key_hex())
+            .unwrap()
+            .with_my_wxid(Some("wxid_me_ab12".into()));
+        let v = a
+            .session_message_type_stats_batch(&ids(&["wxid_pal"]), &json!({}))
+            .unwrap();
+        let pal = &v["wxid_pal"];
+        assert_eq!(
+            (
+                pal["total_messages"].as_i64(),
+                pal["transfer_messages"].as_i64(),
+                pal["red_packet_messages"].as_i64()
+            ),
+            (Some(4), Some(1), Some(1))
+        );
     }
 
     #[test]

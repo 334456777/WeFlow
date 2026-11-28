@@ -22,7 +22,9 @@ use crate::quote::{reply_text, QUOTE};
 const GAP: i64 = 3600;
 /// Replies slower than this are not counted as replies.
 const MAX_RESPONSE: i64 = 86_400;
-/// A text message; with [`QUOTE`], the kinds whose text is typed and can be a phrase ([`typed_text`]).
+/// A text message; with [`QUOTE`], the kinds whose text is typed and can be a phrase ([`typed_text`]). A reply is one
+/// only as WeChat 4 keeps it, `(57 << 32) | 49`: the reports read the local type, so a reply kept as 49 with its `<type>`
+/// only in its XML is not (#1263).
 const TEXT: i64 = 1;
 const IMAGE: i64 = 3;
 const VOICE: i64 = 34;
