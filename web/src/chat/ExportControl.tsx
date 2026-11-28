@@ -1,15 +1,15 @@
-// The export button of the open conversation's console card (#211), and where its job stands.
+// 操作控制台里当前会话的导出卡片上的导出按钮（#211），以及按导出作业得出的阶段。
 import { ArrowClockwise, CircleNotch, DownloadSimple, X } from '@phosphor-icons/react';
 import type { Job } from '../api/jobs';
 import type { ExportResult } from '../types';
 import { t } from '../i18n';
 
-/** Where an export stands. */
+/** 导出的阶段。 */
 export type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
 
 /**
- * The export button; while exporting it grows a cancel button, when done it offers the file and another run. Without
- * a format (`ready` false) it cannot be pressed and asks for one (#353).
+ * 导出按钮：导出期间旁边伸出取消按钮；完成后变成下载文件的链接，旁边的按钮再导出一次。没有选择格式（`ready` 为
+ * false）时不能点击，按钮上提示选择格式（#353）。
  */
 export function ExportControl({ stage, result, ready, onStart, onCancel }: {
   stage: ExportStage; result: ExportResult | null; ready: boolean; onStart: () => void; onCancel: () => void;
@@ -31,7 +31,7 @@ export function ExportControl({ stage, result, ready, onStart, onCancel }: {
   </div>;
 }
 
-/** Where the export of the card stands, from its job. */
+/** 按卡片的导出作业得出导出的阶段：作业取消后回到 `idle`；没有作业时，有错误为 `error`，否则为 `idle`。 */
 export function stageOf(job: Job | undefined, error: string): ExportStage {
   if (!job) return error ? 'error' : 'idle';
   if (job.status === 'queued' || job.status === 'running') return 'exporting';

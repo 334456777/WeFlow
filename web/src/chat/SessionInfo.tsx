@@ -1,5 +1,5 @@
-// The console's 「会话资料」 for real conversations (#200): who it is, how many messages, the first and the latest;
-// in a group its members, searchable, each with what they said in it.
+// 操作控制台的「会话资料」卡片（#200）：对方是谁、消息总数、首条和最新消息的时间；群聊还列出可以搜索的群成员，
+// 点开一个成员可以看他在群里的发言统计。
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowClockwise, Crown, MagnifyingGlass, UserCheck } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
@@ -20,7 +20,7 @@ const errorOf = (problem: unknown, fallback: string) => (problem instanceof ApiE
 const when = (seconds: number | null | undefined) =>
   seconds ? new Date(seconds * 1000).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
-/** Reads `load` for `key`, again on `refresh`; the previous value stays shown while a refresh reads. */
+/** 按 `key` 读取 `load`（为 null 时不读），调用返回的函数时重读；重读期间和重读失败时继续显示之前的值。 */
 function useLoaded<T>(key: string | null, load: (signal: AbortSignal) => Promise<T>, fallback: string): [Loaded<T>, () => void] {
   const [state, setState] = useState<{ key: string | null; loaded: Loaded<T> }>({ key, loaded: { status: 'loading' } });
   const [round, setRound] = useState(0);
@@ -33,19 +33,19 @@ function useLoaded<T>(key: string | null, load: (signal: AbortSignal) => Promise
       problem => { if (!controller.signal.aborted) setState(old => (old.key === key && old.loaded.status === 'ready' ? old : { key, loaded: { status: 'error', message: errorOf(problem, fallback) } })); },
     );
     return () => controller.abort();
-    // `load` is a new function each render; `key` and `round` say when to read
+    // `load` 每次渲染都是新的函数，何时读取由 `key` 和 `round` 决定
   }, [key, round]);
   return [state.key === key ? state.loaded : { status: 'loading' }, () => setRound(n => n + 1)];
 }
 
-/** Reads only while `active` (its card open): the first and latest times and the members are a command each. */
+/** 会话资料，只在 `active`（卡片展开）时读取：首条和最新消息的时间每次都要启动一个命令（`chat detail --extra`）。 */
 export function SessionInfo({ session, active = true }: { session: ChatSession; active?: boolean }) {
   const id = session.username;
   const kind = kindOf(id);
   const key = active ? id : null;
   const [detail, refreshDetail] = useLoaded<SessionDetail>(key, signal => getDetail(id, signal), t('读取会话资料失败'));
   const [extra, refreshExtra] = useLoaded<SessionDetailExtra>(key, signal => getDetailExtra(id, signal), t('读取首条和最新消息的时间失败'));
-  // a new message changes the count and the latest time (#201); the times are a command, read once for a burst
+  // 新消息会改变消息总数和最新消息的时间（#201）；时间要启动命令读取，连续的消息只读一次
   const refresh = useGathered(() => { refreshDetail(); refreshExtra(); });
   useLive(event => {
     if (event.type === 'resumed' || event.sessionId === id) refresh();
@@ -53,7 +53,7 @@ export function SessionInfo({ session, active = true }: { session: ChatSession; 
 
   const fact = detail.status === 'ready' ? detail.value : null;
   const name = fact?.remark || fact?.displayName || session.displayName || id;
-  // a fact still on its way keeps the place of its value (#282)
+  // 还没读到的项先用占位占住值的位置（#282）
   const pending = <span className="skeleton line value" role="img" aria-label={t('正在读取')} />;
   return <>
     <div className="info-content"><Avatar name={name} url={fact?.avatarUrl || session.avatarUrl} /><div>
@@ -77,8 +77,7 @@ const MEMBER_ROW = 52;
 const memberName = (m: GroupMember) => m.groupNickname || m.remark || m.displayName || m.nickname || m.username;
 
 function Members({ chatroomId, active }: { chatroomId: string; active: boolean }) {
-  // shared with the names of the group's messages (`getMembers`): read again on opening the card after the group had a
-  // live message; a failure is not kept, so a retry reads again
+  // 与群消息上的名字共用（`getMembers`）：群里来过实时消息后，再展开卡片时重新读取；失败的结果不保留，重试时会重新读取
   const [members, reload] = useLoaded<GroupMember[]>(active ? chatroomId : null, () => getMembers(chatroomId), t('读取群成员失败'));
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState<GroupMember | null>(null);
@@ -116,7 +115,7 @@ function MemberDetail({ chatroomId, member, active, onBack }: { chatroomId: stri
   const [stats, reload] = useLoaded<MemberStats>(active ? chatroomId + '\n' + member.username : null, signal => getMemberStats(chatroomId, member.username, signal), t('读取成员统计失败'));
   const name = memberName(member);
   const s = stats.status === 'ready' ? stats.value.statistics : null;
-  // the hour of day they write most in
+  // 发言最多的钟点
   const busiest = stats.status === 'ready'
     ? Object.entries(stats.value.timeDistribution).reduce<[string, number] | null>((best, entry) => (!best || entry[1] > best[1] ? entry : best), null)
     : null;

@@ -1,12 +1,11 @@
-/* The chat page: the messages with their pictures, voices and cards, the search, and a conversation's details and
-   media. */
+/* 聊天页：消息和其中的图片、语音、卡片，搜索，以及会话资料和媒体文件。 */
 @layer pages {
 .conversation-foot { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .conversation-foot .conversation-preview { flex: 1; min-width: 0; }
 .muted-icon { color: var(--fg-subtle); }
-/* a conversation pinned in WeChat (#885), beside its name */
+/* 在微信里置顶的会话（#885），图标在名字旁边 */
 .pinned-icon { flex: none; margin-right: var(--space-1); color: var(--fg-subtle); }
-/* Unread messages: a small count, or only a dot for a muted conversation. Not a status colour. */
+/* 未读消息：显示小的计数，免打扰的会话只显示圆点。不用状态色。 */
 .unread-count {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; flex-shrink: 0;
   border-radius: var(--radius-full); background: var(--badge-bg); box-shadow: var(--badge-shadow);
@@ -21,7 +20,7 @@
 .biz-head p { display: flex; align-items: center; gap: var(--space-1); color: var(--fg-subtle); font-size: var(--text-xs); }
 .biz-push { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-lg); background: var(--card-bg); box-shadow: var(--card-shadow); }
 .biz-push-time { align-self: center; padding: var(--space-1) 0; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
-/* an article with a link is a row to open (styles/roles.css) */
+/* 有链接的文章是可以打开的列表行（角色见 styles/roles.css） */
 .biz-lead, .biz-item { display: flex; border-radius: var(--radius-md); color: inherit; text-decoration: none; }
 .biz-lead { flex-direction: column; gap: var(--space-1); padding: var(--space-1) var(--space-1) var(--space-2); }
 .biz-lead-cover { width: 100%; aspect-ratio: 2.35 / 1; object-fit: cover; border-radius: var(--radius-md); }
@@ -38,13 +37,13 @@
   background: var(--bubble-bg); box-shadow: var(--bubble-shadow); font-size: var(--text-md); line-height: var(--leading-md);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
-/* Received messages and sent ones look different: told apart without their side. */
+/* 收到的和发出的消息样子不同：不看左右位置也能分辨。 */
 .outgoing .message-bubble { background: var(--bubble-bg-own); box-shadow: var(--bubble-shadow-own); }
 .message-time { flex-shrink: 0; padding-bottom: 2px; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
-/* A photo sits in a frame drawn as a message: a received one's or a sent one's. */
+/* 图片放在画成消息气泡的框里，分收到的和发出的两种。 */
 .photo-button { display: block; max-width: calc(100% - 48px); padding: var(--space-1); border-radius: var(--radius-xl); background: var(--bubble-bg); box-shadow: var(--bubble-shadow); }
 .outgoing .photo-button { background: var(--bubble-bg-own); box-shadow: var(--bubble-shadow-own); }
-/* held down, a sent one takes its pressed look, as what is selected does (#253) */
+/* 按住发出的图片时显示它按下的样子，与选中的元素一样（#253） */
 .outgoing .photo-button:active { box-shadow: var(--bubble-shadow-own-pressed); }
 .highlighted :is(.message-bubble, .photo-button, .emoji-sticker, .system-message) { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 .file-bubble { display: flex; align-items: center; gap: var(--space-3); text-align: left; }
@@ -55,8 +54,8 @@
   color: var(--fg-subtle); font-size: var(--text-2xs);
 }
 /*
- * Left in the past by a jump (#199): newer messages load below, and a button floats at the bottom to go back to the
- * newest ones, drawn as a main one.
+ * 跳转到过去的位置后（#199）：下方加载更新的消息，底部浮着回到最新消息的按钮，用 `as-button` 画成按钮的角色
+ * （与主要按钮相同的底色和阴影）。
  */
 .latest-bar { position: sticky; bottom: var(--space-3); z-index: 2; display: flex; justify-content: center; margin-top: var(--space-2); pointer-events: none; }
 .latest-bar .secondary-button { pointer-events: auto; }
@@ -71,7 +70,7 @@
 
 .system-message { max-width: 80%; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); text-align: center; overflow-wrap: anywhere; }
 
-/* Pictures and videos: WeChat's thumbnail at its own shape, within 240px; an empty frame while it loads. */
+/* 图片和视频：按微信缩略图本身的形状显示，不超过 240px；加载时是一个空框。 */
 .message-thumb { display: block; max-width: 240px; max-height: 240px; min-width: 48px; min-height: 48px; object-fit: cover; border-radius: var(--radius-md); }
 .message-thumb.loading { width: 160px; height: 120px; }
 .video-button { position: relative; }
@@ -80,16 +79,16 @@
   display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1);
   min-width: 120px; min-height: 80px; color: var(--fg-subtle); font-size: var(--text-2xs);
 }
-/* a video that plays without its thumbnail: the play button in place of the warning, above the words */
+/* 能播放但没有缩略图的视频：播放按钮代替警告图标，放在文字上方 */
 .media-missing .play-badge { position: static; width: 32px; height: 32px; margin: 0; flex: none; }
 .emoji-sticker img { display: block; max-width: 120px; max-height: 120px; }
 
-/* Voice: a button whose length follows the duration, with a row of bars (app.css) that pulse while it plays. */
+/* 语音：按钮的长度随时长变化（MessageMedia.tsx），里面的一排竖条（app.css）在播放时跳动。 */
 .voice-bubble { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 72px; color: var(--fg); font-size: var(--text-sm); text-align: left; }
 
 .voice-bubble.error { color: var(--fg-muted); }
 
-/* Cards: links, Channels posts, files, chat records, contacts, places, red packets and transfers. */
+/* 卡片：链接、视频号、文件、聊天记录、名片、位置、红包和转账。 */
 .card-bubble { display: flex; flex-direction: column; gap: var(--space-1); width: min(280px, 100%); color: inherit; text-decoration: none; font-size: var(--text-sm); }
 a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underline-offset: 3px; }
 .card-bubble-title { display: flex; align-items: flex-start; gap: var(--space-1); font-weight: var(--weight-semibold); }
@@ -112,19 +111,19 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .quote-bubble { display: flex; flex-direction: column; gap: var(--space-1); }
 .quote-block { padding: 2px var(--space-2); border-radius: var(--radius-sm); box-shadow: var(--well-shadow-shallow); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); white-space: normal; }
 
-/* The export button stretches into a control group (#50): progress and cancel, then download and again. */
+/* 导出按钮伸展成一组控件（#50）：导出中是进度和取消，完成后是下载和再次导出。 */
 .export-control { display: flex; width: 240px; max-width: 100%; margin-top: var(--space-4); }
 .export-control > .primary-button { flex: 1; min-width: 0; overflow: hidden; }
 .export-side {
   width: 0; margin-left: 0; opacity: 0; overflow: hidden; flex-shrink: 0;
   height: var(--control-lg); border-radius: var(--radius-full); color: var(--fg);
   display: inline-flex; align-items: center; justify-content: center;
-  /* a button (styles/roles.css) that also grows out of the export button and fades in */
+  /* 按钮的过渡（角色见 styles/roles.css），另加从导出按钮里伸出和淡入 */
   --transition: width var(--duration-panel) var(--ease-snap), margin-left var(--duration-panel) var(--ease-snap),
     opacity var(--duration-base) var(--ease-out), box-shadow var(--duration-hover) var(--ease-out), scale var(--duration-micro) var(--ease-out);
 }
 .export-control.expanded .export-side { width: var(--control-lg); margin-left: var(--space-3); opacity: 1; }
-/* in a narrow card, as wide as the card (#254) */
+/* 卡片较窄时与卡片同宽（#254） */
 @container (max-width: 340px) {
   .export-control { width: 100%; }
 }
@@ -137,12 +136,12 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .results-count span { margin-left: var(--space-3); color: var(--fg-subtle); }
 
 .search-result-copy { display: flex; flex: 1; align-items: baseline; gap: var(--space-3); min-width: 0; }
-/* on a phone a hit wraps (app.css) and its text fills the line beside the icon */
+/* 手机上结果会换行（app.css），文字占满图标旁的一行 */
 @media (max-width: 640px) {
   .search-result-copy { flex-basis: calc(100% - 40px); }
 }
 
-/* Hits of all conversations: the conversation (and sender) above the text, so long names keep the text aligned. */
+/* 全部会话的结果：会话名（和发送者）放在文字上方，名字很长时文字仍然对齐。 */
 .search-result-copy strong { flex-shrink: 0; max-width: 40%; color: var(--fg-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); }
 .search-result-copy.stacked { flex-direction: column; align-items: stretch; gap: 2px; }
 .search-result-copy.stacked strong { max-width: none; }
@@ -151,7 +150,7 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 
 .search-result-copy > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }
 
-/* Conversation details and media. */
+/* 会话资料和媒体文件。 */
 .info-content { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .info-content h4 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .info-content p { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
@@ -178,7 +177,7 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .media-item > .media-icon { display: grid; flex: 0 0 72px; width: 72px; height: 48px; place-items: center; border-radius: var(--radius-xs); box-shadow: var(--well-shadow); }
 .media-more { justify-self: start; }
 
-/* Media rows are rows like the other lists'; the list's hover hollow (HoverTrack.tsx) lies under the one hovered. */
+/* 媒体文件的行与其他列表的行一样；列表的悬停凹陷（HoverTrack.tsx）垫在悬停的那一行下面。 */
 .media-item {
   display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-2);
   border-radius: var(--radius-xl); color: var(--fg-subtle); text-align: left;

@@ -31,7 +31,7 @@ describe('SessionList', () => {
     render(<Harness />);
     expect(names()).toEqual(['林沐', '折叠的群聊', '陈屿']);
     expect(screen.getByLabelText('200 条未读').textContent).toBe('99+');
-    // The folded groups only show that something is unread.
+    // 折叠的群聊只用圆点表示有未读，不显示条数。
     expect(screen.getByLabelText('120 条未读').className).toBe('unread-dot');
     expect(screen.getByLabelText('免打扰')).toBeTruthy();
   });

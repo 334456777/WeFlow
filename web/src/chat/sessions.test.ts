@@ -71,7 +71,7 @@ describe('sessionRows', () => {
   });
 
   it('shows the time of the last message, and lists by where WeChat puts the conversation (#894)', () => {
-    // Pinning or unpinning moves sortTimestamp to that moment and leaves lastTimestamp at the last message.
+    // 置顶或取消置顶把 `sortTimestamp` 改成操作的时刻，`lastTimestamp` 仍是最后一条消息的时间。
     const moved = [
       session('wxid_b', '陈屿', 600, { lastTimestamp: 100 }),
       session('g1@chatroom', '家人群', 550, { lastTimestamp: 150 }),

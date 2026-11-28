@@ -1,5 +1,5 @@
-// The console's 「媒体文件」 for real conversations (#200): its images, videos and files, newest first, a page at a
-// time (`chat resources`); one opens its conversation at the message (as a search hit does).
+// 操作控制台的「媒体文件」卡片（#200）：会话里的图片、视频和文件，最新的在前，一次读一页（`chat resources`）；
+// 点一项就打开会话并定位到那条消息（与搜索结果一样）。
 import { useEffect, useRef, useState } from 'react';
 import { ArrowSquareOut, CircleNotch, FileText, VideoCamera } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
@@ -38,9 +38,8 @@ function unseen(items: readonly Resource[], shown: readonly Resource[]): Resourc
 }
 
 /**
- * The first page, read again for a new message or on reopening the card: it takes the place of what it covers
- * (so a recalled message goes), and the older pages already shown stay, so a new message does not take the list
- * back to its first page.
+ * 合并有新消息或重新展开卡片时重读的第一页：它取代自己覆盖的那一段（撤回的消息随之消失），已经显示的更早的页留下，
+ * 因此来了新消息时列表不会退回第一页。换了筛选或这一页不满一页时，只显示这一页。
  */
 function withFirstPage(old: State, filter: number, page: ResourcePage): State {
   const oldest = page.items.at(-1);
@@ -53,7 +52,7 @@ function withFirstPage(old: State, filter: number, page: ResourcePage): State {
 
 const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString(locale(), { year: 'numeric', month: 'numeric', day: 'numeric' });
 
-/** One conversation's media, read while `active` (its card open): give it a `key` per conversation. */
+/** 一个会话的媒体，`active`（卡片展开）时才读取；每个会话要给它不同的 `key`。 */
 export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: string; active?: boolean; onOpen: (item: Resource) => void }) {
   const [filter, setFilter] = useState(0);
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -65,7 +64,7 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     if (!active) return;
     const controller = new AbortController();
     request.current = controller;
-    // read again for the same filter: what is shown stays meanwhile
+    // 同一个筛选重读时，这期间保留已显示的内容
     setState(old => (old.status === 'ready' && old.filter === filter ? old : { status: 'loading' }));
     getResources(sessionId, FILTERS[filter].types, null, controller.signal).then(
       page => { if (!controller.signal.aborted) setState(old => withFirstPage(old, filter, page)); },
@@ -74,7 +73,7 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     return () => controller.abort();
   }, [sessionId, filter, round, active]);
 
-  // a picture or a file sent now shows at the top (#201); a burst of messages reads once, as each read is a command
+  // 刚发的图片或文件出现在最上面（#201）；连续的消息合并成一次读取
   const refresh = useGathered(() => setRound(n => n + 1));
   useLive(event => {
     if (event.type === 'resumed' || event.sessionId === sessionId) refresh();
@@ -85,7 +84,7 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     if (!active || signal?.aborted || state.status !== 'ready' || state.more || !state.next) return;
     const shown = state.items;
     setState({ ...state, more: true, error: undefined });
-    // the page after the last one shown, from its cursor: messages sent meanwhile do not move it (#178)
+    // 从最后显示的一页的游标接着读下一页：这期间发来的消息不会让它错位（#178）
     getResources(sessionId, types, state.next, signal).then(
       page => { if (!signal?.aborted) setState(old => (old.status === 'ready' && old.items === shown
         ? { ...old, items: [...shown, ...unseen(page.items, shown)], next: page.nextCursor, more: false }

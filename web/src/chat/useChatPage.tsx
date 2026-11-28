@@ -1,7 +1,6 @@
-// The chat page (#196): the conversation list, the messages of the one open, and its cards in the console: export
-// (#211), search (#199), details and media (#200). The records are the server's, or the sample's while no server has
-// answered (#879), read and shown the same way; once a server was connected, what was read from it stays while it is
-// gone.
+// 聊天页（#196）：会话列表、打开的会话的消息，以及它在操作控制台里的卡片：导出（#211）、搜索（#199）、会话资料和
+// 媒体文件（#200）。记录来自服务端，没有服务端回答时来自示例服务端（#879），读取和显示的方式相同；连上过的服务端
+// 断开后，继续显示从它读到的记录。
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { DownloadSimple } from '@phosphor-icons/react';
@@ -35,35 +34,35 @@ import type { SessionsState } from '../useSessions';
 import { t } from '../i18n';
 import './chat.css';
 
-// Until /health has answered, no records: neither the sample nor a server's flashes up before the other.
+// `/health` 回答之前不显示任何记录，免得示例的记录和服务端的记录先后闪现。
 const CHECKING: SessionsState = { status: 'loading' };
 
-/** The chat page, and what the other pages may ask of it. */
+/** 聊天页，以及其他页面可以调用的操作。 */
 export interface ChatPage extends Page {
   view: ReactNode;
-  /** Its cards, the export first; the console puts the task centre after it. */
+  /** 页面的卡片，导出在最前；操作控制台把任务中心放在它后面。 */
   cards: Card[];
   shown: string[];
-  /** Opens a conversation, from another page. */
+  /** 从其他页面打开一个会话。 */
   open(username: string): void;
-  /** Opens a conversation at a message, from another page. */
+  /** 从其他页面打开一个会话并定位到某条消息。 */
   openAt: OpenAt;
   /**
-   * Another page is opened: the message a jump looks up is let go of (#415); `reset`, unless only the settings are
-   * opened, also lets go of the export's job (it goes on in the task centre).
+   * 打开了其他页面：放弃跳转正在查找的消息（#415）。`reset` 为 true 时（只打开设置时为 false），导出卡片也放开它的
+   * 作业，作业在任务中心继续运行。
    */
   leave(reset: boolean): void;
 }
 
-/** The chat page's state: the open conversation, its messages, the search and the export. */
+/** 聊天页的状态：打开的会话、它的消息、搜索和导出。 */
 export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
   const { backend, records, sample, scope, sessionList, setMobileDetail, openPreview, toast } = shell;
   const { media: mediaKinds, setMedia: setMediaKinds, reducedMotion } = prefs;
   const includeMedia = mediaKinds.length > 0;
-  // the days of an export: all of them unless chosen
+  // 导出的日期范围：不选就是全部
   const [range, setRange] = useState({ from: '', to: '' });
   const [formats, setFormats] = useState<MessageFormat[]>(['html']);
-  // the job of the export card (#211): it runs on the server, in the task centre
+  // 导出卡片的作业（#211）：在服务端运行，列在任务中心
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportError, setExportError] = useState('');
   const paneRef = useRef<HTMLDivElement>(null);
@@ -72,16 +71,16 @@ export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
   const exportResult: ExportResult | null = exportJob?.status === 'succeeded' && exportJob.file
     ? { fileName: exportJob.file.name ?? '', count: 0, downloadUrl: jobFileUrl(exportJob.id) } : null;
   const [openId, setOpenId] = useState<string | null>(null);
-  // the message a jump looks up (#200, #209): let go of when another page, conversation or account is opened (#415)
+  // 跳转正在查找的消息（#200、#209）：打开其他页面、会话或账号时放弃（#415）
   const mediaLookup = useRef<AbortController | null>(null);
   useEffect(() => () => { mediaLookup.current?.abort(); }, [scope]);
-  // the official accounts followed without a conversation, once the 「公众号」 filter is first chosen (#203)
+  // 关注了但没有会话的公众号，第一次选中「公众号」筛选后才读取（#203）
   const [officialsWanted, setOfficialsWanted] = useState(false);
   const officials = useBizAccounts(records && officialsWanted, scope);
   const session = sessionList.find(s => s.username === openId) ?? officials.find(s => s.username === openId);
   const name = session ? session.displayName || session.username : '';
   const search = useSearch();
-  // A day picked or a search hit opened: its conversation shows the messages there (#199).
+  // 选了某一天或打开了某个搜索结果：它的会话显示那个位置的消息（#199）。
   const [jumpTo, setJumpTo] = useState<Jump | null>(null);
   const jumps = useRef(0);
   const { clear: clearSearch } = search;
@@ -94,11 +93,11 @@ export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
     if (!session && sessionList.length) setOpenId(sessionList[0].username);
   }, [session, sessionList]);
 
-  // another conversation or other options: the card lets go of its job, which goes on in the task centre
+  // 换了会话或导出选项：卡片放开它的作业，作业在任务中心继续运行
   const resetExport = () => { setExportJobId(null); setExportError(''); };
 
-  // another conversation opened, here or from another page: a search of the one left behind is over, as its hits are
-  // not of the conversation the card names; one of all conversations still holds
+  // 在这里或从其他页面打开了另一个会话：只搜了离开的那个会话的搜索就此清掉，因为它的结果不属于卡片上写的会话；
+  // 搜全部会话的搜索保留
   const openConversation = (id: string) => {
     setOpenId(id);
     const searched = search.state.query?.sessionId;
@@ -111,7 +110,7 @@ export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
     setMobileDetail(true); resetExport();
   };
 
-  // On a phone the console is below the messages: after a jump, the page goes up to them.
+  // 手机上操作控制台在消息下方：跳转后页面滚回消息区。
   const showMessages = () => {
     setMobileDetail(true);
     if (!window.matchMedia?.('(max-width: 640px)').matches) return;
@@ -125,8 +124,7 @@ export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
     showMessages();
   };
 
-  // a picture, video or file of the media card (#200), or a chat or mention of another page: its conversation opens
-  // at the message
+  // 媒体文件卡片里的图片、视频或文件（#200），或者其他页面列出的聊天和被 @ 的消息：打开它的会话并定位到那条消息
   const openMedia = (sessionId: string, item: Resource) => openMessage(sessionId, item.localId, item.createTime);
   const openMessage = async (sessionId: string, localId: number, createTime: number) => {
     mediaLookup.current?.abort();
@@ -203,7 +201,7 @@ export function useChatPage(shell: Shell, prefs: Preferences): ChatPage {
       content: (open: boolean) => session ? <MediaPanel key={scope + ':' + session.username} sessionId={session.username} active={open} onOpen={item => openMedia(session.username, item)} /> : null,
     },
   ];
-  // nothing to show of a conversation until one is open
+  // 打开会话之前，会话资料和媒体文件没有内容可显示
   const shown = ['export', 'tasks', 'search', 'info', 'media'].filter(id => session || (id !== 'info' && id !== 'media'));
 
   const view = <BrowserPanel label={t('{category}记录浏览', { category: t('聊天') })} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)}
