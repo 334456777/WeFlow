@@ -31,7 +31,7 @@ import { kindOf } from '../sessionKind';
 import { useBizAccounts } from './useBizAccounts';
 import type { Jump } from './useMessages';
 import { useSearch } from './useSearch';
-import type { SessionsState } from './useSessions';
+import type { SessionsState } from '../useSessions';
 import { t } from '../i18n';
 import './chat.css';
 

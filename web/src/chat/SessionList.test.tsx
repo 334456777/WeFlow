@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import type { ChatSession } from '../api/chat';
 import { SessionList } from './SessionList';
-import type { SessionsState } from './useSessions';
+import type { SessionsState } from '../useSessions';
 
 afterEach(cleanup);
 
