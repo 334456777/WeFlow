@@ -358,6 +358,43 @@ pub const SERVE_MAX_MEDIA: Bounds = Bounds {
     max: u16::MAX as i64,
 };
 
+/// The switches described here, for going through them (`config set --help` writes their defaults).
+pub const SWITCHES: &[Switch] = &[
+    NO_PROGRESS,
+    AI_INSIGHT_ENABLED,
+    AI_INSIGHT_NOTIFICATION_ENABLED,
+    AI_INSIGHT_ALLOW_CONTEXT,
+    AI_INSIGHT_ALLOW_MOMENTS_CONTEXT,
+    AI_INSIGHT_ALLOW_SOCIAL_CONTEXT,
+    AI_INSIGHT_TELEGRAM_ENABLED,
+    AI_FOOTPRINT_ENABLED,
+];
+
+/// The counts described here.
+pub const COUNTS: &[Count] = &[
+    AI_MODEL_API_MAX_TOKENS,
+    AI_INSIGHT_SILENCE_DAYS,
+    AI_INSIGHT_COOLDOWN_MINUTES,
+    AI_INSIGHT_CONTEXT_COUNT,
+    AI_INSIGHT_MOMENTS_CONTEXT_COUNT,
+    AI_INSIGHT_SOCIAL_CONTEXT_COUNT,
+];
+
+/// The numbers described here.
+pub const NUMBERS: &[Number] = &[AI_INSIGHT_SCAN_INTERVAL_HOURS];
+
+/// The choices described here.
+pub const CHOICES: &[Choice] = &[AI_INSIGHT_FILTER_MODE, MESSAGE_PUSH_FILTER_MODE];
+
+/// The bounded numbers described here, which have no default of the config's own.
+pub const BOUNDED: &[Bounds] = &[
+    IMAGE_XOR_KEY,
+    SERVE_PORT,
+    SERVE_MAX_TASKS,
+    SERVE_MAX_READS,
+    SERVE_MAX_MEDIA,
+];
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -366,68 +403,46 @@ mod tests {
     use crate::config::extra_keys::{self, Kind};
     use crate::config::ConfigStore;
 
-    /// Every key described here, so that a test can go through them.
-    const DESCRIBED: &[&str] = &[
-        NO_PROGRESS.name,
-        IMAGE_XOR_KEY.name,
-        AI_MODEL_API_FORMAT.name,
-        AI_MODEL_API_MAX_TOKENS.name,
-        AI_INSIGHT_ENABLED.name,
-        AI_INSIGHT_FILTER_MODE.name,
-        AI_INSIGHT_SILENCE_DAYS.name,
-        AI_INSIGHT_SCAN_INTERVAL_HOURS.name,
-        AI_INSIGHT_COOLDOWN_MINUTES.name,
-        AI_INSIGHT_NOTIFICATION_ENABLED.name,
-        AI_INSIGHT_ALLOW_CONTEXT.name,
-        AI_INSIGHT_CONTEXT_COUNT.name,
-        AI_INSIGHT_ALLOW_MOMENTS_CONTEXT.name,
-        AI_INSIGHT_MOMENTS_CONTEXT_COUNT.name,
-        AI_INSIGHT_ALLOW_SOCIAL_CONTEXT.name,
-        AI_INSIGHT_SOCIAL_CONTEXT_COUNT.name,
-        AI_INSIGHT_TELEGRAM_ENABLED.name,
-        AI_FOOTPRINT_ENABLED.name,
-        MESSAGE_PUSH_FILTER_MODE.name,
-        SERVE_PORT.name,
-        SERVE_MAX_TASKS.name,
-        SERVE_MAX_READS.name,
-        SERVE_MAX_MEDIA.name,
-    ];
+    /// Every key described here.
+    fn described() -> Vec<&'static str> {
+        let mut names = vec![AI_MODEL_API_FORMAT.name];
+        names.extend(SWITCHES.iter().map(|s| s.name));
+        names.extend(COUNTS.iter().map(|c| c.name));
+        names.extend(NUMBERS.iter().map(|n| n.name));
+        names.extend(CHOICES.iter().map(|c| c.name));
+        names.extend(BOUNDED.iter().map(|b| b.name));
+        names
+    }
 
     /// Every description names a key `config set` lists, and the table of the profile's other keys checks each of
     /// them by its description rather than by bounds or names of its own.
     #[test]
     fn every_description_is_a_key_config_set_takes() {
-        for name in DESCRIBED {
+        let described = described();
+        for name in &described {
             assert!(crate::config::is_known_key(name), "{name}");
         }
         for (key, kind) in extra_keys::KEYS {
-            let described = match kind {
+            let named = match kind {
                 Kind::Count(count) => Some(count.name),
                 Kind::Number(number) => Some(number.name),
                 Kind::Choice(choice) => Some(choice.name),
                 _ => None,
             };
-            if let Some(name) = described {
+            if let Some(name) = named {
                 assert_eq!(name, *key);
             }
             if matches!(
                 kind,
                 Kind::Count(_) | Kind::Number(_) | Kind::Choice(_) | Kind::Switch
             ) {
-                assert!(DESCRIBED.contains(key), "{key} has no description");
+                assert!(described.contains(key), "{key} has no description");
             }
         }
-        for choice in [AI_INSIGHT_FILTER_MODE, MESSAGE_PUSH_FILTER_MODE] {
+        for choice in CHOICES {
             assert!(choice.names.contains(&choice.default), "{}", choice.name);
         }
-        for count in [
-            AI_MODEL_API_MAX_TOKENS,
-            AI_INSIGHT_SILENCE_DAYS,
-            AI_INSIGHT_COOLDOWN_MINUTES,
-            AI_INSIGHT_CONTEXT_COUNT,
-            AI_INSIGHT_MOMENTS_CONTEXT_COUNT,
-            AI_INSIGHT_SOCIAL_CONTEXT_COUNT,
-        ] {
+        for count in COUNTS {
             assert!(
                 (count.min..=count.max).contains(&count.default),
                 "{}",

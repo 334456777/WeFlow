@@ -943,23 +943,25 @@ pub fn is_account_dir(path: &Path) -> bool {
     path.join("db_storage").is_dir()
 }
 
+/// The fields of a profile ([`ProfileConfig`]), as `config set` names them.
+const PROFILE_KEYS: &[&str] = &[
+    "db_path",
+    "decrypt_key",
+    "wxid",
+    "image_xor_key",
+    "image_aes_key",
+    "cache_path",
+    "http_api_token",
+    "ai_model_api_format",
+    "ai_model_api_base_url",
+    "ai_model_api_key",
+    "ai_model_api_model",
+    "ai_model_api_max_tokens",
+    "ai_insight_enabled",
+];
+
 fn is_profile_key(key: &str) -> bool {
-    matches!(
-        key,
-        "db_path"
-            | "decrypt_key"
-            | "wxid"
-            | "image_xor_key"
-            | "image_aes_key"
-            | "cache_path"
-            | "http_api_token"
-            | "ai_model_api_format"
-            | "ai_model_api_base_url"
-            | "ai_model_api_key"
-            | "ai_model_api_model"
-            | "ai_model_api_max_tokens"
-            | "ai_insight_enabled"
-    )
+    PROFILE_KEYS.contains(&key)
 }
 
 /// The keys that hold text: taken as they are typed, never read as a number (#813).
@@ -984,6 +986,18 @@ fn holds_text(key: &str) -> bool {
 
 /// The keys of the file's own settings and of `serve`'s, besides the profiles' keys.
 const FILE_KEYS: &[&str] = &["lang", "current_profile"];
+
+/// Every key `config set --help` lists but `config_path`, which is kept beside the config file: the fields of a
+/// profile, its other keys WeFlow reads, the file's own settings and those of `serve`.
+pub fn known_keys() -> impl Iterator<Item = String> {
+    // in this order `near_known_key` prefers one of two keys a slip is as near to
+    PROFILE_KEYS
+        .iter()
+        .chain(FILE_KEYS)
+        .chain(extra_keys::KEYS.iter().map(|(k, _)| k))
+        .map(|k| (*k).to_string())
+        .chain(ServeSettings::KEYS.iter().map(|k| format!("serve_{k}")))
+}
 
 /// Whether `key` (without a profile) is one `config set --help` lists.
 fn is_known_key(key: &str) -> bool {
@@ -1011,32 +1025,7 @@ pub fn near_known_key(key: &str) -> Option<String> {
             .collect()
     };
     let typed = plain(bare);
-    let serve: Vec<String> = ServeSettings::KEYS
-        .iter()
-        .map(|k| format!("serve_{k}"))
-        .collect();
-    let snake = [
-        "db_path",
-        "decrypt_key",
-        "wxid",
-        "image_xor_key",
-        "image_aes_key",
-        "cache_path",
-        "http_api_token",
-        "ai_model_api_format",
-        "ai_model_api_base_url",
-        "ai_model_api_key",
-        "ai_model_api_model",
-        "ai_model_api_max_tokens",
-        "ai_insight_enabled",
-        "lang",
-        "current_profile",
-    ];
-    snake
-        .iter()
-        .chain(extra_keys::KEYS.iter().map(|(k, _)| k))
-        .map(|k| (*k).to_string())
-        .chain(serve)
+    known_keys()
         .map(|k| {
             let known = plain(&k);
             // one slip in five letters at most, so that a short key of one's own (`name`) is not taken for `lang`
