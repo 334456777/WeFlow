@@ -1,4 +1,4 @@
-//! The services the CLI and the command API call, one module per domain, each an `impl` block of [`ServiceHub`].
+//! CLI 和命令 API 调用的服务：每个领域一个模块，各是 [`ServiceHub`] 的一个 `impl` 块。
 
 use std::path::{Path, PathBuf};
 
@@ -37,18 +37,18 @@ pub use group::MEMBER_MESSAGES_LIMIT;
 pub use key::interrupt_key_db;
 pub use sns::{SnsExportOptions, SnsMediaFetch, SnsProxyResult, SnsTimelineQuery};
 
-/// Whether a read may answer with what WeFlow kept of an earlier answer, or must ask the databases again.
+/// 读取能否用 WeFlow 保存的上一次的回答，还是必须重新查询数据库。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Freshness {
-    /// What was kept will do while it has not expired.
+    /// 保存的回答没有过期时就用它。
     Cached,
-    /// Ask the databases again.
+    /// 重新查询数据库。
     #[default]
     Fresh,
 }
 
 impl Freshness {
-    /// [`Cached`](Self::Cached) when `cached`, as a switch such as `--prefer-cache` asks.
+    /// `cached` 为真时为 [`Cached`](Self::Cached)，对应 `--prefer-cache` 这类开关。
     pub fn cached_if(cached: bool) -> Self {
         if cached {
             Self::Cached
@@ -58,22 +58,22 @@ impl Freshness {
     }
 }
 
-/// The account of a profile, its config and the state its services keep between calls.
+/// 一个档案的账号、配置，以及各服务在调用之间保留的状态。
 ///
-/// Clones share that state; each has its own copy of the config.
+/// 克隆出的副本共用这些状态，配置则各有一份。
 #[derive(Clone)]
 pub struct ServiceHub {
     ctx: AppContext,
     config: ConfigStore,
     profile_name: String,
     sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
-    /// Statistics being counted right now (see [`analytics::Counting`]).
+    /// 正在进行的统计（见 [`analytics::Counting`]）。
     analytics_counting: std::sync::Arc<analytics::Counting>,
     image_state: std::sync::Arc<std::sync::Mutex<image::ImageState>>,
     insight_state: std::sync::Arc<std::sync::Mutex<insight::InsightState>>,
 }
 
-/// The profile's name: the config holds the keys.
+/// 只显示档案名：配置里有密钥。
 impl std::fmt::Debug for ServiceHub {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ServiceHub")
@@ -83,7 +83,7 @@ impl std::fmt::Debug for ServiceHub {
 }
 
 impl ServiceHub {
-    /// A hub over the account of the config's current profile.
+    /// 以配置中的当前档案创建，各服务保留的状态从空开始。
     pub fn new(ctx: AppContext, config: ConfigStore) -> Self {
         let profile_name = config.current_profile.clone();
         Self {
@@ -97,34 +97,34 @@ impl ServiceHub {
         }
     }
 
-    /// The config file this hub was loaded from.
+    /// 读取的配置文件。
     pub fn config_path(&self) -> &Path {
         &self.ctx.config_path
     }
 
-    /// The options of `weflow serve` saved in the config file (#406).
+    /// 配置文件中保存的 `weflow serve` 的选项（#406）。
     pub fn serve_settings(&self) -> &ServeSettings {
         &self.config.serve
     }
 
-    /// Where this hub keeps its files, and its version.
+    /// 存放文件的位置和这个 `weflow` 的版本。
     pub fn context(&self) -> &AppContext {
         &self.ctx
     }
 
-    /// The WebUI versions kept on this machine (issue #148): with WeFlow's other caches, in
-    /// `<home>/cache/web/<version>/`, the one picked with `weflow web use` named in `<home>/cache/web/current`.
+    /// 本机保存的各个 WebUI 版本（#148）：与 WeFlow 的其他缓存放在一起，位于 `<home>/cache/web/<version>/`，
+    /// 用 `weflow web use` 选中的版本记在 `<home>/cache/web/current` 里。
     pub fn web_store(&self) -> crate::webui::WebStore {
         crate::webui::WebStore::new(self.ctx.cache_dir().join("web"))
     }
 
-    /// Reports the progress of a long command (see [`crate::output::progress`]).
+    /// 报告耗时较长的命令的进度（见 [`crate::output::progress`]）。
     pub fn emit_progress(&self, stage: &str, message: &str, current: usize, total: usize) {
         crate::output::progress(stage, message, current, total);
     }
 }
 
-/// A time in seconds: ms → s, clamped to i32.
+/// 换算成秒的时间：大于 10^12 的值按毫秒换算，结果限制在 `i32` 的范围内，不是正数时为 0。
 pub(crate) fn normalize_timestamp(input: i64) -> i32 {
     if input <= 0 {
         return 0;
@@ -137,7 +137,7 @@ pub(crate) fn normalize_timestamp(input: i64) -> i32 {
     crate::num::saturating_i32(seconds.max(0))
 }
 
-/// A time range in seconds: open end → now, end never before begin.
+/// 以秒为单位的时间范围：没有结束时间时到现在为止，结束时间不早于开始时间。
 pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
     let b = normalize_timestamp(begin);
     let mut e = normalize_timestamp(end);
@@ -151,25 +151,25 @@ pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
 }
 
 impl ServiceHub {
-    /// Raw configuration value (`message_push_filter_mode`, …) of the active profile.
+    /// 当前档案中一个配置键（如 `message_push_filter_mode`）的原始值。
     pub fn config_value(&self, key: &str) -> Value {
         self.config.get_key(Some(&self.profile_name), key)
     }
 
-    /// The configured account's databases, opened; the key is proved unless it opened the same databases before.
+    /// 打开配置的账号的数据库；同样的密钥和数据库以前没有校验通过时，先校验密钥。
     ///
     /// # Errors
-    /// As [`Self::db_test`].
+    /// 同 [`Self::db_test`]。
     pub fn open_wcdb_pub(&self) -> AppResult<weflow_native::wcdb::Wcdb> {
         self.open_wcdb()
     }
 
-    /// The account's wxid without the suffix of its folder's name; empty when it is not set.
+    /// 账号的裸 wxid（去掉账号目录名的后缀）；没有设置时为空。
     pub fn my_wxid_pub(&self) -> String {
         self.my_wxid_cleaned()
     }
 
-    /// Where the message push keeps the avatars it serves, `push-avatar-files` in the cache folder.
+    /// 消息推送提供的头像存放的目录：缓存目录下的 `push-avatar-files`。
     pub fn push_avatar_dir(&self) -> PathBuf {
         self.cache_base().join("push-avatar-files")
     }

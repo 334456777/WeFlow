@@ -1,5 +1,5 @@
-//! The session list and the contact list (`chat sessions`, `chat contacts --parsed`), filtered and typed as the
-//! desktop app shows them, and the display names and avatars of contacts.
+//! 会话列表和联系人列表（`chat sessions`、`chat contacts --parsed`），按桌面版的方式筛选和分类，
+//! 以及联系人的显示名和头像。
 
 use std::collections::{HashMap, HashSet};
 
@@ -48,9 +48,10 @@ fn allowed_openim_by_local_type(username: &str, local_type: Option<i64>) -> bool
     is_enterprise_openim(username) && local_type == Some(5)
 }
 
-/// Whether the session list shows the conversation `username`: every one that is not a service ([`session_kind`]:
-/// official accounts, which the list adds on its own, WeChat's system conversations and folders, customer service),
-/// and besides those the file helper and a WeCom contact of type 5.
+/// 会话列表是否显示会话 `username`。
+///
+/// 显示所有不属于服务类（[`session_kind()`]）的会话，此外还显示文件传输助手和类型为 5 的企业微信联系人；
+/// 不显示的是公众号（由列表另外添加）、微信的系统会话和文件夹以及客服。
 fn should_keep_session(username: &str, local_type: Option<i64>) -> bool {
     if username == "filehelper" {
         return true;
@@ -58,7 +59,7 @@ fn should_keep_session(username: &str, local_type: Option<i64>) -> bool {
     if is_enterprise_openim(username) {
         return allowed_openim_by_local_type(username, local_type);
     }
-    // the account's own chat is listed like any other, so no own wxid is given
+    // 账号自己的会话和其他会话一样列出，所以不传自己的 wxid
     !username.to_lowercase().contains("@placeholder")
         && session_kind(username, "") != SessionKind::Service
 }
@@ -71,7 +72,7 @@ fn message_label(local_type: i64) -> &'static str {
     chat_msg::message_type_label(local_type)
 }
 
-/// The summary of an official account's conversation, by its last message ([`chat_msg::summary_line`]).
+/// 按最后一条消息生成的公众号会话摘要（[`chat_msg::summary_line`]）。
 fn summary_from_message(m: &ChatMessage) -> String {
     chat_msg::summary_line(m).unwrap_or_else(|| message_label(m.local_type).into())
 }
@@ -87,7 +88,7 @@ fn truthy(v: &Value) -> bool {
 }
 
 impl ServiceHub {
-    /// The avatar URL and the display name of a contact.
+    /// 联系人的头像地址和显示名；`username` 为空或数据库打不开时为 `None`。
     pub fn chat_contact_avatar(&self, username: &str) -> Option<(Option<String>, String)> {
         if username.is_empty() {
             return None;
@@ -127,10 +128,14 @@ impl ServiceHub {
         }
     }
 
-    /// The filtered, typed session list, with display names and avatars from WCDB.
+    /// 筛选、分类后的会话列表，显示名和头像取自微信的数据库。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误；读取数据库失败或会话表报错时返回数据库层的错误。
     pub fn chat_sessions_list(&self) -> AppResult<Vec<Session>> {
         let wcdb = self.open_wcdb()?;
-        // the list reads the conversations, their contacts and their messages, in that order
+        // 列表依次读会话、会话的联系人和消息
         wcdb.prefetch(&[
             Databases::Sessions,
             Databases::Contacts,
@@ -277,10 +282,10 @@ impl ServiceHub {
             });
         }
 
-        // addMissingOfficialSessions
+        // 补上会话表里没有的公众号等会话（桌面版的 `addMissingOfficialSessions`）
         let existing: HashSet<String> = sessions.iter().map(|s| s.username.clone()).collect();
         let mut existing = existing;
-        // the contacts that may be one of these kinds, not a row of every contact
+        // 只取可能属于这几类的联系人，而不是每个联系人一行
         if let Ok(Value::Array(contacts)) = wcdb.contacts_maybe_special() {
             for row in contacts {
                 let username = first_str(&row, &["username"]).trim().to_string();
@@ -318,16 +323,15 @@ impl ServiceHub {
             }
         }
 
-        // applySyntheticUnreadCounts (official accounts have no unread column)
+        // 给公众号算出未读数（桌面版的 `applySyntheticUnreadCounts`），公众号没有未读数的列
         let official_session = |s: &Session| is_official(s.username.trim());
         let official: Vec<String> = sessions
             .iter()
             .filter(|s| official_session(s))
             .map(|s| s.username.clone())
             .collect();
-        // the tables of all of them found in one listing of each database, not in a search of every database's
-        // schema for each one; a conversation whose tables cannot be read is left as it is, as is every one when the
-        // databases cannot be listed
+        // 所有公众号的表在每个数据库的一次列表中找出，而不是为每个公众号搜一遍每个数据库的表结构；
+        // 读不出表的会话保持原样，数据库列不出来时所有会话都保持原样
         let stats: Vec<Option<Value>> = match wcdb.message_table_stats_of(&official) {
             Ok(each) => each.into_iter().map(Result::ok).collect(),
             Err(_) => vec![None; official.len()],
@@ -372,7 +376,7 @@ impl ServiceHub {
                     }
                 }
             }
-            // sort_timestamp moves when the account is pinned or unpinned, without a message (#894).
+            // 置顶或取消置顶时 `sort_timestamp` 也会变，并没有新消息（#894），所以最新的时间不取它
             let latest = s.last_timestamp.max(latest_snapshot);
             if latest > 0 {
                 s.last_timestamp = latest;
@@ -411,7 +415,7 @@ impl ServiceHub {
             key(b).cmp(&key(a))
         });
 
-        // resolve names / avatars from the contact tables
+        // 从联系人表取显示名和头像
         let names: Vec<String> = sessions.iter().map(|s| s.username.clone()).collect();
         let book = self.contact_book(wcdb, &names);
         for s in &mut sessions {
@@ -429,7 +433,7 @@ impl ServiceHub {
         Ok(sessions)
     }
 
-    /// The contact labels: label id → name from the contact database (empty when it has no labels).
+    /// 联系人标签：联系人数据库中标签 ID → 名称的对应表，没有标签时为空。
     fn contact_label_names(&self, wcdb: &weflow_native::wcdb::Wcdb) -> HashMap<i64, String> {
         let mut map = HashMap::new();
         let Ok(info) = wcdb.exec_query(
@@ -485,9 +489,14 @@ impl ServiceHub {
         map
     }
 
-    /// `chat contacts --parsed` (#205): friends / groups / official accounts / former friends, newest contact first,
-    /// each with its `avatarUrl`, for a contact list that shows the faces without asking for them one by one. The
-    /// account's own row, which WeChat keeps as a friend's (`local_type` 1), is left out (#1079).
+    /// `chat contacts --parsed`（#205）：好友、群、公众号和曾经的好友，最近联系的在前。
+    ///
+    /// 每一项都带 `avatarUrl`，联系人列表不必逐个请求头像。账号自己的那一行（微信把它存成好友，`local_type` 为 1）
+    /// 不列出（#1079）。
+    ///
+    /// # Errors
+    ///
+    /// 账号没有配置好时返回配置错误，读不出联系人表时返回数据库层的错误。
     pub fn chat_contacts_parsed(&self) -> AppResult<Vec<Contact>> {
         let me = self.configured_wxid().unwrap_or_default();
         let wcdb = self.open_wcdb()?;
@@ -589,8 +598,8 @@ impl ServiceHub {
 mod tests {
     use super::*;
 
-    /// The list shows people, groups, the account's own chat, the file helper and a WeCom contact of type 5; not
-    /// official accounts (added on their own), WeChat's system conversations and folders, or customer service.
+    /// 列表显示人、群、账号自己的会话、文件传输助手和类型为 5 的企业微信联系人；
+    /// 不显示公众号（另外添加）、微信的系统会话和文件夹，以及客服。
     #[test]
     fn the_list_keeps_chats_and_leaves_out_the_services() {
         for kept in ["wxid_a", "alice", "1@chatroom", "filehelper", "weixin123"] {

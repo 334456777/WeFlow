@@ -1,4 +1,4 @@
-//! Backups of the account's WeFlow data: create, inspect, restore.
+//! 账号数据的备份：创建、查看和恢复。
 
 use std::path::Path;
 
@@ -6,11 +6,10 @@ use super::ServiceHub;
 use crate::error::{AppError, AppResult};
 
 impl ServiceHub {
-    /// Writes a backup of the configured account to `out` (`backup create`): its databases, the media `options`
-    /// asks for, and WeFlow's sticker cache when asked.
+    /// 把配置的账号备份到 `out`（`backup create`）：账号的数据库、`options` 要求的媒体，以及要求时 WeFlow 的表情缓存。
     ///
     /// # Errors
-    /// A config error when the account is not set up; a runtime error when the backup cannot be written.
+    /// 账号没有配置好时返回配置错误；备份写不出来时返回运行时错误。
     pub fn backup_create(
         &self,
         out: &Path,
@@ -36,11 +35,10 @@ impl ServiceHub {
         })
     }
 
-    /// The manifest of the backup at `path`.
+    /// `path` 处备份的清单。
     ///
     /// # Errors
-    /// A file that is not there is `not_found` (a 404 of the command API, #822); one that cannot be read as a backup
-    /// is a runtime error.
+    /// 文件不存在时返回 `not_found`（命令 API 回答 404，#822）；不能作为备份读取时返回运行时错误。
     pub fn backup_inspect(&self, path: &Path) -> AppResult<crate::backup::BackupManifest> {
         crate::backup::inspect_backup(path).map_err(|e| {
             let missing = e.chain().any(|cause| {
@@ -56,11 +54,10 @@ impl ServiceHub {
         })
     }
 
-    /// Restores the backup at `path` into the folder `target_dir` (`backup restore`), and its stickers into
-    /// WeFlow's sticker cache.
+    /// 把 `path` 处的备份恢复到文件夹 `target_dir`（`backup restore`），其中的表情放回 WeFlow 的表情缓存。
     ///
     /// # Errors
-    /// A runtime error when the backup cannot be read or a file cannot be written.
+    /// 备份读不出来或文件写不进去时返回运行时错误。
     pub fn backup_restore(
         &self,
         path: &Path,
