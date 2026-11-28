@@ -8,7 +8,7 @@
 //! ([`files`]).
 
 mod answer;
-pub(crate) mod child;
+mod child;
 mod endpoints;
 mod files;
 pub(crate) mod http;

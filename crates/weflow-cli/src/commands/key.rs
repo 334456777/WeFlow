@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 
 use super::cache::cache_summary;
-use crate::{serve_api, KeyShown, Summary};
+use crate::{served, KeyShown, Summary};
 use serde_json::{json, Value};
 use weflow_core::colour::{Paint, Role};
 use weflow_core::config::ConfigStore;
@@ -95,7 +95,7 @@ pub(crate) fn handle_key(
 ) -> AppResult<Value> {
     match &command.command {
         KeySubcommand::Db { pid, timeout, save } => {
-            if std::env::var_os(serve_api::child::CANCEL_ON_STDIN).is_some() {
+            if std::env::var_os(served::CANCEL_ON_STDIN).is_some() {
                 interrupt_when_stdin_ends();
             }
             let mut data = hub.key_db(*pid, *timeout)?;

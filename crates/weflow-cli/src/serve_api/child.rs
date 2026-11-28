@@ -4,6 +4,8 @@
 use axum::http::StatusCode;
 use serde_json::Value;
 
+use crate::served::{CANCEL_ON_STDIN, KEYS_ON_STDIN};
+
 /// The server's language as `WEFLOW_LANG` names it, for its child processes.
 pub(super) fn server_lang() -> &'static str {
     match weflow_core::locale::current() {
@@ -24,12 +26,6 @@ fn command(exe: &std::path::Path, args: &[String], lang: &str) -> tokio::process
         .kill_on_drop(true);
     cmd
 }
-
-/// Set for a command whose stdin carries the database keys the server derived (see [`spawn`]).
-pub const KEYS_ON_STDIN: &str = "WEFLOW_KEYS_ON_STDIN";
-
-/// Set for a command that ends by itself once its stdin ends (see [`ends_by_itself`]).
-pub const CANCEL_ON_STDIN: &str = "WEFLOW_CANCEL_ON_STDIN";
 
 /// Whether the command `args` runs must be let to end by itself rather than killed, as a killed one would leave its
 /// hook in WeChat: `key db` (#287) and `image auto-download start` (#809). Its stdin stays open while it runs; once it
