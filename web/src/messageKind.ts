@@ -1,8 +1,7 @@
-// What a message is, by its type and the kind the server names: how the chat window draws it, and what the dual
-// report calls a message that is not text (#1263).
+// 消息的种类，按消息类型和服务端给出的种类判定：聊天窗口按它画消息，双人报告按它称呼不是文字的消息（#1263）。
 import { baseType, type ParsedMessage } from './api/messages';
 
-/** How the chat window draws a message. */
+/** 聊天窗口画一条消息的方式。 */
 export type MessageKind =
   | 'text' | 'quote' | 'image' | 'emoji' | 'voice' | 'video' | 'file' | 'link' | 'finder' | 'record'
   | 'contact' | 'location' | 'call' | 'money' | 'system';
@@ -13,10 +12,10 @@ const APP_KINDS: Record<string, MessageKind> = {
   gift: 'money', location: 'location',
 };
 
-/** A pat (拍一拍): the app message of type 62, which the exports keep as a system message too (#1200). */
+/** 拍一拍：子类型为 62 的 app 消息，导出时同样当作系统消息（#1200）。 */
 const PAT = 62 * 4_294_967_296 + 49;
 
-/** A message's kind, by its type and, for an app message, by its `appMsgKind`; text for one it does not know. */
+/** 消息的种类：按消息类型判定，app 消息再按 `appMsgKind` 判定；不认识的当作文字。 */
 export function kindOf(message: Pick<ParsedMessage, 'localType' | 'appMsgKind'>): MessageKind {
   if (message.localType === PAT) return 'system';
   switch (baseType(message.localType)) {

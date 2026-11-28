@@ -1,22 +1,22 @@
-// Database backups (#212): `backup create` as a job that keeps the backup for the browser, `backup inspect` and
-// `backup restore`, which read a backup on the server's computer (the browser cannot hand one over yet).
+// 数据库备份（#212）：`backup create` 作为作业运行，生成的备份保留下来供浏览器下载；`backup inspect` 和
+// `backup restore` 读取服务端所在电脑上的备份（浏览器不能把备份传给服务端）。
 import { get } from './client';
 import { msg, t } from '../i18n';
 import type * as Contract from './contract.gen';
 
-/** A file in a backup. */
+/** 备份里的一个文件。 */
 export type BackupEntry = Contract.BackupEntry;
 
-/** What `backup inspect` reads from a backup (the contract's, #430). */
+/** `backup inspect` 从备份里读到的清单（契约的类型，#430）。 */
 export type BackupManifest = Contract.BackupManifest;
 
-/** `backup inspect`: the manifest of the backup at `path` on the server's computer. */
+/** `backup inspect`：服务端所在电脑上 `path` 处的备份的清单。 */
 export const inspectBackup = (path: string, signal?: AbortSignal) => get<BackupManifest>('backup/inspect', { path }, signal);
 
-/** What `backup create` adds to the databases, which it always holds (with the voice messages in them, #643). */
+/** `backup create` 在数据库之外加进备份的内容；数据库总会备份（语音消息就在数据库里，#643）。 */
 export type BackupChoice = { images: boolean; videos: boolean; files: boolean; emojis: boolean };
 
-/** The parameters of `backup create`: what it adds to the databases. */
+/** `backup create` 的参数：在数据库之外加进备份的内容。 */
 export function backupParams(parts: BackupChoice) {
   return {
     images: parts.images || undefined,
@@ -26,13 +26,13 @@ export function backupParams(parts: BackupChoice) {
   };
 }
 
-/** What a backup lacks or may not hold of one moment (#817), as `backup create` answers and its manifest keeps it. */
+/** 备份缺少的文件和可能不是同一时刻的数据库（#817），即 `backup create` 的回答和备份清单里记下的这两项。 */
 export type BackupGaps = { skipped?: readonly Contract.SkippedFile[]; unsettled?: readonly string[] };
 
-/** The paths at most `shown` are listed of, the rest counted. */
+/** 最多列出的路径数，其余的只算进总数，用「等」带过。 */
 const SHOWN = 3;
 
-/** Sentences for what a backup lacks: the files left out, and the databases WeChat kept writing to while copied. */
+/** 说明备份缺少什么的句子：没有备份进去的文件，以及复制时微信一直在写入的数据库。 */
 export function backupGaps({ skipped = [], unsettled = [] }: BackupGaps): string[] {
   const list = (paths: readonly string[]) => paths.slice(0, SHOWN).join(t('、')) + (paths.length > SHOWN ? t('等') : '');
   const lines: string[] = [];
@@ -41,13 +41,13 @@ export function backupGaps({ skipped = [], unsettled = [] }: BackupGaps): string
   return lines;
 }
 
-/** The entries of a backup by what they are: the databases, WeChat's media and WeFlow's stickers. */
+/** 按内容分组的备份文件：数据库、微信的媒体文件和 WeFlow 的表情。 */
 export function backupParts(entries: readonly BackupEntry[]): { label: string; files: number; bytes: number }[] {
   const groups = new Map<string, { files: number; bytes: number }>();
   for (const e of entries) {
     const path = e.path.replace(/\\/g, '/').toLowerCase();
-    // as `backup create` collects them: db_storage, msg/attach, msg/video, msg/file and WeFlow's stickers; a backup of
-    // an older WeFlow can hold FileStorage/Image(2) and FileStorage/Audio. Shown through t()
+    // 与 `backup create` 收集的目录一致：db_storage、msg/attach、msg/video、msg/file 和 WeFlow 的表情；
+    // 较早的 WeFlow 做的备份里还可能有 FileStorage/Image(2) 和 FileStorage/Audio。标签显示时经过 t()
     const label = path.startsWith('db_storage/') ? msg('数据库')
       : path.startsWith('msg/attach/') || /^filestorage\/image2?\//.test(path) ? msg('图片')
         : path.startsWith('msg/video/') ? msg('视频')

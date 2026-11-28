@@ -1,4 +1,4 @@
-// The sample's pictures, by name, and the sound its voice messages play.
+// 示例数据的图片（按名称），以及语音消息播放的声音。
 import benchChart from './images/bench-chart.svg';
 import calligraphy from './images/calligraphy.svg';
 import dinner from './images/dinner.svg';
@@ -15,27 +15,27 @@ import street from './images/street.svg';
 import webuiDark from './images/webui-dark.svg';
 import webuiLight from './images/webui-light.svg';
 
-/** The sample's pictures, by the names the messages and posts give them. */
+/** 示例数据的图片，键是消息和动态里使用的名称。 */
 export const pictures = {
   'bench-chart': benchChart, calligraphy, dinner, 'export-html': exportHtml, flowers, logo, meetup, morning, pingpong, release,
   'skin-sketch': skinSketch, sticker, street, 'webui-dark': webuiDark, 'webui-light': webuiLight,
 };
 
-/** A picture's name. */
+/** 图片的名称。 */
 export type Picture = keyof typeof pictures;
 
-/** The address of the picture `name`; the logo for a name it does not have. */
+/** 名为 `name` 的图片的地址；没有这个名称的图片时为 logo 的地址。 */
 export const pictureUrl = (name: string): string => pictures[name as Picture] ?? logo;
 
 /**
- * Where Moments' sample media say they are: a WeChat server's address (as the page takes only those as pictures),
- * ending in the picture's name, which the sample serves.
+ * 朋友圈示例媒体声称所在的地址：微信服务器的地址（网页只把这类地址当作图片），以图片的名称结尾，
+ * 由示例服务端提供这张图片。
  */
 export const snsAddress = (name: Picture) => 'https://sample.qpic.cn/mmsns/' + name;
 
 let sound: string | null = null;
 
-/** A short soft chime as a WAV, made once: what every sample voice message plays. */
+/** 一段短而柔和的提示音，WAV 格式，只生成一次：所有示例语音消息都播放它。 */
 export function voiceSound(): string {
   if (sound) return sound;
   const rate = 8000;

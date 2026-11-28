@@ -23,7 +23,7 @@ describe('placeOf (#239)', () => {
     expect(place.maxHeight).toBe(600 - 16 - 312 - 8);
     expect(place.top).toBe(320);
     expect(place.top + place.maxHeight!).toBeLessThanOrEqual(600 - 16);
-    // the side above is larger: it ends at the anchor
+    // 上方的空间更大：浮层放在上方，底边挨着锚点
     const up = placeOf(anchor(100, 400, 200, 32), 316, 500);
     expect(up.maxHeight).toBe(400 - 8 - 16);
     expect(up.top).toBe(16);
@@ -35,7 +35,7 @@ describe('placeOf (#239)', () => {
     expect(place.left).toBeGreaterThanOrEqual(0);
     expect(place.left + 316).toBeLessThanOrEqual(320);
     expect(place.maxWidth).toBeUndefined();
-    // narrower than the layer: it starts at the edge and scrolls across
+    // 屏幕比浮层还窄：浮层从屏幕左边缘开始，可以横向滚动
     viewport(300, 640);
     expect(placeOf(anchor(8, 100, 280, 40), 316, 340)).toMatchObject({ left: 0, maxWidth: 300 });
   });
@@ -54,7 +54,7 @@ describe('visibleBox', () => {
     const at = (top: number) => { control.getBoundingClientRect = () => anchor(0, top, 100, 32); return visibleBox(control); };
     const out = (box: { top: number; bottom: number }) => box.bottom < box.top;
     expect(out(at(200))).toBe(false);
-    // above the list, though still in the window
+    // 在列表的上方，但仍在窗口之内
     expect(out(at(40))).toBe(true);
     expect(out(at(-50))).toBe(true);
     expect(out(at(380))).toBe(false);

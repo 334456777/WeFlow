@@ -1,5 +1,5 @@
-// The sample's Moments: the release of WeFlow 6.0, the WebUI's new skin, a benchmark, ten years of records exported,
-// an evening walk; the anniversary's flowers, a family dinner, calligraphy homework, table tennis and old roommates.
+// 示例数据的朋友圈：WeFlow 6.0 的发布、WebUI 的新皮肤、一次基准测试、导出的十年记录、傍晚的散步；
+// 以及纪念日的花、家里的晚饭、书法作业、乒乓球和大学室友。
 import type { SnsComment, SnsMedia, SnsPost } from '../api/contract.gen';
 import { ago, at, daysSince } from './clock';
 import { snsAddress, type Picture } from './media';
@@ -41,7 +41,7 @@ const JING = 'wxid_sample_jingguan';
 const LAOMA = 'wxid_sample_laoma';
 const BING = 'wxid_sample_dabing';
 
-/** The timeline, newest first. */
+/** 朋友圈的时间线，最新的在前。 */
 export const timeline: SnsPost[] = [
   post(ME, ago(1, 1, 30), 'WeFlow 6.0 发布了！网页界面全面改版：新皮肤、深色模式，断开连接也不会丢掉正在看的记录。', pictures('release'),
     [LIN, CHEN, ZHOU, XU, HE, SONG, GU],
@@ -59,7 +59,7 @@ export const timeline: SnsPost[] = [
     [ME, ZHOU], [comment(12, ZHOU, '「故障排查」那页太有用了')], { type: 3 }),
   post(SONG, ago(9, 3, 0), 'Linux 上的微信也能用 WeFlow 了', pictures('webui-dark'), [ME, HE]),
   post(ME, ago(12, 9, 0), '傍晚出去走走，脑子里还在想导出格式', pictures('street'), [LIN, GU, LU]),
-  // the account's own life
+  // 账号本人的生活
   post(LU, at(1, '10:40'), '收到花了 🌷 某人这次真的没加班', pictures('flowers'), [ME, MOM, LIN, YOUZI, QING],
     [comment(13, MOM, '真好看'), comment(14, ME, '说到做到'), comment(15, LU, '这还差不多', ME)]),
   post(MOM, at(1, '19:40'), '试做了周末的菜，红烧肉管够', pictures('dinner'), [ME, DAD, AUNT, LU, YOUZI],
@@ -70,7 +70,7 @@ export const timeline: SnsPost[] = [
   post(JING, at(8, '06:30'), '此时此地。', [], [LU, ME, HE]),
 ].sort((a, b) => b.createTime - a.createTime);
 
-/** Posts per poster. */
+/** 每个人发的动态数。 */
 export function postCounts(): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const p of timeline) counts[p.username] = (counts[p.username] ?? 0) + 1;

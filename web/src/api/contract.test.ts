@@ -1,6 +1,6 @@
-// The answers of the contract as weflow-cli builds them (contract/samples.json, #400), handed to the page's own
-// code. A test of weflow-cli checks the same samples, and the answers a running server sends, against the contract,
-// so what is read here is what the server answers, not what a fixture of the page supposes it does.
+// 把 weflow-cli 生成的契约回答示例（contract/samples.json，#400）交给网页自己的代码读取。
+// weflow-cli 的测试用契约检查同一组示例和运行中的服务端发出的回答，所以这里读到的就是服务端的回答，
+// 而不是网页的测试数据假设的回答。
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, resetZone, vi } from '#test';
 import { isMine, withoutLabel } from '../chat/messages';
@@ -27,10 +27,10 @@ const SAMPLES = JSON.parse(TEXT) as {
   Job: Contract.Job[];
 };
 
-/** What `fetch` was asked, in turn. */
+/** `fetch` 依次收到的请求。 */
 let asked: URL[] = [];
 
-/** `fetch` answers `replies` in turn, as the server sends them. */
+/** 让 `fetch` 依次回答 `replies`，与服务端发出的一样。 */
 function serve(...replies: Array<{ status: number; doc: unknown }>) {
   asked = [];
   vi.stubGlobal('fetch', async (input: string) => {
@@ -65,14 +65,14 @@ describe('the samples of the contract (#400)', () => {
     const [, file, quote, system] = messages;
     expect([withoutLabel(file.parsedContent), formatFileSize(file.fileSize)]).toEqual(['report.pdf', '2.0 KB']);
     expect([quote.quotedContent, quote.quotedSender]).toEqual(['are you there?', 'Me']);
-    // a row that says neither who sent it nor whether I did
+    // 既没写发送者、也没写是不是我发的一行
     expect([system.isSend, system.senderUsername]).toEqual([null, null]);
-    // an optional field the message has nothing for is left out, not null
+    // 消息没有内容的可选字段不出现，而不是 null
     expect('fileName' in quote).toBe(false);
   });
 
   it('page on from a cursor as the server wrote it, two messages with the same sort_seq apart', async () => {
-    // the page's messages ask for `_cursor`, which the contract's leaves optional
+    // 网页的消息类型要求有 `_cursor`，契约的类型里它是可选的
     const [first, , , lastOf2023, firstOf2024] = SAMPLES.ParsedMessage as Array<Contract.ParsedMessage & ParsedMessage>;
     expect(lastOf2023.sortSeq).toBe(firstOf2024.sortSeq);
     expect(lastOf2023._cursor).not.toBe(firstOf2024._cursor);
@@ -108,7 +108,7 @@ describe('the samples of the contract (#400)', () => {
     expect(rows.map(r => [r.name, r.preview, r.unread])).toEqual([
       ['Bob', 'hello', 2], ['Project Room', 'Bob in room：ok', 0], ['News', '查看公众号历史消息', 0],
     ]);
-    // an official account WeChat lists without a conversation has no time to show
+    // 微信列出的、没有会话的公众号没有可显示的时间
     const now = new Date('2024-01-01T12:00:00Z');
     expect(rows.map(r => formatSessionTime(r.time, now))).toEqual(['2023/11/14', '00:00', '']);
     expect(rows[2].avatarUrl).toBeUndefined();
@@ -143,7 +143,7 @@ describe('the samples of the contract (#400)', () => {
     expect(jobs.map(j => [j.status, isFinished(j.status), jobDetail(j)])).toEqual([
       ['queued', false, '排队中'],
       ['running', false, '1 / 3'],
-      // a file whose path has no name
+      // 路径里没有文件名的文件
       ['succeeded', true, '文件 · 5.0 KB'],
       ['failed', true, 'too many reads at once'],
       ['cancelled', true, '已取消'],

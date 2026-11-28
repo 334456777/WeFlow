@@ -4,7 +4,7 @@ import { ApiError } from './api/client';
 import { LIVE_READ_MS, useGathered, useLive } from './api/live';
 import { t } from './i18n';
 
-/** The conversation list as read: not yet, being read, read with each one's status, or why it failed. */
+/** 会话列表的读取状态：尚未读取、正在读取、读到的列表和每个会话的状态，或者失败的原因。 */
 export type SessionsState =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -20,15 +20,15 @@ function messageOf(problem: unknown): string {
 }
 
 /**
- * The conversation list of `weflow serve` while `enabled` (the server is there and compatible): the list first, then
- * the folded and muted states, which only change how it is shown and do not hold it up. A new `scope` (another
- * server or account, see `scope.ts`) reads it again without showing the one before meanwhile. Live messages (#201)
- * read it again quietly: the states only for conversations new to it, and a failure keeps the list shown.
+ * `enabled`（服务端在线且版本兼容）时读取 `weflow serve` 的会话列表：先读列表，再读折叠和免打扰的状态，
+ * 这些状态只影响显示方式，不耽误列表的显示。换了 `scope`（另一个服务端或账号，见 `scope.ts`）时重新读取，
+ * 读到之前不显示上一个作用域的列表。实时消息（#201）到来时安静地重读：只为新出现的会话读取状态，
+ * 读取失败时保留显示中的列表。
  */
 export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => void] {
   const [state, setState] = useState<SessionsState>({ status: 'idle' });
-  // The scope the list shown was read in. Until the list of a new scope is read, none is shown: a conversation of the
-  // account before would otherwise be opened, and read, in the new one (#402).
+  // 显示中的列表是在哪个作用域里读到的。新作用域的列表读到之前什么都不显示，
+  // 否则上一个账号的会话会在新的账号里被打开和读取（#402）。
   const [stateScope, setStateScope] = useState(scope);
   const [round, setRound] = useState(0);
   const reload = useCallback(() => setRound(n => n + 1), []);
@@ -37,7 +37,7 @@ export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => 
   const latest = useRef(state);
   latest.current = state;
 
-  // a burst of messages reads the list once, and messages that keep coming read it every LIVE_READ_MS
+  // 一阵密集的消息只重读一次列表，消息持续到来时每隔 LIVE_READ_MS 重读一次
   const refresh = useGathered(() => { quiet.current = true; reload(); }, LIVE_READ_MS);
   useLive(refresh);
 
@@ -68,7 +68,7 @@ export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => 
         const statuses = await getStatuses(asked, controller.signal);
         if (!controller.signal.aborted) setState({ status: 'ready', sessions, statuses: { ...known, ...statuses } });
       } catch {
-        // Without the states the list is still right, only nothing is folded or marked muted.
+        // 没有状态时列表仍然正确，只是不折叠会话，也不标出免打扰。
       }
     })();
     return () => controller.abort();

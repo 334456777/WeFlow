@@ -1,10 +1,11 @@
-// Roving focus (#195): a group of items — the navigation, a list, chips — is one stop for Tab. The arrow keys move
-// among its items (Home / End to either end, PageUp / PageDown ten at a time in a list), and Tab leaves the group.
-// The item Tab lands on is the one last focused, else the chosen one, else the first.
+// 漫游焦点（roving focus，#195）：一组项目（导航、列表、芯片）在 Tab 键的顺序里只占一站。
+// 方向键在组内移动（Home / End 到两端，列表里 PageUp / PageDown 一次移动十项），Tab 离开这一组。
+// Tab 落到的是最后获得焦点的项目，没有时是选中的项目，再没有时是第一项。
 //
-// A group is marked on its element: `data-roving="vertical" | "horizontal" | "grid"`, and `data-roving-items` the
-// selector of its items (buttons by default). `data-roving-keys="off"` keeps the Tab stop but leaves the keys to the
-// group (a virtual list that scrolls rows into being). Groups of chips and segmented buttons are groups without marks.
+// 组在它的元素上标出：`data-roving="vertical" | "horizontal" | "grid"`，
+// `data-roving-items` 是组内项目的选择器（默认为按钮）。
+// `data-roving-keys="off"` 保留 Tab 的一站，按键交给组自己处理（滚动时才生成行的虚拟列表）。
+// 芯片组和分段控件不加标记也是组。
 import { useEffect } from 'react';
 
 const GROUPS = '[data-roving], .choice-chips[role="group"], .segmented[role="group"]';
@@ -16,20 +17,20 @@ type Orientation = 'vertical' | 'horizontal' | 'grid';
 const orientationOf = (group: HTMLElement): Orientation =>
   (group.dataset.roving as Orientation | undefined) ?? (group.matches('.choice-chips, .segmented') ? 'horizontal' : 'vertical');
 
-/** The items of `group` that can take the focus: its own, not those of a group inside it. */
+/** `group` 里能获得焦点的项目：只算它自己的，不算嵌在里面的组的项目。 */
 export function itemsOf(group: HTMLElement): HTMLElement[] {
   const selector = group.dataset.rovingItems || 'button';
   return Array.from(group.querySelectorAll<HTMLElement>(selector)).filter(item =>
     item.closest(GROUPS) === group && !(item as HTMLButtonElement).disabled && item.getAttribute('aria-hidden') !== 'true');
 }
 
-/** Makes the item that should take Tab the group's only stop. */
+/** 让应当接住 Tab 的项目成为这一组在 Tab 顺序里唯一的一站。 */
 export function settle(group: HTMLElement, items = itemsOf(group)): void {
   if (!items.length) return;
   const focused = items.find(item => item === document.activeElement);
   const stop = focused ?? items.find(item => item.dataset.rovingStop === 'true') ?? items.find(item => item.matches(CHOSEN)) ?? items[0];
-  // only what changes: a tab index or a mark set again is still a change of the element, to its styles and to whoever
-  // watches it (#961)
+  // 只改有变化的：重新设一遍相同的 tabIndex 或标记仍算元素的一次改动，
+  // 样式要重新计算，监视它的代码也会收到通知（#961）
   for (const item of items) {
     const index = item === stop ? 0 : -1;
     if (item.tabIndex !== index) item.tabIndex = index;
@@ -37,14 +38,14 @@ export function settle(group: HTMLElement, items = itemsOf(group)): void {
   }
 }
 
-/** Whether a change of the page may change a group's Tab stop: a change inside a group, or a group that comes. */
+/** 页面的一次改动是否可能改变某一组在 Tab 顺序里的一站：组内的改动，或者新出现的组。 */
 function touchesGroup(record: MutationRecord): boolean {
   const target = record.target instanceof Element ? record.target : record.target.parentElement;
   if (target?.closest(GROUPS)) return true;
   return Array.from(record.addedNodes).some(node => node instanceof Element && (node.matches(GROUPS) || node.querySelector(GROUPS) !== null));
 }
 
-/** The index the key moves to from `index` among `count`, or null for a key the group does not take. */
+/** 共 `count` 项时从第 `index` 项按下 `key` 后移到的位置；组不处理这个键时为 null。 */
 export function step(key: string, index: number, count: number, orientation: Orientation, columns = 1): number | null {
   const last = count - 1;
   const clamp = (i: number) => Math.max(0, Math.min(last, i));
@@ -62,7 +63,7 @@ export function step(key: string, index: number, count: number, orientation: Ori
   return to === undefined ? null : to;
 }
 
-/** How many items of a grid sit on its first row. */
+/** 网格第一行的项目数。 */
 const columnsOf = (items: HTMLElement[]) => {
   const top = items[0]?.getBoundingClientRect().top;
   const n = items.findIndex(item => item.getBoundingClientRect().top > (top ?? 0) + 1);
@@ -72,7 +73,7 @@ const columnsOf = (items: HTMLElement[]) => {
 const typing = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || target.matches('input:not([type="checkbox"]):not([type="radio"]), textarea, select'));
 
-/** Installs roving focus on every group of the page, now and as they come. */
+/** 给页面上的每一组装上漫游焦点，之后出现的组也会装上。 */
 export function useRovingFocus(): void {
   useEffect(() => {
     let queued = 0;
@@ -82,7 +83,7 @@ export function useRovingFocus(): void {
     };
     const later = () => { if (!queued) queued = requestAnimationFrame(settleAll); };
     settleAll();
-    // the changes outside every group (a scrollbar showing, a panel folding) leave the groups as they are
+    // 所有组以外的改动（出现滚动条、面板折叠）不影响各组
     const watch = new MutationObserver(records => { if (records.some(touchesGroup)) later(); });
     watch.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'aria-selected', 'aria-current', 'class', 'disabled'] });
 
@@ -105,7 +106,7 @@ export function useRovingFocus(): void {
       next.focus({ preventScroll: true });
       next.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     };
-    // where the focus goes by a click, Tab comes back to
+    // 点击把焦点移到哪一项，Tab 回到这一组时就落在哪一项
     const focusin = (event: FocusEvent) => {
       const target = event.target as HTMLElement;
       const group = target.closest?.<HTMLElement>(GROUPS);
@@ -126,7 +127,7 @@ export function useRovingFocus(): void {
   }, []);
 }
 
-/** `/` puts the focus in the first search field showing, as in many sites; not while typing elsewhere. */
+/** 按 `/` 把焦点放到第一个显示着的搜索框；有打开的对话框或正在别处输入时不处理。 */
 export function useSearchKey(): void {
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {

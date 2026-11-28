@@ -20,19 +20,19 @@ it('reads the list again while live messages keep coming, not only once they sto
   expect(result.current[0].status).toBe('ready');
   expect(reads).toBe(1);
 
-  // a message every 200 ms, closer together than the delay: the list still follows them
+  // 每 200 ms 一条消息，间隔比延迟还短：列表仍然跟得上
   const every = 200;
   for (let at = 0; at < 2000; at += every) {
     act(() => emitLive({ type: 'message.new', sessionId: 'wxid_a' }));
     await act(async () => { await vi.advanceTimersByTimeAsync(every); });
   }
-  // read 500 ms after the first message of each gathering: at 500, 1100 and 1700 ms
+  // 每一批的第一条消息之后 500 ms 重读：在 500、1100 和 1700 ms
   expect(LIVE_READ_MS).toBe(500);
   expect(reads).toBe(4);
   const state = result.current[0];
   expect(state.status === 'ready' && state.sessions[0].summary).toBe('m4');
 
-  // the last message is read once more, and nothing after it
+  // 为最后一条消息再读一次，此后没有读取
   await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_READ_MS); });
   expect(reads).toBe(5);
   await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_READ_MS * 2); });

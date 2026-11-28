@@ -1,12 +1,12 @@
-// The sample's WeChat Pay notices: what working on WeFlow cost, the servers and the domain, the coffee and the late
-// meals of a release; and what the chats speak of, the anniversary's flowers, the noodles, the calligraphy paper.
+// 示例数据的微信支付通知：做 WeFlow 的花销，如服务器和域名、发版时的咖啡和夜宵；
+// 以及聊天里提到的事，如纪念日的花、那碗面、书法用的纸。
 import type { PayRecord } from '../api/contract.gen';
 import { ago, at } from './clock';
 
 interface Paid {
   at: number;
   merchant: string;
-  /** Yuan, two decimals. */
+  /** 以元为单位，两位小数。 */
   amount: string;
   method: string;
   item: string;
@@ -32,13 +32,13 @@ const paid: Paid[] = [
   { at: ago(40, 3, 0), merchant: '云端主机', amount: '46.00', method: '零钱', item: '基准测试流量包' },
 ];
 
-/** The notices of `biz pay-records`, newest first. */
+/** `biz pay-records` 的通知，最新的在前。 */
 export const payRecords: PayRecord[] = paid.map((p, i) => ({
   title: p.refund ? '退款到账通知' : '微信支付凭证',
   description: (p.refund
     ? ['退款金额¥' + p.amount, '退款方式' + p.method, '退款原因' + p.item, '商户名称' + p.merchant, '当前状态已到账']
     : ['付款金额¥' + p.amount, '支付方式' + p.method, '商品详情' + p.item, '收款方' + p.merchant, '交易状态支付成功，对方已收款']).join('\n'),
-  // no receipt card's top line, nor an amount in the title
+  // 没有支付凭证卡片的那一行，标题里也没有金额
   method: null, status: null,
   merchantName: p.merchant, merchantIcon: '', timestamp: p.at, localId: 900 - i, createTime: p.at,
 })).sort((a, b) => b.timestamp - a.timestamp);

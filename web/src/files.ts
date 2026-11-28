@@ -1,10 +1,10 @@
-// Files the page makes and hands to the browser to save: a spreadsheet of rows, or any bytes.
+// 网页生成、交给浏览器保存的文件：由若干行组成的表格，或者任意的字节。
 import { zip } from './zip';
 
-/** `value` with the five characters XML reserves written as entities. */
+/** 把 `value` 中 XML 保留的五个字符写成实体。 */
 export const xmlEscape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 
-/** Starts the download of `bytes` as `fileName`; returns the object URL, to revoke once it is no longer offered. */
+/** 把 `bytes` 作为 `fileName` 开始下载；返回对象 URL，这个下载撤下以后要撤销它。 */
 export function saveFile(bytes: Uint8Array, type: string, fileName: string): string {
   const copy = new Uint8Array(bytes.length);
   copy.set(bytes);
@@ -18,10 +18,10 @@ export function saveFile(bytes: Uint8Array, type: string, fileName: string): str
   return url;
 }
 
-/** The MIME type of an .xlsx file. */
+/** .xlsx 文件的 MIME 类型。 */
 export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-/** An .xlsx of one sheet: `rows` as text, the first as the header, columns `widths` characters wide. */
+/** 只有一张工作表（名为 `name`）的 .xlsx：`rows` 都按文字写入，第一行是表头，各列宽 `widths` 个字符。 */
 export function makeSheet(name: string, rows: string[][], widths: number[]): Promise<Uint8Array<ArrayBuffer>> {
   const column = (index: number) => (index >= 26 ? String.fromCharCode(64 + Math.floor(index / 26)) : '') + String.fromCharCode(65 + (index % 26));
   const sheetRows = rows.map((row, rowIndex) => '<row r="' + String(rowIndex + 1) + '">' + row.map((value, columnIndex) => '<c r="' + column(columnIndex) + String(rowIndex + 1) + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEscape(value) + '</t></is></c>').join('') + '</row>').join('');
@@ -37,5 +37,5 @@ export function makeSheet(name: string, rows: string[][], widths: number[]): Pro
   });
 }
 
-/** A file name without the characters Windows does not allow. */
+/** 把 Windows 不允许的字符换成 `_` 后的文件名。 */
 export const safeName = (name: string) => name.replace(/[<>:"/\\|?*]/g, '_');

@@ -1,16 +1,15 @@
-// The sample's conversations: friends and groups talking about WeFlow and its WebUI, and the account's own life (whom it
-// loves, its family, table tennis, calligraphy, a reading group, old roommates), in every kind of message the chat
-// window shows. Each is written as it happened, one message after another, its times counted back from now; what one
-// chat says, another (or the Moments, the payments, the reports) often answers.
+// 示例数据的会话：朋友和群聊里关于 WeFlow 和它的 WebUI 的对话，以及账号本人的生活（恋人、家人、乒乓球、书法、
+// 读书会、大学室友），包含聊天窗口显示的每一种消息。每个会话按发生的顺序逐条写出，时间从现在往回算；
+// 一个会话里说到的事，常常在另一个会话（或朋友圈、支付记录、报告）里有呼应。
 import type { ParsedMessage } from '../api/contract.gen';
 import { ago, at, daysSince } from './clock';
 import { pictureUrl, type Picture } from './media';
 import { CALLIGRAPHY, DESIGN, DEV, DORM, FAMILY, ME, MINDFUL, PINGPONG, USERS } from './people';
 
-/** A message of the sample, as `chat messages --parsed` answers it. */
+/** 示例数据里的一条消息，格式与 `chat messages --parsed` 的回答一致。 */
 export type Message = ParsedMessage & { _cursor: string };
 
-/** A message as written below: who sent it, how many minutes after the one before, and what it is. */
+/** 下面写消息用的草稿：谁发的、在前一条之后几分钟、是什么消息。 */
 interface Draft {
   from: string;
   gap: number;
@@ -19,7 +18,7 @@ interface Draft {
   extra?: Partial<ParsedMessage>;
 }
 
-/** An app message's type: its kind in the high 32 bits, 49 in the low ones. */
+/** app 消息的类型：高 32 位是子类型，低 32 位是 49。 */
 const app = (kind: number) => kind * 4_294_967_296 + 49;
 
 const say = (from: string, text: string, gap = 1): Draft => ({ from, gap, localType: 1, text });
@@ -54,10 +53,10 @@ const place = (from: string, locationPoiname: string, locationLabel: string, gap
 });
 const phone = (from: string, text: string, gap = 1): Draft => ({ from, gap, localType: 50, text });
 const notice = (text: string, gap = 1): Draft => ({ from: '', gap, localType: 10000, text });
-/** A pat, an app message of type 62 the server names a card; the chat window draws it as a system line (#1200). */
+/** 拍一拍：子类型为 62 的 app 消息，服务端给出的种类是 card；聊天窗口把它画成一行系统消息（#1200）。 */
 const pat = (from: string, text: string, gap = 1): Draft => ({ from, gap, localType: app(62), text, extra: { appMsgKind: 'card' } });
 
-/** A conversation: from `start`, each message `gap` minutes after the one before; a number sets the time again. */
+/** 一个会话：每条消息在前一条之后 `gap` 分钟；列表里的数字重新设定当前的时间（通常第一项就是开始的时间）。 */
 function thread(session: string, items: (Draft | number)[]): Message[] {
   let clock = 0;
   let localId = 0;
@@ -65,7 +64,7 @@ function thread(session: string, items: (Draft | number)[]): Message[] {
   for (const item of items) {
     if (typeof item === 'number') { clock = item; continue; }
     localId += 1;
-    // a few seconds into the minute, so that no two messages share a time
+    // 每条消息再错开几秒，任何两条消息的时间都不相同
     clock += item.gap * 60 + (localId * 7) % 50;
     const mine = item.from === ME;
     messages.push({
@@ -105,7 +104,7 @@ const BING = 'wxid_sample_dabing';
 const REPO = 'https://github.com/334456777/WeFlow';
 const WIKI = REPO + '/wiki';
 
-/** The conversations by their username, each oldest first. */
+/** 按用户名列出的会话，每个会话里最早的消息在前。 */
 export const threads = new Map<string, Message[]>([
   [DEV, thread(DEV, [
     ago(6, 9, 30),
@@ -331,7 +330,7 @@ export const threads = new Map<string, Message[]>([
     pic(SONG, 'webui-dark', 0),
   ])],
 
-  // the account's own life
+  // 账号本人的生活
   [LU, thread(LU, [
     at(3, '17:40'),
     say(LU, '今晚吃什么'),
@@ -494,7 +493,7 @@ export const threads = new Map<string, Message[]>([
     redPacket(LAOMA, '聚会经费', 4),
   ])],
 
-  // the private chats of the people the statistics rank and the insights speak of (#896), to open from there
+  // 统计排行和见解里提到的人的私聊（#896），供从那里打开
   [AJIE, thread(AJIE, [
     at(18, '21:15'),
     say(AJIE, '周末打球不'),
@@ -546,11 +545,11 @@ export const threads = new Map<string, Message[]>([
   ])],
 ]);
 
-/** How many messages each conversation has not been read, as the list shows. */
+/** 每个会话的未读消息数，显示在会话列表里。 */
 export const unread: Record<string, number> = {
   [DEV]: 3, [LIN]: 1, [ZHOU]: 2, [DESIGN]: 0, [USERS]: 6, [LU]: 1, [FAMILY]: 4, [CALLIGRAPHY]: 3, [MINDFUL]: 12, [DORM]: 5,
 };
 
-/** A message of a conversation by its local id. */
+/** 按本地 ID 找到会话里的一条消息。 */
 export const messageOf = (session: string, localId: number): Message | undefined =>
   threads.get(session)?.find(m => m.localId === localId);

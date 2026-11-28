@@ -1,8 +1,8 @@
-// Calls to `weflow serve` (the wiki's command API page). Answers are `{"success": true, "data": ...}` or
-// `{"success": false, "error": {"code", "message", "details"}}`; `call` returns the data or throws an ApiError.
+// 调用 `weflow serve`（见 Wiki 的「命令 API」页）。回答是 `{"success": true, "data": ...}` 或
+// `{"success": false, "error": {"code", "message", "details"}}`；`call` 返回其中的数据，或者抛出 ApiError。
 import { t } from '../i18n';
 
-/** A failed call: the HTTP status, the answer's `error.code`, its message and its `details`. */
+/** 失败的调用：HTTP 状态码、回答里的 `error.code`、错误信息和 `details`。 */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -15,7 +15,7 @@ export class ApiError extends Error {
   }
 }
 
-/** A call's parameters: the query of a GET or DELETE, the JSON body of the others. */
+/** 调用的参数：GET 和 DELETE 放在查询参数里，其他方法放在 JSON 请求体里。 */
 export type Params = Record<string, string | number | boolean | null | undefined | ReadonlyArray<string | number>>;
 
 const TOKEN_KEY = 'weflow.token';
@@ -30,14 +30,14 @@ function storage(): Storage | null {
   }
 }
 
-/** The token for this tab: set by `adoptToken`, or null when the server needs none (the dev proxy adds it). */
+/** 这个标签页的 token：由 `adoptToken` 设置；不需要时为 null（开发服务器的代理会加上 token）。 */
 export function token(): string | null {
   return memoryToken ?? storage()?.getItem(TOKEN_KEY) ?? null;
 }
 
 /**
- * Sets the token for this tab (#214): kept in `sessionStorage` only, never `localStorage` nor the build. The
- * connection hears of it and tries again.
+ * 设置这个标签页的 token（#214）：只保存在 `sessionStorage` 里，不放进 `localStorage`，也不写进构建产物。
+ * 连接会收到通知并重试。
  */
 export function setToken(value: string | null): void {
   tokenRevision += 1;
@@ -50,11 +50,11 @@ export function setToken(value: string | null): void {
   tellAuth('token');
 }
 
-/** `unauthorized`: the server refused the token (401); `token`: another token was set. */
+/** 认证事件：`unauthorized` 表示服务端拒绝了 token（401），`token` 表示设置了另一个 token。 */
 export type AuthEvent = 'unauthorized' | 'token';
 const authListeners = new Set<(event: AuthEvent) => void>();
 
-/** Calls `listener` on each auth event; returns what stops it. */
+/** 每个认证事件都调用 `listener`；返回停止监听的函数。 */
 export function onAuth(listener: (event: AuthEvent) => void): () => void {
   authListeners.add(listener);
   return () => { authListeners.delete(listener); };
@@ -65,8 +65,8 @@ function tellAuth(event: AuthEvent): void {
 }
 
 /**
- * Whether the server takes this tab's token, asked with a light route that needs one (`/jobs`): `ok`,
- * `unauthorized` (401), or `offline` (no answer). An event stream cannot tell why it failed; this can.
+ * 用一个需要 token 的轻量路由（`/jobs`）询问服务端是否接受这个标签页的 token：`ok`、`unauthorized`（401）或
+ * `offline`（没有回答）。事件流失败时无法得知原因，这个请求可以。
  */
 export async function checkToken(signal?: AbortSignal): Promise<'ok' | 'unauthorized' | 'offline'> {
   const bearer = token();
@@ -86,8 +86,8 @@ export async function checkToken(signal?: AbortSignal): Promise<'ok' | 'unauthor
 }
 
 /**
- * Takes the token from the address `weflow serve` opens (`/ui/?token=...`, #146), keeps it for this tab only and
- * removes it from the address bar and the history.
+ * 从 `weflow serve` 打开的地址（`/ui/?token=...`，#146）取出 token，只为这个标签页保存，
+ * 并从地址栏和浏览历史里去掉它。
  */
 export function adoptToken(): void {
   const url = new URL(window.location.href);
@@ -98,7 +98,7 @@ export function adoptToken(): void {
   window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
 }
 
-/** `path` with the parameters as a query; list values are repeated (`?id=a&id=b`), empty ones left out. */
+/** 带上查询参数的 `path`：列表的每个值各写一次（`?id=a&id=b`），空的参数不写。 */
 export function apiUrl(path: string, params: Params = {}): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -110,12 +110,12 @@ export function apiUrl(path: string, params: Params = {}): string {
   return '/' + path.replace(/^\/+/, '') + (tail ? '?' + tail : '');
 }
 
-/** The HTTP methods of the command API. */
+/** 命令 API 用到的 HTTP 方法。 */
 export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 /**
- * What the sample server answers a route: its data; its error, as a server's status and `error`; or `refused`, for a
- * route it does not have. (The chunk imports nothing of the page's, so it builds no ApiError itself.)
+ * 示例服务端对一个路由的回答：数据；错误，写成服务端的状态码和 `error`；或者 `refused`，表示它没有这个路由。
+ * （示例服务端的 chunk 不导入页面的任何代码，所以它不自己构造 ApiError。）
  */
 export type SampleAnswer =
   | { data: unknown }
@@ -123,14 +123,14 @@ export type SampleAnswer =
   | { refused: true };
 
 /**
- * What answers the page instead of a server (#879): the sample records of `src/mock`, while no server has answered
- * this page or the one there does not suit it. The page loads it, a chunk of its own, and sets it with `setSample`.
- * What changes something is done in the page's memory, and jobs run there (#896).
+ * 代替服务端回答网页的示例服务端（#879）：`src/mock` 里的示例数据，在尚无服务端回答过这个网页，
+ * 或者连上的服务端不适合它时使用。网页把它作为单独的 chunk 加载，并用 `setSample` 设置。
+ * 改动只在页面的内存里生效，作业也在页面里运行（#896）。
  */
 export interface SampleServer {
-  /** The route answered as `weflow serve` would; `async` for a request that prefers to be run as a job. */
+  /** 像 `weflow serve` 那样回答一个路由；请求希望作为作业运行时 `async` 为 true。 */
   answer(method: Method, path: string, params: Params, async: boolean): SampleAnswer;
-  /** The address of a media file of the sample, or of a job's file: what `path` and `params` address on a server. */
+  /** 示例里的媒体文件或作业文件的地址，对应服务端上 `path` 和 `params` 所指的文件。 */
   media(path: string, params: Params): string;
 }
 
@@ -138,19 +138,19 @@ interface Sampling { server: Promise<SampleServer>; loaded: SampleServer | null 
 
 let sample: Sampling | null = null;
 
-/** Answers the page from the sample server `load` gives, or from the server again (null). */
+/** 用 `load` 给出的示例服务端回答网页；为 null 时换回服务端。 */
 export function setSample(load: (() => Promise<SampleServer>) | null): void {
   if (!load) { sample = null; return; }
   if (sample) return;
   const entry: Sampling = { server: load(), loaded: null };
-  entry.server.then(server => { entry.loaded = server; }, () => { /* each call says it */ });
+  entry.server.then(server => { entry.loaded = server; }, () => { /* 每次调用各自报告失败 */ });
   sample = entry;
 }
 
-/** Whether the page is answered by the sample server. */
+/** 网页现在是否由示例服务端回答。 */
 export const sampling = () => sample !== null;
 
-/** The address of a media file (`<img>`, `<audio>`, …): on the server, or of the sample while it answers. */
+/** 媒体文件（`<img>`、`<audio>` 等）的地址：服务端上的地址；示例服务端回答网页时为示例里的地址。 */
 export function mediaAddress(path: string, params: Params): string {
   return sample?.loaded ? sample.loaded.media(path, params) : apiUrl(path, params);
 }
@@ -161,11 +161,11 @@ async function answerSample<T>(server: Promise<SampleServer>, method: Method, pa
   const answer = answering.answer(method, path.replace(/^\/+/, ''), params, async);
   if ('refused' in answer) throw new ApiError(0, 'sample', t('这是示例数据，连接 weflow serve 后才能这样做。'));
   if ('failed' in answer) throw new ApiError(answer.failed.status, answer.failed.code, answer.failed.message);
-  // the answer is the page's own, as one read from a server is: what the page does to it leaves the sample as it is
+  // 回答归页面所有，与从服务端读到的一样：页面怎样改它都不影响示例数据
   return structuredClone(answer.data) as T;
 }
 
-/** Runs a route: GET and DELETE take the parameters as a query, the other methods as a JSON body. */
+/** 调用一个路由：GET 和 DELETE 把参数放在查询参数里，其他方法放在 JSON 请求体里。 */
 export async function call<T>(method: Method, path: string, params: Params = {}, signal?: AbortSignal, extra: Record<string, string> = {}): Promise<T> {
   if (sample) return answerSample<T>(sample.server, method, path, params, extra.Prefer === 'respond-async', signal);
   const revision = tokenRevision;
@@ -187,7 +187,7 @@ export async function call<T>(method: Method, path: string, params: Params = {},
     if (problem instanceof DOMException && problem.name === 'AbortError') throw problem;
     throw new ApiError(0, 'offline', t('无法连接 weflow serve'));
   }
-  // An old request may finish after the person has already supplied the right token.
+  // 旧的请求可能在用户已经填了正确的 token 之后才结束，这时收到的 401 不发通知
   if (response.status === 401 && revision === tokenRevision && !signal?.aborted) tellAuth('unauthorized');
 
   let doc: { success?: boolean; data?: T; error?: { code?: string; message?: string; details?: unknown } };
@@ -201,5 +201,5 @@ export async function call<T>(method: Method, path: string, params: Params = {},
   throw new ApiError(response.status, error.code ?? 'http_' + response.status, error.message ?? response.statusText, error.details);
 }
 
-/** `call` with GET: a read. */
+/** 用 GET 的 `call`，即一次读取。 */
 export const get = <T>(path: string, params?: Params, signal?: AbortSignal) => call<T>('GET', path, params, signal);

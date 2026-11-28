@@ -1,5 +1,5 @@
-// The sample's official accounts and their pushes: WeFlow's release notes, articles on Rust and interface design, a
-// calligraphy lesson a day and the health tips the family forwards; WeChat Pay's account pushes the payment notices.
+// 示例数据的公众号和它们的推送：WeFlow 的发布说明、Rust 和界面设计的文章、每天一课的书法，以及家人转发的养生贴士；
+// 微信支付公众号推送支付通知。
 import type { BizMessage } from '../api/contract.gen';
 import { ago } from './clock';
 import { pictureUrl } from './media';
@@ -19,7 +19,7 @@ function push(localId: number, createTime: number, lead: Article, more: Article[
   };
 }
 
-/** The pushes of each account, newest first. */
+/** 每个公众号的推送，最新的在前。 */
 export const pushes = new Map<string, BizMessage[]>([
   [WEFLOW_NEWS, [
     push(31, ago(1, 2, 0), article('WeFlow 6.0 发布：网页界面全面改版', '新拟态皮肤、深色模式、断开连接后保留已读到的记录', REPO + '/releases', pictureUrl('release')), [

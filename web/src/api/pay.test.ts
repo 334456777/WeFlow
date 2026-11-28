@@ -24,7 +24,7 @@ describe('WeChat Pay notices', () => {
     expect(paymentOf(card)).toMatchObject({ amount: 999, refund: false, method: '零钱', status: '已支付', merchant: '便利店' });
     expect(paymentOf(record('微信支付凭证', '支付方式信用卡\n交易状态支付成功', { method: '零钱', status: '已支付' })))
       .toMatchObject({ method: '信用卡', status: '支付成功' });
-    // a server before the two fields
+    // 不给这两个字段的较早的服务端
     const { method: _m, status: _s, ...old } = card;
     expect(paymentOf(old as PayRecord)).toMatchObject({ method: '', status: '' });
   });

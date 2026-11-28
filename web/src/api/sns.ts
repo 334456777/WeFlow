@@ -1,35 +1,34 @@
-// Moments (#202): the timeline (`sns timeline`), who posts and how often (`sns post-counts`), the totals
-// (`sns stats`), all read in the server's process, and the images and videos of a post (`/api/sns/media`).
+// 朋友圈（#202）：时间线（`sns timeline`）、谁发了多少条（`sns post-counts`）和总数（`sns stats`），
+// 都在服务进程内读取；以及动态里的图片和视频（`/api/sns/media`）。
 import { get, mediaAddress, token, type Params } from './client';
 import type * as Contract from './contract.gen';
 
-/** A post, its pictures and videos (addresses on WeChat's servers and the key to them), its comments and where it
- * was made: the contract's types (#430). */
+/** 一条动态：其中的图片和视频（微信服务器上的地址和解密用的密钥）、评论和发布的位置，都是契约的类型（#430）。 */
 export type SnsPost = Contract.SnsPost;
-/** A picture or video of a post. */
+/** 动态里的一张图片或一段视频。 */
 export type SnsMedia = Contract.SnsMedia;
-/** A comment on a post. */
+/** 动态下的一条评论。 */
 export type SnsComment = Contract.SnsComment;
-/** Where a post was made. */
+/** 动态发布的位置。 */
 export type SnsLocation = Contract.SnsLocation;
 
-/** What the timeline is narrowed to. */
+/** 时间线的筛选条件。 */
 export interface SnsFilter {
-  /** One poster, or everyone. */
+  /** 只看这个人的动态；为 null 时看所有人的。 */
   username: string | null;
   keyword: string;
-  /** Unix seconds, 0 for no limit. */
+  /** Unix 秒数，0 表示不限。 */
   start: number;
   end: number;
 }
 
-/** The whole timeline. */
+/** 不加筛选的整条时间线。 */
 export const NO_FILTER: SnsFilter = { username: null, keyword: '', start: 0, end: 0 };
 
-/** Posts per page. */
+/** 每页的动态数。 */
 export const SNS_PAGE = 20;
 
-/** A page of `sns timeline` that `filter` narrows, from `offset`, read in the server's process. */
+/** 按 `filter` 筛选的 `sns timeline` 从第 `offset` 条起的一页，在服务进程内读取。 */
 export async function getTimeline(filter: SnsFilter, offset: number, signal?: AbortSignal): Promise<SnsPost[]> {
   const params: Params = { limit: SNS_PAGE, offset };
   if (filter.username) params.user = filter.username;
@@ -40,24 +39,24 @@ export async function getTimeline(filter: SnsFilter, offset: number, signal?: Ab
   return data?.timeline ?? [];
 }
 
-/** Posts per poster, from the counts WeChat keeps (refreshed every few minutes). */
+/** `sns post-counts`：每个人发的动态数；服务端保存的上一次的计数没有过期时直接用它（`prefer-cache`）。 */
 export async function getPostCounts(signal?: AbortSignal): Promise<Record<string, number>> {
   return (await get<Record<string, number> | null>('api/sns/post-counts', { 'prefer-cache': true }, signal)) ?? {};
 }
 
-/** The contract's (#430). */
+/** `sns stats` 的回答：契约的类型（#430）。 */
 export type SnsStats = Contract.SnsStats;
 
-/** `sns stats`, from the counts kept while they are fresh; a count the server leaves out reads as 0. */
+/** `sns stats`：朋友圈的统计，服务端保存的计数没有过期时直接用它；没有给出的总数当作 0，没有 `myPosts` 时为 null。 */
 export async function getSnsStats(signal?: AbortSignal): Promise<SnsStats> {
   const data = await get<SnsStats | null>('api/sns/stats', { 'prefer-cache': true }, signal);
   return { totalPosts: data?.totalPosts ?? 0, totalFriends: data?.totalFriends ?? 0, myPosts: data?.myPosts ?? null };
 }
 
-/** The servers `/api/sns/media` fetches from (as `is_wechat_media_url` on the server); other addresses are links. */
+/** `/api/sns/media` 会去下载的服务器（与服务端的 `is_wechat_media_url` 一致）；其他地址只作为链接。 */
 const SERVERS = ['.qpic.cn', '.wechat.com', '.video.qq.com', '.tc.qq.com'];
 
-/** Whether `url` is an https address of WeChat's media servers, which `/api/sns/media` fetches. */
+/** `url` 是否是微信媒体服务器的 https 地址，即 `/api/sns/media` 会去下载的地址。 */
 export function isWechatMedia(url: string | undefined): url is string {
   if (!url) return false;
   try {
@@ -68,15 +67,15 @@ export function isWechatMedia(url: string | undefined): url is string {
   }
 }
 
-/** A video by its address, as WeChat's apps tell one. */
+/** 按地址判断是否是视频，与微信客户端的判断方式一致。 */
 export function isVideo(media: SnsMedia): boolean {
   const url = media.url.toLowerCase();
   return !url.includes('vweixinthumb') && (url.includes('snsvideodownload') || url.includes('.mp4') || url.includes('video'));
 }
 
 /**
- * Where a page gets an image or video of a post: through the server, which fetches it once from WeChat's servers,
- * decrypts it and keeps it. Posts of type 7 hold media that need no key.
+ * 网页获取动态里的图片或视频的地址：经过服务端，服务端从微信的服务器下载一次、解密后保存下来。
+ * 类型为 7 的动态里的媒体不需要密钥。
  */
 export function snsMediaUrl(url: string, key: string | undefined, postType: number): string {
   const bearer = token();

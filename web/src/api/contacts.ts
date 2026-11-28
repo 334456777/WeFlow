@@ -1,31 +1,31 @@
-// The contacts (#205): `chat contacts --parsed`, the list as the desktop app shows it, read in process (`/api/`).
+// 通讯录（#205）：`chat contacts --parsed`，与桌面版显示的联系人列表一致，在服务进程内读取（`/api/`）。
 import { get } from './client';
 import { msg } from '../i18n';
 import { keptRead } from './kept';
 
-/** A contact of `chat contacts --parsed`, and its kind: the contract's. */
+/** `chat contacts --parsed` 的一个联系人及其种类：契约的类型。 */
 export type { Contact, ContactKind } from './contract.gen';
 import type { Contact, ContactKind } from './contract.gen';
 
-/** The kinds of contact, in the order the tabs list them. */
+/** 联系人的种类，按通讯录页的分类标签排列。 */
 export const CONTACT_KINDS: ContactKind[] = ['friend', 'group', 'official', 'former_friend'];
-/** Each kind's name, marked with `msg()` and shown through `t()`. */
+/** 每种联系人的名称，用 `msg()` 标出，显示时经过 `t()`。 */
 export const contactKindLabels: Record<ContactKind, string> = { friend: msg('好友'), group: msg('群聊'), official: msg('公众号'), former_friend: msg('曾经的好友') };
 
 
-/** `chat contacts --parsed`; a row without a username or a type is left out. */
+/** `chat contacts --parsed`：联系人列表，去掉没有用户名或种类的行。 */
 export async function getContacts(signal?: AbortSignal): Promise<Contact[]> {
   const data = await get<unknown>('api/chat/contacts', { parsed: true }, signal);
   return Array.isArray(data) ? data.filter((c): c is Contact => typeof c?.username === 'string' && typeof c?.type === 'string') : [];
 }
 
 /**
- * The parsed contact list for every page that names people by it, the contacts page and the footprint (#402): read once
- * for the server and account (`keptRead`); `fresh` reads it again, as a retry does.
+ * 解析过的联系人列表，供按它显示人名的各页面使用，如通讯录和足迹（#402）：每个服务端和账号只读一次（`keptRead`）；
+ * `fresh` 时重新读取（重试时用它）。
  */
 export const contactList = (fresh = false) => keptRead('contacts', () => getContacts(), fresh);
 
-/** The contacts whose names, WeChat ID or username hold `query`, ignoring case. */
+/** 名称、微信号或用户名包含 `query` 的联系人，不区分大小写。 */
 export function matchContacts(contacts: readonly Contact[], query: string): Contact[] {
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return [...contacts];
@@ -33,17 +33,17 @@ export function matchContacts(contacts: readonly Contact[], query: string): Cont
     .some(v => v?.toLocaleLowerCase().includes(needle)));
 }
 
-/** How many contacts of each kind there are. */
+/** 每种联系人的个数。 */
 export function countKinds(contacts: readonly Contact[]): Record<ContactKind, number> {
   const counts: Record<ContactKind, number> = { friend: 0, group: 0, official: 0, former_friend: 0 };
   for (const c of contacts) if (c.type in counts) counts[c.type] += 1;
   return counts;
 }
 
-/** The formats of `export contacts --format`. */
+/** `export contacts --format` 可选的格式。 */
 export const CONTACT_FORMATS = [
   { value: 'excel', label: 'Excel' }, { value: 'csv', label: 'CSV' }, { value: 'json', label: 'JSON' }, { value: 'html', label: 'HTML' },
   { value: 'txt', label: 'TXT' }, { value: 'sql', label: 'SQL' },
 ] as const;
-/** A format of `export contacts`. */
+/** `export contacts` 的一种格式。 */
 export type ContactFormat = typeof CONTACT_FORMATS[number]['value'];

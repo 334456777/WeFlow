@@ -1,5 +1,5 @@
-// For the tests of the command console (#217).
-/** A slice of `/openapi.json` as `weflow serve` writes it. */
+// 命令控制台的测试用的数据（#217）。
+/** `weflow serve` 写出的 `/openapi.json` 的一部分。 */
 export const DOC = {
   paths: {
     '/chat/messages': { get: {

@@ -1,49 +1,48 @@
-// My footprint (#209): who I talked with and replied to, and where I was @-mentioned, over a range of days
-// (`insight footprint --start --end`); its export (`export footprint`) and its AI summary (`insight footprint-summary`).
+// 我的足迹（#209）：一段日期内和谁聊过、回复过谁、在哪里被 @（`insight footprint --start --end`）；
+// 以及足迹的导出（`export footprint`）和 AI 总结（`insight footprint-summary`）。
 import { call, get } from './client';
 import { t } from '../i18n';
 import type * as Contract from './contract.gen';
 import { dayOf } from '../format';
 
-/** The footprint and its parts, the contract's (#430): keys in snake_case, as the native layer writes them. */
+/** 足迹及其各部分，契约的类型（#430）：键是 snake_case，与只读数据库层写出的一致。 */
 export type Footprint = Contract.Footprint;
-/** The counts of the footprint. */
+/** 足迹的各项计数。 */
 export type FootprintSummary = Contract.FootprintSummary;
-/** A stretch of one private chat without an hour's pause; seconds. */
+/** 一个私聊里中间没有超过一小时停顿的一段聊天；时间以秒为单位。 */
 export type FootprintSegment = Contract.FootprintSegment;
-/** A group message that @-mentions me. */
+/** 群里 @ 我的一条消息。 */
 export type FootprintMention = Contract.FootprintMention;
 
-/** Days `YYYY-MM-DD`, both inclusive, and what to call them. */
+/** 日期范围 `YYYY-MM-DD`（两端都包含）及其名称。 */
 export interface FootprintRange { from: string; to: string; label: string }
 
-/** `insight footprint` over the range, read in the server's process. */
+/** 日期范围内的 `insight footprint`，在服务进程内读取。 */
 export const getFootprint = (range: FootprintRange, signal?: AbortSignal) =>
   get<Footprint>('api/insight/footprint', { start: range.from || undefined, end: range.to || undefined }, signal);
 
-/** The formats `export footprint` writes (#390): the statistics as JSON, or the timeline as rows. */
+/** `export footprint` 写出的格式（#390）：统计写成 JSON，或者时间线写成表格的行。 */
 export const FOOTPRINT_FORMATS = [
   { value: 'json', label: 'JSON' }, { value: 'csv', label: 'CSV' }, { value: 'excel', label: 'Excel' },
 ] as const;
-/** A format of `export footprint`. */
+/** `export footprint` 的一种格式。 */
 export type FootprintFormat = (typeof FOOTPRINT_FORMATS)[number]['value'];
 
-/** The parameters of `export footprint` over the range. */
+/** 日期范围内的 `export footprint` 的参数。 */
 export const footprintExport = (range: FootprintRange, format: FootprintFormat = 'json') =>
   ({ format, start: range.from || undefined, end: range.to || undefined });
 
-/** The ranges offered by name: today, yesterday, this week and last week (weeks start on Monday). */
+/** 按名称提供的日期范围：今天、昨天、本周和上周（每周从周一开始）。 */
 export const PRESETS = ['today', 'yesterday', 'thisWeek', 'lastWeek'] as const;
-/** One of the ranges offered by name. */
+/** 按名称提供的一个日期范围。 */
 export type FootprintPreset = (typeof PRESETS)[number];
 
 /**
- * The range picked: one of the presets, its days and name worked out each time it is shown (in the page's language,
- * on the day it is shown), or days of one's own.
+ * 选定的日期范围：预设的一种，每次显示时按当天和网页的语言算出它的日期和名称；或者自己选的日期。
  */
 export type FootprintChoice = { preset: FootprintPreset } | { from: string; to: string };
 
-/** The ranges offered, their days as of `now`. */
+/** 提供的各个日期范围，日期按 `now` 计算。 */
 export function presetRanges(now = new Date()): (FootprintRange & { preset: FootprintPreset })[] {
   const day = (offset: number) => { const d = new Date(now); d.setDate(d.getDate() + offset); return dayOf(d.getTime() / 1000); };
   const sinceMonday = (now.getDay() + 6) % 7;
@@ -55,7 +54,7 @@ export function presetRanges(now = new Date()): (FootprintRange & { preset: Foot
   ];
 }
 
-/** The days and name of the range picked, as of `now`. */
+/** 选定范围的日期和名称，按 `now` 计算。 */
 export function rangeOf(choice: FootprintChoice, now = new Date()): FootprintRange {
   if ('preset' in choice) {
     const { label, from, to } = presetRanges(now).find(p => p.preset === choice.preset)!;
@@ -65,9 +64,9 @@ export function rangeOf(choice: FootprintChoice, now = new Date()): FootprintRan
   return { from, to, label: from === to ? from : t('{from} 至 {to}', { from, to }) };
 }
 
-/** `insight footprint-summary`: the AI's few sentences on the range, from the numbers and the busiest chats and groups. */
+/** `insight footprint-summary`：AI 根据计数和最活跃的私聊、群为这段日期写的几句总结。 */
 export async function summarizeFootprint(range: FootprintRange, data: Footprint, name: (session: string) => string): Promise<string> {
-  // in the keys of the footprint itself: the first twelve segments, or chats, and groups, each with its name
+  // 用足迹本身的键：前 12 段聊天（没有分段时为前 12 个私聊）和前 12 个群，各带名称
   const payload = {
     range_label: range.label,
     summary: data.summary,
@@ -82,12 +81,12 @@ export async function summarizeFootprint(range: FootprintRange, data: Footprint,
   return answer.insight;
 }
 
-/** A row of the footprint's timeline: a stretch of a chat, or an @-mention, and its time in Unix seconds. */
+/** 足迹时间线的一行：一段聊天或一次 @，以及它的时间（Unix 秒数）。 */
 export type FootprintEvent =
   | { kind: 'chat'; at: number; segment: FootprintSegment }
   | { kind: 'mention'; at: number; mention: FootprintMention };
 
-/** The chats and the @-mentions in the order they happened. */
+/** 按发生的先后排列的聊天和 @。 */
 export function timeline(data: Footprint): FootprintEvent[] {
   return [
     ...data.private_segments.map(segment => ({ kind: 'chat' as const, at: segment.start_ts, segment })),

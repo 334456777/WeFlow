@@ -1,5 +1,5 @@
-// The sample's AI insights: what the insight engine noticed in the chats, about WeFlow and about the account's own life,
-// with how each was written. Read, cleared and written anew in the page while it is open (#896).
+// 示例数据的 AI 见解：见解引擎在聊天里注意到的事，关于 WeFlow，也关于账号本人的生活，以及每条见解的由来。
+// 页面打开期间可以在页面里标为已读、清除和重新生成（#896）。
 import type { InsightClearPlan, InsightCleared, InsightContact, InsightMarked, InsightRecord, InsightReply, InsightSummary, ModelList } from '../api/contract.gen';
 import { threads } from './chats';
 import { ago, at, dayOf, NOW } from './clock';
@@ -33,7 +33,7 @@ const summaryOf = (w: Written): InsightSummary => ({
   id: w.id, createdAt: w.at * 1000, sessionId: w.session, displayName: nameOf(w.session), triggerReason: w.reason, insight: w.text, read: w.read,
 });
 
-/** A page of `insight records`: of everyone or one conversation, found by words, newest first. */
+/** `insight records` 的一页：全部或一个会话的记录，可以按关键词查找，最新的在前。 */
 export function insightRecords(keyword: string, session: string, offset: number, limit: number) {
   const matching = written.filter(w => (!session || w.session === session) && (!keyword || w.text.includes(keyword) || nameOf(w.session).includes(keyword)))
     .sort((a, b) => b.at - a.at);
@@ -47,7 +47,7 @@ export function insightRecords(keyword: string, session: string, offset: number,
   };
 }
 
-/** One record with how it was written (`insight get`); null when there is no such record. */
+/** 带由来的一条记录（`insight get`）；没有这条记录时为 null。 */
 export function insightRecord(id: string): { record: InsightRecord } | null {
   const w = written.find(r => r.id === id);
   if (!w) return null;
@@ -66,7 +66,7 @@ export function insightRecord(id: string): { record: InsightRecord } | null {
   };
 }
 
-/** `insight mark-read <id>`; null when there is no such record. */
+/** `insight mark-read <id>`：标为已读；没有这条记录时为 null。 */
 export function markRead(id: string): InsightMarked | null {
   const w = written.find(r => r.id === id);
   if (!w) return null;
@@ -74,36 +74,36 @@ export function markRead(id: string): InsightMarked | null {
   return { id };
 }
 
-/** `insight clear [session]`: every record, or one conversation's. */
+/** `insight clear [session]`：清除全部记录，或一个会话的记录。 */
 export function clearInsights(session: string): InsightCleared {
   const before = written.length;
   for (let i = written.length - 1; i >= 0; i--) if (!session || written[i].session === session) written.splice(i, 1);
   return { removed: before - written.length };
 }
 
-/** `insight clear [session] --dry-run`: how many records `clearInsights` would remove. */
+/** `insight clear [session] --dry-run`：`clearInsights` 会删除多少条记录。 */
 export function planClearInsights(session: string): InsightClearPlan {
   return { dryRun: true, records: written.filter(r => !session || r.session === session).length };
 }
 
 let made = 0;
 
-/** The private chats, the one talked in last first. */
+/** 全部私聊，最近聊过的在前。 */
 const privateChats = () => [...threads].filter(([id]) => id.startsWith('wxid_') && id !== ME)
   .sort(([, a], [, b]) => b[b.length - 1].createTime - a[a.length - 1].createTime);
 
-/** Whether the session list of the settings allows a conversation, as the server reads the two settings (#1078). */
+/** 设置里的会话列表是否允许这个会话，按服务端读取这两项设置的方式判断（#1078）。 */
 function allowed(id: string): boolean {
   let list: unknown = [];
-  try { list = JSON.parse(getSetting('ai_insight_filter_list') ?? '[]'); } catch { /* no list */ }
+  try { list = JSON.parse(getSetting('ai_insight_filter_list') ?? '[]'); } catch { /* 没有列表 */ }
   const listed = Array.isArray(list) && list.includes(id);
   return getSetting('ai_insight_filter_mode') === 'blacklist' ? !listed : listed;
 }
 
 /**
- * `insight trigger [session]`: one insight now, of that conversation or of the private chat talked in last that the
- * session list allows, from the last thing said in it with something to it: the other side's first, a reply of a word
- * or two passed over; the problem when there is nothing to write about.
+ * `insight trigger [session]`：立即生成一条见解，给这个会话，或者会话列表允许的、最近聊过的私聊。
+ * 见解根据最后一句有内容的话来写：优先用对方说的、至少 8 个字的话，其次是任何人说的，都没有时用最后一条文字消息；
+ * 没有文字消息可写时给出问题。
  */
 export function triggerInsight(session: string): InsightReply | { problem: string } {
   const id = session || privateChats().find(([chat]) => allowed(chat))?.[0];
@@ -122,11 +122,11 @@ export function triggerInsight(session: string): InsightReply | { problem: strin
   return { message: '已生成一条见解。', record: summaryOf(w) };
 }
 
-/** The sample's model API: an address of no one's, by the format the settings name. */
+/** 示例的模型接口地址，不属于任何人，按设置里的接口格式选择。 */
 const sampleEndpoint = (format: string | null) =>
   format === 'anthropic' ? 'https://api.example.com/v1/messages' : 'https://api.example.com/v1/chat/completions';
 
-/** `insight test`: the sample model answers as asked; no service is reached. */
+/** `insight test`：示例模型按要求回答，不连接任何服务。 */
 export function testModel(format: string | null, model: string | null): InsightReply {
   return {
     message: '连接成功，模型回复：连接成功',
@@ -137,7 +137,7 @@ export function testModel(format: string | null, model: string | null): InsightR
   };
 }
 
-/** `insight models`: the sample service's models. */
+/** `insight models`：示例服务提供的模型。 */
 export function sampleModels(format: string | null): ModelList {
   return {
     format: format === 'anthropic' ? 'anthropic' : 'openai', endpoint: sampleEndpoint(format).replace(/\/(chat\/completions|messages)$/, '/models'),
